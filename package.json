@@ -7,8 +7,8 @@
   },
   "packageManager": "pnpm@9.15.9",
   "scripts": {
-    "format": "prettier --write \"apps/**/*.{ts,tsx,css,json}\" \"packages/**/*.{ts,tsx,css,json}\" --ignore-path .gitignore",
-    "format:check": "prettier --check \"apps/**/*.{ts,tsx,css,json}\" \"packages/**/*.{ts,tsx,css,json}\" --ignore-path .gitignore",
+    "format": "prettier --write \"apps/**/*.{ts,tsx,css,json}\" \"packages/**/*.{ts,tsx,css,json}\" \"!packages/knowledge/packs/**\" \"!packages/knowledge/snapshots/**\" --ignore-path .gitignore",
+    "format:check": "prettier --check \"apps/**/*.{ts,tsx,css,json}\" \"packages/**/*.{ts,tsx,css,json}\" \"!packages/knowledge/packs/**\" \"!packages/knowledge/snapshots/**\" --ignore-path .gitignore",
     "lint": "pnpm -r --if-present run lint",
     "test": "pnpm -r --if-present run test",
     "typecheck": "pnpm -r --if-present run typecheck",

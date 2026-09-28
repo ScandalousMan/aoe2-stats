@@ -9,6 +9,7 @@ members = [
     "aoe2stats-api",
     "aoe2stats-core",
     "aoe2stats-ingester",
+    "aoe2stats-knowledge",
     "aoe2stats-providers",
     "aoe2stats-replay-engine",
     "aoe2stats-storage",
@@ -191,6 +192,17 @@ dependencies = [
 requires-dist = [{ name = "aoe2stats-core", editable = "packages/core" }]
 
 [[package]]
+name = "aoe2stats-knowledge"
+version = "0.1.0"
+source = { editable = "packages/knowledge" }
+dependencies = [
+    { name = "aoe2stats-core" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "aoe2stats-core", editable = "packages/core" }]
+
+[[package]]
 name = "aoe2stats-providers"
 version = "0.1.0"
 source = { editable = "packages/providers" }
@@ -212,12 +224,16 @@ source = { editable = "packages/replay-engine" }
 dependencies = [
     { name = "aoe2rec-py" },
     { name = "aoe2stats-core" },
+    { name = "aoe2stats-knowledge" },
+    { name = "packaging" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "aoe2rec-py", specifier = "==0.1.21" },
     { name = "aoe2stats-core", editable = "packages/core" },
+    { name = "aoe2stats-knowledge", editable = "packages/knowledge" },
+    { name = "packaging" },
 ]
 
 [[package]]

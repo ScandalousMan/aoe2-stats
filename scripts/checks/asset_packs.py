@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
 """The licence gate over `packages/game-assets/` (constitution X, FR-011, SC-003).
 
-Read-only, no network, stdlib only — modelled on `spec_lint.py`. Every pack directory under
-`packages/game-assets/` must carry a `LICENCE.md` recording all five fields
-[contracts/asset-pack.md](../../specs/004-visual-parity/contracts/asset-pack.md) requires; a
-`Ruling` of `READ ONLY` must hold no payload file; the package as a whole must stay under its size
-budget (research.md D5); every recorded pack must agree with its mirror in `docs/asset-packs.md`;
-and the Microsoft "Game Content Usage Rules" disclaimer must still be present in `README.md` — the
-constitution's own wording is "remove either anchor and the permission lapses", and this is the
-check that notices.
+Read-only, no network, stdlib only — modelled on `spec_lint.py`. Runs over every root in
+`ASSET_ROOTS` (`packages/game-assets/`, `packages/design-system/tokens/fonts/`,
+`packages/knowledge/packs/` and `packages/knowledge/snapshots/`). Every pack directory under one of
+those roots must carry a `LICENCE.md` recording all five fields
+[contracts/asset-pack.md](../../specs/004-visual-parity/contracts/asset-pack.md) requires; its
+`Ruling` must lead with one of exactly two verdicts, `COPY IN` or `READ ONLY` — any other leading
+text, a typo included, fails the gate rather than passing it silently; a `Ruling` of `READ ONLY`
+must hold no payload file; each root must stay under its own size budget; every recorded pack must
+agree with its mirror in `docs/asset-packs.md`; and the Microsoft "Game Content Usage Rules"
+disclaimer must still be present in `README.md` — the constitution's own wording is "remove either
+anchor and the permission lapses", and this is the check that notices.
 
 Run: uv run scripts/checks/asset_packs.py
 Exit: 0 clean, 1 on any failure.
@@ -18,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import re
+from dataclasses import dataclass
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
@@ -39,15 +43,66 @@ SIZE_BUDGET_BYTES = 10 * 1024 * 1024
 #: different justifications, and a shared constant would make one of them a coincidence.
 FONT_SIZE_BUDGET_BYTES = 1 * 1024 * 1024
 
-#: Every assets root this gate covers, paired with its own size budget. Constitution X's "a pack
-#: whose licence is not recorded MUST NOT be added" is enforced only where this gate looks — until
-#: feature 005 T523 that was exactly one directory, so a font (or any future asset kind) landing
-#: anywhere else was covered by nothing and did not even trigger the CI job. A font directory is an
-#: assets root for the same reason `packages/game-assets` is: it holds files copied in under a
-#: licence this gate has to keep honest.
-ASSET_ROOTS: tuple[tuple[Path, int], ...] = (
-    (REPO / "packages" / "game-assets", SIZE_BUDGET_BYTES),
-    (REPO / "packages" / "design-system" / "tokens" / "fonts", FONT_SIZE_BUDGET_BYTES),
+#: specs/006-replay-analysis-foundations/research.md D3's budget on the whole
+#: `packages/knowledge/packs` payload — vendored source files at a pinned commit, read only by the
+#: normaliser, never the network. Measured 2026-09-20: T636's `aoe2techtree` pack is ~6.3 MB
+#: (`trees/*.json`, 53 civilisation files, ~5.3 MB; `data.json` ~926 KB; `strings.en.json` ~185 KB).
+#: Budgeted at roughly double that measurement: enough headroom for the upstream project to add a
+#: handful more civilisations, or for `Checked` to be re-run against a newer commit with a larger
+#: `data.json`, before this ceiling needs revisiting — not so much that an accidental second pack,
+#: or an accidentally-unfiltered import, would pass unnoticed.
+KNOWLEDGE_PACK_SIZE_BUDGET_BYTES = 12 * 1024 * 1024
+
+#: specs/006-replay-analysis-foundations/contracts/knowledge-base.md's on-disk layout for
+#: `packages/knowledge/snapshots` — measured, not estimated (T637/T652i). The three snapshots
+#: committed as of 2026-09-22 total 551,139 bytes (~538 KiB): 271,983 bytes for
+#: `aoe2techtree-177723-test`, 277,174 for `aoe2techtree-180059` (each holding `snapshot.toml`,
+#: `rules.json` and `effects.toml`, `aoe2techtree-180059` also `disagreements.toml`) and 1,982 for
+#: the near-empty `aoe2techtree-test-stub`. `rules.json`, the largest file in a real snapshot, is
+#: normalised entities derived from the pack above, not the pack itself. Budgeted at roughly 15x
+#: today's measured total — a handful more snapshots at today's largest single-snapshot size —
+#: because this root is append-only by design (written once, never edited); the multiple is stated
+#: so a future re-measurement can say whether it still holds rather than re-deriving it from
+#: scratch. Unchanged from the estimate T637 first set: the measurement now backing it still sits
+#: comfortably inside it, so there is no case for moving it yet.
+KNOWLEDGE_SNAPSHOT_SIZE_BUDGET_BYTES = 8 * 1024 * 1024
+
+
+@dataclass(frozen=True)
+class AssetRoot:
+    """One root this gate covers, and how much of the gate applies to it.
+
+    Every root gets the size-budget check — that half is unconditional. Whether the rest (a
+    `LICENCE.md` per pack, the closed-set `Ruling`, the `docs/asset-packs.md` mirror) applies
+    depends on what a subdirectory under the root *is*: a vendored pack under its own licence, or
+    a snapshot derived from one and already carrying its own provenance in `snapshot.toml`
+    (contracts/knowledge-base.md's "On disk" section lists no `LICENCE.md` in a snapshot's layout,
+    and its "Licence gate" section never discusses one). `requires_licence=False` is that
+    distinction, not a per-root-name special case threaded through every check function.
+    """
+
+    path: Path
+    size_budget_bytes: int
+    requires_licence: bool = True
+
+
+#: Every assets root this gate covers. Constitution X's "a pack whose licence is not recorded MUST
+#: NOT be added" is enforced only where this gate looks — until feature 005 T523 that was exactly
+#: one directory, so a font (or any future asset kind) landing anywhere else was covered by nothing
+#: and did not even trigger the CI job. Feature 006 T637 adds the two knowledge-base roots for the
+#: same reason: each holds files this gate has to keep honest, and until both are listed here the
+#: gate neither sees a knowledge pack nor runs when one changes. `packages/knowledge/snapshots` is
+#: `requires_licence=False`: a snapshot's provenance lives in its own `snapshot.toml` identity, not
+#: in a per-snapshot `LICENCE.md` that the on-disk layout never has.
+ASSET_ROOTS: tuple[AssetRoot, ...] = (
+    AssetRoot(REPO / "packages" / "game-assets", SIZE_BUDGET_BYTES),
+    AssetRoot(REPO / "packages" / "design-system" / "tokens" / "fonts", FONT_SIZE_BUDGET_BYTES),
+    AssetRoot(REPO / "packages" / "knowledge" / "packs", KNOWLEDGE_PACK_SIZE_BUDGET_BYTES),
+    AssetRoot(
+        REPO / "packages" / "knowledge" / "snapshots",
+        KNOWLEDGE_SNAPSHOT_SIZE_BUDGET_BYTES,
+        requires_licence=False,
+    ),
 )
 
 #: Directories under `packages/game-assets/` that hold package plumbing rather than an asset pack
@@ -119,10 +174,31 @@ def _pack_dirs(assets_root: Path) -> list[Path]:
     )
 
 
+#: The two verdicts a `LICENCE.md`'s `Ruling` field is allowed to lead with — confirmed as exactly
+#: two by contracts/knowledge-base.md's "Licence gate" section and every ruling column in
+#: research.md D3 across all three assets roots this gate has ever covered; no third verdict is
+#: recorded anywhere. `\**\s*` tolerates the markdown bold markers every real `Ruling` value opens
+#: with (e.g. `**COPY IN**. MIT grants...`) without treating them as part of the verdict itself.
+#: Matched with `re.match`, i.e. anchored at the start of the string — "leads with", not "contains
+#: somewhere" — so a sentence that mentions the other verdict in its reasoning does not pass on a
+#: technicality.
+_RULING_LABEL_RE = re.compile(r"\**\s*(COPY IN|READ ONLY)\b", re.IGNORECASE)
+
+
+def _ruling_label(ruling: str) -> str:
+    """The verdict a `LICENCE.md`'s `Ruling` field leads with (`COPY IN` or `READ ONLY`), for
+    `main()`'s one-line-per-pack report — not the sentence or two of reasoning that follows it."""
+    match = _RULING_LABEL_RE.match(ruling)
+    return match.group(1).upper() if match else ruling
+
+
 def check_pack(pack_dir: Path) -> list[str]:
     """One pack directory's own checks: a `LICENCE.md`, all five required fields present in it
-    (one failure string per missing field), and — when `Ruling` reads as `READ ONLY` — no payload
-    file besides the record itself."""
+    (one failure string per missing field); a non-empty `Ruling` must lead with one of exactly two
+    verdicts, `COPY IN` or `READ ONLY` — any other leading text, a typo of either included, is its
+    own failure naming the pack and the actual text found, closing the gap where the gate used to
+    accept anything that was not the literal substring `READ ONLY`; and — when `Ruling` leads with
+    `READ ONLY` — no payload file besides the record itself."""
     failures: list[str] = []
     licence_path = pack_dir / "LICENCE.md"
     if not licence_path.is_file():
@@ -134,7 +210,14 @@ def check_pack(pack_dir: Path) -> list[str]:
         if not fields.get(field, "").strip():
             failures.append(f"{pack_dir.name}: LICENCE.md is missing the '{field}' field")
 
-    if "read only" in fields.get("Ruling", "").lower():
+    ruling_value = fields.get("Ruling", "").strip()
+    ruling_match = _RULING_LABEL_RE.match(ruling_value) if ruling_value else None
+    if ruling_value and not ruling_match:
+        failures.append(
+            f"{pack_dir.name}: Ruling must lead with COPY IN or READ ONLY, found {ruling_value!r}"
+        )
+
+    if ruling_match and ruling_match.group(1).upper() == "READ ONLY":
         payload_files = sorted(
             entry.name
             for entry in pack_dir.iterdir()
@@ -283,33 +366,27 @@ def check_asset_packs(
 
 
 def check_asset_roots(
-    roots: tuple[tuple[Path, int], ...], docs_file: Path, readme_file: Path
+    roots: tuple[AssetRoot, ...], docs_file: Path, readme_file: Path
 ) -> list[str]:
     """The multi-root composition `main()` actually runs (typography-tokens.md §9.2 point 3):
-    `check_pack`, `check_size_budget` (with that root's own budget) and `check_docs_mirror` for
-    every pack in every one of `roots`, plus `check_disclaimer` **exactly once** — the disclaimer
-    is a repository-wide anchor, not a per-root one, so calling `check_asset_packs` once per root
-    would report its failure once per root too. Composed alongside `check_asset_packs`, not in
-    place of it: that aggregate's signature and behaviour stay untouched for its existing
-    single-root callers."""
+    `check_size_budget` (with that root's own budget) for every one of `roots`, plus
+    `check_disclaimer` **exactly once** — the disclaimer is a repository-wide anchor, not a
+    per-root one, so calling `check_asset_packs` once per root would report its failure once per
+    root too. `check_pack` and `check_docs_mirror` only run for a root whose `requires_licence` is
+    true: a snapshot root (contracts/knowledge-base.md's "Licence gate" section) is derived data
+    whose provenance lives in its own `snapshot.toml`, not a per-directory `LICENCE.md`, so holding
+    it to that half of the gate would fail it for a file it was never meant to carry. Composed
+    alongside `check_asset_packs`, not in place of it: that aggregate's signature and behaviour
+    stay untouched for its existing single-root callers."""
     failures: list[str] = []
-    for assets_root, size_budget_bytes in roots:
-        for pack_dir in _pack_dirs(assets_root):
-            failures.extend(check_pack(pack_dir))
-        failures.extend(check_size_budget(assets_root, size_budget_bytes))
-        failures.extend(check_docs_mirror(assets_root, docs_file))
+    for asset_root in roots:
+        if asset_root.requires_licence:
+            for pack_dir in _pack_dirs(asset_root.path):
+                failures.extend(check_pack(pack_dir))
+            failures.extend(check_docs_mirror(asset_root.path, docs_file))
+        failures.extend(check_size_budget(asset_root.path, asset_root.size_budget_bytes))
     failures.extend(check_disclaimer(readme_file))
     return failures
-
-
-_RULING_LABEL_RE = re.compile(r"\**\s*(COPY IN|READ ONLY)\b", re.IGNORECASE)
-
-
-def _ruling_label(ruling: str) -> str:
-    """The verdict a `LICENCE.md`'s `Ruling` field leads with (`COPY IN` or `READ ONLY`), for
-    `main()`'s one-line-per-pack report — not the sentence or two of reasoning that follows it."""
-    match = _RULING_LABEL_RE.match(ruling)
-    return match.group(1).upper() if match else ruling
 
 
 def main() -> int:
@@ -319,14 +396,17 @@ def main() -> int:
     docs_file = REPO / "docs" / "asset-packs.md"
     readme_file = REPO / "README.md"
 
-    for assets_root, _size_budget_bytes in ASSET_ROOTS:
-        print(f"asset_packs: {assets_root.relative_to(REPO)}\n")
-        for pack_dir in _pack_dirs(assets_root):
-            licence_path = pack_dir / "LICENCE.md"
-            fields = parse_licence_fields(read(licence_path)) if licence_path.is_file() else {}
-            ruling = _ruling_label(fields.get("Ruling") or "UNRECORDED")
-            checked = fields.get("Checked") or "UNRECORDED"
-            print(f"  {pack_dir.name}: {ruling} (checked {checked})")
+    for asset_root in ASSET_ROOTS:
+        print(f"asset_packs: {asset_root.path.relative_to(REPO)}\n")
+        for pack_dir in _pack_dirs(asset_root.path):
+            if asset_root.requires_licence:
+                licence_path = pack_dir / "LICENCE.md"
+                fields = parse_licence_fields(read(licence_path)) if licence_path.is_file() else {}
+                ruling = _ruling_label(fields.get("Ruling") or "UNRECORDED")
+                checked = fields.get("Checked") or "UNRECORDED"
+                print(f"  {pack_dir.name}: {ruling} (checked {checked})")
+            else:
+                print(f"  {pack_dir.name}: derived, no licence record required")
         print()
 
     failures = check_asset_roots(roots=ASSET_ROOTS, docs_file=docs_file, readme_file=readme_file)
