@@ -136,8 +136,8 @@ edited (FR-025); a correction is a new snapshot.
 | `selector`     | Which entities it touches — by explicit identifier list, never by a fuzzy class name. |
 | `field`        | Which knowledge field it modifies.                                                    |
 | `operation`    | Closed: `multiply`, `add`, `set`.                                                     |
-| `operand`      | The amount, per resource where the field is a cost.                                   |
-| `condition`    | Optional, closed: `age` (the operand is a table by age), `researched` (a technology that must have been researched), `team` (applies to every civilisation on the owner's team). Absent means unconditional. |
+| `operand`      | The amount, per resource where the field is a cost. For a **time**, `multiply`'s operand is the X of "works X% faster", and the time is divided by 1 + X — Chivalry's "+40%" is `0.40`, never the factor `0.6`. |
+| `condition`    | Optional, closed: `age` (the operand is a table by age), `researched` (a technology that must have been researched), `team` (applies to every civilisation on the owner's team). Absent means unconditional. An `age` table is keyed `"1"`-`"4"` by the pack's age number, and an age absent from it means the bonus does not apply then — Franks' Castle discount before the Castle Age — not a gap. `researched` names its technology in `condition_technology`. |
 | *rounding*     | A **cost** is an integer: `multiply` and `add` round half up — Malians' -15% wood takes a 150-wood Dock to 128, not 127. A **time** keeps its fraction, as the game's does: "works X% faster" divides it by 1 + X, so a Persians Villager in the Feudal Age takes 25 ÷ 1.10 = 22.7 s. `set` replaces the value with the operand. Stated here because it changes a published value, and asserted by `packages/knowledge/tests/test_effects.py`. |
 | `validated_by` | The second reading that confirmed it (FR-030).                                        |
 
@@ -153,7 +153,7 @@ One absent required field (FR-035 to FR-039).
 | `entity`       | Kind and identifier.                                                                   |
 | `field`        | The knowledge field that was asked for.                                                |
 | `build`        | The recording's game build. **`-1` where the stream named none at all** — the column is not nullable and `cause` is closed, so a sentinel is the only honest answer left; it cannot collide with a real build or with the test stub's `describes_build = 0`. FR-039's rate report must not show it as a build (T662). |
-| `civilisation` | The civilisation the query was qualified by, where it was.                             |
+| `civilisation` | The civilisation the query was qualified by, where it was — or, when a teammate outside `civilisations_modelled` made the answer unknown, that teammate. |
 | `cause`        | Closed: `no-snapshot-for-build`, `entity-absent`, `field-absent`, `civilisation-not-modelled`, `effect-not-modelled`. |
 | `prevents`     | The register data that need this field, by id — what the gap stops, not that it exists (FR-036). Computed. |
 | `severity`     | `blocking` or `informational`. **Computed** from `prevents`: blocking when it is non-empty (research D7). Never supplied by a caller. |

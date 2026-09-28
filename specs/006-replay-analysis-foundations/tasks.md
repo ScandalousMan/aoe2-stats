@@ -1062,13 +1062,15 @@ Three were arbitration and are decided, with the decision recorded in the task t
       free-technology model uses `set`) and that `source_text` is byte-for-byte (five rows are
       not); the digest credited to T652o in `snapshot.toml`; and `test_effects.py`'s int-type test,
       which passes on the unadjusted baseline — assert the value and a non-empty `applied`
-- [ ] T652r **Numeric effects can still produce a value the game cannot.** A scalar `add`, a
-      negative `multiply` and a mapping `multiply` all go below zero unguarded; `set` truncates a
-      fractional operand while [data-model.md](./data-model.md) §6 says it has nothing to round, and
-      "every field is an integer" is false of `prerequisites`, `produced_at` and `available_to`.
-      Reject a non-whole `set` operand and a negative `multiply` operand when `effects.toml` is
-      parsed, guard `add` on both paths, and narrow the rounding row to numeric fields. No committed
-      effect reaches any of these; **lands before T655 publishes anything**
+- [ ] T652r **Numeric effects can still produce a value the game cannot.** A scalar `add` and a
+      cost `multiply` with a negative operand go below zero unguarded; a time `multiply` divides by
+      1 + X, so X = -1 divides by zero and X < -1 gives a negative time; a cost `set` truncates a
+      fractional operand with `int()`. Reject, when `effects.toml` is parsed, a negative cost
+      `multiply` operand, a time operand of -1 or below, and a non-whole cost or
+      `age_requirement` `set` operand; guard `add` on both paths. Give "works X% faster" its own
+      operation name, so that `multiply` means one thing on every field
+      ([data-model.md](./data-model.md) §6, `operand` row). No committed effect reaches any of
+      these; **lands before T655 publishes anything**
 - [x] T652s **SUPERSEDED by T652u**, whose team condition makes a team effect match every civilisation on the owner's team. **A team bonus refuses only for its owner.** Malians' University row gaps
       `production_time` for Malians alone; an ally's University technologies still answer the
       baseline, the substitution research.md D5 forbids ("keep their fields gapped"). A rules query
@@ -1111,7 +1113,11 @@ Three were arbitration and are decided, with the decision recorded in the task t
       [contracts/canonical-events.md](./contracts/canonical-events.md) and the participant entry,
       emit it from the adapter, and regenerate the golden streams with
       `scripts/ops/canonical_golden.py`. A free-for-all or unset team is its own value, never team 0
-      shared by strangers. **Lands before T655 publishes anything**
+      shared by strangers. Then make the coverage pass supply each participant's team as
+      `Context.team`, so an unmodelled teammate gaps every cost and time for its allies
+      ([contracts/knowledge-base.md](./contracts/knowledge-base.md), "Civilisation qualification"
+      step 1). Contrast test: the same stream with that ally modelled answers. **Lands before T655
+      publishes anything**
 
 **Checkpoint**: the rules are queryable offline, versioned by build, refuse what they do not know,
 and every refusal is counted.

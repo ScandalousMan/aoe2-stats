@@ -548,10 +548,8 @@ def _apply_scalar(value: float, operation: str, operand: float, *, field: str) -
         return _round_half_up(value + operand)
     if operation == "set":
         if field == "production_time":
-            # T652u: a time keeps its fraction — `set`'s own rounding row says "replaces the
-            # value with the operand", with nothing to round, so the operand's own type (an int
-            # `0` for every free-technology effect this pack currently transcribes) passes
-            # through unconverted rather than being forced to `int`.
+            # T652u: a time keeps its fraction — data-model.md §6's rounding row: `set` "replaces
+            # the value with the operand", so it is not forced to `int`.
             return operand
         # T652p (d): age_requirement is the only other scalar field this package models, and it
         # is an integer — `set` is a direct replacement, not a fractional derivation, so there is

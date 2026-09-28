@@ -104,7 +104,9 @@ def name(entity) -> Answer[str] | KnowledgeGap
 In order, for a rule query qualified by civilisation *c*:
 
 1. *c* not in `civilisations_modelled` → gap, cause `civilisation-not-modelled`. Every cost and time
-   for *c* refuses, because which fields a bonus touches is exactly what is not known.
+   for *c* refuses, because which fields a bonus touches is exactly what is not known. The same
+   holds for any civilisation in `context.team`: a teammate's team bonus touches *c*, so an
+   unmodelled teammate refuses every cost and time for *c*, and the gap names the teammate.
 2. An effect for *c* touches this entity and field and is `modelled = no` → gap, cause
    `effect-not-modelled`.
 3. Otherwise apply each matching effect whose condition holds in `context`, in file order, and
@@ -112,8 +114,8 @@ In order, for a rule query qualified by civilisation *c*:
    the owner's team, not the owner alone.
 
 A conditional effect that is modelled is complete knowledge, so the coverage pass does not report it
-as a gap; it has no match state to supply, and asks whether each field is modelled, not for its
-value.
+as a gap. The pass supplies no age or research state, so it treats a query that raises for want of
+one as modelled.
 
 `name` is not civilisation-qualified and an unresolvable identifier degrades to the bare identifier
 at the presentation boundary, as 003 FR-043a already requires — it never gaps an analysis.

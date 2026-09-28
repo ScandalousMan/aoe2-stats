@@ -179,8 +179,8 @@ civilisation, a civilisation-qualified cost or time query records a gap and retu
 
 **Why this is forced, not chosen.** No lawful, vendorable source carries civilisation-specific
 values: aoe2techtree exports the baseline civilisation only, and its per-civilisation metadata is
-empty. In the one committed recording **both players trained units their civilisation discounts** —
-a Byzantine pikeman, Korean archers and crossbowmen. Returning the baseline is exactly what FR-023
+empty. In the one committed recording **both players trained units their civilisation's bonuses
+touch** (which civilisations they are was corrected by T652m). Returning the baseline is exactly what FR-023
 forbids. FR-022a requires zero blocking gaps on that recording, FR-038 forbids a default, and FR-031
 permits human transcription with provenance. Read together they leave one path, and it is the one
 the fourth clarification already chose: cover what the reference recordings need, and let everything
@@ -195,8 +195,8 @@ civilisations, and the aggregate gap report (FR-039) is the backlog.
 a technology the player has researched, or on being on the owner's team carries that condition, and
 the query takes the match context that decides it. Which condition held at a given moment is a
 question about the match, answered by the caller — never by the knowledge base, and never by
-assuming one. What stays out of the effect model is only a bonus touching a field the pack does not
-carry; it is _modelled: no_ with the reason. A bonus is never half-applied.
+assuming one. What stays out of the effect model is a bonus touching a field the pack does not carry,
+or one whose amount the source does not state (Kamandaran); it is _modelled: no_ with the reason. A bonus is never half-applied.
 
 _Amended 2026-09-28, at the repository owner's arbitration of the fourth review (T652u)._ The first
 version also put age-gated, state-conditional and team bonuses out of the model. That turned rules
