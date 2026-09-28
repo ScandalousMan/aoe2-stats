@@ -3683,8 +3683,12 @@ disabled:no-underline`, in the label's own ink (`shared-primitives.md` §Button,
    `surface`→`surface-sunken` hover (row links, `Menu` items, `SiteHeader` nav, `Field`). **Owner:
    T675. Fix by 2026-10-07.**
 
-Row 1 above is not evidence that item 13 is met — sizing the work is not doing it, the distinction
-an earlier draft of T597 collapsed and `reviewer` rejected on 2026-09-19. Row 1 stays open until
-T674 lands. Row 2 answers a different question — the comparator's own sensitivity, not an axis the
-harness fails to run — and stays open until T675's package-wide sweep lands and the non-fill
-signals above are implemented; the threshold question itself was closed on 2026-09-28.
+T674 landed 2026-09-28: all four of item 13's sub-suites run in CI against every route in both
+themes, and the row this task's own filing opened (formerly row 1 of the Verification-coverage gap
+register above) is deleted rather than left as a passing exception — sizing the work is not doing
+it, the distinction an earlier draft of T597 collapsed and `reviewer` rejected on 2026-09-19, and
+deleting the row once the run backs the verdict is what tells the two apart. Row 1 below (renumbered
+from row 2 when T674's own row was deleted ahead of it) answers a different question — the
+comparator's own sensitivity, not an axis a harness fails to run — and stays open until T675's
+package-wide sweep lands and the non-fill signals above are implemented; the threshold question
+itself was closed on 2026-09-28.
