@@ -225,7 +225,7 @@ the image fills the frame edge to edge.
   viewer's IP address — that is what T427 recorded in the processing register, and it is the cost of
   FR-008a — but it must not additionally learn which profile page the viewer was reading. This is a
   one-attribute privacy floor, and it is part of the component, not of a call site.
-- Not focusable, no `title`, no tooltip. Non-interactive in 004, so WCAG 2.5.8's 44px target does not
+- Not focusable, no `title`, no tooltip. Non-interactive in 004, so WCAG 2.5.5's 44px target does not
   apply. If a later feature links an avatar (a favourites list, a search result), the **link's** hit
   area is at least `icon-xl` (44px) — the reason that token is fixed at 44 rather than sitting on the
   space scale (`game-asset-tokens.md`, Decision 2).

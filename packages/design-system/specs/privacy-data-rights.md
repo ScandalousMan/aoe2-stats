@@ -447,7 +447,7 @@ links — their forward action is always a `Button`, never a link inside coloure
   `FailureRegion` and `DialogFailure` via `role="alert"`. A `Callout` present at first paint is never
   given `aria-live` (it would double-announce).
 - Touch targets: every button, the download link and the acknowledgement checkbox clear 44px. Inline
-  links inside running prose take WCAG 2.5.8's inline exception.
+  links inside running prose take WCAG 2.5.5's inline exception.
 - Contrast per the README table, both themes: body `text-primary` on `surface`; callout bodies
   `text-primary` on `surface-raised`; callout headings `info` / `success` / `danger` on
   `surface-raised`; the destructive buttons' `danger` label and boundary on `surface`; the

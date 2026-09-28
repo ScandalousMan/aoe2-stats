@@ -191,7 +191,7 @@ can be dropped into a table cell without shifting the cell's text.
 - **Colour is never the only carrier**: the fill is redundant with the adjacent name and with the
   hidden text. A reader who cannot distinguish Green from Teal loses nothing they need — which is why
   §2a's "no name, no chip" rule is a hard one.
-- Non-interactive, so WCAG 2.5.8's 44px target does not apply. A call site must not make the chip
+- Non-interactive, so WCAG 2.5.5's 44px target does not apply. A call site must not make the chip
   itself a control; if a colour ever becomes a filter, the control is a labelled button that contains
   the chip, sized to at least `icon-xl`.
 

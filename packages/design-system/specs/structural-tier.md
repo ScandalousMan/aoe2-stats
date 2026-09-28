@@ -715,6 +715,18 @@ and the mark beside it is `aria-hidden` — the decorative shape from README's i
 never an `aria-label` racing the text. Enter activates; the browser owns modifier-clicks, which is
 why this is an anchor and not a click handler.
 
+**The variant is in the DOM, because a sweep reads it (decided 2026-09-28, T674).** The `<a>`
+renders `data-variant` with the variant it resolved — `"inline"` when the prop is omitted, since
+`inline` is the default — and no style depends on it. It has one reader: the route-level
+touch-target sweep (README's "Minimum interactive footprint"), which holds every interactive element
+to 44×44 CSS px and exempts an anchor only when both hold: it carries `data-variant="inline"`, and
+its parent element's text content, trimmed, is longer than the anchor's own — the link shares its
+line with prose, which is WCAG 2.5.5's inline exception. The second condition exists because the
+default is `inline`: a link standing alone whose call site forgot `variant="standalone"` would
+otherwise be exempted silently; instead the sweep fails it and names the fix. Neither condition
+reads geometry. A local anchor copying `inline`'s recipe renders no marker and is not exempt: the
+exemption is `Link`'s, and a copy earns it by becoming a `Link`.
+
 **Visual acceptance criteria**
 
 - [ ] Every link in every story is underlined at rest — greyscale the screenshot and every link is

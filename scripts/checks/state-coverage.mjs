@@ -5195,12 +5195,12 @@ export function logCellCounts(computed, logFn = log) {
 // state; no separate paint" is not a closed-vocabulary answer, and this recogniser declines it
 // rather than guessing a sixth phrase into existence):
 //   - `never`              — `structural-tier.md:667`, "a link is never disabled."
-//   - `none;`              — `shared-primitives.md:242`, "hover / active — none; the root is not
+//   - `none;`              — `shared-primitives.md:285`, "hover / active — none; the root is not
 //     interactive."
 //   - `is not interactive` — the same bullet, a second, independent phrase.
-//   - `has no visual form` — `shared-primitives.md:252`, "The heading's own frame therefore has no
+//   - `has no visual form` — `shared-primitives.md:295`, "The heading's own frame therefore has no
 //     visual form for this state."
-//   - `has no active state` — `structural-tier.md:827-828`, "The table itself has no active state."
+//   - `has no active state` — `structural-tier.md:839-840`, "The table itself has no active state."
 const IMPOSSIBLE_ANSWER_PATTERNS = [
   /\bnever\b/i,
   /\bnone;/i,
