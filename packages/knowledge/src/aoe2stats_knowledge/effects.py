@@ -169,6 +169,11 @@ class EffectsError(ValueError):
     per-resource cost mapping, or an age table of per-resource mappings) down to its numeric
     leaves via `_operand_leaves`, so a guard is not fooled by the shape a `condition` wraps around
     the same value.
+
+    **T652z**: also raised for a `"faster"` operation on any `field` other than
+    `"production_time"` — `"faster"` divides a time's baseline (`_apply_scalar` below), which a
+    `"cost"` mapping does not even implement, so this used to reach `_apply_mapping`'s own
+    "unreachable" branch at the first query instead of failing here, at load time.
     """
 
 
@@ -290,6 +295,17 @@ class Effect:
                 )
             if self.operand is None:
                 raise EffectsError('effect.operand is required when modelled = "yes"')
+            # T652z: `faster` carries "works X% faster"'s divide-by-(1+X) semantics
+            # (`_apply_scalar` below), which means dividing *a time* — applying it to any other
+            # field would divide that field's baseline instead, a value `_apply_scalar` never
+            # computes and `_apply_mapping` (a cost's own path) does not even implement, so an
+            # untested transcription used to reach `_apply_mapping`'s "unreachable" branch at the
+            # first query instead of failing here, at load time.
+            if self.operation == "faster" and self.field != "production_time":
+                raise EffectsError(
+                    '"faster" applies to field = "production_time" only (data-model.md §6), '
+                    f"got field={self.field!r}"
+                )
             if self.condition == "age":
                 if not isinstance(self.operand, Mapping) or not self.operand:
                     raise EffectsError(
@@ -615,14 +631,21 @@ def _apply_scalar(
         # produces a negative time from a transcription defect reaching here.
         return value / (1 + operand)
     if operation == "multiply":
+        if field == "production_time":
+            # T652z: a time keeps its fraction whatever the operation (data-model.md §6's
+            # rounding row) — `multiply` on `production_time` no longer forces the result
+            # through `_round_half_up`, matching `faster` and `set` above/below.
+            return value * operand
         return _round_half_up(value * operand)
     if operation == "add":
         # T652r: the scalar counterpart of `_apply_mapping`'s own negative-result guard below —
-        # no committed effect applies a scalar `add` to a field that must stay non-negative
-        # today (the only scalar fields this package's `set` effects touch, age_requirement and
-        # production_time, are never modified by `add`), but the invariant — a field this
-        # package tracks never goes negative — must hold on both paths, not only the mapping one.
-        adjusted = _round_half_up(value + operand)
+        # the invariant — a field this package tracks never goes negative — must hold on both
+        # paths, not only the mapping one, whatever the field.
+        if field == "production_time":
+            # T652z: see the `multiply` branch above — a time is never rounded.
+            adjusted: int | float = value + operand
+        else:
+            adjusted = _round_half_up(value + operand)
         if adjusted < 0:
             raise EffectsError(
                 f"applying 'add' to {field!r} would drive it negative: {value!r} + {operand!r} "

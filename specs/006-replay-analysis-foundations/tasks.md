@@ -1188,7 +1188,7 @@ Three were arbitration and are decided, with the decision recorded in the task t
       informational and buildings 490 and 673 keep 6 blocking tuples, not 12._ (7) `docs/data-sources.md` §6, aoe2techtree: Scope
       and Coverage stop claiming prerequisites, and Known limitations says what the links are.
       **Lands before T655 publishes anything**
-- [ ] T652z **The sixth review's follow-ups.** (1)
+- [x] T652z **The sixth review's follow-ups.** (1)
       `packages/knowledge/src/aoe2stats_knowledge/effects.py` checks each operand but not whether the
       operation fits the field: `faster` on a `cost` parses, then raises
       `AssertionError("unreachable")` at the first query; `multiply` or `add` on `production_time`
@@ -1202,7 +1202,9 @@ Three were arbitration and are decided, with the decision recorded in the task t
       `1 → None` branch is untested. Add a test over a synthetic header: `resolved_team_id = 1`
       gives `None`, two such participants are not allies of one another in the coverage pass, and
       real team ids pass through unchanged. Show it failing against the adapter with the translation
-      removed
+      removed. _Found on implementation: the sentinel alone was already tested
+      synthetically (`test_a_participant_with_the_no_team_sentinel_reads_as_no_team_at_all`), which
+      the review missed; the new test adds the case mixing the sentinel with real ids in one match._
 
 **Checkpoint**: the rules are queryable offline, versioned by build, refuse what they do not know,
 and every refusal is counted.

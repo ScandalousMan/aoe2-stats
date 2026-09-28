@@ -194,6 +194,44 @@ def test_a_participant_with_the_no_team_sentinel_reads_as_no_team_at_all() -> No
     assert teams == {1: None, 2: None}
 
 
+def test_the_sentinel_translation_does_not_disturb_real_team_ids_in_the_same_match() -> None:
+    """T652z: the test above exercises the sentinel alone; this exercises the adapter's `1 →
+    None` branch (`canonical.py`'s `_match_started`) beside real team ids in one call, so a
+    ternary that discriminated by something other than the sentinel value itself (e.g. reading
+    every id past the first sentinel as `None`) would be caught here and is not caught by either
+    the all-sentinel test above or the real-recording test
+    (`test_participant_team_is_read_from_resolved_team_id`), whose two committed recordings never
+    carry the sentinel at all. Two players carry the sentinel (`1`) and must both read as `None`;
+    three carry real team ids `2`, `3`, `2` and must pass through unchanged (the coverage-side
+    half — two `None` participants are not allies of one another — is
+    `test_coverage.py::test_ffa_or_unset_team_does_not_make_two_participants_allies`'s job, not
+    this module's)."""
+    parsed = {
+        "zheader": {
+            "build": _FIXTURE_BUILD,
+            "game_settings": {
+                "resolved_map_id": 9,
+                "starting_resources_id": 0,
+                "starting_age_id": 2,
+                "map_size": 120,
+                "players": [
+                    {"player_number": 1, "civ_id": 1, "resolved_team_id": 1},
+                    {"player_number": 2, "civ_id": 2, "resolved_team_id": 1},
+                    {"player_number": 3, "civ_id": 3, "resolved_team_id": 2},
+                    {"player_number": 4, "civ_id": 4, "resolved_team_id": 3},
+                    {"player_number": 5, "civ_id": 5, "resolved_team_id": 2},
+                ],
+            },
+        },
+        "operations": [],
+    }
+
+    (event,) = [e for e in canonical_events(parsed) if e.kind is EventKind.MATCH_STARTED]
+    assert isinstance(event.payload, MatchStartedPayload)
+    teams = {p.slot: p.team for p in event.payload.participants}
+    assert teams == {1: None, 2: None, 3: 2, 4: 3, 5: 2}
+
+
 # --- the clock ----------------------------------------------------------------------------------
 
 

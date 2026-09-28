@@ -297,6 +297,19 @@ def test_parse_effects_toml_accepts_a_whole_age_requirement_set_operand() -> Non
     assert effect.operand == 3
 
 
+def test_parse_effects_toml_rejects_a_faster_operation_on_a_field_other_than_production_time() -> (
+    None
+):
+    """T652z: `"faster"` carries "works X% faster"'s divide-by-(1+X) semantics, which only make
+    sense for a time — applying it to a `"cost"` used to parse and only fail later, at the first
+    query, with `_apply_mapping`'s own "unreachable" `AssertionError` (there is no mapping-shaped
+    `faster` branch at all). Rejected at parse time instead, like every other operand/field
+    mismatch this module already refuses."""
+    text = _MINIMAL_FASTER_EFFECT.replace('field = "production_time"', 'field = "cost"')
+    with pytest.raises(effects.EffectsError):
+        effects.parse_effects_toml(text)
+
+
 # --------------------------------------------------------------------------------- matching
 
 
@@ -368,6 +381,47 @@ def test_apply_matched_applies_a_faster_operation_on_a_time() -> None:
         value=25,
     )
     assert value == pytest.approx(25 / 1.40)
+    assert applied == (effect,)
+
+
+def test_apply_matched_applies_a_multiply_operation_on_a_time_without_rounding() -> None:
+    """T652z, data-model.md §6's rounding row: a time keeps its fraction whatever the operation —
+    `multiply` must not round it the way a cost's `multiply` does. The contrast case is
+    `test_apply_matched_applies_a_multiply_operation_on_a_cost_with_round_half_up` above, which
+    still rounds a cost half up; this is the same operation on the other kind of field."""
+    text = _MINIMAL_FASTER_EFFECT.replace('operation = "faster"', 'operation = "multiply"').replace(
+        "operand = 0.40", "operand = 0.9"
+    )
+    (effect,) = effects.parse_effects_toml(text)
+    value, applied = effects.apply_matched(
+        (effect,),
+        civilisation="Franks",
+        kind="unit",
+        id="1",
+        field="production_time",
+        value=25,
+    )
+    # 25 * 0.9 = 22.5 exactly — round-half-up would answer 23, which is not the game's own value.
+    assert value == 22.5
+    assert applied == (effect,)
+
+
+def test_apply_matched_applies_an_add_operation_on_a_time_without_rounding() -> None:
+    """T652z: the `add` counterpart of the `multiply` test above — a time keeps its fraction on
+    this path too."""
+    text = _MINIMAL_FASTER_EFFECT.replace('operation = "faster"', 'operation = "add"').replace(
+        "operand = 0.40", "operand = 0.4"
+    )
+    (effect,) = effects.parse_effects_toml(text)
+    value, applied = effects.apply_matched(
+        (effect,),
+        civilisation="Franks",
+        kind="unit",
+        id="1",
+        field="production_time",
+        value=25,
+    )
+    assert value == 25.4
     assert applied == (effect,)
 
 
