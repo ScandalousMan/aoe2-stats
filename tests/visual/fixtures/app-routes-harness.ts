@@ -1,5 +1,6 @@
-// T674 (production-readiness item 13; `packages/design-system/specs/README.md`'s
-// "Verification-coverage gap register", row 1): the fixture data, `/api/*` stubs and route list
+// T674 (production-readiness item 13, closed by this commit — see
+// `packages/design-system/specs/README.md`'s "Verification-coverage gap register" for the row this
+// task's own filing deleted): the fixture data, `/api/*` stubs and route list
 // `tests/visual/app-routes.spec.ts` (T108/T553) already built for its own landmark-count and
 // full-page-screenshot suite, factored out so the four keyboard/focus-visibility/touch-footprint/
 // reduced-motion sub-suites below can walk the same ten route scenarios without each carrying its

@@ -17,6 +17,10 @@ export interface TabStop {
    * cheap way: a route-level walk has no modal open, so every reachable element must be chrome or
    * content. */
   insideChrome: boolean
+  /** The touch-footprint sweep's own measurement, per `specs/README.md`'s "Minimum interactive
+   * footprint": the element's own box, except an `<input>` wrapped by its own `<label>` (as
+   * opposed to an `htmlFor` association, which leaves the control unwrapped), measured by the
+   * label's box instead — the real hit area a pointer actually reaches. */
   rect: { width: number; height: number }
   isFocusVisible: boolean
   outline: { style: string; width: string; color: string }
@@ -85,7 +89,11 @@ export async function walkTabOrder(page: Page, maxStepsOverride?: number): Promi
       }
 
       const computed = getComputedStyle(el)
-      const rect = el.getBoundingClientRect()
+      // A wrapping <label> (never an htmlFor association, which leaves the input on its own) is
+      // the real hit area a pointer reaches — `specs/README.md`'s own "Minimum interactive
+      // footprint" convention.
+      const wrappingLabel = el.tagName === 'INPUT' ? el.closest('label') : null
+      const rect = (wrappingLabel ?? el).getBoundingClientRect()
       const parentText = el.parentElement?.textContent?.trim() ?? ''
       const ownText = el.textContent?.trim() ?? ''
       const dataVariant = el.getAttribute('data-variant')
