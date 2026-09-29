@@ -19,7 +19,7 @@ import {
   seedThemeOverride,
   waitForFontsReady,
 } from './fixtures/app-routes-harness'
-import { walkTabOrder } from './fixtures/keyboard-walk'
+import { assertFullTabCoverage, walkTabOrder } from './fixtures/keyboard-walk'
 
 const harness = createAppServerHarness('4175')
 
@@ -51,12 +51,12 @@ test.describe('keyboard operation, every route, both themes', () => {
         await page.getByRole('main').waitFor({ state: 'visible' })
         await waitForFontsReady(page)
 
-        const { candidateCount, steps } = await walkTabOrder(page)
+        const result = await walkTabOrder(page)
 
         // FR-049's "no trap": every stop the walk actually reaches sits inside the route's one
         // main landmark or its header/footer chrome — never off in a detached or hidden branch of
         // the DOM a real keyboard user could not have reached either.
-        for (const step of steps) {
+        for (const step of result.steps) {
           expect(
             step.insideChrome,
             `${scenario.label} (${theme}): Tab landed on a <${step.tag}> "${step.name}" outside ` +
@@ -64,15 +64,10 @@ test.describe('keyboard operation, every route, both themes', () => {
           ).toBe(true)
         }
 
-        // Every interactive element the route renders is reached at least once — the walk never
-        // stops short of the full candidate set (a genuine trap) and never needs more steps than
-        // candidates plus a small buffer to prove it (a genuine infinite loop).
-        const reachedIds = new Set(steps.map((step) => step.kbdId))
-        expect(
-          reachedIds.size,
-          `${scenario.label} (${theme}): the Tab walk reached ${reachedIds.size} of ` +
-            `${candidateCount} interactive elements before wrapping back to the document`,
-        ).toBe(candidateCount)
+        // FR-049's "reachable, in order, with no trap": every candidate is reached exactly once,
+        // in DOM order, and the walk closed the cycle rather than exhausting its step budget mid
+        // trap. See `assertFullTabCoverage` for what each of the four guards catches on its own.
+        assertFullTabCoverage(result, `${scenario.label} (${theme})`)
       })
     }
   }

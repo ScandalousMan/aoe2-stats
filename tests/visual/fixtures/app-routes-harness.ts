@@ -3,23 +3,21 @@
 // task's own filing deleted): the fixture data, `/api/*` stubs and route list
 // `tests/visual/app-routes.spec.ts` (T108/T553) already built for its own landmark-count and
 // full-page-screenshot suite, factored out so the four keyboard/focus-visibility/touch-footprint/
-// reduced-motion sub-suites below can walk the same ten route scenarios without each carrying its
-// own four-hundred-line copy of the same response bodies. `app-routes.spec.ts` itself is left
-// untouched — its own inline copies are its own file's business, and this module changes none of
-// its behaviour or baselines.
+// reduced-motion sub-suites below — and `app-routes.spec.ts` itself, which now imports
+// `ROUTE_SCENARIOS` from here rather than keeping its own copy (PR #102 review finding M2) — can
+// walk the same route scenarios without each carrying its own four-hundred-line copy of the same
+// response bodies. `tests/visual/fixtures/app-routes-harness.test.ts` is what keeps
+// `ROUTE_SCENARIOS` itself honest against `apps/web/src/routeTree.gen.ts`.
 import { type ChildProcess, spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
-import type { Page, Route } from '@playwright/test'
+import { expect, type Page, type Route } from '@playwright/test'
+import { THEME_STORAGE_KEY } from '../../../packages/design-system/src/theme'
 
 const rootDir = path.resolve(__dirname, '..', '..', '..')
 export const distDir = path.join(rootDir, 'apps', 'web', 'dist')
 export const hasBuild = existsSync(path.join(distDir, 'index.html'))
 
-// `packages/design-system/src/theme/ThemeProvider.tsx`'s `THEME_STORAGE_KEY`, restated rather than
-// imported — same reason `app-routes.spec.ts`'s own copy gives: this suite drives the built
-// `apps/web/dist` artefact from outside the package graph entirely.
-export const THEME_STORAGE_KEY = 'ds-theme-override'
 export type ThemeOverride = 'light' | 'dark'
 
 const SIGNED_OUT_ME = { authenticated: false }
@@ -136,6 +134,25 @@ export async function seedThemeOverride(page: Page, theme: ThemeOverride): Promi
   ] as const)
 }
 
+// PR #102 review finding (lows on app-routes-harness.ts): `seedThemeOverride` above only ever
+// proves the key was *written*; nothing previously checked that the app actually *painted* it. A
+// harness whose `THEME_STORAGE_KEY` had drifted from `ThemeProvider.tsx`'s own constant would seed
+// a key the app never reads, silently leaving every "dark" capture on the light fallback instead of
+// failing — exactly the false-negative shape a screenshot diff cannot be trusted to notice on its
+// own (`app-routes.spec.ts`'s own docstring makes the same point about landmark counting). Callers
+// run this after navigation completes (after `waitForURL`/the main landmark becoming visible, not
+// immediately after `page.goto`), so it never races the redirect the two sign-in/dashboard routes
+// go through. `ThemeProvider.tsx`'s `paint()` is what sets this attribute — read, never re-derived.
+export async function assertThemeApplied(page: Page, theme: ThemeOverride): Promise<void> {
+  await expect(
+    page.locator('html'),
+    `expected <html data-theme="${theme}"> after navigation, but the painted theme did not match. ` +
+      `ThemeProvider.tsx paints this from THEME_STORAGE_KEY ('${THEME_STORAGE_KEY}') read at ` +
+      "packages/design-system/src/theme — if that key has drifted from this harness's own seed, " +
+      'every capture under the drifted theme silently runs on the fallback instead.',
+  ).toHaveAttribute('data-theme', theme)
+}
+
 // typography-tokens.md §10: with `font-display: swap` a capture taken before the fonts finish
 // loading bakes in the fallback face.
 export async function waitForFontsReady(page: Page): Promise<void> {
@@ -149,10 +166,13 @@ export interface RouteScenario {
   stub: (page: Page) => Promise<void>
 }
 
-// The same ten scenarios `app-routes.spec.ts` covers (its own four dedicated sign-in/dashboard
-// tests, plus its `routeCases` array) — every route this application declares
-// (`apps/web/src/routes/`), `index.tsx` excepted, since it only ever redirects and paints no
-// landmark of its own to walk.
+// The same scenarios `app-routes.spec.ts` covers (its own two dedicated sign-in/dashboard tests,
+// plus the rest) — every route this application declares (`apps/web/src/routes/`, by way of
+// `apps/web/src/routeTree.gen.ts`), `index.tsx` excepted, since it only ever redirects and paints
+// no landmark of its own to walk. `app-routes-harness.test.ts` fails if this list and the router's
+// own generated route tree ever disagree, in either direction — deliberately not restating a count
+// here, since a count is exactly the kind of fact that drifts silently the same way the list itself
+// used to.
 export const ROUTE_SCENARIOS: readonly RouteScenario[] = [
   {
     label: '/sign-in',
