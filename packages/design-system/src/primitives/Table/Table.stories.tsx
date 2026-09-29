@@ -302,8 +302,25 @@ export const RowLinkHover: Story = {
 // §10 "active — a row link's press keeps the hover fill and adds a rule down the row's
 // inline-start edge, in `border-strong`" (fourth-pass review remediation, FR-037). Held down
 // rather than released so the capture shows the pressed frame. The harness presses by a real hover
-// then a mouse-down, so §16.1's underline is in this frame too — the same `ROW_LINK_CLIP` as
-// `RowLinkHover` above.
+// then a mouse-down, so §16.1's underline is in this frame too.
+// T591's own boundary (index.tsx: `active:after:ring-2 active:after:ring-inset
+// active:after:ring-border-strong`) paints on the stretched link's `::after`, which is
+// `after:absolute after:inset-0` against the *row* (`<tr>`, the nearest `relative` ancestor — the
+// `<a>` itself is `static`), not against the anchor's own text box. `ROW_LINK_CLIP` locates the
+// `<a>` alone, so a frame clipped to it crops the ring out entirely: `Active` and `Hover` then
+// showed only the shared underline and were byte-identical in every unit (T675 remediation,
+// `story-baselines-duplicates.mjs`'s "undocumented full-set match"). `Active` therefore clips to
+// the whole row instead, via a selector rather than `role`/`name` (a `<tr>` carries no ARIA role
+// name of its own) — the only clip in this file that needs to, because it is the only state here
+// whose mark paints outside the element its own force-state locator finds. `RowLinkHover` above
+// and `RowLinkFocusVisible` below stay on `ROW_LINK_CLIP`: neither the hover underline nor the
+// focus-visible `focusRing` outline (painted directly on the anchor, offset only by
+// `outline-offset-ring`'s 2px — well inside `pad: '2'`'s 8px) ever leaves the anchor's own box.
+const ROW_LINK_ACTIVE_CLIP = {
+  parts: [{ selector: 'tr:has(a[href="/matches/g-1"])' }],
+  pad: '2',
+}
+
 export const RowLinkActive: Story = {
   render: () => (
     <Table
@@ -316,7 +333,7 @@ export const RowLinkActive: Story = {
   ),
   parameters: {
     visualForceState: { state: 'active', role: 'link', name: 'RedBull_Barley' },
-    visualCaptureClip: ROW_LINK_CLIP,
+    visualCaptureClip: ROW_LINK_ACTIVE_CLIP,
   },
 }
 
