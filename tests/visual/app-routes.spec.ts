@@ -116,22 +116,22 @@ const dashboardScenario = scenarioNamed('/dashboard')
 // `index.tsx` only ever redirects, and `/sign-in`/`/dashboard` are already exercised, in both
 // themes, by the four tests below through that same redirect). Each entry's stub comes from
 // `ROUTE_SCENARIOS`; this file only adds the screenshot base name its own baselines are keyed on.
-const SCREENSHOT_BASE_BY_LABEL: Readonly<Record<string, string>> = {
-  '/search': 'app-signed-in-search',
-  '/favourites': 'app-signed-in-favourites',
-  '/matches': 'app-signed-in-matches',
-  '/matches/$gameId': 'app-signed-in-match-detail',
-  '/players/$profileId': 'app-signed-in-player-profile',
-  '/players/$profileId/matches': 'app-signed-in-player-matches',
-  '/privacy': 'app-signed-in-privacy',
-  '/privacy-notice': 'app-signed-out-privacy-notice',
-  '/object': 'app-signed-out-object',
+const SCREENSHOT_BASE_BY_LABEL: Readonly<Record<string, { screenshotBase: string }>> = {
+  '/search': { screenshotBase: 'app-signed-in-search' },
+  '/favourites': { screenshotBase: 'app-signed-in-favourites' },
+  '/matches': { screenshotBase: 'app-signed-in-matches' },
+  '/matches/$gameId': { screenshotBase: 'app-signed-in-match-detail' },
+  '/players/$profileId': { screenshotBase: 'app-signed-in-player-profile' },
+  '/players/$profileId/matches': { screenshotBase: 'app-signed-in-player-matches' },
+  '/privacy': { screenshotBase: 'app-signed-in-privacy' },
+  '/privacy-notice': { screenshotBase: 'app-signed-out-privacy-notice' },
+  '/object': { screenshotBase: 'app-signed-out-object' },
 }
 
 const routeCases = ROUTE_SCENARIOS.filter(
   (scenario) => scenario.label !== '/sign-in' && scenario.label !== '/dashboard',
 ).map((scenario) => {
-  const screenshotBase = SCREENSHOT_BASE_BY_LABEL[scenario.label]
+  const screenshotBase = SCREENSHOT_BASE_BY_LABEL[scenario.label]?.screenshotBase
   if (!screenshotBase) {
     throw new Error(
       `ROUTE_SCENARIOS has an entry ('${scenario.label}') with no screenshot base name in ` +
