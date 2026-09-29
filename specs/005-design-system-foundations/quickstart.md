@@ -1159,7 +1159,7 @@ The "Met" above claimed more than the suites check: every list fixture in
 `Menu` is opened, no loading state is on screen when the reduced-motion suite samples, and the touch
 sweep measures only Tab stops. The same review found that run 36400703606, cited above, concluded
 as a failure overall, and that none of the four suites had been seen failing. **Item 13 is Met for
-what the route scenarios render at rest, and partly met overall** until row 2 of
+what the route scenarios render at rest, and partly met overall** until row 1 of
 `packages/design-system/specs/README.md`'s "Verification-coverage gap register" (T676) is deleted.
 The run backing the scoped verdict is PR #102's run
 [36673269608](https://github.com/ScandalousMan/aoe2-stats/actions/runs/36673269608) at `8ef5135a`,

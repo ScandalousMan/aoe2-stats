@@ -1,5 +1,5 @@
 // T674: production-readiness item 13 is Met only for what the route scenarios below render at rest
-// — see `packages/design-system/specs/README.md`'s "Verification-coverage gap register" (row 2,
+// — see `packages/design-system/specs/README.md`'s "Verification-coverage gap register" (row 1,
 // owned by T676) for what a route renders once used that this fixture does not reach. This file
 // holds the fixture data, `/api/*` stubs and route list
 // `tests/visual/app-routes.spec.ts` (T108/T553) already built for its own landmark-count and

@@ -49,7 +49,11 @@ export default defineConfig({
   },
   expect: {
     // Fonts and anti-aliasing differ marginally between machines; this keeps baselines stable
-    // without hiding a real regression.
+    // without hiding a real regression. `threshold` is deliberately left at pixelmatch's default
+    // (0.2), decided 2026-09-28 (T675): a state whose frame falls under it is a colour-only state,
+    // which FR-037 forbids, so it is fixed with a non-fill signal in its own spec, never by lowering
+    // this — `packages/design-system/specs/structural-tier.md` §16, and the nightly
+    // `scripts/visual/run.mjs --state-signal-sweep` gate that fails on any such state.
     toHaveScreenshot: { maxDiffPixelRatio: 0.01 },
   },
   // T673: whenever `determinismMode` is true, every capture in `tests/visual/stories.spec.ts`'s
