@@ -569,8 +569,9 @@ routes satisfy it, both already shipping, and a third is forbidden:
   space. It is not — it is the touch target.
 
 **How the floor is asserted, and its one exemption.** T674's touch-footprint sub-suite measures
-`getBoundingClientRect()` of every interactive element on every application route at 375px, in both
-themes, and fails on any box under 44 in either axis. An input wrapped by its `<label>` is measured
+`getBoundingClientRect()` of every interactive element each route scenario renders at rest, at
+375px, in both themes, and fails on any box under 44 in either axis — populated lists and opened
+surfaces are not yet among them (Verification-coverage gap register, row 2). An input wrapped by its `<label>` is measured
 by the label's box; an element hidden until focused (`SiteHeader`'s skip link) is measured in the
 state that reveals it, never skipped. The one exemption is WCAG 2.5.5's inline exception, read from
 the DOM, never from layout: an anchor carrying `data-variant="inline"` — which only `Link` renders
@@ -3608,8 +3609,9 @@ determinism harness's verdict — 3516 render pairs compared, every one within t
 so the row is removed rather than left as a passing exception. Item 13's own row is deleted the same
 way (T674, 2026-09-28): all four sub-suites (`tests/visual/route-keyboard.spec.ts`,
 `route-focus-visibility.spec.ts`, `route-touch-footprint.spec.ts`, `route-reduced-motion.spec.ts`)
-run in CI against every one of the ten route scenarios in both themes — see quickstart.md's own
-walk for the verdict and the run this task backs it with. The rows below are what is still
+run in CI against every route scenario `tests/visual/fixtures/app-routes-harness.ts` enumerates, in
+both themes — see quickstart.md's own walk for the verdict, its scope, and the run that backs it.
+What those scenarios do not render is row 2 below. The rows below are what is still
 open about this package's own verification harness, never about a component or a token, filed here
 for the reason the four registers above already are: the subject is this package's own tooling, so
 a future task changing that tooling needs this row updated, and it does not belong in a spec written
@@ -3656,7 +3658,7 @@ once.
    - `Button` `secondary`/`ghost`/`destructive` hover, and `AsLink`'s: the label underline moves
      from `primary`'s variant into the base class list every variant composes —
      `hover:underline hover:decoration-2 hover:underline-offset-2 active:underline-offset-4
-disabled:no-underline`, in the label's own ink (`shared-primitives.md` §Button, which records
+     disabled:no-underline`, in the label's own ink (`shared-primitives.md` §Button, which records
      why not a hover ring, border or outline).
    - `Menu` `TriggerHover`: the trigger is a local `<button>`, not a `Button`, so it inherits
      nothing — the same underline utilities go on its own non-empty class branch
@@ -3683,11 +3685,21 @@ disabled:no-underline`, in the label's own ink (`shared-primitives.md` §Button,
    `surface`→`surface-sunken` hover (row links, `Menu` items, `SiteHeader` nav, `Field`). **Owner:
    T675. Fix by 2026-10-07.**
 
+2. **T674's route suites measure each route at rest, never what a route renders once used — found by
+   the adversarial review of #102 (2026-09-29, B3).** Every list fixture in
+   `tests/visual/fixtures/app-routes-harness.ts` is empty and no search is submitted, so row links,
+   result rows, favourites rows and participant links meet none of the four suites; the keyboard walk
+   is Tab-only and opens no `Dialog` or `Menu`, so their contents are neither walked nor measured; and
+   `spin` and `pulse`, the only looping animations `packages/design-system/tokens/motion.json` defines,
+   live in loading states that are gone before the reduced-motion suite samples, so its looping half
+   has no positive control. Production-readiness item 13 is Met for what the scenarios render at rest
+   and partly met overall until this row is deleted. **Owner: T676. Fix by 2026-10-13.**
+
 T674 landed 2026-09-28: all four of item 13's sub-suites run in CI against every route in both
 themes, and the row this task's own filing opened (formerly row 1 of the Verification-coverage gap
 register above) is deleted rather than left as a passing exception — sizing the work is not doing
 it, the distinction an earlier draft of T597 collapsed and `reviewer` rejected on 2026-09-19, and
-deleting the row once the run backs the verdict is what tells the two apart. Row 1 below (renumbered
+deleting the row once the run backs the verdict is what tells the two apart. Row 1 above (renumbered
 from row 2 when T674's own row was deleted ahead of it) answers a different question — the
 comparator's own sensitivity, not an axis a harness fails to run — and stays open until T675's
 package-wide sweep lands and the non-fill signals above are implemented; the threshold question
