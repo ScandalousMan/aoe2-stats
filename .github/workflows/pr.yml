@@ -441,8 +441,18 @@ jobs:
       - run: pnpm test:visual --changed
       # `--changed` only diff-scopes Storybook stories (scripts/visual/run.mjs) — app-routes.spec.ts
       # is not a story and always runs, screenshotting the routes a signed-in and a signed-out
-      # visitor reach against the build the step above just produced.
-      - run: pnpm exec playwright test tests/visual/app-routes.spec.ts
+      # visitor reach against the build the step above just produced. T674's four route suites
+      # (keyboard, focus visibility, touch footprint, reduced motion) serve the same build and are
+      # not stories either, so `--changed` never selects them: without them on this line, an
+      # apps/web-only pull request that adds a 30px button or an unreduced transition merges
+      # green and is caught only by nightly (adversarial review of #102, B1).
+      - run: >-
+          pnpm exec playwright test
+          tests/visual/app-routes.spec.ts
+          tests/visual/route-keyboard.spec.ts
+          tests/visual/route-focus-visibility.spec.ts
+          tests/visual/route-touch-footprint.spec.ts
+          tests/visual/route-reduced-motion.spec.ts
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
