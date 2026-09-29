@@ -2727,7 +2727,7 @@ and the `ThemeProvider` it owns internally, `:104-105`), not which one paints a 
 _pattern_, not a state handoff. `Menu.stories.tsx:356` ("already owns.") says which _story_ (this
 one's own preceding sentence: which `Selection` above already depicts, `:355-356`) is about the
 `selection`/`expansion` vocabulary entry, not which component paints hover/focus/active.
-`Page.stories.tsx:325` ("the between-sections rhythm `Page` owns") and `Section.stories.tsx:16`
+`Page.stories.tsx:347` ("the between-sections rhythm `Page` owns") and `Section.stories.tsx:16`
 ("owns the space between the components inside it", the component's own Storybook description) and
 `Section.stories.tsx:151` ("`Page` owns that between-sections gap") and `Section.stories.tsx:152`
 ("`Section` owns the between-components gap inside itself") are all about spacing-rhythm ownership
