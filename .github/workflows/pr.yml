@@ -446,10 +446,10 @@ jobs:
       # not stories either, so `--changed` never selects them: without them on this line, an
       # apps/web-only pull request that adds a 30px button or an unreduced transition merges
       # green and is caught only by nightly (adversarial review of #102, B1).
-      # `keyboard-walk.test.ts` plants a trap, an unstamped stop, a duplicate and an out-of-order
-      # stop against `setContent` pages, so the walk's own guards are seen red on every run (B2).
-      # `app-routes-harness.test.ts` fails when `apps/web/src/routeTree.gen.ts` declares a route no
-      # scenario covers, so a new route cannot slip past all five suites above (M2).
+      # `tests/visual/fixtures/*.test.ts` plant each suite's broken property (a Tab trap, a 1px or
+      # low-contrast ring, a 40px button, an unreduced transition) against `setContent` pages, so
+      # every guard is seen red on every run (B2, B4); `app-routes-harness.test.ts` fails when
+      # `apps/web/src/routeTree.gen.ts` declares a route no scenario covers (M2).
       - run: >-
           pnpm exec playwright test
           tests/visual/app-routes.spec.ts
@@ -457,8 +457,7 @@ jobs:
           tests/visual/route-focus-visibility.spec.ts
           tests/visual/route-touch-footprint.spec.ts
           tests/visual/route-reduced-motion.spec.ts
-          tests/visual/fixtures/keyboard-walk.test.ts
-          tests/visual/fixtures/app-routes-harness.test.ts
+          tests/visual/fixtures/
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

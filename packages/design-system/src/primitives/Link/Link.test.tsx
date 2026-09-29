@@ -108,6 +108,22 @@ describe('Link', () => {
     expect(screen.getByRole('link')).toHaveAttribute('data-variant', 'standalone')
   })
 
+  // Low-severity remediation, PR #102: `{...rest}` used to spread *after* `data-variant`, so a
+  // caller's own `data-variant` — never a prop `LinkProps` declares, but TypeScript exempts every
+  // `data-*`/`aria-*` attribute from excess-property checking on any JSX element, the same way it
+  // already lets `aria-label` etc. through — silently overrode this primitive's own real marker:
+  // `<Link variant="standalone" data-variant="inline" />` compiled and rendered
+  // `data-variant="inline"`, exempting a `standalone` link from the touch-footprint sweep's own
+  // 44px floor. `data-variant` is ordered after `{...rest}` now, so the real `variant` always wins.
+  it("renders its own variant in `data-variant`, never a caller's own override of that attribute", () => {
+    render(
+      <Link href="/players/1807091" variant="standalone" data-variant="inline">
+        View profile
+      </Link>,
+    )
+    expect(screen.getByRole('link')).toHaveAttribute('data-variant', 'standalone')
+  })
+
   it('a link is never disabled — there is no disabled prop', () => {
     render(<Link href="/players/1807091">View profile</Link>)
     expect(screen.getByRole('link')).not.toHaveAttribute('disabled')

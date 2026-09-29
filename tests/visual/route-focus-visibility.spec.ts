@@ -1,95 +1,90 @@
 // T674 (production-readiness item 13, second of four halves): focus visibility, at route level, in
 // both themes. The colour math already exists (`packages/design-system/tokens/contrast.mjs`, T580)
 // and `tests/visual/focus-ring.spec.ts` already proves the ring per component inside Storybook
-// (`/iframe.html`); what was missing, per the gap register's own row 1, is "the same assertion
-// driven by a real Tab press against a route's own cascade rather than a forced Storybook state,
-// confirming nothing at route level (a wrapper, a reset) repaints or hides what the component alone
-// already guarantees."
+// (`/iframe.html`); what was missing, per T674's own task text in
+// `specs/005-design-system-foundations/tasks.md`, is "the same assertion driven by a real Tab press
+// against a route's own cascade rather than a forced Storybook state" — confirming nothing at route
+// level (a wrapper, a reset) repaints or hides what the component alone already guarantees.
 //
 // FR-050: "Every focusable element MUST show a visible focus indicator that meets the non-text
 // contrast floor against the surface it appears on, in both themes, and MUST NOT lose it on pointer
 // interaction." This file walks every route's own real focus order (`walkTabOrder`, shared with
 // `route-keyboard.spec.ts`) and asserts the ring on every stop, rather than the sixteen
-// representative controls `focus-ring.spec.ts` forces individually.
-import { test, expect } from '@playwright/test'
+// representative controls `focus-ring.spec.ts` forces individually. The per-step assertion itself,
+// `assertFocusRingVisible`, is shared verbatim with `tests/visual/fixtures/focus-ring-walk.test.ts`'s
+// planted-page guard tests (PR #102 review finding M1) so neither caller's contract can drift from
+// the other's.
+import { expect, test } from '@playwright/test'
 import {
+  assertThemeApplied,
   createAppServerHarness,
   hasBuild,
   ROUTE_SCENARIOS,
   seedThemeOverride,
   waitForFontsReady,
 } from './fixtures/app-routes-harness'
-import { walkTabOrder } from './fixtures/keyboard-walk'
-// `.mjs` rather than `.cjs`: verified on CI already for `focus-ring.spec.ts`'s own identical import
-// (that file's own header comment, 0a400c4e/T580) — Playwright transpiles a `.spec.ts` to CommonJS,
-// but this module has no CommonJS sibling to fall back to.
-import { contrastRatioRgb } from '../../packages/design-system/tokens/contrast.mjs'
-
-function parseRgb(color: string): { r: number; g: number; b: number } {
-  const match = color.match(/rgba?\(([^)]+)\)/)
-  if (!match) throw new Error(`unparseable colour from getComputedStyle: "${color}"`)
-  const [r, g, b] = match[1].split(',').map((part) => parseFloat(part.trim()))
-  return { r, g, b }
-}
+import { assertFocusRingVisible, walkTabOrder } from './fixtures/keyboard-walk'
 
 const harness = createAppServerHarness('4176')
 
 test.describe('focus visibility, every route, both themes', () => {
   test.describe.configure({ mode: 'serial' })
 
-  test.skip(
-    () => !hasBuild,
-    'apps/web/dist has not been built — run `pnpm --filter web build` first.',
-  )
+  // PR #102 review finding (low, mirrored from `app-routes.spec.ts`'s own identical remediation): a
+  // bare `test.skip` reports this whole suite as passed whether `apps/web/dist` is missing because
+  // no developer has built it yet, or because a CI misconfiguration skipped the build step — exactly
+  // the false-negative shape `assertFocusRingVisible`'s own strengthened checks below exist to catch
+  // elsewhere. `process.env.CI` (set by every GitHub Actions runner) is what tells the two cases
+  // apart; only a developer running this file locally without having built first gets the skip.
+  if (!hasBuild && process.env.CI) {
+    test('apps/web/dist must be built before this suite runs in CI', () => {
+      throw new Error(
+        'apps/web/dist has not been built. `.github/workflows/pr.yml` always runs ' +
+          '`pnpm --filter web build` before this suite — a missing build here means that step ' +
+          'failed or was skipped, not that this suite has nothing to test.',
+      )
+    })
+  } else {
+    test.skip(
+      () => !hasBuild,
+      'apps/web/dist has not been built — run `pnpm --filter web build` first.',
+    )
 
-  test.beforeAll(async () => {
-    await harness.start()
-  })
+    test.beforeAll(async () => {
+      await harness.start()
+    })
 
-  test.afterAll(() => {
-    harness.stop()
-  })
+    test.afterAll(() => {
+      harness.stop()
+    })
 
-  for (const scenario of ROUTE_SCENARIOS) {
-    for (const theme of ['light', 'dark'] as const) {
-      test(`${scenario.label} — every interactive element rings visibly on Tab, 3:1 against its own surface (${theme})`, async ({
-        page,
-      }) => {
-        await seedThemeOverride(page, theme)
-        await scenario.stub(page)
+    for (const scenario of ROUTE_SCENARIOS) {
+      for (const theme of ['light', 'dark'] as const) {
+        test(`${scenario.label} — every interactive element rings visibly on Tab, 3:1 against its own surface (${theme})`, async ({
+          page,
+        }) => {
+          await seedThemeOverride(page, theme)
+          await scenario.stub(page)
 
-        await page.goto(`${harness.baseUrl}${scenario.path}`)
-        await page.getByRole('main').waitFor({ state: 'visible' })
-        await waitForFontsReady(page)
+          await page.goto(`${harness.baseUrl}${scenario.path}`)
+          await page.getByRole('main').waitFor({ state: 'visible' })
+          // PR #102 review finding (low): proves the theme was actually *painted*, not merely
+          // seeded — `seedThemeOverride` only writes the storage key; `ThemeProvider.tsx` is what
+          // reads it and paints `data-theme`, and the two can drift.
+          await assertThemeApplied(page, theme)
+          await waitForFontsReady(page)
 
-        const { steps } = await walkTabOrder(page)
-        expect(
-          steps.length,
-          `${scenario.label} (${theme}): no interactive element found`,
-        ).toBeGreaterThan(0)
-
-        for (const step of steps) {
+          const { steps } = await walkTabOrder(page)
           expect(
-            step.isFocusVisible,
-            `${scenario.label} (${theme}): <${step.tag}> "${step.name}" did not match :focus-visible after Tab`,
-          ).toBe(true)
-          expect(
-            step.outline.style,
-            `${scenario.label} (${theme}): <${step.tag}> "${step.name}" painted no outline while focus-visible`,
-          ).not.toBe('none')
+            steps.length,
+            `${scenario.label} (${theme}): no interactive element found`,
+          ).toBeGreaterThan(0)
 
-          const ratio = contrastRatioRgb(
-            parseRgb(step.outline.color),
-            parseRgb(step.backgroundColor),
-          )
-          expect(
-            ratio,
-            `${scenario.label} (${theme}): <${step.tag}> "${step.name}"'s focus ring ` +
-              `(${step.outline.color}) is ${ratio.toFixed(2)}:1 against its surface ` +
-              `(${step.backgroundColor}), below the 3:1 WCAG 1.4.11 non-text contrast floor`,
-          ).toBeGreaterThanOrEqual(3)
-        }
-      })
+          for (const step of steps) {
+            assertFocusRingVisible(step, `${scenario.label} (${theme})`)
+          }
+        })
+      }
     }
   }
 })

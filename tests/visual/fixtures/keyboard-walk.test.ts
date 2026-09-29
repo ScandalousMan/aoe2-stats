@@ -143,4 +143,32 @@ test.describe('keyboard-walk guards, planted pages', () => {
     expect(result.steps.map((step) => step.kbdId)).toEqual(['0', '1', '2'])
     expect(() => assertFullTabCoverage(result, 'clean-page')).not.toThrow()
   })
+
+  // PR #102 review finding (low): the touch-footprint `rect` used to special-case only an `<input>`
+  // wrapped by its own `<label>`; generalised to every labelable control a `<label>` can wrap
+  // (`input`, `select`, `textarea`, `button`, `meter`, `output`, `progress`) — this plants the
+  // `<select>` case, the first of those never exercised before.
+  test('a <select> wrapped by its own <label> is measured by the label box, not the bare control', async ({
+    page,
+  }) => {
+    await page.setContent(`
+      <label style="display: inline-block; padding: 20px; border: 1px solid black;">
+        Country
+        <select id="country"><option>FR</option></select>
+      </label>
+    `)
+
+    const bareSelectWidth = await page
+      .locator('#country')
+      .evaluate((el) => el.getBoundingClientRect().width)
+
+    const result = await walkTabOrder(page)
+    expect(result.steps).toHaveLength(1)
+    const [step] = result.steps
+    expect(step.tag).toBe('select')
+    // The wrapping <label>'s own box (padding included) is the real hit area a pointer reaches —
+    // strictly larger than the bare <select> alone, which is what the pre-remediation, `<input>`-
+    // only special case would have measured here instead.
+    expect(step.rect.width).toBeGreaterThan(bareSelectWidth)
+  })
 })

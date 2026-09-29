@@ -1107,6 +1107,7 @@ export function findPrimitiveInstances(
   skipPrimitives = [],
   helperGuards = new Map(),
   mainComponentName = null,
+  localHelperCallSites = new Map(),
 ) {
   const found = []
   walkJsxWithContext(sourceFile, (node, context) => {
@@ -1201,6 +1202,19 @@ export function findPrimitiveInstances(
       childrenExpr: !literalTextOf(node) && ts.isJsxElement(node) ? node.children : null,
       ariaHidden: isAriaHidden(opening),
       isHelper: context.fnName != null && context.fnName !== mainComponentName,
+      // The same real-call-site enumeration `findLocalElements` already keeps for a record-1
+      // helper candidate (`helperNthPosition`/`candidateExtent`'s own `PrivacyNotice`/`InlineLink`
+      // running example) — a tracked primitive declared inside a local helper (T674: `InlineLink`
+      // composing `Link` instead of copying its recipe by hand) is exactly as reusable-from-more-
+      // than-one-call-site as a raw local element was, and without this a `nth` force-state against
+      // it can never place anything past "unplaceable" (`helperNthPosition`'s own first line,
+      // `!c.helperCallSites`), permanently, regardless of `nth`'s own value. `null` when this
+      // instance is not inside a helper at all, or the helper is `export`ed and not fully
+      // enumerable from this file alone — identical fallback to record 1's own.
+      helperCallSites:
+        context.fnName != null && context.fnName !== mainComponentName
+          ? (localHelperCallSites.get(context.fnName) ?? null)
+          : null,
       isInsideIteration: context.inIteration,
       guards: effectiveGuards,
       fnName: context.fnName,
@@ -2121,7 +2135,14 @@ function candidateExtent(c, scope) {
 // by its own real call sites rather than only ever excluding it, and lets a `name` force-state be
 // positively `reject`ed for every candidate in `composedElsewhere` (a name this pass has already
 // traced to a different, untracked primitive composed one hop away — `resolveComposedStoryMatches`
-// only, T595).
+// only, T595). `foreignExtents` (T674, row 8's own `InlineLink`/`Link` re-key) are real elements of
+// the same implied role this exact call's own `pool` cannot see at all — the other record's own
+// candidates for the same component (a local element's own pool never sees a composed primitive,
+// and a composed primitive's own pool never sees a local element) — read only inside the `nth`
+// branch below, to keep that branch's own cursor honest across the boundary between the two
+// records, and never inside the `name` branch: a `foreignExtents` entry can shift where `nth` lands
+// and can be the reason a walk lands on someone else, but it is never itself `candidate`, so it can
+// never be returned as the `'match'`.
 export function resolveNameMatch({
   candidate,
   pool,
@@ -2130,6 +2151,7 @@ export function resolveNameMatch({
   argsLiterals,
   scope,
   composedElsewhere,
+  foreignExtents = [],
 }) {
   if (name) {
     // Every pool member whose own text literally carries the name, not just this candidate's own
@@ -2213,8 +2235,13 @@ export function resolveNameMatch({
     // extended to a `.map()` member whose own backing array is unresolvable too: excluding it here
     // would be a guess in the *opposite* direction (assuming it contributes nothing when it may
     // contribute several), so instead its own `'unknown-width'` kind is *kept* in the ordering and
-    // stops the walk cold the moment it is reached, below.
-    const entries = pool
+    // stops the walk cold the moment it is reached, below. `foreignExtents` joins the walk here,
+    // never in `pool` itself — real elements of the same role this call's own record cannot see
+    // (T674), contributing their own counted width to the cursor so a `nth` chosen against the real,
+    // combined DOM keeps meaning what it said, without ever being reachable as `candidate` (it is
+    // never `===` a member of `pool`, so the `c === candidate` branch above never substitutes `own`
+    // for one of them, and the `entry.c === candidate` check below can never select one either).
+    const entries = [...pool, ...foreignExtents]
       .map((c) => (c === candidate ? { c, ...own } : { c, ...candidateExtent(c, scope) }))
       .filter((e) => e.kind !== 'unplaceable' && e.count !== 0)
       .sort((a, b) => a.line - b.line)
@@ -2667,9 +2694,10 @@ export function computeStateCoverage({ componentDirs, filesByPath }) {
     const componentKey = componentKeyForFile(srcDir, filePath)
     const componentDirName = componentKey.split('/')[1]
 
+    let localHelperCallSites = new Map()
     if (!isStory) {
       const helperIterationContext = findHelperInvocationIterationContext(sourceFile)
-      const localHelperCallSites = findHelperCallSites(sourceFile)
+      localHelperCallSites = findHelperCallSites(sourceFile)
       const locals = findLocalElements(
         sourceFile,
         relPath(filePath),
@@ -2707,6 +2735,7 @@ export function computeStateCoverage({ componentDirs, filesByPath }) {
       skip,
       helperGuards,
       componentDirName,
+      localHelperCallSites,
     )
     for (const inst of jsxInstances) {
       instancesByPrimitive.get(inst.primitive).push({ ...inst, kind: 'jsx', componentKey })
@@ -2967,6 +2996,7 @@ export function computeStateCoverage({ componentDirs, filesByPath }) {
     pendingComposedMatches,
     instancesByPrimitive,
     confirmedComposedElsewhereByKey,
+    localElementsByComponent,
   )
   resolveDisabledFromStories(pendingDisabledChecks, instancesByPrimitive)
   // Record 1's own cross-component matching path (T598, above) — reads `instancesByPrimitive`'s
@@ -2993,7 +3023,12 @@ export function computeStateCoverage({ componentDirs, filesByPath }) {
       const elements = localElementsByComponent.get(componentKey) ?? []
       const sorted = elements.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line)
       const storyStates = storyStatesByComponent.get(componentKey) ?? []
-      const coverageRows = buildElementMatrix(sorted, storyStates)
+      const coverageRows = buildElementMatrix(
+        sorted,
+        storyStates,
+        componentKey,
+        instancesByPrimitive,
+      )
       return {
         componentKey,
         elements: sorted.map((el, i) => ({
@@ -3088,10 +3123,28 @@ function summarizeAmbiguities(instancesByPrimitive, matrices) {
   }
 }
 
+// A component's own record-1 local elements sharing `role` and reachable for this specific story's
+// own `scope` — `resolveComposedStoryMatches`'s own `foreignExtents` (T674, row 8's own
+// `InlineLink`/`Link` re-key): a tracked primitive's own candidate pool never sees a raw local `<a>`
+// declared in the same file (`PrivacyNotice`'s own `Contents` nav and `ObjectionCallToAction`), so a
+// `nth` chosen against the real, combined DOM needs their own real width folded into the same walk
+// `resolveNameMatch`'s `nth` branch already does for its own pool — never a match target here (only
+// `resolveNameMatch`'s own `pool` can be), only a real width and a real sort position.
+function foreignLocalRoleExtents(componentKey, role, localElementsByComponent, scope) {
+  const elements = localElementsByComponent.get(componentKey) ?? []
+  return elements.filter(
+    (el) =>
+      !el.ariaHidden &&
+      impliedRoleOf(el) === role &&
+      evaluateGuards(el.guards ?? [], scope) !== 'unreached',
+  )
+}
+
 export function resolveComposedStoryMatches(
   pending,
   instancesByPrimitive,
   confirmedComposedElsewhereByKey = new Map(),
+  localElementsByComponent = new Map(),
 ) {
   for (const {
     componentKey,
@@ -3154,6 +3207,12 @@ export function resolveComposedStoryMatches(
           argsLiterals,
           scope: propsScope,
           composedElsewhere: confirmedComposedElsewhereByKey.get(componentKey),
+          foreignExtents: foreignLocalRoleExtents(
+            componentKey,
+            forced.role,
+            localElementsByComponent,
+            propsScope,
+          ),
         })
         if (verdict === 'match') matchedCandidate = candidate
         if (verdict === 'ambiguous') {
@@ -3635,11 +3694,43 @@ function impliedRoleOf(el) {
   return el.role === 'unresolved' ? null : el.role || (INTRINSIC_ROLE[el.tag] ?? null)
 }
 
+// The mirror of `foreignLocalRoleExtents`, read from the other direction: a record-1 local
+// element's own `nth` walk needs a composed primitive's own real call sites in its own component
+// folded in too (T674, row 8's own `InlineLink`/`Link` re-key — `PrivacyNotice`'s own `Contents`
+// nav and `ObjectionCallToAction` no longer see the four real elements that moved onto `Link`, so a
+// `nth` chosen against the real, combined DOM would otherwise land on whichever local element
+// happened to fall into the resulting wrong slot). `instancesByPrimitive` is `null` for every
+// fixture that builds `elements` by hand rather than through `computeStateCoverage`, in which case
+// this returns `[]` and `resolveNameMatch`'s own walk is unchanged from before this task.
+function foreignPrimitiveRoleExtents(componentKey, role, instancesByPrimitive, scope) {
+  if (!componentKey || !instancesByPrimitive) return []
+  const found = []
+  for (const primitive of PRIMITIVE_NAMES) {
+    for (const inst of instancesByPrimitive.get(primitive) ?? []) {
+      if (inst.kind !== 'jsx' || inst.componentKey !== componentKey || inst.ariaHidden) continue
+      if (impliedRoleForPrimitiveInstance(primitive, inst) !== role) continue
+      if (evaluateGuards(inst.guards ?? [], scope) === 'unreached') continue
+      found.push(inst)
+    }
+  }
+  return found
+}
+
 // One element's own role-based and selector-based cells/ambiguous-reasons, against every other
 // element in the same component (`elements`) — factored out of `buildElementMatrix` so a second
 // pass can read one element's results while computing another's own `'unresolved'` reason (the
-// ancestor case below), without re-deriving them.
-function buildElementCells(el, elements, storyObjectsWithMeta) {
+// ancestor case below), without re-deriving them. `componentKey`/`instancesByPrimitive` (T674, row
+// 8's own `InlineLink`/`Link` re-key) are optional — supplied only by the real pipeline
+// (`computeStateCoverage`), never by the many hand-built fixtures below that construct `elements`
+// directly — and used only to fold a composed primitive's own real call sites into this element's
+// own `nth` walk (`resolveNameMatch`'s own `foreignExtents`), never into `pool` itself.
+function buildElementCells(
+  el,
+  elements,
+  storyObjectsWithMeta,
+  componentKey = null,
+  instancesByPrimitive = null,
+) {
   const impliedRole = impliedRoleOf(el)
   const pool = elements.filter((o) => impliedRoleOf(o) === impliedRole && !o.ariaHidden)
   const cells = { hover: [], 'focus-visible': [], active: [] }
@@ -3665,6 +3756,12 @@ function buildElementCells(el, elements, storyObjectsWithMeta) {
           nth: forced.nth,
           argsLiterals,
           scope,
+          foreignExtents: foreignPrimitiveRoleExtents(
+            componentKey,
+            impliedRole,
+            instancesByPrimitive,
+            scope,
+          ),
         })
         if (verdict === 'match') cells[forced.state].push(exportName)
         else if (verdict === 'ambiguous') {
@@ -3919,7 +4016,12 @@ function noImpliedRoleReason(el, state, perElement) {
 // `'none'` only when *no* force-state of that state shares the element's implied role anywhere in
 // the component's stories; when one does but `resolveNameMatch` cannot settle it on one candidate,
 // the cell is `'unresolved: <reason>'` — never silently folded into `'none'`.
-export function buildElementMatrix(elements, storyObjectsWithMeta) {
+export function buildElementMatrix(
+  elements,
+  storyObjectsWithMeta,
+  componentKey = null,
+  instancesByPrimitive = null,
+) {
   if (elements.length === 0) {
     return [
       {
@@ -3932,7 +4034,9 @@ export function buildElementMatrix(elements, storyObjectsWithMeta) {
       },
     ]
   }
-  const perElement = elements.map((el) => buildElementCells(el, elements, storyObjectsWithMeta))
+  const perElement = elements.map((el) =>
+    buildElementCells(el, elements, storyObjectsWithMeta, componentKey, instancesByPrimitive),
+  )
   // T595 (row 8, H5, `noImpliedRoleReason`'s "ancestor of a forced descendant" family): `hover` and
   // `active` are driven in the visual harness by a real, CDP-backed pointer move and mouse-down
   // (`tests/visual/stories.spec.ts`'s own `VisualForceState` comment — `locator.hover()`, then
@@ -4023,7 +4127,12 @@ function buildAllMatrices(
     } else {
       const elements = localElementsByComponent.get(`primitives/${name}`) ?? []
       const storyStates = storyStatesByComponent.get(`primitives/${name}`) ?? []
-      matrices[name] = buildElementMatrix(elements, storyStates)
+      matrices[name] = buildElementMatrix(
+        elements,
+        storyStates,
+        `primitives/${name}`,
+        instancesByPrimitive,
+      )
     }
   }
   return matrices

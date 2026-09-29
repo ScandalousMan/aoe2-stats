@@ -141,10 +141,6 @@ export function Link({ href, variant = 'inline', external = false, children, ...
       href={href}
       target={external ? '_blank' : undefined}
       rel={external ? 'noopener noreferrer' : undefined}
-      // T674's touch-footprint sweep reads this, never a layout heuristic, to exempt an `inline`
-      // link inside running prose from the 44×44 floor (`specs/README.md`, "Minimum interactive
-      // footprint") — the only DOM signal for WCAG 2.5.5's inline exception.
-      data-variant={variant}
       className={cx(
         ink,
         underline,
@@ -154,6 +150,17 @@ export function Link({ href, variant = 'inline', external = false, children, ...
         variant === 'inline' && external && externalInlineWrapper,
       )}
       {...rest}
+      // T674's touch-footprint sweep reads this, never a layout heuristic, to exempt an `inline`
+      // link inside running prose from the 44×44 floor (`specs/README.md`, "Minimum interactive
+      // footprint") — the only DOM signal for WCAG 2.5.5's inline exception. Spread *after*
+      // `{...rest}`, never before: TypeScript exempts every `data-*`/`aria-*` attribute from excess-
+      // property checking on any JSX element, so unlike `className` above (declined by `LinkProps`'s
+      // own `Omit`), nothing stops a caller from also passing `data-variant` — before this line, that
+      // silently overrode this primitive's own real marker (low-severity remediation, PR #102):
+      // `<Link variant="standalone" data-variant="inline" />` compiled and rendered
+      // `data-variant="inline"`, exempting a `standalone` link from the 44px floor the sweep exists
+      // to enforce. Ordered last, this attribute always wins instead.
+      data-variant={variant}
     >
       {children}
       {external && (

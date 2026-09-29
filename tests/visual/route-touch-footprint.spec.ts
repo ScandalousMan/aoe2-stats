@@ -13,15 +13,16 @@
 // This sub-suite asserts the floor; the "not enlarged by an overlay" half is a source-level property
 // (README's own "forbidden: enlarging a target with an overlay" rule) with nothing a bounding-box
 // sweep alone can observe, so it stays a spec rule rather than a geometry assertion here.
-import { test, expect } from '@playwright/test'
+import { test } from '@playwright/test'
 import {
+  assertThemeApplied,
   createAppServerHarness,
   hasBuild,
   ROUTE_SCENARIOS,
   seedThemeOverride,
   waitForFontsReady,
 } from './fixtures/app-routes-harness'
-import { walkTabOrder } from './fixtures/keyboard-walk'
+import { assertTouchFootprint } from './fixtures/touch-footprint'
 
 const harness = createAppServerHarness('4177')
 
@@ -36,50 +37,48 @@ test.use({ viewport: MOBILE_VIEWPORT })
 test.describe('touch footprints at 375px, every route, both themes', () => {
   test.describe.configure({ mode: 'serial' })
 
-  test.skip(
-    () => !hasBuild,
-    'apps/web/dist has not been built — run `pnpm --filter web build` first.',
-  )
+  // Mirrors `app-routes.spec.ts`'s own CI-vs-local distinction (PR #102 review finding, low): a
+  // bare `test.skip` reports this whole suite as passed whether `apps/web/dist` is missing because
+  // a developer has not built yet or because a CI misconfiguration skipped the build step — only
+  // `process.env.CI` (set by every GitHub Actions runner) tells the two cases apart.
+  if (!hasBuild && process.env.CI) {
+    test('apps/web/dist must be built before this suite runs in CI', () => {
+      throw new Error(
+        'apps/web/dist has not been built. `.github/workflows/pr.yml` always runs ' +
+          '`pnpm --filter web build` before this suite — a missing build here means that step ' +
+          'failed or was skipped, not that this suite has nothing to test.',
+      )
+    })
+  } else {
+    test.skip(
+      () => !hasBuild,
+      'apps/web/dist has not been built — run `pnpm --filter web build` first.',
+    )
 
-  test.beforeAll(async () => {
-    await harness.start()
-  })
+    test.beforeAll(async () => {
+      await harness.start()
+    })
 
-  test.afterAll(() => {
-    harness.stop()
-  })
+    test.afterAll(() => {
+      harness.stop()
+    })
 
-  for (const scenario of ROUTE_SCENARIOS) {
-    for (const theme of ['light', 'dark'] as const) {
-      test(`${scenario.label} — every non-exempt interactive target clears 44×44 at 375px (${theme})`, async ({
-        page,
-      }) => {
-        await seedThemeOverride(page, theme)
-        await scenario.stub(page)
+    for (const scenario of ROUTE_SCENARIOS) {
+      for (const theme of ['light', 'dark'] as const) {
+        test(`${scenario.label} — every non-exempt interactive target clears 44×44 at 375px (${theme})`, async ({
+          page,
+        }) => {
+          await seedThemeOverride(page, theme)
+          await scenario.stub(page)
 
-        await page.goto(`${harness.baseUrl}${scenario.path}`)
-        await page.getByRole('main').waitFor({ state: 'visible' })
-        await waitForFontsReady(page)
+          await page.goto(`${harness.baseUrl}${scenario.path}`)
+          await page.getByRole('main').waitFor({ state: 'visible' })
+          await assertThemeApplied(page, theme)
+          await waitForFontsReady(page)
 
-        const { steps } = await walkTabOrder(page)
-        expect(
-          steps.length,
-          `${scenario.label} (${theme}): no interactive element found`,
-        ).toBeGreaterThan(0)
-
-        for (const step of steps) {
-          if (step.exemptInlineLink) continue // WCAG 2.5.5's inline exception, read from data-variant
-
-          expect(
-            step.rect.width,
-            `${scenario.label} (${theme}): <${step.tag}> "${step.name}" is ${step.rect.width.toFixed(1)}px wide, below the 44px floor`,
-          ).toBeGreaterThanOrEqual(44)
-          expect(
-            step.rect.height,
-            `${scenario.label} (${theme}): <${step.tag}> "${step.name}" is ${step.rect.height.toFixed(1)}px tall, below the 44px floor`,
-          ).toBeGreaterThanOrEqual(44)
-        }
-      })
+          await assertTouchFootprint(page, `${scenario.label} (${theme})`)
+        })
+      }
     }
   }
 })

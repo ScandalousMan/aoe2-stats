@@ -1,9 +1,9 @@
 // T674 (production-readiness item 13, first of four halves): keyboard operation, at route level,
-// in both themes — `packages/design-system/specs/README.md`'s "Verification-coverage gap register"
-// row 1's own description: "a `page.keyboard.press('Tab')` walk per route in both themes, asserting
-// the focused element stays inside the route's landmarks and every interactive element is reached
-// once — no screenshot needed." `tests/visual/app-routes.spec.ts` (T108/T553) already counts
-// landmarks and screenshots every route; this file adds the keyboard axis that leaves untouched.
+// in both themes — T674's own task text in `specs/005-design-system-foundations/tasks.md`: "a
+// `page.keyboard.press('Tab')` walk per route in both themes, asserting the focused element stays
+// inside the route's landmarks and every interactive element is reached once — no screenshot
+// needed." `tests/visual/app-routes.spec.ts` (T108/T553) already counts landmarks and screenshots
+// every route; this file adds the keyboard axis that leaves untouched.
 //
 // FR-049: "Every interactive element MUST be reachable and operable by keyboard, in an order that
 // matches its visual order, with no trap outside a modal surface that defines its own." No modal is
@@ -11,8 +11,9 @@
 // reduces to "every stop stays inside the route's one `main` landmark or its `header`/`footer`
 // chrome" — the same containment `tests/visual/focus-ring.spec.ts` assumes implicitly and this file
 // makes an explicit, mechanical assertion.
-import { test, expect } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 import {
+  assertThemeApplied,
   createAppServerHarness,
   hasBuild,
   ROUTE_SCENARIOS,
@@ -26,49 +27,68 @@ const harness = createAppServerHarness('4175')
 test.describe('keyboard operation, every route, both themes', () => {
   test.describe.configure({ mode: 'serial' })
 
-  test.skip(
-    () => !hasBuild,
-    'apps/web/dist has not been built — run `pnpm --filter web build` first.',
-  )
+  // PR #102 review finding (low, mirrored from `app-routes.spec.ts`'s own identical remediation): a
+  // bare `test.skip` reports this whole suite as passed whether `apps/web/dist` is missing because
+  // no developer has built it yet, or because a CI misconfiguration skipped the build step.
+  // `process.env.CI` (set by every GitHub Actions runner) is what tells the two cases apart; only a
+  // developer running this file locally without having built first gets the skip.
+  if (!hasBuild && process.env.CI) {
+    test('apps/web/dist must be built before this suite runs in CI', () => {
+      throw new Error(
+        'apps/web/dist has not been built. `.github/workflows/pr.yml` always runs ' +
+          '`pnpm --filter web build` before this suite — a missing build here means that step ' +
+          'failed or was skipped, not that this suite has nothing to test.',
+      )
+    })
+  } else {
+    test.skip(
+      () => !hasBuild,
+      'apps/web/dist has not been built — run `pnpm --filter web build` first.',
+    )
 
-  test.beforeAll(async () => {
-    await harness.start()
-  })
+    test.beforeAll(async () => {
+      await harness.start()
+    })
 
-  test.afterAll(() => {
-    harness.stop()
-  })
+    test.afterAll(() => {
+      harness.stop()
+    })
 
-  for (const scenario of ROUTE_SCENARIOS) {
-    for (const theme of ['light', 'dark'] as const) {
-      test(`${scenario.label} — every interactive element is reachable, in order, inside the route's chrome (${theme})`, async ({
-        page,
-      }) => {
-        await seedThemeOverride(page, theme)
-        await scenario.stub(page)
+    for (const scenario of ROUTE_SCENARIOS) {
+      for (const theme of ['light', 'dark'] as const) {
+        test(`${scenario.label} — every interactive element is reachable, in order, inside the route's chrome (${theme})`, async ({
+          page,
+        }) => {
+          await seedThemeOverride(page, theme)
+          await scenario.stub(page)
 
-        await page.goto(`${harness.baseUrl}${scenario.path}`)
-        await page.getByRole('main').waitFor({ state: 'visible' })
-        await waitForFontsReady(page)
+          await page.goto(`${harness.baseUrl}${scenario.path}`)
+          await page.getByRole('main').waitFor({ state: 'visible' })
+          // PR #102 review finding (low): proves the theme was actually *painted*, not merely
+          // seeded — `seedThemeOverride` only writes the storage key; `ThemeProvider.tsx` is what
+          // reads it and paints `data-theme`, and the two can drift.
+          await assertThemeApplied(page, theme)
+          await waitForFontsReady(page)
 
-        const result = await walkTabOrder(page)
+          const result = await walkTabOrder(page)
 
-        // FR-049's "no trap": every stop the walk actually reaches sits inside the route's one
-        // main landmark or its header/footer chrome — never off in a detached or hidden branch of
-        // the DOM a real keyboard user could not have reached either.
-        for (const step of result.steps) {
-          expect(
-            step.insideChrome,
-            `${scenario.label} (${theme}): Tab landed on a <${step.tag}> "${step.name}" outside ` +
-              `main/header/footer`,
-          ).toBe(true)
-        }
+          // FR-049's "no trap": every stop the walk actually reaches sits inside the route's one
+          // main landmark or its header/footer chrome — never off in a detached or hidden branch of
+          // the DOM a real keyboard user could not have reached either.
+          for (const step of result.steps) {
+            expect(
+              step.insideChrome,
+              `${scenario.label} (${theme}): Tab landed on a <${step.tag}> "${step.name}" outside ` +
+                `main/header/footer`,
+            ).toBe(true)
+          }
 
-        // FR-049's "reachable, in order, with no trap": every candidate is reached exactly once,
-        // in DOM order, and the walk closed the cycle rather than exhausting its step budget mid
-        // trap. See `assertFullTabCoverage` for what each of the four guards catches on its own.
-        assertFullTabCoverage(result, `${scenario.label} (${theme})`)
-      })
+          // FR-049's "reachable, in order, with no trap": every candidate is reached exactly once,
+          // in DOM order, and the walk closed the cycle rather than exhausting its step budget mid
+          // trap. See `assertFullTabCoverage` for what each of the four guards catches on its own.
+          assertFullTabCoverage(result, `${scenario.label} (${theme})`)
+        })
+      }
     }
   }
 })
