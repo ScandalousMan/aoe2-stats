@@ -1137,6 +1137,37 @@ reintroduces motion).
 **Item 13: unchanged, partly met; all four halves now sized and owned (T674) rather than left as an
 un-owned "partly met" — not ticked.**
 
+**Superseded, 2026-09-28 (T674).** The four route-level sub-suites are built —
+`tests/visual/route-keyboard.spec.ts`, `tests/visual/route-focus-visibility.spec.ts`,
+`tests/visual/route-touch-footprint.spec.ts` and `tests/visual/route-reduced-motion.spec.ts`, 88
+tests over every route scenario `tests/visual/fixtures/app-routes-harness.ts` enumerates, in both
+themes (touch footprints at 375 only, by construction) — and backed by a real run: PR #102's
+`visual` job, run [36400703606](https://github.com/ScandalousMan/aoe2-stats/actions/runs/36400703606)
+at `ea9bd7a4`, the head carrying the suites in their final form, passed all 88. That run's 84
+failures were all `stories.spec.ts` baselines for the 14 `SearchBox` and `AccountErasurePanel`
+stories T674 deliberately moved (the 44px `SearchBox` floor, the `ErasedScreen` link's move to
+`standalone`), not one of them a route suite; the next run, 36416548359 at `dab3d1be`, failed on
+exactly those 14 stories and nothing else, and they were regenerated from CI in `fca9ad48` (dispatch
+36416561802). **Item 13 is Met** on the head that carries T674, and its row in
+`packages/design-system/specs/README.md`'s "Verification-coverage gap register" is deleted rather
+than left open. The verdicts above are not rewritten: they stand as true records of the commits
+they ran on, the same discipline the Item 9 note above follows.
+
+**Scoped, 2026-09-30 (adversarial review of #102, B3, arbitrated by the project owner 2026-09-29).**
+The "Met" above claimed more than the suites check: every list fixture in
+`tests/visual/fixtures/app-routes-harness.ts` is empty, no search is submitted, no `Dialog` or
+`Menu` is opened, no loading state is on screen when the reduced-motion suite samples, and the touch
+sweep measures only Tab stops. The same review found that run 36400703606, cited above, concluded
+as a failure overall, and that none of the four suites had been seen failing. **Item 13 is Met for
+what the route scenarios render at rest, and partly met overall** until row 2 of
+`packages/design-system/specs/README.md`'s "Verification-coverage gap register" (T676) is deleted.
+The run backing the scoped verdict is PR #102's run
+[36673269608](https://github.com/ScandalousMan/aoe2-stats/actions/runs/36673269608) at `8ef5135a`,
+green in every job. Its `visual` job ran 146 route-level tests with none skipped: the 88 of the four
+suites in both themes, the 22 of `tests/visual/app-routes.spec.ts`, and the 36 planted-page tests
+under `tests/visual/fixtures/`, which fail each suite's guard on a page carrying the defect it
+exists to catch.
+
 ### Item 15's general-reviewer half — outstanding, no pull request covers this head
 
 The `visual-reviewer` half is T595/T596/T600/T671's own, by their own words ("Production-readiness

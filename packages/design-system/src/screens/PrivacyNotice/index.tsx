@@ -205,25 +205,6 @@ const NOT_DO_ITEMS: readonly string[] = [
 const focusRing =
   'outline-none focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring'
 
-// Fourth-pass review remediation (FR-037): hover and active shared `link-hover` with no other
-// signal, so a press was not distinguishable from a hover in a still image.
-// `active:underline-offset-4` gives press its own frame without a fill — the same fix now shared
-// with `Link`'s `inline` variant, `Footer`, `ThirdPartyObjectionForm` and `AccountErasurePanel`'s
-// own copies of this pattern.
-// T591: this copy was missing the underline-thickness half of `Link`'s own `inline` recipe
-// (`decoration-1 underline-offset-2 hover:decoration-2 active:decoration-2`,
-// `primitives/Link/index.tsx`'s `underline` constant) — hover and active still shared the
-// underline's own weight, one of the two signals `structural-tier.md` §9 "hover" ("two signals,
-// one of which is not colour") documents for every link in this product. Found and fixed
-// alongside the identical omission in `ThirdPartyObjectionForm` and `AccountErasurePanel` (T591's
-// own instruction: all three or none).
-const inlineLinkClasses = cx(
-  'text-link underline decoration-1 underline-offset-2 transition-colors duration-120 ease-standard motion-reduce:duration-0',
-  'hover:text-link-hover hover:decoration-2 active:text-link-hover active:decoration-2',
-  'active:underline-offset-4 visited:text-link-visited',
-  focusRing,
-)
-
 function scrollAndFocus(id: string) {
   return (event: MouseEvent<HTMLAnchorElement>) => {
     const target = document.getElementById(id)
@@ -237,12 +218,16 @@ function scrollAndFocus(id: string) {
   }
 }
 
+// T674: this used to be a local `<a>` copying `Link`'s own `inline` recipe by hand, so it never
+// carried the `data-variant="inline"` marker the touch-footprint route sweep reads. Backed by the
+// real primitive now — the in-page scroll behaviour (`scrollAndFocus`) is this call site's own
+// `onClick`, which `Link` forwards like any other anchor prop.
 function InlineLink({ href, id, children }: { href: string; id?: string; children: ReactNode }) {
   const inPage = id !== undefined
   return (
-    <a href={href} onClick={inPage ? scrollAndFocus(id) : undefined} className={inlineLinkClasses}>
+    <Link href={href} onClick={inPage ? scrollAndFocus(id) : undefined}>
       {children}
-    </a>
+    </Link>
   )
 }
 

@@ -123,7 +123,7 @@ export const Active: Story = {
 
 // README's gap register row 8 (H5), F10: `Hover`/`FocusVisible`/`Active` above all clip and force
 // `nth: 0`, which — confirmed by `state-coverage.mjs`'s own extractor — resolves to the first
-// `Contents` entry, not to `InlineLink` (`index.tsx:242`, the recipe every `RightsItem` control
+// `Contents` entry, not to `InlineLink` (`index.tsx:225`, the recipe every `RightsItem` control
 // uses). §5's own "hover — inline links and `Contents` entries only" names both, so this component
 // owes `InlineLink` its own frame, distinct from the nav item above. `nth: 9` is this render's real
 // DOM position under the default `hrefs` (no `controllerContact`, no `processingRegister`): the
@@ -132,18 +132,29 @@ export const Active: Story = {
 // `getAllByRole('link')[9]` the same way `nth: 0` above matches `getAllByRole('link')[0]` — verified
 // against the real DOM, which is what the Playwright capture actually drives.
 //
-// `state-coverage.mjs` credits this trio directly: its candidate pool used to hold one
-// declaration-site slot per JSX occurrence in source regardless of how many real instances a
-// `.map()` renders — `Contents` alone collapsed nine real elements into one slot, so no `nth` past
-// the pool's own small size could ever be placed. Fixed at its root, not worked around here: a
-// `.map()`/`.flatMap()` candidate's own real width is now resolved from its backing array (`
-// SECTIONS_TOC.length`, evaluated once into every story's own scope) and a helper's own real width
-// from the count of its own call sites this story's scope confirms reached — `InlineLink`'s four,
-// under these default `hrefs` — both contributing their real slot count to the ordering instead of
-// one apiece. The one side effect worth naming: the contact-route anchor
-// (`index.tsx:797`, T596's own subject, not this task's) shares this component's `link` pool, and
-// this fix correctly rules it out of `nth: 9`'s own range (a clean `reject`, not `ambiguous`) — and,
-// as of T599, its own cells now read `none`, not `unresolved`. `ObjectionCallToAction`'s own
+// `state-coverage.mjs` credits this trio, but T674 (`InlineLink` now composes the shared `Link`
+// primitive, `index.tsx:228`, rather than hand-copying its recipe into a local `<a>`) moved *where*:
+// this trio's own real target is `primitives/Link`'s own "inline" variant row, reached through
+// `resolveComposedStoryMatches`'s composed-primitive pool, not this component's own local-element
+// pool the way it read before that move — this file no longer declares a local element for
+// `InlineLink` at all (`findLocalElements` never walks into an imported component). That move
+// re-opened exactly the gap `nth`'s own history already closed once, for the *other* record: `Link`'s
+// own composed-primitive pool cannot see `Contents`' nine entries or `ObjectionCallToAction`'s one at
+// all (two different records, walked independently), so it always counted `nth` from its own zero
+// regardless of how many real elements of the same role render before it in the DOM — every one of
+// `nth: 0`/`nth: 9` above was `unresolved` against `Link`'s own pool, and PrivacyNotice's own local
+// pool, no longer aware that four real elements used to sit between `Contents` and
+// `ObjectionCallToAction`, wrongly re-numbered `nth: 9` onto `ObjectionCallToAction` itself. Fixed at
+// its root, in `resolveNameMatch`'s own `nth` branch (`scripts/checks/state-coverage.mjs`): a
+// `foreignExtents` array, read only inside that branch, lets each record fold the other's own real,
+// counted width into the same walk without the other record's own candidate ever being returned as
+// the `'match'` — `PrivacyNotice`'s own local pool now counts `InlineLink`'s four real call sites on
+// its own way to `ObjectionCallToAction`, and `Link`'s own composed pool now counts `Contents`' nine
+// and `ObjectionCallToAction`'s one on its own way to `InlineLink`. The one side effect worth naming:
+// the contact-route anchor (`index.tsx:783`, T596's own subject, not this task's) shares `Link`'s own
+// composed pool with `InlineLink`, and both fixes together still correctly rule it out of `nth: 9`'s
+// own range (a clean `reject`, not `ambiguous`) whenever `controllerContact` is absent — as of T599,
+// its own cells still read `none`, not `unresolved`. `ObjectionCallToAction`'s own
 // `selector` match (below) used to attempt this anchor's `href` without ever checking whether it
 // renders at all; `resolveSelectorMatch`'s own caller now excludes a candidate this story's scope
 // confirms `'unreached'` before attempting it — and the cell's own reason names

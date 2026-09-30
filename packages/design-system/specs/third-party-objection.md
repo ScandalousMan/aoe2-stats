@@ -216,9 +216,10 @@ submit button. No failure callout, no confirmation.
 
 **hover** — the privacy-notice link (`link-hover`, underline stays) and the submit button (per
 `Button`). No other part responds to a pointer. (Corrected here: this line named `accent-hover`,
-which this control has never painted — `inlineLinkClasses` reads `link`/`link-hover` throughout,
-`color-tokens.md` §11.6's own retirement of `accent`/`accent-hover` as an inline-link ink. Caught by
-the fifth-pass review, finding B2.)
+which this control has never painted — the link reads `link`/`link-hover` throughout (the `Link`
+primitive itself, `variant="inline"`, since T674; previously a local copy of the same recipe,
+`inlineLinkClasses`), `color-tokens.md` §11.6's own retirement of `accent`/`accent-hover` as an
+inline-link ink. Caught by the fifth-pass review, finding B2.)
 
 **focus-visible** — the standard ring (`focus-ring`, `outline-2 outline-offset-2`, gap DS-4) on the
 input, the submit button and the privacy-notice link, in both themes. The input additionally shows a
@@ -226,7 +227,7 @@ focus boundary distinct from its resting boundary so a keyboard user sees where 
 
 **active** — the link's ink stays `link-hover` (there is deliberately no `link-active`; `link-hover`
 serves both — `color-tokens.md` §11.3) and the underline steps to `underline-offset-4`, `Link`'s
-`inline` variant's own treatment (`inlineLinkClasses`, `index.tsx`) — the fourth-pass review's
+`inline` variant's own treatment (the `Link` primitive itself since T674) — the fourth-pass review's
 fix for a shared fill answering nothing (FR-037). The button is per `Button`. Nothing scales.
 (Corrected here: this line named `accent-active`, a token this control has never painted, and did
 not name the underline signal the code already carries — the same B2 finding as the `hover` line

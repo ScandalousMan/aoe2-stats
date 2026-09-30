@@ -310,17 +310,25 @@ ring is deleted rather than repositioned — the same class of defect governs ev
 have used. Every `accent`-filled control added later follows this, and its press state is captured
 as its own component-scoped story so the signal is larger than the comparator's tolerance.
 
-**The `ErasedScreen`'s privacy-notice link follows `Link`'s `inline` variant for hover and press**
-(`structural-tier.md` §9; README's gap register row 7/H4). It is a local anchor in
-`AccountErasurePanel`'s source, not a `Link` instance: it copies that variant's ink and underline
-for rest, hover and press, and does not carry its `visited` ink, which a one-way terminal screen has
-no use for. Rest is `link` with a permanent `decoration-1` underline at `underline-offset-2`; hover is
-`link-hover` and a `decoration-2` underline at the same offset; press is `link-hover`, `decoration-2`
-and `underline-offset-4`, with no fill and no ring, so hover and press are two distinct still frames
-told apart by position rather than colour; focus-visible is the standard ring above. It sits on
-`surface` (§6, DS-9). `AccountErasurePanel.stories.tsx`'s `ErasedScreenHover`,
-`ErasedScreenFocusVisible` and `ErasedScreenActive` capture those three states clipped to the link,
-and they are judged against this paragraph.
+**The `ErasedScreen`'s privacy-notice link is the `Link` primitive at `variant="standalone"`**
+(`structural-tier.md` §9; README's gap register row 7/H4; T674, 2026-09-28). It stands alone in its
+own paragraph — a navigation link on its own line, not a run of words inside prose — so `standalone`
+is the variant its placement calls for, not `inline`: before T674 it was a local anchor in
+`AccountErasurePanel`'s source copying `inline`'s ink and underline recipe by hand, which is why it
+fell short of the 44×44 touch floor (README's "Minimum interactive footprint") until it became a
+real `Link` instance. It does not carry `visited` ink (`Link` never omits it; a one-way terminal
+screen simply has no return trip to have visited before). Rest is `link` with a permanent
+`decoration-1` underline at `underline-offset-2`, `type-body` at `text-md`, and `standalone`'s own
+`py-3` block padding around it (the baseline moved when this landed); hover is `link-hover` and a
+`decoration-2` underline at the same offset; press is `link-hover`, `decoration-2`, a
+`surface-sunken` fill and a `border-strong` box-shadow ring (`active:ring-2
+active:ring-border-strong`) — `standalone`'s own non-colour press signal, not `inline`'s
+underline-offset drop, so hover and press are two distinct still frames told apart by the ring
+rather than by colour or position; focus-visible is the standard ring above. It sits on `surface`
+(§6, DS-9); the press ring's `border-strong` clears the 3:1 non-text floor there (README's contrast
+table). `AccountErasurePanel.stories.tsx`'s `ErasedScreenHover`, `ErasedScreenFocusVisible` and
+`ErasedScreenActive` capture those three states clipped to the link, and they are judged against
+this paragraph.
 
 **disabled** — `DataExportPanel`: the `RequestButton` disables while a request is in flight or a job is
 preparing (its loading label says why), so a second export cannot be started over an unfinished one.
@@ -446,8 +454,10 @@ links — their forward action is always a `Button`, never a link inside coloure
 - The export `ProgressRegion` and `ReadyRegion` announce via `Callout`'s own `role="status"`; the
   `FailureRegion` and `DialogFailure` via `role="alert"`. A `Callout` present at first paint is never
   given `aria-live` (it would double-announce).
-- Touch targets: every button, the download link and the acknowledgement checkbox clear 44px. Inline
-  links inside running prose take WCAG 2.5.5's inline exception.
+- Touch targets: every button, the download link, `ErasedScreen`'s privacy-notice link (`Link`
+  `variant="standalone"` since T674 — it stands alone in its own paragraph, not running prose) and
+  the acknowledgement checkbox clear 44px. An inline link inside running prose takes WCAG 2.5.5's
+  inline exception instead, but neither of these two components renders one.
 - Contrast per the README table, both themes: body `text-primary` on `surface`; callout bodies
   `text-primary` on `surface-raised`; callout headings `info` / `success` / `danger` on
   `surface-raised`; the destructive buttons' `danger` label and boundary on `surface`; the

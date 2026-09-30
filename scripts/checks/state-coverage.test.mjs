@@ -1087,6 +1087,124 @@ test('resolveNameMatch is ambiguous (not none) when nth exceeds the orderable po
   assert.equal(resolveNameMatch({ candidate: only, pool: [only], name: null, nth: 5 }), 'ambiguous')
 })
 
+// --- T674: `foreignExtents` (real elements of the same implied role this exact call's own `pool`
+// cannot see) join the `nth` walk without ever being reachable as `candidate` themselves. ----------
+
+test("resolveNameMatch never returns 'match' for a foreign entry — nth landing on its own position rejects the candidate under test instead", () => {
+  const cand = { isHelper: false, line: 20 }
+  const foreignBefore = { isHelper: false, line: 10 }
+  // nth: 0 lands on the foreign entry's own position (sorted first) — `cand` is not there, and the
+  // foreign entry itself can never be `=== candidate`, so this can never come back 'match'.
+  assert.equal(
+    resolveNameMatch({
+      candidate: cand,
+      pool: [cand],
+      name: null,
+      nth: 0,
+      foreignExtents: [foreignBefore],
+    }),
+    'reject',
+  )
+  // nth: 1, past the foreign entry, lands on `cand` itself.
+  assert.equal(
+    resolveNameMatch({
+      candidate: cand,
+      pool: [cand],
+      name: null,
+      nth: 1,
+      foreignExtents: [foreignBefore],
+    }),
+    'match',
+  )
+})
+
+test('resolveNameMatch (via foreignExtents): a placed foreign entry before the candidate shifts the cursor, the same one after it does not', () => {
+  const a = { isHelper: false, line: 5 }
+  const cand = { isHelper: false, line: 20 }
+  const pool = [a, cand]
+  // Baseline, no foreign entry: nth: 1 is `cand` (position 1, after `a`'s own position 0).
+  assert.equal(resolveNameMatch({ candidate: cand, pool, name: null, nth: 1 }), 'match')
+  // A foreign entry at line 10, between `a` and `cand`, occupies the real position `cand` used to
+  // stand in — `nth: 1` now lands on the foreign entry instead, never `cand`.
+  const foreignBefore = { isHelper: false, line: 10 }
+  assert.equal(
+    resolveNameMatch({
+      candidate: cand,
+      pool,
+      name: null,
+      nth: 1,
+      foreignExtents: [foreignBefore],
+    }),
+    'reject',
+  )
+  // Contrast: the same foreign entry placed after `cand` (line 30) never reaches the walk before
+  // `nth: 1` is already settled on `cand` — no shift.
+  const foreignAfter = { isHelper: false, line: 30 }
+  assert.equal(
+    resolveNameMatch({ candidate: cand, pool, name: null, nth: 1, foreignExtents: [foreignAfter] }),
+    'match',
+  )
+})
+
+test("resolveNameMatch is ambiguous, never 'match', when a foreignExtents entry is unplaceable (T674 round 2: a silently dropped unplaceable foreign entry let nth land on the wrong pool member)", () => {
+  const a = { isHelper: false, line: 5 }
+  const cand = { isHelper: false, line: 20 }
+  const pool = [a, cand]
+  // `isHelper: true` with no `helperCallSites` and no `scope` — `candidateExtent`'s own
+  // `'unplaceable'` kind (`helperNthPosition`'s `!c.helperCallSites || !scope` branch).
+  const unplaceableForeign = { isHelper: true, line: null }
+  assert.equal(
+    resolveNameMatch({
+      candidate: cand,
+      pool,
+      name: null,
+      nth: 1,
+      foreignExtents: [unplaceableForeign],
+    }),
+    'ambiguous',
+  )
+  // Proven red by temporarily commenting out the early
+  // `if (foreignPositions.some((e) => e.kind === 'unplaceable')) return 'ambiguous'` line in
+  // resolveNameMatch: this assertion then fails with `'match'` (the walk silently drops the
+  // unplaceable foreign entry from the ordering and lands nth: 1 on `cand` as if it were never
+  // there) — see this task's report for the exact failure output.
+})
+
+test("resolveNameMatch is ambiguous, never 'match', when a foreignExtents entry has an unresolvable .map()/.flatMap() width ('unknown-width' — an iteration candidate whose own backing array this call's scope cannot resolve)", () => {
+  const a = { isHelper: false, line: 5 }
+  const cand = { isHelper: false, line: 20 }
+  const pool = [a, cand]
+  // `isInsideIteration: true` with no `scope` supplied to `resolveNameMatch` (and so none passed on
+  // to `candidateExtent`) hits `candidateExtent`'s own `!scope` branch — `'unknown-width'`, a real,
+  // sortable position whose own count cannot be settled. Placed between `a` and `cand` so the walk
+  // reaches it before `nth: 1` is settled.
+  const unknownWidthForeign = {
+    isHelper: false,
+    isInsideIteration: true,
+    iterationArrayExpr: {},
+    line: 10,
+  }
+  assert.equal(
+    resolveNameMatch({
+      candidate: cand,
+      pool,
+      name: null,
+      nth: 1,
+      foreignExtents: [unknownWidthForeign],
+    }),
+    'ambiguous',
+  )
+})
+
+// Coverage note (T674): `foreignExtents` is an optional parameter, defaulting to `[]`
+// (`resolveNameMatch`'s own destructuring default, above) — every `nth` test above this comment
+// that never mentions `foreignExtents` at all (e.g. 'resolveNameMatch resolves nth against inline
+// candidates sorted by line, excluding helper declarations') already exercises the omitted/empty
+// case and its result is unchanged by this task: an empty `foreignExtents` array is filtered to
+// nothing by `.filter((e) => e.kind !== 'unplaceable' && e.count !== 0)` before the walk, and
+// `foreignPositions.some(...)` over an empty array is `false`, so the walk proceeds exactly as it
+// did before `foreignExtents` existed.
+
 // --- T595 (row 8, H5): closing the `nth`/`name` family's own remaining `unresolved` cells —
 // PrivacyNotice's `InlineLink`, Footer's two `Link` instances, and ProfileSummary's composed
 // `Tooltip` name. Routed through `computeStateCoverage` end to end, the newest tests' own style,

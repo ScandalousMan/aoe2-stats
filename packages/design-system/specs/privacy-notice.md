@@ -658,11 +658,34 @@ a wrapper that adds the in-page `scrollAndFocus` handler to a `Link`, and `inlin
 deleted. Two inline links in one file taking the same paint from two sources is a source-level
 inconsistency, not a visual one, and it is the smaller of the two risks on offer today.
 
+**Done, 2026-09-28 (T674).** The touch-footprint route sweep needed a real DOM marker
+(`data-variant`) to exempt an `inline` link inside running prose from the 44×44 floor
+(`README.md`, "Minimum interactive footprint"), which no hand-copied recipe can carry — that is
+what forced the deferral above closed rather than the source-level inconsistency alone. `InlineLink`
+is now exactly the wrapper this passage predicted, and `inlineLinkClasses` is deleted. The paint was
+already proven identical (previous paragraph), so no baseline moves for `InlineLink`'s own four call
+sites; `data-variant="inline"` is an attribute, not a class, and paints nothing.
+
 **What this changes in the generated coverage region**, so the implementer is not surprised by it:
 this anchor stops being a locally styled element of `screens/PrivacyNotice` and becomes a `Link`
 instance at `inline`, which the extractor tracks on the primitive's own variant axis instead. The
 three cells keyed to the local element go away with the element; whether the new stories also credit
 `Link`'s own `inline` rows is the extractor's answer to give and is not claimed here.
+
+**Closed, 2026-09-29 (M4, review remediation on PR #102).** The extractor's own answer was no, not
+because the render changed but because it could not yet count across the boundary this move created:
+`InlineLink`'s own `nth: 9` needs the nine `Contents` entries and `ObjectionCallToAction` (both local
+elements this component's own record already tracked) counted alongside `Link`'s own composed
+instance, and `Link`'s own composed-primitive pool had no way to see a local element at all — two
+records, walked independently, each starting `nth` from its own zero. `InlineLinkHover`,
+`InlineLinkFocusVisible` and `InlineLinkActive` resolved `unresolved` against `Link`, and
+`PrivacyNotice`'s own local pool, no longer aware that four real elements used to sit between
+`Contents` and `ObjectionCallToAction`, wrongly re-numbered `nth: 9` onto `ObjectionCallToAction`
+itself (`README.md`'s own generated region briefly carried both defects). Fixed in
+`resolveNameMatch`'s own `nth` branch (`scripts/checks/state-coverage.mjs`): a `foreignExtents`
+array lets each record fold the other's own real, counted width into its own walk without the other
+record's own candidate ever being returned as the `'match'`. The trio now credits `Link`'s own
+`inline` row, and `ObjectionCallToAction`'s own cells credit only its own three stories.
 
 **What the commit that applies this owes.** The shipped anchor is a local `text-link underline` with
 no `hover:`, `focus-visible:` or `active:` class of any kind: the rest frame is already right and
