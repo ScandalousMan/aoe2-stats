@@ -43,8 +43,7 @@ import { fileURLToPath } from 'node:url'
 // `stories.spec.ts`'s own consumers) works directly.
 import {
   discoverStoryFiles,
-  extractFileStoryStates,
-  planSelfRest,
+  buildStoryFileWork,
   classifyBucket,
   decideSweepGate,
 } from './state-signal-model.mjs'
@@ -331,48 +330,34 @@ function main() {
 // --- T675 (slice 2/N): package-wide comparator-blind-spot sweep --------------------------------
 
 // Every state story in the tree (`state-signal-model.mjs`'s own `discoverStoryFiles` +
-// `extractFileStoryStates`), self-paired against its own resting frame (`planSelfRest`) — split
-// into `measurable` (a story `tests/visual/state-signal-sweep.spec.ts` will actually render twice)
-// and `notMeasurable` (reported as-is, no rendering: `planSelfRest` itself already answers "not
-// measurable" without a browser — see that function's own comment for the one static case this
-// covers, unexercised by any real story in this tree today).
+// `buildStoryFileWork`), self-paired against its own resting frame — split into `measurable` (a
+// story `tests/visual/state-signal-sweep.spec.ts` will actually render twice), `notMeasurable`
+// (reported as-is, no rendering — see `planSelfRest`'s own comment for the one static case), and
+// `unkeyableFiles` (a story file `buildStoryFileWork` cannot key at all: no literal `meta.id`).
+//
+// T675 remediation (M1): `unkeyableFiles` used to be only a log line here, with the file silently
+// dropped from the sweep entirely — `decideSweepGate` never even learned it existed. It is now
+// collected and passed on so the gate below can fail on it, named (still logged here too, for a
+// developer watching the run live rather than reading the gate's own failure list after the fact).
 function buildStateSignalWork() {
   const measurable = []
   const notMeasurable = []
+  const unkeyableFiles = []
   for (const filePath of discoverStoryFiles()) {
     const source = readFileSync(filePath, 'utf8')
-    let result
-    try {
-      result = extractFileStoryStates(filePath, source)
-    } catch (err) {
-      log(`state-signal-sweep: skipping ${path.relative(rootDir, filePath)}: ${err.message}`)
+    const work = buildStoryFileWork(filePath, source)
+    if (work.unkeyable) {
+      unkeyableFiles.push(work.unkeyable)
+      log(
+        `state-signal-sweep: ${work.unkeyable.file} has no literal meta.id — gate failure, not a ` +
+          `skip: ${work.unkeyable.detail}`,
+      )
       continue
     }
-    if (!result) continue
-    const relFile = path.relative(rootDir, filePath)
-    for (const story of result.stories) {
-      if (!story.isStateStory) continue
-      const plan = planSelfRest(story)
-      if (plan.measurable) {
-        measurable.push({
-          stateId: story.id,
-          exportName: story.exportName,
-          mode: plan.mode,
-          hasClip: story.clip !== null,
-          file: relFile,
-        })
-      } else {
-        notMeasurable.push({
-          stateId: story.id,
-          exportName: story.exportName,
-          file: relFile,
-          reason: plan.reason,
-          detail: plan.detail,
-        })
-      }
-    }
+    measurable.push(...work.measurable)
+    notMeasurable.push(...work.notMeasurable)
   }
-  return { measurable, notMeasurable }
+  return { measurable, notMeasurable, unkeyableFiles }
 }
 
 function formatPct(ratio) {
@@ -471,10 +456,11 @@ function writeStateSignalReport({ classified, notMeasurable, measurableCount }) 
 // task's own render-time check throws on, `story-render.ts`'s own `locateClipPart`) says nothing
 // about any other pair's numbers.
 function runStateSignalSweep() {
-  const { measurable, notMeasurable } = buildStateSignalWork()
+  const { measurable, notMeasurable, unkeyableFiles } = buildStateSignalWork()
   log(
     `state-signal-sweep: ${measurable.length} measurable pair(s), ${notMeasurable.length} ` +
-      'not-measurable state stor(y/ies) found from source.',
+      `not-measurable state stor(y/ies), ${unkeyableFiles.length} unkeyable file(s) found from ` +
+      'source.',
   )
 
   const rawResultsDir = path.join(rootDir, 'test-results', 'state-signal-sweep', 'raw')
@@ -518,24 +504,38 @@ function runStateSignalSweep() {
 
   writeStateSignalReport({ classified, notMeasurable, measurableCount: measurable.length })
 
-  // T675 slice 4b: the sweep is a gate, not only a report — `decideSweepGate` fails on any story
-  // whose own bucket is not a real, over-threshold signal (`defended`/`defended-without-clip`) or a
-  // size/layout change already defended by `toHaveScreenshot` itself (`dimension-mismatch`). No
+  // T675 slice 4b + remediation (M1): the sweep is a gate, not only a report — `decideSweepGate`
+  // fails on any classified story whose own bucket is not a real, over-threshold signal
+  // (`defended`/`defended-without-clip`) or a size/layout change already defended by
+  // `toHaveScreenshot` itself (`dimension-mismatch`), on any story file it could not key at all
+  // (`unkeyableFiles`), on any not-measurable state story (`notMeasurable`, named with its own
+  // reason), and on `classified` being empty or not matching `measurable`'s own count. No
   // allowlist: every failure is named, every run.
-  const gate = decideSweepGate(classified)
+  const gate = decideSweepGate({
+    classified,
+    measurableCount: measurable.length,
+    notMeasurable,
+    unkeyableFiles,
+  })
   if (!gate.pass) {
     log(
-      `state-signal-sweep: gate failed — ${gate.failures.length} of ${classified.length} ` +
-        'measured stor(y/ies) carry no defended non-fill signal:',
+      `state-signal-sweep: gate failed — ${gate.failures.length} failure(s) against ` +
+        `${classified.length} classified stor(y/ies):`,
     )
-    for (const f of [...gate.failures].sort((a, b) => a.stateId.localeCompare(b.stateId))) {
+    for (const f of [...gate.failures].sort((a, b) =>
+      (a.stateId ?? a.file ?? '').localeCompare(b.stateId ?? b.file ?? ''),
+    )) {
       const ratio = typeof f.minRatio === 'number' ? formatPct(f.minRatio) : 'n/a'
-      log(`  - ${f.stateId}: ${f.bucket} (min ratio ${ratio}) — ${f.file}`)
+      const subject = f.stateId ?? f.file ?? '(sweep-level)'
+      const where = f.file ? ` — ${f.file}` : ''
+      const why = f.detail ? ` — ${f.detail}` : ''
+      log(`  - ${subject}: ${f.bucket} (min ratio ${ratio})${where}${why}`)
     }
   } else {
     log(
       `state-signal-sweep: gate passed — ${classified.length} of ${classified.length} measured ` +
-        'stor(y/ies) carry a defended non-fill signal or a defended-by-construction size change.',
+        'stor(y/ies) carry a defended non-fill signal or a defended-by-construction size change, ' +
+        'no unkeyable file and no not-measurable state story.',
     )
   }
 

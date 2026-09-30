@@ -82,6 +82,27 @@ describe('ThirdPartyObjectionForm — load-bearing wording', () => {
     expect(input.className).toMatch(/\benabled:hover:ring-1\b/)
     expect(input.className).toMatch(/\benabled:hover:ring-inset\b/)
     expect(input.className).toMatch(/\benabled:hover:ring-border-strong\b/)
+    // Contrast for the danger branch below: while valid, the hover ring is never the danger ink.
+    expect(input.className).not.toMatch(/\bborder-danger\b/)
+    expect(input.className).not.toMatch(/\benabled:hover:ring-danger\b/)
+  })
+
+  // §16.2 (structural-tier.md, decided 2026-09-28) names this input beside T675's nine: once the
+  // field is invalid, the same inward-thickening ring owes the danger ink, never the neutral one
+  // above — a hovered invalid field must never read as a hovered valid one.
+  it('switches the profile-id input boundary ring to danger ink once the field is invalid, not border-strong', async () => {
+    const user = userEvent.setup()
+    render(<ThirdPartyObjectionForm onSubmit={vi.fn()} privacyNoticeHref="/privacy-notice" />)
+    await user.click(screen.getByRole('button', { name: 'Record my objection' }))
+
+    const input = screen.getByLabelText('Your Age of Empires II profile id')
+    expect(input).toHaveAttribute('aria-invalid', 'true')
+    expect(input.className).toMatch(/\bborder-danger\b/)
+    expect(input.className).toMatch(/\benabled:hover:ring-1\b/)
+    expect(input.className).toMatch(/\benabled:hover:ring-inset\b/)
+    expect(input.className).toMatch(/\benabled:hover:ring-danger\b/)
+    expect(input.className).not.toMatch(/\bborder-border-strong\b/)
+    expect(input.className).not.toMatch(/\benabled:hover:ring-border-strong\b/)
   })
 
   it('the recorded frame says "recorded" and that nothing has changed yet, with no email promise', async () => {

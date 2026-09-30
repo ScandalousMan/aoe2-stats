@@ -346,15 +346,98 @@ export function buildConstStringMap(sourceFile) {
 // after the prefix, so `focus:` never matches inside `focus-visible:`.
 const PSEUDO_PREFIXES = ['hover', 'focus-visible', 'active', 'focus']
 
+// T675 M2 (reviewer finding): a Tailwind class token is a colon-delimited *chain* of variants
+// ending in the utility itself (`enabled:hover:ring-1` — `SearchBox`'s own input, `player-search.md`
+// "Hover signals"; `ThirdPartyObjectionForm`'s input carries the identical shape) — the pseudo-class
+// this file cares about can sit anywhere in that chain, not only first. Splits on `:` but never
+// inside a `[...]` arbitrary-value bracket, so `data-[hover=true]:underline` stays one segment
+// (`data-[hover=true]`), not two — the contrast this finding also named: that segment merely *names*
+// "hover" inside its own brackets, it is not the `hover:` variant, and must never match.
+function splitVariantChain(token) {
+  const segments = []
+  let depth = 0
+  let current = ''
+  for (const ch of token) {
+    if (ch === '[') depth++
+    else if (ch === ']') depth = Math.max(0, depth - 1)
+    if (ch === ':' && depth === 0) {
+      segments.push(current)
+      current = ''
+    } else {
+      current += ch
+    }
+  }
+  segments.push(current)
+  return segments
+}
+
 export function extractPseudoClasses(parts) {
-  const text = parts.join(' ')
   const result = {}
+  const tokens = parts.join(' ').split(/\s+/).filter(Boolean)
   for (const prefix of PSEUDO_PREFIXES) {
-    const re = new RegExp(`(?:^|\\s)(${prefix}:[^\\s]+)`, 'g')
-    const found = [...text.matchAll(re)].map((m) => m[1])
+    const found = []
+    for (const token of tokens) {
+      const segments = splitVariantChain(token)
+      // The last segment is always the utility itself (`ring-1`), never a variant — every segment
+      // before it is a modifier in the chain, `enabled`/`aria-expanded`/`motion-safe`/the pseudo-class
+      // itself, in whatever order the author wrote them. A bare word with no colon at all
+      // (`hoverable`) has exactly one segment, which is the utility, so it is never scanned as a
+      // variant here — the other required contrast this finding named.
+      const variants = segments.slice(0, -1)
+      if (variants.includes(prefix)) found.push(token)
+    }
     result[prefix] = found.length > 0 ? found.join(' ') : null
   }
   return result
+}
+
+// T675 M2: `group-hover`/`group-hover/<name>` (and `peer-hover`/`peer-hover/<name>`) are a distinct
+// Tailwind family — they paint on an ANCESTOR's hover (`group`) or a PRECEDING SIBLING's hover
+// (`peer`), never on the element that carries the utility itself, so they are deliberately excluded
+// from `extractPseudoClasses`'s own `hover` above (a literal `hover:` segment is the only thing that
+// means "this element's own :hover"; folding `group-hover` into it would wrongly make a purely
+// decorative descendant — `PlayerResultRow`'s alias `<span>`, `FavouritesList`'s alias `<span>` —
+// read as though it had a hover state of its own, and would wrongly pull it into Record 1 as a row
+// with no role and no story of its own to credit). Extracted here instead, read only by
+// `findLocalElements`'s own group-hover credit pass below, which attributes the paint to the element
+// actually hovered — the one carrying `group`/`group/<name>` — never to the descendant.
+// `peer-hover` is matched (detected here, never silently dropped) but carries no credit pass of its
+// own: a grep of this repository (2026-09-30) found no real `peer-hover`/`peer/<name>` usage
+// anywhere, and this file's own standing rule is "found, never guessed" — a sibling-credit pass
+// written against nothing real would be untestable against anything real. Extend
+// `creditGroupHoverToAncestors` the same way the moment a real `peer-hover` case exists.
+const GROUP_OR_PEER_HOVER_RE = /^(group|peer)-hover(?:\/([\w-]+))?$/
+
+export function extractGroupOrPeerHoverClasses(parts) {
+  const found = []
+  for (const token of parts.join(' ').split(/\s+/).filter(Boolean)) {
+    const segments = splitVariantChain(token)
+    const variants = segments.slice(0, -1)
+    for (const segment of variants) {
+      const match = segment.match(GROUP_OR_PEER_HOVER_RE)
+      if (match) {
+        found.push({ token, kind: match[1], groupName: match[2] ?? null })
+        break
+      }
+    }
+  }
+  return found
+}
+
+// The complementary marker: does this element itself carry the bare `group`/`peer` class, or a
+// named `group/<name>`/`peer/<name>` — the class a `group-hover/<name>:`/`peer-hover/<name>:`
+// descendant actually pairs with. `group`/`peer` are themselves bare utility class names (no colon,
+// no variant chain), so this reads the token list directly rather than reusing
+// `splitVariantChain` (nothing to split).
+const GROUP_OR_PEER_MARKER_RE = /^(group|peer)(?:\/([\w-]+))?$/
+
+export function extractGroupOrPeerMarkers(parts) {
+  const found = []
+  for (const token of parts.join(' ').split(/\s+/).filter(Boolean)) {
+    const match = token.match(GROUP_OR_PEER_MARKER_RE)
+    if (match) found.push({ kind: match[1], groupName: match[2] ?? null })
+  }
+  return found
 }
 
 // T671 (row 8, H5, Cause C — this row's own Method section, "8j" below): a *state-conditional*
@@ -897,6 +980,11 @@ export function findLocalElements(
   helperCallSites = new Map(),
 ) {
   const found = []
+  // T675 M2: every `group`/`group/<name>` marker and every `group-hover`/`group-hover/<name>` match
+  // seen anywhere in this file's own JSX, collected across the whole walk (not only from candidates
+  // that end up in `found`) — read once, after the walk, by `creditGroupHoverToAncestors` below.
+  const groupMarkerCandidates = []
+  const groupHoverDescendants = []
   // T595: computed once per file, not per element — `resolveClassParts`'s own top comment states
   // what these two feed and why (an `ElementAccessExpression`'s own object namespace, and the
   // component's default `variant`/`size` two node shapes below resolve against).
@@ -920,6 +1008,28 @@ export function findLocalElements(
           { localConsts: context.localConsts, defaultScope, objectConstMap: constObjectMap },
         )
       : []
+    // T675 M2: captured for *every* lowercase-tag JSX node with a resolved className, independent of
+    // the interactive/pseudo gate a few lines below — a `group/<name>` marker or a
+    // `group-hover/<name>:` utility must be seen even on a plain, non-interactive `<span>` that will
+    // never itself become a Record 1 row (`PlayerResultRow`'s alias, `FavouritesList`'s alias), since
+    // the whole point of the credit pass after this walk is to move that fact onto the ancestor that
+    // does become a row, never to add a row for the descendant itself.
+    const nodeStart = node.getStart(sourceFile)
+    const nodeEnd = node.getEnd()
+    const ownGroupMarkers = extractGroupOrPeerMarkers(parts).filter((m) => m.kind === 'group')
+    if (ownGroupMarkers.length > 0) {
+      groupMarkerCandidates.push({
+        nodeStart,
+        nodeEnd,
+        names: ownGroupMarkers.map((m) => m.groupName),
+      })
+    }
+    const ownGroupHoverMatches = extractGroupOrPeerHoverClasses(parts).filter(
+      (m) => m.kind === 'group',
+    )
+    if (ownGroupHoverMatches.length > 0) {
+      groupHoverDescendants.push({ nodeStart, nodeEnd, matches: ownGroupHoverMatches })
+    }
     const pseudo = extractPseudoClasses(parts)
     // T671: a state-conditional `active` class (`findStateConditionalClass`, above) is read from
     // the *raw* className expression, never `parts` — `parts` is already the flattened,
@@ -1034,11 +1144,63 @@ export function findLocalElements(
       // element's rendered range structurally contains another's (`buildElementMatrix`'s "ancestor
       // of a forced descendant" reason, `Table`'s own `<tr>` around its row link). Not meaningful
       // across two different files.
-      nodeStart: node.getStart(sourceFile),
-      nodeEnd: node.getEnd(),
+      nodeStart,
+      nodeEnd,
     })
   })
+  creditGroupHoverToAncestors(found, groupMarkerCandidates, groupHoverDescendants)
   return found
+}
+
+// T675 M2: the group-hover credit pass itself, run once per file after the walk above has finished
+// (every candidate and every marker must be collected first — a marker later in source order than
+// its own descendant, an unusual but legal JSX shape, must still resolve). For each
+// `group-hover/<name>:` (or bare `group-hover:`) match found on some descendant, finds every
+// `group`/`group/<name>` marker whose own JSX node structurally contains that descendant's
+// (`nodeStart`/`nodeEnd` containment — the same technique `buildElementMatrix`'s "ancestor of a
+// forced descendant" family already uses) with a matching name (`null` for bare `group`/`group-hover`,
+// matched only to `null`, never to a named one — Tailwind itself never pairs a bare `group-hover:`
+// with a named `group/<name>`, the contrast this finding named), and picks the *innermost* one
+// (smallest containing range) so a nested group does not steal a closer group's own credit. The
+// matched utility is appended onto that ancestor's own `hover` field in `found` — never onto the
+// descendant, which never gains a `hover` of its own from this. A descendant whose containing
+// `group/<name>` element never became its own Record 1 row (not itself interactive, no role, no
+// pseudo-class of its own, and not carrying a `group` marker that turned out to matter) has nothing
+// in `found` to credit — left uncredited rather than guessed, the same bar every other pass in this
+// file holds; not a real case yet (every `group/<name>` marker found in this repository, 2026-09-30,
+// sits on the row's own `<a>`, already a Record 1 row for its intrinsic tag alone). A descendant
+// reached only through a *separately declared* helper component invoked as a JSX child — `MatchRow`'s
+// `OutcomeLabel`, whose own `<span>` and whose caller's `<a href="...group/row-link">` are two
+// disjoint JSX trees in the file's own source text, never one nested inside the other — is invisible
+// to this containment test and stays uncredited too; a real, known, reported gap, not a silent one
+// (T675 M2 remediation report), and not fixed here — resolving a JSX composition boundary this way
+// would need call-site substitution this file does not otherwise do anywhere, guessed rather than
+// found.
+function creditGroupHoverToAncestors(found, groupMarkerCandidates, groupHoverDescendants) {
+  for (const descendant of groupHoverDescendants) {
+    for (const match of descendant.matches) {
+      let bestMarker = null
+      for (const marker of groupMarkerCandidates) {
+        if (marker.nodeStart > descendant.nodeStart || marker.nodeEnd < descendant.nodeEnd) continue
+        if (!marker.names.includes(match.groupName)) continue
+        if (
+          !bestMarker ||
+          marker.nodeEnd - marker.nodeStart < bestMarker.nodeEnd - bestMarker.nodeStart
+        ) {
+          bestMarker = marker
+        }
+      }
+      if (!bestMarker) continue
+      const target = found.find(
+        (el) => el.nodeStart === bestMarker.nodeStart && el.nodeEnd === bestMarker.nodeEnd,
+      )
+      if (!target) continue
+      const already = (target.hover ?? '').split(' ').filter(Boolean)
+      if (!already.includes(match.token)) {
+        target.hover = already.length > 0 ? `${target.hover} ${match.token}` : match.token
+      }
+    }
+  }
 }
 
 // --- Record 3: primitive instances --------------------------------------------------------------
@@ -1458,7 +1620,9 @@ export function evaluateGuards(guards, scope) {
 export function unwrapExpression(node) {
   while (
     node &&
-    (ts.isAsExpression(node) || ts.isSatisfiesExpression(node) || ts.isParenthesizedExpression(node))
+    (ts.isAsExpression(node) ||
+      ts.isSatisfiesExpression(node) ||
+      ts.isParenthesizedExpression(node))
   ) {
     node = node.expression
   }

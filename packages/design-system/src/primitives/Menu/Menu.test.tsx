@@ -172,6 +172,37 @@ describe('Menu', () => {
     expect(label.className ?? '').not.toMatch(/group-hover\/menu-item:underline/)
   })
 
+  // §16.2's sibling (structural-tier.md — the hover signal's "loading" exclusion): a loading item
+  // is not `disabled`, so it stays focusable and keyboard-operable, but it must not carry the fill
+  // or the underline signal either — `index.tsx`'s `item.disabled || item.loading` branch guards
+  // both together. An enabled, non-loading sibling in the same render proves the two are told
+  // apart, not merely that loading happens to inherit disabled's own paint.
+  it('excludes the hover fill and underline from a loading item, but keeps both for an enabled sibling', async () => {
+    const user = userEvent.setup()
+    render(
+      <Menu
+        variant="actions"
+        triggerLabel="Manage"
+        items={[
+          { id: 'loading', label: 'Fetching', loading: true },
+          { id: 'ready', label: 'Ready action' },
+        ]}
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: 'Manage' }))
+
+    const loadingItem = screen.getByRole('menuitem', { name: 'Fetching' })
+    expect(loadingItem).toHaveAttribute('aria-busy', 'true')
+    expect(loadingItem.className).not.toMatch(/\bhover:bg-surface-sunken\b/)
+    const loadingLabel = within(loadingItem).getByText('Fetching')
+    expect(loadingLabel.className ?? '').not.toMatch(/group-hover\/menu-item:underline/)
+
+    const readyItem = screen.getByRole('menuitem', { name: 'Ready action' })
+    expect(readyItem.className).toMatch(/\bhover:bg-surface-sunken\b/)
+    const readyLabel = within(readyItem).getByText('Ready action')
+    expect(readyLabel.className).toMatch(/\bgroup-hover\/menu-item:underline\b/)
+  })
+
   it('underlines the footer item directly on its own button on hover (FR-037, 2026-09-28)', async () => {
     const user = userEvent.setup()
     render(

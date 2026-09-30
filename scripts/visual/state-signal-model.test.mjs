@@ -3,12 +3,15 @@
 // hand-written fixtures rather than the real tree.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import path from 'node:path'
 import {
   extractFileStoryStates,
   planSelfRest,
   classifyBucket,
   extractVisualCaptureClip,
   decideSweepGate,
+  buildStoryFileWork,
+  rootDir,
 } from './state-signal-model.mjs'
 
 // A minimal CSF file exercising every shape `planSelfRest` decides between:
@@ -343,27 +346,46 @@ test('classifyBucket: a dimension mismatch is reported rather than silently rati
 })
 
 // --- decideSweepGate -----------------------------------------------------------------------------
-// T675 slice 4b: the sweep is a gate, not only a report. Every one of `classifyBucket`'s eight
-// buckets is exercised once here, on a minimal `{ stateId, bucket }` shape — `decideSweepGate` reads
-// only `bucket`, never the unit-level detail `classifyBucket` itself already owns and this file's
-// own tests above already cover.
+// T675 slice 4b + remediation (M1, reviewer finding by reading): the sweep's own "no allowlist"
+// claim failed open in three ways — a story file with no `meta.id` was only logged and skipped
+// (never reaching this function at all), a not-measurable state story never reached it either, and
+// an empty or short `classified` list passed vacuously. `decideSweepGate` now takes the whole shape
+// `run.mjs`'s own sweep produces — `classified`, `measurableCount`, `notMeasurable`,
+// `unkeyableFiles` — and fails on all four, named. Every one of `classifyBucket`'s eight buckets is
+// still exercised once here, on a minimal `{ stateId, bucket }` shape (`decideSweepGate` reads only
+// `bucket` from a classified entry, never the unit-level detail `classifyBucket` itself already owns
+// and this file's own tests above already cover) — `gate(...)` below supplies `measurableCount` as
+// `classified.length` for every one of those so only the bucket question is under test, not (c).
 function entry(stateId, bucket) {
   return { stateId, bucket }
 }
 
+// Matches `classified` 1:1 for `measurableCount` unless a test overrides it — every test below that
+// is not itself testing (c) wants the count question answered "yes" automatically, the same way the
+// pre-remediation tests implicitly assumed it by never mentioning it at all.
+function gate(classified, overrides = {}) {
+  return decideSweepGate({
+    classified,
+    measurableCount: classified.length,
+    notMeasurable: [],
+    unkeyableFiles: [],
+    ...overrides,
+  })
+}
+
 test('decideSweepGate: defended and defended-without-clip both pass', () => {
   const classified = [entry('a', 'defended'), entry('b', 'defended-without-clip')]
-  assert.deepEqual(decideSweepGate(classified), { pass: true, failures: [] })
+  assert.deepEqual(gate(classified), { pass: true, failures: [] })
 })
 
 test('decideSweepGate: dimension-mismatch passes — a size change fails toHaveScreenshot by construction', () => {
   const classified = [entry('a', 'dimension-mismatch')]
-  assert.deepEqual(decideSweepGate(classified), { pass: true, failures: [] })
+  assert.deepEqual(gate(classified), { pass: true, failures: [] })
 })
 
 test('decideSweepGate: zero and zero-despite-clip both fail, named', () => {
   const classified = [entry('a', 'zero'), entry('b', 'zero-despite-clip')]
-  const result = decideSweepGate(classified)
+  const result = gate(classified)
   assert.equal(result.pass, false)
   assert.deepEqual(
     result.failures.map((f) => f.stateId),
@@ -373,7 +395,7 @@ test('decideSweepGate: zero and zero-despite-clip both fail, named', () => {
 
 test('decideSweepGate: clip-fixes and clipped-still-under-threshold both fail — a real signal that still does not clear the comparator', () => {
   const classified = [entry('a', 'clip-fixes'), entry('b', 'clipped-still-under-threshold')]
-  const result = decideSweepGate(classified)
+  const result = gate(classified)
   assert.equal(result.pass, false)
   assert.deepEqual(
     result.failures.map((f) => f.stateId),
@@ -383,7 +405,7 @@ test('decideSweepGate: clip-fixes and clipped-still-under-threshold both fail �
 
 test('decideSweepGate: state-not-reproduced fails — the sweep could not confirm the frame it measured', () => {
   const classified = [entry('a', 'state-not-reproduced')]
-  const result = decideSweepGate(classified)
+  const result = gate(classified)
   assert.equal(result.pass, false)
   assert.deepEqual(
     result.failures.map((f) => f.stateId),
@@ -398,7 +420,7 @@ test('decideSweepGate: one failing story fails the whole gate, alongside any num
     entry('bad', 'zero'),
     entry('good-3', 'defended-without-clip'),
   ]
-  const result = decideSweepGate(classified)
+  const result = gate(classified)
   assert.equal(result.pass, false)
   assert.deepEqual(
     result.failures.map((f) => f.stateId),
@@ -406,6 +428,182 @@ test('decideSweepGate: one failing story fails the whole gate, alongside any num
   )
 })
 
-test('decideSweepGate: empty input passes vacuously — nothing measured is nothing left undefended', () => {
-  assert.deepEqual(decideSweepGate([]), { pass: true, failures: [] })
+// (a) M1: a story file with no literal `meta.id` used to be only logged and skipped by the caller
+// (`run.mjs`'s own `buildStateSignalWork`, pre-remediation) — it never reached `decideSweepGate` at
+// all, so a whole file's worth of state stories could vanish from the sweep silently. Now
+// `unkeyableFiles` (built by `buildStoryFileWork`, see its own test below) is an unconditional,
+// named gate failure.
+test('decideSweepGate: an unkeyable story file fails the gate, named by file — even with an otherwise-clean classified set', () => {
+  const classified = [entry('a', 'defended')]
+  const result = gate(classified, {
+    unkeyableFiles: [{ file: 'src/primitives/Ghost/Ghost.stories.tsx', detail: 'no meta.id' }],
+  })
+  assert.equal(result.pass, false)
+  const failure = result.failures.find((f) => f.kind === 'unkeyable-file')
+  assert.ok(failure, 'expected an unkeyable-file failure')
+  assert.equal(failure.file, 'src/primitives/Ghost/Ghost.stories.tsx')
+  assert.match(failure.detail, /no meta\.id/)
+})
+
+// (b) M1: a not-measurable state story used to never reach this function — only `measurable`'s
+// eventual classifications did. Per this finding's own instruction: `planSelfRest`'s one real
+// "not measurable" reason for an actual state story, `'play-focus-target-unresolved'`, is not a
+// by-design exemption (that function's own comment calls it a real gap this sweep cannot confirm
+// past), so there is no allowlist here — every `notMeasurable` entry fails, named with its reason.
+test('decideSweepGate: a not-measurable state story fails the gate, named with its reason — even with an otherwise-clean classified set', () => {
+  const classified = [entry('a', 'defended')]
+  const result = gate(classified, {
+    notMeasurable: [
+      {
+        stateId: 'primitives-widget--mystery-focus',
+        file: 'src/primitives/Widget/Widget.stories.tsx',
+        reason: 'play-focus-target-unresolved',
+        detail: "MysteryFocus's own play() calls .focus() on a target this sweep cannot resolve.",
+      },
+    ],
+  })
+  assert.equal(result.pass, false)
+  const failure = result.failures.find((f) => f.kind === 'not-measurable')
+  assert.ok(failure, 'expected a not-measurable failure')
+  assert.equal(failure.stateId, 'primitives-widget--mystery-focus')
+  assert.equal(failure.reason, 'play-focus-target-unresolved')
+  assert.match(failure.detail, /MysteryFocus/)
+})
+
+// (c-empty) M1: `decideSweepGate([])` used to pass vacuously — "nothing measured" and "everything
+// measured passed" were indistinguishable. Replaces the old
+// "empty input passes vacuously" test outright, per this finding's own instruction.
+test('decideSweepGate: an empty classified list fails — nothing measured is not nothing to prove', () => {
+  const result = decideSweepGate({
+    classified: [],
+    measurableCount: 0,
+    notMeasurable: [],
+    unkeyableFiles: [],
+  })
+  assert.equal(result.pass, false)
+  assert.ok(
+    result.failures.some((f) => f.kind === 'no-classifications'),
+    'expected a no-classifications failure',
+  )
+})
+
+// (c-count-mismatch) M1: a measurable pair that produced no classification (a Playwright test that
+// crashed, for instance) used to be invisible — `decideSweepGate` read only `classified`, with no
+// way to know how many pairs had been planned in the first place.
+test('decideSweepGate: classified shorter than measurableCount fails — a measurable pair produced no classification', () => {
+  const classified = [entry('a', 'defended')]
+  const result = decideSweepGate({
+    classified,
+    measurableCount: 2,
+    notMeasurable: [],
+    unkeyableFiles: [],
+  })
+  assert.equal(result.pass, false)
+  const failure = result.failures.find((f) => f.kind === 'measurable-count-mismatch')
+  assert.ok(failure, 'expected a measurable-count-mismatch failure')
+  assert.match(failure.detail, /2 measurable pair\(s\) were planned but only 1/)
+})
+
+test('decideSweepGate: classified longer than measurableCount also fails — the count must match exactly', () => {
+  const classified = [entry('a', 'defended'), entry('b', 'defended')]
+  const result = decideSweepGate({
+    classified,
+    measurableCount: 1,
+    notMeasurable: [],
+    unkeyableFiles: [],
+  })
+  assert.equal(result.pass, false)
+  assert.ok(result.failures.some((f) => f.kind === 'measurable-count-mismatch'))
+})
+
+// The contrast: a full, matching, all-defended classification — no unkeyable file, no not-measurable
+// story, `classified.length === measurableCount` — passes cleanly.
+test('decideSweepGate: a full, matching, all-defended classification passes', () => {
+  const classified = [
+    entry('a', 'defended'),
+    entry('b', 'defended-without-clip'),
+    entry('c', 'dimension-mismatch'),
+  ]
+  const result = decideSweepGate({
+    classified,
+    measurableCount: classified.length,
+    notMeasurable: [],
+    unkeyableFiles: [],
+  })
+  assert.deepEqual(result, { pass: true, failures: [] })
+})
+
+// --- buildStoryFileWork ----------------------------------------------------------------------
+// T675 remediation (M1, finding (a)): the pure per-file decision `run.mjs`'s own file-scan loop
+// needs, extracted so "a story file with no literal meta.id" is provable at the unit level rather
+// than only by reading `run.mjs`'s own try/catch.
+
+test('buildStoryFileWork: a file with no literal meta.id is reported as unkeyable, not silently skipped', () => {
+  const source = `
+import type { Meta, StoryObj } from '@storybook/react-vite'
+import { Widget } from './index'
+
+const meta: Meta<typeof Widget> = {
+  title: 'Primitives/Widget',
+  component: Widget,
+}
+
+export default meta
+type Story = StoryObj<typeof Widget>
+
+export const Hover: Story = {
+  parameters: { visualForceState: { state: 'hover', role: 'button' } },
+}
+`
+  const filePath = path.join(rootDir, 'src/primitives/Widget/Widget.stories.tsx')
+  const work = buildStoryFileWork(filePath, source)
+  assert.ok(work.unkeyable, 'expected an unkeyable result')
+  assert.equal(work.unkeyable.file, 'src/primitives/Widget/Widget.stories.tsx')
+  assert.match(work.unkeyable.detail, /no string-literal "id"/)
+  assert.equal(work.measurable, undefined)
+  assert.equal(work.notMeasurable, undefined)
+})
+
+test('buildStoryFileWork: a keyable file splits its state stories into measurable and notMeasurable', () => {
+  const source = `
+import type { Meta, StoryObj } from '@storybook/react-vite'
+import { expect, within } from 'storybook/test'
+import { Widget } from './index'
+
+const meta: Meta<typeof Widget> = {
+  id: 'primitives-widget',
+  title: 'Primitives/Widget',
+  component: Widget,
+}
+
+export default meta
+type Story = StoryObj<typeof Widget>
+
+export const Hover: Story = {
+  parameters: { visualForceState: { state: 'hover', role: 'button' } },
+}
+
+export const MysteryFocus: Story = {
+  play: async ({ canvasElement }) => {
+    const el = canvasElement.querySelector('.mystery')
+    el.focus()
+  },
+}
+
+export const Primary: Story = {
+  args: { variant: 'primary' },
+}
+`
+  const filePath = path.join(rootDir, 'src/primitives/Widget/Widget.stories.tsx')
+  const work = buildStoryFileWork(filePath, source)
+  assert.equal(work.unkeyable, undefined)
+  assert.deepEqual(
+    work.measurable.map((m) => m.exportName),
+    ['Hover'],
+  )
+  assert.deepEqual(
+    work.notMeasurable.map((m) => m.exportName),
+    ['MysteryFocus'],
+  )
+  assert.equal(work.notMeasurable[0].reason, 'play-focus-target-unresolved')
 })

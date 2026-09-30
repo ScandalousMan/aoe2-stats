@@ -15,7 +15,7 @@
 // baselines.yml` used to, before this same file transport replaced its batching too).
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
-import { test, expect, type Route } from '@playwright/test'
+import { test, expect } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 // `.cjs`, not `.mjs` — see that file's header comment. An `.mjs` sibling imported from here used to
 // crash on CI (never locally): Playwright transpiles this spec to CommonJS, and a transpiled `.mjs`
@@ -37,6 +37,10 @@ import {
   readForceState,
   resolveCaptureClip,
 } from './story-render'
+// T675 (slice 2/N remediation, M4(a) on PR #105): the Steam avatar CDN stub used to be defined
+// inline here; factored into a shared module so `state-signal-sweep.spec.ts` installs the exact
+// same stub rather than a second copy — see that module's own header.
+import { installSteamAvatarStub } from './fixtures/avatar-stub'
 
 // Playwright loads this file as CommonJS unless the nearest package.json sets `"type": "module"`
 // (playwright.config.ts's own comment) — `__dirname` is what stays valid either way.
@@ -67,26 +71,6 @@ if (existsSync(storybookIndexPath)) {
 // renders every story's full, uncollapsed structure rather than whatever a narrower breakpoint's
 // structural swap (FR-019) produces.
 const AXE_SCAN_WIDTH = 1280
-
-// `player-avatar.md` §9 "the visual baseline must not depend on Steam": `PlayerAvatar` builds
-// `https://avatars.steamstatic.com/<hash>_full.jpg` itself (that spec §2b), so any story that
-// composes a loaded avatar fires a real request to that host unless it is fulfilled here from a
-// local fixture. Applied unconditionally to every story in the loop below rather than only to the
-// ones known to carry an avatar — this file stays "dumb" (see the header comment above) and never
-// has to learn which story ids need which stub. Harmless for a story that never hits the host.
-const STEAM_AVATAR_FIXTURE = readFileSync(
-  path.join(rootDir, 'tests/visual/fixtures/steam-avatar.jpg'),
-)
-
-// The one hash `PlayerAvatar.stories.tsx` and `ProfileSummary.stories.tsx` both call
-// `FIXTURE_HASH` / `FIXTURE_AVATAR_HASH` — a "Loaded" story is only real if it is genuinely a
-// loaded image, so this is the only path the stub answers with the fixture above. Everything else
-// under this host (`PlayerAvatar`'s `FailedHash` story deliberately builds a URL from a hash the
-// CDN would never serve) is answered with a 404, so `onError` still fires and `FailedHash` stays
-// pixel-identical to the empty-hash story — the one identity `player-avatar.md` §9 exists to
-// prove. A stub that fulfilled every request on this host indiscriminately would make that story
-// indistinguishable from `Loaded` and quietly retire the assertion it stands for.
-const STEAM_AVATAR_FIXTURE_PATH = '/0123456789abcdef0123456789abcdef01234567_full.jpg'
 
 type Theme = 'light' | 'dark'
 
@@ -120,13 +104,7 @@ const determinismMode = process.env.RUN_DETERMINISM === '1'
 
 for (const { id, theme, width, fullPage } of stories) {
   test(`${id} matches its visual baseline (${theme}, ${width})`, async ({ page }, testInfo) => {
-    await page.route('https://avatars.steamstatic.com/**', (route: Route) => {
-      const requestUrl = new URL(route.request().url())
-      if (requestUrl.pathname === STEAM_AVATAR_FIXTURE_PATH) {
-        return route.fulfill({ status: 200, contentType: 'image/jpeg', body: STEAM_AVATAR_FIXTURE })
-      }
-      return route.fulfill({ status: 404 })
-    })
+    await installSteamAvatarStub(page)
     // Width is what collapses a table to a stacked layout at the `md` breakpoint; height's only
     // job here is to stay identical to what every pre-existing baseline was already captured at,
     // because a `fullPage: false` (element-clipped) screenshot is height-independent but a

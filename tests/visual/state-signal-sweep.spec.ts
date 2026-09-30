@@ -3,10 +3,12 @@
 // ever points Playwright at this file under its own `--state-signal-sweep` flag, which is also the
 // only thing that ever writes `VISUAL_STATE_SWEEP_FILE` — an unset var here (any other invocation
 // of this config) falls back to an empty work-item list, matching `stories.spec.ts`'s own
-// `VISUAL_STORIES_FILE` convention. This is a *report*, not a gate, in this slice: it renders, it
-// diffs, it writes raw numbers to `test-results/state-signal-sweep/raw/` for `run.mjs` to classify
-// once the whole run finishes — see this task's own text in tasks.md for why turning this into a
-// gate is a later slice's job, not this one's.
+// `VISUAL_STORIES_FILE` convention. This is now a *gate*, run nightly under
+// `--state-signal-sweep` (`scripts/visual/run.mjs`): it renders, it diffs, it writes raw numbers to
+// `test-results/state-signal-sweep/raw/` for `run.mjs` to classify once the whole run finishes, and
+// that classification fails the nightly job on any state `classifyBucket` reports as a comparator
+// blind spot — see `playwright.config.ts`'s own comment on `threshold` and this task's own text in
+// tasks.md for the history of why this started as a report before becoming the gate it is now.
 //
 // **Self-pairing: a state story's resting counterpart is itself, not a sibling.** Slice 1 paired a
 // state story against a *different* story sharing the same resolved args/`play`/`render`, which left
@@ -84,7 +86,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { createRequire } from 'node:module'
-import { test, type Locator, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page } from '@playwright/test'
 import { PNG } from 'pngjs'
 import {
   applyForceState,
@@ -92,7 +94,12 @@ import {
   readCaptureClip,
   readForceState,
   resolveCaptureClip,
+  type VisualCaptureClip,
+  type VisualForceState,
 } from './story-render'
+// T675 remediation (M4(a) on PR #105): the same Steam avatar CDN stub `stories.spec.ts` installs —
+// see that module's own header for why a second, separate definition is not an option.
+import { installSteamAvatarStub, STEAM_AVATAR_FIXTURE_PATH } from './fixtures/avatar-stub'
 
 const rootDir = path.resolve(__dirname, '..', '..')
 const rawResultsDir = path.join(rootDir, 'test-results', 'state-signal-sweep', 'raw')
@@ -214,11 +221,47 @@ interface UnitResult {
 // takes at that width, all found running this exact check). None is a real reproduction failure; all
 // are the same noise `BASELINE_MAX_DIFF_RATIO` already exists to absorb, but a *pixel* ratio can
 // never even be computed when the two buffers are different sizes to begin with — `imageComparator`
-// refuses to diff them at all. A dimension gap at or under `DIMENSION_TOLERANCE_PX` is treated as
-// that same noise (a match, without attempting a pixel diff a differently-sized pair cannot give an
-// honest one for); a larger gap is still a definitive mismatch — the two are no longer arguably the
-// same frame.
-const DIMENSION_TOLERANCE_PX = 30
+// refuses to diff them at all. A dimension gap within tolerance is treated as that same noise (a
+// match, without attempting a pixel diff a differently-sized pair cannot give an honest one for); a
+// larger gap is still a definitive mismatch — the two are no longer arguably the same frame.
+//
+// A *flat* pixel tolerance (the previous `DIMENSION_TOLERANCE_PX = 30`) cannot do this job once a
+// clip is small: T675 slice 5 added clips as tiny as 49×20 (Menu `Hover`) and 75×24 (Dialog
+// `Hover`), where 30px absorbs almost any size at all — a 49×20 state frame against a 70×30
+// baseline (widthDiff 21, heightDiff 10, both <= 30) read as "matches", the exact "wrong frame of
+// almost any size counts as reproduced" gap review finding M5 named. `DIMENSION_TOLERANCE_RATIO`
+// scales with the frame instead — `max(2px, 6% of the larger side)` — chosen, not merely guessed,
+// against the three documented noise readings just above, the only real evidence this file has for
+// what the tolerance needs to absorb: the tightest is Menu/PrivacyNotice's own ~0.96% (1/104,
+// 6/624), the loosest is Footer's own ~5.1% (20/393) — 6% clears all three with margin and is still
+// nowhere near the ~30-33% both dimensions of the 49×20-vs-70×30 case are off by, which is the
+// actual boundary this ratio needs to sit on the right side of. The 2px floor keeps a tiny clip's
+// own 6% (little more than 1px on a 20px-tall frame) from being tighter than any of those three
+// confirmed-harmless readings.
+const DIMENSION_TOLERANCE_RATIO = 0.06
+const DIMENSION_TOLERANCE_FLOOR_PX = 2
+
+// Exported for a browser-less unit test (`story-render.spec.ts`'s own pattern: a pure function,
+// tested against synthetic dimensions, no page and no story). Kept free of any PNG/file-reading
+// concern so it is provable on its own.
+export function dimensionsWithinTolerance(
+  aWidth: number,
+  aHeight: number,
+  bWidth: number,
+  bHeight: number,
+): boolean {
+  const widthTolerance = Math.max(
+    DIMENSION_TOLERANCE_FLOOR_PX,
+    DIMENSION_TOLERANCE_RATIO * Math.max(aWidth, bWidth),
+  )
+  const heightTolerance = Math.max(
+    DIMENSION_TOLERANCE_FLOOR_PX,
+    DIMENSION_TOLERANCE_RATIO * Math.max(aHeight, bHeight),
+  )
+  return (
+    Math.abs(aWidth - bWidth) <= widthTolerance && Math.abs(aHeight - bHeight) <= heightTolerance
+  )
+}
 
 function stateMatchesCommittedBaseline(
   stateBuffer: Buffer,
@@ -233,7 +276,14 @@ function stateMatchesCommittedBaseline(
   const baselineImage = PNG.sync.read(baselineBuffer)
   const widthDiff = Math.abs(stateImage.width - baselineImage.width)
   const heightDiff = Math.abs(stateImage.height - baselineImage.height)
-  if (widthDiff > DIMENSION_TOLERANCE_PX || heightDiff > DIMENSION_TOLERANCE_PX) {
+  if (
+    !dimensionsWithinTolerance(
+      stateImage.width,
+      stateImage.height,
+      baselineImage.width,
+      baselineImage.height,
+    )
+  ) {
     return false
   }
   if (widthDiff !== 0 || heightDiff !== 0) {
@@ -269,6 +319,33 @@ async function captureNow(
     return page.screenshot()
   }
   return root.screenshot()
+}
+
+// Captures a `'forced'` work item's *state* frame: drives the real pseudo-class
+// (`story-render.ts`'s own `applyForceState`), captures, then releases a held mouse button in a
+// `finally` — even when the capture itself throws — so that `active`'s own `page.mouse.down()`
+// never stays held across the remaining units and navigations this same test still has to run
+// (M4(b), T675's own comparator sweep review on PR #105: the discarded `releaseMouseAfterCapture`
+// left every `active` story's mouse button held past its own capture, contaminating every unit and
+// navigation after it in the same test). Exported so a `setContent` page with no story and no
+// Storybook build can prove the release fires, the same pattern `story-render.spec.ts` uses for its
+// own DOM-only checks on `story-render.ts` itself.
+export async function captureForcedState(
+  page: Page,
+  root: Locator,
+  id: string,
+  forceState: VisualForceState,
+  clip: VisualCaptureClip | null,
+  opts: { width: number; height: number; fullPage: boolean },
+): Promise<Buffer> {
+  const { releaseMouseAfterCapture } = await applyForceState(page, root, forceState, opts)
+  try {
+    return await captureNow(page, root, id, clip, opts.fullPage)
+  } finally {
+    if (releaseMouseAfterCapture) {
+      await page.mouse.up()
+    }
+  }
 }
 
 // The rest, for one {theme, width} unit: an unplayed render, *unless* this story's own `play()` is
@@ -342,6 +419,10 @@ async function captureRest(
 
 for (const item of workItems) {
   test(`${item.stateId} (comparator sweep, self-rest, ${item.mode})`, async ({ page }) => {
+    // M4(a): the same stub `stories.spec.ts` installs — `ProfileSummary`'s state stories (fixture
+    // `avatarHash`) build a real `avatars.steamstatic.com` URL, and this sweep renders every story
+    // the same way `stories.spec.ts` does, so it needs the identical stub rather than none at all.
+    await installSteamAvatarStub(page)
     const fullPage = isFullPage(item.stateId)
     const results: UnitResult[] = []
 
@@ -360,6 +441,7 @@ for (const item of workItems) {
         // already *is* the state.
         const stateRoot = await gotoAndWaitForStorySettled(page, item.stateId, theme, width, height)
         const stateClip = await readCaptureClip(page, item.stateId)
+        let stateBuffer: Buffer
         if (item.mode === 'forced') {
           const forceState = await readForceState(page, item.stateId)
           if (!forceState) {
@@ -369,9 +451,21 @@ for (const item of workItems) {
                 'the live story have drifted apart.',
             )
           }
-          await applyForceState(page, stateRoot, forceState, { width, height, fullPage })
+          stateBuffer = await captureForcedState(
+            page,
+            stateRoot,
+            item.stateId,
+            forceState,
+            stateClip,
+            {
+              width,
+              height,
+              fullPage,
+            },
+          )
+        } else {
+          stateBuffer = await captureNow(page, stateRoot, item.stateId, stateClip, fullPage)
         }
-        const stateBuffer = await captureNow(page, stateRoot, item.stateId, stateClip, fullPage)
 
         const stateMatchesBaseline = stateMatchesCommittedBaseline(
           stateBuffer,
@@ -433,3 +527,91 @@ for (const item of workItems) {
     )
   })
 }
+
+// T675 remediation on PR #105 (findings M4(a), M4(b), M5) — unit coverage for the three pieces of
+// this file the review found untested. `workItems` is empty in this run (`VISUAL_STATE_SWEEP_FILE`
+// unset here), so the tests below register unconditionally rather than inside the `for` loop above.
+test.describe('state-signal-sweep remediation (M4, M5)', () => {
+  // M5: `dimensionsWithinTolerance` needs no browser, no story and no PNG — a pure function over
+  // four numbers, the same shape `story-render.spec.ts` already uses for `resolveClipPartRect`.
+  test.describe('dimensionsWithinTolerance', () => {
+    test('RED: a 49x20 state frame against a 70x30 baseline is not noise — the old flat 30px tolerance called this a match (widthDiff 21 <= 30, heightDiff 10 <= 30)', () => {
+      expect(dimensionsWithinTolerance(49, 20, 70, 30)).toBe(false)
+    })
+
+    test('CONTROL: a 1px anti-aliasing wobble on a 400x300 frame is still noise, so the caller goes on to a real pixel comparison', () => {
+      expect(dimensionsWithinTolerance(400, 300, 399, 300)).toBe(true)
+    })
+
+    test('absorbs the documented Menu TriggerFocusVisible noise (103 vs 104 width, ~0.96%)', () => {
+      expect(dimensionsWithinTolerance(103, 50, 104, 50)).toBe(true)
+    })
+
+    test('absorbs the documented PrivacyNotice Hover noise (624 vs 618 width, ~0.96%)', () => {
+      expect(dimensionsWithinTolerance(624, 40, 618, 40)).toBe(true)
+    })
+
+    test('absorbs the documented Footer Hover noise (393 vs 373 height, ~5.1%, the loosest of the three)', () => {
+      expect(dimensionsWithinTolerance(375, 393, 375, 373)).toBe(true)
+    })
+
+    test('a dimension gap past the tolerance on only one axis is still a mismatch', () => {
+      expect(dimensionsWithinTolerance(400, 20, 400, 30)).toBe(false)
+    })
+  })
+
+  // M4(b): `captureForcedState` must release a held mouse button after capturing, in a `finally`,
+  // even though the capture it wraps never throws in this happy-path proof — the `finally` is what
+  // makes the release unconditional on the capture's own outcome, not a claim this test alone can
+  // distinguish from a plain post-capture call; the discard this finding describes never released
+  // at all, which is the gap this proves closed.
+  test('captureForcedState releases a held mouse button after capturing an "active" force', async ({
+    page,
+  }) => {
+    await page.setContent(`
+      <button id="target" style="width: 80px; height: 30px;">Click</button>
+      <script>
+        window.__mouseReleased = false
+        document.addEventListener('mouseup', () => { window.__mouseReleased = true })
+      </script>
+    `)
+    const root = page.locator('body')
+
+    await captureForcedState(page, root, 'test-story', { state: 'active', role: 'button' }, null, {
+      width: 400,
+      height: 300,
+      fullPage: false,
+    })
+
+    const released = await page.evaluate(
+      () => (window as unknown as { __mouseReleased: boolean }).__mouseReleased,
+    )
+    expect(released).toBe(true)
+  })
+
+  // M4(a): the stub answers the fixture hash with the local fixture and every other path on the
+  // same host with a 404 — never lets a request on this host reach the real network, which is what
+  // this test actually proves (a real CDN round-trip would time out or fail in this sandboxed run,
+  // never come back 200/404 on schedule).
+  test('installSteamAvatarStub fulfills the fixture hash and never reaches the real Steam CDN', async ({
+    page,
+  }) => {
+    await installSteamAvatarStub(page)
+    await page.setContent('<html><body>sweep-style render</body></html>')
+
+    const loaded = await page.evaluate(async (path) => {
+      const response = await fetch(`https://avatars.steamstatic.com${path}`)
+      return { status: response.status, contentType: response.headers.get('content-type') }
+    }, STEAM_AVATAR_FIXTURE_PATH)
+    expect(loaded.status).toBe(200)
+    expect(loaded.contentType).toBe('image/jpeg')
+
+    const unknownHash = await page.evaluate(async () => {
+      const response = await fetch(
+        'https://avatars.steamstatic.com/ffffffffffffffffffffffffffffffffffffffff_full.jpg',
+      )
+      return response.status
+    })
+    expect(unknownHash).toBe(404)
+  })
+})

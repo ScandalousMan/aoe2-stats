@@ -467,6 +467,14 @@ jobs:
           tests/visual/route-touch-footprint.spec.ts
           tests/visual/route-reduced-motion.spec.ts
           tests/visual/fixtures/
+      # The sweep's own harness units (review of #105): clip resolution (`story-render.spec.ts`,
+      # H1), the baseline-reproduction tolerance, mouse release after a forced `active` and the
+      # avatar stub (`state-signal-sweep.spec.ts`'s remediation block, M4/M5). Page-level and
+      # fast; the sweep itself stays nightly. A pull request that breaks one learns it here.
+      - run: pnpm exec playwright test tests/visual/story-render.spec.ts
+      - run: >-
+          pnpm exec playwright test tests/visual/state-signal-sweep.spec.ts
+          --grep "state-signal-sweep remediation"
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

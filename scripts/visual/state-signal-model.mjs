@@ -382,9 +382,128 @@ const SWEEP_GATE_FAILING_BUCKETS = new Set([
   'state-not-reproduced',
 ])
 
-export function decideSweepGate(classified) {
-  const failures = classified.filter((c) => SWEEP_GATE_FAILING_BUCKETS.has(c.bucket))
+// T675 remediation (M1): the sweep used to fail open in three ways that made "no allowlist" untrue
+// in practice, all closed here rather than papered over with an allowlist per this finding's own
+// instruction:
+//   (a) a story file this sweep cannot key at all (`extractFileStoryStates` throws — no literal
+//       `meta.id`) was only logged and skipped by the caller, never turned into a result this
+//       function could see. Now the caller (`buildStoryFileWork` below) turns that throw into an
+//       `unkeyableFiles` entry, and every one of those is an unconditional gate failure, named by
+//       file.
+//   (b) a not-measurable state story (`planSelfRest`'s own `measurable: false`) never reached this
+//       function at all — the caller only ever passed `measurable`'s eventual classifications.
+//       There is no genuinely-by-design "not measurable" case in this tree today: the one static
+//       reason `planSelfRest` can return for an actual state story, `'play-focus-target-unresolved'`,
+//       is (per that function's own comment) a real gap this sweep cannot confirm past, not an
+//       intentional exemption — so every `notMeasurable` entry fails here too, named with its own
+//       reason.
+//   (c) `classified` reaching this function empty, or shorter/longer than the `measurable` list the
+//       caller planned, used to be invisible: the old `decideSweepGate(classified)` read only
+//       `classified` itself, so "nothing was classified at all" and "every measured pair classified
+//       cleanly" looked identical (`pass: true`) — the exact shape a crashed Playwright render (a
+//       measurable pair that planned a classification and produced none) hid behind. Both are gate
+//       failures now, checked before any individual bucket.
+export function decideSweepGate({ classified, measurableCount, notMeasurable = [], unkeyableFiles = [] }) {
+  const failures = []
+
+  for (const u of unkeyableFiles) {
+    failures.push({
+      kind: 'unkeyable-file',
+      stateId: null,
+      bucket: 'unkeyable-file',
+      file: u.file,
+      detail: u.detail,
+    })
+  }
+
+  for (const nm of notMeasurable) {
+    failures.push({
+      kind: 'not-measurable',
+      stateId: nm.stateId,
+      bucket: `not-measurable:${nm.reason}`,
+      file: nm.file,
+      reason: nm.reason,
+      detail: nm.detail,
+    })
+  }
+
+  if (classified.length === 0) {
+    failures.push({
+      kind: 'no-classifications',
+      stateId: null,
+      bucket: 'no-classifications',
+      file: null,
+      detail:
+        'classified is empty — the gate cannot pass vacuously. Either no state story was ' +
+        'discovered at all (a discovery defect) or every measurable pair failed to produce a ' +
+        'classification.',
+    })
+  } else if (classified.length !== measurableCount) {
+    failures.push({
+      kind: 'measurable-count-mismatch',
+      stateId: null,
+      bucket: 'measurable-count-mismatch',
+      file: null,
+      detail:
+        `${measurableCount} measurable pair(s) were planned but only ${classified.length} were ` +
+        'classified — a measurable pair that produced no classification (e.g. a Playwright test ' +
+        'that crashed) must fail, not be silently dropped.',
+    })
+  }
+
+  for (const c of classified) {
+    if (SWEEP_GATE_FAILING_BUCKETS.has(c.bucket)) {
+      failures.push({ kind: 'classification', ...c })
+    }
+  }
+
   return { pass: failures.length === 0, failures }
+}
+
+// T675 remediation (M1): the pure per-file decision `run.mjs`'s own file-scan loop needs —
+// extracted here so it is unit-testable without the filesystem/browser discipline this module
+// already holds everywhere else (see this file's own header comment). Takes a file path and its
+// already-read source (the caller's job, per that same discipline) and returns either:
+//   - `{ unkeyable: { file, detail } }` when `extractFileStoryStates` cannot key the file at all (no
+//     literal `meta.id`) — this used to be swallowed by a `try`/`catch`/`continue` in `run.mjs` with
+//     nothing but a log line to show for it; now it is a value the caller collects and the gate
+//     above can fail on, named.
+//   - `{ measurable: [...], notMeasurable: [...] }` otherwise — the same two lists
+//     `buildStateSignalWork` (`run.mjs`) used to build inline.
+export function buildStoryFileWork(filePath, source) {
+  let result
+  try {
+    result = extractFileStoryStates(filePath, source)
+  } catch (err) {
+    return { unkeyable: { file: path.relative(rootDir, filePath), detail: err.message } }
+  }
+  const measurable = []
+  const notMeasurable = []
+  if (result) {
+    const relFile = path.relative(rootDir, filePath)
+    for (const story of result.stories) {
+      if (!story.isStateStory) continue
+      const plan = planSelfRest(story)
+      if (plan.measurable) {
+        measurable.push({
+          stateId: story.id,
+          exportName: story.exportName,
+          mode: plan.mode,
+          hasClip: story.clip !== null,
+          file: relFile,
+        })
+      } else {
+        notMeasurable.push({
+          stateId: story.id,
+          exportName: story.exportName,
+          file: relFile,
+          reason: plan.reason,
+          detail: plan.detail,
+        })
+      }
+    }
+  }
+  return { measurable, notMeasurable }
 }
 
 // --- Discovery ---------------------------------------------------------------------------------

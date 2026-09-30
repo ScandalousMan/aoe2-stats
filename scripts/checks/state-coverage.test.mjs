@@ -977,6 +977,108 @@ test('extractPseudoClasses captures focus: separately from focus-visible:, with 
   assert.equal(result['focus-visible'], 'focus-visible:outline-2 focus-visible:outline-focus-ring')
 })
 
+// --- T675 M2 (reviewer finding, confirmed by running `extractPseudoClasses` directly): the old
+// regex only ever matched `${prefix}:` at the very start of a class token (immediately after
+// whitespace or string-start) — a real Tailwind variant chain with another modifier ahead of the
+// pseudo-class (`enabled:hover:ring-1`, `SearchBox`'s own input; `focus-visible:enabled:outline-2`,
+// reverse order) never matched at all, silently reading as `null` ("no hover") even though the
+// class genuinely paints one. Fixed by scanning every colon-delimited variant segment of each class
+// token for an exact match, not only the first. ---------------------------------------------------
+
+test('extractPseudoClasses finds hover behind a leading enabled: modifier (SearchBox/ThirdPartyObjectionForm shape)', () => {
+  const result = extractPseudoClasses(['enabled:hover:ring-1 enabled:hover:border-border-strong'])
+  assert.equal(result.hover, 'enabled:hover:ring-1 enabled:hover:border-border-strong')
+})
+
+test('extractPseudoClasses finds focus-visible even when another modifier follows it in the chain (reverse order)', () => {
+  const result = extractPseudoClasses(['focus-visible:enabled:outline-2'])
+  assert.equal(result['focus-visible'], 'focus-visible:enabled:outline-2')
+})
+
+// Contrast (required by the same finding): a plain word that merely contains "hover" as a substring
+// is not a variant at all, and an arbitrary-value data attribute that merely names "hover" inside
+// its brackets is not the `hover:` pseudo-class either — both must stay `null`.
+test('extractPseudoClasses contrast: "hoverable" and a data-[hover=true]: arbitrary variant are never read as hover', () => {
+  const result = extractPseudoClasses(['hoverable', 'data-[hover=true]:underline'])
+  assert.equal(result.hover, null)
+})
+
+// The absence case the reviewer named directly: once the class is actually read, an element with a
+// real (if undetected-until-now) hover utility and no story forcing Hover must render as
+// `<class> → none` — a real, honest gap — never the falsely reassuring `none → none`, which reads as
+// "nothing paints and nothing was missed" when something does paint and was.
+test('renderRecord1: an enabled:hover:-only element with no covering story reads as "<class> → none", never "none → none"', () => {
+  const source = `const el = <button className="enabled:hover:bg-surface-sunken">Click</button>`
+  const sourceFile = parse(source)
+  const constMap = buildConstStringMap(sourceFile)
+  const [el] = findLocalElements(sourceFile, 'fixture.tsx', constMap)
+  assert.equal(el.hover, 'enabled:hover:bg-surface-sunken')
+  const computed = {
+    localElements: [
+      {
+        componentKey: 'primitives/Widget',
+        elements: [
+          { ...el, coveredBy: { hover: ['none'], focusVisible: ['none'], active: ['none'] } },
+        ],
+      },
+    ],
+  }
+  const rendered = renderRecord1(computed)
+  // Scoped to the Hover column alone: the other two columns genuinely are 'none → none' here (this
+  // button carries no focus-visible/active class of any kind), which is correct and not the bug —
+  // only the Hover cell must stop reading as a confirmed, reassuring 'none' once its real class is
+  // read.
+  assert.doesNotMatch(rendered, /\| none → none \| none → none \| none → none \|/)
+  assert.match(rendered, /\| enabled:hover:bg-surface-sunken → none \|/)
+})
+
+// `group-hover/<name>:` (and bare `group-hover:`) paint on the ancestor carrying `group`/`group/<name>`
+// — the element a pointer actually hovers — never on the descendant utility class sits on
+// (`PlayerResultRow`'s alias, `FavouritesList`'s alias: neither is itself interactive, hoverable, or
+// even present in Record 1 on its own). Credited into the ancestor's own `hover` field instead of
+// ever becoming a row of its own.
+const GROUP_HOVER_SOURCE = `
+function Widget() {
+  return (
+    <a href="/match/1" className="group/row-link flex flex-col">
+      <span className="font-sans text-sm group-hover/row-link:underline group-hover/row-link:decoration-2">
+        Alias
+      </span>
+    </a>
+  )
+}
+`
+
+test('findLocalElements credits group-hover/<name>: on a descendant to the ancestor carrying group/<name>, not to the descendant', () => {
+  const sourceFile = parse(GROUP_HOVER_SOURCE)
+  const constMap = buildConstStringMap(sourceFile)
+  const found = findLocalElements(sourceFile, 'fixture.tsx', constMap)
+  assert.equal(found.length, 1, 'the group-hover span must never become a row of its own')
+  assert.equal(found[0].tag, 'a')
+  assert.equal(found[0].hover, 'group-hover/row-link:underline group-hover/row-link:decoration-2')
+})
+
+// Contrast: a bare `group-hover:` (no `/<name>`) must not be credited to an ancestor carrying a
+// *named* `group/<name>` — Tailwind itself never pairs the two, and neither must this checker.
+const GROUP_HOVER_NAME_MISMATCH_SOURCE = `
+function Widget() {
+  return (
+    <a href="/match/1" className="group/row-link flex flex-col">
+      <span className="font-sans text-sm group-hover:underline">Alias</span>
+    </a>
+  )
+}
+`
+
+test('contrast: a bare group-hover: is not credited to an ancestor carrying a named group/<name>', () => {
+  const sourceFile = parse(GROUP_HOVER_NAME_MISMATCH_SOURCE)
+  const constMap = buildConstStringMap(sourceFile)
+  const found = findLocalElements(sourceFile, 'fixture.tsx', constMap)
+  const anchor = found.find((el) => el.tag === 'a')
+  assert.ok(anchor)
+  assert.equal(anchor.hover, null)
+})
+
 // --- Orchestrator remediation 2a: `aria-hidden` is excluded from every role-based candidate pool,
 // the same way Playwright's own getByRole treats it — FavouriteToggle's own decoy `Button/ghost`. ---
 

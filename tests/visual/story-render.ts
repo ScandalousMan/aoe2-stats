@@ -170,20 +170,62 @@ export async function resolvePadPx(page: Page, step: string): Promise<number> {
   }, step)
 }
 
+// T675 H1 (reviewer finding, PR #105): whether a clip part is actually rendered right now — the
+// gate that decides whether its own rect is allowed to enter the union below at all. A `[role=
+// "tooltip"]` surface (`Tooltip`'s own shape, `packages/design-system/src/primitives/Tooltip/
+// index.tsx`: `<span role="tooltip" hidden={!isOpen}>`) is always present in the DOM, open or not
+// — `locateClipPart`'s CSS-selector path matches it either way, unlike a role-based `getByRole`
+// locator, which Playwright already excludes from an unrendered element. At rest, `hidden` (the UA
+// stylesheet's `display: none`) leaves the element with no box at all, and `getBoundingClientRect()`
+// on an element with no box reports (0, 0, 0, 0) — the page origin, not the element's own layout
+// position, because it has none. Unioning that rect in unconditionally is what the T675 sweep's
+// `dimension-mismatch` pass caught: the clip's own top-left corner silently dragged to (0, 0) the
+// moment ANY part happened to be unrendered, 7 of the sweep's 8 flagged pairs.
+//
+// A part is "rendered" here when it has both a box (`checkVisibility` — `display: none` **and**
+// `visibility: hidden` both report no box this way, `visibilityProperty: true` is what adds the
+// latter to the check) and non-zero area (defensive: not observed from `checkVisibility` alone, but
+// a zero-area box is exactly as useless to clip to as no box at all, and it costs nothing here to
+// treat it the same way).
+//
+// What this deliberately does NOT do: silently expand or degrade a clip when a *different* number
+// of its own parts are rendered between two renders being compared — a closed `Tooltip`'s clip
+// (button alone) is legitimately smaller than an open one's (button + surface); that size
+// difference is the state's own signal, not this function reaching for a workaround. A clip whose
+// parts are ALL unrendered in one render has no rect to return at all — not the full page, not a
+// single point — so `resolveCaptureClip` throws below rather than guess; no clip in the tree hits
+// this today (every affected story keeps at least one part, usually the trigger, rendered at rest).
+async function isClipPartRendered(located: Locator): Promise<boolean> {
+  return located.evaluate((el) => {
+    const hasCheckVisibility = typeof (el as HTMLElement).checkVisibility === 'function'
+    const visible = hasCheckVisibility
+      ? (el as HTMLElement).checkVisibility({ visibilityProperty: true })
+      : true
+    if (!visible) return false
+    const box = el.getBoundingClientRect()
+    return box.width > 0 && box.height > 0
+  })
+}
+
 // The clip rect `expect(page).toHaveScreenshot` (or, in the sweep, a raw `page.screenshot({clip})`)
-// takes: the union of every part's own box (page coordinates), inflated by `padPx` on every side,
-// clamped to the page's own scrollable extent.
+// takes: the union of every RENDERED part's own box (page coordinates, `isClipPartRendered` above),
+// inflated by `padPx` on every side, clamped to the page's own scrollable extent.
 export async function resolveCaptureClip(
   page: Page,
   root: Locator,
   storyId: string,
   clip: VisualCaptureClip,
 ): Promise<{ x: number; y: number; width: number; height: number }> {
+  if (clip.parts.length === 0) {
+    throw new Error(`visualCaptureClip: story "${storyId}" names no parts.`)
+  }
+
   const padPx = await resolvePadPx(page, clip.pad ?? '2')
 
   let union: { left: number; top: number; right: number; bottom: number } | null = null
   for (const part of clip.parts) {
     const located = await locateClipPart(root, storyId, part)
+    if (!(await isClipPartRendered(located))) continue
     const { boundingRect, clientRects } = await located.evaluate((el) => {
       const toEdges = (r: DOMRect) => ({
         left: r.left + window.scrollX,
@@ -207,7 +249,10 @@ export async function resolveCaptureClip(
       : box
   }
   if (!union) {
-    throw new Error(`visualCaptureClip: story "${storyId}" names no parts.`)
+    throw new Error(
+      `visualCaptureClip: story "${storyId}" — every named clip part is unrendered in this ` +
+        'render (hidden, display:none, visibility:hidden, or zero-area) — there is no rect to clip to.',
+    )
   }
 
   const pageExtent = await page.evaluate(() => ({
