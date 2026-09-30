@@ -32,8 +32,8 @@ export interface VisualForceState {
 // container's width — a real fix for an inline `Link` inside running prose, where the bounding box
 // at 375px can be several times the area of the same element unwrapped at 1280px, diluting a real,
 // present signal under the comparator's own `maxDiffPixelRatio` floor for no reason connected to
-// the signal itself (`packages/design-system/specs/README.md`'s Verification-coverage gap
-// register, row 1, the `ThirdPartyObjectionForm`/`Link` `inline` residuals). A no-op for anything
+// the signal itself (T675's slice 4c, for the `ThirdPartyObjectionForm`/`Link` `inline`
+// residuals the sweep measured). A no-op for anything
 // that lays out as a single fragment — `getClientRects()` then reports exactly one rect, identical
 // to the bounding box — so it is safe to add without checking a target's own layout first. Opt-in,
 // on the stories that measurably need it, never global: `resolveClipPartRect`'s own tests cover the

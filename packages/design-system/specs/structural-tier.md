@@ -899,10 +899,13 @@ modifier-clicks work. Contrast: `text-primary` and `text-secondary` on `surface`
       loaded story's rows — overlay the two and the header does not move.
 - [ ] The empty and error stories both still show the column headers, with one `EmptyState` or one
       `ErrorState` spanning the body.
-- [ ] In the row-link hover capture, exactly one row is filled, its identity text is underlined
-      (§16.1), and the row rules are still visible through the fill.
-- [ ] The row-link hover and active captures share the same fill, but the active capture also shows
-      a full inset `border-strong` ring around that row that the hover capture does not (FR-037).
+- [ ] In the row-link hover capture, which is clipped to the row link's anchor (§16.1), the identity
+      text is underlined. The row-level facts are verified elsewhere: the row itself is in the
+      active capture, which is clipped to the row; that exactly one row takes the hover fill, with
+      the row rules still visible through it, is a fill-only fact the comparator cannot register,
+      so a human reviewer checks it on the hovered row in Storybook.
+- [ ] Under the identity text the row-link hover and active captures share the same fill, but only
+      the active capture shows a ring: a full inset `border-strong` ring around the row (FR-037).
 - [ ] A `dense` and a `prose` table in one frame have visibly different row heights.
 
 ---
@@ -1300,9 +1303,19 @@ row category differs from `Button` only in press: rows keep their own boundary a
 `surface-sunken`. That pair is a measured row in the README's table in both themes, far above the
 3:1 non-text floor. The change that measured zero was a fill step between two surfaces, a pair the
 table records no row for because nothing reads one against the other. `Link`'s own 1px-to-2px
-thickening (§9) is the nearest precedent in this tree and survives the same comparator. The mark is
-still far under 1% of a whole-table frame, so the hover story is clipped to the row (below). The
-sweep's re-run after implementation is what confirms it, not this paragraph.
+thickening (§9) is the nearest precedent in this tree and survives the same comparator.
+
+**The hover story is clipped to the anchor, not the row (decided 2026-09-30, PR #105 review, N1).**
+At the comparator's default threshold (0.2), the underline is 182 differing pixels in every
+theme × width unit and the hover fill is zero. In a row frame that is 0.25% at 1280, 0.43% at 768
+and 0.67% at 375: under the sweep's 1% gate and under `toHaveScreenshot`'s
+`maxDiffPixelRatio: 0.01`, so neither could fail if the underline disappeared. In the row link's
+`<a>` box (about 114×33) it is about 4.8% in every unit. A row frame adds only the fill and the row
+rules, one fill-only and one unchanged, and this section already says the comparator registers
+neither. `RowLinkActive` stays clipped to the row, where its fill and the ring on the `::after`
+measure 6–8%, over the bar; `RowLinkFocusVisible` stays on the anchor, where its ring paints. What
+the anchor frame cannot show is judged elsewhere (§10's list): the row in the active capture, and
+the hover fill by a human reviewer in Storybook.
 
 **What it does not collide with.**
 
@@ -1332,6 +1345,11 @@ sweep's re-run after implementation is what confirms it, not this paragraph.
   appears in a data list reads as a status rather than as the pointer.
 - **A darker fill.** That is the defect. Any fill step between two surfaces this package defines
   falls below what the comparator registers.
+- **A row frame for the hover story** (2026-09-30). The underline is under the 1% bar at every
+  width, so the gate could not hold it (above).
+- **Strengthening the signal at row scale** (2026-09-30), offered and declined. The underline meets
+  FR-037; what failed was the frame, and the marks large enough to clear 1% of a row are the ones
+  this list already rejects.
 
 **Motion.** The underline is not transitioned; it switches with the hover, as `Link`'s thickness
 does (§9). The fill keeps its `motion-reduce:duration-0`, so FR-055 has nothing new to reduce.
@@ -1340,13 +1358,15 @@ does (§9). The fill keeps its `motion-reduce:duration-0`, so FR-055 has nothing
 `underline-offset-2`. No new token.
 
 **Baselines this moves** (regenerated from CI, never locally): `Table` `RowLinkHover`, which also
-takes a `visualCaptureClip` to the hovered row; and `Table` `RowLinkActive`, because the harness
-forces a press by a real hover then a mouse-down, so the underline is in that frame too.
+takes a `visualCaptureClip` to the row link's anchor (above); and `Table` `RowLinkActive`, because
+the harness forces a press by a real hover then a mouse-down, so the underline is in that frame too.
 
 **Acceptance (added to §10's list).**
 
-- [ ] In `RowLinkHover`, the hovered row's identity text carries a 2px underline in `text-primary`
-      and no other cell in any row is underlined; the resting capture shows no underline anywhere.
+- [ ] In `RowLinkHover` (the anchor's box), the identity text carries a 2px underline in
+      `text-primary`; the same box at rest shows no underline. That no other cell is underlined is
+      held by the decoration's declaring element, the `<a>` that wraps only the identity cell, not
+      by this capture.
 - [ ] `RowLinkActive` shows the same underline and, in addition, the full inset ring.
 
 ### 16.2 A text input hovers by thickening its boundary, inward (`Field`)

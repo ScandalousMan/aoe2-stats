@@ -123,7 +123,7 @@ comparator tolerance (README's gap register, row 6/H3 closure).
 (T675).** Until this decision those three hovered by fill alone (`surface` or transparent →
 `surface-sunken`), the same FR-037 violation T588 fixed on `primary`, one step less visible: the
 fill step falls under the visual suite's comparator threshold in every capture unit, so no frame
-could fail on it (README's Verification-coverage gap register, the comparator row). That is a
+could fail on it (README's Verification-coverage gap register, T675's closing note). That is a
 missing signal, not a comparator blind spot, and it is fixed the way `primary`'s was. **The label
 underline moves from `primary`'s variant string into the shared base every variant composes**:
 `hover:underline hover:decoration-2 hover:underline-offset-2 active:underline-offset-4
@@ -152,8 +152,8 @@ another:
 `AsLink` renders the same class set on its `<a>`; `disabled:no-underline` is inert there because an
 anchor has no `:disabled`. Every hover or press story of a non-`primary` variant is captured with
 `visualCaptureClip` to its button: a 2px rule under a short label is well under 1% of an unclipped
-story frame, which is below the comparator's pixel-ratio tolerance (README's gap register, the
-comparator row, lists the stories whose baselines move).
+story frame, which is below the comparator's pixel-ratio tolerance (README's Verification-coverage
+gap register, T675's closing note, records the sweep that measured it).
 
 **`destructive` is not a second spelling of `danger` (FR-032, T557, README's rule 9).** The two look
 like the same word for the same idea, and they are not: `destructive` names what this button _does_
