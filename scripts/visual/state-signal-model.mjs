@@ -200,7 +200,21 @@ export function extractVisualCaptureClip(storyObj, constNodeMap = new Map()) {
 export function extractFileStoryStates(filePath, source) {
   const sourceFile = parseTsx(filePath, source)
   const metaObj = findMeta(sourceFile)
-  if (!metaObj) return null
+  if (!metaObj) {
+    // T675 remediation (N3, the twin of M1(a)): used to `return null` here, and
+    // `buildStoryFileWork`'s own `if (result) { ... }` below turned that into an empty
+    // `{ measurable: [], notMeasurable: [] }` silently — a story file `findMeta` cannot locate a
+    // meta object in at all (no top-level `const x = { component: ..., ... }`) vanished from the
+    // sweep exactly the way an unkeyable file (no literal `meta.id`, thrown below) used to before
+    // M1. Thrown here for the same reason and caught the same way: `buildStoryFileWork`'s own
+    // `try`/`catch` already turns any throw from this function into an `unkeyable` entry, named by
+    // file, which is the only path M1 built for "this sweep cannot key this file at all".
+    throw new Error(
+      `${filePath}: no default-exported meta object found (no top-level const with a "component" ` +
+        'property) — every story file this sweep has seen so far has one; extend this function ' +
+        'deliberately before relying on a different shape.',
+    )
+  }
   const idLit = literalOf(getProp(metaObj, 'id'))
   if (!idLit.present || !idLit.literal) {
     // Every story file with a `visualForceState` in the tree today sets an explicit `meta.id`
@@ -403,7 +417,22 @@ const SWEEP_GATE_FAILING_BUCKETS = new Set([
 //       cleanly" looked identical (`pass: true`) — the exact shape a crashed Playwright render (a
 //       measurable pair that planned a classification and produced none) hid behind. Both are gate
 //       failures now, checked before any individual bucket.
-export function decideSweepGate({ classified, measurableCount, notMeasurable = [], unkeyableFiles = [] }) {
+//
+// T675 remediation (N3): `measurableCount` alone answers only "how many", never "which ones" — a
+// run that planned {a, b} but classified {a, c} (one crashed, an unrelated one somehow classified
+// twice, or any other same-length swap) passed the count check above with nothing to show for it.
+// `measurableIds`, when the caller supplies it (`run.mjs` does; the many pre-existing tests above
+// that only ever supplied `measurableCount` still pass without it, unaffected), is compared against
+// `classified`'s own story ids as sets — a planned id absent from `classified` ("missing") or a
+// classified id never planned as measurable ("unexpected") each fail the gate, named, independent
+// of whether the two lists happen to be the same length.
+export function decideSweepGate({
+  classified,
+  measurableCount,
+  measurableIds,
+  notMeasurable = [],
+  unkeyableFiles = [],
+}) {
   const failures = []
 
   for (const u of unkeyableFiles) {
@@ -449,6 +478,26 @@ export function decideSweepGate({ classified, measurableCount, notMeasurable = [
         'classified — a measurable pair that produced no classification (e.g. a Playwright test ' +
         'that crashed) must fail, not be silently dropped.',
     })
+  }
+
+  if (measurableIds) {
+    const classifiedIds = new Set(classified.map((c) => c.stateId))
+    const measurableIdSet = new Set(measurableIds)
+    const missing = measurableIds.filter((id) => !classifiedIds.has(id))
+    const unexpected = [...classifiedIds].filter((id) => !measurableIdSet.has(id))
+    if (missing.length > 0 || unexpected.length > 0) {
+      failures.push({
+        kind: 'measurable-id-mismatch',
+        stateId: null,
+        bucket: 'measurable-id-mismatch',
+        file: null,
+        detail:
+          `classified's own story ids do not match the ids planned as measurable, even though the ` +
+          `two lists are the same length — missing (planned, never classified): ` +
+          `${missing.length > 0 ? missing.join(', ') : '(none)'}; unexpected (classified, never ` +
+          `planned as measurable): ${unexpected.length > 0 ? unexpected.join(', ') : '(none)'}.`,
+      })
+    }
   }
 
   for (const c of classified) {

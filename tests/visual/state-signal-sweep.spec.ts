@@ -263,19 +263,43 @@ export function dimensionsWithinTolerance(
   )
 }
 
-function stateMatchesCommittedBaseline(
-  stateBuffer: Buffer,
-  id: string,
-  theme: Theme,
-  width: number,
-): boolean | null {
-  const baselinePath = path.join(screenshotsDir, `${id}-${theme}-${width}.png`)
-  if (!existsSync(baselinePath)) return null
-  const baselineBuffer = readFileSync(baselinePath)
+// `imageComparator`'s own diff-pixel count over `totalPixels`, as a ratio — 0 when the comparator
+// finds nothing to report at all (`diffResult === null`, its own "identical" shape). Shared by both
+// branches of `evaluateStateAgainstBaseline` below so the equal-size and cropped-overlap paths run
+// the exact same comparison, never two slightly different ones.
+function pixelDiffRatio(a: Buffer, b: Buffer, totalPixels: number): number {
+  const diffResult = imageComparator(a, b, { threshold: 0.2 })
+  if (!diffResult) return 0
+  const diffPixels = Number(/^(\d+) pixels/.exec(diffResult.errorMessage)?.[1])
+  return diffPixels / totalPixels
+}
+
+// The top-left `width`x`height` region of `image`, as its own standalone `PNG` — `PNG.bitblt`
+// (pngjs's own region-copy utility, the same package this file already uses for `PNG.sync.read`/
+// `.write`) rather than a hand-rolled buffer slice, since a PNG's own `.data` is row-major RGBA and
+// a naive `Buffer.slice` would need to reimplement exactly what `bitblt` already does correctly.
+function cropTopLeft(image: PNG, width: number, height: number): PNG {
+  const cropped = new PNG({ width, height })
+  PNG.bitblt(image, cropped, 0, 0, width, height, 0, 0)
+  return cropped
+}
+
+// T675 remediation (N4): the pure comparison `stateMatchesCommittedBaseline` below wraps around a
+// filesystem read — extracted here, on two already-decoded buffers, so it is provable directly
+// against small, constructed PNGs (this describe block's own `dimensionsWithinTolerance` pattern)
+// rather than only through a committed baseline file on disk.
+//
+// A within-tolerance size difference used to make this return `true` outright, with no pixel
+// comparison at all — `dimensionsWithinTolerance` (M5) correctly calls a few-percent size gap noise
+// (local font hinting, subpixel rounding), but nothing about the two frames being *close enough in
+// size* says anything about whether the content they share is the same. A frame that happens to
+// land inside the size tolerance while showing genuinely different content in its overlapping region
+// must still fail. Fixed by comparing the overlapping top-left `min(width)`x`min(height)` crop of
+// both frames with the same `pixelDiffRatio` the equal-size branch already used — the two branches
+// differ only in *which* buffers they diff, never in how.
+export function evaluateStateAgainstBaseline(stateBuffer: Buffer, baselineBuffer: Buffer): boolean {
   const stateImage = PNG.sync.read(stateBuffer)
   const baselineImage = PNG.sync.read(baselineBuffer)
-  const widthDiff = Math.abs(stateImage.width - baselineImage.width)
-  const heightDiff = Math.abs(stateImage.height - baselineImage.height)
   if (
     !dimensionsWithinTolerance(
       stateImage.width,
@@ -286,13 +310,34 @@ function stateMatchesCommittedBaseline(
   ) {
     return false
   }
-  if (widthDiff !== 0 || heightDiff !== 0) {
-    return true
+  const widthDiff = Math.abs(stateImage.width - baselineImage.width)
+  const heightDiff = Math.abs(stateImage.height - baselineImage.height)
+  if (widthDiff === 0 && heightDiff === 0) {
+    return (
+      pixelDiffRatio(stateBuffer, baselineBuffer, stateImage.width * stateImage.height) <=
+      BASELINE_MAX_DIFF_RATIO
+    )
   }
-  const diffResult = imageComparator(stateBuffer, baselineBuffer, { threshold: 0.2 })
-  if (!diffResult) return true
-  const diffPixels = Number(/^(\d+) pixels/.exec(diffResult.errorMessage)?.[1])
-  return diffPixels / (stateImage.width * stateImage.height) <= BASELINE_MAX_DIFF_RATIO
+  const cropWidth = Math.min(stateImage.width, baselineImage.width)
+  const cropHeight = Math.min(stateImage.height, baselineImage.height)
+  const stateCropBuffer = PNG.sync.write(cropTopLeft(stateImage, cropWidth, cropHeight))
+  const baselineCropBuffer = PNG.sync.write(cropTopLeft(baselineImage, cropWidth, cropHeight))
+  return (
+    pixelDiffRatio(stateCropBuffer, baselineCropBuffer, cropWidth * cropHeight) <=
+    BASELINE_MAX_DIFF_RATIO
+  )
+}
+
+function stateMatchesCommittedBaseline(
+  stateBuffer: Buffer,
+  id: string,
+  theme: Theme,
+  width: number,
+): boolean | null {
+  const baselinePath = path.join(screenshotsDir, `${id}-${theme}-${width}.png`)
+  if (!existsSync(baselinePath)) return null
+  const baselineBuffer = readFileSync(baselinePath)
+  return evaluateStateAgainstBaseline(stateBuffer, baselineBuffer)
 }
 
 // The story's own settled frame, clipped to `clip` (the story's own `visualCaptureClip`, resolved
@@ -557,6 +602,64 @@ test.describe('state-signal-sweep remediation (M4, M5)', () => {
 
     test('a dimension gap past the tolerance on only one axis is still a mismatch', () => {
       expect(dimensionsWithinTolerance(400, 20, 400, 30)).toBe(false)
+    })
+  })
+
+  // T675 remediation (N4): `evaluateStateAgainstBaseline` needs no browser and no story, only two
+  // constructed PNG buffers — the same shape `dimensionsWithinTolerance` above is proven against.
+  test.describe('evaluateStateAgainstBaseline', () => {
+    function solidPng(
+      width: number,
+      height: number,
+      [r, g, b, a]: [number, number, number, number],
+    ): PNG {
+      const png = new PNG({ width, height })
+      for (let i = 0; i < png.data.length; i += 4) {
+        png.data[i] = r
+        png.data[i + 1] = g
+        png.data[i + 2] = b
+        png.data[i + 3] = a
+      }
+      return png
+    }
+
+    test('RED: a within-tolerance-size frame whose overlapping crop differs heavily is not a match — the old code returned true for any within-tolerance size gap, with no pixel comparison at all', () => {
+      // 100x100 vs 104x100: widthDiff 4 <= max(2, 6% of 104) ~= 6.24, so `dimensionsWithinTolerance`
+      // alone calls this noise — but the two frames are solid, opposite-colour red vs blue, so their
+      // shared 100x100 top-left region is 100% different, which must still fail this check.
+      const state = PNG.sync.write(solidPng(100, 100, [255, 0, 0, 255]))
+      const baseline = PNG.sync.write(solidPng(104, 100, [0, 0, 255, 255]))
+      expect(evaluateStateAgainstBaseline(state, baseline)).toBe(false)
+    })
+
+    test('CONTROL: a within-tolerance-size frame whose overlapping crop has identical content is a match', () => {
+      // Same size gap as the RED case above (100x100 vs 104x100), but the shared 100x100 top-left
+      // region is the same solid red on both — the extra 4px-wide strip on the baseline's own right
+      // edge, outside the overlap, is never part of the comparison at all.
+      const state = PNG.sync.write(solidPng(100, 100, [255, 0, 0, 255]))
+      const baseline = solidPng(104, 100, [255, 0, 0, 255])
+      for (let x = 100; x < 104; x++) {
+        for (let y = 0; y < 100; y++) {
+          const idx = (baseline.width * y + x) << 2
+          baseline.data[idx] = 0
+          baseline.data[idx + 1] = 255
+          baseline.data[idx + 2] = 0
+          baseline.data[idx + 3] = 255
+        }
+      }
+      expect(evaluateStateAgainstBaseline(state, PNG.sync.write(baseline))).toBe(true)
+    })
+
+    test('a size gap past the tolerance still fails outright, before any crop is attempted', () => {
+      const state = PNG.sync.write(solidPng(49, 20, [255, 0, 0, 255]))
+      const baseline = PNG.sync.write(solidPng(70, 30, [255, 0, 0, 255]))
+      expect(evaluateStateAgainstBaseline(state, baseline)).toBe(false)
+    })
+
+    test('identical-size frames with identical content still match, through the equal-size branch', () => {
+      const state = PNG.sync.write(solidPng(100, 100, [10, 20, 30, 255]))
+      const baseline = PNG.sync.write(solidPng(100, 100, [10, 20, 30, 255]))
+      expect(evaluateStateAgainstBaseline(state, baseline)).toBe(true)
     })
   })
 

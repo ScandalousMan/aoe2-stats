@@ -518,6 +518,46 @@ test('decideSweepGate: classified longer than measurableCount also fails — the
 
 // The contrast: a full, matching, all-defended classification — no unkeyable file, no not-measurable
 // story, `classified.length === measurableCount` — passes cleanly.
+// T675 remediation (N3): `measurableCount` alone cannot tell a same-length swap apart from a clean
+// run — `classified` here has the same length as `measurableIds` but a different member (`c`
+// instead of `b`). Before this finding's fix, `decideSweepGate` had no `measurableIds` parameter at
+// all, so this case passed cleanly (RED against pre-fix code: `gate.pass` was `true`, and
+// `gate.failures` had no `measurable-id-mismatch` entry — confirmed by running this exact test
+// against the code before `measurableIds` was added). Fixed by comparing the two lists as sets.
+test('decideSweepGate: same-length classified and measurableIds sets that differ by member fail, named', () => {
+  const classified = [entry('a', 'defended'), entry('c', 'defended')]
+  const result = decideSweepGate({
+    classified,
+    measurableCount: classified.length,
+    measurableIds: ['a', 'b'],
+    notMeasurable: [],
+    unkeyableFiles: [],
+  })
+  assert.equal(result.pass, false)
+  const failure = result.failures.find((f) => f.kind === 'measurable-id-mismatch')
+  assert.ok(failure, 'expected a measurable-id-mismatch failure')
+  assert.match(failure.detail, /missing.*\bb\b/)
+  assert.match(failure.detail, /unexpected.*\bc\b/)
+})
+
+test('decideSweepGate: measurableIds that exactly match classified ids pass (control for the case above)', () => {
+  const classified = [entry('a', 'defended'), entry('b', 'defended')]
+  const result = decideSweepGate({
+    classified,
+    measurableCount: classified.length,
+    measurableIds: ['a', 'b'],
+    notMeasurable: [],
+    unkeyableFiles: [],
+  })
+  assert.deepEqual(result, { pass: true, failures: [] })
+})
+
+test('decideSweepGate: measurableIds omitted (existing callers) does not perform the set check at all', () => {
+  const classified = [entry('a', 'defended')]
+  const result = gate(classified)
+  assert.deepEqual(result, { pass: true, failures: [] })
+})
+
 test('decideSweepGate: a full, matching, all-defended classification passes', () => {
   const classified = [
     entry('a', 'defended'),
@@ -560,6 +600,35 @@ export const Hover: Story = {
   assert.ok(work.unkeyable, 'expected an unkeyable result')
   assert.equal(work.unkeyable.file, 'src/primitives/Widget/Widget.stories.tsx')
   assert.match(work.unkeyable.detail, /no string-literal "id"/)
+  assert.equal(work.measurable, undefined)
+  assert.equal(work.notMeasurable, undefined)
+})
+
+// T675 remediation (N3, the twin of M1(a)): a file with no meta object at all (no top-level const
+// with a "component" property — `findMeta` returns `null`) used to make `extractFileStoryStates`
+// itself `return null`, and `buildStoryFileWork`'s own `if (result) { ... }` turned that into an
+// empty `{ measurable: [], notMeasurable: [] }` — silently, with no `unkeyable` entry at all, the
+// exact "a whole file's worth of state stories vanishes from the sweep" gap M1(a) closed for the
+// sibling case (a meta object present but with no literal `meta.id`). RED against pre-fix code:
+// `work.unkeyable` was `undefined` and `work.measurable`/`work.notMeasurable` were both `[]` rather
+// than throwing — confirmed by running this exact test before `extractFileStoryStates` was made to
+// throw on a missing meta object.
+test('buildStoryFileWork: a file with no meta object at all is reported as unkeyable, not silently emptied', () => {
+  const source = `
+import type { Meta, StoryObj } from '@storybook/react-vite'
+import { Widget } from './index'
+
+type Story = StoryObj<typeof Widget>
+
+export const Hover: Story = {
+  parameters: { visualForceState: { state: 'hover', role: 'button' } },
+}
+`
+  const filePath = path.join(rootDir, 'src/primitives/Widget/Widget.stories.tsx')
+  const work = buildStoryFileWork(filePath, source)
+  assert.ok(work.unkeyable, 'expected an unkeyable result')
+  assert.equal(work.unkeyable.file, 'src/primitives/Widget/Widget.stories.tsx')
+  assert.match(work.unkeyable.detail, /no default-exported meta object found/)
   assert.equal(work.measurable, undefined)
   assert.equal(work.notMeasurable, undefined)
 })

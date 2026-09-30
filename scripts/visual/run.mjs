@@ -514,6 +514,10 @@ function runStateSignalSweep() {
   const gate = decideSweepGate({
     classified,
     measurableCount: measurable.length,
+    // T675 remediation (N3): names of the planned pairs, not only their count —
+    // `decideSweepGate`'s own comment on `measurableIds` explains why the count alone cannot catch
+    // a same-length swap.
+    measurableIds: measurable.map((m) => m.stateId),
     notMeasurable,
     unkeyableFiles,
   })
