@@ -755,7 +755,7 @@ answers one state of one.
 
 T675's package-wide sweep measured `Menu`'s `FooterItemHover` story against its own resting render
 with the comparator the visual suite uses, whose threshold stays fixed package-wide (`README.md`,
-Verification-coverage gap register, row 1), and found zero surviving pixels: the footer item's hover
+Verification-coverage gap register, T675's closing note), and found zero surviving pixels: the footer item's hover
 was `surface-sunken` laid over the panel's `surface-raised` and nothing else. The ordinary items
 hover through the identical recipe. The sweep read their own `Hover` story as a weak signal rather
 than zero, but the recipe is the same fill step and FR-038 gives one role one response, so the fix

@@ -127,7 +127,7 @@ rule, the same "a press is a boundary" signal `Button` `secondary`/`destructive`
 
 **Decided 2026-09-28 (T675): `ProfileLink`'s hover underlines the alias.** T675's package-wide sweep
 measured the `Hover` story against its own resting render with the comparator the visual suite uses,
-whose threshold stays fixed package-wide (`README.md`, Verification-coverage gap register, row 1),
+whose threshold stays fixed package-wide (`README.md`, Verification-coverage gap register, T675's closing note),
 and found zero surviving pixels: a `surface-sunken` wash over the row is a fill step and nothing
 else, which FR-037's "more than colour, in a still image" already forbids. The fix is a shape. While
 `ProfileLink` is hovered, the alias — and only the alias — is underlined at `border.ring` thickness

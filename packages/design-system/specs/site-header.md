@@ -302,7 +302,7 @@ reads as checked, which is §2d's mapping from `useTheme().override`, not a stat
 
 T675's package-wide sweep measured this component's `Hover` story against its own resting render
 with the comparator the visual suite uses, whose threshold stays fixed package-wide (`README.md`,
-Verification-coverage gap register, row 1), and found zero surviving pixels. The item's hover was a
+Verification-coverage gap register, T675's closing note), and found zero surviving pixels. The item's hover was a
 fill step (`surface` to `surface-sunken`) and an ink step (`text-secondary` to `text-primary`): two
 colour changes and no shape. That is FR-037's "distinguishable by more than colour, in a still
 image" failing, not a comparator to tune around, and this section is its fix.

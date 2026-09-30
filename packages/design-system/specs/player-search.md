@@ -328,7 +328,7 @@ hover answers above point here, so the reasoning is written once rather than quo
 
 T675's package-wide sweep measured both components' `Hover` stories against their own resting
 renders with the comparator the visual suite uses, whose threshold stays fixed package-wide
-(`README.md`, Verification-coverage gap register, row 1), and found zero surviving pixels in both.
+(`README.md`, Verification-coverage gap register, T675's closing note), and found zero surviving pixels in both.
 `Input`'s hover moved one hairline from `border` to `border-strong`; `PlayerResultRow`'s laid a
 `surface-sunken` wash over the row. Each is a colour change and nothing else — FR-037's "more than
 colour, in a still image" failing, not a comparator to tune around — so each gains a shape.

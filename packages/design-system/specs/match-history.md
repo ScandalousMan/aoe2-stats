@@ -235,7 +235,7 @@ matches/{game_id}` no longer has an ownership scope to leak (T327) — "no such 
 
 T675's package-wide sweep measured `MatchRow`'s `Hover` story against its own resting render with
 the comparator the visual suite uses, whose threshold stays fixed package-wide (`README.md`,
-Verification-coverage gap register, row 1), and found zero surviving pixels: the card's hover laid
+Verification-coverage gap register, T675's closing note), and found zero surviving pixels: the card's hover laid
 `surface-sunken` over `surface` and changed nothing else. That is FR-037's "more than colour, in a
 still image" failing, not a comparator to tune around. This subsection sits after §5's bullets so no
 line of §5 that `README.md`'s row 8 cites by number moves; §5's hover answer points here.

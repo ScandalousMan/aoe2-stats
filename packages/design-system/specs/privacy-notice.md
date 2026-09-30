@@ -532,7 +532,7 @@ recipe.
 
 **`Contents` entries, decided 2026-09-28 (T675).** The first entry's `Hover` story measured zero
 surviving pixels against its own resting render with the comparator the visual suite uses, whose
-threshold stays fixed package-wide (`README.md`, Verification-coverage gap register, row 1): an
+threshold stays fixed package-wide (`README.md`, Verification-coverage gap register, T675's closing note): an
 entry's hover moved its ink from `link` to `link-hover` and changed nothing else. The sentence above
 — "the underline stays (it was never absent)" — was true, and it was not a second signal; the hover
 was colour alone, which FR-037 forbids. Each entry now takes `Link`'s own hover in full: its

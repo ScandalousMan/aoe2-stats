@@ -1251,7 +1251,7 @@ realistic compositions FR-043 requires).
 
 T675's package-wide sweep measured every state story against its own resting render with the
 comparator the visual suite uses. Its threshold stays at pixelmatch's default package-wide
-(`README.md`, Verification-coverage gap register, row 1). Two primitives here hovered with zero
+(`README.md`, Verification-coverage gap register, T675's closing note). Two primitives here hovered with zero
 surviving pixels: `Table`'s row link (`RowLinkHover`) and `Field`'s control (`Hover`). In both, rest
 and hover differed by one colour step and nothing else, which violates FR-037's "distinguishable by
 more than colour, in a still image"; it is not a comparator to tune around. §10's and §11's hover
@@ -1391,10 +1391,9 @@ is clipped to the control.
 **Where it applies.** `Field` does not paint the control. This is the recipe every control a caller
 passes to `Field` owes, and every text input in the package with it: the `Field` stories'
 demonstration input, `SearchBox`'s `Input` (`player-search.md`, same decision), and
-`ThirdPartyObjectionForm`'s profile-id input, which today carries no hover class of any kind. That
-third one is not among T675's nine, because no story hovers it and the comparator never saw it. It
-is named beside the nine in the Verification-coverage gap register, row 1, rather than decided
-silently here.
+`ThirdPartyObjectionForm`'s profile-id input. That third one is not among T675's nine: before T675
+it carried no hover class and no story hovered it, so the comparator never saw it. It takes the same
+recipe in the same change (§16.2), with its own `InputHover` story.
 
 **Rejected.**
 
