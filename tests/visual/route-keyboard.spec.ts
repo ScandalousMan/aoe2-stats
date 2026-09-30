@@ -11,7 +11,7 @@
 // reduces to "every stop stays inside the route's one `main` landmark or its `header`/`footer`
 // chrome" — the same containment `tests/visual/focus-ring.spec.ts` assumes implicitly and this file
 // makes an explicit, mechanical assertion.
-import { expect, test } from '@playwright/test'
+import { test } from '@playwright/test'
 import {
   assertThemeApplied,
   createAppServerHarness,
@@ -20,7 +20,11 @@ import {
   seedThemeOverride,
   waitForFontsReady,
 } from './fixtures/app-routes-harness'
-import { assertFullTabCoverage, walkTabOrder } from './fixtures/keyboard-walk'
+import {
+  assertFullTabCoverage,
+  assertStopsInsideChrome,
+  walkTabOrder,
+} from './fixtures/keyboard-walk'
 
 const harness = createAppServerHarness('4175')
 
@@ -75,17 +79,10 @@ test.describe('keyboard operation, every route, both themes', () => {
           // FR-049's "no trap": every stop the walk actually reaches sits inside the route's one
           // main landmark or its header/footer chrome — never off in a detached or hidden branch of
           // the DOM a real keyboard user could not have reached either.
-          for (const step of result.steps) {
-            expect(
-              step.insideChrome,
-              `${scenario.label} (${theme}): Tab landed on a <${step.tag}> "${step.name}" outside ` +
-                `main/header/footer`,
-            ).toBe(true)
-          }
+          assertStopsInsideChrome(result.steps, `${scenario.label} (${theme})`)
 
           // FR-049's "reachable, in order, with no trap": every candidate is reached exactly once,
-          // in DOM order, and the walk closed the cycle rather than exhausting its step budget mid
-          // trap. See `assertFullTabCoverage` for what each of the four guards catches on its own.
+          // in DOM order. See `assertFullTabCoverage` for what each guard catches on its own.
           assertFullTabCoverage(result, `${scenario.label} (${theme})`)
         })
       }

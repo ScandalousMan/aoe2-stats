@@ -1,21 +1,37 @@
 // Remediation of review finding B2 on PR #102 (T674, `specs/005-design-system-foundations`):
 // `route-keyboard.spec.ts` used to assert only `reachedIds.size === candidateCount` — a `Set`,
-// which silently drops duplicates and says nothing about whether the walk ever closed the cycle.
-// This file plants small static pages (`page.setContent`, no app build and no Storybook story
-// needed) that each trip exactly one of the four guards `assertFullTabCoverage` now runs, plus one
-// clean page that trips none of them — proof each guard actually fires rather than merely existing.
+// which silently drops duplicates and says nothing about whether the walk reached every candidate
+// in order. This file plants small static pages (`page.setContent`, no app build and no Storybook
+// story needed) that each trip exactly one of `assertFullTabCoverage`'s guards (unstamped
+// candidate, step count, duplicates, DOM order) or `assertStopsInsideChrome`'s guard, paired with a
+// control that removes only the planted defect — proof each guard actually fires on the case it
+// names, and stays silent on the same page once that one thing is fixed. One further pair plants no
+// defect at all: a candidate hidden by a `display: none` ancestor, proving `walkTabOrder`'s own
+// candidate filter excludes it rather than merely proving a downstream guard can catch it once
+// mis-included.
+//
+// A wrap-closes-the-cycle guard used to live here too (PR #102 review finding B2's first
+// remediation): it read a `wrapped` flag set only when the walk's own final Tab press returned
+// focus to `document.body` before the step budget ran out. It was unreachable at the default
+// budget (`candidateCount + 5`): a walk that produces exactly `candidateCount` stops must have hit
+// the null branch to stop iterating at all, so `wrapped` was always `true` whenever the step-count
+// guard above it had already passed, and always irrelevant whenever it had not. The one test that
+// exercised it (`maxSteps: 3` on a 3-button trap page) only proved a *clean* 3-button page fails
+// identically at that budget — it never isolated the wrap guard from the step-count guard. Removed;
+// a trap that only starts after every candidate has already been reached once now trips the
+// step-count guard instead, at the walk's own default budget, below.
 import { test, expect } from '@playwright/test'
-import { assertFullTabCoverage, walkTabOrder } from './keyboard-walk'
+import { assertFullTabCoverage, assertStopsInsideChrome, walkTabOrder } from './keyboard-walk'
 
 test.describe('keyboard-walk guards, planted pages', () => {
-  test('a trap that starts only after every candidate is reached fails the wrap guard', async ({
+  test('a trap that starts only after every candidate is reached fails the step-count guard', async ({
     page,
   }) => {
     // Three buttons, DOM order a/b/c. The last one's own keydown handler is the trap: it only
     // fires once every candidate has already been focused in turn (the handler is reached by
     // Tabbing *into* c, same as a clean page — the trap is Tabbing *out* of it), refocusing the
     // first button instead of letting focus leave the document. A real infinite loop: left alone,
-    // this page would never wrap.
+    // this page would never let focus reach `document.body`.
     await page.setContent(`
       <button id="a">A</button>
       <button id="b">B</button>
@@ -30,25 +46,20 @@ test.describe('keyboard-walk guards, planted pages', () => {
       </script>
     `)
 
-    // The default step budget (candidateCount + 5) would run past the point where c's trap starts
-    // cycling focus back through a/b/c, producing duplicates that the "no duplicates" guard below
-    // would also (correctly) reject — muddying which guard is under test here. Overriding
-    // `maxSteps` to exactly `candidateCount` isolates the wrap guard: the walk reaches full, unique,
-    // in-order coverage in exactly 3 presses and stops right there, before ever pressing Tab a
-    // fourth time to observe whether the cycle would have closed or the trap would have caught it.
-    const result = await walkTabOrder(page, 3)
+    // The walk's own default budget (candidateCount + 5, no override): it reaches full, unique,
+    // in-order coverage in 3 presses, then keeps pressing into the trap for the remaining 5
+    // instead of ever seeing focus leave the document — producing more stops than candidates,
+    // which is what actually surfaces this trap now that no separate wrap guard exists.
+    const result = await walkTabOrder(page)
 
-    // The exact false negative this remediation closes: every element was reached exactly once, so
-    // the pre-remediation assertion — a `Set` of reached ids — sees size 3 === candidateCount and
-    // would have passed this trap.
+    // The exact false negative this remediation closes: every element was reached at least once,
+    // so a `Set` of reached ids alone would still see size 3 === candidateCount and pass this trap.
     const reachedIds = new Set(result.steps.map((step) => step.kbdId))
-    expect(reachedIds.size, 'sanity: the old Set-based check would have seen full coverage').toBe(3)
-    expect(result.steps).toHaveLength(3)
+    expect(reachedIds.size, 'sanity: a Set-based check alone would have seen full coverage').toBe(3)
+    expect(result.steps.length).toBeGreaterThan(3)
 
-    // The new guard catches what the old one could not: the walk never saw the cycle close.
-    expect(result.wrapped).toBe(false)
     expect(() => assertFullTabCoverage(result, 'trap-after-coverage')).toThrow(
-      /used its full step budget without focus ever wrapping/,
+      /the Tab walk produced \d+ stop\(s\) for 3 candidate\(s\)/,
     )
   })
 
@@ -73,16 +84,26 @@ test.describe('keyboard-walk guards, planted pages', () => {
     )
   })
 
-  test('a focus redirect that revisits an element fails the no-duplicates guard', async ({
+  test('a redirect-and-skip combo trips the no-duplicates guard, not the step-count guard', async ({
     page,
   }) => {
-    // Three buttons, DOM order a/b/c. Focusing b redirects to a exactly once (a one-shot
-    // redirect, not an infinite loop), so the walk still wraps normally at the end — isolating the
-    // duplicate from the wrap guard above.
+    // Five buttons, DOM order a..e. Two independent anomalies, engineered so the *total* step
+    // count still equals candidateCount — the step-count guard alone cannot see anything wrong
+    // here, isolating the duplicates guard as the one that actually fires:
+    // - b's own `focus` handler redirects to a exactly once (one-shot) — one extra visit of a.
+    // - c's own `keydown` handler intercepts Tab and refocuses e directly, so d is never visited
+    //   at all — one visit short.
+    // The extra visit and the missing one cancel out in the total, which is exactly why a bare
+    // `reachedIds.size === candidateCount` check (this remediation's own starting point, PR #102
+    // review finding B2) is not what is asserted below: it would see 4 unique ids out of 5
+    // candidates and reject this page too, but for the wrong reason. This test pins the message
+    // actually asserted, not merely that *some* guard rejects.
     await page.setContent(`
       <button id="a">A</button>
       <button id="b">B</button>
       <button id="c">C</button>
+      <button id="d">D</button>
+      <button id="e">E</button>
       <script>
         let redirected = false
         document.getElementById('b').addEventListener('focus', () => {
@@ -91,20 +112,39 @@ test.describe('keyboard-walk guards, planted pages', () => {
             document.getElementById('a').focus()
           }
         })
+        document.getElementById('c').addEventListener('keydown', (event) => {
+          if (event.key === 'Tab' && !event.shiftKey) {
+            event.preventDefault()
+            document.getElementById('e').focus()
+          }
+        })
       </script>
     `)
 
     const result = await walkTabOrder(page)
 
-    expect(result.wrapped, 'the redirect is one-shot, so the walk still closes the cycle').toBe(
-      true,
-    )
+    expect(result.steps).toHaveLength(5)
     const ids = result.steps.map((step) => step.kbdId)
-    expect(ids.filter((id) => id === '0')).toHaveLength(2) // button a, reached twice
+    expect(ids).toEqual(['0', '0', '1', '2', '4']) // a, a (redirected), b, c, e — d never reached
 
-    expect(() => assertFullTabCoverage(result, 'duplicate-landing')).toThrow(
-      /stop\(s\) for 3 candidate\(s\)/,
+    expect(() => assertFullTabCoverage(result, 'redirect-and-skip')).toThrow(
+      /reached the same element more than once: #0 \(2x\)/,
     )
+  })
+
+  test('the same five buttons without either handler pass every guard', async ({ page }) => {
+    await page.setContent(`
+      <button id="a">A</button>
+      <button id="b">B</button>
+      <button id="c">C</button>
+      <button id="d">D</button>
+      <button id="e">E</button>
+    `)
+
+    const result = await walkTabOrder(page)
+
+    expect(result.steps.map((step) => step.kbdId)).toEqual(['0', '1', '2', '3', '4'])
+    expect(() => assertFullTabCoverage(result, 'redirect-and-skip-control')).not.toThrow()
   })
 
   test('positive tabindex out of DOM order fails the DOM-order guard', async ({ page }) => {
@@ -120,8 +160,7 @@ test.describe('keyboard-walk guards, planted pages', () => {
 
     const result = await walkTabOrder(page)
 
-    // Full coverage, no duplicates, wraps normally — only the order is wrong, isolating this guard.
-    expect(result.wrapped).toBe(true)
+    // Full coverage, no duplicates — only the order is wrong, isolating this guard.
     expect(result.steps).toHaveLength(3)
     expect(result.steps.map((step) => step.kbdId)).toEqual(['1', '0', '2']) // b, a, c in DOM-id terms
 
@@ -130,7 +169,12 @@ test.describe('keyboard-walk guards, planted pages', () => {
     )
   })
 
-  test('a clean page passes every guard', async ({ page }) => {
+  test("a clean page passes every guard, and doubles as the trap test's control", async ({
+    page,
+  }) => {
+    // Same three buttons as the trap-after-coverage page above, minus the keydown handler — the
+    // paired control proving the step-count guard's failure there comes from the trap, not from
+    // walking three plain buttons at the default budget.
     await page.setContent(`
       <button id="a">A</button>
       <button id="b">B</button>
@@ -139,9 +183,66 @@ test.describe('keyboard-walk guards, planted pages', () => {
 
     const result = await walkTabOrder(page)
 
-    expect(result.wrapped).toBe(true)
     expect(result.steps.map((step) => step.kbdId)).toEqual(['0', '1', '2'])
     expect(() => assertFullTabCoverage(result, 'clean-page')).not.toThrow()
+  })
+
+  test('a button inside a display:none ancestor is not counted as a candidate', async ({
+    page,
+  }) => {
+    // PR #102 remediation: the old filter read only the element's own `display`/`visibility`, so
+    // a button inside a hidden *ancestor* (its own computed style declares neither) was still
+    // stamped as a candidate the walk could never actually Tab to. Before this fix, this exact
+    // page produced `candidateCount === 3`, `steps.length === 2` (only the two real buttons), and
+    // `assertFullTabCoverage` failed with "the Tab walk produced 2 stop(s) for 3 candidate(s)" —
+    // blaming the wrong mechanism (a trap or a duplicate) for what was really an over-counted,
+    // unreachable candidate. `checkVisibility()` walks the whole ancestor chain instead, so the
+    // hidden button is never stamped and the walk passes.
+    await page.setContent(`
+      <button id="a">A</button>
+      <div style="display: none"><button id="hidden">Hidden</button></div>
+      <button id="b">B</button>
+    `)
+
+    const result = await walkTabOrder(page)
+
+    expect(result.candidateCount).toBe(2)
+    expect(result.steps).toHaveLength(2)
+    expect(() => assertFullTabCoverage(result, 'hidden-ancestor')).not.toThrow()
+  })
+
+  test('a focusable element outside main/header/footer fails the inside-chrome guard', async ({
+    page,
+  }) => {
+    // FR-049's "no trap outside a modal surface that defines its own", read the cheap way: a
+    // route-level walk never opens a modal, so every reachable element must sit inside the route's
+    // one `main` landmark or its `header`/`footer` chrome. This check used to live only inline in
+    // `route-keyboard.spec.ts`, with no planted-page guard test ever exercising it.
+    await page.setContent(`
+      <main><button id="a">A</button></main>
+      <button id="rogue">Rogue</button>
+    `)
+
+    const result = await walkTabOrder(page)
+
+    expect(() => assertStopsInsideChrome(result.steps, 'outside-chrome')).toThrow(
+      /outside main\/header\/footer/,
+    )
+  })
+
+  test('the same rogue button moved inside <main> passes the inside-chrome guard', async ({
+    page,
+  }) => {
+    await page.setContent(`
+      <main>
+        <button id="a">A</button>
+        <button id="rogue">Rogue</button>
+      </main>
+    `)
+
+    const result = await walkTabOrder(page)
+
+    expect(() => assertStopsInsideChrome(result.steps, 'inside-chrome-control')).not.toThrow()
   })
 
   // PR #102 review finding (low): the touch-footprint `rect` used to special-case only an `<input>`

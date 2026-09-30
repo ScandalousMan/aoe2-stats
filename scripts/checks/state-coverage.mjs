@@ -2241,8 +2241,28 @@ export function resolveNameMatch({
     // combined DOM keeps meaning what it said, without ever being reachable as `candidate` (it is
     // never `===` a member of `pool`, so the `c === candidate` branch above never substitutes `own`
     // for one of them, and the `entry.c === candidate` check below can never select one either).
-    const entries = [...pool, ...foreignExtents]
-      .map((c) => (c === candidate ? { c, ...own } : { c, ...candidateExtent(c, scope) }))
+    //
+    // A pool member's own `'unplaceable'` extent is safe to drop from the ordering (below) because
+    // its exclusion is the deliberate, documented "cannot say anything about it" rule stated above —
+    // this call's own record already tracks every one of that member's real call sites and simply
+    // could not resolve them for this story. A `foreignExtents` member carries no such guarantee: it
+    // is a real element in the *other* record's own file, this call's own record cannot enumerate its
+    // call sites at all (an exported helper, or a call-site guard this story's scope cannot resolve —
+    // `candidateExtent`'s own `'unplaceable'` kind), and dropping it would silently assume it renders
+    // zero times when it might render before the position `nth` is about to settle on. It also carries
+    // no `line` to sort it against the rest of the pool in the first place. Checked once, up front,
+    // against every `foreignExtents` member regardless of where it would have landed: any one of them
+    // being unplaceable makes the whole walk `'ambiguous'`, the same "one it cannot settle keeps the
+    // whole ordering unresolved" rule `'unknown-width'` already gets below — found live by a probe
+    // planted against this exact branch (T674 round 2): a pool of two with an unplaceable foreign
+    // entry silently dropped let `nth: 1` `'match'` the second pool member, when the unplaceable
+    // foreign entry could just as well render before it and shift `nth`'s real target to the first.
+    const foreignPositions = foreignExtents.map((c) => ({ c, ...candidateExtent(c, scope) }))
+    if (foreignPositions.some((e) => e.kind === 'unplaceable')) return 'ambiguous'
+    const entries = [
+      ...pool.map((c) => (c === candidate ? { c, ...own } : { c, ...candidateExtent(c, scope) })),
+      ...foreignPositions,
+    ]
       .filter((e) => e.kind !== 'unplaceable' && e.count !== 0)
       .sort((a, b) => a.line - b.line)
     // Walked in source order, accumulating an exact cumulative position — exact because every
