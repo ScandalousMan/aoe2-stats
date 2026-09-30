@@ -3605,12 +3605,13 @@ earlier draft made — extending sizing prose into a "Met" verdict, which `revie
 2026-09-19). Item 9's second half's own row is deleted (T673, 2026-09-26): nightly run
 [36267228036](https://github.com/ScandalousMan/aoe2-stats/actions/runs/36267228036) backs the
 determinism harness's verdict — 3516 render pairs compared, every one within the 0.01 tolerance —
-so the row is removed rather than left as a passing exception. Item 13's own row is deleted the same
-way (T674, 2026-09-28): all four sub-suites (`tests/visual/route-keyboard.spec.ts`,
+so the row is removed rather than left as a passing exception. Item 13's sizing row is deleted the
+same way (T674, 2026-09-28): all four sub-suites (`tests/visual/route-keyboard.spec.ts`,
 `route-focus-visibility.spec.ts`, `route-touch-footprint.spec.ts`, `route-reduced-motion.spec.ts`)
 run in CI against every route scenario `tests/visual/fixtures/app-routes-harness.ts` enumerates, in
 both themes — see quickstart.md's own walk for the verdict, its scope, and the run that backs it.
-What those scenarios do not render is row 2 below. The rows below are what is still
+That run backs item 13 only for what those scenarios render at rest; what they do not render is row 2
+below, and item 13 stays partly met until row 2 is deleted. The rows below are what is still
 open about this package's own verification harness, never about a component or a token, filed here
 for the reason the four registers above already are: the subject is this package's own tooling, so
 a future task changing that tooling needs this row updated, and it does not belong in a spec written
@@ -3695,11 +3696,13 @@ disabled:no-underline`, in the label's own ink (`shared-primitives.md` §Button,
    has no positive control. Production-readiness item 13 is Met for what the scenarios render at rest
    and partly met overall until this row is deleted. **Owner: T676. Fix by 2026-10-13.**
 
-T674 landed 2026-09-28: all four of item 13's sub-suites run in CI against every route in both
-themes, and the row this task's own filing opened (formerly row 1 of the Verification-coverage gap
+T674 (2026-09-28) runs all four of item 13's sub-suites in CI against every route scenario at rest,
+in both themes, and the sizing row this task's own filing opened (formerly row 1 of the Verification-coverage gap
 register above) is deleted rather than left as a passing exception — sizing the work is not doing
 it, the distinction an earlier draft of T597 collapsed and `reviewer` rejected on 2026-09-19, and
-deleting the row once the run backs the verdict is what tells the two apart. Row 1 above (renumbered
+deleting the row once the run backs the verdict is what tells the two apart. Row 2 above is what that
+run does not reach — populated lists, opened surfaces, loading states, pointer-only targets — and is
+T676's, not a reopening of T674's row. Row 1 above (renumbered
 from row 2 when T674's own row was deleted ahead of it) answers a different question — the
 comparator's own sensitivity, not an axis a harness fails to run — and stays open until T675's
 package-wide sweep lands and the non-fill signals above are implemented; the threshold question
