@@ -450,8 +450,7 @@ jobs:
       # unstamped candidate, a duplicate-and-skipped landing, a stop outside main/header/footer, a
       # candidate excluded by display:none or visibility:hidden, an under-width or low-contrast ring
       # at its offset boundary, a 40px button, an unreduced transition) against `setContent` pages on
-      # every run (B2, B4). keyboard-walk and focus-ring pair each planted case with its own control;
-      # touch-footprint and reduced-motion instead share one combined control per file.
+      # every run (B2, B4), beside passing controls.
       # `app-routes-harness.test.ts` fails when `apps/web/src/routeTree.gen.ts` declares a route no
       # scenario covers (M2).
       - run: >-
