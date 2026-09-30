@@ -57,17 +57,19 @@ export interface TabStop {
   isFocusVisible: boolean
   outline: { style: string; width: string; color: string }
   /** The surface the focus ring is actually painted over, as an opaque `rgb(...)` triple. Starts
-   * from the element's own ancestor chain, except when `outline-offset` > 0 (an outward ring, e.g.
-   * Menu's trigger/footer item), which is painted over the PARENT's surface instead — the walk
-   * starts there. Any translucent layer encountered (alpha < 1) is composited over the next opaque
-   * ancestor found further up (defaulting to the page's own white canvas backdrop if none is)
-   * rather than read as-is, so this is never a raw, uncomposited `rgba(...)` string. PR #102 review
-   * finding M1: this used to always start from the element itself and stop at the first
-   * non-transparent layer regardless of its alpha. */
-  /** Can also hold `BACKGROUND_UNRESOLVABLE_DARK_SCHEME` verbatim instead of an `rgb(...)` triple —
-   * the per-step walk found no opaque ancestor anywhere up to the document root AND the page's
-   * `color-scheme` includes "dark", so assuming the browser's default light canvas (as it does when
-   * no `color-scheme` is declared at all) would be a guess the page gave no grounds for.
+   * from the element's own ancestor chain, except when `outline-offset` is greater than the
+   * negative of the ring's own `outline-width` (an outward ring, or an inset ring shallower than
+   * its own width — e.g. Menu's trigger/footer item), which is painted over the PARENT's surface
+   * instead — the walk starts there. Any translucent layer encountered (alpha < 1) is composited
+   * over the next opaque ancestor found further up (defaulting to the page's own white canvas
+   * backdrop if none is) rather than read as-is, so this is never a raw, uncomposited `rgba(...)`
+   * string. PR #102 review finding M1: this used to always start from the element itself and stop
+   * at the first non-transparent layer regardless of its alpha, and used `outline-offset > 0` alone
+   * as the outward-ring condition, missing offset 0 and any inset shallower than the ring's own
+   * width. Can also hold `BACKGROUND_UNRESOLVABLE_DARK_SCHEME` verbatim instead of an `rgb(...)`
+   * triple — the per-step walk found no opaque ancestor anywhere up to the document root AND the
+   * page's `color-scheme` includes "dark", so assuming the browser's default light canvas (as it
+   * does when no `color-scheme` is declared at all) would be a guess the page gave no grounds for.
    * `assertFocusRingVisible` checks for this marker itself, before ever handing the string to
    * `parseRgb`. */
   backgroundColor: string

@@ -217,6 +217,53 @@ test.describe('focus-ring-visible guard, planted pages', () => {
     expect(() => assertFocusRingVisible(step, 'inset-ring-control')).not.toThrow()
   })
 
+  test("offset exactly -width stays on the element's own surface (the <= boundary itself, not merely deeper than it)", async ({
+    page,
+  }) => {
+    // The test above already covers offset (-4) < -width (-2); this pins the boundary value the
+    // condition actually branches on. offset (-2) === -width (-2): the ring's outward edge
+    // (offset + width = 0) sits exactly at the border and never crosses it, so `backgroundStartNode`
+    // stays on the element itself.
+    await page.setContent(`
+      <div style="background: #333333; padding: 40px;">
+        <button id="a" style="background: #cccccc; outline: 2px solid black; outline-offset: -2px;">A</button>
+      </div>
+    `)
+
+    const { steps } = await walkTabOrder(page)
+    expect(steps).toHaveLength(1)
+    const [step] = steps
+
+    const { r, g, b } = parseRgb(step.backgroundColor)
+    expect([r, g, b].every((channel) => Math.abs(channel - 204) <= 2)).toBe(true)
+    expect(() =>
+      assertFocusRingVisible(step, 'boundary-offset-equals-negative-width'),
+    ).not.toThrow()
+  })
+
+  test("offset one pixel short of -width crosses onto the parent's surface (the boundary's failing side)", async ({
+    page,
+  }) => {
+    // Same colours as the boundary test above, offset moved from -2px to -1px: -1 > -width (-2) is
+    // now true, so the ring's outward edge (offset + width = 1) has crossed the border, and
+    // `backgroundStartNode` resolves the PARENT's #333333 instead of the element's own #cccccc.
+    await page.setContent(`
+      <div style="background: #333333; padding: 40px;">
+        <button id="a" style="background: #cccccc; outline: 2px solid black; outline-offset: -1px;">A</button>
+      </div>
+    `)
+
+    const { steps } = await walkTabOrder(page)
+    expect(steps).toHaveLength(1)
+    const [step] = steps
+
+    const { r, g, b } = parseRgb(step.backgroundColor)
+    expect([r, g, b].every((channel) => Math.abs(channel - 51) <= 2)).toBe(true)
+    expect(() => assertFocusRingVisible(step, 'boundary-offset-one-past-negative-width')).toThrow(
+      /below the 3:1 WCAG 1\.4\.11 non-text contrast floor/,
+    )
+  })
+
   test('a translucent outline colour fails contrast once composited over its surface, not read as opaque', async ({
     page,
   }) => {

@@ -7,10 +7,12 @@
 //
 // FR-049: "Every interactive element MUST be reachable and operable by keyboard, in an order that
 // matches its visual order, with no trap outside a modal surface that defines its own." No modal is
-// ever opened by this walk (a route-level Tab walk, not a component interaction test), so "no trap"
-// reduces to "every stop stays inside the route's one `main` landmark or its `header`/`footer`
-// chrome" — the same containment `tests/visual/focus-ring.spec.ts` assumes implicitly and this file
-// makes an explicit, mechanical assertion.
+// ever opened by this walk (a route-level Tab walk, not a component interaction test): a trap
+// surfaces as `assertFullTabCoverage`'s step-count guard (the walk producing more stops than
+// candidates — see `keyboard-walk.ts`'s own comment on why a separate wrap-detection guard was
+// removed), not through containment. `assertStopsInsideChrome`, asserted separately below, checks
+// the containment `tests/visual/focus-ring.spec.ts` assumes implicitly: every stop stays inside the
+// route's one `main` landmark or its `header`/`footer` chrome.
 import { test } from '@playwright/test'
 import {
   assertThemeApplied,

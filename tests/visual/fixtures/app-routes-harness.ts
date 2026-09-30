@@ -1,6 +1,7 @@
-// T674 (production-readiness item 13, closed by this commit — see
-// `packages/design-system/specs/README.md`'s "Verification-coverage gap register" for the row this
-// task's own filing deleted): the fixture data, `/api/*` stubs and route list
+// T674: production-readiness item 13 is Met only for what the route scenarios below render at rest
+// — see `packages/design-system/specs/README.md`'s "Verification-coverage gap register" (row 2,
+// owned by T676) for what a route renders once used that this fixture does not reach. This file
+// holds the fixture data, `/api/*` stubs and route list
 // `tests/visual/app-routes.spec.ts` (T108/T553) already built for its own landmark-count and
 // full-page-screenshot suite, factored out so the four keyboard/focus-visibility/touch-footprint/
 // reduced-motion sub-suites below — and `app-routes.spec.ts` itself, which now imports
@@ -272,22 +273,38 @@ export const ROUTE_SCENARIOS: readonly RouteScenario[] = [
   },
 ]
 
-// PR #102 review finding (T674 remediation): none of the five suites that walk `ROUTE_SCENARIOS`
-// ever asserted which URL a navigation actually landed on — `/sign-in` and `/dashboard` both
-// navigate to `/` and rely on `routes/index.tsx`'s `beforeLoad` redirect, so a broken redirect (or
-// one pointed at the wrong route) would leave every assertion downstream running against whichever
-// page happened to load, silently. `app-routes.spec.ts` already checked this for its own two
-// dedicated sign-in/dashboard tests, by name (`page.waitForURL('**/sign-in')` /
-// `page.waitForURL('**/dashboard')`); this generalizes that same check to every scenario, every
-// caller, through `scenario.landedPath` (falling back to `scenario.path` for the nine scenarios
-// that never redirect).
+// PR #102 review finding (T674 remediation), then found still incomplete on PR #102 itself
+// (confirmed by running, see `./goto-scenario.test.ts`): a `page.waitForURL('**' + expected)`
+// called right after `page.goto` resolves immediately whenever the current URL already matches the
+// pattern — true, trivially, for every scenario whose `landedPath` equals its own `path` (nine of
+// the eleven in `ROUTE_SCENARIOS`), since `goto` has just navigated there directly. That left this
+// function checking nothing for those nine: an authenticated-only route stubbed signed-out redirects
+// to `/sign-in?return=...` through its own `beforeLoad` guard, `<main>` renders there too, and the
+// old body never threw — every caller would have silently walked the sign-in page under the
+// original route's label. This now: (1) actively waits for the URL's pathname to become the
+// expected one — a real wait for the two scenarios that redirect (`/sign-in`, `/dashboard`, both
+// navigate to `/` first), a no-op for the other nine, already there; (2) waits for the route's own
+// `<main>` to paint, exactly as `app-routes.spec.ts`'s and the four route-level suites' own
+// downstream assertions already do, giving a *later* client-side redirect (fired from `beforeLoad`
+// after the initial URL happened to match) room to run before anything is asserted; (3) re-checks
+// the pathname by exact equality, not a glob, so that late redirect is caught instead of silently
+// passing through step 1's already-satisfied check.
 export async function gotoScenario(
   page: Page,
   scenario: RouteScenario,
   baseUrl: string,
 ): Promise<void> {
+  const expectedPath = scenario.landedPath ?? scenario.path
   await page.goto(`${baseUrl}${scenario.path}`)
-  await page.waitForURL(`**${scenario.landedPath ?? scenario.path}`)
+  await page.waitForURL((url) => url.pathname === expectedPath)
+  await page.getByRole('main').waitFor({ state: 'visible' })
+  const actualUrl = page.url()
+  const actualPath = new URL(actualUrl).pathname
+  expect(
+    actualPath,
+    `${scenario.label}: expected navigating to '${scenario.path}' to land on '${expectedPath}', ` +
+      `but it landed on '${actualUrl}' instead.`,
+  ).toBe(expectedPath)
 }
 
 // One static server per spec file, on its own port, so the four sub-suites below never race

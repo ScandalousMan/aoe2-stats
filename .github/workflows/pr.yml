@@ -446,12 +446,14 @@ jobs:
       # not stories either, so `--changed` never selects them: without them on this line, an
       # apps/web-only pull request that adds a 30px button or an unreduced transition merges
       # green and is caught only by nightly (adversarial review of #102, B1).
-      # `tests/visual/fixtures/*.test.ts` plant each suite's broken property (a Tab trap, a
-      # duplicate-and-skipped landing, a stop outside main/header/footer, a candidate hidden by an
-      # ancestor, a 1px or low-contrast ring, a 40px button, an unreduced transition) against
-      # `setContent` pages, each paired with a control that removes only the planted defect, so
-      # every guard is seen red on every run (B2, B4); `app-routes-harness.test.ts` fails when
-      # `apps/web/src/routeTree.gen.ts` declares a route no scenario covers (M2).
+      # `tests/visual/fixtures/*.test.ts` plant each suite's broken property (a Tab trap, an
+      # unstamped candidate, a duplicate-and-skipped landing, a stop outside main/header/footer, a
+      # candidate excluded by display:none or visibility:hidden, an under-width or low-contrast ring
+      # at its offset boundary, a 40px button, an unreduced transition) against `setContent` pages on
+      # every run (B2, B4). keyboard-walk and focus-ring pair each planted case with its own control;
+      # touch-footprint and reduced-motion instead share one combined control per file.
+      # `app-routes-harness.test.ts` fails when `apps/web/src/routeTree.gen.ts` declares a route no
+      # scenario covers (M2).
       - run: >-
           pnpm exec playwright test
           tests/visual/app-routes.spec.ts

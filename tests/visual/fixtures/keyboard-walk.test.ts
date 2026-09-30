@@ -5,10 +5,10 @@
 // story needed) that each trip exactly one of `assertFullTabCoverage`'s guards (unstamped
 // candidate, step count, duplicates, DOM order) or `assertStopsInsideChrome`'s guard, paired with a
 // control that removes only the planted defect — proof each guard actually fires on the case it
-// names, and stays silent on the same page once that one thing is fixed. One further pair plants no
-// defect at all: a candidate hidden by a `display: none` ancestor, proving `walkTabOrder`'s own
-// candidate filter excludes it rather than merely proving a downstream guard can catch it once
-// mis-included.
+// names, and stays silent on the same page once that one thing is fixed. Two further tests plant no
+// defect at all: a candidate hidden by a `display: none` ancestor or by its own `visibility:
+// hidden`, proving `walkTabOrder`'s own candidate filter excludes each rather than merely proving a
+// downstream guard can catch it once mis-included.
 //
 // A wrap-closes-the-cycle guard used to live here too (PR #102 review finding B2's first
 // remediation): it read a `wrapped` flag set only when the walk's own final Tab press returned
@@ -82,6 +82,24 @@ test.describe('keyboard-walk guards, planted pages', () => {
     expect(() => assertFullTabCoverage(result, 'unstamped-summary')).toThrow(
       /never stamped as a candidate.*summary/is,
     )
+  })
+
+  test('the same page with <summary> replaced by a stamped button passes every guard (control for the unstamped-summary case above)', async ({
+    page,
+  }) => {
+    // Same three-tab-stop shape as the unstamped-summary page above, with the one element
+    // `FOCUSABLE_SELECTOR` cannot stamp swapped for one it can — isolates that gap as what actually
+    // trips the guard there, not the page's element count or order.
+    await page.setContent(`
+      <button id="a">A</button>
+      <button id="b">B</button>
+      <button id="c">C</button>
+    `)
+
+    const result = await walkTabOrder(page)
+
+    expect(result.steps.every((step) => step.kbdId !== null)).toBe(true)
+    expect(() => assertFullTabCoverage(result, 'unstamped-summary-control')).not.toThrow()
   })
 
   test('a redirect-and-skip combo trips the no-duplicates guard, not the step-count guard', async ({
@@ -209,6 +227,27 @@ test.describe('keyboard-walk guards, planted pages', () => {
     expect(result.candidateCount).toBe(2)
     expect(result.steps).toHaveLength(2)
     expect(() => assertFullTabCoverage(result, 'hidden-ancestor')).not.toThrow()
+  })
+
+  test('a button with its own visibility:hidden is not counted as a candidate', async ({
+    page,
+  }) => {
+    // The candidate filter's own comment explains why `visibilityProperty: true` is required, not
+    // the option-less default: `checkVisibility()` alone checks `display` but not `visibility`, so
+    // a button declaring `visibility: hidden` on itself (not merely inheriting it from a hidden
+    // ancestor, the case above) would be wrongly readmitted as a candidate the walk could never
+    // actually Tab to.
+    await page.setContent(`
+      <button id="a">A</button>
+      <button id="hidden" style="visibility: hidden">Hidden</button>
+      <button id="b">B</button>
+    `)
+
+    const result = await walkTabOrder(page)
+
+    expect(result.candidateCount).toBe(2)
+    expect(result.steps).toHaveLength(2)
+    expect(() => assertFullTabCoverage(result, 'visibility-hidden')).not.toThrow()
   })
 
   test('a focusable element outside main/header/footer fails the inside-chrome guard', async ({
