@@ -36,6 +36,7 @@ import path from 'node:path'
 import { expect, test, type Page } from '@playwright/test'
 import {
   assertThemeApplied,
+  gotoScenario,
   ROUTE_SCENARIOS,
   seedThemeOverride,
   waitForFontsReady,
@@ -141,6 +142,27 @@ const routeCases = ROUTE_SCENARIOS.filter(
   return { ...scenario, screenshotBase }
 })
 
+// PR #102 review finding (T674 remediation): the check above only ever catches a scenario missing
+// an entry here — the opposite drift, a key this object keeps after its own ROUTE_SCENARIOS entry
+// is renamed or removed, was never caught at all, silently leaving that key's baselines exempt from
+// `scripts/checks/story-baselines.mjs`'s orphan check forever (that script derives its exempt set
+// from this file's own `screenshotBase: '...'` literals, by text, so a stale key still "backs" a
+// baseline as far as that check can tell). A module-level throw, not a test, so this fails the
+// instant the file loads — the same shape as the missing-key throw just above, and the one place a
+// `tests/visual/fixtures/app-routes-harness.test.ts` check cannot substitute, since that file
+// cannot import this one (T108's header comment: this file owns its own server bootstrap, not
+// fixture data).
+const staleScreenshotBaseLabels = Object.keys(SCREENSHOT_BASE_BY_LABEL).filter(
+  (label) => !ROUTE_SCENARIOS.some((scenario) => scenario.label === label),
+)
+if (staleScreenshotBaseLabels.length > 0) {
+  throw new Error(
+    `SCREENSHOT_BASE_BY_LABEL has an entry keyed on a route ROUTE_SCENARIOS no longer declares: ` +
+      `${staleScreenshotBaseLabels.join(', ')} — tests/visual/fixtures/app-routes-harness.ts's ` +
+      'ROUTE_SCENARIOS is the source of truth; remove the stale entry from SCREENSHOT_BASE_BY_LABEL.',
+  )
+}
+
 test.describe('the built application, served and stubbed', () => {
   // Serial rather than `fullyParallel`'s default (playwright.config.ts): every test below shares
   // one static server, started once in `beforeAll` and torn down in `afterAll` — full parallelism
@@ -210,8 +232,7 @@ test.describe('the built application, served and stubbed', () => {
       // paints; `routes/index.tsx`'s own `beforeLoad` then redirects an unauthenticated visitor to
       // `/sign-in` — the root itself never renders, so this is the same landing an ordinary
       // signed-out visit produces.
-      await page.goto(`${baseUrl}${signInScenario.path}`)
-      await page.waitForURL('**/sign-in')
+      await gotoScenario(page, signInScenario, baseUrl)
       await assertThemeApplied(page, 'light')
       await expect(page.getByRole('button', { name: 'Continue with Steam' })).toBeVisible()
       await expectExactlyOneMain(page, '/sign-in')
@@ -224,8 +245,7 @@ test.describe('the built application, served and stubbed', () => {
       await seedThemeOverride(page, 'dark')
       await signInScenario.stub(page)
 
-      await page.goto(`${baseUrl}${signInScenario.path}`)
-      await page.waitForURL('**/sign-in')
+      await gotoScenario(page, signInScenario, baseUrl)
       await assertThemeApplied(page, 'dark')
       await expect(page.getByRole('button', { name: 'Continue with Steam' })).toBeVisible()
       await expectExactlyOneMain(page, '/sign-in')
@@ -238,8 +258,7 @@ test.describe('the built application, served and stubbed', () => {
       await seedThemeOverride(page, 'light')
       await dashboardScenario.stub(page)
 
-      await page.goto(`${baseUrl}${dashboardScenario.path}`)
-      await page.waitForURL('**/dashboard')
+      await gotoScenario(page, dashboardScenario, baseUrl)
       await assertThemeApplied(page, 'light')
       await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible()
       await expect(page.getByText('VisualSuitePlayer')).toBeVisible()
@@ -253,8 +272,7 @@ test.describe('the built application, served and stubbed', () => {
       await seedThemeOverride(page, 'dark')
       await dashboardScenario.stub(page)
 
-      await page.goto(`${baseUrl}${dashboardScenario.path}`)
-      await page.waitForURL('**/dashboard')
+      await gotoScenario(page, dashboardScenario, baseUrl)
       await assertThemeApplied(page, 'dark')
       await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible()
       await expect(page.getByText('VisualSuitePlayer')).toBeVisible()
@@ -272,7 +290,7 @@ test.describe('the built application, served and stubbed', () => {
           await seedThemeOverride(page, theme)
           await routeCase.stub(page)
 
-          await page.goto(`${baseUrl}${routeCase.path}`)
+          await gotoScenario(page, routeCase, baseUrl)
           await assertThemeApplied(page, theme)
           await expectExactlyOneMain(page, routeCase.label)
 

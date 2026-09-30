@@ -17,6 +17,7 @@ import { test } from '@playwright/test'
 import {
   assertThemeApplied,
   createAppServerHarness,
+  gotoScenario,
   hasBuild,
   ROUTE_SCENARIOS,
   seedThemeOverride,
@@ -71,7 +72,7 @@ test.describe('touch footprints at 375px, every route, both themes', () => {
           await seedThemeOverride(page, theme)
           await scenario.stub(page)
 
-          await page.goto(`${harness.baseUrl}${scenario.path}`)
+          await gotoScenario(page, scenario, harness.baseUrl)
           await page.getByRole('main').waitFor({ state: 'visible' })
           await assertThemeApplied(page, theme)
           await waitForFontsReady(page)

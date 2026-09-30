@@ -15,6 +15,7 @@ import { test } from '@playwright/test'
 import {
   assertThemeApplied,
   createAppServerHarness,
+  gotoScenario,
   hasBuild,
   ROUTE_SCENARIOS,
   seedThemeOverride,
@@ -66,7 +67,7 @@ test.describe('keyboard operation, every route, both themes', () => {
           await seedThemeOverride(page, theme)
           await scenario.stub(page)
 
-          await page.goto(`${harness.baseUrl}${scenario.path}`)
+          await gotoScenario(page, scenario, harness.baseUrl)
           await page.getByRole('main').waitFor({ state: 'visible' })
           // PR #102 review finding (low): proves the theme was actually *painted*, not merely
           // seeded — `seedThemeOverride` only writes the storage key; `ThemeProvider.tsx` is what

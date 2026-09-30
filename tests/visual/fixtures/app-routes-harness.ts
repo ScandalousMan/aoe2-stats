@@ -163,6 +163,13 @@ export interface RouteScenario {
   /** Used in every assertion message below. */
   label: string
   path: string
+  /**
+   * Where navigating to `path` is expected to actually land, when that differs from `path` itself
+   * — only `/sign-in` and `/dashboard` need this: both navigate to `/`, and `routes/index.tsx`'s
+   * `beforeLoad` redirects from there depending on session state. Falls back to `path` in
+   * `gotoScenario` below when omitted, since every other scenario's own `path` is where it lands.
+   */
+  landedPath?: string
   stub: (page: Page) => Promise<void>
 }
 
@@ -177,6 +184,7 @@ export const ROUTE_SCENARIOS: readonly RouteScenario[] = [
   {
     label: '/sign-in',
     path: '/',
+    landedPath: '/sign-in',
     stub: async (page) => {
       await stubMe(page, SIGNED_OUT_ME)
     },
@@ -184,6 +192,7 @@ export const ROUTE_SCENARIOS: readonly RouteScenario[] = [
   {
     label: '/dashboard',
     path: '/',
+    landedPath: '/dashboard',
     stub: async (page) => {
       await stubMe(page, SIGNED_IN_ME)
       await stubProfiles(page)
@@ -262,6 +271,24 @@ export const ROUTE_SCENARIOS: readonly RouteScenario[] = [
     },
   },
 ]
+
+// PR #102 review finding (T674 remediation): none of the five suites that walk `ROUTE_SCENARIOS`
+// ever asserted which URL a navigation actually landed on — `/sign-in` and `/dashboard` both
+// navigate to `/` and rely on `routes/index.tsx`'s `beforeLoad` redirect, so a broken redirect (or
+// one pointed at the wrong route) would leave every assertion downstream running against whichever
+// page happened to load, silently. `app-routes.spec.ts` already checked this for its own two
+// dedicated sign-in/dashboard tests, by name (`page.waitForURL('**/sign-in')` /
+// `page.waitForURL('**/dashboard')`); this generalizes that same check to every scenario, every
+// caller, through `scenario.landedPath` (falling back to `scenario.path` for the nine scenarios
+// that never redirect).
+export async function gotoScenario(
+  page: Page,
+  scenario: RouteScenario,
+  baseUrl: string,
+): Promise<void> {
+  await page.goto(`${baseUrl}${scenario.path}`)
+  await page.waitForURL(`**${scenario.landedPath ?? scenario.path}`)
+}
 
 // One static server per spec file, on its own port, so the four sub-suites below never race
 // `app-routes.spec.ts`'s own server (`VISUAL_APP_PORT`, default 4174) or each other when a nightly
