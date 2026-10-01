@@ -37,16 +37,12 @@ import { spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-// T675 (slice 2/N): the package-wide comparator-blind-spot sweep's own self-pairing and
-// classification — this file's own `--state-signal-sweep` flow is the one caller, so the ESM
-// import (never a `.cjs` bridge — nothing here is transpiled by Playwright, unlike
-// `stories.spec.ts`'s own consumers) works directly.
-import {
-  discoverStoryFiles,
-  buildStoryFileWork,
-  classifyBucket,
-  decideSweepGate,
-} from './state-signal-model.mjs'
+// T675: the package-wide comparator-blind-spot sweep's own self-pairing and classification live in
+// `./state-signal-model.mjs`, which `runStateSignalSweep()` below loads with a dynamic `import()`
+// — never a static one here. That module needs `storybook/internal/csf` (ESM-only) and
+// `typescript` at load time, so a static import made every ordinary `pnpm test:visual` /
+// `--changed` run load them too, and die at import on any Node that cannot load them, though only
+// `--state-signal-sweep` has any use for them.
 // `.cjs`, not `.mjs` — see that file's header comment for why: Node's ESM loader can import a
 // CommonJS module directly (`cjs-module-lexer` statically finds these named exports), which is the
 // only shape this shared module can take without also being ambiguous to Playwright's transpile of
@@ -158,7 +154,7 @@ function changedFiles() {
 
 const storyGlob = /\.stories\.[jt]sx?$/
 
-function main() {
+async function main() {
   if (!existsSync(indexPath)) {
     log(
       'no Storybook build found at packages/design-system/storybook-static/index.json — nothing ' +
@@ -168,7 +164,7 @@ function main() {
   }
 
   if (stateSignalSweep) {
-    runStateSignalSweep()
+    await runStateSignalSweep()
     return
   }
 
@@ -327,7 +323,7 @@ function main() {
   process.exit(stale.length > 0 ? 1 : exitCode)
 }
 
-// --- T675 (slice 2/N): package-wide comparator-blind-spot sweep --------------------------------
+// --- T675: package-wide comparator-blind-spot sweep --------------------------------
 
 // Every state story in the tree (`state-signal-model.mjs`'s own `discoverStoryFiles` +
 // `buildStoryFileWork`), self-paired against its own resting frame — split into `measurable` (a
@@ -339,7 +335,7 @@ function main() {
 // dropped from the sweep entirely — `decideSweepGate` never even learned it existed. It is now
 // collected and passed on so the gate below can fail on it, named (still logged here too, for a
 // developer watching the run live rather than reading the gate's own failure list after the fact).
-function buildStateSignalWork() {
+function buildStateSignalWork({ discoverStoryFiles, buildStoryFileWork }) {
   const measurable = []
   const notMeasurable = []
   const unkeyableFiles = []
@@ -398,16 +394,16 @@ function writeStateSignalReport({ classified, notMeasurable, measurableCount }) 
   }
 
   const lines = []
-  lines.push('# State-signal comparator sweep (T675, slice 2/N — self-paired)')
+  lines.push('# State-signal comparator sweep (T675, self-paired)')
   lines.push('')
   lines.push(
     'Command: `node scripts/visual/run.mjs --state-signal-sweep` (rebuild Storybook first: ' +
       '`pnpm --filter design-system build-storybook`). Every story below is compared against ' +
       "*itself* (`state-signal-model.mjs`'s own `planSelfRest`, `tests/visual/" +
       "state-signal-sweep.spec.ts`'s own header) — the state and the rest share the same args, " +
-      "render, viewport and clip by construction. Local renders differ from CI's by roughly 2% in " +
-      'absolute terms, but every comparison below is two renders taken on the same machine, in the ' +
-      'same run, against each other — valid for this classification.',
+      'render, viewport and clip by construction. Every comparison below is two renders taken on ' +
+      'the same machine, in the same run, against each other — so which machine that was does not ' +
+      'affect this classification.',
   )
   lines.push('')
   lines.push(
@@ -455,8 +451,13 @@ function writeStateSignalReport({ classified, notMeasurable, measurableCount }) 
 // `checkStaleness()` above already follows, because one pair's own render failure (a selector this
 // task's own render-time check throws on, `story-render.ts`'s own `locateClipPart`) says nothing
 // about any other pair's numbers.
-function runStateSignalSweep() {
-  const { measurable, notMeasurable, unkeyableFiles } = buildStateSignalWork()
+async function runStateSignalSweep() {
+  const { discoverStoryFiles, buildStoryFileWork, classifyBucket, decideSweepGate } =
+    await import('./state-signal-model.mjs')
+  const { measurable, notMeasurable, unkeyableFiles } = buildStateSignalWork({
+    discoverStoryFiles,
+    buildStoryFileWork,
+  })
   log(
     `state-signal-sweep: ${measurable.length} measurable pair(s), ${notMeasurable.length} ` +
       `not-measurable state stor(y/ies), ${unkeyableFiles.length} unkeyable file(s) found from ` +
@@ -546,4 +547,7 @@ function runStateSignalSweep() {
   process.exit(result.status !== 0 ? (result.status ?? 1) : gate.pass ? 0 : 1)
 }
 
-main()
+main().catch((error) => {
+  console.error(error)
+  process.exit(1)
+})

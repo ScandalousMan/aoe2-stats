@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// T675 (slice 2/N — closes the "55 of 113 not measurable" residue slice 1 left; see row 1 of
+// T675 (slice 2/N — closes the "55 of 113 not measurable" residue slice 1 left; see T675's closing note in
 // packages/design-system/specs/README.md's "Verification-coverage gap register" for the measured
 // numbers and this task's own text in tasks.md for the Done clause this slice closes: "the sweep
 // runs against every state story in the tree").
@@ -38,7 +38,7 @@
 //     `extractVisualForceState` reads `parameters.visualForceState` — state-coverage.mjs never
 //     reads this parameter at all (grep confirms zero occurrences), so there is nothing to reuse.
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { createRequire } from 'node:module'
 import {
   parseTsx,
@@ -66,7 +66,15 @@ const ts = dsRequire('typescript')
 // Storybook build derives every story's `id` from — reused rather than reimplemented so a display
 // name this file cannot special-case (an emoji, an acronym) can never compute a different id than
 // the real build assigns it.
-const { toId, storyNameFromExport } = dsRequire('storybook/internal/csf')
+//
+// Loaded with a dynamic `import()`, never `dsRequire(...)`: that subpath is ESM-only, and
+// `require()` of an ES module needs Node >= 20.19 (root `package.json` allows `>=20`) — on an
+// older Node it died with ERR_REQUIRE_ESM at import time. The top-level `await` keeps every
+// consumer's own call sites synchronous. `run.mjs` imports this module lazily, only for
+// `--state-signal-sweep`, so an ordinary `pnpm test:visual` never loads it at all.
+const { toId, storyNameFromExport } = await import(
+  pathToFileURL(dsRequire.resolve('storybook/internal/csf')).href
+)
 
 export const THEMES = ['light', 'dark']
 export const WIDTHS = REVIEW_WIDTHS
@@ -492,8 +500,8 @@ export function decideSweepGate({
         bucket: 'measurable-id-mismatch',
         file: null,
         detail:
-          `classified's own story ids do not match the ids planned as measurable, even though the ` +
-          `two lists are the same length — missing (planned, never classified): ` +
+          `classified's own story ids do not match the ids planned as measurable (the two lists ` +
+          `may or may not be the same length) — missing (planned, never classified): ` +
           `${missing.length > 0 ? missing.join(', ') : '(none)'}; unexpected (classified, never ` +
           `planned as measurable): ${unexpected.length > 0 ? unexpected.join(', ') : '(none)'}.`,
       })

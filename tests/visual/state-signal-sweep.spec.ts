@@ -44,7 +44,7 @@
 // and for anything else a future story's own `play()` might leave behind: there is no state to
 // unwind because the render that would have created it never ran.
 //
-// Method (must agree with the task's own classification, and with row 1 of
+// Method (must agree with the task's own classification, and with T675's closing note in
 // packages/design-system/specs/README.md's "Verification-coverage gap register"): diff the two live
 // renders against each other with Playwright's own comparator — pixelmatch at its default
 // `threshold: 0.2` (`playwright.config.ts` sets only `maxDiffPixelRatio: 0.01`, never `threshold`).
@@ -462,8 +462,23 @@ async function captureRest(
   }
 }
 
+// Per-test timeout, scaled to the units a test renders rather than Playwright's flat 30s default
+// (nor a blanket huge value). Each unit is {theme} x {width} and costs two navigate-settle-capture
+// round trips (the rest, then the state). Nightly run 36903179643 averaged 16-18s per test over
+// today's 6 units (~3s per unit), and one test (`screens-privacynotice--contact-route-link-active`)
+// still hit the 30s ceiling and passed only on retry — so the allowance is ~2.5x the observed
+// per-unit mean (7s), plus a base for the avatar stub and the first cold navigation. 6 units gives
+// 52s: ~3x the average, ~1.7x the slowest seen, and it still grows with the matrix instead of
+// silently re-tightening when a theme or width is added.
+const SWEEP_TEST_BASE_TIMEOUT_MS = 10_000
+const SWEEP_TEST_PER_UNIT_TIMEOUT_MS = 7_000
+const SWEEP_TEST_UNIT_COUNT = THEMES.length * WIDTHS.length
+const SWEEP_TEST_TIMEOUT_MS =
+  SWEEP_TEST_BASE_TIMEOUT_MS + SWEEP_TEST_PER_UNIT_TIMEOUT_MS * SWEEP_TEST_UNIT_COUNT
+
 for (const item of workItems) {
   test(`${item.stateId} (comparator sweep, self-rest, ${item.mode})`, async ({ page }) => {
+    test.setTimeout(SWEEP_TEST_TIMEOUT_MS)
     // M4(a): the same stub `stories.spec.ts` installs — `ProfileSummary`'s state stories (fixture
     // `avatarHash`) build a real `avatars.steamstatic.com` URL, and this sweep renders every story
     // the same way `stories.spec.ts` does, so it needs the identical stub rather than none at all.
