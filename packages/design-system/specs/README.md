@@ -3635,12 +3635,20 @@ register above) is deleted rather than left as a passing exception — sizing th
 it, the distinction an earlier draft of T597 collapsed and `reviewer` rejected on 2026-09-19, and
 deleting the row once the run backs the verdict is what tells the two apart. Row 1 above is what that
 run does not reach — populated lists, opened surfaces, loading states, pointer-only targets — and is
-T676's, not a reopening of T674's row. T675 closed the comparator row the same way on 2026-09-29: every fill-only state the sweep
+T676's, not a reopening of T674's row. T675 closed the comparator row the same way: every fill-only state the sweep
 found now carries the non-fill signal its own spec names (the decisions live in those specs, the
 2026-09-28 threshold decision in `playwright.config.ts`'s unchanged default), every state frame is
 clipped to the element carrying its signal, and `node scripts/visual/run.mjs --state-signal-sweep`
-is a nightly gate with no allowlist (`.github/workflows/nightly.yml`, `visual-full`). Its run against
-the CI-regenerated baselines (`31dbe656`) measured 114 of 114 state stories and passed: 98 defended
-on a clipped frame, 8 defended unclipped, 8 a size change that fails `toHaveScreenshot` outright,
-none zero, under 1% or unreproduced. The gate now asserts what the row recorded, so the row is
-deleted rather than kept as a second copy of the fact.
+is a nightly gate with no allowlist, in its own job (`.github/workflows/nightly.yml`,
+`state-signal-sweep`): it fails on a story file it cannot key, a state story it cannot measure, and
+a measurable story it did not classify. Nightly run
+[36903179643](https://github.com/ScandalousMan/aoe2-stats/actions/runs/36903179643) at `cf96edb5`
+(2026-10-01), green in every job, measured 114 of 114 state stories, none unmeasurable: 98 defended
+on a clipped frame, 8 defended unclipped, and 8 a size change `toHaveScreenshot` fails outright —
+seven a `Tooltip` surface opening beside its trigger (`Tooltip`, `CountryFlag`, `ProfileSummary`'s
+board flag), one `SiteHeader`'s skip link revealed — with none zero, under 1% or unreproduced. The
+thinnest margin is `SiteHeader` `Hover` at 1.03%. An earlier local run (2026-09-29) reported the
+same totals, but the adversarial review of #105 found seven of its eight size changes were a resting
+frame dragged to the page origin by the closed `Tooltip` surface, not a real change; this run is the
+one the verdict rests on. The gate now asserts what the row recorded, so the row is deleted rather
+than kept as a second copy of the fact.
