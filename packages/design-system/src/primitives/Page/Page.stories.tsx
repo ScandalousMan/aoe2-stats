@@ -180,7 +180,7 @@ export const Empty: Story = {
 // skip link takes.
 // T675's package-wide sweep found this story's own surviving signal at or under 1% of an unclipped
 // frame in at least one unit — `visualCaptureClip` to the landmark is the mechanical fix (README's
-// Verification-coverage gap register, row 1). Slice 4b: `pad: '2'` still read under 1% on one
+// Verification-coverage gap register, T675's closing note). Slice 4b: `pad: '2'` still read under 1% on one
 // unit — the ring is a thin outline around the whole `<main>` landmark, so the ratio is bounded by
 // that landmark's own perimeter against its own area, which no pad shrinks. `pad: '0'` (tried first)
 // clipped the ring itself away entirely — it is an *outward* ring (`outline-2 outline-offset-2`,

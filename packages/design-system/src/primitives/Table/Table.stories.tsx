@@ -316,7 +316,7 @@ const ROW_LINK_ROW_CLIP = {
 // count as differing pixels at all, on the row clip or any other — no frame, clipped or not, can
 // make that part of this state hold the 1% gate, which is why the row frame is not the answer here
 // (structural-tier.md §16.1, amended alongside this change to say so). `RowLinkActive` below keeps
-// `ROW_LINK_ROW_CLIP`: its own ring is a geometric mark, not a fill, and measures 6-8% there.
+// `ROW_LINK_ROW_CLIP`: its own ring is a geometric mark, not a fill, and measures 5.8-7.5% there (nightly run 36903179643).
 export const RowLinkHover: Story = {
   render: () => (
     <Table
@@ -341,7 +341,7 @@ export const RowLinkHover: Story = {
 // in this frame too. `ROW_LINK_ROW_CLIP` (declared above `RowLinkHover`) is what makes the ring
 // checkable here: the ring is a geometric mark against the row, outside the anchor `ROW_LINK_CLIP`
 // alone would crop to, and (unlike the hover fill `RowLinkHover` no longer clips to the row for —
-// see that story's own comment) it measures well over the comparator's 1% gate there, 6-8% on
+// see that story's own comment) it measures well over the comparator's 1% gate there, 5.8-7.5% on
 // every unit.
 export const RowLinkActive: Story = {
   render: () => (

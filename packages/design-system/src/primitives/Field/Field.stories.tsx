@@ -33,7 +33,7 @@ type Story = StoryObj<typeof Field>
 // (`enabled:hover:`) so the rate-limit-disabled shape never thickens. The `hover:bg-surface-sunken`
 // fill this demo used to carry (T565 remediation) is withdrawn: it is also the disabled fill, and
 // the sweep measured it at zero surviving pixels regardless (README's Verification-coverage gap
-// register, row 1) — the ring is the real signal now, not a second one riding beside the old fill.
+// register, T675's closing note) — the ring is the real signal now, not a second one riding beside the old fill.
 // Its own `FocusVisible` story stays undistinguished from `Default` for an unrelated, pre-existing
 // reason this fix does not touch: `focus-visible:outline-ring`/`outline-offset-ring` set only the
 // outline's width and offset, never `outline-style`, so the ring these classes name never paints

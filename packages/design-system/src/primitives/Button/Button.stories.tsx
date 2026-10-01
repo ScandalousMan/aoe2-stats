@@ -69,8 +69,8 @@ export const AsLink: Story = {
 
 // T675's package-wide sweep found this story's own surviving signal at or under 1% of an unclipped
 // frame in at least one unit — `visualCaptureClip` to the button itself is the mechanical fix the
-// sweep's own "at or under 1%" bucket calls for (README's Verification-coverage gap register, row
-// 1), the same idiom `GhostFocusVisibleLg`/`GhostActiveLg` below already use.
+// sweep's own "at or under 1%" bucket calls for (README's Verification-coverage gap register, T675's
+// closing note), the same idiom `GhostFocusVisibleLg`/`GhostActiveLg` below already use.
 const PRIMARY_LG_CLIP = {
   parts: [{ role: 'button' as const, name: 'Continue with Steam' }],
   pad: '2',

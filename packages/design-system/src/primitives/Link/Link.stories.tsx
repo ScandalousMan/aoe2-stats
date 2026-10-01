@@ -110,7 +110,7 @@ export const Empty: Story = {
 // `VisualForceState` comment) — a `play()` here could only dispatch a synthetic event, which the
 // pseudo-class ignores. T675's package-wide sweep found this story's own surviving signal at or
 // under 1% of an unclipped frame in at least one unit — `visualCaptureClip` to the link is the
-// mechanical fix (README's Verification-coverage gap register, row 1), the same for
+// mechanical fix (README's Verification-coverage gap register, T675's closing note), the same for
 // `FocusVisible`/`ActiveStandalone` below.
 const STANDALONE_LINK_CLIP = { parts: [{ role: 'link' as const, name: 'View profile' }], pad: '2' }
 

@@ -535,7 +535,7 @@ async function openManage({ canvasElement }: { canvasElement: HTMLElement }) {
 
 // T675's package-wide sweep found each of the four open-menu stories below at or under 1% of an
 // unclipped whole-board frame in at least one unit — `visualCaptureClip` to the open `[role="menu"]`
-// surface is the mechanical fix (README's Verification-coverage gap register, row 1), the same
+// surface is the mechanical fix (README's Verification-coverage gap register, T675's closing note), the same
 // `[role="menu"]` idiom `Menu.stories.tsx`'s own `MENU_CLIP` uses.
 const OPEN_MENU_CLIP = { parts: [{ selector: '[role="menu"]' }], pad: '2' } as const
 

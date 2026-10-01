@@ -170,7 +170,7 @@ export const Hover: Story = {
     visualForceState: { state: 'hover', role: 'menuitemradio', name: 'aoe2alt' },
     // "Menu items' hover signal" (shared-primitives.md, decided 2026-09-28): the fill plus a 2px
     // underline under one label is well under 1% of this story's whole-page frame — T675's
-    // Verification-coverage gap register lists this as owed a clip to the open surface. Slice 4b
+    // sweep found this owed a clip to the open surface. Slice 4b
     // tightens that clip once more, from the whole surface to the hovered item alone
     // (`HOVERED_ITEM_CLIP`, above).
     visualCaptureClip: HOVERED_ITEM_CLIP,
@@ -293,7 +293,7 @@ export const KeyboardNavigation: Story = {
 // frame, now provable rather than merely asserted.
 // T675's package-wide sweep found this story's own surviving signal at or under 1% of an unclipped
 // frame in at least one unit — `visualCaptureClip` to the trigger is the mechanical fix (README's
-// Verification-coverage gap register, row 1); `role: 'button'` needs no `name`/`nth` for the same
+// Verification-coverage gap register, T675's closing note); `role: 'button'` needs no `name`/`nth` for the same
 // reason the comment above gives.
 const ESCAPE_TRIGGER_CLIP = { parts: [{ role: 'button' as const }], pad: '2' }
 

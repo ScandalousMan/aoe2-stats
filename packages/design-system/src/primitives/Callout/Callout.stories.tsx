@@ -83,8 +83,8 @@ export const Empty: Story = {
 // heading" answer rather than a frame that documents nothing.
 // T675's package-wide sweep found this story's own surviving signal at or under 1% of an unclipped
 // frame in at least one unit — `visualCaptureClip` to the focused button is the mechanical fix the
-// sweep's own "at or under 1%" bucket calls for (README's Verification-coverage gap register, row
-// 1).
+// sweep's own "at or under 1%" bucket calls for (README's Verification-coverage gap register, T675's
+// closing note).
 const TRY_AGAIN_CLIP = { parts: [{ role: 'button' as const, name: 'Try again' }], pad: '2' }
 
 export const FocusVisible: Story = {

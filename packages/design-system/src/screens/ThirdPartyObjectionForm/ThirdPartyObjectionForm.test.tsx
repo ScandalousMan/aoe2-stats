@@ -74,7 +74,7 @@ describe('ThirdPartyObjectionForm — load-bearing wording', () => {
   })
 
   // §16.2 (structural-tier.md, decided 2026-09-28): the profile-id input carried no hover class of
-  // any kind (found beside T675's nine, README's Verification-coverage gap register, row 1) — it
+  // any kind (found beside T675's nine, `structural-tier.md` §16.2) — it
   // now takes the same inward-thickening ring every text input in this package owes.
   it('thickens the profile-id input boundary inward on hover, scoped to the enabled control (FR-037, 2026-09-28)', () => {
     render(<ThirdPartyObjectionForm onSubmit={vi.fn()} privacyNoticeHref="/privacy-notice" />)

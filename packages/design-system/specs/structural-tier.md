@@ -1313,7 +1313,7 @@ and 0.67% at 375: under the sweep's 1% gate and under `toHaveScreenshot`'s
 `<a>` box (about 114×33) it is about 4.8% in every unit. A row frame adds only the fill and the row
 rules, one fill-only and one unchanged, and this section already says the comparator registers
 neither. `RowLinkActive` stays clipped to the row, where its fill and the ring on the `::after`
-measure 6–8%, over the bar; `RowLinkFocusVisible` stays on the anchor, where its ring paints. What
+measure 5.8–7.5% in nightly run 36903179643, over the bar; `RowLinkFocusVisible` stays on the anchor, where its ring paints. What
 the anchor frame cannot show is judged elsewhere (§10's list): the row in the active capture, and
 the hover fill by a human reviewer in Storybook.
 

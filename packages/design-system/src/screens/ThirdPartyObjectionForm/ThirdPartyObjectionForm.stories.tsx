@@ -139,7 +139,7 @@ export const InputFocusVisible: Story = {
 }
 
 // §16.2 (structural-tier.md, decided 2026-09-28): the profile-id input carried no hover class of
-// any kind — found beside T675's nine (README's Verification-coverage gap register, row 1). It now
+// any kind — found beside T675's nine (`structural-tier.md` §16.2). It now
 // takes the same inward-thickening ring every text input in this package owes, so it needs a frame:
 // this is the one story this task's own item 3 adds. Clipped to the input for the same reason
 // `InputFocusVisible` above is.
