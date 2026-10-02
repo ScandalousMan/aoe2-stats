@@ -105,9 +105,9 @@ which are `FavouriteToggle`'s (`favourite-toggle.md` §5).
 **default** — `Heading` above the list of `FavouriteRow`s, newest favourited first, each with its
 standing and a trailing remove control.
 
-**hover / focus-visible** — `ProfileLink`: whole-block hover fill `surface-sunken`, focus ring
-on the link wrapper inset so it never crops the standing's digits (`player-search.md` and
-`profile-summary.md`'s identical rule for figures). `RemoveControl`: `FavouriteToggle`'s own
+**hover / focus-visible** — `ProfileLink`: fill `surface-sunken` plus the alias underlined (the note
+after the active answer below, decided 2026-09-28); focus ring on the link wrapper inset so it never
+crops the standing's digits (`player-search.md`, `profile-summary.md`). `RemoveControl`: `FavouriteToggle`'s own
 hover/focus. The two never share a hover: the informative block lighting up and the remove
 button lighting up are different affordances and read as such.
 
@@ -124,6 +124,44 @@ still too weak a mark for the duplicate check to tell press apart from hover at 
 `active:ring-2 active:ring-inset active:ring-border-strong`, on top of the fill and the inline-start
 rule, the same "a press is a boundary" signal `Button` `secondary`/`destructive` and `Link`
 `standalone` already carry (T583). `RemoveControl` keeps `FavouriteToggle`'s own active.
+
+**Decided 2026-09-28 (T675): `ProfileLink`'s hover underlines the alias.** T675's package-wide sweep
+measured the `Hover` story against its own resting render with the comparator the visual suite uses,
+whose threshold stays fixed package-wide (`README.md`, Verification-coverage gap register, T675's closing note),
+and found zero surviving pixels: a `surface-sunken` wash over the row is a fill step and nothing
+else, which FR-037's "more than colour, in a still image" already forbids. The fix is a shape. While
+`ProfileLink` is hovered, the alias — and only the alias — is underlined at `border.ring` thickness
+(`decoration-2`), `underline-offset-2`, in its own `text-primary`. The fill stays beside it: FR-037
+asks for a non-colour signal, not the removal of an accompanying colour one.
+
+- **Mechanism.** The link carries a named group (`group/row-link`) and the alias span carries
+  `group-hover/row-link:underline`, `group-hover/row-link:decoration-2` and
+  `group-hover/row-link:underline-offset-2`. It is never `hover:underline` on the link itself: a
+  decoration declared on the `<a>` propagates to every run of text inside it — the standing figure
+  and its signed delta included, which README rule 1 keeps clear of ornament — and a descendant
+  cannot switch a propagated decoration off.
+- **Why the alias.** It is the name the link is for; clan, country and standing describe it. This is
+  the row-link category's one answer (FR-038) — `MatchRow`, `PlayerResultRow`, `Table`'s row link
+  and `Menu`'s items all hover with the fill plus an underline under their name —
+  `structural-tier.md` §16.1 records the reasoning and the three alternatives rejected (the
+  inline-start rule, which is this row's press mark; a hover boundary, when press and focus are
+  already boxes; a trailing chevron, a new glyph in a list whose aliases must never truncate).
+- **Collisions.** Press is unchanged — the inline-start rule and the inset ring above. A pointer
+  press still hovers, so the press frame keeps the underline; press takes no `underline-offset-4`
+  step, because the row's press already carries two geometric marks. Focus-visible is an inset
+  outline box, not a line under text. `RemoveControl` keeps its own hover (`favourite-toggle.md`):
+  hovering `ProfileLink` underlines the alias and lights nothing on the remove button, so the two
+  still never share a hover.
+- **Contrast.** `text-primary` on `surface-sunken`, both themes — a measured pair in the README's
+  table, far above the 3:1 non-text floor an underline owes.
+- **Motion.** The underline is not transitioned; it switches with the hover. The fill keeps its
+  existing transition and its reduced-motion collapse, so FR-055 has nothing new to reduce.
+- **Baselines this moves** (regenerated from CI): `FavouritesList` `Hover`, which also takes a
+  `visualCaptureClip` — to the alias itself, not the whole hovered link: the row also carries the
+  standing figure and its signed delta, and a 2px line under the alias stayed under the comparator's
+  own 1% floor even clipped to the whole link (T675 slice 4b, verification finding, not a design
+  change) — and `FavouritesList` `Active`, which the harness presses by a real hover then a
+  mouse-down, so the underline is in that frame too.
 
 **disabled** — the list has no disabled form. `RemoveControl` is disabled only transiently while its
 own `DELETE` is in flight (`FavouriteToggle` §loading); removing is never blocked by the favourites
@@ -175,22 +213,23 @@ Colour, all via `StatValue`, `Callout`, `Skeleton`, `Button` and `FavouriteToggl
 no new pair (each is already in `specs/README.md`'s measured table and asserted in
 `tokens/build-tokens.test.mjs`): `background` (page), `surface` (row), `surface-raised` (`Callout` fill,
 via that component), `surface-sunken` (`ProfileLink` hover, `Skeleton` fill), `border` (row
-separators), `border-strong` (`Button`/interactive boundaries), `text-primary` (alias, standing
-figure), `text-secondary` (clan, country, labels, standing's "Not ranked yet"/freshness secondary
-line), `success` / `danger` (a rating delta's sign, via `StatValue`), `info` / `danger` (the two whole-
-list `Callout` tones in §5/§5a), `accent` family (the "Sign in" `Button/primary`, via `Button`),
-`focus-ring`.
+separators), `border-strong` (`Button`/interactive boundaries), `text-primary` (alias and its hover
+underline, standing figure), `text-secondary` (clan, country, labels, standing's "Not ranked yet" /
+freshness secondary line), `success` / `danger` (a rating delta's sign, via `StatValue`), `info` /
+`danger` (the two whole-list `Callout` tones in §5/§5a), `accent` family (the "Sign in"
+`Button/primary`, via `Button`), `focus-ring`.
 
 Typography: `mono` for `Standing`'s figures (DS-8 — the same reasoning every stacked-figure list in
 this system gives), `sans` for everything else. Sizes: `Heading` `2xl`; alias `sm` `semibold`; clan,
 country, standing label `xs`; standing value `lg` (`StatValue/compact`). Weights `semibold` on alias
-and figures, `normal` elsewhere. Tracking `tight` on the standing value (`StatValue`'s own).
+and figures, `normal` elsewhere. Tracking `tight` on the standing value (`StatValue`'s own). The
+alias's hover underline is `border.ring` thick (`decoration-2`) at `underline-offset-2`.
 
 Radius `lg` (row card at 375, `Callout` via that component), `md` (buttons). Elevation `none`
 throughout — `profile-summary.md`'s reasoning against shadowed cards in a fast-read list applies here
-identically. Motion `duration.fast` + `easing.standard` on `ProfileLink` hover; **no motion on the
-standing figure** — no count-up, no entrance fade (`StatValue`'s own rule, README rule 1). Under
-`prefers-reduced-motion`, `duration.instant`.
+identically. Motion `duration.fast` + `easing.standard` on `ProfileLink`'s hover fill (the alias
+underline switches instantly); **no motion on the standing figure** — no count-up, no entrance fade
+(`StatValue`'s own rule, README rule 1). Under `prefers-reduced-motion`, `duration.instant`.
 
 Gaps in play: **DS-4** (focus ring). **DS-8 closed** (T531) — `Standing`'s tabular alignment now
 comes from `type-numeric`'s `tabular-nums`.
@@ -286,3 +325,7 @@ loading-to-loaded shows no reflow (`match-history.md`'s and `player-search.md`'s
       (`sm`, `semibold` but smaller) — a token-correct row that sized both the same would leave the
       one comparable figure this list exists to show no easier to scan than the name beside it, and
       fails this criterion (FR-063).
+- [ ] The hover capture shows the hovered row's alias underlined and no other text in the frame
+      underlined — no clan, no country, no standing figure — while the resting capture shows no
+      underline at all; the active capture shows the same alias underline plus the inline-start rule
+      and the inset ring, which the hover capture does not.

@@ -1,6 +1,23 @@
 import { render, screen } from '@testing-library/react'
+import { composeStories, setProjectAnnotations } from '@storybook/react'
 import { describe, expect, it } from 'vitest'
+import preview from '../../../.storybook/preview'
 import { Field } from './index'
+import * as FieldStories from './Field.stories'
+
+// T579's `src/test/story-a11y.test.tsx` established this pattern (also used by
+// `SiteHeader.test.tsx`): `composeStories` (the portable-stories API) plus
+// `setProjectAnnotations` so a composed story renders exactly as it does inside Storybook, with no
+// second, hand-maintained render path to drift from the first.
+setProjectAnnotations([preview])
+
+// §16.2 (structural-tier.md, decided 2026-09-28): `Field` does not paint the control — the hover
+// ring lives in the control every caller supplies, and the package's own demonstration is
+// `Field.stories.tsx`'s `DemoInput`, one of the three places §16.2 names as owing this recipe. It
+// carries no story or test of its own (it is not `Field` itself), so this is exercised through the
+// composed `Default`/`Error` stories rather than a hand-copied second recipe that could drift from
+// what Storybook actually renders.
+const { Default, Error: ErrorStory } = composeStories(FieldStories)
 
 describe('Field', () => {
   it('associates a real <label> with the control via htmlFor/id, generated when not supplied', () => {
@@ -216,5 +233,30 @@ describe('Field', () => {
     const input = screen.getByLabelText('Display name')
     expect(input.className).toMatch(/caller-class/)
     expect(input.className).toMatch(/\bh-10\b/)
+  })
+
+  // §16.2 (structural-tier.md, decided 2026-09-28): the boundary thickens inward on hover in the
+  // control's own ink — `border-strong` while valid. `Default` is the contrast for `Error` below:
+  // a resting, non-invalid control must never carry the danger ink.
+  it('thickens the demonstration control boundary inward on hover in border-strong ink while valid', () => {
+    render(<Default />)
+    const input = screen.getByLabelText('Display name')
+    expect(input.className).toMatch(/\benabled:hover:ring-1\b/)
+    expect(input.className).toMatch(/\benabled:hover:ring-inset\b/)
+    expect(input.className).toMatch(/\benabled:hover:ring-border-strong\b/)
+    expect(input.className).not.toMatch(/\benabled:hover:ring-danger\b/)
+  })
+
+  // §16.2's invalid branch: the same inward-thickening ring switches to the danger ink once the
+  // control is invalid, never the neutral `border-strong` above — a hovered invalid field must
+  // never read as a hovered valid one.
+  it('switches the demonstration control boundary ring to danger ink while invalid, not border-strong', () => {
+    render(<ErrorStory />)
+    const input = screen.getByLabelText('Your Age of Empires II profile id')
+    expect(input).toHaveAttribute('aria-invalid', 'true')
+    expect(input.className).toMatch(/\benabled:hover:ring-1\b/)
+    expect(input.className).toMatch(/\benabled:hover:ring-inset\b/)
+    expect(input.className).toMatch(/\benabled:hover:ring-danger\b/)
+    expect(input.className).not.toMatch(/\benabled:hover:ring-border-strong\b/)
   })
 })

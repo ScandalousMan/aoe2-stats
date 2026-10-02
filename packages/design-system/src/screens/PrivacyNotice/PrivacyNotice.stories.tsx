@@ -95,11 +95,27 @@ export const MobileViewport: Story = {
 // (story-baseline-duplicates-debt.json).
 const FIRST_LINK_CLIP = { parts: [{ role: 'link', nth: 0 }], pad: '2' } as const
 
+// T675 slice 4b: `FIRST_LINK_CLIP`'s own full link box (`min-h-11`, full-width, flex-centred) still
+// measured under 1% on one unit — the underline it hovers is only ever under the entry's own text,
+// not the padded block around it. `FocusVisible`/`Active` above keep `FIRST_LINK_CLIP`: their own
+// signals (the ring, the fill) are real box-shaped marks that need the whole link's own box. `Hover`
+// alone narrows to the entry's own text span (`index.tsx`'s own wrapping `<span>`, added for exactly
+// this) — a CSS selector, since a bare `<span>` carries no ARIA role of its own; `li:first-child`,
+// never `a:first-of-type` (every entry's own `<a>` is the *first* `<a>` child of its *own* `<li>`, so
+// `:first-of-type` matched all nine, one per list item, confirmed the hard way — the sweep's own
+// `locateClipPart` throws on more than one match rather than silently picking one).
+const FIRST_LINK_TEXT_CLIP = {
+  parts: [
+    { selector: 'nav[aria-labelledby="privacy-notice-contents-heading"] li:first-child span' },
+  ],
+  pad: '1',
+} as const
+
 export const Hover: Story = {
   args: { lastUpdated: '2026-08-30', hrefs },
   parameters: {
     visualForceState: { state: 'hover', role: 'link', nth: 0 },
-    visualCaptureClip: FIRST_LINK_CLIP,
+    visualCaptureClip: FIRST_LINK_TEXT_CLIP,
   },
 }
 
@@ -278,12 +294,21 @@ const CONTACT_ROUTE_LINK_CLIP = {
   pad: '2',
 } as const
 
+// T675 slice 4b: `CONTACT_ROUTE_LINK_CLIP`'s own `pad: '2'` still measured under 1% on one unit —
+// tightened here alone, not for the shared constant, because `ContactRouteLinkFocusVisible`'s own
+// outward ring (`outline-2 outline-offset-2`, 4px total beyond the link's own box) needs that wider
+// pad to stay inside the clip; `Hover`'s own signal (the underline thickening inward) does not.
+const CONTACT_ROUTE_LINK_HOVER_CLIP = {
+  parts: [{ role: 'link' as const, name: 'this contact route' }],
+  pad: '1',
+} as const
+
 export const ContactRouteLinkHover: Story = {
   name: 'hover on ContactRouteLink ("this contact route")',
   args: contactRouteArgs,
   parameters: {
     visualForceState: { state: 'hover', role: 'link', name: 'this contact route' },
-    visualCaptureClip: CONTACT_ROUTE_LINK_CLIP,
+    visualCaptureClip: CONTACT_ROUTE_LINK_HOVER_CLIP,
   },
 }
 

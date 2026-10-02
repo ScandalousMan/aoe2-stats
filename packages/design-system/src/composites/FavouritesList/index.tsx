@@ -245,7 +245,7 @@ function FavouriteRow({
         href={entry.href}
         onClick={createRowLinkClickHandler(entry.href, onNavigate)}
         className={cx(
-          'flex flex-1 flex-col gap-1 rounded-control',
+          'group/row-link flex flex-1 flex-col gap-1 rounded-control',
           'md:flex-row md:items-center md:justify-between md:gap-4',
           // T560 (FR-038): `active` paints the same fill as `hover`, matching `MatchRow`,
           // `PlayerResultRow` and `Table`'s identical row-link category (a keyboard `Enter`
@@ -273,7 +273,17 @@ function FavouriteRow({
         )}
       >
         <span className="flex flex-wrap items-baseline gap-2">
-          <span className="font-sans text-sm font-semibold text-text-primary">{entry.alias}</span>
+          {/* §5 (favourites-list.md, decided 2026-09-28): the alias alone underlines on hover,
+              through the link's own named group — never `hover:underline` on the `<a>`, which would
+              propagate to the standing figure and its signed delta. */}
+          <span
+            className={cx(
+              'font-sans text-sm font-semibold text-text-primary',
+              'group-hover/row-link:underline group-hover/row-link:decoration-2 group-hover/row-link:underline-offset-2',
+            )}
+          >
+            {entry.alias}
+          </span>
           {entry.clan && (
             <span className="font-sans text-xs text-text-secondary">[{entry.clan}]</span>
           )}

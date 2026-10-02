@@ -530,6 +530,49 @@ non-colour half every link in this product owes — the underline thickens to `b
 `structural-tier.md` §9) — taken from `Link` itself rather than from this file's own copy of that
 recipe.
 
+**`Contents` entries, decided 2026-09-28 (T675).** The first entry's `Hover` story measured zero
+surviving pixels against its own resting render with the comparator the visual suite uses, whose
+threshold stays fixed package-wide (`README.md`, Verification-coverage gap register, T675's closing note): an
+entry's hover moved its ink from `link` to `link-hover` and changed nothing else. The sentence above
+— "the underline stays (it was never absent)" — was true, and it was not a second signal; the hover
+was colour alone, which FR-037 forbids. Each entry now takes `Link`'s own hover in full: its
+underline thickens from `border.hairline` to `border.ring` — `decoration-1` pinned at rest,
+`hover:decoration-2` and `active:decoration-2` added (`structural-tier.md` §9).
+
+- **Why a thicker line and not a new one.** An entry is permanently underlined, so "gains an
+  underline" was never available to it. The one geometric step a permanently underlined link has is
+  the thickness of the line it already carries, and it is the step every `Link` in this document —
+  the prose links and `ContactRouteLink` — already takes, so the page's links now answer hover one
+  way (FR-038).
+- **Why pin the rest thickness.** The entry's bare `underline` leaves the thickness to the font
+  (`auto`); pinning `decoration-1` at rest guarantees a real one-pixel step on hover rather than
+  hoping the font's own metric was one pixel. The underline offset stays as it is: nothing needs it
+  to move, and moving it would repaint every capture that shows `Contents`.
+- **Why it survives the comparator.** On this very page, `InlineLinkHover` — the same thickening
+  plus the same ink step — measured a real surviving signal where the ink step alone measured zero,
+  so the thickening is what registers. The pair is `link-hover` on `background` (what `Page` paints
+  behind `Contents`), and on `surface`, both themes: measured rows in the README's table, far above
+  the 3:1 non-text floor.
+- **Collisions.** Press is unchanged — the `surface-sunken` fill and the `border-strong` ring, now
+  over the thickened line (below). Focus-visible is the ring around the entry's box — a box, not a
+  line. There is no selection to mistake it for: no entry marks itself current.
+- **Rejected.** A fill on hover: that is the press's fill, and a colour step. A ring on hover: that
+  is the press's mark. Converting each entry to `<Link variant="standalone">`: that is the right end
+  state for whoever owns this list later, but `standalone` rests at `inline-flex`,
+  `underline-offset-2` and `rounded-control`, so it would repaint every capture showing `Contents`,
+  which a hover fix must not absorb as a side effect.
+- **Motion.** `transition-colors` covers the ink, not the thickness, so the line switches instantly,
+  as `Link`'s does; FR-055 has nothing new to reduce.
+- **Baselines this moves** (regenerated from CI): `PrivacyNotice` `Hover`, clipped to the entry's own
+  text span (`index.tsx`'s own wrapping `<span>`), not the whole entry's padded, full-width link box
+  — a 2px thickening stayed under the comparator's own 1% floor even clipped to the whole entry (T675
+  slice 4b, verification finding, not a design change) — and `PrivacyNotice` `Active`, which keeps
+  the whole-entry clip (its own fill and ring need the whole box) and which the harness presses by a
+  real hover then a mouse-down. If pinning `decoration-1` moves the resting frame — it does only if
+  the font's `auto` thickness was not already one pixel — every capture showing `Contents` moves with
+  it, and those moves belong to this decision: the implementer checks which baselines the capture
+  moved rather than assuming none.
+
 **focus-visible** — the standard ring (`outline-2 outline-offset-2` in `focus-ring`, gap DS-4) on
 every link and on the objection button — `ContactRouteLink` included, which takes that ring from
 `Link` (§5.1). Following a `Contents` entry moves focus to the target `<h2>`, which carries
@@ -543,10 +586,10 @@ left hover and press as one still image; this passage itself described the pre-f
 a fifth-pass review, finding B2). Inline links — the explanation's prose links and `ContactBlock`'s
 contact route — step the underline to `underline-offset-4`, `Link`'s `inline` variant's own
 treatment; no fill and no ring, because a wash or a ring behind a few words inside a paragraph
-breaks the line. The prose links reach that treatment through this file's own `inlineLinkClasses`
-copy of it, `ContactRouteLink` through the `Link` primitive itself (§5.1) — one treatment from two
-sources, which is a fact about the source and not about the frame: both paint the same tokens and
-the same utilities, and a screenshot cannot tell them apart. `Contents` entries are a padded,
+breaks the line. Both the prose links and `ContactRouteLink` reach that treatment through the `Link`
+primitive itself — `InlineLink` (below, §5.1's "Done, 2026-09-28 (T674)") is now a thin wrapper
+around it, not a hand-copied recipe, so there is one source for the paint rather than the two this
+passage used to describe. `Contents` entries are a padded,
 `min-h-11` block — `Link`'s `standalone` shape — so they take that variant's own press: a
 `surface-sunken` fill (`active:bg-surface-sunken active:rounded-control`) plus a `border-strong`
 box-shadow ring (`active:ring-2 active:ring-border-strong`), which is the actual non-colour signal
@@ -712,6 +755,10 @@ stripe and heading, via `Callout`), `focus-ring`.
 No `danger`, no `warning`: nothing in this notice is an alarm, and colouring the erasure paragraph
 red would make a right look like a hazard.
 
+Underline: each `Contents` entry's underline is `border.hairline` thick (`decoration-1`) at rest and
+`border.ring` (`decoration-2`) on hover and press (§5, decided 2026-09-28) — the same two steps
+`Link` uses, reached the same way (`structural-tier.md` §9).
+
 Typography: family `sans` throughout; `display` for the `h1` only. Sizes — `h1` `3xl` (`2xl` below
 `md`); section `h2` `xl`; `CategoryEntry` and `RightsItem` `h3` `lg`; body, `<dd>` values and list
 items `md`; `<dt>` labels `sm`; `LastUpdatedLine` and the register link `sm`. `ContactRouteLink`
@@ -850,6 +897,13 @@ At every viewport, the set of paragraphs rendered is identical. Layout changes; 
       blank.
 - [ ] With `controllerContact` present, no "not published yet" wording remains in the frame.
 - [ ] With no `changeNote`, no empty bordered callout appears between the lede and the contents.
+
+**`Contents` entries (§5, decided 2026-09-28)**
+
+- [ ] The hover capture of the first entry differs from its resting render in two ways: the ink is
+      different and the underline is visibly thicker. No fill and no ring appears behind it.
+- [ ] The active capture shows the same thicker underline plus the `surface-sunken` fill and the
+      `border-strong` ring, which the hover capture does not.
 
 **`ContactRouteLink` (§5.1)**
 

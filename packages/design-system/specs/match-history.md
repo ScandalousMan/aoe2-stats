@@ -164,8 +164,8 @@ information dead end — is carried forward verbatim in §12.3.
 ## 5. States
 
 - **default** — as tabled in §2.
-- **hover** — `MatchRow`: whole-row hover fill `surface-sunken` (the row is a single link; nothing
-  inside it — including `CaptureStateBadge` — has its own hover, consistent with
+- **hover** — `MatchRow`: fill `surface-sunken` plus the `Outcome` word underlined (§5a, decided
+  2026-09-28); nothing else inside the single-link row — `CaptureStateBadge` included — hovers (per
   `capture-state-badge.md` §6). `DownloadAction`: per `Button`.
 - **focus-visible** — `MatchRow`: standard ring on the row's own link wrapper, inset so it never
   crops the outcome text or a numeral. `DownloadAction`: per `Button`.
@@ -231,6 +231,65 @@ matches/{game_id}` no longer has an ownership scope to leak (T327) — "no such 
   disclosure state — and `ParticipantsTable` shows every participant at once (FR-011), with nothing
   collapsed behind a toggle.
 
+### 5a. `MatchRow`'s hover signal — decided 2026-09-28 (T675)
+
+T675's package-wide sweep measured `MatchRow`'s `Hover` story against its own resting render with
+the comparator the visual suite uses, whose threshold stays fixed package-wide (`README.md`,
+Verification-coverage gap register, T675's closing note), and found zero surviving pixels: the card's hover laid
+`surface-sunken` over `surface` and changed nothing else. That is FR-037's "more than colour, in a
+still image" failing, not a comparator to tune around. This subsection sits after §5's bullets so no
+line of §5 that `README.md`'s row 8 cites by number moves; §5's hover answer points here.
+
+**The decision.** While the card is hovered it keeps its `surface-sunken` fill and underlines the
+`Outcome` word — "Win", "Loss" or "Unknown" — and nothing else: `border.ring` thick
+(`decoration-2`), at `underline-offset-2`, in the word's own ink (`success`, `danger` or
+`text-secondary`, §2a). The card's `<a>` carries a named group (`group/row-link`) and the outcome
+word carries `group-hover/row-link:underline`, `group-hover/row-link:decoration-2` and
+`group-hover/row-link:underline-offset-2`. It is never `hover:underline` on the `<a>`: a decoration
+declared on the link propagates to every run of text inside the card — the rating and its signed
+change, the duration, the map, every participant's alias — which README rule 1 keeps clear of
+ornament, and a descendant cannot switch a propagated decoration off.
+
+**Why the outcome word.** It is the text the 1280 layout puts in the `Table`'s identity cell, inside
+the row link (§8; `MatchList`'s `Result` column), and `structural-tier.md` §16.1 underlines exactly
+that cell's text when a row link is hovered — so the same word underlines at every width, card or
+table. It is also the row's first fixation (§10's weight criterion). The map is context, the
+participants are several names, and the rating is a figure.
+
+**One visible difference between the two layouts, stated so it is not raised as a defect.** In the
+card the underline is declared on the outcome word, so it takes that word's ink. In the 1280 table
+it is declared on the row link, and a propagated decoration keeps the colour of the element that
+declares it — the identity cell's `text-primary` — beneath a word painted `success`, `danger` or
+`text-secondary`. Both inks clear the non-text floor on `surface-sunken`, and the shape, which is
+what FR-037 asks for, is identical.
+
+**What it does not collide with.** Press is unchanged — the fill, the reserved inline-start rule
+solidifying to `border-strong`, and the full inset ring (§5 active). A pointer press still hovers,
+so the press frame keeps the underline; press takes no `underline-offset-4` step, because it already
+carries two geometric marks. Focus-visible is the inset outline around the card — a box, not a line
+under a word. §12.6's marks still have no hover of their own. `DownloadAction` belongs to
+`MatchDetailPanel` and hovers as `Button` does.
+
+**Category.** This is the row-link category's one answer (FR-038), shared with `PlayerResultRow`,
+`FavouritesList`, `Table`'s row link and `Menu`'s items; `structural-tier.md` §16.1 records the
+reasoning and the three alternatives rejected (the inline-start rule, which is this card's press
+mark; a hover boundary, when press and focus are already boxes; a trailing chevron, a new glyph
+competing with the figures).
+
+**Contrast.** `success`, `danger` and `text-secondary`, each on `surface-sunken`, both themes —
+measured rows in the README's table (the first two are recorded there as this card's hovered-row
+pairs), each above the 3:1 non-text floor an underline owes.
+
+**Motion.** Not transitioned — it switches with the hover. The fill keeps `motion-reduce:duration-0`,
+so FR-055 has nothing new to reduce.
+
+**Baselines this moves** (regenerated from CI): `MatchRow` `Hover`, which also takes a
+`visualCaptureClip` — to the outcome word itself, not the hovered card: a card also carries a map
+thumbnail and a participant list, and a 2px line under one word stayed under the comparator's own 1%
+floor (`maxDiffPixelRatio`) even clipped to the whole card (T675 slice 4b, verification finding, not
+a design change) — and `MatchRow` `Active`, which the harness presses by a real hover then a
+mouse-down, so the underline is in that frame too.
+
 ## 6. Tokens used
 
 Colour: `background` (page), `surface` (row/panel), `surface-raised` (`CaptureStateBadge` pill fill,
@@ -239,7 +298,8 @@ via that component), `surface-sunken` (row hover, skeleton fill), `border` (row/
 civilisation, a resolved outcome's text), `text-secondary` (labels, "When", duration, and the
 unknown-outcome text, §2a — no new token), `success`/`danger` (a resolved outcome's text and
 `RatingChange` sign — see `capture-state-badge.md` §5 for the badge's own use of these two plus
-`warning`/`info`), `focus-ring`.
+`warning`/`info`), `focus-ring`. The outcome word's hover underline (§5a) takes that word's own ink —
+`success`, `danger` or `text-secondary` — at `border.ring` (`decoration-2`), `underline-offset-2`.
 
 Typography: `mono` for `RatingChange` and any other figure compared vertically down the list (DS-8);
 `sans` for every label, name and sentence. Sizes: row text `sm`; outcome `sm` `semibold`;
@@ -247,8 +307,9 @@ Typography: `mono` for `RatingChange` and any other figure compared vertically d
 Tracking `tight` on `RatingChange` only, per `StatValue`.
 
 Radius: `lg` (row card at 375, panel), `full` (`CaptureStateBadge` pill, via that component). Motion:
-`duration.fast` + `easing.standard` on row hover; **no motion on any figure** (`StatValue`'s own
-rule) — `RatingChange` never counts up, the outcome never fades in.
+`duration.fast` + `easing.standard` on the row's hover fill (the outcome underline switches
+instantly); **no motion on any figure** (`StatValue`'s own rule) — `RatingChange` never counts up,
+the outcome never fades in.
 
 Gaps in play: none. **DS-8 closed** (T531) — `RatingChange`'s tabular alignment now comes from
 `type-numeric`'s `tabular-nums`, same as `profile-summary.md`. **DS-7 is closed** by 004's `icon`
@@ -348,6 +409,10 @@ imagery to the card layout; the structure, the breakpoints and the one-DOM rule 
       the row's other fields at the same `sm` size — a token-correct row that gave map and
       civilisation the same weight would leave a reader scanning eight matches before finding a
       single result or rating, and fails this criterion (FR-063).
+- [ ] In the `MatchRow` hover capture the `Outcome` word is underlined and nothing else in the card
+      is — not the rating or its change, the map, the civilisation, any participant, the meta line or
+      the capture badge (§5a); the resting capture has no underline; the active capture shows the
+      same underline plus the inline-start rule and the inset ring.
 
 **Detail**
 
@@ -723,9 +788,10 @@ nobody scans. At 375/768 it joins the existing meta line.
 
 **default / hover / focus-visible / active / disabled** — unchanged from §5. None of the three marks
 is interactive, none takes a `tabindex`, and none has a hover of its own: the row still has **exactly
-one focus stop**, and the row's hover fill is still the only hover in play. A mark that grew, glowed
-or revealed a preview on hover would also be invisible to the static screenshots this project gates
-on, which is a second reason not to have one.
+one focus stop**, and the row's own hover — its fill and, since §5a, the outcome word's underline —
+is still the only hover in play. A mark that grew, glowed or revealed a preview on hover would also
+be invisible to the static screenshots this project gates on, which is a second reason not to have
+one.
 
 **loading** — §5's counts are unchanged (5 skeleton rows in the list; 2 per team in the panel), but
 the **footprint now includes the imagery**: the skeleton row's height matches the loaded row's height

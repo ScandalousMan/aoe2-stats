@@ -122,7 +122,13 @@ export function ThirdPartyObjectionForm({
               className={cx(
                 'h-12 w-full max-w-xs rounded-control border bg-surface px-4 font-sans text-md text-text-primary',
                 'transition-colors duration-120 ease-standard motion-reduce:duration-0',
-                fieldError ? 'border-danger' : 'border-border-strong',
+                // §16.2 (structural-tier.md, decided 2026-09-28): the boundary thickens inward on
+                // hover, `ring-1 ring-inset` in the boundary's own ink, scoped to an enabled
+                // control. Found beside T675's nine (`structural-tier.md`
+                // §16.2): this input carried no hover class of any kind before this change.
+                fieldError
+                  ? 'border-danger enabled:hover:ring-1 enabled:hover:ring-inset enabled:hover:ring-danger'
+                  : 'border-border-strong enabled:hover:ring-1 enabled:hover:ring-inset enabled:hover:ring-border-strong',
                 focusRing,
               )}
             />

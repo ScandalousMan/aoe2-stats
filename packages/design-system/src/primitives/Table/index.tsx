@@ -282,7 +282,12 @@ export function Table<Row>({
                         href={href}
                         onClick={createRowLinkClickHandler(href, onNavigate)}
                         className={cx(
-                          'static after:absolute after:inset-0 active:after:ring-2 active:after:ring-inset active:after:ring-border-strong',
+                          // §16.1 (decided 2026-09-28): while the row is hovered, its name
+                          // underlines — `decoration-2`/`underline-offset-2` in the identity cell's
+                          // own ink. Safe directly on this `<a>`, unlike the composites that wrap
+                          // more than a name: the row link wraps only the identity cell, so the
+                          // decoration reaches that cell's text and no other column.
+                          'static after:absolute after:inset-0 hover:underline hover:decoration-2 hover:underline-offset-2 active:after:ring-2 active:after:ring-inset active:after:ring-border-strong',
                           focusRing,
                         )}
                       >

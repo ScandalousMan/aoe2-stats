@@ -178,6 +178,46 @@ export const Empty: Story = {
 // the skip link sends focus to it, it shows the standard ring... It never shows a ring on a
 // pointer click." Forced here by focusing the `<main>` landmark directly, the same route a real
 // skip link takes.
+// T675's package-wide sweep found this story's own surviving signal at or under 1% of an unclipped
+// frame in at least one unit — `visualCaptureClip` to the landmark is the mechanical fix (README's
+// Verification-coverage gap register, T675's closing note). Slice 4b: `pad: '2'` still read under 1% on one
+// unit — the ring is a thin outline around the whole `<main>` landmark, so the ratio is bounded by
+// that landmark's own perimeter against its own area, which no pad shrinks. `pad: '0'` (tried first)
+// clipped the ring itself away entirely — it is an *outward* ring (`outline-2 outline-offset-2`,
+// `index.tsx`'s own `focusRing`, 4px total beyond the border box), so the clip rect needs at least
+// that much room; `'1'` (4px) is the smallest step this package's own scale names that still holds
+// it. T675 slice 4c: `<main>` itself carries `min-h-svh` (`index.tsx`) — full viewport height at
+// minimum, whatever the content — so the landmark's own area has a floor no clip or pad reaches
+// either; the one thing left to control is not *shrinking below* that floor (impossible) but not
+// *growing past* it, which a tall specimen panel does at a narrow viewport where its own content
+// reflows taller than the viewport itself. `render` below drops the bordered `SamplePanel` stand-in
+// (a heading, a border, block padding — none of it this story exists to show) for one short,
+// realistic line, so this story's own `<main>` sits as close to that `min-h-svh` floor as content
+// can get it, at every width — but that floor is still the *whole viewport*, so a whole-landmark
+// clip's own perimeter-to-area ratio still reads under 1% at 1280 no matter how little content
+// `<main>` holds (T675 slice 4d, measured: 0.870%).
+//
+// T675 slice 4d: clipped to the paragraph instead of the landmark — `role: 'main'` above named the
+// wrong *shape* of target, not merely too little pad. `pad` is computed, not guessed, from the
+// tokens between the paragraph and `<main>`'s own edges, the largest across the three review
+// widths (`pad` is one value for all of them): vertically, `<main>`'s own block padding (`py-6`
+// below `md`, `md:py-8` at and above it — `index.tsx`) plus the title's own rendered height
+// (`type-display` at `text-3xl`, `font.json`'s own `lineHeight` for that step, 2rem/32px) plus the
+// `gap-6` between the title block and the children container (`index.tsx`) — `24+32+24=80px` below
+// `md`, `32+32+24=88px` at and above it; horizontally, `<main>`'s own inline padding alone (`px-4`
+// below `md`, `md:px-6` at and above it) — `16px` / `24px`, smaller than the vertical figure at
+// every width, so it never sets the maximum. Add the ring's own 4px outward reach
+// (`outline-2 outline-offset-ring`) to each: `84px` below `md`, `92px` at and above it — confirmed
+// against the real rendered layout (`getBoundingClientRect()` on the paragraph and on `<main>`, at
+// all three review widths), not derived from the token arithmetic alone. `92px` is this story's own
+// maximum; `'20'` (80px, `tokens/space.json`) falls short, `'24'` (96px) is the smallest step that
+// clears it at every width. The resulting frame holds the ring's top edge and both side edges
+// beside the paragraph — clamped to the viewport's own left/right edges at every width, since 96px
+// of pad already reaches past them from the paragraph's own position — and roughly a quarter of
+// `<main>`'s own height, never "most of the landmark": clipped height comes to 200px (375) / 208px
+// (768, 1280) against a landmark 900px (375) / 720px (768, 1280) tall.
+const CONTENT_CLIP = { parts: [{ selector: ':text-is("No matches recorded yet.")' }], pad: '24' }
+
 export const FocusVisible: Story = {
   // A `play()` calling `.focus()` sets DOM focus but not the `:focus-visible` pseudo-class, so this
   // story captured the same frame as `Default` until the suite forced the state for it — the defect
@@ -186,10 +226,11 @@ export const FocusVisible: Story = {
   // all, which is a different claim from what the ring looks like.
   parameters: {
     visualForceState: { state: 'focus-visible', role: 'main' },
+    visualCaptureClip: CONTENT_CLIP,
   },
   render: (args) => (
     <Page {...args}>
-      <SamplePanel title="Recent matches">Three matches this week.</SamplePanel>
+      <p className="type-body text-md text-text-secondary">No matches recorded yet.</p>
     </Page>
   ),
   play: async ({ canvasElement }) => {

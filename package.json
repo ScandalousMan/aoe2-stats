@@ -12,7 +12,8 @@
     "lint": "pnpm -r --if-present run lint",
     "test": "pnpm -r --if-present run test",
     "typecheck": "pnpm -r --if-present run typecheck",
-    "test:visual": "node scripts/visual/run.mjs"
+    "test:visual": "node scripts/visual/run.mjs",
+    "test:visual:state-signal-sweep": "node scripts/visual/run.mjs --state-signal-sweep"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",

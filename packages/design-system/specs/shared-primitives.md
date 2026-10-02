@@ -123,7 +123,7 @@ comparator tolerance (README's gap register, row 6/H3 closure).
 (T675).** Until this decision those three hovered by fill alone (`surface` or transparent →
 `surface-sunken`), the same FR-037 violation T588 fixed on `primary`, one step less visible: the
 fill step falls under the visual suite's comparator threshold in every capture unit, so no frame
-could fail on it (README's Verification-coverage gap register, the comparator row). That is a
+could fail on it. That is a
 missing signal, not a comparator blind spot, and it is fixed the way `primary`'s was. **The label
 underline moves from `primary`'s variant string into the shared base every variant composes**:
 `hover:underline hover:decoration-2 hover:underline-offset-2 active:underline-offset-4
@@ -152,8 +152,8 @@ another:
 `AsLink` renders the same class set on its `<a>`; `disabled:no-underline` is inert there because an
 anchor has no `:disabled`. Every hover or press story of a non-`primary` variant is captured with
 `visualCaptureClip` to its button: a 2px rule under a short label is well under 1% of an unclipped
-story frame, which is below the comparator's pixel-ratio tolerance (README's gap register, the
-comparator row, lists the stories whose baselines move).
+story frame, which is below the comparator's pixel-ratio tolerance (README's Verification-coverage
+gap register, T675's closing note, records the sweep that measured it).
 
 **`destructive` is not a second spelling of `danger` (FR-032, T557, README's rule 9).** The two look
 like the same word for the same idea, and they are not: `destructive` names what this button _does_
@@ -456,13 +456,13 @@ item). Surface min-width matches the trigger, max-width capped so labels wrap ra
 **States**
 
 - **default** — surface `surface-raised`, boundary `border`, elevation `overlay`, radius `lg`.
-- **hover** — item fill `surface-sunken`. `motion.duration.fast`. **The trigger follows `Button`
-  `secondary`'s hover in full, label underline included** (decided 2026-09-28, T675, for the reason
-  §Button gives): fill `surface-sunken` plus `hover:underline hover:decoration-2
-hover:underline-offset-2`, ink `currentColor` (`text-primary`). The trigger is a local `<button>`
-  styled like `secondary` (T560, FR-038), not a `Button` instance, so it inherits nothing from
-  `Button`'s source: these utilities are written on the trigger's own non-empty class branch. Its
-  empty (`aria-disabled`) branch carries no hover class at all, so it needs no `no-underline`.
+- **hover** — item fill `surface-sunken` and the item's label underlined (`decoration-2`,
+  `underline-offset-2`, `currentColor`; the label only, not its secondary line or badge; enabled
+  items only — "Menu items' hover signal", after `StatValue`, decided 2026-09-28, T675).
+  **The trigger follows `Button` `secondary`'s hover in full**, label underline included (same
+  day, for §Button's reason): `hover:underline hover:decoration-2 hover:underline-offset-2` on the
+  trigger's own non-empty class branch — a local `<button>`, not a `Button`, so it inherits nothing;
+  its empty (`aria-disabled`) branch carries no hover class. `motion.duration.fast` on the fill.
 - **focus-visible** — the focused item shows the standard focus ring inset within its bounds. Focus
   follows the roving item, never both trigger and item.
 - **active** — item fill `background` (`Button` `ghost`'s own press fill — a plain repeat of
@@ -525,7 +525,7 @@ hover:underline-offset-2`, ink `currentColor` (`text-primary`). The trigger is a
 
 **Tokens** — `surface-raised`, `surface-sunken`, `background`, `border`, `border-strong`,
 `text-primary`, `text-secondary`, `text-disabled`, `focus-ring`, `overlay` (backdrop, mobile sheet
-only). Trigger underline: `border.ring` (`decoration-2`), `underline-offset-2` / `underline-offset-4`,
+only). Trigger and item underline: `border.ring` (`decoration-2`), `underline-offset-2` / `underline-offset-4`,
 `currentColor`. Radius `lg`. Elevation `overlay`. Motion `duration.fast`, `easing.decelerate`.
 
 **Spacing** — surface padding-block `space-2`; item padding-inline `space-4`; label to secondary
@@ -744,3 +744,85 @@ punctuation mark; a region of stacked or tabled values announces "busy" once whi
 once per value; the value is visibly the most prominent element in its row — larger and heavier than
 its own label — a token-correct `StatValue` that gave the label the value's own weight would compete
 with the number for the first read, and fails this criterion (FR-063).
+
+---
+
+## Menu items' hover signal — decided 2026-09-28 (T675)
+
+This section sits after `StatValue` rather than inside §Menu so that no line `README.md`'s row 8
+cites by number in this file moves; §Menu's hover answer points here. It is not a component, and it
+answers one state of one.
+
+T675's package-wide sweep measured `Menu`'s `FooterItemHover` story against its own resting render
+with the comparator the visual suite uses, whose threshold stays fixed package-wide (`README.md`,
+Verification-coverage gap register, T675's closing note), and found zero surviving pixels: the footer item's hover
+was `surface-sunken` laid over the panel's `surface-raised` and nothing else. The ordinary items
+hover through the identical recipe. The sweep read their own `Hover` story as a weak signal rather
+than zero, but the recipe is the same fill step and FR-038 gives one role one response, so the fix
+is the item recipe as a whole, not the footer alone — a `menuitem` is a `menuitem`.
+
+**The decision.** Every enabled item — `MenuItemRow` in both variants, and the footer item — keeps
+its `surface-sunken` hover fill and underlines its label: `border.ring` thick (`decoration-2`),
+`underline-offset-2`, in `currentColor` (`text-primary`).
+
+- **`MenuItemRow`.** Its button carries a secondary line, a trailing badge and a spinner beside the
+  label, and a decoration declared on the button would propagate to all of them, with no way for a
+  descendant to switch it off. So the button carries a named group (`group/menu-item`) and the label
+  span alone carries `group-hover/menu-item:underline`, `group-hover/menu-item:decoration-2` and
+  `group-hover/menu-item:underline-offset-2`.
+- **Enabled items only, by the class branch.** A disabled or in-flight item is `aria-disabled`, not
+  `disabled`, so a `disabled:no-underline` guard would never fire. The label's group-hover utilities
+  are written only on the enabled branch — the same condition that already gives the button its
+  `hover:bg-surface-sunken` — so a disabled or loading item never underlines.
+- **The footer item.** Its whole text is its label, so it carries `hover:underline`,
+  `hover:decoration-2` and `hover:underline-offset-2` directly on its own button.
+
+**Why an underline.** A menu item is a row whose whole face is one control, hovered with a fill and
+pressed with a boundary — the row-link category `structural-tier.md` §16.1 defines, which records
+the reasoning and the three alternatives rejected there rather than here: the inline-start rule,
+which is this item's own press mark, so moving it to hover would leave press differing from hover by
+its `background` fill alone; a hover boundary, when press and focus are already boxes; a trailing
+chevron, a new glyph. The trigger above these items has hovered with the same underline since the
+same day, so a pointer anywhere in a menu reads one way.
+
+**What it does not collide with.**
+
+- **Press** is unchanged — the `background` fill and the `border-strong` inline-start rule. A pointer
+  press still hovers, so the press frame keeps the underline. Items take no `underline-offset-4`
+  step, unlike the trigger: the trigger is `Button` `secondary`'s recipe and takes that variant's
+  press, while an item is a row and keeps the row's press, whose rule already tells it apart.
+- **Focus-visible** is the inset `focus-ring` outline around the item — a box, not a line under a
+  label.
+- **Selection** is the leading checkmark glyph, plus a consumer's trailing `Current` badge. An
+  underline under the label is neither a glyph nor a word, and a checked item that is hovered shows
+  both, still distinguishable.
+- **Error**: the in-menu failure paragraph is not part of the item's button and never underlines.
+
+**Contrast.** `text-primary` on `surface-sunken`, both themes — a measured pair in the README's
+table, far above the 3:1 non-text floor an underline owes. The fill step the sweep measured at zero
+was surface against surface; this is a solid 2px run in that measured pair. The sweep's re-run after
+implementation confirms it.
+
+**Motion.** The underline is not transitioned; it switches with the hover. The fill keeps its
+`motion-reduce:duration-0`, so FR-055 has nothing new to reduce.
+
+**Baselines this moves** (regenerated from CI): `Menu` `FooterItemHover`, clipped to the footer item
+itself, not the whole open `[role="menu"]` surface — a 2px line under one label stayed under the
+comparator's own 1% floor even clipped to the whole panel, diluted by every row above it in the
+union (T675 slice 4b, verification finding, not a design change); `FooterItemActive` keeps the
+panel-wide clip, already defended without needing this narrowing; and `Menu` `Hover` — press frames
+too, because the harness forces `active` by a real hover then a mouse-down — clipped first to
+`[role="menu"]` (the cell on T675's own list of "at or under 1%" cells owed a `visualCaptureClip`),
+then narrowed once more, in the same slice 4b pass, to the hovered item's own label (the item's row
+reserves width for a leading checkmark glyph and a trailing badge/spinner slot the underline never
+touches, the identical dilution `FooterItemHover` found); `Active` keeps the panel-wide clip,
+already defended without needing this narrowing.
+
+**Acceptance.**
+
+- [ ] In `Hover` and `FooterItemHover`, the hovered item's label is underlined and no other item's
+      label is; no secondary line, badge or spinner in any frame is underlined.
+- [ ] In `Active` and `FooterItemActive`, the same underline shows together with the
+      `border-strong` inline-start rule and the `background` fill, which the hover frames do not.
+- [ ] No disabled or loading item in any capture is underlined, and the resting captures show no
+      underline under any item.

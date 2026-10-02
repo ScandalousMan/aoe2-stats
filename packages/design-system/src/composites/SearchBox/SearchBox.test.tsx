@@ -67,6 +67,18 @@ describe('SearchBox', () => {
     expect(screen.getByLabelText('Search a player')).toHaveAttribute('type', 'search')
   })
 
+  // "Hover signals" (player-search.md, decided 2026-09-28): the hairline colour swap alone measured
+  // zero surviving pixels (T675's package-wide sweep) — the boundary now also thickens inward, a
+  // `ring-1 ring-inset` in `border-strong`, scoped to an enabled input.
+  it('thickens the boundary inward on hover, scoped to the enabled input (FR-037, 2026-09-28)', () => {
+    render(<Harness state={{ status: 'idle' }} onSearch={() => {}} />)
+    const input = screen.getByLabelText('Search a player')
+    expect(input.className).toMatch(/\benabled:hover:border-border-strong\b/)
+    expect(input.className).toMatch(/\benabled:hover:ring-1\b/)
+    expect(input.className).toMatch(/\benabled:hover:ring-inset\b/)
+    expect(input.className).toMatch(/\benabled:hover:ring-border-strong\b/)
+  })
+
   it('idle: shows a plain-text prompt, inside neither a status nor an alert region', () => {
     render(<Harness state={{ status: 'idle' }} onSearch={() => {}} />)
     expect(screen.getByText('Search for a player by name.')).toBeInTheDocument()

@@ -70,6 +70,19 @@ export const Error: Story = {
   },
 }
 
+// `Dialog` is `position: fixed` over a full-viewport overlay (the `visual-full-page` comment at the
+// top of this file), so `FocusVisible` below and every other forced-state story on this page clips
+// to the same button, the same way `PrivacyNotice`'s `FIRST_LINK_CLIP`, `AccountErasurePanel`'s
+// `checkboxClip` and `Table`'s `ROW_LINK_CLIP` clip their own forced-state stories —
+// `visualCaptureClip` takes precedence over `visual-full-page` (T591). T675's package-wide sweep
+// found this story's own surviving signal at or under 1% of an unclipped frame in at least one
+// unit. Declared here, ahead of every story that clips to it (a module-level `const` is not
+// hoisted), and kept apart from the comment block immediately below so that block's own
+// `visual-equivalence` marker stays directly attached to `FocusVisible`'s export, with no blank
+// line or intervening statement between them (`story-baselines-duplicates.mjs`'s own
+// `commentBlockAbove` stops walking upward at the first line that is not a `//` comment).
+const PRIMARY_ACTION_CLIP = { parts: [{ role: 'button' as const, name: 'Turn it off' }], pad: '2' }
+
 // §Dialog's `focus-visible` bullet states focus moves to the heading (`tabIndex={-1}`) on mount —
 // the same rendering `Default` above already shows, since that focus happens synchronously on the
 // very first paint. A story verbatim identical to `Default` documents nothing (FR-037), so this
@@ -80,11 +93,13 @@ export const Error: Story = {
 // visual-equivalence: primitives-dialog--keyboard-focus-order-and-trap: forces `:focus-visible`
 // synthetically onto `primaryAction` ("Turn it off"); `KeyboardFocusOrderAndTrap`'s own real
 // Tab-driven sequence below ends on that same button focused via a genuine keyboard Tab — the same
-// resting frame, per this comment's own point above ("this is its still-image counterpart").
+// resting frame, per this comment's own point above ("this is its still-image counterpart"), and
+// now the same clipped frame too (`PRIMARY_ACTION_CLIP` above).
 export const FocusVisible: Story = {
   tags: ['visual-full-page'],
   parameters: {
     visualForceState: { state: 'focus-visible', role: 'button', name: 'Turn it off' },
+    visualCaptureClip: PRIMARY_ACTION_CLIP,
   },
   args: {
     heading: 'Turn off replay archival?',
@@ -100,8 +115,13 @@ export const FocusVisible: Story = {
 // Tab reaches `primaryAction` (rendered first, `index.tsx`'s own doc comment), then
 // `secondaryAction`, and Tab from the last one wraps back to the first rather than escaping the
 // dialog — the one trap FR-049 permits ("no trap outside a modal surface that defines its own").
+// T675's sweep found this story's own surviving signal at or under 1% too — the same
+// `PRIMARY_ACTION_CLIP` above.
 export const KeyboardFocusOrderAndTrap: Story = {
   tags: ['visual-full-page'],
+  parameters: {
+    visualCaptureClip: PRIMARY_ACTION_CLIP,
+  },
   args: {
     heading: 'Turn off replay archival?',
     children:
@@ -137,23 +157,25 @@ export const KeyboardFocusOrderAndTrap: Story = {
 // finding. Forced here, on the same button `FocusVisible` above already targets, for the same
 // reason that story does: `Default`'s own resting frame already shows this button unforced, so a
 // second copy without a state change would document nothing (FR-037).
-//
-// `Dialog` is `position: fixed` over a full-viewport overlay (the `visual-full-page` comment at the
-// top of this file), so both stories below clip to the same button `FocusVisible` above already
-// targets, the same way `PrivacyNotice`'s `FIRST_LINK_CLIP`, `AccountErasurePanel`'s `checkboxClip`
-// and `Table`'s `ROW_LINK_CLIP` clip their own forced-state stories — `visualCaptureClip` takes
-// precedence over `visual-full-page` (T591). The clip frames the button the state is forced on; it
-// does not itself change what the comparator (Playwright's `toHaveScreenshot`, pixelmatch at its
-// default 0.2 threshold) counts. `Active` below is defended on this clipped frame (over 1% on every
-// {theme × width} unit); `Hover`'s change is fill-only and stays undefended regardless of the clip —
-// closing that gap needs a design decision (T675, README's Verification-coverage gap register).
-const PRIMARY_ACTION_CLIP = { parts: [{ role: 'button' as const, name: 'Turn it off' }], pad: '2' }
+// T675 slice 4b: `PRIMARY_ACTION_CLIP`'s own `pad: '2'` still measured under 1% on one unit —
+// tightened here alone, not for the shared constant, because `FocusVisible`'s own outward ring
+// (`outline-2 outline-offset-2`, 4px total beyond the border box) needs that wider pad to stay
+// inside the clip; `Hover`'s own signal (a label underline, drawn inside the button) does not.
+// Reducing `pad` alone (down to `'0'`, the smallest step this package's own scale names,
+// `tokens/space.json`) still read under 1% at 375 — the button's own `size="lg"` inline padding
+// (`px-6`) is real box area the underline never touches, present at every pad step. Narrowed
+// instead to `Button`'s own label span (`index.tsx`'s own `<span>{label}</span>`, no class of its
+// own) — `:text-is()` rather than `role`/`name`, which can only ever reach the button as a whole.
+const PRIMARY_ACTION_HOVER_CLIP = {
+  parts: [{ selector: ':text-is("Turn it off")' }],
+  pad: '0',
+}
 
 export const Hover: Story = {
   tags: ['visual-full-page'],
   parameters: {
     visualForceState: { state: 'hover', role: 'button', name: 'Turn it off' },
-    visualCaptureClip: PRIMARY_ACTION_CLIP,
+    visualCaptureClip: PRIMARY_ACTION_HOVER_CLIP,
   },
   args: {
     heading: 'Turn off replay archival?',

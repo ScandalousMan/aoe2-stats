@@ -334,10 +334,20 @@ export const ListCardsBelowXl: Story = {
 // match-history.md §5 "hover — whole-row hover fill `surface-sunken`... nothing inside it —
 // including `CaptureStateBadge` — has its own hover." Forced from Playwright in
 // `tests/visual/stories.spec.ts` (see that file's own `VisualForceState` comment) — a `play()`
-// could only dispatch a synthetic event, which the CSS pseudo-class ignores.
+// could only dispatch a synthetic event, which the CSS pseudo-class ignores. §5a (decided
+// 2026-09-28): the fill alone measured zero surviving pixels (T675's package-wide sweep); the
+// outcome word now underlines too. T675 slice 4b: a clip to the whole card still measured under 1%
+// on every unit (a 2px line under one short word inside a card carrying a map thumbnail and a
+// participant list) — clipped instead to the outcome word itself, `:text-is()` rather than
+// `role`/`name` because `OutcomeLabel` renders a plain `<span>` with no ARIA role of its own.
+const OUTCOME_WORD_CLIP = { parts: [{ selector: ':text-is("Win")' }], pad: '1' } as const
+
 export const Hover: Story = {
   render: () => <MatchRow match={base} />,
-  parameters: { visualForceState: { state: 'hover', selector: 'a[href="/matches/1001"]' } },
+  parameters: {
+    visualForceState: { state: 'hover', selector: 'a[href="/matches/1001"]' },
+    visualCaptureClip: OUTCOME_WORD_CLIP,
+  },
 }
 
 // §5 "focus-visible — standard ring on the row's own link wrapper, inset so it never crops the

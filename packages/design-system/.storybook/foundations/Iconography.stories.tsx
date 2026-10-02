@@ -66,7 +66,7 @@ export const Overview: Story = {
           </div>
           <Text role="supporting">
             Six of the seven steps are space-scale multiples, so an icon and the space around it
-            share one rhythm — icon-xl alone is fixed at 44px, the WCAG 2.5.8 touch-target floor,
+            share one rhythm — icon-xl alone is fixed at 44px, the WCAG 2.5.5 touch-target floor,
             not a rhythm step.
           </Text>
         </Section>
@@ -128,7 +128,7 @@ export const Overview: Story = {
 
         <Section
           heading="Minimum interactive footprint"
-          description="WCAG 2.5.8's 44×44px floor applies to any icon serving as, or sitting inside, an interactive control — whether or not the glyph itself renders that large."
+          description="WCAG 2.5.5's 44×44px floor applies to any icon serving as, or sitting inside, an interactive control — whether or not the glyph itself renders that large."
         >
           <div className="flex flex-wrap items-center gap-6">
             <div className="flex flex-col items-center gap-2">

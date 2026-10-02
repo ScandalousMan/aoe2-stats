@@ -73,9 +73,24 @@ export const FieldError: Story = {
 // (story-baseline-duplicates-debt.json).
 const LINK_CLIP = { parts: [{ role: 'link' }], pad: '2' } as const
 
+// T675 slice 4b: `LINK_CLIP`'s own `pad: '2'` still measured under 1% on one unit — tightened here
+// alone, not for the shared constant, because `FocusVisible`'s own outward ring (`outline-2
+// outline-offset-2`, 4px total beyond the link's own box) needs that wider pad to stay inside the
+// clip; `Hover`'s own signal (the underline thickening inward) does not. Reducing `pad` alone (down
+// to `'0'`, the smallest step this package's own scale names) still read under 1% at 375 — this
+// link sits near the end of a long paragraph, and at 375 its own two words wrap across two lines,
+// so the bounding box `pad` shrinks around spans both lines, several times the area of the same
+// element unwrapped at 1280. T675 slice 4c: `fragment: 'first'` (`story-render.ts`) clips to the
+// link's own *first* client rect instead of its bounding box — one line, the one carrying the
+// underline, whatever the width — closing the gap `pad` alone could not.
+const LINK_HOVER_CLIP = { parts: [{ role: 'link' as const, fragment: 'first' as const }], pad: '0' }
+
 export const Hover: Story = {
   args: { ...noopHandlers, initialState: 'idle' },
-  parameters: { visualForceState: { state: 'hover', role: 'link' }, visualCaptureClip: LINK_CLIP },
+  parameters: {
+    visualForceState: { state: 'hover', role: 'link' },
+    visualCaptureClip: LINK_HOVER_CLIP,
+  },
 }
 
 // §5 "focus-visible — the standard ring... on the input, the submit button and the
@@ -110,10 +125,8 @@ export const DisabledNotApplicable: Story = {
 // README's gap register row 8 (H5): §5's own "focus-visible" sentence above names three
 // elements — "the input, the submit button and the privacy-notice link" — but `FocusVisible`
 // only ever forced the link (`LINK_CLIP`'s own `role: 'link'`). The input (`index.tsx:130`)
-// paints the same `focusRing` trio and had no frame of its own before this story. It carries no
-// `hover:` or `active:` class — `Hover` and `Active` above already depict this form's real
-// hover/press surface, on the privacy-notice link, and this input has nothing of its own for
-// either. `role: 'textbox'` is unambiguous: the form renders exactly one.
+// paints the same `focusRing` trio and had no frame of its own before this story. `role: 'textbox'`
+// is unambiguous: the form renders exactly one.
 const INPUT_CLIP = { parts: [{ role: 'textbox' as const }], pad: '2' }
 
 export const InputFocusVisible: Story = {
@@ -121,6 +134,20 @@ export const InputFocusVisible: Story = {
   args: { ...noopHandlers, initialState: 'idle' },
   parameters: {
     visualForceState: { state: 'focus-visible', role: 'textbox' },
+    visualCaptureClip: INPUT_CLIP,
+  },
+}
+
+// §16.2 (structural-tier.md, decided 2026-09-28): the profile-id input carried no hover class of
+// any kind — found beside T675's nine (`structural-tier.md` §16.2). It now
+// takes the same inward-thickening ring every text input in this package owes, so it needs a frame:
+// this is the one story this task's own item 3 adds. Clipped to the input for the same reason
+// `InputFocusVisible` above is.
+export const InputHover: Story = {
+  name: 'hover on the profile-id field',
+  args: { ...noopHandlers, initialState: 'idle' },
+  parameters: {
+    visualForceState: { state: 'hover', role: 'textbox' },
     visualCaptureClip: INPUT_CLIP,
   },
 }

@@ -44,23 +44,42 @@ export const ObjectionOnly: Story = {
 // responds to a pointer." Forced from Playwright in `tests/visual/stories.spec.ts` (see that
 // file's own `VisualForceState` comment) — a `play()` could only dispatch a synthetic event, which
 // the CSS pseudo-class ignores. `nth: 0` picks the first link the same way `getAllByRole(...)[0]`
-// used to.
+// used to. T675's package-wide sweep found this story's own surviving signal at or under 1% of an
+// unclipped frame in at least one unit — `visualCaptureClip` to that link is the mechanical fix
+// (README's Verification-coverage gap register, T675's closing note), the same for `FocusVisible`/`Active` below.
+const FIRST_LINK_CLIP = { parts: [{ role: 'link' as const, nth: 0 }], pad: '2' }
+
+// T675 slice 4b: `FIRST_LINK_CLIP`'s own `pad: '2'` still measured under 1% on one unit — tightened
+// here alone, not for the shared constant, because `FocusVisible`'s own outward ring needs that
+// wider pad to stay inside the clip; `Hover`'s own signal (the underline thickening inward) does
+// not.
+const FIRST_LINK_HOVER_CLIP = { parts: [{ role: 'link' as const, nth: 0 }], pad: '0' }
+
 export const Hover: Story = {
   args: { privacyNoticeHref: '/privacy-notice', objectionHref: '/object' },
-  parameters: { visualForceState: { state: 'hover', role: 'link', nth: 0 } },
+  parameters: {
+    visualForceState: { state: 'hover', role: 'link', nth: 0 },
+    visualCaptureClip: FIRST_LINK_HOVER_CLIP,
+  },
 }
 
 // §5 "focus-visible — the standard ring... on each link that is present. The disclaimer and the
 // affiliation note are not focusable."
 export const FocusVisible: Story = {
   args: { privacyNoticeHref: '/privacy-notice', objectionHref: '/object' },
-  parameters: { visualForceState: { state: 'focus-visible', role: 'link', nth: 0 } },
+  parameters: {
+    visualForceState: { state: 'focus-visible', role: 'link', nth: 0 },
+    visualCaptureClip: FIRST_LINK_CLIP,
+  },
 }
 
 // §5 "active — links render `link-hover` while pressed... Nothing translates or scales."
 export const Active: Story = {
   args: { privacyNoticeHref: '/privacy-notice', objectionHref: '/object' },
-  parameters: { visualForceState: { state: 'active', role: 'link', nth: 0 } },
+  parameters: {
+    visualForceState: { state: 'active', role: 'link', nth: 0 },
+    visualCaptureClip: FIRST_LINK_CLIP,
+  },
 }
 
 // §5 "disabled — not applicable... loading — none... error — none of its own." Grouped as one

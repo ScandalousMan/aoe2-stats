@@ -129,6 +129,97 @@ describe('Menu', () => {
     expect(footer.className).toMatch(/\bmotion-reduce:duration-0\b/)
   })
 
+  // shared-primitives.md §Menu "hover" — decided 2026-09-28: the trigger follows `Button`
+  // `secondary`'s hover and press in full, label underline included, because it is a local
+  // `<button>` that inherits nothing from that primitive (FR-037, "more than colour").
+  it('a non-empty trigger underlines its label on hover and shifts on press (FR-037, 2026-09-28)', () => {
+    render(<Menu variant="selection" triggerLabel="aoe2guy" items={items} />)
+    const trigger = screen.getByRole('button', { name: 'aoe2guy' })
+    expect(trigger.className).toMatch(/\bhover:underline\b/)
+    expect(trigger.className).toMatch(/\bhover:decoration-2\b/)
+    expect(trigger.className).toMatch(/\bhover:underline-offset-2\b/)
+    expect(trigger.className).toMatch(/\bactive:underline-offset-4\b/)
+  })
+
+  // "Menu items' hover signal" (shared-primitives.md, decided 2026-09-28): the row-shaped item
+  // keeps its fill and underlines its label alone, through a named group — never the button's own
+  // `hover:underline`, which would propagate to the secondary line and the badge.
+  it("underlines a selection item's label on hover through the named group, enabled items only (FR-037, 2026-09-28)", async () => {
+    const user = userEvent.setup()
+    render(<Menu variant="selection" triggerLabel="aoe2guy" items={items} />)
+    await user.click(screen.getByRole('button', { name: 'aoe2guy' }))
+    const current = screen.getByRole('menuitemradio', { name: /aoe2guy/ })
+    expect(current.className).toMatch(/\bgroup\/menu-item\b/)
+    const label = within(current).getByText('aoe2guy')
+    expect(label.className).toMatch(/\bgroup-hover\/menu-item:underline\b/)
+    expect(label.className).toMatch(/\bgroup-hover\/menu-item:decoration-2\b/)
+    expect(label.className).toMatch(/\bgroup-hover\/menu-item:underline-offset-2\b/)
+  })
+
+  it('never underlines a disabled item label, even through the group', async () => {
+    const user = userEvent.setup()
+    render(
+      <Menu
+        variant="actions"
+        triggerLabel="Manage"
+        items={[
+          { id: 'disabled', label: 'Unavailable action', disabled: true, disabledReason: 'why' },
+        ]}
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: 'Manage' }))
+    const label = screen.getByText('Unavailable action')
+    expect(label.className ?? '').not.toMatch(/group-hover\/menu-item:underline/)
+  })
+
+  // §16.2's sibling (structural-tier.md — the hover signal's "loading" exclusion): a loading item
+  // is not `disabled`, so it stays focusable and keyboard-operable, but it must not carry the fill
+  // or the underline signal either — `index.tsx`'s `item.disabled || item.loading` branch guards
+  // both together. An enabled, non-loading sibling in the same render proves the two are told
+  // apart, not merely that loading happens to inherit disabled's own paint.
+  it('excludes the hover fill and underline from a loading item, but keeps both for an enabled sibling', async () => {
+    const user = userEvent.setup()
+    render(
+      <Menu
+        variant="actions"
+        triggerLabel="Manage"
+        items={[
+          { id: 'loading', label: 'Fetching', loading: true },
+          { id: 'ready', label: 'Ready action' },
+        ]}
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: 'Manage' }))
+
+    const loadingItem = screen.getByRole('menuitem', { name: 'Fetching' })
+    expect(loadingItem).toHaveAttribute('aria-busy', 'true')
+    expect(loadingItem.className).not.toMatch(/\bhover:bg-surface-sunken\b/)
+    const loadingLabel = within(loadingItem).getByText('Fetching')
+    expect(loadingLabel.className ?? '').not.toMatch(/group-hover\/menu-item:underline/)
+
+    const readyItem = screen.getByRole('menuitem', { name: 'Ready action' })
+    expect(readyItem.className).toMatch(/\bhover:bg-surface-sunken\b/)
+    const readyLabel = within(readyItem).getByText('Ready action')
+    expect(readyLabel.className).toMatch(/\bgroup-hover\/menu-item:underline\b/)
+  })
+
+  it('underlines the footer item directly on its own button on hover (FR-037, 2026-09-28)', async () => {
+    const user = userEvent.setup()
+    render(
+      <Menu
+        variant="actions"
+        triggerLabel="Manage"
+        items={items}
+        footerItem={{ id: 'link', label: 'Add another' }}
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: 'Manage' }))
+    const footer = screen.getByRole('menuitem', { name: 'Add another' })
+    expect(footer.className).toMatch(/\bhover:underline\b/)
+    expect(footer.className).toMatch(/\bhover:decoration-2\b/)
+    expect(footer.className).toMatch(/\bhover:underline-offset-2\b/)
+  })
+
   // T572 scenario 9 remediation (defect 1): shared-primitives.md#Menu's "selection" state used to
   // rely entirely on a caller-supplied `badge` to be distinguishable in a still image; a screen
   // reader given only the built Storybook could not tell a checked item's ring (the focus ring)

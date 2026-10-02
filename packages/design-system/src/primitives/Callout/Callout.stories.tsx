@@ -81,6 +81,12 @@ export const Empty: Story = {
 // stop after the heading, `primaryAction` here (rendered first in the action row, `index.tsx`'s own
 // order) — a real `Button`, carrying a real ring, and a real "what happens when you tab past this
 // heading" answer rather than a frame that documents nothing.
+// T675's package-wide sweep found this story's own surviving signal at or under 1% of an unclipped
+// frame in at least one unit — `visualCaptureClip` to the focused button is the mechanical fix the
+// sweep's own "at or under 1%" bucket calls for (README's Verification-coverage gap register, T675's
+// closing note).
+const TRY_AGAIN_CLIP = { parts: [{ role: 'button' as const, name: 'Try again' }], pad: '2' }
+
 export const FocusVisible: Story = {
   args: {
     tone: 'info',
@@ -91,6 +97,7 @@ export const FocusVisible: Story = {
   },
   parameters: {
     visualForceState: { state: 'focus-visible', role: 'button', name: 'Try again' },
+    visualCaptureClip: TRY_AGAIN_CLIP,
   },
 }
 

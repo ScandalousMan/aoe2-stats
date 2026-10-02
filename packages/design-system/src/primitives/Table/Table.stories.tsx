@@ -271,10 +271,52 @@ export const Overflow: Story = {
   ),
 }
 
+// `role: 'link', name: 'RedBull_Barley'` is unambiguous: exactly one anchor in this table carries
+// that name. Declared here, ahead of every story that clips to it (a module-level `const` is not
+// hoisted the way a function declaration is).
+const ROW_LINK_CLIP = { parts: [{ role: 'link' as const, name: 'RedBull_Barley' }], pad: '2' }
+
+// The hover fill (`hover:bg-surface-sunken`, index.tsx: painted on the `<tr>` itself) and the
+// active fill plus ring (`active:bg-surface-sunken` on the `<tr>`; `active:after:ring-2
+// active:after:ring-inset active:after:ring-border-strong` on the stretched link's `::after`,
+// which is `after:absolute after:inset-0` against the *row* — the nearest `relative` ancestor,
+// since the `<a>` itself is `static`) both paint against the row, not the anchor's own text box.
+// `ROW_LINK_CLIP` above locates the `<a>` alone and crops every one of those marks out: a frame
+// clipped to it shows only the underline (which *is* on the anchor) and nothing that tells a
+// reader the row is filled, that the row rules still show through the fill (§10's own hover
+// acceptance criterion), or — for `Active` — that the ring is there at all. `RowLinkActive` below
+// therefore clips to the row instead, via a selector rather than `role`/`name` (a `<tr>` carries no
+// ARIA role name of its own) — `RowLinkHover` does not: see that story's own comment for why the
+// fill it would otherwise show is a fact no frame can make the comparator register at all.
+// `RowLinkFocusVisible` further below is the other row-link state in this file whose own mark —
+// the `focusRing` outline, painted directly on the anchor and offset only by `outline-offset-ring`'s
+// 2px, well inside `pad: '2'`'s 8px — never leaves the anchor's own box, so it too stays on
+// `ROW_LINK_CLIP`.
+const ROW_LINK_ROW_CLIP = {
+  parts: [{ selector: 'tr:has(a[href="/matches/g-1"])' }],
+  pad: '2',
+}
+
 // structural-tier.md §10 "hover — a row highlights with `surface-sunken` only when the whole row
-// is a real link." `tests/visual/stories.spec.ts` drives the real `:hover` on the row's own anchor
-// from Playwright once this story has settled (see that file's own `VisualForceState` comment) — a
-// `play()` here could only dispatch a synthetic event, which the pseudo-class ignores.
+// is a real link," and its own acceptance criterion: "exactly one row is filled, its identity
+// text is underlined (§16.1), and the row rules are still visible through the fill."
+// `tests/visual/stories.spec.ts` drives the real `:hover` on the row's own anchor from Playwright
+// once this story has settled (see that file's own `VisualForceState` comment) — a `play()` here
+// could only dispatch a synthetic event, which the pseudo-class ignores.
+//
+// T675 remediation (N1, arbitrated by the project owner): this story clips to `ROW_LINK_CLIP` —
+// the anchor alone — not the row. Measured at threshold 0.2 in both themes: on the row clip the
+// hover underline is 182 differing px, which is 0.25% at 1280, 0.43% at 768 and 0.67% at 375 —
+// under the comparator's 1% gate on every unit, and the one mark that story-baselines-duplicates.mjs
+// could no longer tell apart from `Active`'s own rest. Clipped instead to the anchor
+// (`ROW_LINK_CLIP`, ~114x33px), the same 182px reads ~4.8% on every unit — the underline is the
+// only signal the comparator actually registers for this state, at any frame size the gate can
+// pass. The fill and the row rules showing through it are real (structural-tier.md §16.1 describes
+// them), but they are fill-only facts: a solid colour step the comparator at threshold 0.2 does not
+// count as differing pixels at all, on the row clip or any other — no frame, clipped or not, can
+// make that part of this state hold the 1% gate, which is why the row frame is not the answer here
+// (structural-tier.md §16.1, amended alongside this change to say so). `RowLinkActive` below keeps
+// `ROW_LINK_ROW_CLIP`: its own ring is a geometric mark, not a fill, and measures 5.8-7.5% there (nightly run 36903179643).
 export const RowLinkHover: Story = {
   render: () => (
     <Table
@@ -287,12 +329,20 @@ export const RowLinkHover: Story = {
   ),
   parameters: {
     visualForceState: { state: 'hover', role: 'link', name: 'RedBull_Barley' },
+    visualCaptureClip: ROW_LINK_CLIP,
   },
 }
 
 // §10 "active — a row link's press keeps the hover fill and adds a rule down the row's
-// inline-start edge, in `border-strong`" (fourth-pass review remediation, FR-037). Held down
-// rather than released so the capture shows the pressed frame.
+// inline-start edge, in `border-strong`" (fourth-pass review remediation, FR-037), and its own
+// acceptance criterion: the active capture "shows the same underline and, in addition, the full
+// inset ring" that the hover capture does not. Held down rather than released so the capture shows
+// the pressed frame. The harness presses by a real hover then a mouse-down, so §16.1's underline is
+// in this frame too. `ROW_LINK_ROW_CLIP` (declared above `RowLinkHover`) is what makes the ring
+// checkable here: the ring is a geometric mark against the row, outside the anchor `ROW_LINK_CLIP`
+// alone would crop to, and (unlike the hover fill `RowLinkHover` no longer clips to the row for —
+// see that story's own comment) it measures well over the comparator's 1% gate there, 5.8-7.5% on
+// every unit.
 export const RowLinkActive: Story = {
   render: () => (
     <Table
@@ -305,6 +355,7 @@ export const RowLinkActive: Story = {
   ),
   parameters: {
     visualForceState: { state: 'active', role: 'link', name: 'RedBull_Barley' },
+    visualCaptureClip: ROW_LINK_ROW_CLIP,
   },
 }
 
@@ -338,13 +389,11 @@ export const FocusVisible: Story = {
 // roughly 0.15-0.47% of the page, under both that checker's `DUPLICATE_MAX_DIFF_RATIO` and
 // `playwright.config.ts`'s own `maxDiffPixelRatio` (both 0.01), the same "rule row 3" ceiling every
 // other single-control ring in this package clips against (`PrivacyNotice`'s `FIRST_LINK_CLIP`/
-// `INLINE_LINK_CLIP`, `AccountErasurePanel`'s `checkboxClip`). `RowLinkHover`/`RowLinkActive` above
-// escape that ceiling unclipped only because they paint a row-wide fill/edge treatment, not a
-// single anchor's outline, so they stay full-frame — clipping them would only move their baselines
-// with nothing to gain. `role: 'link', name: 'RedBull_Barley'` is unambiguous: exactly one anchor
-// in this table carries that name.
-const ROW_LINK_CLIP = { parts: [{ role: 'link' as const, name: 'RedBull_Barley' }], pad: '2' }
-
+// `INLINE_LINK_CLIP`, `AccountErasurePanel`'s `checkboxClip`) — the same `ROW_LINK_CLIP` this story
+// clips to, unlike `RowLinkActive` above, which needs the row-level `ROW_LINK_ROW_CLIP` instead
+// (its own ring paints against the row): this focus ring, like `RowLinkHover`'s own underline, is a
+// mark that paints directly on the anchor and never leaves its box, so the anchor alone is still
+// the right frame for it.
 export const RowLinkFocusVisible: Story = {
   render: () => (
     <Table

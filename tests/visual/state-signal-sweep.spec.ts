@@ -1,0 +1,735 @@
+// T675 (slice 2/N, corrected slice 3) — the package-wide comparator-blind-spot sweep. NOT part of
+// the ordinary `pnpm test:visual` selection or the PR `visual` job: `scripts/visual/run.mjs` only
+// ever points Playwright at this file under its own `--state-signal-sweep` flag, which is also the
+// only thing that ever writes `VISUAL_STATE_SWEEP_FILE` — an unset var here (any other invocation
+// of this config) falls back to an empty work-item list, matching `stories.spec.ts`'s own
+// `VISUAL_STORIES_FILE` convention. This is now a *gate*, run nightly under
+// `--state-signal-sweep` (`scripts/visual/run.mjs`): it renders, it diffs, it writes raw numbers to
+// `test-results/state-signal-sweep/raw/` for `run.mjs` to classify once the whole run finishes, and
+// that classification fails the nightly job on any state `classifyBucket` reports as a comparator
+// blind spot — see `playwright.config.ts`'s own comment on `threshold` and this task's own text in
+// tasks.md for the history of why this started as a report before becoming the gate it is now.
+//
+// **Self-pairing: a state story's resting counterpart is itself, not a sibling.** Slice 1 paired a
+// state story against a *different* story sharing the same resolved args/`play`/`render`, which left
+// 55 of 113 state stories unmeasurable (no matching sibling, or more than one tied). Rendering the
+// same story twice — once with its own state not applied, once with it applied — has the same args,
+// `render`, viewport and clip *by construction*, for every state story in the tree, which is exactly
+// the "resting frame with the same args and size" this sweep exists to compare against. Two shapes,
+// decided by `scripts/visual/state-signal-model.mjs`'s own `planSelfRest` (never re-derived here —
+// this file "stays dumb" about *which* pairs exist and *how*):
+//   - `'forced'` (a real `visualForceState`): the state is a normal, played render with the pseudo-
+//     class additionally driven for real (`story-render.ts`'s own `applyForceState`).
+//   - `'play-focus-blur'` (a focus-visible frame left by a `play()` with no `visualForceState` of
+//     its own, e.g. `Dialog`'s `KeyboardFocusOrderAndTrap`): the state is the normal, played render
+//     as-is — the story's own `play()` already produced it, nothing further to drive.
+//
+// **The rest, for either shape, is a *second, separate* navigation with Storybook's own autoplay
+// disabled** (`gotoAndWaitForStorySettled(..., { autoplay: false })` — `story-render.ts`'s own
+// comment cites the exact mechanism: `&embed=true`, a real Storybook preview render option, not a
+// hand-rolled convention). This replaced an earlier, same-page-load design (reset the pseudo-class —
+// move the mouse away, blur `document.activeElement` — on the *same* settled, played render used for
+// the state) that could not be made reliable in general. Found reading one committed baseline
+// directly (the coordinator, slice 3): `Tooltip` `HoverRevealed`'s own baseline shows its tooltip
+// open, and this sweep's own "rest" was *also* capturing it open — `play: hoverOpen` opens the
+// tooltip through `Tooltip`'s own reference-counted pointer-region tracking
+// (`packages/design-system/src/primitives/Tooltip/index.tsx`'s own `pointerRegionRef`), and neither
+// a bare `page.mouse.move()` (Playwright's own tracked pointer was never inside the region to begin
+// with — `play()`'s own hover was dispatched synthetically, by `storybook/test`'s `userEvent`, which
+// never moves Playwright's real pointer) nor a `.hover()`-then-move-away pair (which enters the
+// region *again*, net movement zero) can reliably bring that counter back to the exact "nothing
+// entered" state a real user's mouse never having visited would leave it in — no bounded number of
+// synthetic mouse actions closes it correctly in general, only a render that never opened it at all.
+// A genuinely unplayed second navigation sidesteps the question entirely, for `Tooltip`'s own shape
+// and for anything else a future story's own `play()` might leave behind: there is no state to
+// unwind because the render that would have created it never ran.
+//
+// Method (must agree with the task's own classification, and with T675's closing note in
+// packages/design-system/specs/README.md's "Verification-coverage gap register"): diff the two live
+// renders against each other with Playwright's own comparator — pixelmatch at its default
+// `threshold: 0.2` (`playwright.config.ts` sets only `maxDiffPixelRatio: 0.01`, never `threshold`).
+// "Playwright's own comparator" is not a reimplementation: `playwright-core` bundles `pixelmatch`
+// internally and exposes the exact function `expect(...).toHaveScreenshot` itself calls only
+// through `lib/coreBundle`'s own `utils.getComparator('image/png')` (confirmed by reading the
+// installed playwright@1.62.1's own `node_modules/playwright/lib/matchers/expect.js`, which imports
+// it from that same path) — this file calls that function directly on two in-memory screenshots,
+// never on a checked-in baseline.
+//
+// **The main state-vs-rest diff is never compared against a checked-in baseline** (a *separate*,
+// second comparison — state vs. its own committed baseline — guards the eyeball check below; see
+// that comment for why that one specifically needs one). Confirmed empirically in slice 1: a locally
+// rendered, already-clipped baseline (`primitives-menu--trigger-focus-visible`) came back 103px wide
+// against a checked-in 104px-wide reference captured on CI, on every width and both themes — a real,
+// pre-existing local-vs-CI rendering difference (font metrics, subpixel rounding), nothing to do
+// with this file. Two renders taken back-to-back *on this same machine, in this same run* are still
+// valid to diff against each other for this sweep's own question — "does the state differ from the
+// rest" is relative, not "does this match a fixed historical reference" — which is why every capture
+// below is a raw `page.screenshot()`/`locator.screenshot()` buffer kept only in memory, never
+// `expect(...).toHaveScreenshot()` and never written under `packages/design-system/__screenshots__`.
+//
+// **A second guard, independent of the rest's own correctness: does the *state* frame this sweep
+// captured even match the committed baseline for the same unit?** If it does not — beyond
+// `BASELINE_MAX_DIFF_RATIO`, below, a wider tolerance than `playwright.config.ts`'s own
+// `maxDiffPixelRatio` because that number turns out too strict for this specific comparison (see
+// that constant's own comment for the empirical reason) — this sweep's own state capture failed to
+// reproduce the state at all, and nothing this file concludes from comparing it to the rest is
+// trustworthy; `state-signal-model.mjs`'s own `classifyBucket` reports `'state-not-reproduced'`
+// instead of trusting the pixel diff, never a silent zero. Only the state frame has a baseline to
+// compare against — the rest is never captured or asserted anywhere else in this repo — and it is
+// dimension-comparable directly: `captureNow` below produces a state frame the *same* way
+// `stories.spec.ts` produces the committed baseline (same clip precedence, same `fullPage` rule), so
+// there is no separate "which shape is the baseline" branch to write here.
+//
+// Settle logic, the theme mechanism, force-state driving and clip resolution are all imported from
+// `./story-render.ts` — the exact functions `stories.spec.ts` itself calls, not a second copy of any
+// of them (T675's own instruction).
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import path from 'node:path'
+import { createRequire } from 'node:module'
+import { expect, test, type Locator, type Page } from '@playwright/test'
+import { PNG } from 'pngjs'
+import {
+  applyForceState,
+  gotoAndWaitForStorySettled,
+  readCaptureClip,
+  readForceState,
+  resolveCaptureClip,
+  type VisualCaptureClip,
+  type VisualForceState,
+} from './story-render'
+// T675 remediation (M4(a) on PR #105): the same Steam avatar CDN stub `stories.spec.ts` installs —
+// see that module's own header for why a second, separate definition is not an option.
+import { installSteamAvatarStub, STEAM_AVATAR_FIXTURE_PATH } from './fixtures/avatar-stub'
+
+const rootDir = path.resolve(__dirname, '..', '..')
+const rawResultsDir = path.join(rootDir, 'test-results', 'state-signal-sweep', 'raw')
+mkdirSync(rawResultsDir, { recursive: true })
+// The eyeball guard's own home — every `zero`/`zero-despite-clip` pair's own light/1280 rest and
+// state frames, written unconditionally whenever that one unit's own diff is zero (which a
+// story-level `zero`/`zero-despite-clip` bucket always implies, since that classification requires
+// every unit to be zero — see `classifyBucket`'s own comment). A reader (the coordinator, before any
+// cell reaches `product-designer`) inspects these directly; this sweep never inspects them itself.
+const framesDir = path.join(rootDir, 'test-results', 'state-signal-sweep', 'frames')
+const screenshotsDir = path.join(rootDir, 'packages', 'design-system', '__screenshots__')
+
+// The same built-Storybook-index read `stories.spec.ts` already does for `titleById` — here for
+// one more field, `tags`, so this file learns which stories are `visual-full-page` (a fixed dialog,
+// an open popover) the same way `scripts/visual/run.mjs` does, rather than re-deriving it from
+// source.
+const storybookIndexPath = path.join(rootDir, 'packages/design-system/storybook-static/index.json')
+const tagsById = new Map<string, string[]>()
+if (existsSync(storybookIndexPath)) {
+  const index = JSON.parse(readFileSync(storybookIndexPath, 'utf8')) as {
+    entries?: Record<string, { id: string; tags?: string[] }>
+    stories?: Record<string, { id: string; tags?: string[] }>
+  }
+  for (const entry of Object.values(index.entries ?? index.stories ?? {})) {
+    tagsById.set(entry.id, entry.tags ?? [])
+  }
+}
+function isFullPage(id: string): boolean {
+  return (tagsById.get(id) ?? []).includes('visual-full-page')
+}
+
+// `playwright-core` bundles `pixelmatch` internally and only ever exposes it through this path
+// (`lib/coreBundle`'s own `.utils.getComparator`) — the exact function
+// `node_modules/playwright/lib/matchers/expect.js`'s own `ImageMatcher` calls for every
+// `toHaveScreenshot`, confirmed by reading that file directly rather than assumed. `createRequire`
+// anchored at `@playwright/test`'s own `package.json` is what resolves `playwright-core` at all:
+// pnpm's strict `node_modules` does not hoist a transitive dependency to this file's own location
+// otherwise — the exact trap `scripts/checks/story-baselines-duplicates.mjs`'s own header names for
+// why it uses `pngjs` instead of `pixelmatch`/`sharp` directly. `pngjs` itself IS a direct root
+// devDependency (`package.json`), so it resolves normally, used here only to read each capture's own
+// width/height for a cheap, definitive dimension check before ever asking the comparator to diff two
+// buffers of different sizes.
+const playwrightRequire = createRequire(require.resolve('@playwright/test/package.json'))
+const { getComparator } = playwrightRequire('playwright-core/lib/coreBundle').utils as {
+  getComparator: (
+    mimeType: string,
+  ) => (a: Buffer, b: Buffer, opts: { threshold: number }) => { errorMessage: string } | null
+}
+const imageComparator = getComparator('image/png')
+
+// NOT `playwright.config.ts`'s own `maxDiffPixelRatio` (0.01) — tried that value first and it is
+// too strict for this specific comparison. Confirmed empirically, twice over: re-running
+// `tests/visual/stories.spec.ts` locally, right now, against `Tooltip` `HoverRevealed`'s own
+// committed (CI-captured) baseline fails at 1.02% even though the render is, by inspection, correct;
+// `PrivacyNotice` `Hover`'s own small, text-heavy link clip reads 6.03% against its own committed
+// baseline, visually indistinguishable side by side (anti-aliasing along underlined text edges, the
+// same local-vs-CI drift this file's own header already documents as "roughly 2% in absolute
+// terms", concentrated harder on a small, glyph-dense clip than on a full page). `maxDiffPixelRatio`
+// is the right number for *that* suite, which only ever compares a local render to CI's own
+// committed reference and is allowed to be noisy about it (retried, re-baselined from CI when it
+// drifts); this check exists to catch a *structural* failure to reproduce (the wrong content
+// rendered at all — a closed tooltip captured where an open one belongs, the shape `Tooltip`
+// `HoverRevealed` actually had), which reads far above this number — comfortably past the two
+// documented noise readings above, not tuned to either one's own worst case.
+const BASELINE_MAX_DIFF_RATIO = 0.15
+
+type Theme = 'light' | 'dark'
+const THEMES: Theme[] = ['light', 'dark']
+const WIDTHS = [375, 768, 1280]
+
+// `mode` mirrors `state-signal-model.mjs`'s own `planSelfRest` result — computed there, in
+// `run.mjs`'s ESM context, never re-derived here.
+type SelfRestMode = 'forced' | 'play-focus-blur'
+
+interface WorkItem {
+  stateId: string
+  exportName: string
+  mode: SelfRestMode
+  file: string
+}
+
+// Written by `scripts/visual/run.mjs`'s own `--state-signal-sweep` flow. An unset var (any
+// invocation of this config that is not `run.mjs --state-signal-sweep`) falls back to an empty list.
+const workItemsPath = process.env.VISUAL_STATE_SWEEP_FILE
+const workItems: WorkItem[] = workItemsPath
+  ? (JSON.parse(readFileSync(workItemsPath, 'utf8')) as WorkItem[])
+  : []
+
+interface UnitResult {
+  theme: Theme
+  width: number
+  diffPixels: number | null
+  totalPixels: number | null
+  ratio: number | null
+  dimensionMismatch: boolean
+  // `null` when no baseline is committed for this unit yet (nothing to check against, not a
+  // failure); `false` when the state frame this sweep captured does not match its own committed
+  // baseline beyond `BASELINE_MAX_DIFF_RATIO` — the eyeball guard's own signal that this pair's
+  // classification cannot be trusted, regardless of what the state-vs-rest diff above says.
+  stateMatchesBaseline: boolean | null
+}
+
+// Whether `stateBuffer` — this sweep's own capture of the story's *state* frame — matches the
+// committed baseline for the same {theme, width} unit, within `BASELINE_MAX_DIFF_RATIO`. Only the
+// state frame has a baseline to compare against at all (`tests/visual/stories.spec.ts` never
+// captures or asserts a story's own "rest" — every checked-in baseline already *is* whichever frame
+// a story's own name promises, `Hover`/`Active`/`FocusVisible` included), and it is
+// dimension-comparable to that baseline directly: `captureNow` below produces it the same way
+// `stories.spec.ts` produces the baseline (same clip precedence, same `fullPage` rule), so there is
+// no separate "which shape is the baseline" branch to write here — only a definitive `false` if the
+// two dimensions still disagree (a real signal, `classifyBucket`'s own `'dimension-mismatch'`
+// question is a different one — this is about the *state*, not the rest).
+// Local font hinting/subpixel rounding can shift a rendered frame's own resolved size by a handful
+// of pixels between this machine and CI — confirmed three times over in this repo already (`Menu`
+// `TriggerFocusVisible`, 103px locally vs 104px on CI, this file's own header; `PrivacyNotice`
+// `Hover`'s own link clip, 624px locally vs 618px on CI; `Footer` `Hover`'s own full-page capture at
+// 375px, 393px tall locally vs 373px on CI — a per-line rounding difference too small to see on any
+// one line, compounding visibly over the several wrapped paragraphs this story's own disclaimer text
+// takes at that width, all found running this exact check). None is a real reproduction failure; all
+// are the same noise `BASELINE_MAX_DIFF_RATIO` already exists to absorb, but a *pixel* ratio can
+// never even be computed when the two buffers are different sizes to begin with — `imageComparator`
+// refuses to diff them at all. A dimension gap within tolerance is treated as that same noise (a
+// match, without attempting a pixel diff a differently-sized pair cannot give an honest one for); a
+// larger gap is still a definitive mismatch — the two are no longer arguably the same frame.
+//
+// A *flat* pixel tolerance (the previous `DIMENSION_TOLERANCE_PX = 30`) cannot do this job once a
+// clip is small: T675 slice 5 added clips as tiny as 49×20 (Menu `Hover`) and 75×24 (Dialog
+// `Hover`), where 30px absorbs almost any size at all — a 49×20 state frame against a 70×30
+// baseline (widthDiff 21, heightDiff 10, both <= 30) read as "matches", the exact "wrong frame of
+// almost any size counts as reproduced" gap review finding M5 named. `DIMENSION_TOLERANCE_RATIO`
+// scales with the frame instead — `max(2px, 6% of the larger side)` — chosen, not merely guessed,
+// against the three documented noise readings just above, the only real evidence this file has for
+// what the tolerance needs to absorb: the tightest is Menu/PrivacyNotice's own ~0.96% (1/104,
+// 6/624), the loosest is Footer's own ~5.1% (20/393) — 6% clears all three with margin and is still
+// nowhere near the ~30-33% both dimensions of the 49×20-vs-70×30 case are off by, which is the
+// actual boundary this ratio needs to sit on the right side of. The 2px floor keeps a tiny clip's
+// own 6% (little more than 1px on a 20px-tall frame) from being tighter than any of those three
+// confirmed-harmless readings.
+const DIMENSION_TOLERANCE_RATIO = 0.06
+const DIMENSION_TOLERANCE_FLOOR_PX = 2
+
+// Exported for a browser-less unit test (`story-render.spec.ts`'s own pattern: a pure function,
+// tested against synthetic dimensions, no page and no story). Kept free of any PNG/file-reading
+// concern so it is provable on its own.
+export function dimensionsWithinTolerance(
+  aWidth: number,
+  aHeight: number,
+  bWidth: number,
+  bHeight: number,
+): boolean {
+  const widthTolerance = Math.max(
+    DIMENSION_TOLERANCE_FLOOR_PX,
+    DIMENSION_TOLERANCE_RATIO * Math.max(aWidth, bWidth),
+  )
+  const heightTolerance = Math.max(
+    DIMENSION_TOLERANCE_FLOOR_PX,
+    DIMENSION_TOLERANCE_RATIO * Math.max(aHeight, bHeight),
+  )
+  return (
+    Math.abs(aWidth - bWidth) <= widthTolerance && Math.abs(aHeight - bHeight) <= heightTolerance
+  )
+}
+
+// `imageComparator`'s own diff-pixel count over `totalPixels`, as a ratio — 0 when the comparator
+// finds nothing to report at all (`diffResult === null`, its own "identical" shape). Shared by both
+// branches of `evaluateStateAgainstBaseline` below so the equal-size and cropped-overlap paths run
+// the exact same comparison, never two slightly different ones.
+function pixelDiffRatio(a: Buffer, b: Buffer, totalPixels: number): number {
+  const diffResult = imageComparator(a, b, { threshold: 0.2 })
+  if (!diffResult) return 0
+  const diffPixels = Number(/^(\d+) pixels/.exec(diffResult.errorMessage)?.[1])
+  return diffPixels / totalPixels
+}
+
+// The top-left `width`x`height` region of `image`, as its own standalone `PNG` — `PNG.bitblt`
+// (pngjs's own region-copy utility, the same package this file already uses for `PNG.sync.read`/
+// `.write`) rather than a hand-rolled buffer slice, since a PNG's own `.data` is row-major RGBA and
+// a naive `Buffer.slice` would need to reimplement exactly what `bitblt` already does correctly.
+function cropTopLeft(image: PNG, width: number, height: number): PNG {
+  const cropped = new PNG({ width, height })
+  PNG.bitblt(image, cropped, 0, 0, width, height, 0, 0)
+  return cropped
+}
+
+// T675 remediation (N4): the pure comparison `stateMatchesCommittedBaseline` below wraps around a
+// filesystem read — extracted here, on two already-decoded buffers, so it is provable directly
+// against small, constructed PNGs (this describe block's own `dimensionsWithinTolerance` pattern)
+// rather than only through a committed baseline file on disk.
+//
+// A within-tolerance size difference used to make this return `true` outright, with no pixel
+// comparison at all — `dimensionsWithinTolerance` (M5) correctly calls a few-percent size gap noise
+// (local font hinting, subpixel rounding), but nothing about the two frames being *close enough in
+// size* says anything about whether the content they share is the same. A frame that happens to
+// land inside the size tolerance while showing genuinely different content in its overlapping region
+// must still fail. Fixed by comparing the overlapping top-left `min(width)`x`min(height)` crop of
+// both frames with the same `pixelDiffRatio` the equal-size branch already used — the two branches
+// differ only in *which* buffers they diff, never in how.
+export function evaluateStateAgainstBaseline(stateBuffer: Buffer, baselineBuffer: Buffer): boolean {
+  const stateImage = PNG.sync.read(stateBuffer)
+  const baselineImage = PNG.sync.read(baselineBuffer)
+  if (
+    !dimensionsWithinTolerance(
+      stateImage.width,
+      stateImage.height,
+      baselineImage.width,
+      baselineImage.height,
+    )
+  ) {
+    return false
+  }
+  const widthDiff = Math.abs(stateImage.width - baselineImage.width)
+  const heightDiff = Math.abs(stateImage.height - baselineImage.height)
+  if (widthDiff === 0 && heightDiff === 0) {
+    return (
+      pixelDiffRatio(stateBuffer, baselineBuffer, stateImage.width * stateImage.height) <=
+      BASELINE_MAX_DIFF_RATIO
+    )
+  }
+  const cropWidth = Math.min(stateImage.width, baselineImage.width)
+  const cropHeight = Math.min(stateImage.height, baselineImage.height)
+  const stateCropBuffer = PNG.sync.write(cropTopLeft(stateImage, cropWidth, cropHeight))
+  const baselineCropBuffer = PNG.sync.write(cropTopLeft(baselineImage, cropWidth, cropHeight))
+  return (
+    pixelDiffRatio(stateCropBuffer, baselineCropBuffer, cropWidth * cropHeight) <=
+    BASELINE_MAX_DIFF_RATIO
+  )
+}
+
+function stateMatchesCommittedBaseline(
+  stateBuffer: Buffer,
+  id: string,
+  theme: Theme,
+  width: number,
+): boolean | null {
+  const baselinePath = path.join(screenshotsDir, `${id}-${theme}-${width}.png`)
+  if (!existsSync(baselinePath)) return null
+  const baselineBuffer = readFileSync(baselinePath)
+  return evaluateStateAgainstBaseline(stateBuffer, baselineBuffer)
+}
+
+// The story's own settled frame, clipped to `clip` (the story's own `visualCaptureClip`, resolved
+// fresh against the *current* DOM each time this is called), full-page when the id's own Storybook
+// tag says so, or the plain `#storybook-root` element otherwise.
+async function captureNow(
+  page: Page,
+  root: Locator,
+  id: string,
+  clip: Awaited<ReturnType<typeof readCaptureClip>>,
+  fullPage: boolean,
+): Promise<Buffer> {
+  if (clip) {
+    const rect = await resolveCaptureClip(page, root, id, clip)
+    // `fullPage: true` alongside `clip` — the same pairing `stories.spec.ts` always uses (T591's own
+    // comment there). Without it, a clip target below the fold of a long `screens/*` form resolves
+    // to a page-coordinate rect Playwright's own clipped screenshot cannot reach without `fullPage`
+    // first laying out and stitching the whole document (confirmed empirically in slice 1:
+    // "Clipped area is either empty or outside the resulting image" on `ThirdPartyObjectionForm`'s
+    // own clipped stories without this).
+    return page.screenshot({ fullPage: true, clip: rect })
+  }
+  if (fullPage) {
+    return page.screenshot()
+  }
+  return root.screenshot()
+}
+
+// Captures a `'forced'` work item's *state* frame: drives the real pseudo-class
+// (`story-render.ts`'s own `applyForceState`), captures, then releases a held mouse button in a
+// `finally` — even when the capture itself throws — so that `active`'s own `page.mouse.down()`
+// never stays held across the remaining units and navigations this same test still has to run
+// (M4(b), T675's own comparator sweep review on PR #105: the discarded `releaseMouseAfterCapture`
+// left every `active` story's mouse button held past its own capture, contaminating every unit and
+// navigation after it in the same test). Exported so a `setContent` page with no story and no
+// Storybook build can prove the release fires, the same pattern `story-render.spec.ts` uses for its
+// own DOM-only checks on `story-render.ts` itself.
+export async function captureForcedState(
+  page: Page,
+  root: Locator,
+  id: string,
+  forceState: VisualForceState,
+  clip: VisualCaptureClip | null,
+  opts: { width: number; height: number; fullPage: boolean },
+): Promise<Buffer> {
+  const { releaseMouseAfterCapture } = await applyForceState(page, root, forceState, opts)
+  try {
+    return await captureNow(page, root, id, clip, opts.fullPage)
+  } finally {
+    if (releaseMouseAfterCapture) {
+      await page.mouse.up()
+    }
+  }
+}
+
+// The rest, for one {theme, width} unit: an unplayed render, *unless* this story's own `play()` is
+// structural rather than incidental — `Menu`'s own item-level `Hover`/`Active`/`FocusVisible`, for
+// one, whose `visualCaptureClip` targets `[role="menu"]`, the open panel `play: openMenu` itself
+// produces; with no `play()` at all, that role never exists, and `story-render.ts`'s own
+// `locateClipPart` throws rather than resolve a clip against nothing (never silently shrinks to an
+// empty rect). Caught here, narrowly, only on that exact failure shape — never on any other error,
+// which propagates and fails the test the same way it always did — and retried with a normal,
+// played navigation, force *not* applied: the structural scaffolding `play()` produces is common to
+// both frames for a story shaped this way, and only the specific pseudo-class this story forces
+// differs between them, the shape slice 2's own same-page-load design already had right for `Menu`.
+// `Tooltip`'s own `HoverRevealed` (no clip at all) never reaches this branch — its own `play()` is
+// the incidental case, not the structural one, which is exactly what makes the unplayed render the
+// correct rest for it.
+async function captureRest(
+  page: Page,
+  item: WorkItem,
+  theme: Theme,
+  width: number,
+  height: number,
+  fullPage: boolean,
+): Promise<Buffer> {
+  try {
+    const root = await gotoAndWaitForStorySettled(page, item.stateId, theme, width, height, {
+      autoplay: false,
+    })
+    const clip = await readCaptureClip(page, item.stateId)
+    return await captureNow(page, root, item.stateId, clip, fullPage)
+  } catch (err) {
+    if (!(err instanceof Error) || !err.message.startsWith('visualCaptureClip:')) throw err
+    const root = await gotoAndWaitForStorySettled(page, item.stateId, theme, width, height)
+    // This played render's own `play()` can itself already have produced the exact pseudo-class
+    // this story forces — `Menu`'s own `KeyboardNavigation` is both cases at once: its own
+    // `visualCaptureClip` needs the open menu `play()` produces (the reason this fallback branch is
+    // reached at all), and its own real `userEvent.keyboard('{End}')` sequence already leaves the
+    // footer item genuinely `:focus-visible`, the same element `visualForceState` re-focuses. Left
+    // alone, this "unforced" rest would already show that real focus ring, and the diff against the
+    // state (which re-focuses the identical element) would read zero — the same false zero
+    // `Tooltip` `HoverRevealed` had, one more layer down.
+    //
+    // Blurring is scoped to exactly this case, never applied to a `hover`/`active` force: `Menu`'s
+    // own "open, then focus the checked item" effect (`index.tsx`'s own `itemRefs.current
+    // [activeIndex]?.focus()`) leaves *some* item genuinely focused every time the panel opens via
+    // `play()`, on *every* Menu story that reaches this fallback — including `FooterItemHover`,
+    // whose own force targets a different element entirely (the footer button, not the checked
+    // profile item) and has nothing to do with focus at all. Blurring unconditionally here would
+    // remove that unrelated ring from the rest while the state (a separately played render, never
+    // blurred at all) still carries it — confirmed empirically: an earlier, unconditional version of
+    // this blur moved `FooterItemHover` from a correct zero to a false ~2%, the auto-focused ring's
+    // own presence in one frame and absence in the other, nothing to do with the hover this story
+    // actually forces.
+    if (item.mode === 'play-focus-blur') {
+      await page.evaluate(() => {
+        const active = document.activeElement
+        if (active instanceof HTMLElement) active.blur()
+      })
+    } else {
+      const forceState = await readForceState(page, item.stateId)
+      if (forceState?.state === 'focus-visible') {
+        await page.evaluate(() => {
+          const active = document.activeElement
+          if (active instanceof HTMLElement) active.blur()
+        })
+      }
+    }
+    const clip = await readCaptureClip(page, item.stateId)
+    return await captureNow(page, root, item.stateId, clip, fullPage)
+  }
+}
+
+// Per-test timeout, scaled to the units a test renders rather than Playwright's flat 30s default
+// (nor a blanket huge value). Each unit is {theme} x {width} and costs two navigate-settle-capture
+// round trips (the rest, then the state). Nightly run 36903179643 averaged 16-18s per test over
+// today's 6 units (~3s per unit), and one test (`screens-privacynotice--contact-route-link-active`)
+// still hit the 30s ceiling and passed only on retry — so the allowance is ~2.5x the observed
+// per-unit mean (7s), plus a base for the avatar stub and the first cold navigation. 6 units gives
+// 52s: ~3x the average, ~1.7x the slowest seen, and it still grows with the matrix instead of
+// silently re-tightening when a theme or width is added.
+const SWEEP_TEST_BASE_TIMEOUT_MS = 10_000
+const SWEEP_TEST_PER_UNIT_TIMEOUT_MS = 7_000
+const SWEEP_TEST_UNIT_COUNT = THEMES.length * WIDTHS.length
+const SWEEP_TEST_TIMEOUT_MS =
+  SWEEP_TEST_BASE_TIMEOUT_MS + SWEEP_TEST_PER_UNIT_TIMEOUT_MS * SWEEP_TEST_UNIT_COUNT
+
+for (const item of workItems) {
+  test(`${item.stateId} (comparator sweep, self-rest, ${item.mode})`, async ({ page }) => {
+    test.setTimeout(SWEEP_TEST_TIMEOUT_MS)
+    // M4(a): the same stub `stories.spec.ts` installs — `ProfileSummary`'s state stories (fixture
+    // `avatarHash`) build a real `avatars.steamstatic.com` URL, and this sweep renders every story
+    // the same way `stories.spec.ts` does, so it needs the identical stub rather than none at all.
+    await installSteamAvatarStub(page)
+    const fullPage = isFullPage(item.stateId)
+    const results: UnitResult[] = []
+
+    for (const theme of THEMES) {
+      for (const width of WIDTHS) {
+        const height = width === 375 ? 900 : 720
+
+        // The rest: a fresh, genuinely unplayed render wherever that is sufficient — see this
+        // file's own header for why a reset on the same played render this sweep used to take
+        // cannot be made reliable in general — falling back to a played-but-unforced render only
+        // where `play()` is structural (`captureRest`'s own comment).
+        const restBuffer = await captureRest(page, item, theme, width, height, fullPage)
+
+        // The state: a normal, played render, with the pseudo-class additionally driven for real
+        // in `'forced'` mode — `'play-focus-blur'` needs nothing further, the settled render
+        // already *is* the state.
+        const stateRoot = await gotoAndWaitForStorySettled(page, item.stateId, theme, width, height)
+        const stateClip = await readCaptureClip(page, item.stateId)
+        let stateBuffer: Buffer
+        if (item.mode === 'forced') {
+          const forceState = await readForceState(page, item.stateId)
+          if (!forceState) {
+            throw new Error(
+              `state-signal-sweep: work item "${item.stateId}" was planned as "forced" but this ` +
+                "story's own settled render carries no visualForceState parameter — the model and " +
+                'the live story have drifted apart.',
+            )
+          }
+          stateBuffer = await captureForcedState(
+            page,
+            stateRoot,
+            item.stateId,
+            forceState,
+            stateClip,
+            {
+              width,
+              height,
+              fullPage,
+            },
+          )
+        } else {
+          stateBuffer = await captureNow(page, stateRoot, item.stateId, stateClip, fullPage)
+        }
+
+        const stateMatchesBaseline = stateMatchesCommittedBaseline(
+          stateBuffer,
+          item.stateId,
+          theme,
+          width,
+        )
+
+        const stateImage = PNG.sync.read(stateBuffer)
+        const restImage = PNG.sync.read(restBuffer)
+        if (stateImage.width !== restImage.width || stateImage.height !== restImage.height) {
+          results.push({
+            theme,
+            width,
+            diffPixels: null,
+            totalPixels: null,
+            ratio: null,
+            dimensionMismatch: true,
+            stateMatchesBaseline,
+          })
+          continue
+        }
+        const totalPixels = stateImage.width * stateImage.height
+        const diffResult = imageComparator(stateBuffer, restBuffer, { threshold: 0.2 })
+        const diffPixels = diffResult
+          ? Number(/^(\d+) pixels/.exec(diffResult.errorMessage)?.[1])
+          : 0
+        results.push({
+          theme,
+          width,
+          diffPixels,
+          totalPixels,
+          ratio: diffPixels / totalPixels,
+          dimensionMismatch: false,
+          stateMatchesBaseline,
+        })
+
+        // The eyeball guard's own frames — every unit whose own diff is zero, written
+        // unconditionally (a story-level `zero`/`zero-despite-clip` bucket requires every one of
+        // its six units to be zero, so writing at light/1280 specifically, whenever *that* unit is
+        // zero, always covers every zero-bucket story; it can also fire for a unit that happens to
+        // be zero on a story whose *other* units are not, which is harmless extra evidence, never a
+        // gap). "At least light-1280" per this task's own instruction — every unit could be
+        // written, but one representative frame per axis this sweep already renders is enough for a
+        // human to eyeball, and six times the PNGs for the same purpose is not.
+        if (theme === 'light' && width === 1280 && diffPixels === 0) {
+          const storyFramesDir = path.join(framesDir, item.stateId)
+          mkdirSync(storyFramesDir, { recursive: true })
+          writeFileSync(path.join(storyFramesDir, 'rest-light-1280.png'), restBuffer)
+          writeFileSync(path.join(storyFramesDir, 'state-light-1280.png'), stateBuffer)
+        }
+      }
+    }
+
+    const safeName = item.stateId.replace(/[^a-z0-9-]+/gi, '_')
+    writeFileSync(
+      path.join(rawResultsDir, `${safeName}.json`),
+      JSON.stringify({ ...item, unitResults: results }, null, 2),
+    )
+  })
+}
+
+// T675 remediation on PR #105 (findings M4(a), M4(b), M5) — unit coverage for the three pieces of
+// this file the review found untested. `workItems` is empty in this run (`VISUAL_STATE_SWEEP_FILE`
+// unset here), so the tests below register unconditionally rather than inside the `for` loop above.
+test.describe('state-signal-sweep remediation (M4, M5)', () => {
+  // M5: `dimensionsWithinTolerance` needs no browser, no story and no PNG — a pure function over
+  // four numbers, the same shape `story-render.spec.ts` already uses for `resolveClipPartRect`.
+  test.describe('dimensionsWithinTolerance', () => {
+    test('RED: a 49x20 state frame against a 70x30 baseline is not noise — the old flat 30px tolerance called this a match (widthDiff 21 <= 30, heightDiff 10 <= 30)', () => {
+      expect(dimensionsWithinTolerance(49, 20, 70, 30)).toBe(false)
+    })
+
+    test('CONTROL: a 1px anti-aliasing wobble on a 400x300 frame is still noise, so the caller goes on to a real pixel comparison', () => {
+      expect(dimensionsWithinTolerance(400, 300, 399, 300)).toBe(true)
+    })
+
+    test('absorbs the documented Menu TriggerFocusVisible noise (103 vs 104 width, ~0.96%)', () => {
+      expect(dimensionsWithinTolerance(103, 50, 104, 50)).toBe(true)
+    })
+
+    test('absorbs the documented PrivacyNotice Hover noise (624 vs 618 width, ~0.96%)', () => {
+      expect(dimensionsWithinTolerance(624, 40, 618, 40)).toBe(true)
+    })
+
+    test('absorbs the documented Footer Hover noise (393 vs 373 height, ~5.1%, the loosest of the three)', () => {
+      expect(dimensionsWithinTolerance(375, 393, 375, 373)).toBe(true)
+    })
+
+    test('a dimension gap past the tolerance on only one axis is still a mismatch', () => {
+      expect(dimensionsWithinTolerance(400, 20, 400, 30)).toBe(false)
+    })
+  })
+
+  // T675 remediation (N4): `evaluateStateAgainstBaseline` needs no browser and no story, only two
+  // constructed PNG buffers — the same shape `dimensionsWithinTolerance` above is proven against.
+  test.describe('evaluateStateAgainstBaseline', () => {
+    function solidPng(
+      width: number,
+      height: number,
+      [r, g, b, a]: [number, number, number, number],
+    ): PNG {
+      const png = new PNG({ width, height })
+      for (let i = 0; i < png.data.length; i += 4) {
+        png.data[i] = r
+        png.data[i + 1] = g
+        png.data[i + 2] = b
+        png.data[i + 3] = a
+      }
+      return png
+    }
+
+    test('RED: a within-tolerance-size frame whose overlapping crop differs heavily is not a match — the old code returned true for any within-tolerance size gap, with no pixel comparison at all', () => {
+      // 100x100 vs 104x100: widthDiff 4 <= max(2, 6% of 104) ~= 6.24, so `dimensionsWithinTolerance`
+      // alone calls this noise — but the two frames are solid, opposite-colour red vs blue, so their
+      // shared 100x100 top-left region is 100% different, which must still fail this check.
+      const state = PNG.sync.write(solidPng(100, 100, [255, 0, 0, 255]))
+      const baseline = PNG.sync.write(solidPng(104, 100, [0, 0, 255, 255]))
+      expect(evaluateStateAgainstBaseline(state, baseline)).toBe(false)
+    })
+
+    test('CONTROL: a within-tolerance-size frame whose overlapping crop has identical content is a match', () => {
+      // Same size gap as the RED case above (100x100 vs 104x100), but the shared 100x100 top-left
+      // region is the same solid red on both — the extra 4px-wide strip on the baseline's own right
+      // edge, outside the overlap, is never part of the comparison at all.
+      const state = PNG.sync.write(solidPng(100, 100, [255, 0, 0, 255]))
+      const baseline = solidPng(104, 100, [255, 0, 0, 255])
+      for (let x = 100; x < 104; x++) {
+        for (let y = 0; y < 100; y++) {
+          const idx = (baseline.width * y + x) << 2
+          baseline.data[idx] = 0
+          baseline.data[idx + 1] = 255
+          baseline.data[idx + 2] = 0
+          baseline.data[idx + 3] = 255
+        }
+      }
+      expect(evaluateStateAgainstBaseline(state, PNG.sync.write(baseline))).toBe(true)
+    })
+
+    test('a size gap past the tolerance still fails outright, before any crop is attempted', () => {
+      const state = PNG.sync.write(solidPng(49, 20, [255, 0, 0, 255]))
+      const baseline = PNG.sync.write(solidPng(70, 30, [255, 0, 0, 255]))
+      expect(evaluateStateAgainstBaseline(state, baseline)).toBe(false)
+    })
+
+    test('identical-size frames with identical content still match, through the equal-size branch', () => {
+      const state = PNG.sync.write(solidPng(100, 100, [10, 20, 30, 255]))
+      const baseline = PNG.sync.write(solidPng(100, 100, [10, 20, 30, 255]))
+      expect(evaluateStateAgainstBaseline(state, baseline)).toBe(true)
+    })
+  })
+
+  // M4(b): `captureForcedState` must release a held mouse button after capturing, in a `finally`,
+  // even though the capture it wraps never throws in this happy-path proof — the `finally` is what
+  // makes the release unconditional on the capture's own outcome, not a claim this test alone can
+  // distinguish from a plain post-capture call; the discard this finding describes never released
+  // at all, which is the gap this proves closed.
+  test('captureForcedState releases a held mouse button after capturing an "active" force', async ({
+    page,
+  }) => {
+    await page.setContent(`
+      <button id="target" style="width: 80px; height: 30px;">Click</button>
+      <script>
+        window.__mouseReleased = false
+        document.addEventListener('mouseup', () => { window.__mouseReleased = true })
+      </script>
+    `)
+    const root = page.locator('body')
+
+    await captureForcedState(page, root, 'test-story', { state: 'active', role: 'button' }, null, {
+      width: 400,
+      height: 300,
+      fullPage: false,
+    })
+
+    const released = await page.evaluate(
+      () => (window as unknown as { __mouseReleased: boolean }).__mouseReleased,
+    )
+    expect(released).toBe(true)
+  })
+
+  // M4(a): the stub answers the fixture hash with the local fixture and every other path on the
+  // same host with a 404 — never lets a request on this host reach the real network, which is what
+  // this test actually proves (a real CDN round-trip would time out or fail in this sandboxed run,
+  // never come back 200/404 on schedule).
+  test('installSteamAvatarStub fulfills the fixture hash and never reaches the real Steam CDN', async ({
+    page,
+  }) => {
+    await installSteamAvatarStub(page)
+    await page.setContent('<html><body>sweep-style render</body></html>')
+
+    const loaded = await page.evaluate(async (path) => {
+      const response = await fetch(`https://avatars.steamstatic.com${path}`)
+      return { status: response.status, contentType: response.headers.get('content-type') }
+    }, STEAM_AVATAR_FIXTURE_PATH)
+    expect(loaded.status).toBe(200)
+    expect(loaded.contentType).toBe('image/jpeg')
+
+    const unknownHash = await page.evaluate(async () => {
+      const response = await fetch(
+        'https://avatars.steamstatic.com/ffffffffffffffffffffffffffffffffffffffff_full.jpg',
+      )
+      return response.status
+    })
+    expect(unknownHash).toBe(404)
+  })
+})

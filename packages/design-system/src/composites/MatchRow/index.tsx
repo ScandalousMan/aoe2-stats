@@ -124,7 +124,16 @@ const OUTCOME_LABEL_TONE: Record<MatchOutcome, string> = {
 
 function OutcomeLabel({ outcome }: { outcome: MatchOutcome }) {
   return (
-    <span className={cx('font-sans text-sm font-semibold', OUTCOME_LABEL_TONE[outcome])}>
+    <span
+      className={cx(
+        'font-sans text-sm font-semibold',
+        OUTCOME_LABEL_TONE[outcome],
+        // §5a (decided 2026-09-28): the card's hover underlines the outcome word alone, through the
+        // card's own named group — never `hover:underline` directly on the `<a>`, which would
+        // propagate to every other run of text the card renders.
+        'group-hover/row-link:underline group-hover/row-link:decoration-2 group-hover/row-link:underline-offset-2',
+      )}
+    >
       {OUTCOME_LABEL_TEXT[outcome]}
     </span>
   )
@@ -398,7 +407,7 @@ export function MatchRow({ match, onNavigate, className }: MatchRowProps) {
       href={match.href}
       onClick={createRowLinkClickHandler(match.href, onNavigate)}
       className={cx(
-        'flex flex-col gap-2 rounded-panel border border-border bg-surface p-4',
+        'group/row-link flex flex-col gap-2 rounded-panel border border-border bg-surface p-4',
         // T560 (FR-038): `active` now paints the same fill as `hover` — a keyboard `Enter`
         // triggers `:active` with no pointer ever hovering (`Link`'s own rule, §9), and this row
         // is the same row-link category `Table` (structural-tier.md §10 "active") already gives

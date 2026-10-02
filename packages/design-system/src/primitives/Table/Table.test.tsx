@@ -143,6 +143,25 @@ describe('Table', () => {
     expect(link.className).toMatch(/\bactive:after:ring-border-strong\b/)
   })
 
+  // §16.1 (structural-tier.md, decided 2026-09-28): the fill step the sweep measured at zero gains
+  // a shape — the row link's own name underlines on hover, directly on the `<a>` since it wraps only
+  // the identity cell.
+  it("underlines the row link's own text on hover (FR-037, 2026-09-28)", () => {
+    render(
+      <Table
+        caption="Recent matches"
+        columns={columns}
+        rows={rows}
+        getRowKey={(r) => r.id}
+        getRowHref={(row) => `/matches/${row.id}`}
+      />,
+    )
+    const link = screen.getAllByRole('link')[0]
+    expect(link.className).toMatch(/\bhover:underline\b/)
+    expect(link.className).toMatch(/\bhover:decoration-2\b/)
+    expect(link.className).toMatch(/\bhover:underline-offset-2\b/)
+  })
+
   it('intercepts a plain left click on the row link into onNavigate', () => {
     const onNavigate = vi.fn()
     render(

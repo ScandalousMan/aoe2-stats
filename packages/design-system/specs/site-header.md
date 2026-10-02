@@ -224,15 +224,15 @@ The closed vocabulary, all ten (T569). Unless said otherwise, a state belongs to
 - **default** — header on `surface` with a `border` hairline at its block-end. Items at rest:
   transparent box, label `text-secondary`, `sans`, size `sm`, weight `medium`, no underline. The
   current item as §4 describes. `Brand`: `display` family, `text-primary`, no underline.
-- **hover** — the item's box fills `surface-sunken` and its label moves to `text-primary`; the
-  `radius-md` box is the shape that lights up, matching `Button`'s and `Menu`'s existing hover
-  convention rather than inventing a nav-only one. **No underline on hover**, deliberately: an
-  underline here would read as a second current-route marker. The current item hovers identically —
-  fill and label change, its `accent` rule is untouched, so hovering never makes a page look like
-  the one you are on. `Brand` on hover takes an **underline** and keeps its colour (no
-  `accent`-on-`surface` pair is introduced where a shape signal does the same job).
-  `motion.duration.fast` with `easing.standard`, colour only — no lift, no scale, no translate.
-  Under `prefers-reduced-motion: reduce`, `motion.duration.instant`.
+- **hover** — the item's box fills `surface-sunken`, its label moves to `text-primary`, and the label
+  underlines (`decoration-2`, `underline-offset-2`, `currentColor`) — `Button` `ghost`'s hover in
+  full, the variant whose press this item already copies (§5a, decided 2026-09-28, T675, which
+  reverses this bullet's earlier "no underline on hover"). The underline sits under the glyphs,
+  inside the box, in `text-primary`; the current-route rule stays the only line in the channel below
+  the box, box-wide, in `accent` (§4) — the two differ in position, extent and ink. The current
+  item hovers the same way and keeps its rule. `Brand` on hover takes an underline and keeps its
+  colour. `motion.duration.fast` with `easing.standard` on fill and label colour; the underline
+  switches instantly. Under `prefers-reduced-motion: reduce`, `motion.duration.instant`.
 - **focus-visible** — **named explicitly, because this is the state a later reviewer will assume was
   covered.** Every focusable part of this component — `SkipLink`, `Brand`, and every `NavItem` —
   shows the one documented ring: `outline-2 outline-offset-2` in `focus-ring` (gap DS-4), drawn
@@ -298,11 +298,85 @@ empty, for its trigger and its items — are `Menu`'s, unchanged by this composi
 (`shared-primitives.md#Menu`); the only thing specific to this control is which of its three items
 reads as checked, which is §2d's mapping from `useTheme().override`, not a state of its own.
 
+### 5a. The nav item's hover underline — decided 2026-09-28 (T675)
+
+T675's package-wide sweep measured this component's `Hover` story against its own resting render
+with the comparator the visual suite uses, whose threshold stays fixed package-wide (`README.md`,
+Verification-coverage gap register, T675's closing note), and found zero surviving pixels. The item's hover was a
+fill step (`surface` to `surface-sunken`) and an ink step (`text-secondary` to `text-primary`): two
+colour changes and no shape. That is FR-037's "distinguishable by more than colour, in a still
+image" failing, not a comparator to tune around, and this section is its fix.
+
+**The decision.** Every `NavItem`'s `<a>` gains `hover:underline hover:decoration-2
+hover:underline-offset-2` and, for its press, `active:underline-offset-4` — `Button` `ghost`'s hover
+and press underline in full (`shared-primitives.md` §Button). The item's text is its label and
+nothing else, so the utilities go on the `<a>` itself. The fill, the label ink and the press
+boundary are unchanged; the underline is added to them, not swapped for them. The decoration is
+`border.ring` thick (`decoration-2`, reached as a bare Tailwind step the way `Link`'s is,
+`structural-tier.md` §9), in `currentColor`, which on hover is `text-primary`.
+
+**This reverses a decision this file made, so the reason is recorded rather than implied.** §5's
+hover answer used to rule an underline out: "an underline here would read as a second current-route
+marker". That held while an underline would have been an item's whole hover, and while nothing else
+in the product hovered that way. Neither is true now:
+
+- **The two lines are different shapes in a still image.** The hover underline is text decoration:
+  under the glyphs only, inside the item's box, over the `surface-sunken` fill, in `text-primary`.
+  The current-route mark is a 2px strip in the reserved channel `space-1` below the box, across the
+  box's full width including its `space-3` padding, over the header's own `surface`, in `accent` —
+  and it arrives with `font-semibold` and `aria-current`, neither of which hover touches. Position,
+  extent, ink and company all differ; "a horizontal line" is the only thing shared.
+- **An underline is now how this package says "the pointer is here".** Since 2026-09-28 every
+  `Button` variant, `Menu`'s trigger — this header's own `ThemeControl` — and every row-shaped
+  control (`structural-tier.md` §16.1) hover with an underline, and `Brand`, in this same header,
+  always did. A nav item that alone refused one would be the FR-038 inconsistency, and the `Button`
+  variant this item already copies for its press now hovers exactly this way.
+- **Refusing it left nothing but colour.** With the underline ruled out and the reserved channel
+  ruled out (below), every remaining option was another colour step.
+
+**Rejected.**
+
+- **Painting the reserved channel on hover**, in any ink. That is the current-route mark's own shape
+  in its own place — a hover that literally looks selected, which is the failure the old sentence
+  was right to fear.
+- **Drawing the box's boundary on hover.** The 1px `border-strong` boundary inside the box is what
+  tells press from hover (§5 active, T591); drawn on hover, it would leave press differing from
+  hover by its fill alone — the same FR-037 failure one state along.
+- **A weight change.** `font-semibold` is part of the current-route mark.
+
+**Collisions checked.** Focus-visible is the outward `focus-ring` outline around the box — a ring
+with a gap, not a line under text. A pointer press still hovers, so the press frame keeps the
+underline, drops it to `underline-offset-4`, and adds the inner boundary and the `background` fill:
+rest, hover and press are three frames that differ in shape, not only in paint. A keyboard `Enter`
+presses without hovering and shows the boundary and fill alone, which is right — nothing is
+pointing. The current item, hovered, shows the underline inside its box and its rule below it, and
+is still the only item with a rule.
+
+**Contrast.** `text-primary` on `surface-sunken`, both themes — a measured pair in the README's
+table, far above the 3:1 non-text floor an underline owes. The fill and ink steps the sweep measured
+at zero were colour against colour; this is a solid 2px run in that measured pair, the same kind of
+mark as `Link`'s 1px-to-2px thickening, which survives the same comparator. The re-run of the sweep
+after implementation confirms it; this paragraph does not.
+
+**Motion.** The underline is not transitioned — it switches with the hover, as `Link`'s thickness
+does. The fill and label colour keep their existing transition and its reduced-motion collapse, so
+FR-055 has nothing new to reduce.
+
+**Baselines this moves** (regenerated from CI, never locally): `SiteHeader` `Hover`, `Active` and
+`FocusVisible`, which each take a `visualCaptureClip` — to the union of exactly the hovered item and
+the current item, so the criterion in §10 is still judged on one image, without the other three nav
+items diluting it further: a 2px line under one label stayed under the comparator's own 1% floor
+even clipped to the whole `<nav>` (T675 slice 4b, verification finding, not a design change).
+`Active`'s own press is captured the same way, the harness pressing by a real hover then a
+mouse-down. The `Hover` story's own comment quotes the retired "No underline on hover" and is
+corrected in the same change.
+
 ## 6. Tokens used
 
 Colour: `surface` (the header's own fill), `border` (the block-end hairline — the README's own
 "decorative separators only" rule for that token is exactly this use), `text-secondary` (item labels
-at rest), `text-primary` (the current item, any hovered or active item, and the wordmark), `accent`
+at rest), `text-primary` (the current item, any hovered or active item and its hover underline, and
+the wordmark), `accent`
 (the current-route rule, §4), `surface-sunken` (hover fill), `background` (active fill, T591),
 `border-strong` (the active boundary, and `SkipLink`'s boundary when it is visible), `surface-raised`
 (`SkipLink`'s fill), `focus-ring` (the one ring).
@@ -319,6 +393,8 @@ Font: family `sans` for every nav item and the skip link; `display` for the word
 place in the chrome where the illuminated face earns its keep, because it sits beside no number
 (README rule 1). Sizes: `lg` wordmark, `sm` item labels and skip link. Weights: `semibold` wordmark
 and current item, `medium` item at rest, `normal` skip link. Tracking `tight` on the wordmark only.
+Item underline (§5a): `border.ring` thick (`decoration-2`), at `underline-offset-2` on hover and
+`underline-offset-4` on press, in `currentColor`.
 
 Radius: `md` on the item box and on `SkipLink`. Elevation: **`none`** — chrome sits flush with the
 page and does not float above it; there is no scroll shadow, because there is no scroll behaviour
@@ -332,12 +408,9 @@ Gaps in play: **DS-4** — the ring is Tailwind's `outline-2 outline-offset-2` w
 **DS-5** — breakpoints are named as Tailwind's defaults (`md` = 768px). **DS-6** — the header is
 full-bleed with inline padding, so it needs no container width token.
 
-One pair this component draws that the README's table does not yet carry: `text-primary` on
-`surface-sunken` in the **dark** theme (the hovered item's label). Dark `surface-sunken` is darker
-than dark `surface`, so a light ink on it is no tighter than the measured 13.3 `surface` row and
-nothing is blocked — but per the README's pairing convention an unmeasured pair is not an asserted
-one, and the light row (11.7) is measured. Add the dark row the next time the table is recomputed,
-alongside the one `profile-summary.md` §12.8 already owes.
+`text-primary` on `surface-sunken` — the hovered item's label and, since §5a, its underline — is a
+measured row in both themes in the README's table. The note that stood here saying the dark row was
+missing, with two numbers copied from an older table, is retired rather than left to go stale again.
 
 `ThemeControl` (§2d) draws no colour pair of its own: its trigger and its items are `Menu`'s
 existing `surface-raised` / `surface-sunken` / `border` / `text-primary` / `focus-ring` set
@@ -411,11 +484,11 @@ above.
   link that scrolls but does not move focus is the failure this control is famous for.
 - **Touch targets**: every item's box is `space-12` (48px) tall at every viewport, clearing WCAG
   2.5.5's 44px floor. `SkipLink` and `Brand` clear it by their own padding-block.
-- **Contrast**: `text-secondary` on `surface` (6.2 light / 7.8 dark), `text-primary` on `surface`
-  (15.3 / 13.3), `accent` on `surface` (4.9 / 7.7 — the current-route rule owes only the 3:1
-  non-text floor and clears the text floor anyway), `border-strong` on `surface` (3.5 / 3.8),
-  `focus-ring` on `surface` (6.7 / 6.3). All measured, both themes, README table. The one unmeasured
-  pair is named in §6.
+- **Contrast**: `text-secondary` on `surface`, `text-primary` on `surface` and on `surface-sunken`
+  (the hovered item's label and underline), `accent` on `surface` (the current-route rule owes only
+  the 3:1 non-text floor and clears the text floor anyway), `border-strong` on `surface`, and
+  `focus-ring` on `surface` — every one a measured row in the README's table, in both themes, read
+  there rather than copied here.
 - Colour is never the only carrier: the current item is also `semibold`, also underscored by a rule,
   and also `aria-current`. In greyscale the current item is still identifiable.
 - Reading order equals visual order equals DOM order, in both arrangements, including the wrapped
@@ -482,6 +555,12 @@ and that `ThemeControl`'s own expansion state belongs to `Menu`, not to this com
       hairline, and is the same width as the item above it.
 - [ ] Overlaying `SignedIn` on `NoCurrentItem`: every label sits at the identical position. Marking
       an item current moves nothing (the reserved channel, §4).
+- [ ] `Hover` (Dashboard current, Matches hovered, §5a): "Matches" carries a 2px underline under its
+      glyphs, inside its filled box, and no strip in the channel below it; "Dashboard" alone carries
+      the `accent` strip below its box. Counting strips in the channel still gives 1. The resting
+      captures show no underline under any item label.
+- [ ] `Active`: the same "Matches" underline sits visibly lower than in `Hover`, and the box shows
+      its inner `border-strong` boundary, which `Hover` does not.
 - [ ] `SignedOut`: the wordmark alone, with **no** `<nav>` region, no empty strip, no gap and no
       dimmed items where the five links would be. The frame does not read as a header that failed to
       load.
