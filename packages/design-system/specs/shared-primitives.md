@@ -123,7 +123,7 @@ comparator tolerance (README's gap register, row 6/H3 closure).
 (T675).** Until this decision those three hovered by fill alone (`surface` or transparent →
 `surface-sunken`), the same FR-037 violation T588 fixed on `primary`, one step less visible: the
 fill step falls under the visual suite's comparator threshold in every capture unit, so no frame
-could fail on it (README's Verification-coverage gap register, T675's closing note). That is a
+could fail on it. That is a
 missing signal, not a comparator blind spot, and it is fixed the way `primary`'s was. **The label
 underline moves from `primary`'s variant string into the shared base every variant composes**:
 `hover:underline hover:decoration-2 hover:underline-offset-2 active:underline-offset-4

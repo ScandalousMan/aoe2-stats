@@ -501,7 +501,7 @@ test('decideSweepGate: classified shorter than measurableCount fails — a measu
   assert.equal(result.pass, false)
   const failure = result.failures.find((f) => f.kind === 'measurable-count-mismatch')
   assert.ok(failure, 'expected a measurable-count-mismatch failure')
-  assert.match(failure.detail, /2 measurable pair\(s\) were planned but only 1/)
+  assert.match(failure.detail, /2 measurable pair\(s\) were planned but 1 were classified/)
 })
 
 test('decideSweepGate: classified longer than measurableCount also fails — the count must match exactly', () => {

@@ -3643,7 +3643,7 @@ is a nightly gate with no allowlist, in its own job (`.github/workflows/nightly.
 `state-signal-sweep`): it fails on a story file it cannot key, a state story it cannot measure, and
 a measurable story it did not classify. Nightly run
 [36920376304](https://github.com/ScandalousMan/aoe2-stats/actions/runs/36920376304) at `3955e07b`
-(2026-10-02), green in every job with no test retried, measured
+(2026-10-01), green in every job with no test retried, measured
 114 of 114 state stories, none unmeasurable: 98 defended on a clipped frame, 8 defended unclipped,
 and 8 a size change `toHaveScreenshot` fails outright (the seven `Tooltip`, `CountryFlag` and
 `ProfileSummary` board-flag stories whose clip names a `Tooltip` surface, and `SiteHeader`'s skip

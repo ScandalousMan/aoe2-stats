@@ -482,9 +482,10 @@ export function decideSweepGate({
       bucket: 'measurable-count-mismatch',
       file: null,
       detail:
-        `${measurableCount} measurable pair(s) were planned but only ${classified.length} were ` +
+        `${measurableCount} measurable pair(s) were planned but ${classified.length} were ` +
         'classified — a measurable pair that produced no classification (e.g. a Playwright test ' +
-        'that crashed) must fail, not be silently dropped.',
+        'that crashed), or a classification no planned pair accounts for, must fail, not be ' +
+        'silently dropped.',
     })
   }
 
