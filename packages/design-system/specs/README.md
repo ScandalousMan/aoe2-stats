@@ -3613,7 +3613,7 @@ run in CI against every route scenario `tests/visual/fixtures/app-routes-harness
 both themes — see quickstart.md's own walk for the verdict, its scope, and the run that backs it.
 That run backs item 13 only for what those scenarios render at rest; what they do not render is row 1
 below, and item 13 stays partly met until row 1 is deleted. The comparator row is deleted too (T675,
-2026-10-01; see the closing paragraph below). The row below is what is still open about this
+2026-10-02; see the closing paragraph below). The row below is what is still open about this
 package's own verification harness, never about a component or a token, filed here for the reason
 the four registers above already are: the subject is this package's own tooling, so a future task
 changing that tooling needs this row updated, and it does not belong in a spec written once.
@@ -3642,13 +3642,15 @@ measured at or under 1% unclipped is clipped to the element carrying its signal,
 is a nightly gate with no allowlist, in its own job (`.github/workflows/nightly.yml`,
 `state-signal-sweep`): it fails on a story file it cannot key, a state story it cannot measure, and
 a measurable story it did not classify. Nightly run
-[36903179643](https://github.com/ScandalousMan/aoe2-stats/actions/runs/36903179643) at `cf96edb5`
-(2026-10-01), green in every job (one sweep test timed out once and passed on its retry), measured
+[36920376304](https://github.com/ScandalousMan/aoe2-stats/actions/runs/36920376304) at `3955e07b`
+(2026-10-02), green in every job with no test retried, measured
 114 of 114 state stories, none unmeasurable: 98 defended on a clipped frame, 8 defended unclipped,
 and 8 a size change `toHaveScreenshot` fails outright (the seven `Tooltip`, `CountryFlag` and
 `ProfileSummary` board-flag stories whose clip names a `Tooltip` surface, and `SiteHeader`'s skip
 link), with none zero, under 1% or unreproduced. The thinnest margin is `SiteHeader` `Hover` at
 1.03%. An earlier local run (2026-09-29) reported the same totals, but the adversarial review of
 #105 found seven of its eight size changes came from a resting frame dragged to the page origin by
-the closed `Tooltip` surface; this run, after that fix, is the one the verdict rests on. The gate now asserts what the row recorded, so the row is deleted rather
+the closed `Tooltip` surface. Run 36903179643 at `cf96edb5`, after that fix, matched these totals
+with one test passing only on retry; the sweep's per-test timeout was raised from it, and this run,
+on the head carrying the sweep in its final form, is the one the verdict rests on. The gate now asserts what the row recorded, so the row is deleted rather
 than kept as a second copy of the fact.
