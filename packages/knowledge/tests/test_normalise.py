@@ -179,18 +179,15 @@ def test_a_unit_upgrades_only_technology_resolves_with_its_table_origin_recorded
 
 
 def test_a_unit_upgrades_only_technology_reads_age_and_building_via_its_owning_units_node() -> None:
-    """98's own id never appears as a tree node id; its age/building/prerequisite are read from
-    the tree entry for unit 4 (its owning unit) instead — the indirection `normalise.py`'s
-    docstring names as `_technology_tree_lookup_key`."""
+    """98's own id never appears as a tree node id; its age/building are read from the tree entry
+    for unit 4 (its owning unit) instead — the indirection `normalise.py`'s docstring names as
+    `_technology_tree_lookup_key`."""
     pack = _normalise_minimal(
-        franks_units_techs=[
-            _unit_node(4, age_id=3, building_id=87, link_id=7, link_node_type="Unit")
-        ],
+        franks_units_techs=[_unit_node(4, age_id=3, building_id=87)],
     )
     technology = pack.entities["technology"]["98"]
     assert technology["age_requirement"] == 3
     assert technology["produced_at"] == {"kind": "building", "id": "87"}
-    assert technology["prerequisites"] == [{"kind": "unit", "id": "7"}]
 
 
 def test_a_technology_present_in_both_tables_merges_without_duplication() -> None:
@@ -273,7 +270,6 @@ def test_an_entity_absent_from_every_tree_gets_no_fabricated_name_or_age() -> No
     assert unit["name"] is None
     assert unit["age_requirement"] is None
     assert unit["produced_at"] is None
-    assert unit["prerequisites"] == []
 
 
 # ------------------------------------------------------------------------- the real, vendored pack
@@ -338,6 +334,39 @@ def test_every_building_referenced_by_a_committed_recording_resolves_or_is_a_nam
     pack = normalise_pack()
     unresolved_buildings = {i for i in building_ids if str(i) not in pack.entities["building"]}
     assert unresolved_buildings == _BUILDING_IDS_ABSENT_FROM_THE_VENDORED_PACK
+
+
+#: Both committed, promoted snapshot directories (`snapshots/*/snapshot.toml`, `promoted = true`):
+#: `contracts/knowledge-base.md`'s "Entity resolution" is not only about what a committed
+#: recording's canonical stream names directly, but about every entity `rules.json` itself names.
+_PROMOTED_SNAPSHOT_DIRECTORIES: tuple[str, ...] = (
+    "aoe2techtree-180059",
+    "aoe2techtree-177723-test",
+)
+
+
+def test_no_entity_in_either_promoted_snapshot_carries_prerequisites() -> None:
+    """T652y: `rules.json` does not carry `prerequisites` at all. The pack's own tree `link_id`/
+    `link_node_type` is the tech-tree screen's display link, not a rule of the game — Hand
+    Cannoneer links to node 6 in Bohemians' tree alone, where the game requires Chemistry in
+    every civilisation (research.md D3) — so T652t's kind-resolution machinery over that link is
+    gone, and no entity in either committed, promoted `rules.json` file (not a fresh
+    normalisation — the committed bytes themselves, the same file `query.py` actually reads)
+    carries the key at all."""
+    for directory in _PROMOTED_SNAPSHOT_DIRECTORIES:
+        document = json.loads(
+            (
+                Path(__file__).resolve().parents[1] / "snapshots" / directory / "rules.json"
+            ).read_text(encoding="utf-8")
+        )
+        entities = document["entities"]
+        carrying = [
+            (entity_kind, entity_id)
+            for entity_kind, table in entities.items()
+            for entity_id, entity in table.items()
+            if "prerequisites" in entity
+        ]
+        assert carrying == [], f"{directory}: entities still carrying prerequisites {carrying}"
 
 
 # ------------------------------------------------------------------------------- rules.json bytes

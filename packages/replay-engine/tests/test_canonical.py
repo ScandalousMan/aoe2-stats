@@ -121,6 +121,117 @@ def test_the_first_event_of_every_stream_is_match_started(
     assert first.payload.build == _FIXTURE_BUILD
 
 
+#: The DE lobby's own "no team" sentinel (`resolved_team_id`) — see `canonical.py`'s own
+#: `_TEAM_SENTINEL_NO_TEAM` docstring for where this is measured against (`mgz`'s
+#: `summary/teams.py`: "0: empty slot, 1: no team, n: n - 1 = team number").
+_TEAM_SENTINEL_NO_TEAM = 1
+
+
+def test_participant_team_is_read_from_resolved_team_id(
+    parsed: _Parsed, canonical_stream: list[CanonicalEvent]
+) -> None:
+    """T652v: each participant's `team` is the header's own `resolved_team_id`, translated so the
+    lobby's own "no team" sentinel (`1`) becomes `None` — never carried through as the literal
+    integer `1`, and never defaulted to a shared `0`.
+
+    Measured directly against both committed recordings (`recording_path`'s own parametrization):
+    `AgeIIDE_Replay_500546441.zip` (a locked 1v1) seats two players on two distinct real teams (`2`
+    and `3`) — a 1v1 lobby does not use the sentinel — and `AgeIIDE_Replay_504695319.zip` (a 2v2)
+    seats four players two-and-two on two real teams (`2` and `3`), pairing slots 1 and 3 against
+    slots 2 and 4. Neither committed recording carries the sentinel itself, so this test's own
+    translation of `1` to `None` is exercised on a synthetic case, in
+    `test_a_participant_with_the_no_team_sentinel_reads_as_no_team_at_all`, below — this test only
+    proves the *real* per-recording numbers this adapter now carries are read, unchanged, from the
+    header, not that the sentinel translation fires on real data neither recording exhibits.
+    """
+    zheader = cast(Mapping[str, object], parsed["zheader"])
+    game_settings = cast(Mapping[str, object], zheader["game_settings"])
+    raw_players = cast(Sequence[Mapping[str, object]], game_settings["players"])
+    expected = {
+        (
+            cast(int, player["player_number"]),
+            None
+            if cast(int, player["resolved_team_id"]) == _TEAM_SENTINEL_NO_TEAM
+            else cast(int, player["resolved_team_id"]),
+        )
+        for player in raw_players
+    }
+    # Both committed recordings genuinely carry real, distinct-from-the-sentinel team numbers —
+    # this measurement would pass vacuously (every team `None`) if that ever stopped being true.
+    assert any(team is not None for _slot, team in expected)
+
+    first = next(iter(canonical_stream))
+    assert isinstance(first.payload, MatchStartedPayload)
+    assert {(p.slot, p.team) for p in first.payload.participants} == expected
+
+
+def test_a_participant_with_the_no_team_sentinel_reads_as_no_team_at_all() -> None:
+    """T652v: the synthetic counterpart of the real-recording test above — the header's own "no
+    team" sentinel (`1`) is exercised directly, since neither committed recording carries it.
+    Two participants who each individually carry the sentinel must not read as sharing a team with
+    one another: both must come back `None`, distinctly, never a shared `0` or the raw `1` itself
+    (`events.py`'s own `ParticipantEntry.team` docstring)."""
+    parsed = {
+        "zheader": {
+            "build": _FIXTURE_BUILD,
+            "game_settings": {
+                "resolved_map_id": 9,
+                "starting_resources_id": 0,
+                "starting_age_id": 2,
+                "map_size": 120,
+                "players": [
+                    {"player_number": 1, "civ_id": 1, "resolved_team_id": 1},
+                    {"player_number": 2, "civ_id": 2, "resolved_team_id": 1},
+                ],
+            },
+        },
+        "operations": [],
+    }
+
+    (event,) = [e for e in canonical_events(parsed) if e.kind is EventKind.MATCH_STARTED]
+    assert isinstance(event.payload, MatchStartedPayload)
+    teams = {p.slot: p.team for p in event.payload.participants}
+    assert teams == {1: None, 2: None}
+
+
+def test_the_sentinel_translation_does_not_disturb_real_team_ids_in_the_same_match() -> None:
+    """T652z: the test above exercises the sentinel alone; this exercises the adapter's `1 →
+    None` branch (`canonical.py`'s `_match_started`) beside real team ids in one call, so a
+    ternary that discriminated by something other than the sentinel value itself (e.g. reading
+    every id past the first sentinel as `None`) would be caught here and is not caught by either
+    the all-sentinel test above or the real-recording test
+    (`test_participant_team_is_read_from_resolved_team_id`), whose two committed recordings never
+    carry the sentinel at all. Two players carry the sentinel (`1`) and must both read as `None`;
+    three carry real team ids `2`, `3`, `2` and must pass through unchanged (the coverage-side
+    half — two `None` participants are not allies of one another — is
+    `test_coverage.py::test_ffa_or_unset_team_does_not_make_two_participants_allies`'s job, not
+    this module's)."""
+    parsed = {
+        "zheader": {
+            "build": _FIXTURE_BUILD,
+            "game_settings": {
+                "resolved_map_id": 9,
+                "starting_resources_id": 0,
+                "starting_age_id": 2,
+                "map_size": 120,
+                "players": [
+                    {"player_number": 1, "civ_id": 1, "resolved_team_id": 1},
+                    {"player_number": 2, "civ_id": 2, "resolved_team_id": 1},
+                    {"player_number": 3, "civ_id": 3, "resolved_team_id": 2},
+                    {"player_number": 4, "civ_id": 4, "resolved_team_id": 3},
+                    {"player_number": 5, "civ_id": 5, "resolved_team_id": 2},
+                ],
+            },
+        },
+        "operations": [],
+    }
+
+    (event,) = [e for e in canonical_events(parsed) if e.kind is EventKind.MATCH_STARTED]
+    assert isinstance(event.payload, MatchStartedPayload)
+    teams = {p.slot: p.team for p in event.payload.participants}
+    assert teams == {1: None, 2: None, 3: 2, 4: 3, 5: 2}
+
+
 # --- the clock ----------------------------------------------------------------------------------
 
 
@@ -266,7 +377,11 @@ def test_view_lock_and_sync_operations_yield_no_event(parsed: _Parsed) -> None:
 def _settings(*numbers: int) -> dict[str, object]:
     # `civ_id`, `build`, `resolved_map_id` and the lobby preset fields exist only so
     # `_match_started` (T629a) has something to read on a synthetic stream: no test below asserts
-    # on their values, they only need to be present and well-typed.
+    # on their values, they only need to be present and well-typed. `resolved_team_id` (T652v) is
+    # each player's own number, distinct from every other's — never the "no team" sentinel (`1`)
+    # and never shared between two synthetic players — since no test in this file is about teams
+    # at all; `test_participant_team_is_read_from_resolved_team_id`, below, is what exercises the
+    # sentinel and a real shared team.
     return {
         "zheader": {
             "build": _FIXTURE_BUILD,
@@ -275,7 +390,9 @@ def _settings(*numbers: int) -> dict[str, object]:
                 "starting_resources_id": 0,
                 "starting_age_id": 2,
                 "map_size": 120,
-                "players": [{"player_number": n, "civ_id": n} for n in numbers],
+                "players": [
+                    {"player_number": n, "civ_id": n, "resolved_team_id": n + 1} for n in numbers
+                ],
             },
         }
     }

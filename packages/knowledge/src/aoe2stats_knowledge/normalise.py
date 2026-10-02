@@ -9,8 +9,11 @@ aoe2techtree/`, the vendored `SiegeEngineers/aoe2techtree` format):
 
 - `data.json`'s `data.Unit`, `data.Building` and `data.Tech` tables carry combat stats, `Cost` and
   a time (`TrainTime` for a unit or a building, `ResearchTime` for a technology), keyed by the
-  entity's own numeric id — but **no name, no age requirement, no producing building, no
-  prerequisite**. Those four live only in the 53 per-civilisation `trees/<CIV>.json` files.
+  entity's own numeric id — but **no name, no age requirement, no producing building**. Those three
+  live only in the 53 per-civilisation `trees/<CIV>.json` files. (The trees also carry a `link_id`/
+  `link_node_type` per entry; earlier revisions of this module read it as a prerequisite, but it is
+  the tech-tree screen's display link, not a game rule — research.md D3 — so T652y stopped reading
+  it here at all. `rules.json` carries no `prerequisites` field; see `query.prerequisites`.)
 - `data.json`'s fourth table, `data.unit_upgrades`, is keyed by a *unit* id already present in the
   `Unit` table (the unit being upgraded) and carries the *technology* that performs that upgrade —
   its own `Cost`, `ResearchTime`, `internal_name` and, in its `ID` field, **the technology's own
@@ -29,12 +32,12 @@ aoe2techtree/`, the vendored `SiegeEngineers/aoe2techtree` format):
 - A `unit_upgrades` entry's own technology id is *not* the id its per-civilisation tree entries use
   as `node_id` — the trees key that upgrade by the *unit* id being upgraded (e.g. node id 6 for
   "Elite Skirmisher", not 98), with `use_type: "Unit"` and `node_type: "UnitUpgrade"`. Reading a
-  `unit_upgrades`-only technology's age, producing building, prerequisite and name therefore looks
-  up the tree entry for its *owning unit's* id, not its own — `_technology_tree_lookup_key` is
-  where this indirection lives, and every one of this revision's 102 unit-upgrade-only technologies
-  resolves through it (proven in the test suite, not merely assumed).
-- Age, producing building, prerequisite and name are read from **every** per-civilisation tree that
-  carries an entity's node id, then reduced to one civilisation-neutral baseline by majority vote
+  `unit_upgrades`-only technology's age, producing building and name therefore looks up the tree
+  entry for its *owning unit's* id, not its own — `_technology_tree_lookup_key` is where this
+  indirection lives, and every one of this revision's 102 unit-upgrade-only technologies resolves
+  through it (proven in the test suite, not merely assumed).
+- Age, producing building and name are read from **every** per-civilisation tree that carries an
+  entity's node id, then reduced to one civilisation-neutral baseline by majority vote
   (`_majority`), because civilisations legitimately disagree with each other here: Burgundians'
   well-attested "most Blacksmith, Barracks, Archery Range and Stable technologies become available
   one age earlier" bonus, and a matching pattern for Armenian infantry technologies, both show up as
@@ -83,20 +86,6 @@ _USE_TYPE_KIND: Final[Mapping[str, str]] = {
     "Building": "building",
 }
 
-#: A tree entry's `link_node_type` (the *kind* of the node a prerequisite link points at) to this
-#: module's entity-kind vocabulary. Every value seen across the committed pack's 53 trees is listed
-#: (`test_every_link_node_type_in_the_real_pack_is_mapped` asserts none is silently dropped).
-_LINK_NODE_KIND: Final[Mapping[str, str]] = {
-    "Unit": "unit",
-    "UnitUpgrade": "unit",
-    "UniqueUnit": "unit",
-    "RegionalUnit": "unit",
-    "Research": "technology",
-    "BuildingTech": "building",
-    "BuildingNonTech": "building",
-    "UniqueBuilding": "building",
-}
-
 
 @dataclass(frozen=True, slots=True)
 class Disagreement:
@@ -130,7 +119,6 @@ class _TreeReading:
     civilisation: str
     age_id: int | None
     produced_at: int | None
-    prerequisite: tuple[str, int] | None
     name: str | None
 
 
@@ -178,13 +166,10 @@ def _resolve_name(entry: Mapping[str, Any], strings: Mapping[str, str]) -> str |
 def _reading_from_building_entry(
     civilisation: str, entry: Mapping[str, Any], strings: Mapping[str, str]
 ) -> _TreeReading:
-    upgraded_from = entry.get("building_upgraded_from_id")
-    prerequisite = ("building", upgraded_from) if upgraded_from not in (None, -1) else None
     return _TreeReading(
         civilisation=civilisation,
         age_id=entry.get("age_id"),
         produced_at=None,
-        prerequisite=prerequisite,
         name=_resolve_name(entry, strings),
     )
 
@@ -192,14 +177,10 @@ def _reading_from_building_entry(
 def _reading_from_units_techs_entry(
     civilisation: str, entry: Mapping[str, Any], strings: Mapping[str, str]
 ) -> _TreeReading:
-    link_id = entry.get("link_id")
-    link_kind = _LINK_NODE_KIND.get(entry.get("link_node_type", ""))
-    prerequisite = (link_kind, link_id) if link_id is not None and link_kind is not None else None
     return _TreeReading(
         civilisation=civilisation,
         age_id=entry.get("age_id"),
         produced_at=entry.get("building_id"),
-        prerequisite=prerequisite,
         name=_resolve_name(entry, strings),
     )
 
@@ -245,11 +226,10 @@ def _majority(values: Iterable[Any]) -> Any:
 
 def _majority_reading(
     readings: Sequence[_TreeReading],
-) -> tuple[int | None, int | None, tuple[str, int] | None, str | None]:
+) -> tuple[int | None, int | None, str | None]:
     return (
         _majority(reading.age_id for reading in readings),
         _majority(reading.produced_at for reading in readings),
-        _majority(reading.prerequisite for reading in readings),
         _majority(reading.name for reading in readings),
     )
 
@@ -266,13 +246,6 @@ def _entity_ref(node_id: int | None, kind: str) -> dict[str, str] | None:
     return {"kind": kind, "id": str(node_id)} if node_id is not None else None
 
 
-def _prerequisites(prerequisite: tuple[str, int] | None) -> list[dict[str, str]]:
-    if prerequisite is None:
-        return []
-    kind, node_id = prerequisite
-    return [{"kind": kind, "id": str(node_id)}]
-
-
 def _entity(
     *,
     name: str | None,
@@ -281,7 +254,6 @@ def _entity(
     time_value: Any,
     age_requirement: int | None,
     produced_at: dict[str, str] | None,
-    prerequisites: list[dict[str, str]],
     table_origin: str,
 ) -> dict[str, Any]:
     return {
@@ -290,7 +262,6 @@ def _entity(
         time_field: time_value,
         "age_requirement": age_requirement,
         "produced_at": produced_at,
-        "prerequisites": prerequisites,
         "table_origin": table_origin,
     }
 
@@ -298,10 +269,10 @@ def _entity(
 def _technology_tree_lookup_key(
     technology_id: int, owning_unit_of_technology: Mapping[int, int]
 ) -> tuple[str, int]:
-    """Where a technology's age/producing-building/prerequisite/name reading lives in the tree
-    files: its own id under `"technology"` if the base `Tech` table names it, or its owning unit's
-    id under `"unit"` if it is a `unit_upgrades`-only technology — the indirection this module's
-    docstring describes, because the trees never use the upgrade technology's own id as a node id.
+    """Where a technology's age/producing-building/name reading lives in the tree files: its own
+    id under `"technology"` if the base `Tech` table names it, or its owning unit's id under
+    `"unit"` if it is a `unit_upgrades`-only technology — the indirection this module's docstring
+    describes, because the trees never use the upgrade technology's own id as a node id.
     """
     owning_unit = owning_unit_of_technology.get(technology_id)
     if owning_unit is not None:
@@ -323,9 +294,7 @@ def normalise_pack_data(
 
     units: dict[str, dict[str, Any]] = {}
     for unit_id, raw in table["Unit"].items():
-        age, produced_at, prerequisite, name = _majority_reading(
-            tree_readings.get(("unit", int(unit_id)), ())
-        )
+        age, produced_at, name = _majority_reading(tree_readings.get(("unit", int(unit_id)), ()))
         units[unit_id] = _entity(
             name=name,
             cost=_cost(raw.get("Cost", {})),
@@ -333,13 +302,12 @@ def normalise_pack_data(
             time_value=raw.get("TrainTime"),
             age_requirement=age,
             produced_at=_entity_ref(produced_at, "building"),
-            prerequisites=_prerequisites(prerequisite),
             table_origin="unit",
         )
 
     buildings: dict[str, dict[str, Any]] = {}
     for building_id, raw in table["Building"].items():
-        age, _produced_at, prerequisite, name = _majority_reading(
+        age, _produced_at, name = _majority_reading(
             tree_readings.get(("building", int(building_id)), ())
         )
         buildings[building_id] = _entity(
@@ -349,7 +317,6 @@ def normalise_pack_data(
             time_value=raw.get("TrainTime"),
             age_requirement=age,
             produced_at=None,
-            prerequisites=_prerequisites(prerequisite),
             table_origin="building",
         )
 
@@ -362,9 +329,7 @@ def normalise_pack_data(
         lookup_kind, lookup_id = _technology_tree_lookup_key(
             int(technology_id), owning_unit_of_technology
         )
-        age, produced_at, prerequisite, name = _majority_reading(
-            tree_readings.get((lookup_kind, lookup_id), ())
-        )
+        age, produced_at, name = _majority_reading(tree_readings.get((lookup_kind, lookup_id), ()))
         entity = _entity(
             name=name,
             cost=_cost(raw.get("Cost", {})),
@@ -372,7 +337,6 @@ def normalise_pack_data(
             time_value=raw.get("ResearchTime"),
             age_requirement=age,
             produced_at=_entity_ref(produced_at, "building"),
-            prerequisites=_prerequisites(prerequisite),
             table_origin="tech",
         )
         entity["upgrades_unit"] = None
@@ -413,7 +377,7 @@ def normalise_pack_data(
         lookup_kind, lookup_id = _technology_tree_lookup_key(
             int(technology_id), owning_unit_of_technology
         )
-        age, produced_at, prerequisite, tree_name = _majority_reading(
+        age, produced_at, tree_name = _majority_reading(
             tree_readings.get((lookup_kind, lookup_id), ())
         )
         entity = _entity(
@@ -423,14 +387,15 @@ def normalise_pack_data(
             time_value=research_time,
             age_requirement=age,
             produced_at=_entity_ref(produced_at, "building"),
-            prerequisites=_prerequisites(prerequisite),
             table_origin="unit_upgrades",
         )
         entity["upgrades_unit"] = unit_id
         technologies[technology_id] = entity
 
+    entities = {"unit": units, "building": buildings, "technology": technologies}
+
     return NormalisedPack(
-        entities={"unit": units, "building": buildings, "technology": technologies},
+        entities=entities,
         civilisations=civilisations,
         disagreements=tuple(disagreements),
     )

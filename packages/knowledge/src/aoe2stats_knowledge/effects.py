@@ -24,10 +24,10 @@ contracts/knowledge-base.md), "Civilisation qualification" steps 2-3. Research:
   operand on an effect it should never apply.
 - `selector` — "which entities it touches — by explicit identifier list, never by a fuzzy class
   name": a non-empty tuple of `(kind, id)` pairs, each resolved by hand from `rules.json`'s own
-  `prerequisites`/`produced_at` structure (this module's docstring for `_effects_toml_text`-style
-  provenance lives in the two committed `effects.toml` files themselves, not here — see their
-  header comments for exactly how "Spearman-line" and "Ranged Soldiers and Infantry" were resolved
-  to real unit ids).
+  `produced_at` structure, and its `prerequisites` until T652y removed them (this module's
+  docstring for `_effects_toml_text`-style provenance lives in the two committed `effects.toml`
+  files themselves, not here — see their header comments for exactly how "Spearman-line" and
+  "Ranged Soldiers and Infantry" were resolved to real unit ids).
 - `field` — which query-level field this effect modifies. Not restricted to the six names
   `query.py` exposes (a not-modelled effect may legitimately name a field this knowledge base does
   not otherwise track at all, e.g. a unit's hit points) — restricting it would silently imply that
@@ -107,7 +107,11 @@ _PACKAGE: Final[str] = "aoe2stats_knowledge"
 #: data-model.md §6's closed operation set. Nothing outside this set is a valid `operation` on a
 #: `modelled = "yes"` effect — checked at parse time, not at application time, so a malformed
 #: `effects.toml` fails to load rather than failing silently the first time a query reaches it.
-OPERATIONS: Final[frozenset[str]] = frozenset({"multiply", "add", "set"})
+#: **T652r**: `faster` is its own operation, split out of what used to be `multiply` overloaded
+#: onto `production_time` — `multiply` now means the same literal factor on every field it
+#: touches, and `faster` alone carries "works X% faster"'s divide-by-(1+X) semantics
+#: (`_apply_scalar` below; data-model.md §6's operand row).
+OPERATIONS: Final[frozenset[str]] = frozenset({"multiply", "add", "set", "faster"})
 
 #: data-model.md §6's `modelled` values, spelled exactly as the data model spells them — a string
 #: enum rather than a bool, because `effects.toml` is meant to read as prose beside `source_text`,
@@ -127,7 +131,10 @@ _AGE_KEYS: Final[frozenset[str]] = frozenset({"1", "2", "3", "4"})
 #: `age` outside this set is not a legitimate age an effect's table simply has no key for (that
 #: case answers the plain baseline, per `_AGE_KEYS`'s own docstring); it is not one of the pack's
 #: four ages at all, and `_resolve_conditional_operand` raises `ValueError` for it rather than
-#: reading it as "no discount yet".
+#: reading it as "no discount yet". **T652x**: membership here is checked by value (`in`), and
+#: `bool` is an `int` subclass, so `True in _VALID_AGES` is `True` — `_resolve_conditional_operand`
+#: rejects `isinstance(context.age, bool)` explicitly, before this set is ever consulted, rather
+#: than trusting membership alone to catch it.
 _VALID_AGES: Final[frozenset[int]] = frozenset({1, 2, 3, 4})
 
 #: TOML keys required on every `[[effect]]` table, whatever `modelled` says.
@@ -150,6 +157,23 @@ class EffectsError(ValueError):
     (T652u), `condition_technology` is present without `condition == "researched"` or missing when
     it is, or `selector` is empty or malformed. Raised at parse time, in place of returning an
     `Effect` that looks complete but has a hole a query could fall through.
+
+    **T652r**: also raised for a numeric `operand` the game itself could never produce, checked at
+    parse time rather than left for `apply` to discover (or, worse, silently truncate) the first
+    time a query actually reaches the effect — a negative `multiply` operand on a `"cost"` (it
+    would flip the cost's own sign), a `"faster"` operand of `-1` or below (dividing the baseline
+    by `1 + operand` divides by zero or goes negative), or a `"set"` operand on `"cost"` or
+    `"age_requirement"` that is not a whole number (`_apply_scalar`/`_apply_mapping`'s own `set`
+    branches both force the result through `int()`, which must not silently truncate a fractional
+    transcription). Every check above walks a possibly nested `operand` (an age table, a
+    per-resource cost mapping, or an age table of per-resource mappings) down to its numeric
+    leaves via `_operand_leaves`, so a guard is not fooled by the shape a `condition` wraps around
+    the same value.
+
+    **T652z**: also raised for a `"faster"` operation on any `field` other than
+    `"production_time"` — `"faster"` divides a time's baseline (`_apply_scalar` below), which a
+    `"cost"` mapping does not even implement, so this used to reach `_apply_mapping`'s own
+    "unreachable" branch at the first query instead of failing here, at load time.
     """
 
 
@@ -165,6 +189,23 @@ class ContextRequired(TypeError):
     query can refuse and move on from, so it is never a `gaps.KnowledgeGap`
     (`coverage.py` catches this directly: reaching a modelled conditional effect with no context to
     evaluate it is complete knowledge, not a gap — see that module's own handling)."""
+
+
+def _operand_leaves(operand: object) -> list[object]:
+    """**T652r**: every numeric leaf `operand` actually carries, however a `condition` nests it —
+    a bare number (Chivalry's `0.40`), a `{resource: amount}` cost mapping (Teutons' Farm
+    discount), an age table of either (Persians' Town Center/Dock row, Franks' Castle discount's
+    own age table of cost mappings), or a team-conditioned bare number (Malians' University row).
+    A parse-time numeric guard that only looked at `operand` itself would miss every value nested
+    one or two `condition`-shaped tables deep; this walks all the way down instead, so the guard
+    reaches the real number the effect will one day be applied with, whatever `condition` wraps
+    around it."""
+    if isinstance(operand, Mapping):
+        leaves: list[object] = []
+        for value in operand.values():
+            leaves.extend(_operand_leaves(value))
+        return leaves
+    return [operand]
 
 
 @dataclass(frozen=True, slots=True)
@@ -254,6 +295,17 @@ class Effect:
                 )
             if self.operand is None:
                 raise EffectsError('effect.operand is required when modelled = "yes"')
+            # T652z: `faster` carries "works X% faster"'s divide-by-(1+X) semantics
+            # (`_apply_scalar` below), which means dividing *a time* — applying it to any other
+            # field would divide that field's baseline instead, a value `_apply_scalar` never
+            # computes and `_apply_mapping` (a cost's own path) does not even implement, so an
+            # untested transcription used to reach `_apply_mapping`'s "unreachable" branch at the
+            # first query instead of failing here, at load time.
+            if self.operation == "faster" and self.field != "production_time":
+                raise EffectsError(
+                    '"faster" applies to field = "production_time" only (data-model.md §6), '
+                    f"got field={self.field!r}"
+                )
             if self.condition == "age":
                 if not isinstance(self.operand, Mapping) or not self.operand:
                     raise EffectsError(
@@ -265,6 +317,38 @@ class Effect:
                         f"effect.operand's age table keys must all be one of "
                         f"{sorted(_AGE_KEYS)}, got {sorted(self.operand.keys())!r}"
                     )
+            # T652r: reject, at parse time, a numeric operand the game itself could never
+            # produce — walked to every leaf via `_operand_leaves` so a `condition`'s own
+            # nesting (an age table, a per-resource cost mapping, or both together) cannot hide
+            # one. Scoped by `operation`/`field`, never by `condition`: the same three checks
+            # apply whether or not the effect is conditional.
+            if self.operation == "multiply" and self.field == "cost":
+                for leaf in _operand_leaves(self.operand):
+                    if isinstance(leaf, int | float) and not isinstance(leaf, bool) and leaf < 0:
+                        raise EffectsError(
+                            "a cost 'multiply' operand must not be negative — it would flip "
+                            f"the cost's own sign, got {leaf!r} in operand {self.operand!r}"
+                        )
+            if self.operation == "faster":
+                for leaf in _operand_leaves(self.operand):
+                    if isinstance(leaf, int | float) and not isinstance(leaf, bool) and leaf <= -1:
+                        raise EffectsError(
+                            "a 'faster' operand divides the baseline by 1 + operand, so it must "
+                            f"be above -1 (-1 divides by zero, below that goes negative), got "
+                            f"{leaf!r} in operand {self.operand!r}"
+                        )
+            if self.operation == "set" and self.field in ("cost", "age_requirement"):
+                for leaf in _operand_leaves(self.operand):
+                    if (
+                        isinstance(leaf, float)
+                        and not isinstance(leaf, bool)
+                        and not leaf.is_integer()
+                    ):
+                        raise EffectsError(
+                            f"a {self.field!r} 'set' operand must be a whole number — the game "
+                            f"never prices a {self.field} fractionally, got {leaf!r} in operand "
+                            f"{self.operand!r}"
+                        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -534,26 +618,40 @@ def _round_half_up(value: float) -> int:
     return math.floor(value + 0.5)
 
 
-def _apply_scalar(value: float, operation: str, operand: float, *, field: str) -> int | float:
+def _apply_scalar(
+    value: float, operation: str, operand: float, *, field: str, context: str = ""
+) -> int | float:
+    if operation == "faster":
+        # T652r: split out of what used to be `multiply` overloaded onto `production_time`
+        # (T652u, data-model.md §6's amended rounding row): "works X% faster" divides the
+        # baseline by 1 + X, so a Persians Villager in the Feudal Age takes 25 ÷ 1.10 = 22.7 s —
+        # a time keeps its fraction (never rounded), and the transcribed `operand` is the raw
+        # percentage X (e.g. `0.10`), not a pre-computed factor. `Effect.__post_init__` already
+        # rejects an `operand` of -1 or below at parse time, so this never divides by zero or
+        # produces a negative time from a transcription defect reaching here.
+        return value / (1 + operand)
     if operation == "multiply":
         if field == "production_time":
-            # T652u, data-model.md §6's amended rounding row: "'works X% faster' divides it by
-            # 1 + X, so a Persians Villager in the Feudal Age takes 25 ÷ 1.10 = 22.7 s" — a time
-            # keeps its fraction (never rounded), and the transcribed `operand` is the raw
-            # percentage X (e.g. `0.10`), not a pre-computed factor, so this divides rather than
-            # multiplies. Every other scalar field this package models never reaches a `multiply`
-            # today (production_time is the only one a "works X% faster" bonus touches).
-            return value / (1 + operand)
+            # T652z: a time keeps its fraction whatever the operation (data-model.md §6's
+            # rounding row) — `multiply` on `production_time` no longer forces the result
+            # through `_round_half_up`, matching `faster` and `set` above/below.
+            return value * operand
         return _round_half_up(value * operand)
     if operation == "add":
-        # T652p (f): no committed effect applies a scalar `add` to a field that must stay
-        # non-negative — the only scalar fields this package's `set` effects touch
-        # (age_requirement, production_time) are never modified by `add`, and the one real
-        # `add` effect in the pack (Saracens' Market wood discount) is a mapping (a cost),
-        # guarded in `_apply_mapping` below. No guard is added here because there is no case
-        # to test it against; add one the day a scalar `add` effect against a cost-like field
-        # is transcribed.
-        return _round_half_up(value + operand)
+        # T652r: the scalar counterpart of `_apply_mapping`'s own negative-result guard below —
+        # the invariant — a field this package tracks never goes negative — must hold on both
+        # paths, not only the mapping one, whatever the field.
+        if field == "production_time":
+            # T652z: see the `multiply` branch above — a time is never rounded.
+            adjusted: int | float = value + operand
+        else:
+            adjusted = _round_half_up(value + operand)
+        if adjusted < 0:
+            raise EffectsError(
+                f"applying 'add' to {field!r} would drive it negative: {value!r} + {operand!r} "
+                f"= {adjusted!r}" + (f" ({context})" if context else "")
+            )
+        return adjusted
     if operation == "set":
         if field == "production_time":
             # T652u: a time keeps its fraction — data-model.md §6's rounding row: `set` "replaces
@@ -614,7 +712,7 @@ def _apply_operation(
     if isinstance(value, Mapping) and isinstance(operand, Mapping):
         return _apply_mapping(value, operation, operand, context=context)
     if isinstance(value, int | float) and isinstance(operand, int | float):
-        return _apply_scalar(float(value), operation, float(operand), field=field)
+        return _apply_scalar(float(value), operation, float(operand), field=field, context=context)
     raise EffectsError(
         f"cannot apply operation {operation!r} with operand {operand!r} to value {value!r} — "
         "value and operand must both be mappings (a cost) or both be plain numbers"
@@ -649,6 +747,21 @@ def _resolve_conditional_operand(
     exists to forbid — measured before this fix, Malians querying Chemistry with
     `Context(team={"Franks"})` (Malians omitted from its own team) and Franks' Castle cost at
     `Context(age=5)` (not one of the pack's four ages) both silently answered the plain baseline.
+
+    **T652x**: `Context.age` is checked by `in _VALID_AGES`, a membership test against a
+    `frozenset[int]` — and `bool` is an `int` subclass in Python, so `True == 1` and `True in
+    {1, 2, 3, 4}`. `Context(age=True)` passed that check, then `str(True)` produced `"True"`, a key
+    absent from every effect's own age table, and answered the plain baseline exactly as a genuinely
+    absent age does — measured before this fix, Persians' Villager (a discount at every one of the
+    pack's four ages, so there is no absent-key reading that is actually correct) at
+    `Context(age=True)` answered 25, unadjusted. Rejected before the membership check, the same way
+    T652r already rejects a `bool` leaf in a parsed `operand` (`_operand_leaves`) rather than
+    trusting `isinstance(x, int)` alone. `Context.researched` and `Context.team` do not share this
+    hole: both are only ever asked "is this string a member", never compared by value, and a bare
+    `bool` is not iterable at all, so Python itself raises `TypeError` before this function's own
+    logic runs (`test_context_researched_and_team_do_not_share_the_bool_hole`) — checked directly,
+    not assumed, since the fix for `age` is not "reject every bool everywhere" but "close the one
+    comparison a bool can silently pass".
     """
     if effect.condition is None:
         return effect.operand, True
@@ -659,7 +772,7 @@ def _resolve_conditional_operand(
                 "conditional on age, and reaching it needs Context(age=...) — neither the "
                 "baseline nor a guessed age is an answer"
             )
-        if context.age not in _VALID_AGES:
+        if isinstance(context.age, bool) or context.age not in _VALID_AGES:
             raise ValueError(
                 f"Context.age must be one of {sorted(_VALID_AGES)} (the pack's own age "
                 f"numbering), got {context.age!r} — this is not an age genuinely absent from "

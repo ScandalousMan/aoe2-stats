@@ -734,7 +734,8 @@ Rebuilt from several recorded facts.
 
 ### `reconstruction.prerequisite_order_check`
 
-- status: planned
+- status: blocked
+- blocked on: a lawful source that states the game's own prerequisites — the vendored aoe2techtree pack's tree entries carry only the tech-tree screen's display link, not a game rule (T652y, research.md D3)
 - source: ordered entities and their required age and prerequisite buildings from the versioned knowledge base
 - method: for each order, whether its age requirement and prerequisites were commanded earlier on the match clock
 - requires knowledge: `age_requirement`, `prerequisites`, `available_to`

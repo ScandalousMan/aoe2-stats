@@ -16,18 +16,42 @@ branch here that catches a gap and substitutes a value, a default, an average or
 answer for it — a query either resolves for real or its refusal is recorded, and the loop moves on
 to the next field.
 
-**T652u: a modelled conditional effect (`cost`/`production_time` only) is not a gap either, even
-though this pass never builds the `query.Context` that would let the query actually apply one.**
-Reaching a modelled conditional effect (age-gated, gated on a researched technology, or a team
-bonus) with no context raises `effects.ContextRequired` (contracts/knowledge-base.md, "The query
-surface") — this pass catches that directly, in the loop below, and treats it as no gap at all:
-contracts/knowledge-base.md, "Civilisation qualification" is explicit that "a conditional effect
-that is modelled is complete knowledge, so the coverage pass does not report it as a gap. The pass
-supplies no age or research state, so it treats a query that raises for want of one as modelled."
-Building that context — the age a building was constructed in, which technologies a player has
-researched, who is on whose team — is T652v's own territory (the canonical event stream does not
-carry a team at all yet); until it lands, this pass can only ask the yes/no question the exception
-itself already answers by being reachable at all.
+**T652u: a modelled conditional effect (`cost`/`production_time` only) gated on the age or on a
+researched technology is not a gap either, even though this pass never builds that half of
+`query.Context`.** Reaching such an effect with no context raises `effects.ContextRequired`
+(contracts/knowledge-base.md, "The query surface") — this pass catches that directly, in the loop
+below, and treats it as no gap at all: contracts/knowledge-base.md, "Civilisation qualification" is
+explicit that "a conditional effect that is modelled is complete knowledge, so the coverage pass
+does not report it as a gap. The pass supplies no age or research state, so it treats a query that
+raises for want of one as modelled." Building that context — the age a building was constructed in,
+which technologies a player has researched — stays out of scope: neither is observable from a
+canonical stream alone without a reconstruction this feature does not do (007's territory).
+
+**T652v: the pass does build the team half of `query.Context`, from the canonical stream's own
+`match-started` event.** Each participant's `team` (`ParticipantEntry.team`, the recording's own
+header field, contracts/canonical-events.md) is real match state, not a reconstruction, so unlike
+age and researched technologies it is never left unsupplied. For every civilisation-qualified
+`cost`/`production_time` query this pass makes, `context.team` is the civilisation names of every
+participant who shares that query's own participant's real team, that participant's own
+civilisation included — a participant with no team at all (the header's own "no team" sentinel,
+translated to `None` by the adapter) gets a team of itself alone, the definite, measured fact that
+this participant has no ally, never a guess (`effects.Context`'s own contract: "never guessed by
+this package"). Per contracts/knowledge-base.md, "Civilisation qualification" step 1, an unmodelled
+teammate now makes *every* cost and time query this pass makes for that teammate's allies gap,
+naming the teammate — not only a query this pass happens to make *for* the unmodelled civilisation
+itself.
+
+**Two allies sharing an unmodelled teammate raise the identical gap once each (T652v).** Two
+different, both-modelled civilisations on the same team as one unmodelled civilisation each reach
+`query.py`'s "is every member of context.team modelled" check independently, and both name the same
+unmodelled teammate — if they also happen to reference the same (entity, field) (a shared, non-
+unique unit or building both civilisations can produce), the two calls produce two `KnowledgeGap`
+values equal on every column `analysis_knowledge_gaps`' unique index checks. This pass's own final
+step (`_deduplicated`, below) collapses those to one row — the same duplicate-insert hazard T652k
+closed for two slots sharing one civilisation, generalised here to every column the unique index
+actually checks (`entity_kind`, `entity_id`, `field`, `civilisation`), which also closes a sibling
+case T652k's own per-civilisation merge could not see: the same civilisation seated on two different
+teams (a mirror matchup) hitting an identical entity-absent/field-absent gap once per team.
 
 **The six fields this pass asks about, and why exactly these six.** `packages/core/src/
 aoe2stats_core/truth/register.toml`'s `requires_knowledge` vocabulary is, read directly (there is
@@ -162,6 +186,19 @@ _QUERY_SURFACE_FUNCTIONS: Final[tuple[tuple[str, Any], ...]] = (
     ("available_to", query.available_to),
 )
 
+#: T652v: exactly the two query-surface functions whose signature accepts `context=` at all
+#: (`query.py`'s own module docstring — `age_requirement`, `prerequisites`, `produced_at` and
+#: `available_to` take no such keyword). Passing `context=` to one of those four would be a
+#: `TypeError`, not a gap, so this pass checks membership here rather than passing it
+#: unconditionally to every one of `_QUERY_SURFACE_FUNCTIONS`.
+_CONTEXT_AWARE_FIELDS: Final[frozenset[str]] = frozenset({"cost", "production_time"})
+
+#: T652v: the four columns `analysis_knowledge_gaps`' own unique index checks beside
+#: `identity_digest` (constant across one `coverage()` call, so irrelevant to whether two gaps from
+#: the same call collide) — `packages/storage/src/aoe2stats_storage/models.py`. Used by
+#: `_deduplicated` below.
+_UniqueIndexKey = tuple[str | None, str | None, str | None, str | None]
+
 
 def _civilisation_name_for(
     raw_id: int,
@@ -181,6 +218,40 @@ def _civilisation_name_for(
     return f"unknown-civilisation-{raw_id}"
 
 
+def _context_for(
+    civilisation: str, team: int | None, civilisations_by_team: Mapping[int, frozenset[str]]
+) -> effects.Context:
+    """T652v: `query.Context.team` for one participant — "the civilisation names on the player's
+    team, the player's own included" (contracts/knowledge-base.md, "The query surface"). `team` is
+    the real, header-carried team id (`ParticipantEntry.team`) this participant's civilisation was
+    seated on, or `None` when the recording's own "no team" sentinel was recorded (the adapter's
+    own translation, `contracts/canonical-events.md`) — a definite, measured fact that this
+    participant has no ally at all, not missing knowledge, so it answers `frozenset({civilisation})`
+    rather than leaving `team` unset (which would make a team-conditioned query raise
+    `effects.ContextRequired` instead of correctly finding no ally). A real team always resolves
+    in `civilisations_by_team`: it was built from the same participants this civilisation came
+    from, and always includes this civilisation's own name (see `coverage`, below)."""
+    if team is None:
+        return effects.Context(team=frozenset({civilisation}))
+    return effects.Context(team=civilisations_by_team[team])
+
+
+def _deduplicated(collected: Sequence[gaps.KnowledgeGap]) -> tuple[gaps.KnowledgeGap, ...]:
+    """T652v: collapse two gaps equal on every column `analysis_knowledge_gaps`' unique index
+    checks (`entity_kind`, `entity_id`, `field`, `civilisation` — `identity_digest` is constant
+    across one `coverage()` call and irrelevant here) to the first one encountered. Generalises
+    T652k's own per-civilisation entity merge (which only prevented two *slots* sharing one
+    civilisation from producing the same gap twice) to every way this pass can otherwise produce
+    two rows the storage layer's unique index would refuse the second insert of — two allies
+    sharing one unmodelled teammate, and the same civilisation seated on two different teams."""
+    seen: dict[_UniqueIndexKey, gaps.KnowledgeGap] = {}
+    for gap in collected:
+        key: _UniqueIndexKey = (gap.entity_kind, gap.entity_id, gap.field, gap.civilisation)
+        if key not in seen:
+            seen[key] = gap
+    return tuple(seen.values())
+
+
 def coverage(
     events: Iterable[CanonicalEvent],
     *,
@@ -197,6 +268,7 @@ def coverage(
     """
     build: int | None = None
     raw_civilisation_by_slot: dict[int, int] = {}
+    raw_team_by_slot: dict[int, int | None] = {}
     entities_by_slot: dict[int, set[tuple[str, str]]] = {}
 
     for event in events:
@@ -205,6 +277,7 @@ def coverage(
                 build = event.payload.build
             for participant in event.payload.participants:
                 raw_civilisation_by_slot[participant.slot] = participant.civilisation
+                raw_team_by_slot[participant.slot] = participant.team
             continue
 
         slot = event.participant
@@ -239,16 +312,50 @@ def coverage(
     # docstring, "T652g: the translation lives in the snapshot, not in this module."
     snapshot_civilisation_names = effects.civilisation_id_names(resolved.directory)
 
-    # T652k: a query result depends on (entity, civilisation, build), never on which slot
-    # referenced the entity, so entities are merged per resolved civilisation **name** here,
-    # before any query is made — not per slot. Two seated participants sharing a civilisation
-    # (a mirror matchup, or any team game with two players on one civilisation) would otherwise
+    # T652v: every seated participant's civilisation name is resolved once, whether or not they
+    # ever reference an entity — an ally who trains nothing is still a teammate whose own
+    # modelledness (or lack of it) gaps every query this loop makes for the rest of their team.
+    civilisation_by_slot: dict[int, str] = {
+        slot: _civilisation_name_for(
+            raw_civilisation, civilisation_names, snapshot_civilisation_names
+        )
+        for slot, raw_civilisation in raw_civilisation_by_slot.items()
+    }
+
+    # T652v: every real team's own civilisation roster — the civilisation names of every
+    # participant seated on that team, the query's own owner included — built once, from every
+    # seated participant, not only those who reference an entity. A participant with no team at
+    # all (`raw_team_by_slot[slot] is None`, the adapter's own translation of the recording's "no
+    # team" sentinel — `contracts/canonical-events.md`) contributes nothing here: `_context_for`
+    # answers a team of one for them directly, without needing an entry keyed by `None`.
+    civilisations_by_team_mutable: dict[int, set[str]] = {}
+    for slot, team in raw_team_by_slot.items():
+        if team is None:
+            continue
+        name = civilisation_by_slot.get(slot)
+        if name is None:  # pragma: no cover - team and civilisation always come from one entry
+            continue
+        civilisations_by_team_mutable.setdefault(team, set()).add(name)
+    civilisations_by_team: dict[int, frozenset[str]] = {
+        team: frozenset(names) for team, names in civilisations_by_team_mutable.items()
+    }
+
+    # T652k, extended by T652v: a query result depends on (entity, civilisation, team, build),
+    # never on which slot referenced the entity — team, because `context.team` (below) varies
+    # with it — so entities are merged per (civilisation name, team) here, before any query is
+    # made, not per slot and not per civilisation alone (which cannot carry two different teams'
+    # rosters for the same civilisation name at once, a mirror matchup with each mirror on a
+    # different team). Two seated participants sharing both a civilisation and a team (a mirror
+    # matchup on one side, or any team game with two players on one civilisation) would otherwise
     # each contribute the same (entity, field) query, and an identical gap for each: every column
     # `analysis_knowledge_gaps`' unique index checks (`identity_digest, entity_kind, entity_id,
     # field, coalesce(civilisation_id, '')`) would be equal across the copies, so T662's writer
     # would reject the second insert of an identical row — the same collision T652b already
     # closed for the whole-build causes, now closed here for the per-entity ones too.
-    entities_by_civilisation: dict[str, set[tuple[str, str]]] = {}
+    # `_deduplicated` (below) closes the sibling case this merge cannot: two *different*
+    # civilisations on the same team, sharing one unmodelled ally, producing the identical gap
+    # that names the ally rather than either of them.
+    entities_by_key: dict[tuple[str, int | None], set[tuple[str, str]]] = {}
     for slot in sorted(entities_by_slot):
         raw_civilisation = raw_civilisation_by_slot.get(slot)
         if raw_civilisation is None:
@@ -256,10 +363,9 @@ def coverage(
             # — nothing to qualify a query by, so this participant's entities are skipped
             # rather than qualified by a fabricated civilisation.
             continue
-        civilisation = _civilisation_name_for(
-            raw_civilisation, civilisation_names, snapshot_civilisation_names
-        )
-        entities_by_civilisation.setdefault(civilisation, set()).update(entities_by_slot[slot])
+        civilisation = civilisation_by_slot[slot]
+        team = raw_team_by_slot.get(slot)
+        entities_by_key.setdefault((civilisation, team), set()).update(entities_by_slot[slot])
 
     result: list[gaps.KnowledgeGap] = []
     override_context = (
@@ -268,24 +374,30 @@ def coverage(
         else contextlib.nullcontext()
     )
     with override_context:
-        for civilisation in sorted(entities_by_civilisation):
-            for entity_kind, entity_id in sorted(entities_by_civilisation[civilisation]):
+        for civilisation, team in sorted(
+            entities_by_key, key=lambda key: (key[0], key[1] if key[1] is not None else -1)
+        ):
+            context = _context_for(civilisation, team, civilisations_by_team)
+            for entity_kind, entity_id in sorted(entities_by_key[(civilisation, team)]):
                 entity_ref = query.EntityRef(kind=entity_kind, id=entity_id, build=build)
-                for _field_name, query_function in _QUERY_SURFACE_FUNCTIONS:
+                for field_name, query_function in _QUERY_SURFACE_FUNCTIONS:
                     try:
-                        answer_or_gap = query_function(entity_ref, civilisation=civilisation)
+                        if field_name in _CONTEXT_AWARE_FIELDS:
+                            answer_or_gap = query_function(
+                                entity_ref, civilisation=civilisation, context=context
+                            )
+                        else:
+                            answer_or_gap = query_function(entity_ref, civilisation=civilisation)
                     except effects.ContextRequired:
                         # T652u, contracts/knowledge-base.md "Civilisation qualification": "a
                         # conditional effect that is modelled is complete knowledge, so the
-                        # coverage pass does not report it as a gap. The pass supplies no age or
-                        # research state, so it treats a query that raises for want of one as
-                        # modelled." This pass never builds a `query.Context` at all (no age, no
-                        # researched set, no team roster — T652v is what would add one), so
-                        # reaching a modelled conditional effect here always raises; catching it
-                        # is exactly that treatment — the field *is* modelled, so there is nothing
-                        # to report.
+                        # coverage pass does not report it as a gap." T652v supplies the team half
+                        # of `query.Context` for real (above), so only an age- or research-gated
+                        # effect can still reach this branch — this pass supplies neither, so
+                        # reaching one of those always raises; catching it is exactly that
+                        # treatment — the field *is* modelled, so there is nothing to report.
                         continue
                     if isinstance(answer_or_gap, gaps.KnowledgeGap):
                         result.append(answer_or_gap)
 
-    return tuple(result)
+    return _deduplicated(result)

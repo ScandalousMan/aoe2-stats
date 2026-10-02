@@ -456,6 +456,48 @@ def test_an_entity_id_absent_from_the_snapshot_entirely_gaps_and_never_crashes()
     assert result.civilisation == "Franks"
 
 
+# ------------------------------------------------------------------------------- prerequisites()
+
+
+def test_prerequisites_always_refuses_field_absent_for_a_named_entity() -> None:
+    """T652y: `rules.json` carries no `prerequisites` field at all — the pack's own tree
+    `link_id`/`link_node_type` is the tech-tree screen's display link, not a rule of the game
+    (research.md D3), so `prerequisites()` gaps every entity the snapshot names, with the same
+    `field-absent` cause `_field_present` already produces for any other missing field. The
+    register's one entry that named this field, `reconstruction.prerequisite_order_check`, is
+    `blocked` (T652y), so D7 computes this gap `informational`, never `blocking`."""
+    from aoe2stats_knowledge import gaps, query
+
+    entity = query.EntityRef(kind="unit", id=_PIKEMAN_ID, build=_CARRY_FORWARD_BUILD)
+
+    result = query.prerequisites(entity, civilisation="Franks")
+
+    assert not hasattr(result, "value"), f"prerequisites must always gap, got {result!r}"
+    assert isinstance(result, gaps.KnowledgeGap)
+    assert result.cause == "field-absent"
+    assert result.entity_kind == "unit"
+    assert result.entity_id == _PIKEMAN_ID
+    assert result.field == "prerequisites"
+    assert result.civilisation == "Franks"
+    assert result.severity == "informational"
+
+
+def test_prerequisites_still_answers_entity_absent_for_an_unknown_id() -> None:
+    """The contrast the same task asks for: an id the snapshot does not name at all answers
+    `entity-absent`, ahead of the field-presence check — `prerequisites` never masks a genuinely
+    unknown entity behind the always-refusing `field-absent` cause."""
+    from aoe2stats_knowledge import gaps, query
+
+    entity = query.EntityRef(kind="unit", id=_UNKNOWN_UNIT_ID, build=_CARRY_FORWARD_BUILD)
+
+    result = query.prerequisites(entity, civilisation="Franks")
+
+    assert not hasattr(result, "value"), f"an unknown entity id must gap, got {result!r}"
+    assert isinstance(result, gaps.KnowledgeGap)
+    assert result.cause == "entity-absent"
+    assert result.entity_id == _UNKNOWN_UNIT_ID
+
+
 # ------------------------------------------------------------------------------------- name()
 
 

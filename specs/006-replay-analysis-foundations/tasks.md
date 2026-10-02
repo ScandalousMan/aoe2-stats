@@ -56,14 +56,14 @@ wrong — stop and say so. This is FR-038, and the whole feature exists because 
 
 ## Scenario coverage map
 
-| quickstart section        | Phase | Story    | Task(s) that encode it   |
-| ------------------------- | ----- | -------- | ------------------------ |
-| Phase 1 — the fixture     | 1     | US1      | T603, T604               |
-| Phase 1 — the corrections | 1     | US1      | T606, T607               |
-| Phase 2 — the register    | 2     | US1, US3 | T614, T617, T621         |
-| Phase 3 — canonical events| 3     | US4      | T626, T626a, T628, T630, T632 |
-| Phase 4 — the knowledge base | 4  | US2, US5 | T641, T646, T649, T651   |
-| Phase 5 — identity        | 5     | US3, US6 | T657, T660, T663, T665   |
+| quickstart section           | Phase | Story    | Task(s) that encode it        |
+| ---------------------------- | ----- | -------- | ----------------------------- |
+| Phase 1 — the fixture        | 1     | US1      | T603, T604                    |
+| Phase 1 — the corrections    | 1     | US1      | T606, T607                    |
+| Phase 2 — the register       | 2     | US1, US3 | T614, T617, T621              |
+| Phase 3 — canonical events   | 3     | US4      | T626, T626a, T628, T630, T632 |
+| Phase 4 — the knowledge base | 4     | US2, US5 | T641, T646, T649, T651        |
+| Phase 5 — identity           | 5     | US3, US6 | T657, T660, T663, T665        |
 
 ---
 
@@ -282,7 +282,7 @@ the view fails the suite.
       the shape of. **Re-verified 2026-09-22 (T652i)**: edited `participant.units_lost`'s `impact`
       line in `register.toml`; `uv run pytest packages/core/tests/test_register_view.py -q` printed
       `AssertionError: REGISTER.md has drifted from register.toml. Regenerate it with: uv run
-      python -m aoe2stats_core.truth.register` (1 failed, 3 passed); ran that exact command, reran
+    python -m aoe2stats_core.truth.register` (1 failed, 3 passed); ran that exact command, reran
       the same test file and got `4 passed`; restored the edited line and regenerated again —
       `git diff --quiet` on both `register.toml` and `REGISTER.md` confirmed empty
 - [x] T622 [P] [US3] Record the naming discipline in `packages/core/src/aoe2stats_core/truth/`'s
@@ -691,7 +691,7 @@ that list is held by a strict expectation.
       published yet, no analysis identity names a snapshot, and no object key carries one, so the
       rename costs 34 references across seven test and source files today and is impossible after
       T655 — **FR-025** makes a snapshot immutable the moment an analysis names it, and an operator
-      reading a gap row is then stuck with the word *fixture* for the life of the product. No digest
+      reading a gap row is then stuck with the word _fixture_ for the life of the product. No digest
       changes: `compute_digest` hashes `rules.json` and `effects.toml`, never the directory name, and
       resolution is exact-match on `describes_build` among promoted snapshots, so nothing parses what
       is being renamed. Update the reference in `docs/data-sources.md` §6 in the same change — it is
@@ -737,7 +737,7 @@ Three were arbitration and are decided, with the decision recorded in the task t
       `xfail(strict=True, reason=_RECORDING_2_XFAIL_REASON)` sits over a body asserting
       `blocking == []`, and a 26-line prose string stands in for the list. It fails **FR-022b** three
       ways: closing one of the three blockers leaves the assertion failing and the marker holding, so
-      a stale entry is never signalled; the body never inspects *which* gaps came back, so a fourth
+      a stale entry is never signalled; the body never inspects _which_ gaps came back, so a fourth
       blocker from a real transcription defect — the thing FR-022b says MUST be closed and never
       enumerated — hides behind the same marker forever; and a `reason=` string is asserted against
       nothing. Replace it with a module-level tuple of **three** entries, each carrying
@@ -763,12 +763,12 @@ Three were arbitration and are decided, with the decision recorded in the task t
       same stale "T645 has not run" prose; sweep those two docstrings in the same change
 - [x] T652d [US4] **Stop an unfamiliar operation from losing the whole match, and stop the market
       decoder publishing a scaled value at the exact tier.** (a) `canonical.py:530` raises
-      `EngineParseError` on an operation kind the adapter does not know, while an unknown *action*
+      `EngineParseError` on an operation kind the adapter does not know, while an unknown _action_
       degrades to `undecoded` correctly. **FR-019** sanctions two outcomes and aborting is neither:
       the day a patch or a wheel upgrade adds one top-level kind, every replay in the corpus stops
       analysing — the exact failure the canonical model exists to insulate against (`docs/risks.md`
       R3). Emit `undecoded`, or add a named `unknown_operation` accounting term so the conservation
-      test still balances; keep the raise for a *malformed* operation, not an unfamiliar one. (b)
+      test still balances; keep the raise for a _malformed_ operation, not an unfamiliar one. (b)
       `_MARKET_STEP = 100` multiplies a payload count into an amount published at **decoded**, which
       **FR-014** requires to be exact, while `register.toml:564` declares `requires_knowledge = []`
       although the entry's own method admits the constant is not in the recording. **Decided
@@ -851,7 +851,7 @@ Three were arbitration and are decided, with the decision recorded in the task t
       (slot, entity, field), so two seated participants on the same civilisation referencing the
       same entity emit N identical gaps. Reproduced against the real packaged snapshot by forcing
       recording 2's four slots onto one civilisation: **16 gaps, 13 distinct, `('building', '82',
-      'cost', 'Franks')` four times**, every copy equal on all five index columns. Neither committed
+    'cost', 'Franks')` four times**, every copy equal on all five index columns. Neither committed
       recording can see it — both seat four distinct civilisations — and a mirror matchup or any
       team game with two players on one civilisation is ordinary. A query result depends on
       `(entity, civilisation, build)` and never on the slot, so collect per civilisation name, or
@@ -869,7 +869,7 @@ Three were arbitration and are decided, with the decision recorded in the task t
 - [x] T652l [US2] **SUPERSEDED by T652m, which carried both corrections.** Kept for the trail: it was dispatched, handed back, and reverted uncommitted when verifying it found the civilisation misidentification. **Correct two false measurements now frozen behind a snapshot digest.** Both live
       in `effects.toml`, in both promoted snapshots, which are byte-identical and must stay so.
       (a) The `[[civilisation_id]]` record for `raw_id = 33` claims participant 4 of recording 2
-      *"researches technology 488 (Kamandaran)"* and that 488 is `NotAvailable` for Gurjaras in
+      _"researches technology 488 (Kamandaran)"_ and that 488 is `NotAvailable` for Gurjaras in
       `packages/knowledge/packs/aoe2techtree/trees/GURJARAS.json`. Measured against the committed golden: **participant 2 researches 488,
       not participant 4**; participant 4's exclusive research is **687**; and **488 has no node at
       all in that tree file** — absent, not `NotAvailable`. The file's own header comment 90 lines
@@ -878,7 +878,7 @@ Three were arbitration and are decided, with the decision recorded in the task t
       clause and leave the true observation. This matters more than an ordinary typo because T652i
       re-labelled this record **"Strong form (FR-030)"** without re-reading it, and a validation
       record that misstates what was read is the exact thing FR-030's amendment exists to prevent.
-      (b) Two lines call `data.json` *"all sixty-one civilisations"*. It carries **53**, and
+      (b) Two lines call `data.json` _"all sixty-one civilisations"_. It carries **53**, and
       `trees/` holds 53 files, and `docs/data-sources.md:497` says 53 for this same pinned commit —
       four occurrences of a wrong count, two inside `validated_by` strings. Recompute both
       snapshots' digests, update both `snapshot.toml`s, and confirm the two stay equal
@@ -893,89 +893,89 @@ Three were arbitration and are decided, with the decision recorded in the task t
       `Tech_577` (Farimba), with Byzantines excluded outright.
 
       | raw id | register says | measured |
-      | ------ | ------------- | -------- |
-      | 2      | Franks        | Franks — agrees |
-      | 4      | Teutons       | Teutons — agrees |
-      | 9      | Koreans       | **Saracens** |
-      | 8      | Gurjaras      | **Persians** |
-      | 26     | Byzantines    | **Malians** |
-      | 33     | Persians      | **Tatars** |
+          | ------ | ------------- | -------- |
+          | 2      | Franks        | Franks — agrees |
+          | 4      | Teutons       | Teutons — agrees |
+          | 9      | Koreans       | **Saracens** |
+          | 8      | Gurjaras      | **Persians** |
+          | 26     | Byzantines    | **Malians** |
+          | 33     | Persians      | **Tatars** |
 
-      **Four of the six were wrong.** Ids 9 and 26 were supplied by the user on 2026-09-23 from
-      the SiegeEngineers aoc-reference-data dataset `docs/data-sources.md` §6 assesses, and both corroborate the
-      independent tree measurement: 26 is what `Tech_577` (Farimba) pinned, and Saracens is among
-      the 19 candidates id 9 narrowed to. **Take the mapping from that source, transcribed by hand
-      with its provenance recorded — do not re-measure it.** `docs/data-sources.md` §6 has assessed
-      it since 2026-08-30 and rules it read-and-transcribe-only, which is exactly what **FR-031**
-      permits for a source with no licence. The hand-measurement this task exists to undo was work
-      the repository's own referential had already done.
+          **Four of the six were wrong.** Ids 9 and 26 were supplied by the user on 2026-09-23 from
+          the SiegeEngineers aoc-reference-data dataset `docs/data-sources.md` §6 assesses, and both corroborate the
+          independent tree measurement: 26 is what `Tech_577` (Farimba) pinned, and Saracens is among
+          the 19 candidates id 9 narrowed to. **Take the mapping from that source, transcribed by hand
+          with its provenance recorded — do not re-measure it.** `docs/data-sources.md` §6 has assessed
+          it since 2026-08-30 and rules it read-and-transcribe-only, which is exactly what **FR-031**
+          permits for a source with no licence. The hand-measurement this task exists to undo was work
+          the repository's own referential had already done.
 
-      **Byzantines and Gurjaras are in neither match.** Byzantines' Pikeman -25% is the flagship
-      example in `packages/knowledge/tests/test_query.py` and in
-      [quickstart.md](./quickstart.md), modelled for a civilisation no committed recording plays.
-      Malians and Tatars are modelled nowhere.
+          **Byzantines and Gurjaras are in neither match.** Byzantines' Pikeman -25% is the flagship
+          example in `packages/knowledge/tests/test_query.py` and in
+          [quickstart.md](./quickstart.md), modelled for a civilisation no committed recording plays.
+          Malians and Tatars are modelled nowhere.
 
-      **Why the earlier identification went wrong, recorded so it is not repeated**: it rested on
-      *unit* node ids, and **the pack's `node_id` space is not the game's unit id space**. The
-      counterexample is in the data — recording 2's slot 2, now known to be Persians, trains unit id
-      1755, which the pack lists as `Unit_1755_101`, Camel Scout, `ResearchedCompleted` for Gurjaras
-      alone and absent from the Persians tree. Technology ids did hold, on all five participants
-      that a unique technology pins. Treat unit-id exclusivity as unsound and technology-id
-      exclusivity as sound until something measures otherwise; that distinction is a property of the
-      vendored source and belongs in `docs/data-sources.md` §6.
+          **Why the earlier identification went wrong, recorded so it is not repeated**: it rested on
+          *unit* node ids, and **the pack's `node_id` space is not the game's unit id space**. The
+          counterexample is in the data — recording 2's slot 2, now known to be Persians, trains unit id
+          1755, which the pack lists as `Unit_1755_101`, Camel Scout, `ResearchedCompleted` for Gurjaras
+          alone and absent from the Persians tree. Technology ids did hold, on all five participants
+          that a unique technology pins. Treat unit-id exclusivity as unsound and technology-id
+          exclusivity as sound until something measures otherwise; that distinction is a property of the
+          vendored source and belongs in `docs/data-sources.md` §6.
 
-      **Scope decided 2026-09-23: correct the identification *and* transcribe the three real
-      civilisations.** Modelling only what is already written would leave ~846 blocking gaps — both
-      of recording 1's players and one of recording 2's — and those are transcription gaps, which
-      **FR-022b** says MUST be closed rather than enumerated. The bonus prose is in the vendored
-      pack's English strings and is quoted in the dispatch; only one bonus per civilisation touches
-      a cost or a time:
+          **Scope decided 2026-09-23: correct the identification *and* transcribe the three real
+          civilisations.** Modelling only what is already written would leave ~846 blocking gaps — both
+          of recording 1's players and one of recording 2's — and those are transcription gaps, which
+          **FR-022b** says MUST be closed rather than enumerated. The bonus prose is in the vendored
+          pack's English strings and is quoted in the dispatch; only one bonus per civilisation touches
+          a cost or a time:
 
-      | civilisation | the one cost/time bonus | selector |
-      | ------------ | ----------------------- | -------- |
-      | Saracens | "Market trading fee only 5%; Markets cost -100 wood" | building 84, wood -100, `add` |
-      | Malians  | "Buildings cost -15% wood" | all 28 building ids, wood x0.85, `multiply` |
-      | Tatars   | "Thumb Ring, Parthian Tactics free" | techs 437 and 436, cost `set` to zero |
+          | civilisation | the one cost/time bonus | selector |
+          | ------------ | ----------------------- | -------- |
+          | Saracens | "Market trading fee only 5%; Markets cost -100 wood" | building 84, wood -100, `add` |
+          | Malians  | "Buildings cost -15% wood" | all 28 building ids, wood x0.85, `multiply` |
+          | Tatars   | "Thumb Ring, Parthian Tactics free" | techs 437 and 436, cost `set` to zero |
 
-      Everything else each of them carries — hit points, armour, attack, line of sight, livestock,
-      trade fees, Town Centre sheep — touches no field this knowledge base answers and is recorded
-      `modelled = "no"` with that as the reason, which is the same treatment the existing entries
-      give a bonus out of scope. A bonus is never half-applied.
+          Everything else each of them carries — hit points, armour, attack, line of sight, livestock,
+          trade fees, Town Centre sheep — touches no field this knowledge base answers and is recorded
+          `modelled = "no"` with that as the reason, which is the same treatment the existing entries
+          give a bonus out of scope. A bonus is never half-applied.
 
-      **Scope of the correction**: the `[[civilisation_id]]` table; `civilisations_modelled` in both
-      promoted snapshots; the effects transcribed for Byzantines and Gurjaras, which are dead and
-      whose replacements for Malians and Tatars are not written; every example and test naming a
-      Byzantine discount; and `_RECORDING_2_ENUMERATED_BLOCKING_GAPS`, whose Gurjaras entries name a
-      civilisation not in the match. Also carry T652l's two uncontested corrections — the false
-      participant-4/`Tech_488` clause and the four "sixty-one civilisations" for 53 — so
-      `effects.toml`'s digest moves once. **Superseded framing, kept for the record:** T652l was written to correct a false clause in the
-      `raw_id = 33` validation record and was **reverted uncommitted** when verifying it turned up
-      something larger. The pack's own per-civilisation tree files, read with unit and tech nodes
-      separated (the `id` field carries the kind: `Unit_239_82` vs `Tech_488_82` — conflating them
-      gives wrong answers, which is how the first pass went astray), say:
-      **slot 1 → Franks** and **slot 3 → Teutons**, both agreeing with the committed table; but
-      **slot 4 narrows to Tatars alone**, via `Tech_687` which is Tatars-only and absent from the
-      Persians tree — while the table says `raw_id = 33` is Persians. Persians-only `Tech_488`
-      (Kamandaran) is researched by **slot 2**, not slot 4, which the record itself got backwards.
-      **Slot 2 is outright contradictory**: it trains unit 1755 (Camel Scout, `ResearchedCompleted`
-      for Gurjaras and absent from both the Persians and Tatars trees) *and* unit 38, which is
-      `NotAvailable` for Gurjaras and available to both the others — no single civilisation trains
-      both. So the evidence splits two-to-one against the committed `raw_id = 8 → Gurjaras`.
-      **What must be settled before this is edited**: whether the pack's `node_id` space is the
-      game's own unit and technology id space in every case, or only mostly — because if it is not,
-      every exclusivity argument in `effects.toml`'s header, including the ones that look sound,
-      rests on an unchecked assumption. Do not resolve this by picking the reading that preserves
-      the current table. **What it reaches if wrong**: T645's six modelled civilisations, T652g's
-      `[[civilisation_id]]` table, and SC-007a's 15-gap enumeration, which names Gurjaras twice and
-      attributes a blocker to a civilisation that may not be in the match. Tatars is modelled
-      nowhere. Carry T652l's two uncontested corrections into the same change rather than landing
-      them separately — the false participant-4/`Tech_488` clause, and the four places calling
-      `data.json` "all sixty-one civilisations" where it holds 53 — so `effects.toml`'s digest moves
-      once, not twice
+          **Scope of the correction**: the `[[civilisation_id]]` table; `civilisations_modelled` in both
+          promoted snapshots; the effects transcribed for Byzantines and Gurjaras, which are dead and
+          whose replacements for Malians and Tatars are not written; every example and test naming a
+          Byzantine discount; and `_RECORDING_2_ENUMERATED_BLOCKING_GAPS`, whose Gurjaras entries name a
+          civilisation not in the match. Also carry T652l's two uncontested corrections — the false
+          participant-4/`Tech_488` clause and the four "sixty-one civilisations" for 53 — so
+          `effects.toml`'s digest moves once. **Superseded framing, kept for the record:** T652l was written to correct a false clause in the
+          `raw_id = 33` validation record and was **reverted uncommitted** when verifying it turned up
+          something larger. The pack's own per-civilisation tree files, read with unit and tech nodes
+          separated (the `id` field carries the kind: `Unit_239_82` vs `Tech_488_82` — conflating them
+          gives wrong answers, which is how the first pass went astray), say:
+          **slot 1 → Franks** and **slot 3 → Teutons**, both agreeing with the committed table; but
+          **slot 4 narrows to Tatars alone**, via `Tech_687` which is Tatars-only and absent from the
+          Persians tree — while the table says `raw_id = 33` is Persians. Persians-only `Tech_488`
+          (Kamandaran) is researched by **slot 2**, not slot 4, which the record itself got backwards.
+          **Slot 2 is outright contradictory**: it trains unit 1755 (Camel Scout, `ResearchedCompleted`
+          for Gurjaras and absent from both the Persians and Tatars trees) *and* unit 38, which is
+          `NotAvailable` for Gurjaras and available to both the others — no single civilisation trains
+          both. So the evidence splits two-to-one against the committed `raw_id = 8 → Gurjaras`.
+          **What must be settled before this is edited**: whether the pack's `node_id` space is the
+          game's own unit and technology id space in every case, or only mostly — because if it is not,
+          every exclusivity argument in `effects.toml`'s header, including the ones that look sound,
+          rests on an unchecked assumption. Do not resolve this by picking the reading that preserves
+          the current table. **What it reaches if wrong**: T645's six modelled civilisations, T652g's
+          `[[civilisation_id]]` table, and SC-007a's 15-gap enumeration, which names Gurjaras twice and
+          attributes a blocker to a civilisation that may not be in the match. Tatars is modelled
+          nowhere. Carry T652l's two uncontested corrections into the same change rather than landing
+          them separately — the false participant-4/`Tech_488` clause, and the four places calling
+          `data.json` "all sixty-one civilisations" where it holds 53 — so `effects.toml`'s digest moves
+          once, not twice
 
 - [x] T652n **Two readings of the same file disagree, and one of them may be serving wrong names in
-      production.** `docs/data-sources.md` §6 states that the aoc-reference-data dataset it names *"confirmed all
-      45 civilisation ids this repository had already derived from two frozen provider fixtures"* —
+      production.** `docs/data-sources.md` §6 states that the aoc-reference-data dataset it names _"confirmed all
+      45 civilisation ids this repository had already derived from two frozen provider fixtures"_ —
       ids where `apps/api/src/aoe2stats_api/civilizations.py` holds 9 = Byzantines and
       26 = Lithuanians. The same file read on 2026-09-23 gives **9 = Saracens** and
       **26 = Malians**, and the vendored tech trees independently pin 26 to Malians. At most one of
@@ -991,7 +991,7 @@ Three were arbitration and are decided, with the decision recorded in the task t
 
 - [x] T652o [US2] **Sweep every bonus of all six civilisations — the transcription silently dropped
       the ones that touch a tracked field, and recording 1's zero is hollow because of it.** The
-      third review found Malians' Team Bonus *"Universities work +80% faster"* dismissed in
+      third review found Malians' Team Bonus _"Universities work +80% faster"_ dismissed in
       `effects.toml` as touching no tracked field. It touches `production_time`: a technology's
       production time **is** its research time, one of the six fields the coverage pass walks.
       Measured — Malians and Teutons both answer 100, 50, 60 and 30 for technologies 47, 50, 93 and
@@ -1001,11 +1001,11 @@ Three were arbitration and are decided, with the decision recorded in the task t
       but because a blocker was never written down. Three siblings, all verified the same way, all
       predating this remediation — fixing Malians alone leaves them, which is the one-of-N failure
       this project keeps repeating:
-      Persians' *"Town Centers and Docks ... work +5/10/15/20% faster"* (the work-faster half touches
+      Persians' _"Town Centers and Docks ... work +5/10/15/20% faster"_ (the work-faster half touches
       `production_time` at buildings 109, 621 and 45 — Persians' Villager answers 25, same as
-      Teutons'); Teutons' *"Murder Holes, Herbal Medicine free"*, absent from the file **entirely**,
+      Teutons'); Teutons' _"Murder Holes, Herbal Medicine free"_, absent from the file **entirely**,
       so Teutons pays `{food:200, stone:100}` and `{food:0, gold:200}` for technologies 322 and 441
-      that its own bonus makes free; and Franks' *"Chivalry (Stables work +40% faster)"*, likewise
+      that its own bonus makes free; and Franks' _"Chivalry (Stables work +40% faster)"_, likewise
       absent.
       **Do not fix only the four named.** Walk **every bullet** of all six civilisations' prose in
       the vendored `strings.en.json` — Franks 120151, Teutons 120153, Saracens 120158, Malians
@@ -1062,7 +1062,7 @@ Three were arbitration and are decided, with the decision recorded in the task t
       free-technology model uses `set`) and that `source_text` is byte-for-byte (five rows are
       not); the digest credited to T652o in `snapshot.toml`; and `test_effects.py`'s int-type test,
       which passes on the unadjusted baseline — assert the value and a non-empty `applied`
-- [ ] T652r **Numeric effects can still produce a value the game cannot.** A scalar `add` and a
+- [x] T652r **Numeric effects can still produce a value the game cannot.** A scalar `add` and a
       cost `multiply` with a negative operand go below zero unguarded; a time `multiply` divides by
       1 + X, so X = -1 divides by zero and X < -1 gives a negative time; a cost `set` truncates a
       fractional operand with `int()`. Reject, when `effects.toml` is parsed, a negative cost
@@ -1078,7 +1078,7 @@ Three were arbitration and are decided, with the decision recorded in the task t
       every seated civilisation, and gapping the field for every participant in a match that seats
       the owner never answers wrong — and record the decision in research.md D5 before building it.
       Neither committed recording triggers it; **lands before T655 publishes anything**
-- [ ] T652t **Twenty prerequisite references in `rules.json` point at nothing.** Technology 436 lists
+- [x] T652t **SUPERSEDED by T652y**, which stops carrying prerequisites at all. **Twenty prerequisite references in `rules.json` point at nothing.** Technology 436 lists
       `{kind: building, id: 437}`, but 437 is a technology, and 437 lists building 185. The fault is
       in `packages/knowledge/src/aoe2stats_knowledge/normalise.py`'s kind assignment, so
       `query.prerequisites` answers with entities that do not exist. Fix it there, regenerate
@@ -1109,7 +1109,7 @@ Three were arbitration and are decided, with the decision recorded in the task t
       before and after; a Malians ally's University research 80% faster, an opponent's not; a
       conditional effect with no context raises and an unconditional one does not. Recompute both
       digests; keep both promoted files byte-identical. **Blocks the merge of phases 2-4**
-- [ ] T652v **The event stream does not say who is on whose team.** A team effect (T652u) needs the
+- [x] T652v **The event stream does not say who is on whose team.** A team effect (T652u) needs the
       player's team, and `match-started`'s participant entry carries a slot and a civilisation only.
       The recording's header carries each player's team: add it to
       [contracts/canonical-events.md](./contracts/canonical-events.md) and the participant entry,
@@ -1147,7 +1147,7 @@ Three were arbitration and are decided, with the decision recorded in the task t
       documented as returning an integer and now returns a fraction. Recompute both digests and
       keep both promoted files byte-identical. **Blocks the merge of phases 2-4**
 
-- [ ] T652x **The fifth review's follow-ups, each small, all inside digested or validated content.**
+- [x] T652x **The fifth review's follow-ups, each small, all inside digested or validated content.**
       (1) Malians' University team row's `validated_by` lists who can research Siege Engineers (377)
       and omits Tatars, whose tree marks it `ResearchedCompleted`. (2) Nine refusal reasons
       (Citadels, Ironclad, Crenellations, Bimaristan, Counterweights, Tigui, Farimba, Silk Armor,
@@ -1159,6 +1159,52 @@ Three were arbitration and are decided, with the decision recorded in the task t
       exactly, or record the deviation in the row. Recompute both digests; keep both promoted files
       byte-identical. **Lands before T655 publishes anything**, since FR-025 freezes the snapshot
       then
+
+- [x] T652y **The pack's tree links are not the game's prerequisites — the sixth review's H2,
+      arbitrated 2026-09-28: do not carry them.** T652t made every `BuildingTech` link resolve to an
+      entity that exists, but resolving is not being right: `link_id` is the tech-tree screen's
+      display link ([research.md](./research.md) D3). Hand Cannoneer (5) answers technology 6, Drill,
+      for every civilisation, from Bohemians' tree alone, where the game requires Chemistry; Thumb
+      Ring answers Slinger; Arson answers Flemish Militia. (1)
+      `packages/knowledge/src/aoe2stats_knowledge/normalise.py` stops emitting `prerequisites`:
+      remove the link and `building_upgraded_from_id` readings, `_LINK_NODE_KIND` and T652t's
+      resolver, so no entity in `rules.json` carries the key. (2)
+      `packages/knowledge/src/aoe2stats_knowledge/query.py`: `prerequisites` keeps its signature and
+      answers `field-absent` for every entity the snapshot names; `entity-absent` still answers for
+      one it does not. (3) `packages/core/src/aoe2stats_core/truth/register.toml`:
+      `reconstruction.prerequisite_order_check` becomes `blocked`, `blocked_on` naming a lawful source
+      that states the game's prerequisites; regenerate `REGISTER.md`. By D7 the gap is then
+      informational. (4) Regenerate both promoted snapshots' `rules.json` in place (lawful until T655,
+      **FR-025**), recompute both digests, keep both promoted files byte-identical, and say why in
+      each `snapshot.toml`. (5) `effects.toml`: the `validated_by` readings that resolved a unit line
+      through `rules.json`'s prerequisite chain name a field that no longer exists; add one header
+      note saying where that chain is re-verifiable now, and leave the dated readings as they are.
+      (6) Tests, each shown failing first: no entity in either promoted `rules.json` carries
+      `prerequisites`; `query.prerequisites` answers `field-absent` with severity `informational` for
+      an entity the pack names, and `entity-absent` for one it does not (the contrast); replace
+      T652t's resolution test, which asserted existence only; re-derive `test_coverage.py`'s
+      enumerated blockers from what the pass emits. _Measured: the blocked entry was the only one
+      requiring `age_requirement` and `available_to` too, so all three fields' gaps turn
+      informational and buildings 490 and 673 keep 6 blocking tuples, not 12._ (7) `docs/data-sources.md` §6, aoe2techtree: Scope
+      and Coverage stop claiming prerequisites, and Known limitations says what the links are.
+      **Lands before T655 publishes anything**
+- [x] T652z **The sixth review's follow-ups.** (1)
+      `packages/knowledge/src/aoe2stats_knowledge/effects.py` checks each operand but not whether the
+      operation fits the field: `faster` on a `cost` parses, then raises
+      `AssertionError("unreachable")` at the first query; `multiply` or `add` on `production_time`
+      parses and rounds a time to an integer, against [data-model.md](./data-model.md) §6's rounding
+      row. Reject `faster` on any field but `production_time` at parse time, and make `multiply` and
+      `add` keep a time's fraction. Tests, each shown failing first: `faster` on a cost refuses to
+      load; a `multiply` and an `add` on a time answer the fraction; a cost `multiply` still rounds
+      half up (the contrast). No committed effect reaches either, so no digest moves. (2)
+      `packages/replay-engine/tests/test_canonical.py` computes its expected teams with the
+      adapter's own formula, over two recordings that never carry the sentinel, so `canonical.py`'s
+      `1 → None` branch is untested. Add a test over a synthetic header: `resolved_team_id = 1`
+      gives `None`, two such participants are not allies of one another in the coverage pass, and
+      real team ids pass through unchanged. Show it failing against the adapter with the translation
+      removed. _Found on implementation: the sentinel alone was already tested
+      synthetically (`test_a_participant_with_the_no_team_sentinel_reads_as_no_team_at_all`), which
+      the review missed; the new test adds the case mixing the sentinel with real ids in one match._
 
 **Checkpoint**: the rules are queryable offline, versioned by build, refuse what they do not know,
 and every refusal is counted.
@@ -1284,7 +1330,7 @@ after everything underneath it moves.
       prompted command; and unsetting the variable afterwards. `.env.local` points at production and
       no task here runs a migration from a developer machine by any other route. **In the same
       change, wire T652's gap-rate script into `.github/workflows/nightly.yml`** beside the capture
-      audit, reporting and never failing on a rate: **FR-039** asks for a pattern to be *visible*,
+      audit, reporting and never failing on a rate: **FR-039** asks for a pattern to be _visible_,
       and a script nobody schedules is a rate nobody sees. There is no threshold yet — the first
       patch that moves the rate is what sets one, and a job that fails on an unmeasured number
       would cry wolf from its first run

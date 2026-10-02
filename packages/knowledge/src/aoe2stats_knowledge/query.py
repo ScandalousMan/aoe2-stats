@@ -288,8 +288,6 @@ def _raw_value_for_field(record: Mapping[str, Any], field_name: str) -> Any:
         return None
     if field_name == "age_requirement":
         return record.get("age_requirement")
-    if field_name == "prerequisites":
-        return record.get("prerequisites", [])
     if field_name == "produced_at":
         return record.get("produced_at")
     if field_name == "available_to":
@@ -435,7 +433,13 @@ def age_requirement(entity: EntityRef, *, civilisation: str) -> Answer[int] | Kn
 def prerequisites(
     entity: EntityRef, *, civilisation: str
 ) -> Answer[Sequence[EntityRef]] | KnowledgeGap:
-    """The entities `entity` requires before it can be built, trained or researched."""
+    """**Always refuses.** `rules.json` carries no `prerequisites` field (T652y): the one lawful
+    source's tree entries name the tech-tree screen's display link, not the game's own prerequisite
+    rule — Hand Cannoneer links to node 6 in Bohemians' tree alone, where the game requires
+    Chemistry in every civilisation (research.md D3). So every entity the snapshot names answers a
+    `field-absent` gap here; an id the snapshot does not name still answers `entity-absent`, ahead
+    of the field check. The signature stays — kind, id and civilisation, the same shape every other
+    query in this module uses — so a future lawful source changes no caller."""
     return _civilisation_qualified(entity, civilisation=civilisation, field_name="prerequisites")
 
 

@@ -146,6 +146,19 @@ script reads that local checkout and writes the pack. This is `scripts/ops/sync_
 discipline, and it satisfies FR-032 by construction: nothing in the build, the tests or the running
 system fetches anything, so no provider is needed because no call is made.
 
+**The pack's tree links are not prerequisites (T652y, arbitrated 2026-09-28).** A tree entry's
+`link_id` and `link_node_type` are the tech-tree screen's display link — the node the screen draws a
+line from — not a rule of the game. Measured on the pinned commit: Hand Cannoneer links to node 6 in
+Bohemians' tree alone and to nothing in the other 52, where the game requires Chemistry in all 53;
+Thumb Ring links to Slinger in four trees; Arson links to Flemish Militia, and Cannon Galleon to
+Gillnets, in Burgundians' tree alone. Some links coincide with a real rule, such as an upgrade line's
+previous unit, and nothing in the entry says which. So the knowledge base does not carry
+`prerequisites`: `rules.json` has no such field, and `query.prerequisites` answers a `field-absent`
+gap for every entity. Transcribing the game's prerequisites by hand is not this feature's work; what
+would close the gap is a lawful source that states them. The one register entry that needs the
+field, `reconstruction.prerequisite_order_check`, is `blocked` on that source, so by D7 the gap is
+informational: counted in the aggregate report, never substituted.
+
 ## D4 — No source can answer "what did this cost on build N"; a snapshot is carried forward with evidence
 
 **Decision.** A snapshot names the build it **describes**, separately from the source revision it

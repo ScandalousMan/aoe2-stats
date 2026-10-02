@@ -25,12 +25,62 @@
 # every technology `rules.json` lists as produced_at the University, with no owner-tree
 # restriction — a team effect applies to every ally, and only each ally's own tree, not the
 # owner's, decides what that ally can research — see `effects.toml`'s own header comment and each
-# corrected row's own `validated_by` for the full corrections.
+# corrected row's own `validated_by` for the full corrections. T652r (2026-09-28) gave "works X%
+# faster" its own operation, `faster`, distinct from `multiply` — the three rows this snapshot
+# carries whose bullet reads "work ... faster" (Franks' Chivalry, Persians' Town Center/Dock,
+# Malians' University Team Bonus) are `operation = "faster"` now, not `operation = "multiply"`;
+# no other field of any row changed, and no committed effect reached any of T652r's new parse-time
+# numeric guards (a negative cost `multiply` operand, a `faster` operand of -1 or below, a
+# non-whole `cost`/`age_requirement` `set` operand). T652t (2026-09-28) is the first task to touch
+# `rules.json` itself since T642: the vendored pack's own `"BuildingTech"` link tag names a unit, a
+# technology and (rarely) a building alike, never disambiguating which, and `normalise.py`'s
+# earlier revision mapped it to `"building"` unconditionally — twenty prerequisites across both
+# promoted snapshots named an entity absent from the kind they claimed (technology 436's
+# prerequisite read "building 437" when 437 is itself a technology, among nineteen others).
+# `normalise.py`'s `_resolve_ambiguous_prerequisite` now asks the real, already-merged entity
+# tables instead, preferring whichever candidate kind's own age does not exceed the referring
+# entity's (a prerequisite from a later age than the thing it unlocks never happens in the real
+# game) — every one of the twenty now resolves, and the two prerequisites this fix could have
+# wrongly changed instead (Harbor's own building_upgraded_from_id reading Dock, Horse Collar's
+# reading Farm — both ids also coincide with an unrelated real technology, "Faith" and "Masonry")
+# are unchanged, because the age check keeps the building reading in both. `digest` recomputed
+# over the corrected `rules.json` and the unchanged `effects.toml`.
+# T652x (2026-09-28, the fifth review's follow-ups) touches `effects.toml` only, `rules.json`
+# unchanged: (1) the University row's `validated_by` omitted Tatars from Siege Engineers (377) —
+# Tatars' own tree marks it `ResearchedCompleted` — corrected, and re-derived directly from every
+# modelled civilisation's own tree file for every technology that row enumerates, guarded by
+# `test_selector_availability.py`'s own re-derivation so the next omission fails a test rather
+# than a sixth review. (2) Nine refusal reasons (Citadels, Ironclad, Crenellations, Bimaristan,
+# Counterweights, Tigui, Farimba, Silk Armor, Timurid Siegecraft) still justified themselves by a
+# condition amended research.md D5 no longer admits — reworded to say only that their field is
+# not carried, the same treatment T652w already gave eight others, guarded by
+# `test_effects.py`'s own `test_no_refusal_reason_justifies_itself_by_an_unregistered_condition`.
+# (3) `effects.py`'s `Context.age` check accepted a `bool` (an `int` subclass in Python, so
+# `True in {1, 2, 3, 4}`) and silently answered the plain baseline instead of raising — closed;
+# `Context.researched` and `Context.team` do not share this hole, checked directly, not assumed.
+# (4) Malians' pierce-armour `source_text` rejoins the pack's own mid-bullet line break rather
+# than transcribing it literally — the deviation is now recorded in that row's own `validated_by`,
+# not only in the test that already enforced the rejoining convention. `digest` recomputed over
+# the unchanged `rules.json` and the corrected `effects.toml`; both promoted snapshots' files stay
+# byte-identical.
+# T652y (2026-09-28, sixth review H2, repository owner's arbitration): the pack's tree links are
+# not the game's prerequisites — T652t made every `BuildingTech` link resolve to an entity that
+# exists, but resolving is not being right, since `link_id` is the tech-tree screen's display link
+# (research.md D3: Hand Cannoneer links to node 6 in Bohemians' tree alone, where the game
+# requires Chemistry in every civilisation). `normalise.py` stops emitting `prerequisites`
+# entirely — the link and `building_upgraded_from_id` readings, T652t's resolver and its
+# supporting tables are all removed, so no entity in `rules.json` carries the key; `query.
+# prerequisites` now answers `field-absent` for every entity the snapshot names, by construction.
+# `reconstruction.prerequisite_order_check` in the truth register moves to `blocked`, naming the
+# gap this leaves. `digest` recomputed over the corrected `rules.json` (`prerequisites` gone from
+# every entity) and `effects.toml` (one header note added, pointing at where a unit line's chain
+# is re-verifiable now that its own field is gone); both promoted snapshots' files stay
+# byte-identical.
 [snapshot]
 source = "aoe2techtree"
 source_version = "b9d494df6921d4080df69b22f9dbb7a4d1dcd9f0"
 describes_build = 180059
-digest = "sha256:4173512068f52a70afe8867995c777c37e1f86b5f96b45ff5b42b5e04d747dc3"
+digest = "sha256:6167f0b69be56d7a33803d29a060b9f29f34c917073eb970ccccc1c206c6b81a"
 promoted = true
 civilisations_modelled = ["Franks", "Teutons", "Persians", "Saracens", "Malians", "Tatars"]
 
