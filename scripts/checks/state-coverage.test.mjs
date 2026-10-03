@@ -77,6 +77,7 @@ import {
   checkCellGate,
   RECORD1_HEADERS,
   RECORD3_HEADERS,
+  PRIMITIVE_NAMES,
 } from './state-coverage.mjs'
 import { deriveVocabulary } from './spec-completeness.mjs'
 
@@ -7682,21 +7683,64 @@ export function Row({ onRetry, href }) {
 }
 `
 
-// Every cell any planted story is credited on, flattened to `Primitive|row|state` (record 3) and
-// `local:<tag>|state` (record 1). The planted story is the only `Row` story, so every entry whose
-// text names `Row:Planted` is the planted story's own.
-function t685Credits(
+// Every cell any planted story is credited on, flattened to `<Primitive>|<row>|<state>` (record 3,
+// the axis matrices) and `local:<componentKey>:<tag>|<state>` (record 1, every component's local
+// elements, primitives' own included). The state keys are read off what the script actually emits,
+// never listed here: a matrix row carries `rest`/`hover`/`focusVisible`/`active`/`disabled` (every
+// own key holding an array of strings but `variantSize`), a record-1 element carries `coveredBy`
+// with `hover`/`focusVisible`/`active`. A hard-coded list went stale once already (it read
+// `focus-visible` and `press`, which no row carries, and record 1 only for `composites/Row`), so the
+// helper was blind to two of the three columns and to every primitive's own local elements.
+// A cell names a credit when one entry IS the planted story's label (`Planted` or
+// `<basename>:Planted`) — an `unresolved: …` note that mentions it is not a credit.
+// Non-axis primitives' matrices are their record 1 re-printed (`<tag> @ <file>:<line>` rows); they
+// are skipped here since `localElements` already carries them.
+const T685_STATE_KEYS = (row) =>
+  Object.keys(row).filter((k) => k !== 'variantSize' && isStringArray(row[k]))
+function isStringArray(value) {
+  return Array.isArray(value) && value.every((v) => typeof v === 'string')
+}
+function plantedCredits(computed, label = 'Planted') {
+  const isPlanted = (c) => c === label || c.endsWith(`:${label}`)
+  const credits = []
+  for (const [primitive, rows] of Object.entries(computed.matrices)) {
+    if (!PRIMITIVE_NAMES.includes(primitive)) continue
+    for (const row of rows) {
+      for (const state of T685_STATE_KEYS(row)) {
+        if (row[state].some(isPlanted)) credits.push(`${primitive}|${row.variantSize}|${state}`)
+      }
+    }
+  }
+  for (const { componentKey, elements } of computed.localElements) {
+    for (const el of elements) {
+      for (const state of Object.keys(el.coveredBy)) {
+        if (el.coveredBy[state].some(isPlanted)) {
+          credits.push(`local:${componentKey}:${el.tag}|${state}`)
+        }
+      }
+    }
+  }
+  return credits.sort()
+}
+
+function t685Computed(
   renderJsx,
   forced,
   {
     rowIndexSource = T685_ROW_INDEX_SOURCE,
     storyImports = "import { Row } from './index'",
     storyHelpers = '',
+    storyExtra = '',
+    renderHead = '()',
+    extraFiles = [],
+    extraDirs = [],
+    state = 'hover',
   } = {},
 ) {
   const componentDirs = [
     ...Object.keys(T685_PRIMITIVE_SOURCES).map((name) => ({ segment: 'primitives', name })),
     { segment: 'composites', name: 'Row' },
+    ...extraDirs,
   ]
   const filesByPath = new Map(
     Object.entries(T685_PRIMITIVE_SOURCES).map(([name, source]) => [
@@ -7713,31 +7757,18 @@ const meta = { component: Row }
 export default meta
 ${storyHelpers}
 export const Planted = {
-  render: () => (${renderJsx}),
-  parameters: { visualForceState: { state: 'hover', ${forced} } },
+  render: ${renderHead} => (${renderJsx}),
+  ${storyExtra}
+  parameters: { visualForceState: { state: '${state}', ${forced} } },
 }
 `,
   )
-  const computed = computeStateCoverage({ componentDirs, filesByPath })
-  const credits = []
-  for (const [primitive, rows] of Object.entries(computed.matrices)) {
-    for (const row of rows) {
-      for (const state of ['rest', 'hover', 'focus-visible', 'press', 'disabled']) {
-        if ((row[state] ?? []).some((c) => c === 'Row:Planted')) {
-          credits.push(`${primitive}|${row.variantSize}|${state}`)
-        }
-      }
-    }
-  }
-  const local = computed.localElements.find((c) => c.componentKey === 'composites/Row')
-  for (const el of local?.elements ?? []) {
-    for (const state of ['hover', 'focus-visible', 'active']) {
-      if ((el.coveredBy[state] ?? []).some((c) => c === 'Planted' || c === 'Row:Planted')) {
-        credits.push(`local:${el.tag}|${state}`)
-      }
-    }
-  }
-  return credits.sort()
+  for (const [rel, source] of extraFiles) filesByPath.set(path.join(REPO_SRC_DIR, rel), source)
+  return computeStateCoverage({ componentDirs, filesByPath })
+}
+
+function t685Credits(renderJsx, forced, options = {}) {
+  return plantedCredits(t685Computed(renderJsx, forced, options))
 }
 
 test('T685: a story whose render mounts only a raw <button> credits no Button cell (the fallback onto Row’s own composed Button is closed)', () => {
@@ -7781,8 +7812,14 @@ test('T685 sibling: a raw <input>, <select> or <textarea> credits no cell anywhe
   assert.deepEqual(t685Credits('<textarea aria-label="x" />', "role: 'textbox'"), [])
 })
 
-test('T685 sibling contrast (pin, already today’s behaviour): a story mounting <Field> credits no hover cell — Field renders under no single fixed role, so a role-based force never matches it', () => {
-  assert.deepEqual(t685Credits('<Field variant="text" size="md" />', "role: 'textbox'"), [])
+test('T685 sibling contrast: a story mounting <Field> credits no record-3 cell (Field renders under no single fixed role) but does credit Field’s own local <input> in record 1', () => {
+  // The record-1 half used to be invisible: the helper read only `composites/Row`'s local elements,
+  // so the credit `injectComposedPrimitiveLocalCredits` gives the primitive’s own `<input>` (a real
+  // one — the story mounts `<Field>`, whose `<input>` is the textbox the force targets) never
+  // showed. Pinned now that the helper reads every component’s record 1.
+  assert.deepEqual(t685Credits('<Field variant="text" size="md" />', "role: 'textbox'"), [
+    'local:primitives/Field:input|hover',
+  ])
 })
 
 test('T685 sibling: a raw element carrying role="button" credits no Button cell', () => {
@@ -7892,4 +7929,433 @@ test('T685: an import from another component’s module (../../) is not the comp
     }),
     [],
   )
+})
+
+// --- T685, remediation of the adversarial review of #111 ------------------------------------------
+//
+// The first T685 fix gated three paths. The review found the same defect — a story credited to a
+// component's cells although its `render:` never mounts that component — on every other path that
+// reads a story's render instances or falls back to the component's source. One `describe`-less
+// group per path, each a separate level: record 1 (forced role, forced selector, dynamic role,
+// play-click, play-focus), record 3 (composed primitive cells), the composed-elsewhere hop, and the
+// injected local credits. Each plants the raw-element story and keeps a contrast that stays credited.
+
+const T685_SELECTOR = `selector: 'a[href="/x"]'`
+const T685_HREF_ARGS = "args: { href: '/x' }"
+
+test('T685 record 1, selector branch: a raw <a href> story whose selector the component’s own <a> would resolve credits no local element', () => {
+  assert.deepEqual(
+    t685Credits('<a href="/x">Raw</a>', T685_SELECTOR, { storyExtra: T685_HREF_ARGS }),
+    [],
+  )
+})
+
+test('T685 record 1, selector branch contrast: the same selector on a story mounting <Row> is still credited to Row’s own <a>', () => {
+  assert.deepEqual(t685Credits('<Row />', T685_SELECTOR, { storyExtra: T685_HREF_ARGS }), [
+    'local:composites/Row:a|hover',
+  ])
+  assert.deepEqual(
+    t685Credits('<Row {...args} />', T685_SELECTOR, {
+      storyExtra: T685_HREF_ARGS,
+      renderHead: '(args)',
+    }),
+    ['local:composites/Row:a|hover'],
+  )
+})
+
+// The injected local credits: `Panel` composes a `Menu` whose `MenuItemRow` carries a dynamic role.
+// A story that mounts a raw `<div role="menuitemradio">` and names the item through the meta `args`
+// is not a rendering of `Panel`'s `<Menu>`, so it cannot be what `MenuItemRow`'s frame depicts.
+test('T685 injected local credits: a raw role="menuitemradio" story credits no local element of a composed primitive, and the real story on the same element stays credited', () => {
+  const stories = `
+    import { Panel } from './index'
+    const meta = { component: Panel, args: { subject: 'self', items: [{ id: 'p1', label: 'aoe2guy' }] } }
+    export default meta
+    export const RowFocusVisible = {
+      args: {},
+      parameters: { visualForceState: { state: 'focus-visible', role: 'menuitemradio', name: 'aoe2guy' } },
+    }
+    export const PlantedRaw = {
+      render: () => <div role="menuitemradio" tabIndex={0}>aoe2guy</div>,
+      args: {},
+      parameters: { visualForceState: { state: 'focus-visible', role: 'menuitemradio', name: 'aoe2guy' } },
+    }
+  `
+  const computed = computeStateCoverage({
+    componentDirs: [
+      { segment: 'primitives', name: 'Menu' },
+      { segment: 'screens', name: 'Panel' },
+    ],
+    filesByPath: new Map([
+      [path.join(REPO_SRC_DIR, 'primitives/Menu/index.tsx'), MENU_WITH_DYNAMIC_ROW_INDEX_SOURCE],
+      [path.join(REPO_SRC_DIR, 'screens/Panel/index.tsx'), PANEL_WITH_SELECTION_MENU_INDEX_SOURCE],
+      [path.join(REPO_SRC_DIR, 'screens/Panel/Panel.stories.tsx'), stories],
+    ]),
+  })
+  const { elements } = computed.localElements.find((c) => c.componentKey === 'primitives/Menu')
+  const menuItemRow = elements.find((el) => el.role === 'unresolved')
+  assert.deepEqual(menuItemRow.coveredBy.focusVisible, ['Panel:RowFocusVisible'])
+})
+
+// Record 1 of a primitive's own dynamic-role element (`MenuItemRow`'s `role={role}`), resolved per
+// story. Asserts on record 1 only: the same planted story also reaches `Menu`'s own axis matrix
+// through the own-story path (`findOwnStoryRenderInstances` falling back to `args`), which is T686's.
+function menuRecord1Credits(storyBody) {
+  const computed = computeStateCoverage({
+    componentDirs: [{ segment: 'primitives', name: 'Menu' }],
+    filesByPath: new Map([
+      [path.join(REPO_SRC_DIR, 'primitives/Menu/index.tsx'), MENU_WITH_DYNAMIC_ROW_INDEX_SOURCE],
+      [
+        path.join(REPO_SRC_DIR, 'primitives/Menu/Menu.stories.tsx'),
+        `import { Menu } from './index'\nconst meta = { component: Menu }\nexport default meta\n${storyBody}`,
+      ],
+    ]),
+  })
+  return plantedCredits(computed).filter((c) => c.startsWith('local:primitives/Menu:'))
+}
+const MENU_PLANTED_ARGS = `args: { variant: 'selection', items: [{ id: 'p2', label: 'aoe2alt' }] }`
+const MENU_PLANTED_FORCE = (role, name) =>
+  `parameters: { visualForceState: { state: 'hover', role: '${role}', ${name ? `name: '${name}'` : ''} } }`
+
+test('T685 record 1, dynamic-role branch: a raw role="menuitemradio" story credits no dynamic-role element (record 1 only; Menu’s axis matrix is T686’s)', () => {
+  assert.deepEqual(
+    menuRecord1Credits(`export const Planted = {
+      render: () => <div role="menuitemradio" tabIndex={0}>aoe2alt</div>,
+      ${MENU_PLANTED_ARGS},
+      ${MENU_PLANTED_FORCE('menuitemradio', 'aoe2alt')},
+    }`),
+    [],
+  )
+})
+
+test('T685 record 1, dynamic-role branch contrast: an args-only story and a render mounting <Menu> both stay credited to the dynamic-role element', () => {
+  assert.deepEqual(
+    menuRecord1Credits(`export const Planted = {
+      ${MENU_PLANTED_ARGS},
+      ${MENU_PLANTED_FORCE('menuitemradio', 'aoe2alt')},
+    }`),
+    ['local:primitives/Menu:button|hover'],
+  )
+  assert.deepEqual(
+    menuRecord1Credits(`export const Planted = {
+      render: (args) => <Menu {...args} />,
+      ${MENU_PLANTED_ARGS},
+      ${MENU_PLANTED_FORCE('menuitemradio', 'aoe2alt')},
+    }`),
+    ['local:primitives/Menu:button|hover'],
+  )
+})
+
+test('T685 record 1, dynamic-role branch, play-focus half: a raw story whose play() asserts focus on the role is not even considered', () => {
+  const play = `play: async ({ canvasElement }) => {
+      const item = within(canvasElement).getByRole('menuitemradio')
+      item.focus()
+      await expect(item).toHaveFocus()
+    }`
+  const computed = (storyBody) =>
+    computeStateCoverage({
+      componentDirs: [{ segment: 'primitives', name: 'Menu' }],
+      filesByPath: new Map([
+        [path.join(REPO_SRC_DIR, 'primitives/Menu/index.tsx'), MENU_WITH_DYNAMIC_ROW_INDEX_SOURCE],
+        [
+          path.join(REPO_SRC_DIR, 'primitives/Menu/Menu.stories.tsx'),
+          `import { Menu } from './index'\nconst meta = { component: Menu }\nexport default meta\n${storyBody}`,
+        ],
+      ]),
+    })
+  const focusCell = (c) =>
+    c.localElements
+      .find((e) => e.componentKey === 'primitives/Menu')
+      .elements.find((el) => el.role === 'unresolved')
+      .coveredBy.focusVisible.join(' ')
+  const raw = computed(`export const Planted = {
+    render: () => <div role="menuitemradio" tabIndex={0}>aoe2alt</div>,
+    ${MENU_PLANTED_ARGS},
+    ${play},
+  }`)
+  assert.doesNotMatch(focusCell(raw), /Planted/)
+  const real = computed(`export const Planted = { ${MENU_PLANTED_ARGS}, ${play} }`)
+  assert.match(focusCell(real), /Planted \(play-driven/)
+})
+
+test('T685 record 1, forced role on a primitive’s own static element: a raw <button> story credits Menu’s trigger no more than a Button does elsewhere; <Menu> still does', () => {
+  assert.deepEqual(
+    menuRecord1Credits(`export const Planted = {
+      render: () => <button type="button">Raw</button>,
+      ${MENU_PLANTED_FORCE('button')},
+    }`),
+    [],
+  )
+  assert.deepEqual(
+    menuRecord1Credits(`export const Planted = {
+      render: () => <Menu variant="actions" items={[]} />,
+      ${MENU_PLANTED_FORCE('button')},
+    }`),
+    ['local:primitives/Menu:button|hover'],
+  )
+})
+
+// The play-click and play-focus branches of record 1: `Tooltip`'s own trigger paints `active`
+// through `pinned ? … : …`, and a story whose play() clicks a `getByRole('button')` pins it.
+const TOOLTIP_PINNABLE_INDEX_SOURCE = `
+export function Tooltip({ children }) {
+  return (
+    <span>
+      <button type="button" className={cx('border-2', pinned ? 'border-border-strong' : 'border-transparent')}>
+        {children}
+      </button>
+    </span>
+  )
+}
+`
+const TOOLTIP_PLAY_STORIES_SOURCE = `
+import { Tooltip } from './index'
+async function pinOpen({ canvasElement }) {
+  const canvas = within(canvasElement)
+  const trigger = canvas.getByRole('button')
+  await userEvent.click(trigger)
+}
+async function focusOpen({ canvasElement }) {
+  const canvas = within(canvasElement)
+  const trigger = canvas.getByRole('button')
+  trigger.focus()
+  await expect(trigger).toHaveFocus()
+}
+const meta = { component: Tooltip }
+export default meta
+export const Pinned = { play: pinOpen, args: { content: 'France' } }
+export const Focused = { play: focusOpen, args: { content: 'France' } }
+export const PlantedPin = {
+  render: () => <button type="button">Raw</button>,
+  play: pinOpen,
+  args: { content: 'France' },
+}
+export const PlantedFocus = {
+  render: () => <button type="button">Raw</button>,
+  play: focusOpen,
+  args: { content: 'France' },
+}
+`
+function tooltipPlayCoverage() {
+  const computed = computeStateCoverage({
+    componentDirs: [{ segment: 'primitives', name: 'Tooltip' }],
+    filesByPath: new Map([
+      [path.join(REPO_SRC_DIR, 'primitives/Tooltip/index.tsx'), TOOLTIP_PINNABLE_INDEX_SOURCE],
+      [
+        path.join(REPO_SRC_DIR, 'primitives/Tooltip/Tooltip.stories.tsx'),
+        TOOLTIP_PLAY_STORIES_SOURCE,
+      ],
+    ]),
+  })
+  const [button] = computed.localElements.find(
+    (c) => c.componentKey === 'primitives/Tooltip',
+  ).elements
+  return { computed, coveredBy: button.coveredBy }
+}
+
+test('T685 record 1, play-click branch: a raw <button> story whose play() clicks the role credits no Active cell; the real Pinned story stays credited', () => {
+  const { computed, coveredBy } = tooltipPlayCoverage()
+  assert.deepEqual(plantedCredits(computed, 'PlantedPin'), [])
+  assert.deepEqual(coveredBy.active, ['Pinned'])
+})
+
+test('T685 record 1, play-focus branch: a raw <button> story whose play() asserts focus is not considered at all, while the real Focused story stays an unresolved play-driven note', () => {
+  const { coveredBy } = tooltipPlayCoverage()
+  const cell = coveredBy.focusVisible.join(' ')
+  assert.doesNotMatch(cell, /PlantedFocus/)
+  assert.match(cell, /Focused \(play-driven; frame not provable statically\)/)
+})
+
+// The composed-elsewhere hop: a name or a role-only force on a component that composes `Tooltip` is
+// routed to `Tooltip`'s own trigger. A story that mounts only a raw `<button>` never shows that
+// component's `<Tooltip>`, so the hop must not fire for it.
+const FLAG_HOP_STORIES = (storyBody) => `
+  import { Flag } from './index'
+  const meta = { component: Flag, args: { countryName: 'France' } }
+  export default meta
+  ${storyBody}
+`
+function flagHopCredits(storyBody) {
+  const computed = computeStateCoverage({
+    componentDirs: [
+      { segment: 'primitives', name: 'Tooltip' },
+      { segment: 'composites', name: 'Flag' },
+    ],
+    filesByPath: new Map([
+      [path.join(REPO_SRC_DIR, 'primitives/Tooltip/index.tsx'), TOOLTIP_LIKE_INDEX_SOURCE],
+      [path.join(REPO_SRC_DIR, 'composites/Flag/index.tsx'), FLAG_LIKE_DIRECT_INDEX_SOURCE],
+      [path.join(REPO_SRC_DIR, 'composites/Flag/Flag.stories.tsx'), FLAG_HOP_STORIES(storyBody)],
+    ]),
+  })
+  return plantedCredits(computed)
+}
+
+test('T685 composed-elsewhere hop: a raw <button> story forcing a role-only hover (or the composed qualifier as name) credits Tooltip’s trigger to nobody', () => {
+  assert.deepEqual(
+    flagHopCredits(`export const Planted = {
+      render: () => <button type="button">Raw</button>,
+      parameters: { visualForceState: { state: 'hover', role: 'button' } },
+    }`),
+    [],
+  )
+  assert.deepEqual(
+    flagHopCredits(`export const Planted = {
+      render: () => <button type="button">Raw</button>,
+      parameters: { visualForceState: { state: 'hover', role: 'button', name: 'Country:' } },
+    }`),
+    [],
+  )
+})
+
+test('T685 composed-elsewhere hop contrast: the same forces on a story that mounts <Flag> (render-less, or render mounting it) credit Tooltip’s trigger', () => {
+  const role = `parameters: { visualForceState: { state: 'hover', role: 'button' } }`
+  const named = `parameters: { visualForceState: { state: 'hover', role: 'button', name: 'Country:' } }`
+  assert.deepEqual(flagHopCredits(`export const Planted = { args: {}, ${role} }`), [
+    'local:primitives/Tooltip:button|hover',
+  ])
+  assert.deepEqual(
+    flagHopCredits(`export const Planted = { render: (args) => <Flag {...args} />, ${named} }`),
+    ['local:primitives/Tooltip:button|hover'],
+  )
+})
+
+// The predicate itself counts value references only. Each plant below is a raw `<button>` story
+// whose text still names `Row` somewhere that is not a use of the component, and each used to reach
+// `Row`'s module and so credit Row's composed `Button` (primary|lg).
+const T685_RAW_BUTTON = '<button type="button">Raw</button>'
+const T685_BUTTON_ROLE = "role: 'button'"
+
+test('T685 predicate: a `typeof Row` inside a type annotation does not reach the component', () => {
+  assert.deepEqual(
+    t685Credits(T685_RAW_BUTTON, T685_BUTTON_ROLE, {
+      renderHead: '(args: React.ComponentProps<typeof Row>)',
+    }),
+    [],
+  )
+})
+
+test('T685 predicate: `meta.title` does not reach the component — meta is an object that merely names it (component: Row)', () => {
+  assert.deepEqual(
+    t685Credits('<button type="button" title={meta.title}>Raw</button>', T685_BUTTON_ROLE),
+    [],
+  )
+})
+
+test('T685 predicate: an object-literal key spelling the component does not reach it', () => {
+  assert.deepEqual(
+    t685Credits('<button type="button" data-x={{ Row: 1 }}>Raw</button>', T685_BUTTON_ROLE),
+    [],
+  )
+})
+
+test('T685 predicate: a property-access member spelling the component does not reach it', () => {
+  assert.deepEqual(
+    t685Credits('<button type="button" data-x={meta.Row}>Raw</button>', T685_BUTTON_ROLE),
+    [],
+  )
+})
+
+test('T685 predicate: a JSX attribute name spelling the component does not reach it', () => {
+  assert.deepEqual(t685Credits('<button type="button" Row="x">Raw</button>', T685_BUTTON_ROLE), [])
+})
+
+test('T685 predicate: a story-file object whose initializer merely names the component as a value is not a helper', () => {
+  assert.deepEqual(
+    t685Credits('<button type="button" data-x={registry.C.name}>Raw</button>', T685_BUTTON_ROLE, {
+      storyHelpers: 'const registry = { C: Row }',
+    }),
+    [],
+  )
+})
+
+test('T685 predicate: a string that spells the component name does not reach it (pin, unchanged)', () => {
+  assert.deepEqual(
+    t685Credits('<button type="button" aria-label="Row">Raw</button>', T685_BUTTON_ROLE),
+    [],
+  )
+})
+
+test('T685 predicate contrast: a value reference still reaches — the tag with spread args, a function helper, a helper object holding a render function (arrow and method), a wrapped component, a JSX constant', () => {
+  const credited = ['Button|primary|lg|hover']
+  const cases = [
+    ['<Row {...args} />', { renderHead: '(args)' }],
+    ['<Demo />', { storyHelpers: 'const Demo = () => <Row />' }],
+    ['tpl.render()', { storyHelpers: 'const tpl = { render: () => <Row /> }' }],
+    ['tpl.render()', { storyHelpers: 'const tpl = { render() { return <Row /> } }' }],
+    ['<Demo />', { storyHelpers: 'const Demo = memo(() => <Row />)' }],
+    ['<>{row}</>', { storyHelpers: 'const row = <Row />' }],
+  ]
+  for (const [jsx, options] of cases) {
+    assert.deepEqual(
+      t685Credits(jsx, T685_BUTTON_ROLE, options),
+      credited,
+      `${jsx} ${options.storyHelpers ?? ''}`,
+    )
+  }
+})
+
+// The `Disabled` cell of a non-axis primitive's element matrix credits every story whose `args`
+// admit `disabled: true`. A story that mounts only a raw element shows none of the primitive's
+// elements, so its `args` do not render one disabled.
+test('T685 element matrix, Disabled cell: a raw-render story with args disabled: true credits no element; an args-only story and a render mounting the component do', () => {
+  const index = `export function Switch({ disabled }) {
+    return <input type="checkbox" disabled={disabled} className="hover:bg-surface-sunken" />
+  }`
+  const disabledCell = (storyBody) =>
+    computeStateCoverage({
+      componentDirs: [{ segment: 'primitives', name: 'Switch' }],
+      filesByPath: new Map([
+        [path.join(REPO_SRC_DIR, 'primitives/Switch/index.tsx'), index],
+        [
+          path.join(REPO_SRC_DIR, 'primitives/Switch/Switch.stories.tsx'),
+          `import { Switch } from './index'\nconst meta = { component: Switch }\nexport default meta\n${storyBody}`,
+        ],
+      ]),
+    }).matrices.Switch[0].disabled
+  assert.deepEqual(
+    disabledCell(
+      `export const Planted = { render: () => <div>Raw</div>, args: { disabled: true } }`,
+    ),
+    ['none'],
+  )
+  assert.deepEqual(disabledCell(`export const Planted = { args: { disabled: true } }`), ['Planted'])
+  assert.deepEqual(
+    disabledCell(
+      `export const Planted = { render: (args) => <Switch {...args} />, args: { disabled: true } }`,
+    ),
+    ['Planted'],
+  )
+})
+
+// The check's own unaccounted-force-state report. A forced story that reaches nothing of its
+// component credits nothing; the report must name it, or a wrongly-false predicate would make a
+// credit vanish with no failure anywhere.
+test('T685 report: a forced story whose render reaches nothing of the component is reported as unaccounted, and a story that reaches it and is credited is not', () => {
+  const planted = t685Computed('<button type="button">Raw</button>', "role: 'slider'")
+  assert.deepEqual(planted.unaccountedForceStates.missing, [
+    { componentKey: 'composites/Row', exportName: 'Planted', state: 'hover' },
+  ])
+  const contrast = t685Computed('<Row />', "role: 'button', name: 'Retry'")
+  assert.deepEqual(contrast.unaccountedForceStates.missing, [])
+  const wrapper = t685Computed('<Demo />', "role: 'button'", {
+    storyHelpers: 'function Demo() {\n  return <Row />\n}',
+  })
+  assert.deepEqual(wrapper.unaccountedForceStates.missing, [])
+})
+
+test('T685 report: findUnaccountedForceStates skips a render-less-of-the-component story only while it still reaches the module (wrapper), never when it reaches nothing', () => {
+  const entry = (extra) => ({
+    exportName: 'Planted',
+    storyFile: 'Row.stories.tsx',
+    forced: { state: 'hover', role: 'button' },
+    rendersComponent: false,
+    ...extra,
+  })
+  const region = regionFixture({})
+  const run = (e) => findUnaccountedForceStates(new Map([['composites/Row', [e]]]), region).missing
+  assert.deepEqual(run(entry({ reachesComponentModule: true })), [])
+  assert.deepEqual(run(entry({})), [], 'a fixture predating the flag keeps its old meaning')
+  assert.deepEqual(run(entry({ reachesComponentModule: false })), [
+    { componentKey: 'composites/Row', exportName: 'Planted', state: 'hover' },
+  ])
 })
