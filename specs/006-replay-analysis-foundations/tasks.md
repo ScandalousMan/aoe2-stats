@@ -1234,7 +1234,7 @@ after everything underneath it moves.
       (**FR-042**). Both components exist from the start, so the tuple's **shape never changes** —
       retrofitting identity onto published artifacts is far harder than designing it in, which is
       why US6 is specified now
-- [ ] T654 [P] [US6] Write `packages/core/tests/test_identity.py` before T653, `xfail(strict=True)`:
+- [x] T654 [P] [US6] Write `packages/core/tests/test_identity.py` before T653, `xfail(strict=True)`:
       the digest is stable across processes and insensitive to field ordering; two identities
       differing in any one component produce different digests; an empty dependency record is
       refused (**FR-044**)
@@ -1296,7 +1296,7 @@ after everything underneath it moves.
       fixed float format, and the wall-clock field excluded from both the identity and the
       comparison. The legacy top-level extraction time stays at its current path for one version
       because the web reader requires it there, and it joins the excluded set
-- [ ] T660 [P] [US6] Write `apps/analyzer/tests/test_reproducibility.py` before T657–T659,
+- [x] T660 [P] [US6] Write `apps/analyzer/tests/test_reproducibility.py` before T657–T659,
       `xfail(strict=True)`. **SC-004**: the same recording analysed twice with identical versions
       yields a byte-identical result **outside the wall-clock set** — the envelope and the legacy
       top-level extraction time, which T659 excludes; a whole-document comparison fails on every
@@ -1305,7 +1305,7 @@ after everything underneath it moves.
       promote a second snapshot, recompute, then fetch by the first identity and confirm it
       reproduces exactly and the newer snapshot was not substituted — and that the previous version
       remains available
-- [ ] T661 [P] [US3] Write `apps/analyzer/tests/test_document_validation.py`, `xfail(strict=True)`:
+- [x] T661 [P] [US3] Write `apps/analyzer/tests/test_document_validation.py`, `xfail(strict=True)`:
       a document whose dependency record is empty is rejected (**SC-011**); a document carrying a
       datum whose required knowledge intersects a blocking gap is rejected (**FR-037**); a document
       with no tier on a value is rejected (**SC-002**)
@@ -1334,7 +1334,7 @@ after everything underneath it moves.
       and a script nobody schedules is a rate nobody sees. There is no threshold yet — the first
       patch that moves the rate is what sets one, and a job that fails on an unmeasured number
       would cry wolf from its first run
-- [ ] T664 [P] [US3] Add a test in `apps/web/src/features/analysis/` pinning that the reader parses a
+- [x] T664 [P] [US3] Add a test in `apps/web/src/features/analysis/` pinning that the reader parses a
       next-version document fixture with **no source change**. The reader already requires only the
       existing fields, accepts any numeric schema version and ignores unknown keys — this test is
       what stops a later edit quietly breaking that, and it is why the extraction time is duplicated
@@ -1345,7 +1345,7 @@ after everything underneath it moves.
       is the build's own compiled constant and is no evidence about the database — and one analysis
       requested by hand shows a populated dependency record, an identity digest and a gap list that
       is empty or explains itself
-- [ ] T666 [P] [US3] Add the boundary guard test asserting this feature added no scheduled job, no
+- [x] T666 [P] [US3] Add the boundary guard test asserting this feature added no scheduled job, no
       request-path work and no code path that consumes the capture budget (**FR-049**), and that
       nothing here re-specifies 003's request, fetch, parse-once, retention, recompute, isolation,
       rate-limiting or legal-basis behaviour (**FR-048**). Constitution I is the reason: an analysis
