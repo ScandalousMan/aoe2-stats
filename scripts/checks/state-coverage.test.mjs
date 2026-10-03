@@ -6,7 +6,19 @@
 // `node --test` conventions: real functions, small fixtures, node:assert/strict, no mocking.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, writeFileSync, mkdirSync, rmSync, readFileSync } from 'node:fs'
+import {
+  mkdtempSync,
+  writeFileSync,
+  mkdirSync,
+  rmSync,
+  readFileSync,
+  cpSync,
+  symlinkSync,
+  appendFileSync,
+  readdirSync,
+  realpathSync,
+} from 'node:fs'
+import { spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -63,6 +75,7 @@ import {
   countRecord1Cells,
   countRecord3Cells,
   findUnaccountedForceStates,
+  describeMissingForceState,
   KNOWN_UNACCOUNTED_FORCE_STATES,
   readAllSourceFiles,
   answerSaysImpossible,
@@ -7684,17 +7697,16 @@ export function Row({ onRetry, href }) {
 `
 
 // Every cell any planted story is credited on, flattened to `<Primitive>|<row>|<state>` (record 3,
-// the axis matrices) and `local:<componentKey>:<tag>|<state>` (record 1, every component's local
-// elements, primitives' own included). The state keys are read off what the script actually emits,
-// never listed here: a matrix row carries `rest`/`hover`/`focusVisible`/`active`/`disabled` (every
-// own key holding an array of strings but `variantSize`), a record-1 element carries `coveredBy`
-// with `hover`/`focusVisible`/`active`. A hard-coded list went stale once already (it read
-// `focus-visible` and `press`, which no row carries, and record 1 only for `composites/Row`), so the
-// helper was blind to two of the three columns and to every primitive's own local elements.
-// A cell names a credit when one entry IS the planted story's label (`Planted` or
-// `<basename>:Planted`) — an `unresolved: …` note that mentions it is not a credit.
-// Non-axis primitives' matrices are their record 1 re-printed (`<tag> @ <file>:<line>` rows); they
-// are skipped here since `localElements` already carries them.
+// `computed.matrices`) and `local:<componentKey>:<tag>|<state>` (record 1, `computed.localElements`,
+// every component's local elements, primitives' own included). The state keys are read off what the
+// script actually emits, never listed here: every own key of a matrix row holding an array of
+// strings but `variantSize`, and every key of a record-1 element's `coveredBy`. A hard-coded list
+// went stale once already (it read `focus-visible` and `press`, which no row carries).
+// A non-axis primitive's matrix rows re-print its record 1 (`<tag> @ <file>:<line>` rows), so the
+// keys `coveredBy` already carries are skipped there rather than credited twice; any other key of
+// those rows (`disabled`, which only the matrix holds) is read. A cell names a credit when one
+// entry IS the planted story's label (`Planted` or `<basename>:Planted`): an `unresolved: …` note
+// that mentions it is not a credit.
 const T685_STATE_KEYS = (row) =>
   Object.keys(row).filter((k) => k !== 'variantSize' && isStringArray(row[k]))
 function isStringArray(value) {
@@ -7702,11 +7714,17 @@ function isStringArray(value) {
 }
 function plantedCredits(computed, label = 'Planted') {
   const isPlanted = (c) => c === label || c.endsWith(`:${label}`)
+  const reprintedByRecord1 = new Set(
+    computed.localElements.flatMap(({ elements }) =>
+      elements.flatMap((el) => Object.keys(el.coveredBy)),
+    ),
+  )
   const credits = []
   for (const [primitive, rows] of Object.entries(computed.matrices)) {
-    if (!PRIMITIVE_NAMES.includes(primitive)) continue
+    const isAxis = PRIMITIVE_NAMES.includes(primitive)
     for (const row of rows) {
       for (const state of T685_STATE_KEYS(row)) {
+        if (!isAxis && reprintedByRecord1.has(state)) continue
         if (row[state].some(isPlanted)) credits.push(`${primitive}|${row.variantSize}|${state}`)
       }
     }
@@ -7729,6 +7747,7 @@ function t685Computed(
   {
     rowIndexSource = T685_ROW_INDEX_SOURCE,
     storyImports = "import { Row } from './index'",
+    storyMeta = 'const meta = { component: Row }\nexport default meta',
     storyHelpers = '',
     storyExtra = '',
     renderHead = '()',
@@ -7753,8 +7772,7 @@ function t685Computed(
     path.join(REPO_SRC_DIR, 'composites/Row/Row.stories.tsx'),
     `
 ${storyImports}
-const meta = { component: Row }
-export default meta
+${storyMeta}
 ${storyHelpers}
 export const Planted = {
   render: ${renderHead} => (${renderJsx}),
@@ -8220,8 +8238,8 @@ test('T685 composed-elsewhere hop contrast: the same forces on a story that moun
 })
 
 // The predicate itself counts value references only. Each plant below is a raw `<button>` story
-// whose text still names `Row` somewhere that is not a use of the component, and each used to reach
-// `Row`'s module and so credit Row's composed `Button` (primary|lg).
+// whose text names `Row` somewhere that is not a use of the component; none reaches `Row`'s module,
+// so none credits Row's composed `Button` (primary|lg). The shapes that do use it are further down.
 const T685_RAW_BUTTON = '<button type="button">Raw</button>'
 const T685_BUTTON_ROLE = "role: 'button'"
 
@@ -8259,10 +8277,83 @@ test('T685 predicate: a JSX attribute name spelling the component does not reach
   assert.deepEqual(t685Credits('<button type="button" Row="x">Raw</button>', T685_BUTTON_ROLE), [])
 })
 
-test('T685 predicate: a story-file object whose initializer merely names the component as a value is not a helper', () => {
+// A data object that holds the component (`{ C: Row }`) is indistinguishable, by reference alone,
+// from one a story mounts through (`<registry.C />`): both hold a value reference to `Row`. The
+// predicate's safe error is `true` (a wrongly-true verdict only repeats the over-credit it closes,
+// in a contrived shape; a wrongly-false one drops a real credit), so the object reaches — in the
+// mounting use and in the data use alike. This replaces the first remediation's expectation that
+// such an object "is not a helper", which held only because it special-cased objects and so turned
+// `{ row: zzRow }` and `{ rows: { error: () => <Row /> } }` wrongly false. The meta object, which
+// holds the component as data and cannot be mounted through, stays closed below.
+test('T685 predicate: a story-file object holding the component as a value reaches, whether the story mounts through it or only reads it', () => {
+  const storyHelpers = 'const registry = { C: Row }'
+  assert.deepEqual(
+    t685Credits('<registry.C />', T685_BUTTON_ROLE, { storyHelpers }),
+    ['Button|primary|lg|hover'],
+    'mounting through the object',
+  )
   assert.deepEqual(
     t685Credits('<button type="button" data-x={registry.C.name}>Raw</button>', T685_BUTTON_ROLE, {
-      storyHelpers: 'const registry = { C: Row }',
+      storyHelpers,
+    }),
+    ['Button|primary|lg|hover'],
+    'reading the object cannot be told from mounting through it, and errs toward reaching',
+  )
+})
+
+test('T685 predicate: the meta object never reaches, however the file identifies it — each identifying rule alone is enough', () => {
+  const metas = {
+    'default export, with a component key': 'const meta = { component: Row }\nexport default meta',
+    // The one rule each: the rest of these objects give the other rules nothing to find.
+    'default export only (no component key, no type)':
+      'const meta = { title: "Row", subcomponents: { Row } }\nexport default meta',
+    'declared type only': 'const meta: Meta<typeof Row> = { subcomponents: { Row } }',
+    'satisfies only': 'const meta = { subcomponents: { Row } } satisfies Meta<typeof Row>',
+    'as only': 'const meta = { subcomponents: { Row } } as Meta<typeof Row>',
+    'findMeta only (a component key, exported under another name)':
+      'const meta = { component: Row }\nconst other = {}\nexport default other',
+  }
+  for (const [how, storyMeta] of Object.entries(metas)) {
+    assert.deepEqual(
+      t685Credits(
+        '<button type="button" title={meta.title} data-x={meta.subcomponents}>Raw</button>',
+        T685_BUTTON_ROLE,
+        { storyMeta },
+      ),
+      [],
+      how,
+    )
+  }
+})
+
+test('T685 predicate: a name that only labels a member does not reach — a destructuring property name, a class property, method and accessors', () => {
+  const rawWith = (renderHead, storyHelpers = '') =>
+    t685Credits('<button type="button">Raw</button>', T685_BUTTON_ROLE, {
+      renderHead,
+      storyHelpers,
+    })
+  assert.deepEqual(rawWith('({ Row: R })'), [], 'a binding element property name')
+  const members = {
+    property: 'class ZzK { Row = 1 }',
+    method: 'class ZzK { Row() { return 1 } }',
+    getter: 'class ZzK { get Row() { return 1 } }',
+    setter: 'class ZzK { set Row(v) {} }',
+  }
+  for (const [kind, storyHelpers] of Object.entries(members)) {
+    assert.deepEqual(
+      t685Credits('<button type="button" data-x={new ZzK()}>Raw</button>', T685_BUTTON_ROLE, {
+        storyHelpers,
+      }),
+      [],
+      kind,
+    )
+  }
+})
+
+test('T685 predicate: an intrinsic tag is a DOM element even when a story-file binding shares its name', () => {
+  assert.deepEqual(
+    t685Credits('<button type="button">Raw</button>', T685_BUTTON_ROLE, {
+      storyHelpers: 'const button = () => <Row />',
     }),
     [],
   )
@@ -8291,6 +8382,81 @@ test('T685 predicate contrast: a value reference still reaches — the tag with 
       credited,
       `${jsx} ${options.storyHelpers ?? ''}`,
     )
+  }
+})
+
+// The predicate's safe error is `true`, so a declaration reaches if ANY value reference in its
+// initializer does, of whatever shape. Each plant below mounts `Row` (which composes
+// `Button primary|lg`) through one shape and must be credited exactly as the direct tag is. The first
+// nine were wrongly false after the first remediation (it admitted only functions, JSX constants,
+// `memo(...)` of an inline function and an object's function members); a class declared in the story
+// file and `render: (args, { component: C })` were false before it too.
+const T685_SHAPES = {
+  'shorthand member': [
+    'zzHelpers.zzRow()',
+    { storyHelpers: 'function zzRow() { return <Row /> }\nconst zzHelpers = { zzRow }' },
+  ],
+  'member whose value is an identifier': [
+    'zzHelpers.row()',
+    { storyHelpers: 'function zzRow() { return <Row /> }\nconst zzHelpers = { row: zzRow }' },
+  ],
+  'nested object': [
+    'zzHelpers.rows.error()',
+    { storyHelpers: 'const zzHelpers = { rows: { error: () => <Row /> } }' },
+  ],
+  'memo of an identifier': [
+    '<ZzMemo />',
+    { storyHelpers: 'function ZzInner() { return <Row /> }\nconst ZzMemo = memo(ZzInner)' },
+  ],
+  'alias of the component': ['<ZzAlias />', { storyHelpers: 'const ZzAlias = Row' }],
+  'array of elements': ['<>{zzRows}</>', { storyHelpers: 'const zzRows = [<Row />]' }],
+  conditional: [
+    '<ZzPick />',
+    { storyHelpers: 'const zzFlag = true\nconst ZzPick = zzFlag ? Row : Row' },
+  ],
+  'bound template (callee)': [
+    '<ZzBound />',
+    { storyHelpers: 'const ZzTpl = () => <Row />\nconst ZzBound = ZzTpl.bind({})' },
+  ],
+  'meta.component': [
+    '(() => { const C = meta.component!; return <C {...args} /> })()',
+    { renderHead: '(args)' },
+  ],
+  'class declared in the story file': [
+    '<ZzWrap />',
+    { storyHelpers: 'class ZzWrap extends Component { render() { return <Row /> } }' },
+  ],
+  'class extending the component': ['<ZzSub />', { storyHelpers: 'class ZzSub extends Row {}' }],
+  'destructured render context': ['<C {...args} />', { renderHead: '(args, { component: C })' }],
+  'render context read off a parameter': [
+    '(() => { const C = ctx.component; return <C {...args} /> })()',
+    { renderHead: '(args, ctx)' },
+  ],
+}
+for (const [shape, [jsx, options]] of Object.entries(T685_SHAPES)) {
+  test(`T685 predicate shape: ${shape} reaches the component, so the story is credited as a direct mount is`, () => {
+    assert.deepEqual(t685Credits(jsx, T685_BUTTON_ROLE, options), ['Button|primary|lg|hover'])
+  })
+}
+
+test('T685 predicate shapes: the same shapes holding only a raw element still reach nothing', () => {
+  const rawShapes = [
+    [
+      'zzHelpers.zzRow()',
+      'function zzRow() { return <button type="button">Raw</button> }\nconst zzHelpers = { zzRow }',
+    ],
+    [
+      '<ZzBound />',
+      'const ZzTpl = () => <button type="button">Raw</button>\nconst ZzBound = ZzTpl.bind({})',
+    ],
+    [
+      '<ZzWrap />',
+      'class ZzWrap extends Component { render() { return <button type="button">Raw</button> } }',
+    ],
+    ['<>{zzRows}</>', 'const zzRows = [<button type="button">Raw</button>]'],
+  ]
+  for (const [jsx, storyHelpers] of rawShapes) {
+    assert.deepEqual(t685Credits(jsx, T685_BUTTON_ROLE, { storyHelpers }), [], jsx)
   }
 })
 
@@ -8329,11 +8495,12 @@ test('T685 element matrix, Disabled cell: a raw-render story with args disabled:
 
 // The check's own unaccounted-force-state report. A forced story that reaches nothing of its
 // component credits nothing; the report must name it, or a wrongly-false predicate would make a
-// credit vanish with no failure anywhere.
-test('T685 report: a forced story whose render reaches nothing of the component is reported as unaccounted, and a story that reaches it and is credited is not', () => {
+// credit vanish with no failure anywhere. Its entry carries `reachedNothing`, which is what lets the
+// failure line say the predicate's verdict is the cause and not the resolver's.
+test('T685 report: a forced story whose render reaches nothing of the component is reported as unaccounted with reachedNothing, and a story that reaches it and is credited is not', () => {
   const planted = t685Computed('<button type="button">Raw</button>', "role: 'slider'")
   assert.deepEqual(planted.unaccountedForceStates.missing, [
-    { componentKey: 'composites/Row', exportName: 'Planted', state: 'hover' },
+    { componentKey: 'composites/Row', exportName: 'Planted', state: 'hover', reachedNothing: true },
   ])
   const contrast = t685Computed('<Row />', "role: 'button', name: 'Retry'")
   assert.deepEqual(contrast.unaccountedForceStates.missing, [])
@@ -8341,6 +8508,13 @@ test('T685 report: a forced story whose render reaches nothing of the component 
     storyHelpers: 'function Demo() {\n  return <Row />\n}',
   })
   assert.deepEqual(wrapper.unaccountedForceStates.missing, [])
+})
+
+test('T685 report: a story that reaches the component and is still credited nowhere is reported without reachedNothing', () => {
+  const reaching = t685Computed('<Row />', "role: 'slider'")
+  assert.deepEqual(reaching.unaccountedForceStates.missing, [
+    { componentKey: 'composites/Row', exportName: 'Planted', state: 'hover' },
+  ])
 })
 
 test('T685 report: findUnaccountedForceStates skips a render-less-of-the-component story only while it still reaches the module (wrapper), never when it reaches nothing', () => {
@@ -8356,6 +8530,156 @@ test('T685 report: findUnaccountedForceStates skips a render-less-of-the-compone
   assert.deepEqual(run(entry({ reachesComponentModule: true })), [])
   assert.deepEqual(run(entry({})), [], 'a fixture predating the flag keeps its old meaning')
   assert.deepEqual(run(entry({ reachesComponentModule: false })), [
-    { componentKey: 'composites/Row', exportName: 'Planted', state: 'hover' },
+    { componentKey: 'composites/Row', exportName: 'Planted', state: 'hover', reachedNothing: true },
   ])
+})
+
+test('T685 report message: a story reported because its render reaches nothing says the predicate found no value reference, and that a mounted component means the predicate missed a shape', () => {
+  const message = describeMissingForceState({
+    componentKey: 'composites/Row',
+    exportName: 'Planted',
+    state: 'hover',
+    reachedNothing: true,
+  })
+  assert.match(message, /composites\/Row's own Planted forces "hover"/)
+  assert.match(message, /reach predicate \(storyReachesComponentModule\) found no value reference/)
+  assert.match(message, /render: to composites\/Row's module/)
+  assert.match(message, /If the story does mount the component, the predicate missed that shape/)
+  assert.doesNotMatch(message, /lost frame/)
+})
+
+test('T685 report message: a story that reaches the component and is credited nowhere keeps the lost-frame message', () => {
+  const message = describeMissingForceState({
+    componentKey: 'composites/Row',
+    exportName: 'Planted',
+    state: 'hover',
+  })
+  assert.equal(
+    message,
+    `composites/Row's own Planted forces "hover" but is credited on no cell and named in no unresolved reason anywhere in the region — a lost frame.`,
+  )
+})
+
+test('T685 report message: the message follows the computed entry end to end, for both causes', () => {
+  const entryOf = (computed) => computed.unaccountedForceStates.missing[0]
+  assert.match(
+    describeMissingForceState(
+      entryOf(t685Computed('<button type="button">Raw</button>', "role: 'slider'")),
+    ),
+    /the predicate missed that shape/,
+  )
+  assert.match(
+    describeMissingForceState(entryOf(t685Computed('<Row />', "role: 'slider'"))),
+    /a lost frame/,
+  )
+})
+
+// The wiring from the report to the failure line, end to end: the script itself, run on a copy of
+// the real tree with one forced story appended, must exit 1 and print the message for its cause.
+// A copy, because the script reads a fixed `packages/design-system/src` beside itself; symlinks only
+// for `node_modules`.
+function runCheckOnPlantedTree(storyAppendix) {
+  const checksDir = path.dirname(fileURLToPath(import.meta.url))
+  const repoRoot = path.resolve(checksDir, '..', '..')
+  const dsDir = path.join(repoRoot, 'packages', 'design-system')
+  // The script runs `main` only when its own url is its argv[1]: the real path, not a symlinked tmpdir.
+  const tmp = realpathSync(mkdtempSync(path.join(tmpdir(), 'state-coverage-planted-')))
+  try {
+    mkdirSync(path.join(tmp, 'scripts', 'checks'), { recursive: true })
+    for (const f of readdirSync(checksDir).filter(
+      (n) => n.endsWith('.mjs') && !n.endsWith('.test.mjs'),
+    )) {
+      cpSync(path.join(checksDir, f), path.join(tmp, 'scripts', 'checks', f))
+    }
+    mkdirSync(path.join(tmp, 'packages', 'design-system'), { recursive: true })
+    for (const rel of ['src', 'specs', 'package.json']) {
+      cpSync(path.join(dsDir, rel), path.join(tmp, 'packages', 'design-system', rel), {
+        recursive: true,
+      })
+    }
+    cpSync(path.join(repoRoot, '.prettierrc.json'), path.join(tmp, '.prettierrc.json'))
+    symlinkSync(path.join(repoRoot, 'node_modules'), path.join(tmp, 'node_modules'))
+    symlinkSync(
+      path.join(dsDir, 'node_modules'),
+      path.join(tmp, 'packages', 'design-system', 'node_modules'),
+    )
+    appendFileSync(
+      path.join(
+        tmp,
+        'packages',
+        'design-system',
+        'src',
+        'composites',
+        'MatchRow',
+        'MatchRow.stories.tsx',
+      ),
+      storyAppendix,
+    )
+    return spawnSync('node', [path.join(tmp, 'scripts', 'checks', 'state-coverage.mjs')], {
+      encoding: 'utf8',
+    })
+  } finally {
+    rmSync(tmp, { recursive: true, force: true })
+  }
+}
+
+test('T685 report, end to end: the check fails with the predicate message for a forced story whose render reaches nothing, and with the lost-frame message for one that reaches the component', () => {
+  const forced = "parameters: { visualForceState: { state: 'hover', role: 'slider' } }"
+  const reachesNothing = runCheckOnPlantedTree(
+    `\nexport const ZzPlanted: Story = { render: () => <button type="button">Raw</button>, ${forced} }\n`,
+  )
+  assert.equal(reachesNothing.status, 1)
+  assert.match(
+    reachesNothing.stderr,
+    /composites\/MatchRow's own ZzPlanted forces "hover" and is credited on no cell: the reach predicate \(storyReachesComponentModule\) found no value reference/,
+  )
+  assert.doesNotMatch(reachesNothing.stderr, /lost frame/)
+  const reaches = runCheckOnPlantedTree(
+    `\nexport const ZzPlanted: Story = { render: (args) => <MatchRow {...args} />, ${forced} }\n`,
+  )
+  assert.equal(reaches.status, 1)
+  assert.match(
+    reaches.stderr,
+    /composites\/MatchRow's own ZzPlanted forces "hover" but is credited on no cell and named in no unresolved reason anywhere in the region — a lost frame\./,
+  )
+  assert.doesNotMatch(reaches.stderr, /reach predicate/)
+})
+
+// Finding of the second review: the helper skipped non-axis primitives' matrices, and `disabled`
+// lives only there. These two tests read the `Disabled` cell THROUGH `plantedCredits`, so removing
+// the `argsHasDisabledTrue && reachesComponentModule !== false` gate of `buildElementMatrix` fails
+// here and not only in the test that reads `matrices.Switch[0].disabled` directly.
+function switchPlantedCredits(storyBody) {
+  return plantedCredits(
+    computeStateCoverage({
+      componentDirs: [{ segment: 'primitives', name: 'Switch' }],
+      filesByPath: new Map([
+        [
+          path.join(REPO_SRC_DIR, 'primitives/Switch/index.tsx'),
+          `export function Switch({ disabled }) {
+            return <input type="checkbox" disabled={disabled} className="hover:bg-surface-sunken" />
+          }`,
+        ],
+        [
+          path.join(REPO_SRC_DIR, 'primitives/Switch/Switch.stories.tsx'),
+          `import { Switch } from './index'\nconst meta = { component: Switch }\nexport default meta\n${storyBody}`,
+        ],
+      ]),
+    }),
+  )
+}
+
+test('T685 helper: plantedCredits reads a non-axis primitive’s Disabled cell, so an args-only Switch story with disabled: true is a credit', () => {
+  assert.deepEqual(switchPlantedCredits(`export const Planted = { args: { disabled: true } }`), [
+    `Switch|input[role=checkbox] @ packages/design-system/src/primitives/Switch/index.tsx:2|disabled`,
+  ])
+})
+
+test('T685 helper: a raw-render Switch story with disabled: true credits no Disabled cell, read through plantedCredits', () => {
+  assert.deepEqual(
+    switchPlantedCredits(
+      `export const Planted = { render: () => <div>Raw</div>, args: { disabled: true } }`,
+    ),
+    [],
+  )
 })

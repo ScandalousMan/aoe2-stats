@@ -1998,21 +1998,29 @@ function storyRendersComponent(storyObj, componentName) {
 
 // Whether a story's own `render:` can put anything of its component's own module on screen — `true`
 // for an `args`-only story (Storybook renders `<Component {...args} />` implicitly) and for a
-// `render:` whose body references (a) the component itself, (b) a name imported from the story's
-// own directory (`ErasedScreen`, a second export of `AccountErasurePanel/index.tsx`), or (c) a
-// story-file helper that in turn references one of those (`SearchBox.stories.tsx`'s own
-// `DemoSearchBox` wrapper). `false` only when `render:` mounts nothing of the sort: a raw `<button>`,
-// or a primitive imported from another module (`<Menu>`), which shows none of the component's own
-// source, so no instance declared there can be what its force-state targets (T685). Deliberately an
-// over-approximation by value reference, not by JSX tag: a helper call (`renderRow(args)`) or a
-// `render: Template` reference reaches exactly as a tag does, so this is `false` only when it
-// *cannot* reach — a story that mounts the component through anything this cannot see stays
-// credited, as before. "Value reference" excludes what merely spells the name: a type position
-// (`typeof MatchRow`), a property-access member, an object key, a JSX attribute name, a string; and
-// a helper is a function, a JSX constant or the function members of an object, never an object that
-// names the component as data (`meta`). Separate from `storyRendersComponent`, which also gates
-// `pendingDisabledChecks` and must keep its narrower meaning; `findUnaccountedForceStates` reads
-// both (a story it reaches nothing of is reported, one it merely does not tag-mount is not).
+// `render:` whose body holds a value reference to (a) the component itself, (b) a name imported from
+// the story's own directory (`ErasedScreen`, a second export of `AccountErasurePanel/index.tsx`),
+// (c) a story-file declaration (function, class or constant, of any initializer shape) that in turn
+// holds one, or (d) the component through the story's meta or the render context
+// (`meta.component`, a render's second parameter `{ component: C }`). `false` only when `render:`
+// holds none: a raw `<button>`, or a primitive imported from another module (`<Menu>`), which shows
+// none of the component's own source, so no instance declared there can be what its force-state
+// targets (T685).
+//
+// Deliberately an over-approximation, and its safe error is `true`: a wrongly-true verdict only
+// reproduces the over-credit this predicate closes, in a contrived shape, while a wrongly-false one
+// drops a real credit. So a declaration reaches if ANY value reference inside its initializer does,
+// whatever the shape (alias, conditional, array, call, `memo(Inner)`, `Tpl.bind({})`, a nested
+// object, a class). An object that holds the component as data (`{ C: Row }`) therefore reaches too,
+// because `<registry.C />` mounts through it and a reference cannot tell that from `registry.C.name`.
+// What is not a value reference: a type position (`typeof MatchRow`), a property-access member name,
+// a member or object key, a binding element's property name, a JSX attribute name, a string.
+// The one declaration excluded is the story file's own meta object (the default export, or the
+// object typed or `satisfies`-checked as `Meta`): it names the component as data (`component: Row`)
+// and mounts nothing, and counting it made every story that read `meta.title` reach the module.
+// Separate from `storyRendersComponent`, which also gates `pendingDisabledChecks` and must keep its
+// narrower meaning; `findUnaccountedForceStates` reads both (a story this reaches nothing of is
+// reported as such, one it merely does not tag-mount is skipped while it reaches the module).
 function storyReachesComponentModule(storyObj, sourceFile, componentName) {
   const renderExpr = getProp(storyObj, 'render')
   if (!renderExpr) return true
@@ -2033,81 +2041,112 @@ function storyReachesComponentModule(storyObj, sourceFile, componentName) {
       reaching.add(bindings.name.text)
     }
   }
-  // Value references only. A name that sits in a type position (`typeof MatchRow` inside a
-  // parameter annotation), is the member of a property access (`meta.title`, `x.MatchRow`), is an
-  // object-literal key, or is a JSX attribute name is *spelled* like the component without
-  // *using* it, and counting it let a raw `<button>` story reach the component's module (T685,
-  // review of #111).
+  // The story file's meta object, by name: the default export, a declaration typed `Meta<…>`, one
+  // `satisfies`/`as` `Meta<…>`, or the object `findMeta` identifies. Its name never reaches.
+  const isMetaType = (t) =>
+    t != null &&
+    ts.isTypeReferenceNode(t) &&
+    ts.isIdentifier(t.typeName) &&
+    t.typeName.text === 'Meta'
+  const metaObject = findMeta(sourceFile)
+  const metaNames = new Set()
+  for (const stmt of sourceFile.statements) {
+    if (ts.isExportAssignment(stmt) && !stmt.isExportEquals) {
+      const exported = unwrapExpression(stmt.expression)
+      if (ts.isIdentifier(exported)) metaNames.add(exported.text)
+    } else if (ts.isVariableStatement(stmt)) {
+      for (const decl of stmt.declarationList.declarations) {
+        if (!ts.isIdentifier(decl.name) || !decl.initializer) continue
+        const init = decl.initializer
+        const checked = ts.isSatisfiesExpression(init) || ts.isAsExpression(init)
+        if (
+          isMetaType(decl.type) ||
+          (checked && isMetaType(init.type)) ||
+          (metaObject && unwrapExpression(init) === metaObject)
+        ) {
+          metaNames.add(decl.name.text)
+        }
+      }
+    }
+  }
+  // A name that only labels something: an object-literal or class member key, or a binding
+  // element's property name (`{ Row: R } = x` reads `x.Row`). A JSX attribute name is handled where
+  // the attribute is visited.
+  const isLabel = (n) => {
+    const p = n.parent
+    if (!p) return false
+    if (ts.isBindingElement(p)) return p.propertyName === n
+    return (
+      (ts.isPropertyAssignment(p) ||
+        ts.isMethodDeclaration(p) ||
+        ts.isPropertyDeclaration(p) ||
+        ts.isGetAccessorDeclaration(p) ||
+        ts.isSetAccessorDeclaration(p)) &&
+      p.name === n
+    )
+  }
+  // The component through the render context: a function's second parameter is Storybook's story
+  // context, whose `component` is the meta's. Destructured (`(args, { component: C })`) or read off
+  // the parameter (`ctx.component`).
+  const contextNames = new Set()
+  const readsContextComponent = (fn) => {
+    const ctx = fn.parameters?.[1]
+    if (!ctx) return false
+    if (ts.isIdentifier(ctx.name)) contextNames.add(ctx.name.text)
+    if (!ts.isObjectBindingPattern(ctx.name)) return false
+    return ctx.name.elements.some((el) => (el.propertyName ?? el.name).text === 'component')
+  }
+  // Value references only: see the doc comment above. A call's callee is visited with its arguments
+  // (`Tpl.bind({})`), and so is everything else under a node but the exclusions below.
   const referencedIdentifiers = (node) => {
     const names = new Set()
     const visit = (n) => {
-      if (ts.isTypeNode(n) || ts.isTypeAliasDeclaration(n) || ts.isInterfaceDeclaration(n)) return
-      // An intrinsic JSX tag (`button`, `a`) is a DOM element, never a reference to a binding.
-      const isIntrinsicTag =
-        ts.isIdentifier(n) &&
-        /^[a-z]/.test(n.text) &&
-        n.parent &&
-        (ts.isJsxOpeningElement(n.parent) ||
-          ts.isJsxSelfClosingElement(n.parent) ||
-          ts.isJsxClosingElement(n.parent)) &&
-        n.parent.tagName === n
-      if (ts.isIdentifier(n)) {
-        if (!isIntrinsicTag) names.add(n.text)
+      // `class Wrap extends Row`: the heritage expression is a value, though TypeScript types it.
+      if (ts.isExpressionWithTypeArguments(n)) {
+        const extendsClause =
+          ts.isHeritageClause(n.parent) && n.parent.token === ts.SyntaxKind.ExtendsKeyword
+        if (extendsClause && ts.isClassLike(n.parent.parent)) visit(n.expression)
         return
       }
-      if (ts.isPropertyAccessExpression(n)) return visit(n.expression)
-      if (ts.isPropertyAssignment(n)) {
-        if (ts.isComputedPropertyName(n.name)) visit(n.name)
-        return visit(n.initializer)
+      if (ts.isTypeNode(n) || ts.isTypeAliasDeclaration(n) || ts.isInterfaceDeclaration(n)) return
+      if (ts.isIdentifier(n)) {
+        // An intrinsic JSX tag (`button`, `a`) is a DOM element, never a reference to a binding.
+        const isIntrinsicTag =
+          /^[a-z]/.test(n.text) &&
+          n.parent &&
+          (ts.isJsxOpeningElement(n.parent) ||
+            ts.isJsxSelfClosingElement(n.parent) ||
+            ts.isJsxClosingElement(n.parent)) &&
+          n.parent.tagName === n
+        if (!isIntrinsicTag && !isLabel(n)) names.add(n.text)
+        return
+      }
+      if (ts.isPropertyAccessExpression(n)) {
+        const owner = ts.isIdentifier(n.expression) ? n.expression.text : null
+        if (
+          n.name.text === 'component' &&
+          owner &&
+          (metaNames.has(owner) || contextNames.has(owner))
+        ) {
+          names.add(componentName)
+        }
+        return visit(n.expression)
       }
       if (ts.isJsxAttribute(n)) return n.initializer ? visit(n.initializer) : undefined
+      if (ts.isFunctionLike(n) && readsContextComponent(n)) names.add(componentName)
       ts.forEachChild(n, visit)
     }
     visit(node)
     return names
   }
-  // What a story-file declaration contributes when it is *used*: a function or component mounts
-  // what its body references; a JSX constant mounts what it holds; an object counts only through
-  // its function-valued members (`const tpl = { render: () => <MatchRow /> }`). An object that
-  // merely names the component as data (`meta`, `component: MatchRow`) mounts nothing and is not a
-  // helper — treating it as one made every story that mentioned `meta` reach the module.
-  const mountedBy = (expr) => {
-    let e = expr
-    while (ts.isParenthesizedExpression(e) || ts.isAsExpression(e) || ts.isSatisfiesExpression(e)) {
-      e = e.expression
-    }
-    if (ts.isArrowFunction(e) || ts.isFunctionExpression(e) || ts.isJsxElement(e)) {
-      return referencedIdentifiers(e)
-    }
-    if (ts.isJsxSelfClosingElement(e) || ts.isJsxFragment(e)) return referencedIdentifiers(e)
-    // `memo(() => <MatchRow />)`, `forwardRef(...)`: what the call wraps is what the name mounts.
-    if (ts.isCallExpression(e)) {
-      const names = new Set()
-      for (const arg of e.arguments) for (const r of mountedBy(arg)) names.add(r)
-      return names
-    }
-    if (ts.isObjectLiteralExpression(e)) {
-      const names = new Set()
-      for (const prop of e.properties) {
-        const member = ts.isPropertyAssignment(prop) ? prop.initializer : prop
-        if (ts.isMethodDeclaration(member)) {
-          for (const r of referencedIdentifiers(member.body ?? member)) names.add(r)
-        } else if (ts.isArrowFunction(member) || ts.isFunctionExpression(member)) {
-          for (const r of referencedIdentifiers(member)) names.add(r)
-        }
-      }
-      return names
-    }
-    return new Set()
-  }
   const declared = new Map()
   for (const stmt of sourceFile.statements) {
-    if (ts.isFunctionDeclaration(stmt) && stmt.name) {
+    if ((ts.isFunctionDeclaration(stmt) || ts.isClassDeclaration(stmt)) && stmt.name) {
       declared.set(stmt.name.text, referencedIdentifiers(stmt))
     } else if (ts.isVariableStatement(stmt)) {
       for (const decl of stmt.declarationList.declarations) {
-        if (ts.isIdentifier(decl.name) && decl.initializer) {
-          declared.set(decl.name.text, mountedBy(decl.initializer))
+        if (ts.isIdentifier(decl.name) && decl.initializer && !metaNames.has(decl.name.text)) {
+          declared.set(decl.name.text, referencedIdentifiers(decl.initializer))
         }
       }
     }
@@ -3170,12 +3209,13 @@ function storyIsCreditedInItsStateColumn(componentKey, entry, columns, hasSoleSt
 // T684), never by its export name as a bare word anywhere in the region: the region prints
 // conventional exports (`Hover`, `FocusVisible`, `Active`) on the cells of many components, so a
 // forced `Hover` credited nowhere used to pass because another component's `Hover` was printed, and
-// a story named after its own component passed on the component's own path. A story whose own `render:` mounts no `<Component>` tag
-// (`rendersComponent`, `storyRendersComponent`) but reaches the component's module through a
-// wrapper or a sibling export is excluded: judged by its credits elsewhere, never demanded an
+// a story named after its own component passed on the component's own path. A story whose own
+// `render:` mounts no `<Component>` tag (`rendersComponent`, `storyRendersComponent`) but reaches
+// the component's module through a wrapper or a sibling export is excluded: it is not asked for an
 // accounting here. One that reaches nothing of the module (`reachesComponentModule === false`,
-// T685) is not excluded: it credits nothing by construction, and a forced frame nobody depicts is
-// what this report is for. A `synthetic` entry (a credit this pass manufactured on another
+// T685) is not excluded: it shows none of the component's source, so it is credited only to what
+// its own render mounts, and a forced frame credited nowhere is what this report is for. It is
+// reported with `reachedNothing` set and its own message (`describeMissingForceState`). A `synthetic` entry (a credit this pass manufactured on another
 // component's behalf, T595's own composed-elsewhere mechanism) is excluded too: it is not a real
 // exported story object anywhere, and the real story it originated from is checked under its own
 // name in its own component's own list. Returns three groups, never merged so a genuinely new loss
@@ -3207,18 +3247,24 @@ export function findUnaccountedForceStates(storyStatesByComponent, regionText) {
       const { exportName, forced, rendersComponent, synthetic } = entry
       if (!forced || synthetic) continue
       // A `render:` that mounts no `<Component>` tag but still reaches the module (a wrapper, a
-      // sibling export) is judged by its credits like any other story, or skipped as a placeholder
-      // below. One that reaches *nothing* of the module (`reachesComponentModule === false`, T685)
-      // credits nothing by construction, and is exactly what this report exists for: skipping it
-      // would let a wrongly-false predicate drop a credit with no failure anywhere. A forced story
-      // that really depicts something else still passes, through whatever it does credit.
+      // sibling export) is not asked for an accounting. One that reaches *nothing* of the module
+      // (`reachesComponentModule === false`, T685) is: it shows none of the component's source, so
+      // a frame it forces that is credited nowhere is exactly what this report exists for, and
+      // skipping it would let a wrongly-false predicate drop a credit with no failure anywhere.
       if (rendersComponent === false && entry.reachesComponentModule !== false) continue
       if (storyIsCreditedInItsStateColumn(componentKey, entry, columns, hasSoleStoryFile)) continue
       const filed = KNOWN_UNACCOUNTED_FORCE_STATES.find(
         (k) => k.componentKey === componentKey && k.exportName === exportName,
       )
       if (!filed) {
-        missing.push({ componentKey, exportName, state: forced.state })
+        // `reachedNothing` says why the story is credited nowhere when the cause is the reach
+        // predicate and not the resolver: the message must tell a wrongly-false predicate apart.
+        missing.push({
+          componentKey,
+          exportName,
+          state: forced.state,
+          ...(entry.reachesComponentModule === false ? { reachedNothing: true } : {}),
+        })
         continue
       }
       const malformed = ['date', 'fixOwed', 'fixBy'].filter((field) => {
@@ -3416,12 +3462,12 @@ export function computeStateCoverage({ componentDirs, filesByPath }) {
           ...storyArgsStringLiterals(metaObj, node, storyConstNodeMap),
           ...collectScopeStringLiterals(scope),
         ])
-        // A `render:` story whose own body never mounts the component (`storyRendersComponent`,
+        // A `render:` story whose own body mounts no `<Component>` tag (`storyRendersComponent`,
         // T595) has nothing to say about any candidate inside it, the same exclusion
         // `pendingDisabledChecks` above already applies — carried here too so
-        // `findUnaccountedForceStates` (below) never demands an accounting a story that renders
-        // nothing could not possibly have given, a legitimate `'credits nothing'` this pass must
-        // not confuse with a lost frame.
+        // `findUnaccountedForceStates` (below) skips it while `reachesComponentModule` (below) says
+        // it still reaches the module (a wrapper, a sibling export): a legitimate `'credits
+        // nothing'` this pass must not confuse with a lost frame.
         const rendersComponent = storyRendersComponent(node, componentDirName)
         return {
           exportName,
@@ -3436,7 +3482,9 @@ export function computeStateCoverage({ componentDirs, filesByPath }) {
           scope,
           rendersComponent,
           // T685: the wider question `rendersComponent` cannot answer — see
-          // `storyReachesComponentModule`. Gates crediting only, never the unaccounted-force report.
+          // `storyReachesComponentModule`. `false` gates every path that credits this story, and
+          // makes `findUnaccountedForceStates` report a forced story it does not credit even when
+          // `rendersComponent` is `false`.
           reachesComponentModule: storyReachesComponentModule(node, sourceFile, componentDirName),
         }
       })
@@ -6711,6 +6759,25 @@ export function checkCellGate(
   }
 }
 
+// The failure line for one `missing` entry of `findUnaccountedForceStates`. A story reported because
+// its `render:` was judged to reach nothing of the component's module (`reachedNothing`, T685) says
+// so: that verdict can be the predicate's miss rather than the story's, and a message that calls it
+// "a lost frame" sends the reader to the resolver instead.
+export function describeMissingForceState({ componentKey, exportName, state, reachedNothing }) {
+  if (reachedNothing) {
+    return (
+      `${componentKey}'s own ${exportName} forces "${state}" and is credited on no cell: ` +
+      `the reach predicate (storyReachesComponentModule) found no value reference from its ` +
+      `render: to ${componentKey}'s module. If the story does mount the component, the ` +
+      'predicate missed that shape.'
+    )
+  }
+  return (
+    `${componentKey}'s own ${exportName} forces "${state}" but is credited on no cell and ` +
+    'named in no unresolved reason anywhere in the region — a lost frame.'
+  )
+}
+
 // --- main --------------------------------------------------------------------------------------
 
 // Exported so a test can run `computeStateCoverage` against the live tree end to end — needed for
@@ -6744,12 +6811,7 @@ function main() {
   // deadline on is not an exception, it is a rename of the original bug (T598's own deadline is
   // 2026-09-27, the same date row 8 (H5) itself carries).
   const { missing, known, expired } = computed.unaccountedForceStates
-  for (const { componentKey, exportName, state } of missing) {
-    fail(
-      `${componentKey}'s own ${exportName} forces "${state}" but is credited on no cell and ` +
-        'named in no unresolved reason anywhere in the region — a lost frame.',
-    )
-  }
+  for (const entry of missing) fail(describeMissingForceState(entry))
   for (const entry of expired) {
     const detail = entry.malformed
       ? `malformed filed exception (${entry.malformed.join(', ')})`
