@@ -9634,3 +9634,114 @@ test('T686r: an UNFORCED own story the verdict refuses is listed in refusedOwnSt
     [],
   )
 })
+
+// --- T686 remediation (third review of #112): three over-credit mechanisms and one report line ----
+//
+// Each plant below is refused at HEAD and credited the moment ONE mechanism is removed, so a test
+// that merely asserted "no credit" on a neighbouring shape would not have caught it. A refusal is
+// asserted whole: no cell of the real axis matrix, no element of record 1, and a report line that
+// carries its reason.
+const T686R3_STUB_TRIGGER = `<button type="button" className="hover:bg-surface-sunken">Trigger</button>`
+const T686R3_SELECTION_ARGS = `variant: 'selection', items: [${T686R_ITEM}]`
+// The cells a story that WAS credited would land on, named so the assertion reads as a refusal of
+// each one rather than of "anything".
+const T686R3_MENU_CELLS = ['Menu|selection|hover', 'Menu|selection|focus-visible']
+
+function assertT686r3Refused(computed, reason, label) {
+  assert.deepEqual(plantedCredits(computed), [], `${label}: credited on no cell, in any record`)
+  assert.doesNotMatch(JSON.stringify(computed.matrices.Menu), /Planted/, label)
+  for (const { elements } of computed.localElements) {
+    for (const el of elements) {
+      assert.doesNotMatch(JSON.stringify(el.coveredBy), /Planted/, `${label}: ${el.tag}`)
+    }
+  }
+  const missing = t686rReport(computed)
+  assert.equal(missing.length, 1, `${label}: reported once`)
+  assert.match(describeMissingForceState(missing[0]), reason, label)
+}
+
+test('T686r3 (1): a dynamic role behind a guard the story leaves unsettled is refused in every record, never credited as if the guard were open', () => {
+  const stub = `export function Menu({ variant, items, extra }) {
+    return (
+      <div>
+        ${T686R3_STUB_TRIGGER}
+        {extra && (
+          <div tabIndex={0} role={variant === 'selection' ? 'menuitemradio' : 'menuitem'} className="hover:bg-surface-sunken">X</div>
+        )}
+      </div>
+    )
+  }`
+  const story = (extra) => `export const Planted = {
+    args: { ${T686R3_SELECTION_ARGS}, extra: ${extra} },
+    ${T686_FORCE('hover', "role: 'menuitemradio'")},
+  }`
+  const unsettled = t686rComputed('Menu', stub, story('pick()'))
+  assertT686r3Refused(unsettled, /cannot tell whether .*Menu/, 'unsettled guard')
+  for (const cell of T686R3_MENU_CELLS) assert.ok(!plantedCredits(unsettled).includes(cell), cell)
+  // Contrast: a literal opens the guard, so the same element is credited in both records.
+  const settled = t686rComputed('Menu', stub, story('true'))
+  assert.ok(plantedCredits(settled).includes('Menu|selection|hover'))
+  assert.deepEqual(t686rReport(settled), [])
+})
+
+test('T686r3 (2): an aria-hidden element is not something the primitive renders to a user — a force on its role is refused in every record', () => {
+  const stub = (attrs) => `export function Menu({ variant, items }) {
+    return (
+      <div>
+        ${T686R3_STUB_TRIGGER}
+        <div ${attrs} tabIndex={-1} role="slider" className="hover:bg-surface-sunken">S</div>
+      </div>
+    )
+  }`
+  const story = `export const Planted = {
+    args: { ${T686R3_SELECTION_ARGS} },
+    ${T686_FORCE('hover', "role: 'slider'")},
+  }`
+  const hidden = t686rComputed('Menu', stub('aria-hidden="true"'), story)
+  assertT686r3Refused(hidden, /credited on no cell/, 'aria-hidden slider')
+  assert.ok(!plantedCredits(hidden).includes('Menu|selection|hover'))
+  // Contrast: the same element without aria-hidden is rendered, so the force is credited.
+  const shown = t686rComputed('Menu', stub(''), story)
+  assert.ok(plantedCredits(shown).includes('Menu|selection|hover'))
+  assert.deepEqual(t686rReport(shown), [])
+})
+
+test('T686r3 (3): a child the story passes to a Menu that never renders children is not content of the Menu — a force on its role is refused in every record', () => {
+  const stub = (body) => `export function Menu({ variant, items, children }) {
+    return (
+      <div>
+        ${T686R3_STUB_TRIGGER}
+        ${body}
+      </div>
+    )
+  }`
+  const story = `export const Planted = {
+    render: (args) => <Menu {...args} variant="selection"><div role="slider" tabIndex={0}>s</div></Menu>,
+    args: { ${T686R3_SELECTION_ARGS} },
+    ${T686_FORCE('hover', "role: 'slider'")},
+  }`
+  const dropped = t686rComputed('Menu', stub(''), story)
+  assertT686r3Refused(dropped, /credited on no cell/, 'children not rendered')
+  assert.ok(!plantedCredits(dropped).includes('Menu|selection|hover'))
+  // Contrast: a Menu that renders its children does show the slider, so the force is credited.
+  const rendered = t686rComputed('Menu', stub('{children}'), story)
+  assert.ok(plantedCredits(rendered).includes('Menu|selection|hover'))
+  assert.deepEqual(t686rReport(rendered), [])
+})
+
+test('T686r3 (4): main prints every unforced refused own story, with its component, name and reason, and exits 0', () => {
+  const result = runCheckOnPlantedTree(
+    `
+export const ZzUnforced: Story = {
+  render: (_args, { component: C }) => <div data-c={String(C)} />,
+  args: { variant: 'selection', items: [{ id: 'p2', label: 'aoe2alt' }] },
+}
+`,
+    ['primitives', 'Menu', 'Menu.stories.tsx'],
+  )
+  assert.equal(result.status, 0, result.stdout + result.stderr)
+  assert.match(
+    result.stdout + result.stderr,
+    /primitives\/Menu's own ZzUnforced is credited on no cell \(not forced\): .*mounts no <Menu> directly/,
+  )
+})
