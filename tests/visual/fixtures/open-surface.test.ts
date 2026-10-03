@@ -3,9 +3,11 @@
 // build — the pattern `keyboard-walk.test.ts` uses) that each break exactly one clause of the
 // `Menu` or `Dialog` keyboard contract, beside a passing control for each surface, and asserts the
 // guard names the broken clause.
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import { expect, test, type Page } from '@playwright/test'
-import { assertFocusRingVisible } from './keyboard-walk'
-import { assertSurfaceKeyboard, distinctSurfaceStops, walkOpenSurface } from './open-surface'
+import { assertFocusRingVisible, FOCUSABLE_SELECTOR } from './keyboard-walk'
+import { assertSurfaceKeyboard, distinctSurfaceStops, tabTo, walkOpenSurface } from './open-surface'
 import { assertStopsClearFootprint } from './touch-footprint'
 
 interface MenuOptions {
@@ -21,6 +23,8 @@ interface MenuOptions {
   leaksFocus?: boolean
   /** Inline style every item carries, to plant a short item or a missing ring. */
   itemStyle?: string
+  /** A second menu's trigger sits on the page, and Escape returns focus to it instead. */
+  escapeFocusesOtherTrigger?: boolean
 }
 
 const ITEMS = ['Alpha', 'Beta', 'Gamma']
@@ -34,6 +38,7 @@ function menuPage(options: MenuOptions = {}): string {
           `<button role="menuitem" tabindex="${index === 0 || (options.twoTabStops && index === 1) ? 0 : -1}" style="${options.itemStyle ?? 'height: 48px; width: 200px; outline: 2px solid black;'}">${label}</button>`,
       ).join('')}
     </div>
+    <button id="other" aria-haspopup="menu" aria-expanded="false">Other menu</button>
     <button id="outside">Outside</button>
     <script>
       const items = Array.from(document.querySelectorAll('[role=menuitem]'))
@@ -54,6 +59,7 @@ function menuPage(options: MenuOptions = {}): string {
           document.getElementById('menu').remove()
           trigger.setAttribute('aria-expanded', 'false')
           if (${Boolean(options.escapeLosesFocus)}) document.activeElement.blur()
+          else if (${Boolean(options.escapeFocusesOtherTrigger)}) document.getElementById('other').focus()
           else trigger.focus()
         }
       }))
@@ -150,6 +156,15 @@ test.describe('open-surface keyboard guard, planted pages', () => {
     )
   })
 
+  test("a menu whose Escape returns focus to another menu's trigger fails", async ({ page }) => {
+    // Both triggers are collapsed `aria-haspopup="menu"` buttons once the menu has closed, so the
+    // old check (any collapsed menu button) accepted focus landing on the wrong one.
+    const walk = await walkMenu(page, { escapeFocusesOtherTrigger: true })
+    expect(() => assertSurfaceKeyboard(walk, 'planted')).toThrow(
+      /Escape did not return focus to the menu's trigger/,
+    )
+  })
+
   test('a menu that opens without moving focus into it fails', async ({ page }) => {
     const walk = await walkMenu(page, { focusStaysOnPage: true })
     expect(() => assertSurfaceKeyboard(walk, 'planted')).toThrow(
@@ -213,5 +228,54 @@ test.describe('open-surface keyboard guard, planted pages', () => {
     expect(stops).toHaveLength(3)
     assertStopsClearFootprint(stops, 'planted')
     for (const stop of stops) assertFocusRingVisible(stop, 'planted')
+  })
+})
+
+// T676 review (L2): `tabTo` used to reset focus with a bare `blur()`, which leaves Chromium's
+// sequential-focus starting point where the element was. A trigger placed *before* the previously
+// focused element is then reached only after Tab has run off the end of the document and wrapped,
+// passing through whatever sits between. `walkTabOrder` already solves this with a sentinel reset
+// (`resetFocusToDocumentStart`); `tabTo` shares it.
+test.describe('tabTo starts from the top of the document', () => {
+  const PAGE = '<button id="a">A</button><button id="b">B</button><button id="c">C</button>'
+
+  test('a trigger placed before the previous focus is reached in its own position', async ({
+    page,
+  }) => {
+    await page.setContent(PAGE)
+    await page.evaluate(() => document.getElementById('c')?.focus())
+
+    // From the top: A, then B. Reaching B only after running off the end (body, A, B) is three.
+    expect(await tabTo(page, page.locator('#b'))).toBe(2)
+  })
+
+  test('contrast: with nothing focused the same trigger takes the same two presses', async ({
+    page,
+  }) => {
+    await page.setContent(PAGE)
+
+    expect(await tabTo(page, page.locator('#b'))).toBe(2)
+  })
+})
+
+// T676 review (L6): `open-surface.ts` carried its own copy of `FOCUSABLE_SELECTOR`, "kept in step"
+// by a comment. A second literal of that selector is the drift risk, so the file may not hold one.
+function restatesFocusableSelector(source: string): boolean {
+  return source.includes(FOCUSABLE_SELECTOR.slice(0, FOCUSABLE_SELECTOR.indexOf(', input')))
+}
+
+test.describe('open-surface.ts shares the focusable selector', () => {
+  test('it imports FOCUSABLE_SELECTOR and holds no literal copy', () => {
+    const source = readFileSync(path.join(__dirname, 'open-surface.ts'), 'utf8')
+    expect(restatesFocusableSelector(source)).toBe(false)
+    expect(source).toMatch(/FOCUSABLE_SELECTOR,\n\s+readFocusedStop/)
+  })
+
+  test('a planted second literal is caught', () => {
+    expect(
+      restatesFocusableSelector(
+        `const DIALOG_FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled])'`,
+      ),
+    ).toBe(true)
   })
 })

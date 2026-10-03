@@ -26,11 +26,24 @@ export const LOOP_SELECTOR: Record<LoopKind, string> = {
   skeleton: '[class~="motion-safe:animate-pulse"]',
 }
 
+// The `@keyframes` each loop runs, as `build-tokens.mjs` names them (`ds-<token>`, from
+// `packages/design-system/tokens/motion.json`'s `animation` group). The element must be running
+// *this* animation, not merely name it.
+export const LOOP_ANIMATION: Record<LoopKind, string> = {
+  spinner: 'ds-spin',
+  skeleton: 'ds-pulse',
+}
+
 interface LoopSnapshot {
   tag: string
   animationName: string
   animationDuration: string
   animationIterationCount: string
+  /** `animationName` of every `CSSAnimation` on the element that is actually running: what the
+   * browser is animating, as opposed to what the computed style says it was asked to. */
+  running: string[]
+  /** The identity stamp `assertLoopsAnimating` leaves on the element, `null` on any other. */
+  stamp: string | null
 }
 
 export async function readLoops(page: Page, kind: LoopKind): Promise<LoopSnapshot[]> {
@@ -42,6 +55,14 @@ export async function readLoops(page: Page, kind: LoopKind): Promise<LoopSnapsho
         animationName: computed.animationName,
         animationDuration: computed.animationDuration,
         animationIterationCount: computed.animationIterationCount,
+        running: el
+          .getAnimations()
+          .filter(
+            (animation): animation is CSSAnimation =>
+              animation instanceof CSSAnimation && animation.playState === 'running',
+          )
+          .map((animation) => animation.animationName),
+        stamp: el.getAttribute('data-loop-stamp'),
       }
     })
   }, LOOP_SELECTOR[kind])
@@ -76,7 +97,24 @@ export async function assertLoopsAnimating(
         `${context}: a <${loop.tag}> ${kind} animation has no perceptible duration`,
       ).toBeGreaterThan(1)
     }
+    // The computed style above only says what the element was *asked* to do. The token build emits
+    // `--animate-*` and `@keyframes ds-*` as separate outputs, so a rule can name keyframes that do
+    // not exist: every property reads healthy and nothing moves. The browser's own list of running
+    // animations is the only thing that cannot be wrong about that.
+    expect(
+      loop.running,
+      `${context}: a <${loop.tag}> ${kind} has no running ${LOOP_ANIMATION[kind]} animation ` +
+        `without prefers-reduced-motion (running: [${loop.running.join(', ')}]) — its rule names ` +
+        `keyframes that were never emitted, or it is paused; computed animation-name cannot tell`,
+    ).toContain(LOOP_ANIMATION[kind])
   }
+  // Stamp the very elements judged, so the stopped half can prove it is judging the same ones
+  // rather than whatever now matches the selector.
+  await page.evaluate((selector) => {
+    document
+      .querySelectorAll<HTMLElement>(selector)
+      .forEach((el, index) => el.setAttribute('data-loop-stamp', String(index)))
+  }, LOOP_SELECTOR[kind])
   return loops.length
 }
 
@@ -94,9 +132,18 @@ export async function assertLoopsStopped(
     `${context}: ${loops.length} ${kind} element(s) under reduce, ${expectedCount} without it — ` +
       `a stopped loop must still be on screen, resting, not removed`,
   ).toBe(expectedCount)
+  // Identity, not just count: a remount or a different component under reduce would match the
+  // selector with a fresh node, which carries no stamp from the animating half.
+  const replaced = loops.filter((loop) => loop.stamp === null).length
+  expect(
+    replaced,
+    `${context}: ${replaced} ${kind} element(s) under reduce were not on screen without it — the ` +
+      `loop was replaced, not stopped (a stopped loop is the same element, resting)`,
+  ).toBe(0)
   for (const loop of loops) {
-    if (loop.animationName === 'none') continue
-    for (const ms of parseDurationListMs(loop.animationDuration)) {
+    for (const ms of loop.animationName === 'none'
+      ? []
+      : parseDurationListMs(loop.animationDuration)) {
       expect(
         ms,
         `${context}: a <${loop.tag}> ${kind} still runs animation "${loop.animationName}" ` +
@@ -104,6 +151,11 @@ export async function assertLoopsStopped(
           `prefers-reduced-motion: reduce`,
       ).toBeLessThanOrEqual(1)
     }
+    expect(
+      loop.running,
+      `${context}: a <${loop.tag}> ${kind} still has a running animation [${loop.running.join(', ')}] ` +
+        `under prefers-reduced-motion: reduce`,
+    ).toEqual([])
   }
 }
 

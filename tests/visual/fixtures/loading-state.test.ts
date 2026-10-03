@@ -5,15 +5,27 @@
 // free), a loop that does not stop, a loop that vanishes instead of resting, and a page with no loop
 // at all.
 import { expect, test, type Page } from '@playwright/test'
-import { assertLoopsAnimating, assertLoopsStopped, holdRequests } from './loading-state'
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
+import {
+  assertLoopsAnimating,
+  assertLoopsStopped,
+  holdRequests,
+  LOOP_ANIMATION,
+  readLoops,
+} from './loading-state'
 
 // The class token is literal, colon included, exactly as `Spinner`/`Skeleton` carry it. The CSS
 // reproduces what Tailwind emits for `motion-safe:animate-pulse`: the animation applies only under
 // `no-preference`.
 const PULSE_KEYFRAMES = '@keyframes ds-pulse { 0%, 100% { opacity: 1 } 50% { opacity: .5 } }'
 
-function loopPage(css: string, body = '<div class="motion-safe:animate-pulse">loading</div>') {
-  return `<style>${PULSE_KEYFRAMES} ${css}</style>${body}`
+function loopPage(
+  css: string,
+  body = '<div class="motion-safe:animate-pulse">loading</div>',
+  keyframes = PULSE_KEYFRAMES,
+) {
+  return `<style>${keyframes} ${css}</style>${body}`
 }
 
 const GATED =
@@ -22,6 +34,9 @@ const UNGATED = '.motion-safe\\:animate-pulse { animation: ds-pulse 320ms infini
 const NEVER_LOOPS = '.motion-safe\\:animate-pulse { animation: none }'
 const FINITE =
   '@media (prefers-reduced-motion: no-preference) { .motion-safe\\:animate-pulse { animation: ds-pulse 320ms 3 } }'
+
+const PAUSED =
+  '@media (prefers-reduced-motion: no-preference) { .motion-safe\\:animate-pulse { animation: ds-pulse 320ms infinite paused } }'
 
 async function reduce(page: Page): Promise<void> {
   await page.emulateMedia({ reducedMotion: 'reduce' })
@@ -50,6 +65,68 @@ test.describe('loading-state loop guard, planted pages', () => {
     await expect(assertLoopsAnimating(page, 'skeleton', 'planted')).rejects.toThrow(
       /a <div> skeleton has no animation without prefers-reduced-motion/,
     )
+  })
+
+  // T676 review (H2): the token build emits `--animate-*` and `@keyframes ds-*` as decoupled
+  // outputs, so a rule can name keyframes that were never emitted. Computed `animation-name`,
+  // iteration count and duration all look right then — and `getAnimations()` is empty, nothing moves.
+  test('a rule naming missing keyframes fails the animating half: nothing is running', async ({
+    page,
+  }) => {
+    await page.emulateMedia({ reducedMotion: 'no-preference' })
+    await page.setContent(loopPage(GATED, undefined, ''))
+
+    // Sanity: every property the old check read looks like a healthy loop.
+    const [loop] = await readLoops(page, 'skeleton')
+    expect(loop.animationName).toBe('ds-pulse')
+    expect(loop.animationIterationCount).toBe('infinite')
+    expect(loop.animationDuration).toBe('0.32s')
+
+    await expect(assertLoopsAnimating(page, 'skeleton', 'planted')).rejects.toThrow(
+      /a <div> skeleton has no running ds-pulse animation/,
+    )
+  })
+
+  test('a paused animation fails the animating half', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'no-preference' })
+    await page.setContent(loopPage(PAUSED))
+
+    await expect(assertLoopsAnimating(page, 'skeleton', 'planted')).rejects.toThrow(
+      /a <div> skeleton has no running ds-pulse animation/,
+    )
+  })
+
+  test('a different animation running on the element does not stand in for the expected one', async ({
+    page,
+  }) => {
+    await page.emulateMedia({ reducedMotion: 'no-preference' })
+    await page.setContent(
+      loopPage(
+        '@media (prefers-reduced-motion: no-preference) { .motion-safe\\:animate-pulse { animation: ds-other 320ms infinite } }',
+        undefined,
+        '@keyframes ds-other { 0%, 100% { opacity: 1 } 50% { opacity: .5 } }',
+      ),
+    )
+
+    await expect(assertLoopsAnimating(page, 'skeleton', 'planted')).rejects.toThrow(
+      /a <div> skeleton has no running ds-pulse animation/,
+    )
+  })
+
+  test('the expected animation names are the keyframes motion.json emits', () => {
+    const motion = JSON.parse(
+      readFileSync(
+        path.resolve(__dirname, '../../../packages/design-system/tokens/motion.json'),
+        'utf8',
+      ),
+    ) as { animation: Record<string, unknown> }
+    expect(LOOP_ANIMATION.spinner).toBe('ds-spin')
+    expect(LOOP_ANIMATION.skeleton).toBe('ds-pulse')
+    for (const name of Object.values(LOOP_ANIMATION)) {
+      expect(Object.keys(motion.animation), `motion.json defines no ${name}`).toContain(
+        name.replace(/^ds-/, ''),
+      )
+    }
   })
 
   test('a finite animation fails the animating half: a loop repeats', async ({ page }) => {
@@ -87,6 +164,27 @@ test.describe('loading-state loop guard, planted pages', () => {
     await reduce(page)
     await expect(assertLoopsStopped(page, 'skeleton', 'planted', count)).rejects.toThrow(
       /0 skeleton element\(s\) under reduce, 1 without it/,
+    )
+  })
+
+  // T676 review (L4): the stopped half compared counts, so a loop element swapped for a fresh one
+  // under reduce (a remount, a different component) passed as "the same loop, resting".
+  test('a loop replaced by a new node under reduce fails: stopped means the same element', async ({
+    page,
+  }) => {
+    await page.emulateMedia({ reducedMotion: 'no-preference' })
+    await page.setContent(loopPage(GATED))
+    const count = await assertLoopsAnimating(page, 'skeleton', 'planted')
+
+    await page.evaluate(() => {
+      const old = document.querySelector('.motion-safe\\:animate-pulse')
+      const replacement = document.createElement('div')
+      replacement.className = 'motion-safe:animate-pulse'
+      old?.replaceWith(replacement)
+    })
+    await reduce(page)
+    await expect(assertLoopsStopped(page, 'skeleton', 'planted', count)).rejects.toThrow(
+      /1 skeleton element\(s\) under reduce were not on screen without it — the loop was replaced/,
     )
   })
 

@@ -18,7 +18,12 @@
 // `keyboard-walk.test.ts` — so a guard is shown failing on a page carrying exactly the defect it
 // names, and cannot drift from the real-route assertion.
 import { expect, type Locator, type Page } from '@playwright/test'
-import { readFocusedStop, type TabStop } from './keyboard-walk'
+import {
+  FOCUSABLE_SELECTOR,
+  readFocusedStop,
+  resetFocusToDocumentStart,
+  type TabStop,
+} from './keyboard-walk'
 
 export type SurfaceKind = 'menu' | 'dialog'
 
@@ -27,12 +32,8 @@ export const SURFACE_SELECTOR: Record<SurfaceKind, string> = {
   dialog: '[role="dialog"]',
 }
 
-// What a Tab press can reach inside a `Dialog`: the same selector `walkTabOrder` stamps, kept in
-// step with it rather than restated loosely — a `Dialog` containing a checkbox, a link or a
-// button must have each one walked.
-const DIALOG_FOCUSABLE =
-  'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), ' +
-  'select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+// What a Tab press can reach inside a `Dialog` is `FOCUSABLE_SELECTOR`, the selector `walkTabOrder`
+// stamps (`./keyboard-walk`) — imported, never restated, so the two cannot drift.
 
 // Every item role a `Menu` renders: `menuitem` (`actions`), `menuitemradio` (`selection`), and
 // `menuitemcheckbox` for completeness. Matched on the role prefix, never on a class.
@@ -100,7 +101,11 @@ export async function walkOpenSurface(page: Page, kind: SurfaceKind): Promise<Su
   await page.locator(surface).waitFor({ state: 'visible' })
   const focusInsideOnOpen = await isInside(page, surface)
 
-  const itemCount = await stampItems(page, surface, kind === 'menu' ? MENU_ITEM : DIALOG_FOCUSABLE)
+  const itemCount = await stampItems(
+    page,
+    surface,
+    kind === 'menu' ? MENU_ITEM : FOCUSABLE_SELECTOR,
+  )
   const rovingTabStops =
     kind === 'menu' ? await page.locator(`${surface} ${MENU_ITEM}[tabindex="0"]`).count() : 0
 
@@ -138,14 +143,25 @@ export async function walkOpenSurface(page: Page, kind: SurfaceKind): Promise<Su
     reverseStop = await readFocusedStop(page, surface)
   }
 
+  // The trigger that opened this menu is the one `aria-haspopup="menu"` button still expanded.
+  // Stamp it before Escape so "focus is back on the trigger" means *that* element, not any
+  // collapsed menu button on the page (a header with several menus has several).
+  const triggerStamped =
+    kind === 'menu' &&
+    (await page.evaluate(() => {
+      const trigger = document.querySelector('[aria-haspopup="menu"][aria-expanded="true"]')
+      trigger?.setAttribute('data-kbd-menu-trigger', '')
+      return trigger !== null
+    }))
+
   await page.keyboard.press('Escape')
   const closedByEscape = (await page.locator(surface).count()) === 0
   const focusReturnedToTrigger =
-    kind === 'menu'
+    kind === 'menu' && triggerStamped
       ? await page.evaluate(() => {
           const active = document.activeElement
           return (
-            active?.getAttribute('aria-haspopup') === 'menu' &&
+            active?.hasAttribute('data-kbd-menu-trigger') === true &&
             active.getAttribute('aria-expanded') === 'false'
           )
         })
@@ -228,16 +244,17 @@ export function distinctSurfaceStops(walk: SurfaceWalk): TabStop[] {
 
 /** Tab until `target` is the focused element — "opened by keyboard" starting where a keyboard user
  * does, not with a programmatic `focus()` that would skip proving the trigger is reachable. Bounded
- * by `maxPresses` so an unreachable trigger fails with its own message rather than hanging. */
-export async function tabTo(page: Page, target: Locator, maxPresses = 80): Promise<void> {
+ * by `maxPresses` so an unreachable trigger fails with its own message rather than hanging.
+ * Returns how many Tab presses it took. */
+export async function tabTo(page: Page, target: Locator, maxPresses = 80): Promise<number> {
   await target.waitFor({ state: 'visible' })
   const handle = await target.elementHandle()
   if (handle === null) throw new Error('tabTo: the target locator resolved to no element')
-  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
+  await resetFocusToDocumentStart(page)
   for (let i = 0; i < maxPresses; i += 1) {
     await page.keyboard.press('Tab')
     const reached = await handle.evaluate((el) => el === document.activeElement)
-    if (reached) return
+    if (reached) return i + 1
   }
   throw new Error(`tabTo: ${maxPresses} Tab presses never reached the target`)
 }

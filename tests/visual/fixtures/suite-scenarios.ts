@@ -50,6 +50,35 @@ export interface SuiteScenario extends RouteScenario {
   surface?: SurfaceKind
 }
 
+/** One list or control group a populated scenario promises to put on screen: `selector` is
+ * resolved in the page and must match at least `min` elements. `name` is what
+ * `ROUTE_REQUIRED_LISTS` (`./suite-scenarios.test.ts`) is checked against, so a list nobody
+ * declares fails by name. */
+export interface ListExpectation {
+  name: string
+  selector: string
+  min: number
+}
+
+/** A scenario that renders a route's success branch. Its label is always `${route} (${variant})`,
+ * built by `populated()` below, so `route` is the one thing a guard compares — never a label
+ * prefix, which `'/matches/$gameId (populated)'.startsWith('/matches')` showed to be ambiguous. */
+export interface PopulatedScenario extends SuiteScenario {
+  /** The `ROUTE_SCENARIOS` label this scenario populates, matched exactly. */
+  route: string
+  variant: string
+  /** What this scenario puts on screen, asserted in the browser by `assertPopulatedScenario`. */
+  renders: readonly ListExpectation[]
+}
+
+function populated(
+  route: string,
+  variant: string,
+  rest: Omit<PopulatedScenario, 'label' | 'route' | 'variant'>,
+): PopulatedScenario {
+  return { ...rest, route, variant, label: `${route} (${variant})` }
+}
+
 // --- Populated fixtures --------------------------------------------------------------------------
 
 const VIEWER_ID = 4242
@@ -223,6 +252,80 @@ const MATCH_DETAIL_POPULATED = {
   ],
 }
 
+// --- The analysis section (`AnalysisContainer`) ---------------------------------------------------
+//
+// `GET /api/matches/{game_id}` carries an `analysis` summary, and while its `state` is `published`
+// the container also reads `GET /api/matches/{game_id}/analysis`. `MATCH_DETAIL_RESPONSE` has no
+// `analysis` key at all (it predates the section), so `extractAnalysisSummary` throws on it and the
+// container renders `<AnalysisTimeline error>` — which is what the routes-at-rest scenario shows,
+// and exactly what a "populated" match page must not. Both bodies below are shaped by
+// `apps/web/src/features/analysis/api.ts` (`assertAnalysisSummary`, `assertAnalysisDocument`). A
+// field renamed there makes the container render its error state again, which
+// `assertPopulatedScenario` (below, run by `suite-scenarios.test.ts`) fails on by name.
+
+type AnalysisSummaryState =
+  'absent' | 'queued' | 'running' | 'published' | 'failed' | 'unavailable' | 'refused'
+
+function analysisSummary(state: AnalysisSummaryState, stale = false) {
+  return {
+    state,
+    parser_version: state === 'absent' ? null : '1.0.0',
+    stale,
+    point_of_view_profile_id: state === 'absent' ? null : VIEWER_ID,
+    result_path: `/api/matches/${SAMPLE_GAME_ID}/analysis`,
+    reason: state === 'refused' ? 'analysis_cap_reached' : null,
+  }
+}
+
+function analysisParticipant(profileId: number, teamId: number, civId: number, resigned: boolean) {
+  return {
+    profile_id: profileId,
+    player_number: civId,
+    civ_id: civId,
+    resolved_team_id: teamId,
+    // Every one of the four lists a participant card renders, non-empty: ids no lookup names, so
+    // each row is an `UnresolvedIdentifier` (`mappers.ts`'s `UNRESOLVED_NAME`), as in production.
+    builds: [
+      { building_id: 70, world_time_ms: 15_000 },
+      { building_id: 109, world_time_ms: 62_000 },
+    ],
+    trainings: [
+      { unit_id: 83, amount: 1, building_id: 109, world_time_ms: 20_000 },
+      { unit_id: 74, amount: 3, building_id: 12, world_time_ms: 340_000 },
+    ],
+    researches: [
+      { technology_id: 22, world_time_ms: 95_000 },
+      { technology_id: 213, world_time_ms: 410_000 },
+    ],
+    age_up_commands: { '101': 540_000, '102': 1_020_000 },
+    villagers_ordered: 62,
+    actions: 1840,
+    actions_per_minute: 61.4,
+    resigned_at_ms: resigned ? 2_640_000 : null,
+  }
+}
+
+const ANALYSIS_DOCUMENT = {
+  schema_version: 1,
+  game_id: Number(SAMPLE_GAME_ID),
+  point_of_view_profile_id: VIEWER_ID,
+  engine: { name: 'aoe2rec-py', version: '0.4.2', deps: {} },
+  source_recording: { object_key: 'fixture/recording.aoe2record', sha256: 'f'.repeat(64) },
+  extracted_at: '2026-08-29T10:00:00Z',
+  participants: [
+    analysisParticipant(VIEWER_ID, 1, 1, false),
+    analysisParticipant(ALLY_ID, 1, 3, false),
+    analysisParticipant(OPPONENT_ID, 2, 2, true),
+    analysisParticipant(FOE_TWO_ID, 2, 4, false),
+  ],
+}
+
+/** The match-detail body with its `analysis` summary, optionally with a different capture status
+ * (`expired` is one of the three "Lost" statuses that render `UploadControl`). */
+function matchDetailWith(analysis: ReturnType<typeof analysisSummary>, captureStatus = 'stored') {
+  return { ...MATCH_DETAIL_POPULATED, capture_status: captureStatus, analysis }
+}
+
 // Every populated body in one place, so `suite-scenarios.test.ts` can assert what the fixtures
 // promise — non-empty lists, one participant per replay availability, no avatar hash anywhere —
 // without reaching into the scenarios' closures.
@@ -232,7 +335,14 @@ export const POPULATED_FIXTURES = {
   playerMatches: matchesBody(THIRD_PARTY_PROFILE_ID),
   favourites: FAVOURITES_POPULATED,
   search: SEARCH_POPULATED,
-  matchDetail: MATCH_DETAIL_POPULATED,
+  matchDetail: matchDetailWith(analysisSummary('published')),
+  analysisDocument: ANALYSIS_DOCUMENT,
+  analysisSummaries: {
+    published: analysisSummary('published'),
+    stale: analysisSummary('published', true),
+    absent: analysisSummary('absent'),
+    refused: analysisSummary('refused'),
+  },
 } as const
 
 /** Paths (`$.results[1].avatar_hash`) of every non-null `avatar_hash` in a fixture. A fixture
@@ -258,19 +368,61 @@ async function stubPopulatedFavourites(page: Page): Promise<void> {
   await page.route('**/api/favourites', (route) => fulfillJson(route, FAVOURITES_POPULATED))
 }
 
-export const POPULATED_SCENARIOS: readonly SuiteScenario[] = [
-  {
-    label: '/dashboard (two linked profiles)',
+// What each populated scenario promises to render. Selectors are structural (a table body row, a
+// list item, an `<ol>`), never a class, and each `min` is the count the fixture above produces, so
+// a list that silently renders fewer rows fails as well as one that renders none.
+const RATING_ROWS: ListExpectation = {
+  name: 'rating table rows',
+  selector: 'main table tbody tr',
+  min: 1,
+}
+const MATCH_ROWS: readonly ListExpectation[] = [
+  { name: 'match rows', selector: 'main table tbody tr', min: 3 },
+  { name: 'match row links', selector: 'main a[href^="/matches/"]', min: 3 },
+]
+const MATCH_DETAIL_ROSTER: readonly ListExpectation[] = [
+  { name: 'participant rows', selector: 'main table tbody tr', min: 4 },
+  { name: 'replay availability rows', selector: 'main ul > li', min: 4 },
+]
+// Four participants, each with all four of Age ups, Build order, Training order and Research, two
+// events apiece.
+const ANALYSIS_LISTS: readonly ListExpectation[] = [
+  { name: 'analysis participant cards', selector: 'main article', min: 4 },
+  { name: 'analysis ordered lists', selector: 'main article ol', min: 16 },
+  { name: 'analysis list items', selector: 'main article ol > li', min: 32 },
+]
+
+async function stubMatchDetailAnalysis(
+  page: Page,
+  analysis: ReturnType<typeof analysisSummary>,
+  captureStatus = 'stored',
+): Promise<void> {
+  await stubMe(page, SIGNED_IN_ME)
+  await stubPopulatedProfiles(page, PROFILES_RESPONSE)
+  await page.route(`**/api/matches/${SAMPLE_GAME_ID}`, (route) =>
+    fulfillJson(route, matchDetailWith(analysis, captureStatus)),
+  )
+  await page.route(`**/api/matches/${SAMPLE_GAME_ID}/analysis`, (route) =>
+    fulfillJson(route, ANALYSIS_DOCUMENT),
+  )
+}
+
+export const POPULATED_SCENARIOS: readonly PopulatedScenario[] = [
+  populated('/dashboard', 'two linked profiles', {
     path: '/',
     landedPath: '/dashboard',
+    renders: [RATING_ROWS, { name: 'archival explanation list', selector: 'main ul > li', min: 1 }],
     stub: async (page) => {
       await stubMe(page, SIGNED_IN_ME)
       await stubPopulatedProfiles(page, TWO_PROFILES_RESPONSE)
     },
-  },
-  {
-    label: '/search (results submitted)',
+  }),
+  populated('/search', 'results submitted', {
     path: '/search',
+    renders: [
+      { name: 'search results', selector: 'main ul > li', min: 3 },
+      { name: 'search result links', selector: 'main a[href^="/players/"]', min: 3 },
+    ],
     stub: async (page) => {
       await stubMe(page, SIGNED_IN_ME)
       await page.route('**/api/players/search*', (route) => fulfillJson(route, SEARCH_POPULATED))
@@ -283,47 +435,96 @@ export const POPULATED_SCENARIOS: readonly SuiteScenario[] = [
       await answered
       await page.locator('main a[href^="/players/"]').first().waitFor({ state: 'visible' })
     },
-  },
-  {
-    label: '/favourites (populated)',
+  }),
+  populated('/favourites', 'populated', {
     path: '/favourites',
+    renders: [
+      { name: 'favourite rows', selector: 'main ul > li', min: 2 },
+      { name: 'favourite row links', selector: 'main a[href^="/players/"]', min: 2 },
+      { name: 'remove buttons', selector: 'main ul > li button', min: 2 },
+    ],
     stub: async (page) => {
       await stubMe(page, SIGNED_IN_ME)
       await stubPopulatedFavourites(page)
     },
-  },
-  {
-    label: '/matches (populated)',
+  }),
+  populated('/matches', 'populated', {
     path: '/matches',
+    renders: MATCH_ROWS,
     stub: async (page) => {
       await stubMe(page, SIGNED_IN_ME)
       await stubPopulatedProfiles(page, TWO_PROFILES_RESPONSE)
       await page.route('**/api/matches?*', (route) => fulfillJson(route, matchesBody(VIEWER_ID)))
     },
-  },
-  {
-    label: '/matches/$gameId (populated)',
+  }),
+  // The match page's analysis section has seven states; these four are the ones that render a list
+  // or a control (`published` the four ordered lists, `published` + `stale` the Recompute button,
+  // `absent` the Request analysis button, `refused` the Try requesting analysis button). `queued`
+  // and `running` render a Skeleton and no control, `failed` and `unavailable` a Callout with no
+  // control: none is a list or a control group, so none is a scenario (see the inventory in
+  // `suite-scenarios.test.ts`).
+  populated('/matches/$gameId', 'populated', {
     path: `/matches/${SAMPLE_GAME_ID}`,
-    stub: async (page) => {
-      await stubMe(page, SIGNED_IN_ME)
-      await stubPopulatedProfiles(page, PROFILES_RESPONSE)
-      await page.route(`**/api/matches/${SAMPLE_GAME_ID}`, (route) =>
-        fulfillJson(route, MATCH_DETAIL_POPULATED),
-      )
-    },
-  },
-  {
-    label: '/players/$profileId (favourited)',
+    renders: [
+      ...MATCH_DETAIL_ROSTER,
+      ...ANALYSIS_LISTS,
+      { name: 'replay download buttons', selector: 'main button:has-text("Download")', min: 2 },
+    ],
+    stub: (page) => stubMatchDetailAnalysis(page, analysisSummary('published')),
+  }),
+  populated('/matches/$gameId', 'analysis stale', {
+    path: `/matches/${SAMPLE_GAME_ID}`,
+    renders: [
+      ...MATCH_DETAIL_ROSTER,
+      ...ANALYSIS_LISTS,
+      { name: 'Recompute button', selector: 'main button:has-text("Recompute")', min: 1 },
+    ],
+    stub: (page) => stubMatchDetailAnalysis(page, analysisSummary('published', true)),
+  }),
+  populated('/matches/$gameId', 'analysis absent, capture lost', {
+    path: `/matches/${SAMPLE_GAME_ID}`,
+    renders: [
+      ...MATCH_DETAIL_ROSTER,
+      {
+        name: 'Request analysis button',
+        selector: 'main button:has-text("Request analysis")',
+        min: 1,
+      },
+      { name: 'upload control', selector: 'main input[type="file"]', min: 1 },
+    ],
+    stub: (page) => stubMatchDetailAnalysis(page, analysisSummary('absent'), 'expired'),
+  }),
+  populated('/matches/$gameId', 'analysis refused', {
+    path: `/matches/${SAMPLE_GAME_ID}`,
+    renders: [
+      ...MATCH_DETAIL_ROSTER,
+      {
+        name: 'Try requesting analysis button',
+        selector: 'main button:has-text("Try requesting analysis")',
+        min: 1,
+      },
+    ],
+    stub: (page) => stubMatchDetailAnalysis(page, analysisSummary('refused')),
+  }),
+  populated('/players/$profileId', 'favourited', {
     path: `/players/${THIRD_PARTY_PROFILE_ID}`,
+    renders: [
+      RATING_ROWS,
+      {
+        name: 'unfavourite toggle',
+        selector: 'main button:has-text("Remove from favourites")',
+        min: 1,
+      },
+    ],
     stub: async (page) => {
       await stubMe(page, SIGNED_IN_ME)
       await stubPopulatedFavourites(page)
       await stubPlayerProfile(page, THIRD_PARTY_PROFILE_ID)
     },
-  },
-  {
-    label: '/players/$profileId/matches (populated)',
+  }),
+  populated('/players/$profileId/matches', 'populated', {
     path: `/players/${THIRD_PARTY_PROFILE_ID}/matches`,
+    renders: MATCH_ROWS,
     stub: async (page) => {
       await stubMe(page, SIGNED_IN_ME)
       await stubPlayerProfile(page, THIRD_PARTY_PROFILE_ID)
@@ -331,8 +532,85 @@ export const POPULATED_SCENARIOS: readonly SuiteScenario[] = [
         fulfillJson(route, matchesBody(THIRD_PARTY_PROFILE_ID)),
       )
     },
-  },
+  }),
 ]
+
+// The lists and control groups each route's success branch renders, by `ROUTE_SCENARIOS` label.
+// This is the inventory the guards below are checked against: `unpopulatedLists` fails by name for
+// any entry no populated scenario of *that route* declares, and `assertPopulatedScenario` asserts
+// each declaration in the browser. A route absent here and from `ROUTES_WITHOUT_A_LIST`
+// (`suite-scenarios.test.ts`) fails there.
+export const ROUTE_REQUIRED_LISTS: Readonly<Record<string, readonly string[]>> = {
+  '/dashboard': ['rating table rows', 'archival explanation list'],
+  '/search': ['search results', 'search result links'],
+  '/favourites': ['favourite rows', 'favourite row links', 'remove buttons'],
+  '/matches': ['match rows', 'match row links'],
+  '/matches/$gameId': [
+    'participant rows',
+    'replay availability rows',
+    'replay download buttons',
+    'analysis participant cards',
+    'analysis ordered lists',
+    'analysis list items',
+    'Recompute button',
+    'Request analysis button',
+    'upload control',
+    'Try requesting analysis button',
+  ],
+  '/players/$profileId': ['rating table rows', 'unfavourite toggle'],
+  '/players/$profileId/matches': ['match rows', 'match row links'],
+}
+
+/** Every `route: list` pair no populated scenario declares. `route` is compared exactly — a prefix
+ * test let `'/matches/$gameId (populated)'` stand in for `/matches`, and
+ * `'/players/$profileId/matches (populated)'` for `/players/$profileId`, so removing either
+ * scenario on its own went unnoticed. */
+export function unpopulatedLists(
+  scenarios: readonly PopulatedScenario[],
+  required: Readonly<Record<string, readonly string[]>> = ROUTE_REQUIRED_LISTS,
+): string[] {
+  return Object.entries(required).flatMap(([route, lists]) =>
+    lists
+      .filter(
+        (list) =>
+          !scenarios.some(
+            (scenario) =>
+              scenario.route === route && scenario.renders.some((entry) => entry.name === list),
+          ),
+      )
+      .map((list) => `${route}: ${list}`),
+  )
+}
+
+/** Asserts, in the browser, that a populated scenario is showing its success branch: every
+ * declared list has its items, and nothing on the page is an error callout (`role="alert"`) or a
+ * loading region (`aria-busy`). The last two are what `/matches/$gameId (populated)` used to fail
+ * silently — the roster was full while the analysis section sat in its error state. */
+export async function assertPopulatedScenario(
+  page: Page,
+  scenario: PopulatedScenario,
+  context: string,
+): Promise<void> {
+  for (const list of scenario.renders) {
+    await expect
+      .poll(() => page.locator(list.selector).count(), {
+        message:
+          `${context}: ${list.name} (${list.selector}) rendered fewer than ${list.min} item(s) — ` +
+          `the route is showing an empty, loading or error branch instead of its populated one`,
+      })
+      .toBeGreaterThanOrEqual(list.min)
+  }
+  await expect(
+    page.locator('[role="alert"]'),
+    `${context}: an error callout (role="alert") is on screen — the scenario's stubs do not reach ` +
+      `the route's success branch`,
+  ).toHaveCount(0)
+  await expect(
+    page.locator('[aria-busy="true"]'),
+    `${context}: a loading region (aria-busy) is still on screen — the scenario's stubs do not ` +
+      `reach the route's success branch`,
+  ).toHaveCount(0)
+}
 
 // --- Openable surfaces ---------------------------------------------------------------------------
 

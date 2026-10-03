@@ -21,11 +21,30 @@
 // it over what is actually behind it. `assertFocusRingVisible` below is now the one place that
 // judgment lives too, shared between the real-route suite and this file's own planted-page guard
 // tests (`focus-ring-walk.test.ts`), for the same reason `assertFullTabCoverage` above is shared.
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import { expect, type Page } from '@playwright/test'
 // `.mjs` rather than `.cjs`: `focus-ring.spec.ts`'s own header comment explains why (Vite transforms
 // a local ESM module, `Colour.stories.tsx` also imports it, and Node has no CommonJS sibling to fall
 // back to for either consumer).
 import { contrastRatioRgb } from '../../../packages/design-system/tokens/contrast.mjs'
+
+// The longest duration `packages/design-system/tokens/motion.json` defines — read from the token
+// file, never restated, so adding a slower token moves the bound with it. `readFocusedStop` finishes
+// every transition on the focused element before reading it; this is what keeps that from hiding a
+// ring that takes seconds to appear.
+export const MAX_TRANSITION_MS: number = Math.max(
+  ...Object.values(
+    (
+      JSON.parse(
+        readFileSync(
+          path.resolve(__dirname, '..', '..', '..', 'packages/design-system/tokens/motion.json'),
+          'utf8',
+        ),
+      ) as { duration: Record<string, string> }
+    ).duration,
+  ).map((value) => parseFloat(value)),
+)
 
 export interface TabStop {
   /** The marker this walk stamps on every candidate before pressing Tab — never re-derived from a
@@ -105,6 +124,28 @@ export const FOCUSABLE_SELECTOR =
 // serialises into the browser cannot see an outer module constant.
 export const BACKGROUND_UNRESOLVABLE_DARK_SCHEME = '__no-opaque-surface--dark-color-scheme__'
 
+/** Start from the top of the document, whatever had focus before (T676: a scenario's `prepare`
+ * may have typed into a field or opened a menu). `blur()` alone leaves Chromium's sequential
+ * focus navigation starting point where the element was, so the first Tab would continue from
+ * there and skip every candidate before it. When something *was* focused, focus a throwaway
+ * `tabindex="-1"` sentinel inserted as the body's first child and remove it again: the starting
+ * point is then the top of the document, where a fresh page load leaves it. A page where nothing
+ * was focused is left alone — its starting point is already right, and a sentinel would change
+ * how a positive `tabindex` orders (this codebase declares none; `keyboard-walk.test.ts` plants
+ * one deliberately). Shared by `walkTabOrder` and `tabTo` (`./open-surface`). */
+export async function resetFocusToDocumentStart(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const active = document.activeElement as HTMLElement | null
+    if (active === null || active === document.body) return
+    active.blur()
+    const sentinel = document.createElement('span')
+    sentinel.setAttribute('tabindex', '-1')
+    document.body.insertBefore(sentinel, document.body.firstChild)
+    sentinel.focus()
+    sentinel.remove()
+  })
+}
+
 export async function walkTabOrder(page: Page, maxStepsOverride?: number): Promise<TabWalkResult> {
   const candidateCount = await page.evaluate(
     ({ selector }) => {
@@ -128,25 +169,7 @@ export async function walkTabOrder(page: Page, maxStepsOverride?: number): Promi
     { selector: FOCUSABLE_SELECTOR },
   )
 
-  // Start from the top of the document, whatever had focus before (T676: a scenario's `prepare`
-  // may have typed into a field or opened a menu). `blur()` alone leaves Chromium's sequential
-  // focus navigation starting point where the element was, so the first Tab would continue from
-  // there and skip every candidate before it. When something *was* focused, focus a throwaway
-  // `tabindex="-1"` sentinel inserted as the body's first child and remove it again: the starting
-  // point is then the top of the document, where a fresh page load leaves it. A page where nothing
-  // was focused is left alone — its starting point is already right, and a sentinel would change
-  // how a positive `tabindex` orders (this codebase declares none; `keyboard-walk.test.ts` plants
-  // one deliberately).
-  await page.evaluate(() => {
-    const active = document.activeElement as HTMLElement | null
-    if (active === null || active === document.body) return
-    active.blur()
-    const sentinel = document.createElement('span')
-    sentinel.setAttribute('tabindex', '-1')
-    document.body.insertBefore(sentinel, document.body.firstChild)
-    sentinel.focus()
-    sentinel.remove()
-  })
+  await resetFocusToDocumentStart(page)
 
   const maxSteps = maxStepsOverride ?? candidateCount + 5
   const steps: TabStop[] = []
@@ -177,7 +200,7 @@ export async function readFocusedStop(
   chromeSelector: string = CHROME_SELECTOR,
 ): Promise<TabStop | null> {
   return page.evaluate(
-    ({ unresolvableDarkSchemeMarker, chromeSelector }) => {
+    ({ unresolvableDarkSchemeMarker, chromeSelector, maxTransitionMs }) => {
       const el = document.activeElement as HTMLElement | null
       if (el === null || el === document.body) return null
 
@@ -187,8 +210,27 @@ export async function readFocusedStop(
       // frame would be judged instead of the ring a user ends up looking at. `finish()` jumps a
       // transition to its end state at once, so this costs no waiting. Only `CSSTransition`s: an
       // infinite `CSSAnimation` (`spin`, `pulse`) has no end to jump to.
+      //
+      // `finish()` also makes timing invisible: a ring that takes five seconds to appear, or starts
+      // two seconds late, would be judged on its end state exactly like the 120ms token fade. So the
+      // transition's delay plus duration is checked first, against the slowest motion token.
       for (const animation of el.getAnimations()) {
-        if (animation instanceof CSSTransition) animation.finish()
+        if (animation instanceof CSSTransition) {
+          const timing = animation.effect?.getComputedTiming()
+          const total =
+            Number(timing?.delay ?? 0) +
+            Number(timing?.duration ?? 0) +
+            Number(timing?.endDelay ?? 0)
+          if (total > maxTransitionMs) {
+            throw new Error(
+              `a transition on <${el.tagName.toLowerCase()}> "${(el.getAttribute('aria-label') ?? el.textContent ?? '').trim().slice(0, 60)}" ` +
+                `(${animation.transitionProperty}) lasts ${total}ms (delay + duration), longer than ` +
+                `the ${maxTransitionMs}ms the slowest motion token allows ` +
+                `(packages/design-system/tokens/motion.json) — finishing it would hide the delay`,
+            )
+          }
+          animation.finish()
+        }
       }
 
       const computed = getComputedStyle(el)
@@ -310,7 +352,11 @@ export async function readFocusedStop(
         exemptInlineLink,
       }
     },
-    { unresolvableDarkSchemeMarker: BACKGROUND_UNRESOLVABLE_DARK_SCHEME, chromeSelector },
+    {
+      unresolvableDarkSchemeMarker: BACKGROUND_UNRESOLVABLE_DARK_SCHEME,
+      chromeSelector,
+      maxTransitionMs: MAX_TRANSITION_MS,
+    },
   )
 }
 
