@@ -4,6 +4,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import path from 'node:path'
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { createRequire } from 'node:module'
 import {
   extractFileStoryStates,
   planSelfRest,
@@ -11,6 +14,14 @@ import {
   extractVisualCaptureClip,
   decideSweepGate,
   buildStoryFileWork,
+  buildStateSignalWork,
+  groupIndexByFile,
+  reconcileFile,
+  findUnindexedStoryFiles,
+  listStoryFilesOnDisk,
+  parseSweepIndex,
+  STORY_WALK_ROOTS,
+  dsDir,
   rootDir,
 } from './state-signal-model.mjs'
 
@@ -675,4 +686,523 @@ export const Primary: Story = {
     ['MysteryFocus'],
   )
   assert.equal(work.notMeasurable[0].reason, 'play-focus-target-unresolved')
+})
+
+// --- T679: discovery is the built Storybook index, not a first-file-per-directory walk ------------
+// Filed from the adversarial review of #105 (F6): a second `*.stories.tsx` in one component
+// directory, or a state story outside the three tiers (`.storybook/foundations/`), was never swept
+// and never reported. The cases below plant exactly those shapes in a virtual index + virtual
+// sources and assert they are swept or fail the gate, named.
+
+const WIDGET_STORIES = `
+import type { Meta, StoryObj } from '@storybook/react-vite'
+import { Widget } from './index'
+
+const meta: Meta<typeof Widget> = { id: 'primitives-widget', title: 'Primitives/Widget', component: Widget }
+export default meta
+type Story = StoryObj<typeof Widget>
+
+export const Primary: Story = { args: { variant: 'primary' } }
+`
+
+// A second story file in the same directory, carrying a state story the old first-file-wins walk
+// never read.
+const WIDGET_STATES_STORIES = `
+import type { Meta, StoryObj } from '@storybook/react-vite'
+import { Widget } from './index'
+
+const meta: Meta<typeof Widget> = { id: 'primitives-widget-states', title: 'Primitives/Widget states', component: Widget }
+export default meta
+type Story = StoryObj<typeof Widget>
+
+export const Hover: Story = {
+  parameters: { visualForceState: { state: 'hover', role: 'button' } },
+}
+`
+
+// A componentless foundations page (no `component`, no `id`): keyed from its title.
+const FOUNDATION_STORIES = `
+import type { Meta, StoryObj } from '@storybook/react-vite'
+
+const meta: Meta = { title: 'Foundations/Pressed', parameters: { layout: 'fullscreen' } }
+export default meta
+type Story = StoryObj
+
+export const Overview: Story = { render: () => null }
+export const Pressed: Story = {
+  parameters: { visualForceState: { state: 'active', role: 'button' } },
+}
+`
+
+function indexOf(entries) {
+  return {
+    v: 5,
+    entries: Object.fromEntries(
+      entries.map(([id, importPath, type = 'story']) => [id, { id, type, importPath }]),
+    ),
+  }
+}
+
+function sourcesOf(files) {
+  return (filePath) => {
+    const rel = path.relative(dsDir, filePath).split(path.sep).join('/')
+    if (!(rel in files)) throw new Error(`ENOENT: ${rel}`)
+    return files[rel]
+  }
+}
+
+const WIDGET_FILE = 'src/primitives/Widget/Widget.stories.tsx'
+const WIDGET_STATES_FILE = 'src/primitives/Widget/WidgetStates.stories.tsx'
+const FOUNDATION_FILE = '.storybook/foundations/Pressed.stories.tsx'
+
+test('buildStateSignalWork: a second story file in one directory is swept, not skipped', () => {
+  const index = indexOf([
+    ['primitives-widget--primary', `./${WIDGET_FILE}`],
+    ['primitives-widget-states--hover', `./${WIDGET_STATES_FILE}`],
+  ])
+  const work = buildStateSignalWork({
+    index,
+    readSource: sourcesOf({
+      [WIDGET_FILE]: WIDGET_STORIES,
+      [WIDGET_STATES_FILE]: WIDGET_STATES_STORIES,
+    }),
+    diskFiles: [WIDGET_FILE, WIDGET_STATES_FILE],
+  })
+  assert.deepEqual(
+    work.measurable.map((m) => m.stateId),
+    ['primitives-widget-states--hover'],
+  )
+  assert.deepEqual(work.discoveryGaps, [])
+  assert.deepEqual(work.unkeyableFiles, [])
+  assert.equal(work.filesDiscovered, 2)
+  assert.equal(work.indexedStoryCount, 2)
+})
+
+test('buildStateSignalWork: a state story outside the three tiers (foundations) is swept', () => {
+  const index = indexOf([
+    ['foundations-pressed--overview', `./${FOUNDATION_FILE}`],
+    ['foundations-pressed--pressed', `./${FOUNDATION_FILE}`],
+  ])
+  const work = buildStateSignalWork({
+    index,
+    readSource: sourcesOf({ [FOUNDATION_FILE]: FOUNDATION_STORIES }),
+    diskFiles: [FOUNDATION_FILE],
+  })
+  assert.deepEqual(
+    work.measurable.map((m) => m.stateId),
+    ['foundations-pressed--pressed'],
+  )
+  assert.deepEqual(work.discoveryGaps, [])
+  assert.deepEqual(work.unkeyableFiles, [])
+})
+
+test('buildStateSignalWork: contrast — one story file with only a non-state story flags nothing', () => {
+  const index = indexOf([
+    ['primitives-widget--primary', `./${WIDGET_FILE}`],
+    ['primitives-widget--docs', `./${WIDGET_FILE}`, 'docs'],
+  ])
+  const work = buildStateSignalWork({
+    index,
+    readSource: sourcesOf({ [WIDGET_FILE]: WIDGET_STORIES }),
+    diskFiles: [WIDGET_FILE],
+  })
+  assert.deepEqual(work.measurable, [])
+  assert.deepEqual(work.notMeasurable, [])
+  assert.deepEqual(work.discoveryGaps, [])
+  assert.deepEqual(work.unkeyableFiles, [])
+  assert.equal(work.indexedStoryCount, 1, 'a docs entry is not a story')
+})
+
+test('buildStateSignalWork: a story file on disk that the index does not list fails, named', () => {
+  // A stale build predating WidgetStates.stories.tsx: enumerating the index alone cannot see it.
+  const index = indexOf([['primitives-widget--primary', `./${WIDGET_FILE}`]])
+  const work = buildStateSignalWork({
+    index,
+    readSource: sourcesOf({
+      [WIDGET_FILE]: WIDGET_STORIES,
+      [WIDGET_STATES_FILE]: WIDGET_STATES_STORIES,
+    }),
+    diskFiles: [WIDGET_FILE, WIDGET_STATES_FILE],
+  })
+  assert.equal(work.discoveryGaps.length, 1)
+  assert.equal(work.discoveryGaps[0].kind, 'story-file-not-indexed')
+  assert.equal(work.discoveryGaps[0].file, WIDGET_STATES_FILE)
+  const gate = decideSweepGate({
+    classified: [entry('x', 'defended')],
+    measurableCount: 1,
+    discoveryGaps: work.discoveryGaps,
+  })
+  assert.equal(gate.pass, false)
+  assert.equal(gate.failures[0].kind, 'discovery-gap')
+  assert.equal(gate.failures[0].bucket, 'discovery-gap:story-file-not-indexed')
+  assert.equal(gate.failures[0].file, WIDGET_STATES_FILE)
+})
+
+test('buildStateSignalWork: a state story the index does not list (stale build) fails, named', () => {
+  const index = indexOf([['primitives-widget-states--other', `./${WIDGET_STATES_FILE}`]])
+  const work = buildStateSignalWork({
+    index,
+    readSource: sourcesOf({ [WIDGET_STATES_FILE]: WIDGET_STATES_STORIES }),
+    diskFiles: [WIDGET_STATES_FILE],
+  })
+  const kinds = work.discoveryGaps.map((g) => `${g.kind}:${g.stateId}`).sort()
+  assert.deepEqual(kinds, [
+    'indexed-story-not-parsed:primitives-widget-states--other',
+    'state-story-not-indexed:primitives-widget-states--hover',
+  ])
+})
+
+test('buildStateSignalWork: an index-listed story the parse never produced fails, named', () => {
+  // `Computed` is exported through a call, not an object literal — the parse cannot see it, so it
+  // cannot say whether it is a state story; the gate must not guess "no".
+  const source = `${WIDGET_STORIES}\nexport const Computed = makeStory({ parameters: { visualForceState: { state: 'hover', role: 'button' } } })\n`
+  const index = indexOf([
+    ['primitives-widget--primary', `./${WIDGET_FILE}`],
+    ['primitives-widget--computed', `./${WIDGET_FILE}`],
+  ])
+  const work = buildStateSignalWork({
+    index,
+    readSource: sourcesOf({ [WIDGET_FILE]: source }),
+    diskFiles: [WIDGET_FILE],
+  })
+  assert.equal(work.discoveryGaps.length, 1)
+  assert.equal(work.discoveryGaps[0].kind, 'indexed-story-not-parsed')
+  assert.equal(work.discoveryGaps[0].stateId, 'primitives-widget--computed')
+})
+
+test('buildStateSignalWork: an index-listed file that cannot be read fails, named', () => {
+  const index = indexOf([['primitives-widget--primary', `./${WIDGET_FILE}`]])
+  const work = buildStateSignalWork({ index, readSource: sourcesOf({}), diskFiles: [] })
+  assert.equal(work.discoveryGaps.length, 1)
+  assert.equal(work.discoveryGaps[0].kind, 'unreadable-story-file')
+  assert.equal(work.discoveryGaps[0].file, WIDGET_FILE)
+})
+
+test('reconcileFile / findUnindexedStoryFiles: equal sets produce no gap', () => {
+  const parsed = buildStoryFileWork(path.join(dsDir, WIDGET_STATES_FILE), WIDGET_STATES_STORIES)
+  assert.deepEqual(
+    reconcileFile({
+      file: WIDGET_STATES_FILE,
+      indexedIds: ['primitives-widget-states--hover'],
+      parsed,
+    }),
+    [],
+  )
+  assert.deepEqual(
+    findUnindexedStoryFiles({ indexedFiles: [WIDGET_FILE].values(), diskFiles: [WIDGET_FILE] }),
+    [],
+  )
+})
+
+test('groupIndexByFile: groups story ids by importPath, ignores docs entries, strips ./', () => {
+  const grouped = groupIndexByFile(
+    indexOf([
+      ['b--one', './src/b.stories.tsx'],
+      ['a--one', './src/a.stories.tsx'],
+      ['a--two', './src/a.stories.tsx'],
+      ['a--docs', './src/a.stories.tsx', 'docs'],
+    ]),
+  )
+  assert.deepEqual(
+    [...grouped.entries()],
+    [
+      ['src/a.stories.tsx', ['a--one', 'a--two']],
+      ['src/b.stories.tsx', ['b--one']],
+    ],
+  )
+})
+
+test('listStoryFilesOnDisk: finds every story file in a directory and under foundations, skips node_modules', () => {
+  const base = mkdtempSync(path.join(tmpdir(), 'story-disk-'))
+  try {
+    for (const rel of [
+      WIDGET_FILE,
+      WIDGET_STATES_FILE,
+      'src/primitives/Widget/index.tsx',
+      FOUNDATION_FILE,
+      'src/composites/Card/node_modules/dep/Dep.stories.tsx',
+    ]) {
+      mkdirSync(path.dirname(path.join(base, rel)), { recursive: true })
+      writeFileSync(path.join(base, rel), '')
+    }
+    assert.deepEqual(
+      listStoryFilesOnDisk(base),
+      [FOUNDATION_FILE, WIDGET_FILE, WIDGET_STATES_FILE].sort(),
+    )
+  } finally {
+    rmSync(base, { recursive: true, force: true })
+  }
+})
+
+test('extractFileStoryStates: a componentless page is keyed by its literal title', () => {
+  const result = extractFileStoryStates(path.join(dsDir, FOUNDATION_FILE), FOUNDATION_STORIES)
+  assert.equal(result.kind, 'Foundations/Pressed')
+  assert.deepEqual(
+    result.stories.map((s) => s.id),
+    ['foundations-pressed--overview', 'foundations-pressed--pressed'],
+  )
+})
+
+// Review of #108 (M1): "componentless" used to be decided by `findMeta` finding nothing, and
+// `findMeta` only recognises a top-level const whose initializer is a bare object literal with a
+// `component` key. A component file written any other way (`satisfies`, `as`, an inline default
+// export) was therefore treated as componentless and keyed by its title — silently, where before
+// T679 it failed the gate as unkeyable. The rule is now decided from the default-exported meta
+// object itself: a `component` key makes the file a component file, in every syntax.
+const STORY_PATH = path.join(rootDir, 'src/primitives/Widget/Widget.stories.tsx')
+const COMPONENT_STORIES_BODY = `
+export const Hover = {
+  parameters: { visualForceState: { state: 'hover', role: 'button' } },
+}
+`
+const NO_ID_COMPONENT_SYNTAXES = {
+  'const + satisfies': `
+const meta = { title: 'Primitives/Widget', component: Widget } satisfies Meta<typeof Widget>
+export default meta
+${COMPONENT_STORIES_BODY}`,
+  'inline export default': `
+export default { title: 'Primitives/Widget', component: Widget }
+${COMPONENT_STORIES_BODY}`,
+  'inline export default + as': `
+export default { title: 'Primitives/Widget', component: Widget } as Meta<typeof Widget>
+${COMPONENT_STORIES_BODY}`,
+  'inline export default + satisfies': `
+export default { title: 'Primitives/Widget', component: Widget } satisfies Meta<typeof Widget>
+${COMPONENT_STORIES_BODY}`,
+  'const + as': `
+const meta = { title: 'Primitives/Widget', component: Widget } as Meta<typeof Widget>
+export default meta
+${COMPONENT_STORIES_BODY}`,
+  'const + type annotation': `
+const meta: Meta<typeof Widget> = { title: 'Primitives/Widget', component: Widget }
+export default meta
+${COMPONENT_STORIES_BODY}`,
+  'const + parenthesised satisfies': `
+const meta = ({ title: 'Primitives/Widget', component: Widget } satisfies Meta<typeof Widget>)
+export default meta
+${COMPONENT_STORIES_BODY}`,
+  'export { meta as default }': `
+const meta = { title: 'Primitives/Widget', component: Widget } satisfies Meta<typeof Widget>
+export { meta as default }
+${COMPONENT_STORIES_BODY}`,
+  'string-literal "component" key': `
+export default { title: 'Primitives/Widget', 'component': Widget }
+${COMPONENT_STORIES_BODY}`,
+  'component arriving through a spread': `
+const base = defineBase(Widget)
+export default { title: 'Primitives/Widget', ...base }
+${COMPONENT_STORIES_BODY}`,
+}
+
+for (const [syntax, body] of Object.entries(NO_ID_COMPONENT_SYNTAXES)) {
+  test(`buildStoryFileWork: a component meta with no literal id is unkeyable, never keyed by title — ${syntax}`, () => {
+    const work = buildStoryFileWork(STORY_PATH, body)
+    assert.ok(work.unkeyable, `expected an unkeyable result for: ${syntax}`)
+    assert.match(work.unkeyable.detail, /no string-literal "id"/)
+    assert.equal(work.measurable, undefined)
+  })
+}
+
+// Contrast: the same syntaxes, componentless, still key by title — the strict rule does not
+// reach the foundations pages.
+const COMPONENTLESS_SYNTAXES = {
+  'const + satisfies': `
+const meta = { title: 'Foundations/Pressed', parameters: {} } satisfies Meta
+export default meta
+${COMPONENT_STORIES_BODY}`,
+  'inline export default': `
+export default { title: 'Foundations/Pressed', parameters: {} }
+${COMPONENT_STORIES_BODY}`,
+  'inline export default + as': `
+export default { title: 'Foundations/Pressed' } as Meta
+${COMPONENT_STORIES_BODY}`,
+  'const + type annotation': `
+const meta: Meta = { title: 'Foundations/Pressed' }
+export default meta
+${COMPONENT_STORIES_BODY}`,
+  'export { meta as default }': `
+const meta = { title: 'Foundations/Pressed' } satisfies Meta
+export { meta as default }
+${COMPONENT_STORIES_BODY}`,
+}
+
+for (const [syntax, body] of Object.entries(COMPONENTLESS_SYNTAXES)) {
+  test(`buildStoryFileWork: contrast — a componentless page still keys by its literal title — ${syntax}`, () => {
+    const work = buildStoryFileWork(STORY_PATH, body)
+    assert.equal(work.unkeyable, undefined, work.unkeyable?.detail)
+    assert.deepEqual(work.storyIds, ['foundations-pressed--hover'])
+  })
+}
+
+test('buildStoryFileWork: the plain "const meta: Meta<...> = {...}" component file with no id stays unkeyable', () => {
+  const work = buildStoryFileWork(
+    STORY_PATH,
+    `
+const meta: Meta<typeof Widget> = { title: 'Primitives/Widget', component: Widget }
+export default meta
+${COMPONENT_STORIES_BODY}`,
+  )
+  assert.ok(work.unkeyable)
+  assert.match(work.unkeyable.detail, /no string-literal "id"/)
+})
+
+test('buildStoryFileWork: a component meta with a literal id keys by it, whatever the syntax', () => {
+  const work = buildStoryFileWork(
+    STORY_PATH,
+    `
+export default { id: 'primitives-widget', title: 'Primitives/Widget', component: Widget } satisfies Meta<typeof Widget>
+${COMPONENT_STORIES_BODY}`,
+  )
+  assert.equal(work.unkeyable, undefined)
+  assert.deepEqual(work.storyIds, ['primitives-widget--hover'])
+})
+
+test('buildStoryFileWork: a componentless page with no literal title is unkeyable, and the error names "title"', () => {
+  for (const body of [
+    `export default { parameters: {} }\n${COMPONENT_STORIES_BODY}`,
+    `export default { title: SOME_TITLE } satisfies Meta\n${COMPONENT_STORIES_BODY}`,
+    `const meta: Meta = { parameters: {} }\nexport default meta\n${COMPONENT_STORIES_BODY}`,
+  ]) {
+    const work = buildStoryFileWork(STORY_PATH, body)
+    assert.ok(work.unkeyable, `expected an unkeyable result for: ${body}`)
+    assert.match(work.unkeyable.detail, /"title"/)
+    assert.doesNotMatch(work.unkeyable.detail, /no string-literal "id"/)
+  }
+})
+
+test('buildStoryFileWork: a componentless page whose own "id" is not a literal is unkeyable on "id", never keyed by title', () => {
+  const work = buildStoryFileWork(
+    STORY_PATH,
+    `export default { id: PAGE_ID, title: 'Foundations/Pressed' } satisfies Meta\n${COMPONENT_STORIES_BODY}`,
+  )
+  assert.ok(work.unkeyable)
+  assert.match(work.unkeyable.detail, /"id"/)
+})
+
+// Review of #108 (L3): `listStoryFilesOnDisk` walks story-file roots that `.storybook/main.ts`'s
+// `stories` globs also name — a hand-copied second list. The tests below read the real `stories`
+// array and compare it to what the walker reaches, so adding or removing a glob fails here.
+const dsRequire = createRequire(path.join(dsDir, 'package.json'))
+const ts = dsRequire('typescript')
+const MAIN_TS_PATH = path.join(dsDir, '.storybook', 'main.ts')
+
+// The `stories` array of a Storybook main.ts, as its string globs.
+function storiesGlobsOf(mainTsText) {
+  const sourceFile = ts.createSourceFile(
+    'main.ts',
+    mainTsText,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  )
+  let globs = null
+  const visit = (node) => {
+    if (
+      ts.isPropertyAssignment(node) &&
+      node.name.getText() === 'stories' &&
+      ts.isArrayLiteralExpression(node.initializer)
+    ) {
+      globs = node.initializer.elements.map((el) => {
+        assert.ok(
+          ts.isStringLiteralLike(el),
+          `stories entry is not a string literal: ${el.getText()}`,
+        )
+        return el.text
+      })
+    }
+    ts.forEachChild(node, visit)
+  }
+  visit(sourceFile)
+  assert.ok(globs, 'no `stories` array found in main.ts')
+  return globs
+}
+
+// The literal directory a glob starts from, relative to the package: `main.ts` sits in
+// `.storybook/`, so its globs are relative to that directory; everything up to the first path
+// segment carrying glob syntax is the base.
+function globBaseDir(glob) {
+  const relToPackage = path.posix.normalize(path.posix.join('.storybook', glob))
+  const literal = []
+  for (const segment of relToPackage.split('/')) {
+    if (/[*?[\]{}()!+@]/.test(segment)) break
+    literal.push(segment)
+  }
+  return literal.join('/')
+}
+
+function plantStoryFileUnder(base, dir) {
+  const rel = path.posix.join(dir, 'Planted.stories.tsx')
+  mkdirSync(path.dirname(path.join(base, rel)), { recursive: true })
+  writeFileSync(path.join(base, rel), '')
+  return rel
+}
+
+test("listStoryFilesOnDisk reaches the base directory of every glob in the real .storybook/main.ts's stories array", () => {
+  const bases = storiesGlobsOf(readFileSync(MAIN_TS_PATH, 'utf8')).map(globBaseDir)
+  assert.ok(bases.length > 0)
+  const dir = mkdtempSync(path.join(tmpdir(), 'story-roots-'))
+  try {
+    const plantedFiles = bases.map((b) => plantStoryFileUnder(dir, b)).sort()
+    assert.deepEqual(listStoryFilesOnDisk(dir), plantedFiles)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+// Storybook's `**` (picomatch, `dot: false` by default) never descends into a dot-directory, so a
+// story file under one is not in the index and must not be reported as missing from it.
+test('listStoryFilesOnDisk: a dot-directory below a root is not walked; an explicit dot-directory root still is', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'story-dot-'))
+  try {
+    for (const rel of [
+      'src/x/.cache/A.stories.tsx',
+      'src/.hidden/deep/B.stories.tsx',
+      '.storybook/foundations/.draft/C.stories.tsx',
+      'src/x/Visible.stories.tsx',
+      '.storybook/foundations/Pressed.stories.tsx',
+    ]) {
+      mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true })
+      writeFileSync(path.join(dir, rel), '')
+    }
+    assert.deepEqual(listStoryFilesOnDisk(dir), [
+      '.storybook/foundations/Pressed.stories.tsx',
+      'src/x/Visible.stories.tsx',
+    ])
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test("the walker's roots equal the base directories of the real .storybook/main.ts stories globs", () => {
+  const bases = storiesGlobsOf(readFileSync(MAIN_TS_PATH, 'utf8')).map(globBaseDir)
+  assert.deepEqual([...STORY_WALK_ROOTS].sort(), [...bases].sort())
+})
+
+test("storiesGlobsOf / globBaseDir read a planted stories array's base directories, so the roots comparison can see a third glob or a removed one", () => {
+  assert.deepEqual(
+    storiesGlobsOf(
+      `export default { stories: ['../src/**/*.stories.tsx', './foundations/**/*.stories.tsx', '../lib/**/*.stories.tsx'] }`,
+    ).map(globBaseDir),
+    ['src', '.storybook/foundations', 'lib'],
+  )
+  assert.deepEqual(
+    storiesGlobsOf(`export default { stories: ['../src/**/*.stories.tsx'] }`).map(globBaseDir),
+    ['src'],
+  )
+})
+
+test('parseSweepIndex: valid JSON with at least one story is returned as parsed', () => {
+  const index = indexOf([['a--one', './src/a.stories.tsx']])
+  assert.deepEqual(parseSweepIndex(JSON.stringify(index)), index)
+})
+
+test('parseSweepIndex: unparseable text, a shape without entries, and an index with no story all throw', () => {
+  assert.throws(() => parseSweepIndex('{ not json'), /not valid JSON/)
+  assert.throws(() => parseSweepIndex('{}'), /lists no story/)
+  assert.throws(() => parseSweepIndex(JSON.stringify(indexOf([]))), /lists no story/)
+  // Docs entries are not stories: an index of docs alone has nothing to sweep.
+  assert.throws(
+    () => parseSweepIndex(JSON.stringify(indexOf([['a--docs', './src/a.mdx', 'docs']]))),
+    /lists no story/,
+  )
 })

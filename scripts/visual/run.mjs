@@ -15,7 +15,9 @@
 //
 // Two things short-circuit before Playwright, and neither is an error: no Storybook build yet
 // (packages/design-system doesn't exist until T003/T016), and --changed finding no touched story.
-// Both print a message and exit 0, mirroring how pytest tolerates a missing testpaths entry.
+// Both print a message and exit 0, mirroring how pytest tolerates a missing testpaths entry. The one
+// exception is `--state-signal-sweep` (T679): its work list comes from that build, so with no build
+// it has measured nothing and fails with exit 1, naming the build command.
 //
 // A third thing looks similar and is NOT one of these two: `--changed` unable to resolve its diff
 // base at all (VISUAL_BASE_REF, default `origin/main` — see changedFiles() below). That is not
@@ -79,8 +81,8 @@ const GLOBAL_REACH_PREFIXES = [
 const changedOnly = process.argv.slice(2).includes('--changed')
 // T675 (slice 1/N): a report, never part of the ordinary `pnpm test:visual` / `--changed` selection
 // below — its own entry point, `pnpm exec node scripts/visual/run.mjs --state-signal-sweep` (see
-// `package.json`'s `test:visual:state-signal-sweep` script). Checked ahead of everything else in
-// `main()` so this flow never touches the ordinary story-selection logic at all.
+// `package.json`'s `test:visual:state-signal-sweep` script). Branched on at the top of `main()`, before
+// any story selection, so this flow never touches the ordinary story-selection logic at all.
 const stateSignalSweep = process.argv.slice(2).includes('--state-signal-sweep')
 
 // Every ordinary visual spec under `tests/visual/` *except* the sweep's own — computed from the
@@ -154,11 +156,24 @@ function changedFiles() {
 
 const storyGlob = /\.stories\.[jt]sx?$/
 
+const BUILD_STORYBOOK_COMMAND = 'pnpm --filter design-system build-storybook'
+
 async function main() {
   if (!existsSync(indexPath)) {
+    // The two modes disagree on purpose. The ordinary run has nothing to test before any story
+    // exists. The sweep's work list comes from the built index alone, so with no index it has
+    // measured nothing — a gate failure, never a pass.
+    if (stateSignalSweep) {
+      log(
+        'state-signal-sweep: gate failed — no Storybook build found at ' +
+          'packages/design-system/storybook-static/index.json, so there is nothing to sweep. ' +
+          `Run \`${BUILD_STORYBOOK_COMMAND}\` first.`,
+      )
+      process.exit(1)
+    }
     log(
       'no Storybook build found at packages/design-system/storybook-static/index.json — nothing ' +
-        'to test. Run `pnpm --filter design-system build-storybook` first if stories already exist.',
+        `to test. Run \`${BUILD_STORYBOOK_COMMAND}\` first if stories already exist.`,
     )
     process.exit(0)
   }
@@ -325,35 +340,41 @@ async function main() {
 
 // --- T675: package-wide comparator-blind-spot sweep --------------------------------
 
-// Every state story in the tree (`state-signal-model.mjs`'s own `discoverStoryFiles` +
-// `buildStoryFileWork`), self-paired against its own resting frame — split into `measurable` (a
-// story `tests/visual/state-signal-sweep.spec.ts` will actually render twice), `notMeasurable`
-// (reported as-is, no rendering — see `planSelfRest`'s own comment for the one static case), and
-// `unkeyableFiles` (a story file `buildStoryFileWork` cannot key at all: no literal `meta.id`).
+// Every state story in the built Storybook index (`state-signal-model.mjs`'s own
+// `buildStateSignalWork`: every story file the index lists, parsed, then reconciled against the
+// index and against the story files on disk — T679), self-paired against its own resting frame —
+// split into `measurable` (a story `tests/visual/state-signal-sweep.spec.ts` will actually render
+// twice), `notMeasurable` (reported as-is, no rendering — see `planSelfRest`'s own comment for the
+// one static case), `unkeyableFiles` (a story file that cannot be keyed at all: a component meta
+// with no literal `id`, or a componentless page with no literal `title`) and `discoveryGaps` (the
+// index, the parse and the story files on disk disagree about which stories exist).
 //
 // T675 remediation (M1): `unkeyableFiles` used to be only a log line here, with the file silently
 // dropped from the sweep entirely — `decideSweepGate` never even learned it existed. It is now
 // collected and passed on so the gate below can fail on it, named (still logged here too, for a
 // developer watching the run live rather than reading the gate's own failure list after the fact).
-function buildStateSignalWork({ discoverStoryFiles, buildStoryFileWork }) {
-  const measurable = []
-  const notMeasurable = []
-  const unkeyableFiles = []
-  for (const filePath of discoverStoryFiles()) {
-    const source = readFileSync(filePath, 'utf8')
-    const work = buildStoryFileWork(filePath, source)
-    if (work.unkeyable) {
-      unkeyableFiles.push(work.unkeyable)
-      log(
-        `state-signal-sweep: ${work.unkeyable.file} has no literal meta.id — gate failure, not a ` +
-          `skip: ${work.unkeyable.detail}`,
-      )
-      continue
-    }
-    measurable.push(...work.measurable)
-    notMeasurable.push(...work.notMeasurable)
+function collectStateSignalWork({ buildStateSignalWork, listStoryFilesOnDisk, parseSweepIndex }) {
+  // An unreadable, unparseable or story-less index is a gate failure here, like a missing one in
+  // `main()`: the sweep's work list comes from it, so there is nothing to sweep without it.
+  let index
+  try {
+    index = parseSweepIndex(readFileSync(indexPath, 'utf8'))
+  } catch (err) {
+    log(
+      `state-signal-sweep: gate failed — cannot use ${path.relative(rootDir, indexPath)}: ` +
+        `${err.message}. Run \`${BUILD_STORYBOOK_COMMAND}\` first.`,
+    )
+    process.exit(1)
   }
-  return { measurable, notMeasurable, unkeyableFiles }
+  const work = buildStateSignalWork({
+    index,
+    readSource: (filePath) => readFileSync(filePath, 'utf8'),
+    diskFiles: listStoryFilesOnDisk(),
+  })
+  for (const u of work.unkeyableFiles) {
+    log(`state-signal-sweep: ${u.file} cannot be keyed — gate failure, not a skip: ${u.detail}`)
+  }
+  return work
 }
 
 function formatPct(ratio) {
@@ -444,24 +465,34 @@ function writeStateSignalReport({ classified, notMeasurable, measurableCount }) 
 
 // Never part of `pnpm test:visual` / `--changed` (see `stateSignalSweep`'s own comment above): its
 // own entry point only, `pnpm exec node scripts/visual/run.mjs --state-signal-sweep`
-// (`package.json`'s `test:visual:state-signal-sweep`). Builds the work list from source alone (no
-// browser), spawns Playwright against `state-signal-sweep.spec.ts` alone for the rendering half,
-// then classifies whatever raw per-unit results that run produced — regardless of Playwright's own
+// (`package.json`'s `test:visual:state-signal-sweep`). Builds the work list from the built Storybook
+// index plus the story source it points at (no browser), spawns Playwright against
+// `state-signal-sweep.spec.ts` alone for the rendering half, then classifies whatever raw per-unit results that run produced — regardless of Playwright's own
 // exit status, the same "a stale finding is still reported on an otherwise-green run" shape
 // `checkStaleness()` above already follows, because one pair's own render failure (a selector this
 // task's own render-time check throws on, `story-render.ts`'s own `locateClipPart`) says nothing
 // about any other pair's numbers.
 async function runStateSignalSweep() {
-  const { discoverStoryFiles, buildStoryFileWork, classifyBucket, decideSweepGate } =
-    await import('./state-signal-model.mjs')
-  const { measurable, notMeasurable, unkeyableFiles } = buildStateSignalWork({
-    discoverStoryFiles,
-    buildStoryFileWork,
-  })
+  const {
+    buildStateSignalWork,
+    listStoryFilesOnDisk,
+    parseSweepIndex,
+    classifyBucket,
+    decideSweepGate,
+  } = await import('./state-signal-model.mjs')
+  const {
+    measurable,
+    notMeasurable,
+    unkeyableFiles,
+    discoveryGaps,
+    filesDiscovered,
+    indexedStoryCount,
+  } = collectStateSignalWork({ buildStateSignalWork, listStoryFilesOnDisk, parseSweepIndex })
   log(
-    `state-signal-sweep: ${measurable.length} measurable pair(s), ${notMeasurable.length} ` +
-      `not-measurable state stor(y/ies), ${unkeyableFiles.length} unkeyable file(s) found from ` +
-      'source.',
+    `state-signal-sweep: ${filesDiscovered} story file(s) and ${indexedStoryCount} stor(y/ies) in ` +
+      `the built index; ${measurable.length} measurable pair(s), ${notMeasurable.length} ` +
+      `not-measurable state stor(y/ies), ${unkeyableFiles.length} unkeyable file(s), ` +
+      `${discoveryGaps.length} discovery gap(s).`,
   )
 
   const rawResultsDir = path.join(rootDir, 'test-results', 'state-signal-sweep', 'raw')
@@ -510,8 +541,10 @@ async function runStateSignalSweep() {
   // (`defended`/`defended-without-clip`) or a size/layout change already defended by
   // `toHaveScreenshot` itself (`dimension-mismatch`), on any story file it could not key at all
   // (`unkeyableFiles`), on any not-measurable state story (`notMeasurable`, named with its own
-  // reason), and on `classified` being empty or not matching `measurable`'s own count. No
-  // allowlist: every failure is named, every run.
+  // reason), on any disagreement between the built Storybook index and the source parse
+  // (`discoveryGaps`, T679 — a state story the sweep did not reach, named), and on `classified`
+  // being empty or not matching `measurable`'s own count. No allowlist: every failure is named,
+  // every run.
   const gate = decideSweepGate({
     classified,
     measurableCount: measurable.length,
@@ -521,6 +554,7 @@ async function runStateSignalSweep() {
     measurableIds: measurable.map((m) => m.stateId),
     notMeasurable,
     unkeyableFiles,
+    discoveryGaps,
   })
   if (!gate.pass) {
     log(
@@ -540,7 +574,7 @@ async function runStateSignalSweep() {
     log(
       `state-signal-sweep: gate passed — ${classified.length} of ${classified.length} measured ` +
         'stor(y/ies) carry a defended non-fill signal or a defended-by-construction size change, ' +
-        'no unkeyable file and no not-measurable state story.',
+        'no unkeyable file, no not-measurable state story and no discovery gap.',
     )
   }
 
