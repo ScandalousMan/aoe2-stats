@@ -1284,7 +1284,7 @@ after everything underneath it moves.
       ([data-model.md](./data-model.md) §8). A row published before this feature has none, which
       reads as stale and recomputes once — the intended outcome. The object key already carries the
       digest, and parsing it back out of a key was rejected: a storage layout is not a record
-- [ ] T658 [US6] Implement reproduction from a recorded identity (**FR-043**): read the retained
+- [x] T658 [US6] Implement reproduction from a recorded identity (**FR-043**): read the retained
       recording through `packages/storage`, verify its checksum, resolve the named snapshot from
       package data, reach **no external source**, and refuse — naming what is missing — when the
       installed parser version or dependencies differ from the identity. The refusal is deliberate:

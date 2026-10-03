@@ -1,11 +1,11 @@
 """Tests for the reproducibility of a published analysis (T660, written before T657-T659):
 SC-004, SC-005, FR-040 to FR-043.
 
-Every test is ``xfail(strict=True)`` until the implementing task lands, and every not-yet-existing
-symbol is imported inside the test body (or inside a helper a test body calls): a module-scope
-import of a missing symbol would be a collection error that reddens the whole workspace, and a
-skip would hide the day the task lands. ``strict=True`` forces whoever lands T655/T657/T658/T659 to
-delete the marker from each test that turns green.
+Written ``xfail(strict=True)`` before the implementing tasks, with every not-yet-existing symbol
+imported inside the test body: a module-scope import of a missing symbol would have been a
+collection error that reddened the whole workspace, and a skip would have hidden the day the task
+landed. ``strict=True`` forced whoever landed T655/T657/T658/T659 to delete the marker from each
+test that turned green; none remain.
 
 **Interface assumed** (T655, T657, T657a, T658, T659 must match it, or amend this file). Everything
 below that the tasks and ``contracts/analysis-document.md`` already fix is not repeated here.
@@ -79,8 +79,6 @@ from aoe2stats_storage.models import AoeProfile, Match, MatchAnalysis, MatchPlay
 from aoe2stats_storage.repositories.base import session_scope
 
 # `session_factory` and `clean_database` come from `apps/analyzer/tests/conftest.py`.
-
-_SC005 = pytest.mark.xfail(strict=True, reason="T657/T657a/T658 not implemented yet")
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _FIXTURE_ZIP = _REPO_ROOT / "tests" / "fixtures" / "replays" / "AgeIIDE_Replay_500546441.zip"
@@ -570,7 +568,6 @@ def _forbid_network(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(socket.socket, "connect_ex", refuse)
 
 
-@_SC005
 async def test_the_first_identity_reproduces_exactly_after_a_second_snapshot_is_promoted(
     session_factory: async_sessionmaker[AsyncSession],
     clean_database: None,
@@ -591,7 +588,6 @@ async def test_the_first_identity_reproduces_exactly_after_a_second_snapshot_is_
     assert _body_of(reproduced) != _body_of(flow.second.raw)
 
 
-@_SC005
 async def test_the_newer_snapshot_is_not_substituted_when_reproducing_an_older_identity(
     session_factory: async_sessionmaker[AsyncSession],
     clean_database: None,

@@ -49,6 +49,7 @@ from aoe2stats_knowledge.snapshot import (
     load_snapshot,
     parse_identity,
     parse_promotion,
+    pinned_snapshot,
     snapshot_for,
 )
 
@@ -858,3 +859,35 @@ def test_snapshot_for_returns_a_gap_for_a_clearly_absent_build() -> None:
     """No committed snapshot, promoted or not, describes this build."""
     result = snapshot_for(999_999_999)
     assert result == KnowledgeGap(cause="no-snapshot-for-build", build=999_999_999)
+
+
+# ---------------------------------------------------------------------------- pinned_snapshot
+
+
+def test_a_pinned_unpromoted_snapshot_resolves_by_its_build_only_inside_the_block() -> None:
+    """FR-043: reproducing an identity resolves the snapshot it names, demoted or not. The
+    committed unpromoted fixture describes build 0 and is a gap everywhere else (the test above)."""
+    unpromoted = load_snapshot("aoe2techtree-test-stub")
+    assert unpromoted.promoted is False
+
+    with pinned_snapshot(unpromoted):
+        assert snapshot_for(0) is unpromoted
+    assert snapshot_for(0) == KnowledgeGap(cause="no-snapshot-for-build", build=0)
+
+
+def test_a_pin_changes_the_answer_for_its_own_build_and_no_other() -> None:
+    unpromoted = load_snapshot("aoe2techtree-test-stub")
+    with pinned_snapshot(unpromoted):
+        assert snapshot_for(999_999_999) == KnowledgeGap(
+            cause="no-snapshot-for-build", build=999_999_999
+        )
+        real = snapshot_for(180059)
+        assert isinstance(real, Snapshot)
+        assert real.directory == "aoe2techtree-180059"
+
+
+def test_the_pin_is_released_when_the_block_raises() -> None:
+    unpromoted = load_snapshot("aoe2techtree-test-stub")
+    with pytest.raises(RuntimeError), pinned_snapshot(unpromoted):
+        raise RuntimeError("the body failed")
+    assert isinstance(snapshot_for(0), KnowledgeGap)
