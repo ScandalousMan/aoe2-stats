@@ -3422,227 +3422,47 @@ function findStoryContentRoles(storyObj, metaObj, primitiveName, sourceFile) {
   return { roles, tags, undetermined }
 }
 
-// --- T686 remediation: which primitive a story's `render:` mounts, and with what props ---------------
-//
-// `findOwnStoryRenderInstances` reads a `<Primitive>` tag written in the story's own `render:`. A
-// render that holds none is NOT credited on the strength of the module being reachable (a wrapper
-// that mounts a different instance, a render context's `component` nobody mounts): reach is a fine
-// predicate for reporting and never a credit gate. This reads the only two shapes that still depict
-// the primitive without writing its tag in `render:`, and follows each to the tag that does:
-//   - a story-file wrapper declaration (`function Demo(props) { return <Menu {...props} /> }`) the
-//     render mounts, followed transitively to its own `<Primitive>` tag;
-//   - the render context's component (`(args, { component: C }) => <C {...args} />`) used AS A JSX TAG.
-// A mount's axis comes from its OWN tag: a literal attribute, else a spread of the props the tag
-// receives (the render's `args`, or the call site's attributes), else the primitive's default. A
-// literal on the tag wins over the story's args. Anything else — a spread of any other expression, a
-// non-literal axis attribute, a wrapper imported from elsewhere or not a function, a `render` that is
-// not a function this pass can read — is `refusal`: nothing is credited and the reason is reported.
-
-const MOUNT_UNFOLLOWABLE = Symbol('unfollowable')
-
-function functionLikeOf(node) {
-  if (!node) return null
-  if (ts.isFunctionDeclaration(node) || ts.isArrowFunction(node) || ts.isFunctionExpression(node)) {
-    return node
-  }
-  return null
-}
-
-// The identifier a function binds its props object to (`props`, or `args` for a render), and the
-// rest-binding of a destructured one (`({ children, ...rest })`). Either may be null.
-function propsBindingNames(fn) {
-  const param = fn?.parameters?.[0]
-  if (!param) return new Set()
-  if (ts.isIdentifier(param.name)) return new Set([param.name.text])
-  const names = new Set()
-  if (ts.isObjectBindingPattern(param.name)) {
-    for (const el of param.name.elements) {
-      if (el.dotDotDotToken && ts.isIdentifier(el.name)) names.add(el.name.text)
-    }
-  }
-  return names
-}
-
-// The names a render function's second parameter makes the meta's component reachable under: a
-// destructured `{ component: C }` / `{ component }` binds `C`, an identifier context `ctx` makes the
-// JSX tag `<ctx.component>` one.
-function contextComponentTags(fn) {
-  const ctx = fn?.parameters?.[1]
-  const tags = new Set()
-  if (!ctx) return tags
-  if (ts.isIdentifier(ctx.name)) tags.add(`${ctx.name.text}.component`)
-  else if (ts.isObjectBindingPattern(ctx.name)) {
-    for (const el of ctx.name.elements) {
-      if ((el.propertyName ?? el.name).getText() === 'component' && ts.isIdentifier(el.name)) {
-        tags.add(el.name.text)
-      }
-    }
-  }
-  return tags
-}
-
-function fileFunctionDeclarations(sourceFile) {
-  const declarations = new Map()
-  for (const stmt of sourceFile.statements) {
-    if (ts.isFunctionDeclaration(stmt) && stmt.name) declarations.set(stmt.name.text, stmt)
-    else if (ts.isVariableStatement(stmt)) {
-      for (const decl of stmt.declarationList.declarations) {
-        if (ts.isIdentifier(decl.name) && decl.initializer) {
-          declarations.set(decl.name.text, decl.initializer)
-        }
-      }
-    }
-  }
-  return declarations
-}
-
-// Resolves one axis prop of a tag from the attributes that supply it, last attribute first (JSX
-// order: a later attribute wins). `{ value, resolved }` when something supplies it, `null` when
-// nothing does, `MOUNT_UNFOLLOWABLE` when the supplier is something this pass does not read.
-function resolveMountProp(opening, propName, source, viaArgs) {
-  const attrs = opening.attributes.properties
-  for (let i = attrs.length - 1; i >= 0; i--) {
-    const attr = attrs[i]
-    if (ts.isJsxAttribute(attr)) {
-      if (attr.name.getText() !== propName) continue
-      const lit = attrLiteral(attr)
-      return lit.literal ? { value: lit.value, resolved: 'explicit' } : MOUNT_UNFOLLOWABLE
-    }
-    // A spread: only the props this tag itself receives.
-    const expr = attr.expression
-    if (!ts.isIdentifier(expr) || !source?.propsNames?.has(expr.text)) return MOUNT_UNFOLLOWABLE
-    const supplied = resolveFromSource(source, propName, viaArgs)
-    if (supplied === MOUNT_UNFOLLOWABLE) return supplied
-    if (supplied) return supplied
-  }
-  return null
-}
-
-// What the props a function receives hold for `propName`: the story's `args` at the root, the call
-// site's own attributes below it. `explicit` and `unresolved` count as supplied; a default the
-// primitive applies is never "supplied by the story".
-function resolveFromSource(source, propName, viaArgs) {
-  if (source.kind === 'args') {
-    const r = viaArgs(propName)
-    return r && r.resolved !== 'default' ? r : null
-  }
-  return resolveMountProp(source.opening, propName, source.parent, viaArgs)
-}
-
-// The explicit props a mounted tag passes, in order, folded with the call-site attributes it spreads
-// — what the story's scope should read for THIS mount rather than the story's args alone.
-function collectMountProps(opening, source, out) {
-  for (const attr of opening.attributes.properties) {
-    if (ts.isJsxAttribute(attr)) {
-      if (!attr.initializer) out.set(attr.name.getText(), ts.factory.createTrue())
-      else {
-        const expr = ts.isJsxExpression(attr.initializer)
-          ? attr.initializer.expression
-          : attr.initializer
-        if (expr) out.set(attr.name.getText(), expr)
-      }
-    } else if (
-      ts.isIdentifier(attr.expression) &&
-      source?.propsNames?.has(attr.expression.text) &&
-      source.kind === 'call'
-    ) {
-      collectMountProps(source.opening, source.parent, out)
-    }
-  }
-  return out
-}
-
-// `{ mounts: [{ opening, source }] }` for a render that holds no `<Primitive>` tag of its own and
-// mounts the primitive through a followable shape, `{ implicit: true }` for a story with no `render:`
-// (Storybook mounts `<Component {...args} />`), or `{ refusal }` with the reason.
-export function resolveOwnStoryMounts(storyObj, sourceFile, primitiveName) {
-  const renderExpr = getProp(storyObj, 'render')
-  if (!renderExpr) return { implicit: true }
-  const declarations = fileFunctionDeclarations(sourceFile)
-  const renderFn = functionLikeOf(
-    ts.isIdentifier(renderExpr) ? declarations.get(renderExpr.text) : renderExpr,
-  )
-  if (!renderFn) {
-    return {
-      refusal: `its render: is not a function this check can read (${renderExpr.getText().slice(0, 40)}), so it cannot tell that the story mounts <${primitiveName}>`,
-    }
-  }
-  const mounts = []
-  const notFollowed = new Set()
-  const contextTags = contextComponentTags(renderFn)
-  const visiting = new Set()
-  const walk = (fn, source, depth) => {
-    const visit = (node) => {
-      if (isJsxTag(node)) {
-        const tag = tagNameOf(node)
-        const opening = openingOf(node)
-        if (tag === primitiveName || (depth === 0 && contextTags.has(tag))) {
-          mounts.push({ opening, source, tag })
-        } else if (/^[A-Z]/.test(tag) && !tag.includes('.')) {
-          const decl = functionLikeOf(declarations.get(tag))
-          if (!declarations.has(tag)) notFollowed.add(`<${tag}> (not declared in the story file)`)
-          else if (!decl) notFollowed.add(`<${tag}> (not a function declaration)`)
-          else if (depth >= 6 || visiting.has(tag)) notFollowed.add(`<${tag}> (recursive)`)
-          else {
-            visiting.add(tag)
-            walk(
-              decl,
-              { kind: 'call', opening, parent: source, propsNames: propsBindingNames(decl) },
-              depth + 1,
-            )
-            visiting.delete(tag)
-          }
-        }
-      }
-      ts.forEachChild(node, visit)
-    }
-    if (fn.body) visit(fn.body)
-  }
-  walk(renderFn, { kind: 'args', propsNames: propsBindingNames(renderFn) }, 0)
-  if (mounts.length === 0) {
-    const detail = notFollowed.size > 0 ? ` (not followed: ${[...notFollowed].join(', ')})` : ''
-    return {
-      refusal: `its render: mounts no <${primitiveName}> — not directly, not through a story-file wrapper, not as the render context's component${detail} — so it depicts none of ${primitiveName}`,
-    }
-  }
-  return { mounts }
-}
-
-// One `findOwnStoryRenderInstances`-shaped entry per followed mount (`variant`, `size`, `disabled`),
-// or `{ refusal }` when a mount's axis comes from something this pass does not read.
-export function instancesFromMounts(mounts, defaults, storyObj, metaObj, primitiveName) {
-  let argsAxis = null
-  const viaArgs = (propName) => {
-    if (argsAxis === null) argsAxis = resolveStoryAxisValues(metaObj, storyObj, defaults)
-    return argsAxis[propName] ?? null
-  }
-  const found = []
-  for (const { opening, source } of mounts) {
-    const axis = {}
-    for (const propName of ['variant', 'size']) {
-      const supplied = resolveMountProp(opening, propName, source, viaArgs)
-      if (supplied === MOUNT_UNFOLLOWABLE) {
-        return {
-          refusal: `its <${primitiveName}> tag takes ${propName} from an expression or spread this check does not follow`,
-        }
-      }
-      if (supplied) axis[propName] = supplied
-      else if (defaults[propName] != null)
-        axis[propName] = { value: defaults[propName], resolved: 'default' }
-      else axis[propName] = { value: null, resolved: 'n/a' }
-    }
-    found.push({
-      ...axis,
-      disabled: attrLiteral(getAttr(opening, 'disabled')).value === true,
-    })
-  }
-  return { instances: found }
-}
-
 // Tags of the content a story supplies to a primitive that renders its children: their attributes are
 // not read, so a selector naming one of them is never confirmed.
 function tagsFromContent(content) {
   return content ? content.tags : new Set()
+}
+
+// Whether an element's guards put it in the frame THIS story shows, for the own-story verdict:
+// `'unreached'` when any guard's condition resolves to the wrong boolean (a sibling branch is what
+// the story renders); `'unsettled'` when no guard rules it out but one cannot be evaluated BECAUSE
+// it reads a prop the story supplies as an expression this pass cannot settle (`href: someHref` in
+// `args`): the story's own data decides whether the element renders, and this pass cannot tell, so
+// nothing may be credited on it. Otherwise `'reached'` — including a guard that reads only state the
+// component keeps for itself (`open && …`, a hook's value), which no story data decides and which a
+// `play()` or a reader reaches: the pre-existing reading of an unresolved guard, kept because
+// refusing it would refuse every item of a popover.
+function guardReach(guards, scope) {
+  if (!scope) return 'reached'
+  let unsettled = false
+  for (const guard of guards ?? []) {
+    const result = evaluateExpr(guard.expr, scope)
+    if (result.resolved) {
+      if (Boolean(result.value) !== guard.truthy) return 'unreached'
+    } else if (readsUnsettledProp(guard.expr, scope)) unsettled = true
+  }
+  return unsettled ? 'unsettled' : 'reached'
+}
+
+// Whether `expr` reads a name the scope holds with a value this pass could not resolve.
+function readsUnsettledProp(expr, scope) {
+  let found = false
+  const visit = (n) => {
+    if (found) return
+    if (ts.isPropertyAccessExpression(n)) return visit(n.expression)
+    if (ts.isIdentifier(n)) {
+      if (scope.has(n.text) && scope.get(n.text).resolved === false) found = true
+      return
+    }
+    ts.forEachChild(n, visit)
+  }
+  visit(expr)
+  return found
 }
 
 // Whether the target a primitive's own forced story names — a `role`, or a `selector` — resolves
@@ -3660,29 +3480,38 @@ function resolveOwnStoryTarget({
   scope,
   content,
 }) {
+  // What the primitive renders for THIS story, in two sets. `roles` holds a role only an element
+  // the story's scope REACHES renders. `guarded` holds one an element renders behind a guard this
+  // pass cannot settle (`'unresolved'`: `href={someIdentifier}`): it may render, it may not, so it
+  // is never a credit and it makes the verdict cannot-tell. A guard the scope rules out
+  // (`'unreached'`) drops the element altogether.
   const roles = new Set()
+  const guarded = new Set()
   let undetermined = false
   for (const el of localElementsByComponent.get(componentKey) ?? []) {
     if (el.ariaHidden) continue
-    if (scope && evaluateGuards(el.guards ?? [], scope) === 'unreached') continue
+    const verdict = guardReach(el.guards, scope)
+    if (verdict === 'unreached') continue
+    const into = verdict === 'reached' ? roles : guarded
     if (el.role === 'unresolved') {
       const expr = el.attrExprs?.get('role')?.expr ?? null
       const value = expr
         ? evaluateExpr(expr, scopeWithLocalConsts(scope ?? new Map(), el.localConsts))
         : null
-      if (value?.resolved && typeof value.value === 'string') roles.add(value.value)
+      if (value?.resolved && typeof value.value === 'string') into.add(value.value)
       else undetermined = true
     } else {
       const role = impliedRoleOf(el)
-      if (role) roles.add(role)
+      if (role) into.add(role)
     }
   }
   for (const primitive of PRIMITIVE_NAMES) {
     for (const inst of instancesByPrimitive.get(primitive) ?? []) {
       if (inst.kind !== 'jsx' || inst.componentKey !== componentKey || inst.ariaHidden) continue
-      if (scope && evaluateGuards(inst.guards ?? [], scope) === 'unreached') continue
+      const verdict = guardReach(inst.guards, scope)
+      if (verdict === 'unreached') continue
       const role = impliedRoleForPrimitiveInstance(primitive, inst)
-      if (role) roles.add(role)
+      if (role) (verdict === 'reached' ? roles : guarded).add(role)
       else undetermined = true
     }
   }
@@ -3692,11 +3521,14 @@ function resolveOwnStoryTarget({
   }
   if (forced.role) {
     if (roles.has(forced.role)) return { resolves: true }
+    const guardedOnly = guarded.has(forced.role)
     return {
       resolves: false,
-      reason: undetermined
-        ? `this pass cannot tell whether ${componentKey} renders role ${JSON.stringify(forced.role)} for this story: one of its elements has a role this story's data does not settle`
-        : `${componentKey} renders no element of role ${JSON.stringify(forced.role)} for this story`,
+      reason: guardedOnly
+        ? `this pass cannot tell whether ${componentKey} renders role ${JSON.stringify(forced.role)} for this story: every element of that role sits behind a condition this story's data does not settle`
+        : undetermined
+          ? `this pass cannot tell whether ${componentKey} renders role ${JSON.stringify(forced.role)} for this story: one of its elements has a role this story's data does not settle`
+          : `${componentKey} renders no element of role ${JSON.stringify(forced.role)} for this story`,
     }
   }
   if (forced.selector) {
@@ -3713,15 +3545,17 @@ function resolveOwnStoryTarget({
     let ambiguous = tagsFromContent(content).has(parsed.tag)
     for (const el of localElementsByComponent.get(componentKey) ?? []) {
       if (el.ariaHidden || el.tag !== parsed.tag) continue
-      if (scope && evaluateGuards(el.guards ?? [], scope) === 'unreached') continue
+      const guard = guardReach(el.guards, scope)
+      if (guard === 'unreached') continue
       const verdict = resolveSelectorMatch({
         selector: forced.selector,
         candidate: el,
         pool: [],
         scope: scopeWithLocalConsts(scope ?? new Map(), el.localConsts),
       })
-      if (verdict === 'match') return { resolves: true }
-      if (verdict === 'ambiguous') ambiguous = true
+      // A match behind a guard this pass cannot settle may or may not be rendered: cannot-tell.
+      if (verdict === 'match' && guard === 'reached') return { resolves: true }
+      if (verdict === 'match' || verdict === 'ambiguous') ambiguous = true
     }
     return {
       resolves: false,
@@ -3984,52 +3818,24 @@ export function computeStateCoverage({ componentDirs, filesByPath }) {
           getProp(metaObj, 'args'),
           getProp(node, 'args'),
         )
-        // T686: one verdict per own story. A `render:` that holds a `<Primitive>` tag is read as
-        // before (`findOwnStoryRenderInstances`). One that holds none is credited ONLY when a
-        // story-file wrapper, or the render context's component used as a tag, is followed to the
-        // primitive's own tag (`resolveOwnStoryMounts`) and that tag's axis is readable; anything
-        // else is refused, whatever `storyReachesComponentModule` says — reach is a reporting
-        // predicate, an over-approximation whose safe error is `true`, and as a credit gate that
-        // error is the over-credit. The refusal is kept on the story's own entry, which every record
-        // that credits an own story reads (record 1's role, selector, dynamic-role and play-focus
-        // paths, the Disabled column) and which `findUnaccountedForceStates` reports.
+        // T686: one verdict per own story, kept on the story's own entry (`ownCreditRefusal`), which
+        // every record that credits an own story reads (record 1's role, selector, dynamic-role and
+        // play-focus paths) and which `findUnaccountedForceStates` reports. A `render:` is read for
+        // the `<Primitive>` tag it holds itself (`findOwnStoryRenderInstances`); a story with no
+        // `render:` is Storybook's implicit `<Primitive {...args} />`. A `render:` that holds NO
+        // such tag is refused, never credited: what it mounts instead (a wrapper, a render passed by
+        // identifier, the render context's `component`) is not followed by this pass, and reading a
+        // story's `args` for a frame its render never shows is the over-credit. Reach
+        // (`storyReachesComponentModule`) is a reporting predicate, not a credit gate.
         const ownEntry = (storyStatesByComponent.get(componentKey) ?? []).find(
           (e) =>
             !e.synthetic && e.storyFile === path.basename(filePath) && e.exportName === exportName,
         )
-        let renderInstances = findOwnStoryRenderInstances(node, ownPrimitive, defaults, metaObj)
-        let refusal = null
-        if (!renderInstances) {
-          const mounted = resolveOwnStoryMounts(node, sourceFile, ownPrimitive)
-          if (mounted.refusal) refusal = mounted.refusal
-          else if (mounted.mounts) {
-            const built = instancesFromMounts(mounted.mounts, defaults, node, metaObj, ownPrimitive)
-            if (built.refusal) refusal = built.refusal
-            else if (mounted.mounts.length > 1 && (forced || playFocus)) {
-              refusal = `its render mounts ${mounted.mounts.length} <${ownPrimitive}> tags through wrappers, and this check cannot tell which one its force-state targets`
-            } else {
-              renderInstances = built.instances
-              // What the story's scope holds for THIS mount: the tag's own props, not the story's
-              // args alone (`resolveOwnStoryTarget` reads them).
-              if (ownEntry?.scope && mounted.mounts.length === 1) {
-                const fileScope = buildFileValueScope(sourceFile)
-                const props = collectMountProps(
-                  mounted.mounts[0].opening,
-                  mounted.mounts[0].source,
-                  new Map(),
-                )
-                for (const [propName, expr] of props) {
-                  ownEntry.scope.set(propName, evaluateExpr(expr, fileScope))
-                }
-                for (const literal of collectScopeStringLiterals(ownEntry.scope)) {
-                  ownEntry.argsLiterals.add(literal)
-                }
-              }
-            }
+        const renderInstances = findOwnStoryRenderInstances(node, ownPrimitive, defaults, metaObj)
+        if (!renderInstances && getProp(node, 'render')) {
+          if (ownEntry) {
+            ownEntry.ownCreditRefusal = `its render: mounts no <${ownPrimitive}> directly — this pass does not follow wrappers, a render passed by identifier or the render context's component, so it depicts none of ${ownPrimitive}`
           }
-        }
-        if (refusal) {
-          if (ownEntry) ownEntry.ownCreditRefusal = refusal
           continue
         }
         const pushed = []
@@ -4983,8 +4789,8 @@ function foreignPrimitiveRoleExtents(componentKey, role, instancesByPrimitive, s
 
 // T686: whether a story entry may credit anything of its own component. `reachesComponentModule ===
 // false` is T685's verdict (its `render:` shows none of the component's source); `ownCreditRefusal` is
-// the own-story verdict of a tracked primitive's story (`resolveOwnStoryMounts`,
-// `resolveOwnStoryTarget`): it is set once per story and read by every record that credits an own
+// the own-story verdict of a tracked primitive's story (the no-direct-tag refusal in
+// `computeStateCoverage`, `resolveOwnStoryTarget`): it is set once per story and read by every record that credits an own
 // story, so a story refused by one is credited by none.
 function isCreditableStory({ reachesComponentModule, ownCreditRefusal }) {
   return reachesComponentModule !== false && !ownCreditRefusal
@@ -5032,12 +4838,6 @@ function buildElementCells(
       // element matched by role (the same fix `resolveComposedStoryMatches` carries, and its own
       // comment explains: `FavouritesList`'s row link itself is `selector`-targeted, and must not
       // be treated as a wildcard match against every role-bearing element in the component).
-      // T686: an element a guard rules out of THIS story's scope (`Button`'s `<a>`, behind
-      // `href !== undefined`) is not in the frame a forced role names, the exclusion the selector and
-      // dynamic-role passes below already apply. Only a confirmed `'unreached'` skips.
-      const elementUnreached =
-        scope != null && evaluateGuards(el.guards ?? [], scope) === 'unreached'
-      if (elementUnreached) continue
       if (forced && forced.role && forced.role === impliedRole) {
         const verdict = resolveNameMatch({
           candidate: el,
@@ -5409,9 +5209,10 @@ export function buildElementMatrix(
             ...new Set(
               asPrinted(storyObjectsWithMeta)
                 // T685: a story whose `render:` reaches nothing of this module shows none of its
-                // elements, so its `args` cannot be what renders one disabled. T686: nor can a
-                // story the own-story verdict refused.
-                .filter((s) => s.argsHasDisabledTrue && isCreditableStory(s))
+                // elements, so its `args` cannot be what renders one disabled. (No `ownCreditRefusal`
+                // clause: only a tracked primitive's own story carries one, and a tracked primitive
+                // is an axis matrix, which prints no Disabled column from here.)
+                .filter((s) => s.argsHasDisabledTrue && s.reachesComponentModule !== false)
                 .map((s) => s.exportName),
             ),
           ]

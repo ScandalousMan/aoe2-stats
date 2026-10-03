@@ -8934,20 +8934,22 @@ test('T686 (c): a story whose render is only a raw <div role="menuitemradio"> cr
   )
 })
 
-test('T686 (a): a forced story mounting Menu only through a story-file wrapper, on a role Menu never renders, is reported though its render holds no <Menu> tag', () => {
-  const body = `function Demo(props) { return <Menu {...props} /> }
+test('T686 (a): a forced story mounting Menu only through a story-file wrapper is refused and reported with the no-direct-tag reason, whatever role it forces', () => {
+  for (const role of ['slider', 'menuitemradio']) {
+    const body = `function Demo(props) { return <Menu {...props} /> }
   export const Planted = {
     render: (args) => <Demo {...args} />,
     ${T686_SELECTION_ARGS},
-    ${T686_FORCE('hover', "role: 'slider'")},
+    ${T686_FORCE('hover', `role: '${role}'`)},
   }`
-  assert.deepEqual(menuAxisCredits(body), [])
-  const missing = menuAxisReport(body)
-  assert.equal(missing.length, 1)
-  assert.match(describeMissingForceState(missing[0]), /renders no element of role "slider"/)
+    assert.deepEqual(menuAxisCredits(body), [], role)
+    const missing = menuAxisReport(body)
+    assert.equal(missing.length, 1, role)
+    assert.match(describeMissingForceState(missing[0]), /mounts no <Menu> directly/, role)
+  }
 })
 
-test('T686 (d) contrast: a story whose render mounts <Menu>, an args-only story, and a render mounting through a story-file wrapper that hands its props to <Menu> are all still credited at the same cell', () => {
+test('T686 (d) contrast: a story whose render mounts <Menu> and an args-only story are still credited at the same cell', () => {
   const force = T686_FORCE('hover', "role: 'menuitemradio', name: 'aoe2alt'")
   assert.deepEqual(
     menuAxisCredits(`export const Planted = {
@@ -8959,11 +8961,6 @@ test('T686 (d) contrast: a story whose render mounts <Menu>, an args-only story,
   assert.deepEqual(menuAxisCredits(`export const Planted = { ${T686_SELECTION_ARGS}, ${force} }`), [
     'Menu|selection|hover',
   ])
-  assert.deepEqual(
-    menuAxisCredits(`function Demo(props) { return <Menu {...props} /> }
-    export const Planted = { render: (args) => <Demo {...args} />, ${T686_SELECTION_ARGS}, ${force} }`),
-    ['Menu|selection|hover'],
-  )
 })
 
 // `Field` renders the control its caller passes; its own source holds no input element. What a
@@ -9095,7 +9092,88 @@ test('T686r HIGH 1: a render that reads the render context’s component but mou
   assert.equal(t686rReport(computed).length, 1)
 })
 
-test('T686r HIGH 1: the same two renders UNFORCED, with a nested disabled item, credit no Rest or Disabled cell either, in any record', () => {
+// The follower is cut (second review of #112): a `render:` that holds no `<Primitive>` tag of its own
+// is refused and reported, whatever it mounts instead. Every shape below used to be followed, and
+// each earned an over-credit the review planted — a dead arm, an unused binding, an ignored slot
+// prop, a shadowed name, a rest binding that drops the axis, a literal before a spread.
+const T686R_NO_DIRECT = /mounts no <(Menu|Button)> directly/
+
+test('T686r HIGH 1: a render holding no <Primitive> tag of its own credits no cell of any record and is reported, whatever it mounts instead (wrapper, render passed by identifier, render context component, imported component)', () => {
+  const menu = {
+    'a wrapper forwarding its props to <Menu>': `function Demo(props) { return <Menu {...props} /> }
+      export const Planted = { render: (args) => <Demo {...args} />, args: SEL, FORCE }`,
+    'a wrapper mounting ANOTHER Menu beside the forced raw child': `function Frame({ children }) {
+        return <div><Menu variant="actions" triggerLabel="x" items={[]} />{children}</div>
+      }
+      export const Planted = { render: () => <Frame><div role="menuitemradio" tabIndex={0}>aoe2alt</div></Frame>, args: SEL, FORCE }`,
+    'a wrapper whose own <Menu> tag fixes the axis': `function Frame() { return <Menu variant="selection" items={[ITEM]} /> }
+      export const Planted = { render: () => <Frame />, args: { variant: 'actions', items: [] }, FORCE }`,
+    'the render context component used as a tag': `export const Planted = { render: (args, { component: C }) => <C {...args} />, args: SEL, FORCE }`,
+    'a render passed by identifier': `const Tpl = (args) => <Menu {...args} />
+      export const Planted = { render: Tpl, args: SEL, FORCE }`,
+    'a render that is not a function': `const Tpl = (args) => <Menu {...args} />
+      export const Planted = { render: Tpl.bind({}), args: SEL, FORCE }`,
+    'an imported wrapper': `export const Planted = { render: () => <Elsewhere />, args: SEL, FORCE }`,
+    'a lowercase <component>, an intrinsic element': `export const Planted = { render: (args) => <div><component {...args} /><div role="menuitemradio" tabIndex={0}>aoe2alt</div></div>, args: SEL, FORCE }`,
+    'a dead conditional arm': `function Demo({ show }) { return show ? <Menu variant="selection" items={[ITEM]} /> : <div role="menuitemradio" tabIndex={0}>aoe2alt</div> }
+      export const Planted = { render: () => <Demo show={false} />, args: {}, FORCE }`,
+    'a dead && arm': `function Demo() { return <div>{false && <Menu variant="selection" items={[ITEM]} />}<div role="menuitemradio" tabIndex={0}>aoe2alt</div></div> }
+      export const Planted = { render: () => <Demo />, args: {}, FORCE }`,
+    'a Menu in an uncalled inner function': `function Demo() { const unused = () => <Menu variant="selection" items={[ITEM]} />; return <div role="menuitemradio" tabIndex={0}>aoe2alt</div> }
+      export const Planted = { render: () => <Demo />, args: {}, FORCE }`,
+    'a Menu handed to a wrapper that ignores its slot prop': `function Shell({ slot }) { return <div role="menuitemradio" tabIndex={0}>aoe2alt</div> }
+      function Demo() { return <Shell slot={<Menu variant="selection" items={[ITEM]} />} /> }
+      export const Planted = { render: () => <Demo />, args: {}, FORCE }`,
+    'a render-local component shadowing a top-level wrapper': `function Demo() { return <Menu variant="selection" items={[ITEM]} /> }
+      export const Planted = { render: () => { const Demo = () => <div role="menuitemradio" tabIndex={0}>aoe2alt</div>; return <Demo /> }, args: {}, FORCE }`,
+  }
+  // The placeholders are filled with literals, so the story's own `args` read as plain data: with
+  // the no-direct-tag refusal removed, each of these would fall back to them and be credited.
+  const subst = (body) =>
+    `import { Elsewhere } from '../Elsewhere'\n${body
+      .replaceAll('args: SEL', `args: { variant: 'selection', items: [${T686R_ITEM}] }`)
+      .replaceAll('[ITEM]', `[${T686R_ITEM}]`)
+      .replaceAll('FORCE', T686R_RADIO_FORCE)}`
+  for (const [label, body] of Object.entries(menu)) {
+    const computed = t686rMenu(subst(body))
+    assert.deepEqual(plantedCredits(computed), [], label)
+    const missing = t686rReport(computed)
+    assert.equal(missing.length, 1, label)
+    // An imported wrapper and a lowercase `<component>` also reach nothing of Menu's module, and
+    // that predicate's message is the one printed first; every other shape reaches the module and
+    // is refused by the tag rule alone.
+    assert.match(
+      describeMissingForceState(missing[0]),
+      /^an imported|^a lowercase/.test(label) ? /credited on no cell/ : T686R_NO_DIRECT,
+      label,
+    )
+  }
+  const button = {
+    'a rest binding that drops the axis': `function Demo({ variant, ...rest }) { return <Button {...rest}>Go</Button> }
+      export const Planted = { render: () => <Demo variant="destructive" />, FORCE }`,
+    'a render-level rest binding': `function Demo(props) { return <Button {...props}>Go</Button> }
+      export const Planted = { render: ({ variant, ...rest }) => <Demo {...rest} />, args: { variant: 'destructive' }, FORCE }`,
+    'a literal axis before a spread of args': `function Demo(props) { return <Button variant="secondary" {...props}>Go</Button> }
+      export const Planted = { render: (args) => <Demo {...args} />, args: { variant: 'destructive' }, FORCE }`,
+    'a shadowed props parameter': `function Demo(props) { return <div>{[{ variant: 'ghost' }].map((props) => <Button key="k" {...props}>Go</Button>)}</div> }
+      export const Planted = { render: () => <Demo variant="destructive" />, FORCE }`,
+    'a wrapper declared after the story': `export const Planted = { render: () => <Late />, FORCE }
+      const Late = () => <Button variant="destructive">L</Button>`,
+    'a wrapper mounting the primitive twice': `function Two() { return <><Button variant="destructive">A</Button><Button variant="secondary">B</Button></> }
+      export const Planted = { render: () => <Two />, FORCE }`,
+    'a chain of wrappers seven deep': `${Array.from({ length: 7 }, (_, i) => `function W${i + 1}() { return ${i < 6 ? `<W${i + 2} />` : '<Button variant="secondary">Deep</Button>'} }`).join('\n')}
+      export const Planted = { render: () => <W1 />, FORCE }`,
+  }
+  for (const [label, body] of Object.entries(button)) {
+    const computed = t686rButton(body.replaceAll('FORCE', T686_FORCE('hover', "role: 'button'")))
+    assert.deepEqual(plantedCredits(computed), [], label)
+    const missing = t686rReport(computed)
+    assert.equal(missing.length, 1, label)
+    assert.match(describeMissingForceState(missing[0]), T686R_NO_DIRECT, label)
+  }
+})
+
+test('T686r HIGH 1: the same shapes UNFORCED credit no Rest or Disabled cell, in any record, and are listed in refusedOwnStories with the no-direct-tag reason', () => {
   const wrapper = `function Frame({ children }) {
     return <div><Menu variant="actions" items={[]} />{children}</div>
   }
@@ -9107,86 +9185,29 @@ test('T686r HIGH 1: the same two renders UNFORCED, with a nested disabled item, 
     render: (_args, { component: C }) => <div data-c={String(C)} />,
     args: { variant: 'selection', items: [{ id: 'p2', label: 'aoe2alt', disabled: true }] },
   }`
-  // The wrapper does mount a Menu — of variant "actions", literally — so it may be credited at
-  // THAT row (what it shows), never at the row its args name.
-  const credits = plantedCredits(t686rMenu(wrapper))
-  assert.deepEqual(
-    credits.filter((c) => c.startsWith('Menu|selection')),
-    [],
-    'nothing is credited on the args-named row',
-  )
-  assert.deepEqual(plantedCredits(t686rMenu(raw)), [])
+  const identifier = `const Tpl = (args) => <Menu {...args} />
+  export const Planted = { render: Tpl, args: { variant: 'selection', items: [] } }`
+  for (const body of [wrapper, raw, identifier]) {
+    const computed = t686rMenu(body)
+    assert.deepEqual(plantedCredits(computed), [])
+    assert.deepEqual(
+      computed.refusedOwnStories.map((r) => r.exportName),
+      ['Planted'],
+    )
+    assert.match(computed.refusedOwnStories[0].refusal, T686R_NO_DIRECT)
+  }
 })
 
-test('T686r HIGH 1 contrast: a render context component used AS A JSX TAG is a mount, credited at the row its props name', () => {
+test('T686r HIGH 1 contrast: a render whose own JSX holds the <Primitive> tag is credited at the row that tag names, though a div wraps it', () => {
   assert.deepEqual(
     plantedCredits(
       t686rMenu(`export const Planted = {
-        render: (args, { component: C }) => <C {...args} />,
-        args: { variant: 'selection', items: [${T686R_ITEM}] },
+        render: () => <div><Menu variant="selection" items={[${T686R_ITEM}]} /></div>,
         ${T686R_RADIO_FORCE},
       }`),
     ).filter((c) => c.startsWith('Menu|')),
     ['Menu|selection|hover'],
   )
-})
-
-test('T686r HIGH 1 contrast: a wrapper whose own <Menu> tag fixes its axis is credited at THAT tag’s row, not the row the story args name', () => {
-  const body = `function Frame() { return <Menu variant="selection" items={[${T686R_ITEM}]} /> }
-  export const Planted = {
-    render: () => <Frame />,
-    args: { variant: 'actions', items: [] },
-    ${T686R_RADIO_FORCE},
-  }`
-  assert.deepEqual(
-    plantedCredits(t686rMenu(body)).filter((c) => c.startsWith('Menu|')),
-    ['Menu|selection|hover'],
-  )
-})
-
-test('T686r HIGH 1 contrast: a wrapper that forwards its props to <Menu> is credited at the row the story args name, and its call site’s literal prop wins over them', () => {
-  const wrapper = `function Demo(props) { return <Menu {...props} /> }`
-  assert.deepEqual(
-    plantedCredits(
-      t686rMenu(`${wrapper}
-      export const Planted = {
-        render: (args) => <Demo {...args} />,
-        args: { variant: 'selection', items: [${T686R_ITEM}] },
-        ${T686R_RADIO_FORCE},
-      }`),
-    ).filter((c) => c.startsWith('Menu|')),
-    ['Menu|selection|hover'],
-  )
-  assert.deepEqual(
-    plantedCredits(
-      t686rMenu(`${wrapper}
-      export const Planted = {
-        render: (args) => <Demo {...args} variant="selection" />,
-        args: { variant: 'actions', items: [${T686R_ITEM}] },
-        ${T686R_RADIO_FORCE},
-      }`),
-    ).filter((c) => c.startsWith('Menu|')),
-    ['Menu|selection|hover'],
-  )
-})
-
-test('T686r HIGH 1: what the check cannot follow is refused and reported with a reason, never credited — a wrapper spreading something else, a non-literal axis, an imported wrapper, a render that is not a function', () => {
-  const cases = {
-    'a spread of something other than the wrapper’s props': `function Demo() { return <Menu {...pick()} /> }
-      export const Planted = { render: () => <Demo />, args: { variant: 'selection', items: [${T686R_ITEM}] }, ${T686R_RADIO_FORCE} }`,
-    'a non-literal axis': `function Demo({ v }) { return <Menu variant={v} items={[${T686R_ITEM}]} /> }
-      export const Planted = { render: () => <Demo v="selection" />, args: {}, ${T686R_RADIO_FORCE} }`,
-    'an imported wrapper': `export const Planted = { render: () => <Elsewhere />, args: { variant: 'selection', items: [${T686R_ITEM}] }, ${T686R_RADIO_FORCE} }`,
-    'a render that is not a function': `const Tpl = (args) => <Menu {...args} />
-      export const Planted = { render: Tpl.bind({}), args: { variant: 'selection', items: [${T686R_ITEM}] }, ${T686R_RADIO_FORCE} }`,
-  }
-  for (const [label, body] of Object.entries(cases)) {
-    const computed = t686rMenu(`import { Elsewhere } from '../Elsewhere'\n${body}`)
-    assert.deepEqual(plantedCredits(computed), [], label)
-    const missing = t686rReport(computed)
-    assert.equal(missing.length, 1, label)
-    assert.match(describeMissingForceState(missing[0]), /credited on no cell: .+/, label)
-  }
 })
 
 // HIGH 2 -------------------------------------------------------------------------------------------
@@ -9352,6 +9373,153 @@ test('T686r HIGH 2, sibling play-focus note, contrast: a play() focusing a link 
   )
   assert.match(JSON.stringify(withHref.matrices.Button), /play-driven/)
   assert.match(record1Text(withHref), /play-driven/)
+})
+
+// An element behind a guard (finding 5, second review of #112) ------------------------------------
+
+test('T686r finding 5: a forced role whose every element sits behind a condition the story’s own data leaves unsettled is refused and reported; a literal that settles it is still credited', () => {
+  const story = (argsHref, target = "role: 'link'") => `export const Planted = {
+    args: { variant: 'secondary', size: 'md'${argsHref} },
+    ${T686_FORCE('hover', target)},
+  }`
+  for (const target of ["role: 'link'", `selector: 'a[href="/x"]'`]) {
+    const unsettled = t686rButton(story(', href: someHref', target))
+    assert.deepEqual(plantedCredits(unsettled), [], target)
+    const missing = t686rReport(unsettled)
+    assert.equal(missing.length, 1, target)
+    assert.match(describeMissingForceState(missing[0]), /cannot tell whether .*Button/, target)
+  }
+  // A render that passes the unsettled prop on its own tag is the same story.
+  const direct = t686rButton(`export const Planted = {
+    render: () => <Button href={pick()}>Go</Button>,
+    ${T686_FORCE('hover', "role: 'link'")},
+  }`)
+  assert.deepEqual(plantedCredits(direct), [])
+  assert.match(describeMissingForceState(t686rReport(direct)[0]), /cannot tell/)
+  // Contrast: a literal settles the guard, and both records credit the `<a>`.
+  for (const target of ["role: 'link'", `selector: 'a[href="/x"]'`]) {
+    const literal = t686rButton(story(", href: '/x'", target))
+    assert.deepEqual(
+      plantedCredits(literal),
+      ['Button|secondary|md|hover', 'local:primitives/Button:a|hover'],
+      target,
+    )
+    assert.deepEqual(t686rReport(literal), [], target)
+  }
+})
+
+test('T686r finding 5: a guard that reads only state the component keeps for itself is not story data — an element behind it is still credited, unless a prop the story leaves unsettled guards it too', () => {
+  const popover = `
+export function Menu({ variant, footerItem }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div>
+      {open && (
+        footerItem && (
+          <button type="button" role="menuitem" className="hover:bg-surface-sunken">F</button>
+        )
+      )}
+    </div>
+  )
+}
+`
+  const story = (footer) => `export const Planted = {
+    args: { variant: 'selection', footerItem: ${footer} },
+    ${T686_FORCE('hover', "role: 'menuitem'")},
+  }`
+  const settled = t686rComputed('Menu', popover, story("{ id: 'f', label: 'x' }"))
+  assert.deepEqual(plantedCredits(settled), [
+    'Menu|selection|hover',
+    'local:primitives/Menu:button|hover',
+  ])
+  assert.deepEqual(t686rReport(settled), [])
+  const unsettled = t686rComputed('Menu', popover, story('someFooter'))
+  assert.deepEqual(plantedCredits(unsettled), [])
+  assert.equal(t686rReport(unsettled).length, 1)
+  // A guard the story's data rules out wins over an earlier one that reads component state.
+  const ruledOut = t686rComputed('Menu', popover, story('null'))
+  assert.deepEqual(plantedCredits(ruledOut), [])
+  assert.equal(t686rReport(ruledOut).length, 1)
+  assert.match(describeMissingForceState(t686rReport(ruledOut)[0]), /renders no element of role/)
+})
+
+test('T686r finding 5, each way an element is behind a guard: a role, a selector and a composed primitive’s call site are all refused when the guard reads an unsettled prop, and a guard the data rules out wins over an unsettled one', () => {
+  const gated = `
+export function Menu({ variant, flag, footerItem }) {
+  return (
+    <div>
+      {flag && (
+        footerItem && (
+          <button type="button" role="menuitem" data-k="a" className="hover:bg-surface-sunken">F</button>
+        )
+      )}
+    </div>
+  )
+}
+`
+  const composed = `
+export function Menu({ variant, flag }) {
+  return <div>{flag && <Button variant="primary">Go</Button>}</div>
+}
+`
+  const story = (flag, footer, target) => `export const Planted = {
+    args: { variant: 'selection', flag: ${flag}, footerItem: ${footer} },
+    ${T686_FORCE('hover', target)},
+  }`
+  const settled = "{ id: 'f', label: 'x' }"
+  for (const target of ["role: 'menuitem'", `selector: 'button[data-k="a"]'`]) {
+    const ok = t686rComputed('Menu', gated, story('true', settled, target))
+    assert.deepEqual(t686rReport(ok), [], target)
+    assert.ok(plantedCredits(ok).length > 0, target)
+    const unsettled = t686rComputed('Menu', gated, story('someFlag', settled, target))
+    assert.deepEqual(plantedCredits(unsettled), [], target)
+    assert.match(describeMissingForceState(t686rReport(unsettled)[0]), /cannot tell/, target)
+    // Ruled out by the second guard, though the first cannot be settled: the element is not there.
+    const ruledOut = t686rComputed('Menu', gated, story('someFlag', 'null', target))
+    assert.deepEqual(plantedCredits(ruledOut), [], target)
+    assert.match(describeMissingForceState(t686rReport(ruledOut)[0]), /renders no /, target)
+  }
+  const forceButton = (flag) => `export const Planted = {
+    args: { variant: 'selection', flag: ${flag} },
+    ${T686_FORCE('hover', "role: 'button'")},
+  }`
+  assert.deepEqual(t686rReport(t686rComputed('Menu', composed, forceButton('true'))), [])
+  const callSite = t686rComputed('Menu', composed, forceButton('someFlag'))
+  assert.equal(t686rReport(callSite).length, 1)
+  assert.match(describeMissingForceState(t686rReport(callSite)[0]), /cannot tell/)
+})
+
+// Finding 4: the skip is for an own story's refused verdict, never a composite's credit ------------
+
+test('T686r finding 4: a composite’s forced story credits the element behind its guard however it passes the prop — a wrapper, a direct render, args — exactly as before the own-story verdict', () => {
+  const index = `export function Panel({ showAction = false }) {
+  return <div>{showAction && <button type="button" className="hover:bg-surface-sunken">Act</button>}</div>
+}`
+  const story = (render) => `import { Panel } from './index'
+const meta = { component: Panel }
+export default meta
+function Demo() { return <Panel showAction /> }
+export const Planted = { ${render} parameters: { visualForceState: { state: 'hover', role: 'button' } } }`
+  for (const [label, render] of [
+    ['a wrapper that passes the prop', 'render: () => <Demo />,'],
+    ['a direct render', 'render: () => <Panel showAction />,'],
+    ['args', 'args: { showAction: true },'],
+  ]) {
+    const computed = computeStateCoverage({
+      componentDirs: [{ segment: 'composites', name: 'Panel' }],
+      filesByPath: new Map([
+        [path.join(REPO_SRC_DIR, 'composites/Panel/index.tsx'), index],
+        [path.join(REPO_SRC_DIR, 'composites/Panel/Panel.stories.tsx'), story(render)],
+      ]),
+    })
+    const { elements } = computed.localElements.find((l) => l.componentKey === 'composites/Panel')
+    assert.deepEqual(
+      elements.map((el) => el.coveredBy.hover),
+      [['Planted']],
+      label,
+    )
+    assert.equal(computed.unaccountedForceStates.missing.length, 0, label)
+  }
 })
 
 // MEDIUM 4 -----------------------------------------------------------------------------------------
