@@ -17,7 +17,7 @@ return value.
 `replay_access_log` row carrying `retained_recording_id` is written for *every* read of a retained
 recording — first analysis and recompute alike — **before any engine is loaded**. Both paths below
 call `_log_access` immediately after the bytes to be parsed are in hand (freshly retained, or
-freshly retrieved from what was already retained) and strictly before `extract.extract_timeline`
+freshly retrieved from what was already retained) and strictly before `extract.build_document`
 ever runs, which is the one call in this module that loads an engine.
 
 **Two paths, not one state machine.** `claim.py`'s own claiming query only ever recognises a row
@@ -50,16 +50,18 @@ silently-passing assertion.
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from aoe2stats_analyzer.claim import claim_for_analysis
-from aoe2stats_analyzer.extract import extract_timeline, published_document
+from aoe2stats_analyzer.extract import build_document
 from aoe2stats_analyzer.retain import retain_recording, retrieve_recording
-from aoe2stats_core.replay.analysis import MatchTimeline, ReplayExtractor
+from aoe2stats_core.replay.analysis import AnalysisExtractor
 from aoe2stats_core.replay.validation import ReplayValidationError
 from aoe2stats_providers.base import NotFound, ReplayProvider
 from aoe2stats_storage.models import (
@@ -220,7 +222,7 @@ async def _publish(
     session_factory: async_sessionmaker[AsyncSession],
     *,
     game_id: int,
-    timeline: MatchTimeline,
+    document: Mapping[str, Any],
     result_key: str,
     now: datetime,
 ) -> None:
@@ -228,15 +230,20 @@ async def _publish(
     it. Shared by both the first-analysis and the recompute path — the one place either one ever
     writes a result, which is what keeps `result_key`'s own shape (`_result_key`) identical
     whichever path reached it.
+
+    Everything is read back from `document`, the object just written, so the row cannot name a
+    parser the object does not. `engine_deps` is the same record the document carries (FR-044,
+    T655) — the column has existed through two migrations and nothing wrote it before.
     """
     async with session_scope(session_factory) as session:
         analysis = await session.get(MatchAnalysis, game_id)
         if analysis is None:  # pragma: no cover - defensive: this row was just claimed above
             raise LookupError(f"no match_analyses row for game_id={game_id} to publish")
         analysis.state = MatchAnalysisState.PUBLISHED
-        analysis.point_of_view_profile_id = timeline.point_of_view_profile_id
-        analysis.parser_name = timeline.engine_name
-        analysis.parser_version = timeline.engine_version
+        analysis.point_of_view_profile_id = document["point_of_view_profile_id"]
+        analysis.parser_name = document["engine"]["name"]
+        analysis.parser_version = document["engine"]["version"]
+        analysis.engine_deps = dict(document["engine"]["deps"])
         analysis.result_key = result_key
         analysis.finished_at = now
         analysis.error_class = None
@@ -247,7 +254,7 @@ async def _extract_and_publish(
     session_factory: async_sessionmaker[AsyncSession],
     *,
     object_store: ObjectStore,
-    extractor: ReplayExtractor,
+    extractor: AnalysisExtractor,
     game_id: int,
     zip_bytes: bytes,
     object_key: str,
@@ -258,7 +265,14 @@ async def _extract_and_publish(
     record why it failed. Never retried by this function's own caller — see `_TERMINAL_STATES`.
     """
     try:
-        timeline = extract_timeline(extractor, zip_bytes)
+        document = build_document(
+            extractor,
+            zip_bytes,
+            game_id=game_id,
+            object_key=object_key,
+            zip_sha256=zip_sha256,
+            extracted_at=now,
+        )
     except ReplayValidationError as exc:
         await _mark_failed(
             session_factory,
@@ -269,19 +283,12 @@ async def _extract_and_publish(
         )
         return
 
-    document = published_document(
-        timeline,
-        game_id=game_id,
-        object_key=object_key,
-        zip_sha256=zip_sha256,
-        extracted_at=now,
-    )
     result_key = _result_key(game_id)
     await object_store.put(
         result_key, json.dumps(document).encode("utf-8"), content_type="application/json"
     )
     await _publish(
-        session_factory, game_id=game_id, timeline=timeline, result_key=result_key, now=now
+        session_factory, game_id=game_id, document=document, result_key=result_key, now=now
     )
 
 
@@ -289,7 +296,7 @@ async def _recompute(
     session_factory: async_sessionmaker[AsyncSession],
     *,
     object_store: ObjectStore,
-    extractor: ReplayExtractor,
+    extractor: AnalysisExtractor,
     game_id: int,
     profile_id: int,
     requested_by_user_id: UUID,
@@ -319,7 +326,7 @@ async def _recompute(
             session, object_store, game_id=game_id, profile_id=profile_id
         )
 
-    # FR-029: logged before `extract_timeline` ever loads an engine (module docstring).
+    # FR-029: logged before `build_document` ever loads an engine (module docstring).
     await _log_access(
         session_factory,
         retained_recording_id=retained.id,
@@ -346,7 +353,7 @@ async def run_once(
     *,
     session_factory: async_sessionmaker[AsyncSession],
     replay_provider: ReplayProvider,
-    extractor: ReplayExtractor,
+    extractor: AnalysisExtractor,
     object_store: ObjectStore,
     capture_budget_days: int = _DEFAULT_CAPTURE_BUDGET_DAYS,
 ) -> None:
@@ -441,7 +448,7 @@ async def run_once(
             requested_by_user_id=requested_by_user_id,
         )
 
-    # FR-029: logged before `extract_timeline` ever loads an engine (module docstring).
+    # FR-029: logged before `build_document` ever loads an engine (module docstring).
     await _log_access(
         session_factory,
         retained_recording_id=retained.id,

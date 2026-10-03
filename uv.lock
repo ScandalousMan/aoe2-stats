@@ -137,6 +137,7 @@ version = "0.1.0"
 source = { editable = "apps/analyzer" }
 dependencies = [
     { name = "aoe2stats-core" },
+    { name = "aoe2stats-knowledge" },
     { name = "aoe2stats-providers" },
     { name = "aoe2stats-replay-engine" },
     { name = "aoe2stats-storage" },
@@ -145,6 +146,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "aoe2stats-core", editable = "packages/core" },
+    { name = "aoe2stats-knowledge", editable = "packages/knowledge" },
     { name = "aoe2stats-providers", editable = "packages/providers" },
     { name = "aoe2stats-replay-engine", editable = "packages/replay-engine" },
     { name = "aoe2stats-storage", editable = "packages/storage" },

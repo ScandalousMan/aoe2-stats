@@ -53,13 +53,14 @@ from __future__ import annotations
 
 import hashlib
 import uuid
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from aoe2stats_core.replay.events import CanonicalEvent
 from aoe2stats_core.replay.validation import EngineParseError
 from aoe2stats_providers.base import NotFound, ReplayBlob
 from aoe2stats_storage.models import (
@@ -192,10 +193,17 @@ class _FakeExtractor:
     ) -> None:
         self.engine_name = engine_name
         self.engine_version = engine_version
+        # T655: the document carries the dependency record and refuses an empty one (FR-044).
+        self.engine_dependencies = {engine_name: engine_version}
         self._point_of_view_profile_id = point_of_view_profile_id
         self._raises = raises
         self._max_calls = max_calls
         self.calls: list[bytes] = []
+
+    def events(self, zip_bytes: bytes) -> Iterator[CanonicalEvent]:
+        """An empty stream: this file asserts what `run_once` does with a row, not what the
+        document says, so the coverage pass finds no build and reports its one whole-build gap."""
+        return iter(())
 
     def extract(self, zip_bytes: bytes) -> _FakeMatchTimeline:
         if self._max_calls is not None and len(self.calls) >= self._max_calls:
@@ -393,6 +401,51 @@ async def test_the_stored_row_records_the_point_of_view_and_the_parser_version(
     assert retained is not None
     assert retained.zip_sha256 == hashlib.sha256(raw_bytes).hexdigest()
     assert retained.zip_bytes == len(raw_bytes)
+
+
+async def test_the_engine_deps_column_holds_the_record_the_document_carries(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """T655 / FR-044: `match_analyses.engine_deps` existed through two migrations and nothing wrote
+    it. It is now the same record the published document carries under `engine.deps` and
+    `identity.parser_dependencies`, and none of the three is empty."""
+    import json
+
+    from aoe2stats_analyzer.run import run_once
+
+    game_id = 500_546_444
+    profile_a, profile_b = 300_011, 300_012
+    await _seed_match(
+        session_factory,
+        game_id=game_id,
+        completed_at=datetime.now(UTC) - timedelta(days=1),
+        profile_ids=[profile_a, profile_b],
+    )
+    requester = await _seed_user(session_factory)
+    provider = _FakeReplayProvider(
+        ReplayBlob(content=b"raw bytes", filename="r.zip", content_type="application/zip")
+    )
+    extractor = _FakeExtractor(point_of_view_profile_id=profile_a)
+    store = _FakeObjectStore()
+
+    await run_once(
+        game_id,
+        _BUDGET_SECONDS,
+        requester,
+        session_factory=session_factory,
+        replay_provider=provider,
+        extractor=extractor,
+        object_store=store,
+    )
+
+    analysis = await _get_analysis(session_factory, game_id)
+    assert analysis is not None
+    assert analysis.result_key is not None
+    document = json.loads(store.objects[analysis.result_key])
+    assert analysis.engine_deps
+    assert analysis.engine_deps == extractor.engine_dependencies
+    assert document["engine"]["deps"] == analysis.engine_deps
+    assert document["identity"]["parser_dependencies"] == analysis.engine_deps
 
 
 # --- Scenario 8.6 / SC-013 -----------------------------------------------------------------------

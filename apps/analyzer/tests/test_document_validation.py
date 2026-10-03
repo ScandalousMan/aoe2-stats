@@ -1,9 +1,11 @@
 """The analyzer refuses to publish a document that breaks the contract (T661, US3).
 
-Every test is ``xfail(strict=True)`` until T655 and T656 land, and each imports the not-yet-existing
-seam **inside its own body**, so a missing symbol is a per-test expected failure and not a
-collection error. When the seam lands the markers must come off in the same change: ``strict``
-turns an unexpected pass into a failure, which is how this file is kept honest.
+Every test was ``xfail(strict=True)`` until its seam landed, and each imports the seam **inside its
+own body**, so a missing symbol is a per-test expected failure and not a collection error. T655
+defined ``validate_document`` and took the marker off every case that injects its own register; the
+one case that reads the packaged register stays ``xfail`` until T656 promotes its datum. When a seam
+lands the marker must come off in the same change: ``strict`` turns an unexpected pass into a
+failure, which is how this file is kept honest.
 
 **The seam this file assumes**, for whoever lands T655 and T656 (``contracts/analysis-document.md``
 names the validator, ``aoe2stats_core.truth.validate``, which already exists, but not the analyzer
@@ -39,7 +41,10 @@ import pytest
 from aoe2stats_core.truth.tiers import Tier
 from aoe2stats_core.truth.validate import identity_digest
 
-_PENDING = pytest.mark.xfail(strict=True, reason="T655/T656 not implemented yet")
+# T655 defined `validate_document`, so every case that injects its own register passes. The one
+# left needs the *packaged* register to publish `participant.group_silence_episodes`, which T656
+# promotes (and T656 wires the validator before the write): remove this marker with that change.
+_PENDING = pytest.mark.xfail(strict=True, reason="T656 promotes the datum in the packaged register")
 
 
 @dataclass(frozen=True)
@@ -157,7 +162,6 @@ def _accepted(document: dict[str, Any], register: dict[str, Entry]) -> None:
 # --- the contrast case that fixes the boundary --------------------------------------------------
 
 
-@_PENDING
 def test_a_complete_document_is_accepted() -> None:
     _accepted(_document(), _register())
 
@@ -165,7 +169,6 @@ def test_a_complete_document_is_accepted() -> None:
 # --- SC-011: an empty dependency record ---------------------------------------------------------
 
 
-@_PENDING
 def test_a_document_whose_dependency_record_is_empty_is_rejected() -> None:
     document = _document()
     document["identity"] = _identity(parser_dependencies={})
@@ -178,7 +181,6 @@ def test_a_document_whose_dependency_record_is_empty_is_rejected() -> None:
 # --- FR-037: a blocking gap withholds every dependent value -------------------------------------
 
 
-@_PENDING
 def test_a_datum_whose_knowledge_meets_a_blocking_gap_is_rejected() -> None:
     document = _document()
     document["knowledge_gaps"] = [_gap("blocking")]
@@ -188,7 +190,6 @@ def test_a_datum_whose_knowledge_meets_a_blocking_gap_is_rejected() -> None:
     assert "participant.army_cost" in str(error)
 
 
-@_PENDING
 def test_a_datum_whose_knowledge_meets_only_an_informational_gap_is_accepted() -> None:
     document = _document()
     document["knowledge_gaps"] = [_gap("informational")]
@@ -196,7 +197,6 @@ def test_a_datum_whose_knowledge_meets_only_an_informational_gap_is_accepted() -
     _accepted(document, _register())
 
 
-@_PENDING
 def test_a_blocking_gap_on_knowledge_no_datum_needs_withholds_nothing() -> None:
     document = _document()
     document["knowledge_gaps"] = [_gap("blocking", kind="building", field="cost")]
@@ -207,7 +207,6 @@ def test_a_blocking_gap_on_knowledge_no_datum_needs_withholds_nothing() -> None:
 # --- SC-002: no value without its tier ----------------------------------------------------------
 
 
-@_PENDING
 def test_a_value_whose_provenance_carries_no_tier_is_rejected() -> None:
     document = _document()
     del document["provenance"]["participant.civ_id"]["tier"]
@@ -217,7 +216,6 @@ def test_a_value_whose_provenance_carries_no_tier_is_rejected() -> None:
     assert "participant.civ_id" in str(error)
 
 
-@_PENDING
 def test_a_value_with_no_provenance_entry_at_all_is_rejected() -> None:
     document = _document()
     del document["provenance"]["participant.civ_id"]
@@ -227,7 +225,6 @@ def test_a_value_with_no_provenance_entry_at_all_is_rejected() -> None:
     assert "participant.civ_id" in str(error)
 
 
-@_PENDING
 def test_an_inferred_value_with_no_tier_is_rejected() -> None:
     document = _document()
     del document["provenance"]["participant.group_silence_episodes"]["tier"]
@@ -238,7 +235,6 @@ def test_an_inferred_value_with_no_tier_is_rejected() -> None:
 # --- the register status gate, and why T656 promotes group_silence_episodes ---------------------
 
 
-@_PENDING
 def test_an_inferred_datum_whose_register_status_is_not_published_is_rejected() -> None:
     document = _document()
 

@@ -1238,7 +1238,7 @@ after everything underneath it moves.
       the digest is stable across processes and insensitive to field ordering; two identities
       differing in any one component produce different digests; an empty dependency record is
       refused (**FR-044**)
-- [ ] T655 [US3] Extend `apps/analyzer/src/aoe2stats_analyzer/extract.py` to publish the next
+- [x] T655 [US3] Extend `apps/analyzer/src/aoe2stats_analyzer/extract.py` to publish the next
       document version per
       [contracts/analysis-document.md](./contracts/analysis-document.md): **additive only**, every
       existing field at its existing path, four blocks added. Populate the dependency map from
