@@ -2773,61 +2773,209 @@ function isValidIsoDate(value) {
 // own empty-list steady state already models.
 export const KNOWN_UNACCOUNTED_FORCE_STATES = []
 
-// The generated region split by who owns the bare story names printed in it (T684). A story's
-// own component prints its stories by bare export name in exactly two places — its own Record 1
-// rows (first cell: the component key) and, for a primitive with no `variant`/`size` axis, its own
-// `#### \`Name\`` section of Record 3 — while every credit printed anywhere else is a qualified
-// label (`cellName`, `injectComposedPrimitiveLocalCredits`, `resolveDisabledFromStories`). A bare
-// name found in another component's rows is another component's story.
-function scopeRegionByOwner(regionText) {
-  const record1ByKey = new Map()
-  const sectionByName = new Map()
-  let section = null
-  for (const line of regionText.split('\n')) {
-    const heading = /^#### `(.+)`$/.exec(line)
-    if (heading) {
-      section = heading[1]
-      sectionByName.set(section, '')
-    } else if (section !== null) {
-      // The column header row (`| Row | Rest | Hover | ...`) names states, never a story.
-      if (/^\| (?:Row|---) /.test(line)) continue
-      sectionByName.set(section, `${sectionByName.get(section)}${line}\n`)
-    } else {
-      const row = /^\| ([^|\s][^|]*?) \|/.exec(line)
-      if (row) record1ByKey.set(row[1], `${record1ByKey.get(row[1]) ?? ''}${line}\n`)
-    }
+// --- Reading the region back, by column (T684) -------------------------------------------------
+//
+// A forced story is accounted for only by a mention in a cell of *its own state's column*: Record
+// 1's story part (the text after ` → `) of the Hover / Focus-visible / Active cell, Record 3's Hover
+// / Focus-visible / Press (active) column. Every other cell of the region says something else — a
+// path (File:Line, Row, Rest), an element tag, class utilities, a disabled credit — and a word
+// found there is not a credit of any state: a story named `Tooltip` is spelled in its own
+// component's own path, `ZzBoundedHover` is printed in Button's Disabled column by
+// `resolveDisabledFromStories`, and neither says its hover frame exists.
+//
+// Read from the rendered text, not from the credit record (`coveredBy` / `ambiguousReasons` /
+// `unresolvedByState`) it is rendered from, on purpose: the comment on `findUnaccountedForceStates`
+// holds that the check must read what a reader opens, and two derivations of one fact are how they
+// come apart. The cost of that choice is that the reader must not guess at the text's layout, so
+// columns are located by their header text (`RECORD1_HEADERS` / `RECORD3_HEADERS`, the very
+// constants the renderers print) and anything unexpected — a missing table, a missing header, a row
+// with another cell count, a Record 1 state cell with no ` → ` — throws, never silently reads as
+// an empty scope that would then report every story missing, or none.
+
+function splitTableRow(line) {
+  const trimmed = line.trim()
+  if (!trimmed.startsWith('|') || !trimmed.endsWith('|')) {
+    throw new Error(`state-coverage: not a table row: ${JSON.stringify(line.slice(0, 80))}`)
   }
-  return { record1ByKey, sectionByName }
+  // `esc` (the renderer) writes a literal pipe inside a cell as `\|`.
+  return trimmed
+    .slice(1, -1)
+    .split(/(?<!\\)\|/)
+    .map((cell) => cell.trim().replace(/\\\|/g, '|'))
+}
+
+function columnIndex(headerCells, header, tableKind) {
+  const index = headerCells.indexOf(header)
+  if (index === -1) {
+    throw new Error(
+      `state-coverage: ${tableKind} table has no ${JSON.stringify(header)} column ` +
+        `(found ${JSON.stringify(headerCells)}) — the renderer and the reader of the region disagree`,
+    )
+  }
+  return index
+}
+
+const TABLE_SEPARATOR_ROW = /^\|[\s|:-]+\|$/
+
+// The Record 1 `Hover (class → story)` cell, reduced to the story half. `N/A` is how a component
+// with no local interactive element prints every state cell.
+function record1StoryPart(cell, rowLine) {
+  if (cell === 'N/A') return ''
+  const arrow = cell.indexOf(' → ')
+  if (arrow === -1) {
+    throw new Error(
+      `state-coverage: Record 1 state cell has no " → " between class and story: ${JSON.stringify(rowLine.slice(0, 80))}`,
+    )
+  }
+  return cell.slice(arrow + ' → '.length)
+}
+
+// `{ record1: [{ key, cells }], sections: [{ name, componentKey, rows: [{ label, cells }] }] }`,
+// `cells` keyed by state (`hover` / `focus-visible` / `active`), each holding the text of that
+// state's column in that row. A Record 3 section is the `#### \`Name\`` heading's own table and ends
+// where that table ends — a line after it belongs to no section — and is keyed `primitives/<Name>`,
+// the component key every other part of this check uses, so a composite or screen that shares a
+// primitive's directory name cannot read the primitive's section. A table that is neither Record 1
+// nor a heading's own is not a table this pass renders and is read as nothing.
+function parseStateColumns(regionText) {
+  const record1 = []
+  const sections = []
+  const lines = regionText.split('\n')
+  let heading = null
+  for (let i = 0; i < lines.length; i++) {
+    const headingMatch = /^#### `(.+)`$/.exec(lines[i])
+    if (headingMatch) {
+      heading = headingMatch[1]
+      continue
+    }
+    const startsTable =
+      lines[i].startsWith('|') && i + 1 < lines.length && TABLE_SEPARATOR_ROW.test(lines[i + 1])
+    if (!startsTable) {
+      if (lines[i].trim() !== '') heading = null
+      continue
+    }
+    const header = splitTableRow(lines[i])
+    const rowLines = []
+    let end = i + 2
+    while (end < lines.length && lines[end].startsWith('|')) rowLines.push(lines[end++])
+    const rows = rowLines.map((line) => {
+      const cells = splitTableRow(line)
+      if (cells.length !== header.length) {
+        throw new Error(
+          `state-coverage: a table row has ${cells.length} cells under a ${header.length}-cell header: ${JSON.stringify(line.slice(0, 80))}`,
+        )
+      }
+      return { cells, line }
+    })
+    if (heading === null && header[0] === RECORD1_HEADERS[0]) {
+      const key = columnIndex(header, RECORD1_HEADERS[0], 'Record 1')
+      const states = Object.fromEntries(
+        Object.entries(RECORD1_STATE_HEADERS).map(([state, name]) => [
+          state,
+          columnIndex(header, name, 'Record 1'),
+        ]),
+      )
+      for (const { cells, line } of rows) {
+        record1.push({
+          key: cells[key],
+          cells: Object.fromEntries(
+            Object.entries(states).map(([state, at]) => [state, record1StoryPart(cells[at], line)]),
+          ),
+        })
+      }
+    } else if (heading !== null) {
+      const label = columnIndex(header, RECORD3_HEADERS[0], `Record 3 \`${heading}\``)
+      const states = Object.fromEntries(
+        Object.entries(RECORD3_STATE_HEADERS).map(([state, name]) => [
+          state,
+          columnIndex(header, name, `Record 3 \`${heading}\``),
+        ]),
+      )
+      sections.push({
+        name: heading,
+        componentKey: `primitives/${heading}`,
+        rows: rows.map(({ cells }) => ({
+          label: cells[label],
+          cells: Object.fromEntries(
+            Object.entries(states).map(([state, at]) => [state, cells[at]]),
+          ),
+        })),
+      })
+    }
+    heading = null
+    i = end - 1
+  }
+  if (!lines.some((line) => line.startsWith(`| ${RECORD1_HEADERS[0]} |`))) {
+    throw new Error(
+      `state-coverage: the region has no Record 1 table (header starting "| ${RECORD1_HEADERS[0]} |")`,
+    )
+  }
+  return { record1, sections }
+}
+
+// A story file's label base: the `<base>` of the `<base>:<export>` label `cellName` prints.
+function storyFileLabelBase(storyFile) {
+  return storyFile.replace(/\.stories\.tsx?$/, '')
 }
 
 function escapeRegExp(text) {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
-// Whether the region names *this* story — its own identity (component, story file, export name),
-// never the export name alone (T684). Three forms, the only three the region ever prints a story
-// in: a qualified `<story file>:<export>` label anywhere (`Footer:Hover`); the file-qualified
-// `<componentKey>/<story file>:<export>` an axis matrix's own unresolved reasons print; and the
-// bare export name inside the story's own component's own rows (`scopeRegionByOwner`). A bare name
-// never counts when preceded by `:` (the tail of another story's qualified label), `"` (a quoted
-// accessible name in an unresolved reason) or a word character. An entry that carries no
-// `storyFile` (a hand-built fixture) is read as `<Component>.stories.tsx`, the convention every
-// real component directory follows.
-function storyIsNamedInRegion(componentKey, entry, scopes, regionText) {
-  const { exportName } = entry
-  const componentName = componentKey.split('/').pop()
-  const storyFile = entry.storyFile ?? `${componentName}.stories.tsx`
-  const labelBase = storyFile.replace(/\.stories\.tsx$/, '')
+// The entries of a bare-name cell. A bare story name is only ever printed where an entry *starts*:
+// `Hover`, `unresolved: Hover: 2 candidates share role …`, `Hover (play-driven; …)`, joined by
+// `; ` — so a name is read at the start of an entry, never as a word inside another story's reason
+// text (`share role "button"`, `name "Hover" not literally resolvable`, an ancestor's own
+// `hover: RowLinkHover`).
+function bareCellEntries(text) {
+  return text.split('; ').map((entry) => entry.trim().replace(/^unresolved: /, ''))
+}
+
+// Whether the region credits *this* story for the state it forces — by its own identity (component,
+// story file, export name) in a cell of that state's column (T684, M1-M3), in exactly these forms:
+//   - a qualified `<story file base>:<export>` label (`Footer:Hover`) in the state's column of any
+//     row of either record — the form every credit of a story in another component's cell, and
+//     every Record 3 axis-matrix credit, is printed in;
+//   - the file-qualified `<componentKey>/<story file>:<export> — state "<state>"` reason of the
+//     unresolved-matches pseudo-row, which prints every state's reasons in its Hover column (the
+//     other columns read `N/A`) and so carries the state in its own text;
+//   - the bare export name, only in the story's own component's own rows — Record 1's rows of that
+//     component key, or the `primitives/<Name>` element matrix section (a primitive outside
+//     `PRIMITIVE_NAMES`; an axis matrix prints every story as a qualified label) — and only when the
+//     story's file is the component's only story file (`hasSoleStoryFile`): a bare name cannot say
+//     which of two files' `Hover` it credits, and `computeStateCoverage` prints a component with
+//     several story files qualified (`qualifyStoryNamesWhereAmbiguous`).
+// Never Rest, Row, Element, File:Line, class text or Disabled, never another state's column.
+function storyIsCreditedInItsStateColumn(componentKey, entry, columns, hasSoleStoryFile) {
+  const { exportName, storyFile, forced } = entry
+  const state = forced.state
+  if (!Object.hasOwn(RECORD1_STATE_HEADERS, state)) return false
+  const labelBase = storyFileLabelBase(storyFile)
   const name = escapeRegExp(exportName)
   const qualified = new RegExp(
     `(?<![\\w$])(?:${escapeRegExp(labelBase)}|${escapeRegExp(`${componentKey}/${storyFile}`)}):${name}(?![\\w$])`,
   )
-  if (qualified.test(regionText)) return true
-  const bare = new RegExp(`(?<![\\w$:"-])${name}(?![\\w$])`)
-  return (
-    bare.test(scopes.record1ByKey.get(componentKey) ?? '') ||
-    bare.test(scopes.sectionByName.get(componentName) ?? '')
+  const pseudoRowReason = new RegExp(
+    `(?<![\\w$])${escapeRegExp(`${componentKey}/${storyFile}`)}:${name} — state "${escapeRegExp(state)}"`,
   )
+  const bare = new RegExp(`^${name}(?::| \\(|$)`)
+  const credits = (text, bareAllowed) =>
+    qualified.test(text) || (bareAllowed && bareCellEntries(text).some((e) => bare.test(e)))
+  for (const row of columns.record1) {
+    if (credits(row.cells[state], hasSoleStoryFile && row.key === componentKey)) return true
+  }
+  for (const section of columns.sections) {
+    const ownElementMatrix =
+      section.componentKey === componentKey && !PRIMITIVE_NAMES.includes(section.name)
+    for (const row of section.rows) {
+      if (row.label === UNRESOLVED_MATCHES_ROW) {
+        if (pseudoRowReason.test(row.cells.hover)) return true
+      } else if (credits(row.cells[state], hasSoleStoryFile && ownElementMatrix)) {
+        return true
+      }
+    }
+  }
+  return false
 }
 
 // Every real `visualForceState` in every story under this package's three tiers is either credited
@@ -2839,11 +2987,14 @@ function storyIsNamedInRegion(componentKey, entry, scopes, regionText) {
 // T595 orchestrator finding on this task's own hand-back: "a real forced frame that appears
 // nowhere"). Checked against the region's own rendered text — the same text a reader actually
 // opens — rather than re-derived a second, parallel way from `coveredBy`/`ambiguousReasons` that
-// could itself drift from what renders. A story is looked up by its own identity in that text
-// (`storyIsNamedInRegion`, T684), never by its export name as a bare word anywhere in it: the
-// region prints conventional exports (`Hover`, `FocusVisible`, `Active`) on the cells of many
-// components, so a forced `Hover` credited nowhere used to pass because another component's
-// `Hover` was printed. A story whose own `render:` never mounts the component
+// could itself drift from what renders (the record is equivalent to the text, which is why either
+// would do; the text is read because it is what the comment above `parseStateColumns` says it is,
+// and its columns are located by header, so a layout change throws rather than drifts). A story is
+// looked up by its own identity in a cell of its own state's column (`storyIsCreditedInItsStateColumn`,
+// T684), never by its export name as a bare word anywhere in the region: the region prints
+// conventional exports (`Hover`, `FocusVisible`, `Active`) on the cells of many components, so a
+// forced `Hover` credited nowhere used to pass because another component's `Hover` was printed, and
+// a story named after its own component passed on the component's own path. A story whose own `render:` never mounts the component
 // (`rendersComponent`, `storyRendersComponent`) is excluded: it has nothing to say about any
 // candidate and legitimately credits nothing, the same exclusion `pendingDisabledChecks` already
 // applies — never a loss. A `synthetic` entry (a credit this pass manufactured on another
@@ -2861,12 +3012,23 @@ export function findUnaccountedForceStates(storyStatesByComponent, regionText) {
   const known = []
   const expired = []
   const today = new Date().toISOString().slice(0, 10)
-  const scopes = scopeRegionByOwner(regionText)
+  const columns = parseStateColumns(regionText)
   for (const [componentKey, entries] of storyStatesByComponent) {
+    // A synthetic entry names no story file (it is a label this pass manufactured); every real one
+    // does — a fixture that builds one by hand names its own file, never a guessed `<Component>.stories.tsx`.
+    const realEntries = entries.filter((e) => !e.synthetic)
+    for (const e of realEntries) {
+      if (typeof e.storyFile !== 'string' || e.storyFile === '') {
+        throw new Error(
+          `state-coverage: story ${JSON.stringify(e.exportName)} of ${componentKey} carries no storyFile`,
+        )
+      }
+    }
+    const hasSoleStoryFile = new Set(realEntries.map((e) => e.storyFile)).size <= 1
     for (const entry of entries) {
       const { exportName, forced, rendersComponent, synthetic } = entry
       if (!forced || synthetic || rendersComponent === false) continue
-      if (storyIsNamedInRegion(componentKey, entry, scopes, regionText)) continue
+      if (storyIsCreditedInItsStateColumn(componentKey, entry, columns, hasSoleStoryFile)) continue
       const filed = KNOWN_UNACCOUNTED_FORCE_STATES.find(
         (k) => k.componentKey === componentKey && k.exportName === exportName,
       )
@@ -2897,6 +3059,26 @@ export function findUnaccountedForceStates(storyStatesByComponent, regionText) {
 }
 
 // --- Orchestration -------------------------------------------------------------------------
+
+// Record 1 and an element matrix print a story by its bare export name, which names one story only
+// while the component has one story file. A component with several (`Extra.stories.tsx` beside
+// `Component.stories.tsx`, each free to export a `Hover`) prints each qualified — `Extra:Hover`, the
+// form `cellName` already gives every Record 3 axis-matrix credit — so the region says which file's
+// story it credits, and `findUnaccountedForceStates` can tell a credited story from a namesake
+// (T684, M3). `displayName` is only what the cells print; `exportName` stays the story's identity.
+function qualifyStoryNamesWhereAmbiguous(storyStatesByComponent) {
+  for (const entries of storyStatesByComponent.values()) {
+    const real = entries.filter((e) => !e.synthetic && e.storyFile)
+    if (new Set(real.map((e) => e.storyFile)).size <= 1) continue
+    for (const e of real) e.displayName = `${storyFileLabelBase(e.storyFile)}:${e.exportName}`
+  }
+}
+
+// The story entries as the cells print them: `displayName` (set by `qualifyStoryNamesWhereAmbiguous`)
+// standing in for the bare export name. A hand-built fixture carries none and reads unchanged.
+function asPrinted(storyObjectsWithMeta) {
+  return storyObjectsWithMeta.map((s) => (s.displayName ? { ...s, exportName: s.displayName } : s))
+}
 
 export function computeStateCoverage({ componentDirs, filesByPath }) {
   const allFiles = [...filesByPath.keys()].sort()
@@ -3175,6 +3357,8 @@ export function computeStateCoverage({ componentDirs, filesByPath }) {
       }
     }
   }
+
+  qualifyStoryNamesWhereAmbiguous(storyStatesByComponent)
 
   // A composed-elsewhere name (above) only tells this pass a candidate in the *forcing* component
   // is not the target — it does not, on its own, say where the frame really is. Left there, this
@@ -3675,6 +3859,11 @@ function resolveDynamicAxisValue(axisField, scope) {
 
 // --- Matrix building -------------------------------------------------------------------------
 
+// The Record 3 pseudo-row an ambiguous composed-story match (`composed-story-unresolved`) is printed
+// on: it belongs to no variant/size row, so its reasons — every state's, each carrying its own
+// `state "<state>"` — all land in its Hover column, and `findUnaccountedForceStates` reads them there.
+const UNRESOLVED_MATCHES_ROW = '(unresolved matches — no row, printed rather than dropped)'
+
 function axisKey(inst) {
   const v = inst.variant?.resolved === 'n/a' ? null : (inst.variant?.value ?? 'unresolved')
   const s = inst.size?.resolved === 'n/a' ? null : (inst.size?.value ?? 'unresolved')
@@ -3935,7 +4124,7 @@ export function buildAxisMatrix(primitiveName, instances) {
     })
   if (unresolvedReasons.length > 0) {
     builtRows.push({
-      variantSize: '(unresolved matches — no row, printed rather than dropped)',
+      variantSize: UNRESOLVED_MATCHES_ROW,
       rest: ['N/A'],
       hover: [`unresolved: ${[...new Set(unresolvedReasons)].join(' | ')}`],
       focusVisible: ['N/A'],
@@ -3998,10 +4187,11 @@ function foreignPrimitiveRoleExtents(componentKey, role, instancesByPrimitive, s
 function buildElementCells(
   el,
   elements,
-  storyObjectsWithMeta,
+  storyObjectsAsEntered,
   componentKey = null,
   instancesByPrimitive = null,
 ) {
+  const storyObjectsWithMeta = asPrinted(storyObjectsAsEntered)
   const impliedRole = impliedRoleOf(el)
   const pool = elements.filter((o) => impliedRoleOf(o) === impliedRole && !o.ariaHidden)
   const cells = { hover: [], 'focus-visible': [], active: [] }
@@ -4368,7 +4558,9 @@ export function buildElementMatrix(
       : (() => {
           const covering = [
             ...new Set(
-              storyObjectsWithMeta.filter((s) => s.argsHasDisabledTrue).map((s) => s.exportName),
+              asPrinted(storyObjectsWithMeta)
+                .filter((s) => s.argsHasDisabledTrue)
+                .map((s) => s.exportName),
             ),
           ]
           return covering.length > 0 ? covering : ['none']
@@ -4453,6 +4645,27 @@ function activeClassText(activeText, stateConditional) {
   return activeText ? `${activeText} ${conditionalText}` : conditionalText
 }
 
+// The two table shapes the region prints, one source for the renderers below and for the reader
+// that locates a state's column by its header text (`parseStateColumns`, T684) — a renamed header
+// is then one edit, never a silent mismatch between what is printed and what is read back.
+const RECORD1_STATE_HEADERS = {
+  hover: 'Hover (class → story)',
+  'focus-visible': 'Focus-visible (class → story)',
+  active: 'Active (class → story)',
+}
+const RECORD3_STATE_HEADERS = {
+  hover: 'Hover',
+  'focus-visible': 'Focus-visible',
+  active: 'Press (active)',
+}
+export const RECORD1_HEADERS = [
+  'Component',
+  'Element',
+  'File:Line',
+  ...Object.values(RECORD1_STATE_HEADERS),
+]
+export const RECORD3_HEADERS = ['Row', 'Rest', ...Object.values(RECORD3_STATE_HEADERS), 'Disabled']
+
 export function renderRecord1(computed) {
   const rows = []
   for (const { componentKey, elements } of computed.localElements) {
@@ -4480,17 +4693,7 @@ export function renderRecord1(computed) {
       ])
     }
   }
-  return table(
-    [
-      'Component',
-      'Element',
-      'File:Line',
-      'Hover (class → story)',
-      'Focus-visible (class → story)',
-      'Active (class → story)',
-    ],
-    rows,
-  )
+  return table(RECORD1_HEADERS, rows)
 }
 
 export function renderMatrices(computed) {
@@ -4504,9 +4707,7 @@ export function renderMatrices(computed) {
       row.active.join('; '),
       row.disabled.join('; '),
     ])
-    sections.push(
-      `#### \`${name}\`\n\n${table(['Row', 'Rest', 'Hover', 'Focus-visible', 'Press (active)', 'Disabled'], rows)}`,
-    )
+    sections.push(`#### \`${name}\`\n\n${table(RECORD3_HEADERS, rows)}`)
   }
   return sections.join('\n\n')
 }
