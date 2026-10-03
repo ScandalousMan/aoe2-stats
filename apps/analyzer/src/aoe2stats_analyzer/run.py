@@ -49,7 +49,6 @@ silently-passing assertion.
 
 from __future__ import annotations
 
-import json
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -65,6 +64,7 @@ from aoe2stats_analyzer.extract import (
     build_document,
     canonical_bytes,
     current_identity_digest,
+    document_recording_build,
     gap_rows,
     validate_document,
 )
@@ -120,31 +120,48 @@ def _result_key(game_id: int, identity_digest: str) -> str:
 
 
 async def _is_stale(
-    analysis: MatchAnalysis, *, extractor: AnalysisExtractor, object_store: ObjectStore
+    session_factory: async_sessionmaker[AsyncSession],
+    analysis: MatchAnalysis,
+    *,
+    extractor: AnalysisExtractor,
 ) -> bool:
-    """FR-042, T657a: a published row is stale when the identity it was produced under is not the
-    identity an analysis would carry now — any of parser, dependencies, knowledge or analytics.
+    """FR-042, T657a, T666b: a published row is stale when the identity it was produced under is not
+    the identity an analysis would carry now - any of parser, dependencies, knowledge or analytics.
+
+    **The current digest is computed from the database alone; the object store is never read.** Its
+    inputs are the row's `recording_build`, the retained recording's object key and checksum (the
+    `retained_recordings` row `_recompute` reads anyway - the same two values the identity's
+    `recording` component was built from) and the running extractor. A request on a fresh match
+    therefore does the row reads it did before this feature, and a store outage cannot turn it into
+    a 500 (SC-006).
 
     The stored digest is compared with `extract.current_identity_digest`, never parsed back out of
-    `result_key` (a storage layout is not a record). A row with no stored digest was published
-    before this feature and reads as stale without touching the store: it recomputes once.
+    `result_key` (a storage layout is not a record). A row with no stored digest or no recorded
+    build was published before this feature and reads as stale: it recomputes once. A published row
+    with nothing retained is likewise handed to `_recompute`, which marks it unavailable.
 
-    Computing the current digest needs the recording's build, which no column holds and which
-    parsing would be needed to recover; the stored document records it, so one `get` of the current
-    analysis answers it — no fetch, no parse (SC-006). A document that cannot be read as an
-    identity is stale (recomputing writes a readable one). An error from the store itself is not
-    caught: an outage must not read as "stale" and cost a re-parse.
+    **Nothing is caught.** An error computing the current digest - a snapshot that cannot be loaded
+    (`SnapshotError`, a `ValueError`), one that fails its digest, an empty dependency record - is a
+    deployment fault, not staleness. Reading it as "stale" cost a retained-recording read, an
+    access-log row and a full parse on every click, then failed anyway; it propagates before any of
+    that.
 
     Equal digests mean fresh, so an unchanged identity never reaches `_recompute` and a key, once
     written, is never written again.
     """
-    if analysis.identity_digest is None or analysis.result_key is None:
+    if analysis.identity_digest is None or analysis.recording_build is None:
         return True
-    stored = await object_store.get(analysis.result_key)
-    try:
-        current = current_identity_digest(extractor, json.loads(stored))
-    except (KeyError, TypeError, ValueError):
+    async with session_factory() as session:
+        retained = await _retained_recording_row(
+            session, game_id=analysis.game_id, profile_id=analysis.point_of_view_profile_id
+        )
+    if retained is None:
         return True
+    current = current_identity_digest(
+        extractor,
+        recording={"object_key": retained.object_key, "sha256": retained.zip_sha256},
+        build=analysis.recording_build,
+    )
     return current != analysis.identity_digest
 
 
@@ -275,7 +292,9 @@ async def _publish(
     whichever path reached it.
 
     `identity_digest` records which identity the current document was produced under (T657);
-    `_is_stale` compares it with the identity an analysis would carry now (T657a).
+    `_is_stale` compares it with the identity an analysis would carry now (T657a). `recording_build`
+    records the build the document's knowledge record names (`-1` where the stream named none), the
+    one input of that comparison no other column holds (T666b).
 
     Everything is read back from `document`, the object just written, so the row cannot name a
     parser the object does not. `engine_deps` is the same record the document carries (FR-044,
@@ -299,6 +318,7 @@ async def _publish(
         analysis.parser_version = document["engine"]["version"]
         analysis.engine_deps = dict(document["engine"]["deps"])
         analysis.identity_digest = document["identity"]["digest"]
+        analysis.recording_build = document_recording_build(document)
         analysis.result_key = result_key
         analysis.finished_at = now
         analysis.error_class = None
@@ -461,7 +481,7 @@ async def run_once(
             )
             return
     elif existing.state is MatchAnalysisState.PUBLISHED:
-        if not await _is_stale(existing, extractor=extractor, object_store=object_store):
+        if not await _is_stale(session_factory, existing, extractor=extractor):
             return  # SC-006: serve the stored result, fetching and parsing nothing again.
         await _recompute(
             session_factory,

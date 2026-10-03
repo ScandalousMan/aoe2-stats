@@ -871,6 +871,11 @@ class MatchAnalysis(Base):
     # test (T657a) reads as stale, recomputing it once. No backfill, and no change to 003's primary
     # key or lease behaviour (FR-048).
     identity_digest: Mapped[str | None] = mapped_column(Text)
+    # The build the recording's own stream named, `-1` where it named none (data-model.md §7),
+    # written on publish beside the digest (T666b). It is the one input of the current digest that
+    # no other column holds, so the staleness test computes the digest from the row and never reads
+    # the object store. Nullable for the same reason as `identity_digest`: NULL reads as stale.
+    recording_build: Mapped[int | None] = mapped_column(Integer)
 
 
 class RetainedRecording(Base):

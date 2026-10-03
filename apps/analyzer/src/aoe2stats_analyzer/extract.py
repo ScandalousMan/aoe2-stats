@@ -135,6 +135,7 @@ __all__ = [
     "canonical_bytes",
     "compared_body",
     "current_identity_digest",
+    "document_recording_build",
     "extract_timeline",
     "gap_rows",
     "published_document",
@@ -328,33 +329,40 @@ def _knowledge_record(resolved: Snapshot | KnowledgeGap) -> dict[str, Any]:
     return {"absent": resolved.cause, "build": resolved.build}
 
 
+def document_recording_build(document: Mapping[str, Any]) -> int:
+    """The recording's build as the document's `knowledge` component records it: the snapshot's
+    `describes_build`, or for an absent snapshot the `build` of the absence record, which is `-1`
+    where the stream named none (data-model.md §7). The value `run.py` writes to
+    `match_analyses.recording_build` on publish (T666b), read from the document so the column and
+    the identity cannot disagree about it."""
+    knowledge = document["identity"]["knowledge"]
+    build = knowledge["describes_build"] if "describes_build" in knowledge else knowledge["build"]
+    return cast("int", build)
+
+
 def current_identity_digest(
-    extractor: CanonicalEventSource, stored_document: Mapping[str, Any]
+    extractor: CanonicalEventSource, *, recording: Mapping[str, str], build: int
 ) -> str:
-    """The digest this analysis would carry if it were produced **now**, without parsing anything
-    (FR-042, T657a).
+    """The digest this analysis would carry if it were produced **now**, from what the caller
+    already holds and without reading or parsing anything (FR-042, T657a, T666b).
 
     The staleness test needs it on every request for a published match, where parsing again is
-    exactly what SC-006 forbids. Five of the six identity components are known without the
-    recording: the retained recording (immutable once written, so the stored document's own record
-    of it is the current one), the parser name, version and dependencies (attributes of the
-    running extractor), the analytics version (a constant of this module) and the reconstruction
-    marker. The sixth, the knowledge snapshot, depends on the recording's **build**, which only the
-    recording names (`match-started`) and which no column of 003's tables holds. The stored
-    document already carries it — in its `knowledge` component, as `describes_build` or, for an
-    absent snapshot, `build` — and a recording's build cannot change, so the build is read from
-    there and resolved against the snapshots installed now. A knowledge refresh of that build
-    therefore changes the digest; a build gaining its first snapshot does too.
+    exactly what SC-006 forbids and so is reading the object store. Five of the six identity
+    components are known without the recording: the retained recording (`recording`, the object key
+    and checksum of the retained row - immutable once written), the parser name, version and
+    dependencies (attributes of the running extractor), the analytics version (a constant of this
+    module) and the reconstruction marker. The sixth, the knowledge snapshot, depends on the
+    recording's **build**, which `match_analyses.recording_build` holds - a recording's build cannot
+    change - and which is resolved against the snapshots installed now. A knowledge refresh of that
+    build therefore changes the digest; a build gaining its first snapshot does too.
 
-    Raises `KeyError` or `TypeError` when `stored_document` has no readable identity block, which
-    the caller treats as stale, and `ValueError` when the running extractor's dependency record is
-    empty (FR-044), the same refusal `build_document` makes.
+    **It raises, and the caller must let it.** A snapshot that cannot be loaded or fails its digest
+    (`SnapshotError`, a `ValueError`) and an empty dependency record (`ValueError`, FR-044) are
+    deployment faults, not staleness: recomputing would meet the same fault after a retained-
+    recording read and a parse.
     """
-    stored = stored_document["identity"]
-    knowledge = stored["knowledge"]
-    build = knowledge["describes_build"] if "describes_build" in knowledge else knowledge["build"]
     return AnalysisIdentity(
-        recording=stored["recording"],
+        recording=recording,
         parser_name=extractor.engine_name,
         parser_version=extractor.engine_version,
         parser_dependencies=extractor.engine_dependencies,

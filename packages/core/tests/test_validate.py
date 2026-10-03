@@ -7,8 +7,10 @@ API chosen here, which T619 must implement in ``aoe2stats_core.truth.validate``:
   that carries it, dict keys joined by ``.`` and every list index collapsed to ``[]``, e.g.
   ``participants[].age_up_commands[]``; ``None`` for a datum that only lives under ``inferred``),
   ``tier`` (``Tier``), ``status`` (``"published"``, ``"planned"`` or ``"blocked"``), ``non_claim``
-  (``str | None``) and ``requires_knowledge`` (``tuple[str, ...]``, keys of the form
-  ``"<entity kind>.<field>"``, matched against ``knowledge_gaps`` entries). Injecting the register
+  (``str | None``) and ``requires_knowledge`` (``tuple[str, ...]``, **bare field names** such as
+  ``"cost"``, exactly as ``register.toml`` writes them; rule 8 never matches them against a gap's
+  field but against the gap's ``prevents`` list of datum ids, which the gap computed from those same
+  names). Injecting the register
   keeps the validator testable before the loader (T615) exists; production passes the loaded one.
 - Raises ``DocumentInvalid`` (a ``ValueError``) carrying ``rules``, a ``frozenset[int]`` of the
   contract rule numbers (1 to 10) that were violated, and a message naming each violation. It
@@ -19,7 +21,10 @@ API chosen here, which T619 must implement in ``aoe2stats_core.truth.validate``:
   ``identity``, ``provenance``, ``knowledge_gaps``; the ``inferred`` block is checked per rules
   5 to 7 instead, its instances being keyed by datum id. ``schema_version`` is not outside rule 1:
   it is a published datum and carries a provenance entry like any other (FR-007).
-- A register path ending ``.*`` covers every leaf strictly beneath its prefix (T656); an exact
+- A register path ending ``.*`` covers exactly one key of the mapping at its prefix, whose value is
+  a scalar of the type the validator declares for that path (T656, T666a): a dependency name to a
+  version string, an age-technology id to a command time in milliseconds. Nothing nested beneath the
+  key, no other value type, and no wildcard path the validator does not declare is covered; an exact
   path is exact.
 """
 
@@ -57,7 +62,7 @@ def _register() -> dict[str, Entry]:
             None, Tier.INFERRED, non_claim="not a casualty count"
         ),
         "participant.army_cost": Entry(
-            "participants[].army_cost", Tier.DERIVED, requires_knowledge=("unit.cost",)
+            "participants[].army_cost", Tier.DERIVED, requires_knowledge=("cost",)
         ),
         "participant.planned_thing": Entry(
             "participants[].planned_thing", Tier.OBSERVED, "planned"
@@ -330,14 +335,20 @@ def test_a_non_claim_is_required_on_every_instance() -> None:
 # Rule 8
 
 
-def _gap(severity: str, kind: str = "unit", field: str = "cost") -> dict[str, Any]:
+def _gap(
+    severity: str,
+    field: str | None = "cost",
+    prevents: tuple[str, ...] = ("participant.army_cost",),
+) -> dict[str, Any]:
+    """A gap as the coverage pass records it: ``prevents`` names register data, never fields. With
+    ``field=None`` it is the whole-build gap, which names no entity and no field."""
     return {
-        "entity": {"kind": kind, "id": 0},
+        "entity": None if field is None else {"kind": "unit", "id": 0},
         "field": field,
         "build": 1,
-        "civilisation": 0,
-        "cause": "field-absent",
-        "prevents": ["participant.army_cost"],
+        "civilisation": None if field is None else 0,
+        "cause": "no-snapshot-for-build" if field is None else "field-absent",
+        "prevents": list(prevents) if severity == "blocking" else [],
         "severity": severity,
     }
 
@@ -359,8 +370,34 @@ def test_an_informational_or_unrelated_gap_withholds_nothing() -> None:
     from aoe2stats_core.truth.validate import validate
 
     doc = _with_army_cost()
-    doc["knowledge_gaps"] = [_gap("informational"), _gap("blocking", "building", "cost")]
+    doc["knowledge_gaps"] = [
+        _gap("informational"),
+        _gap("blocking", "production_time", ("participant.something_else",)),
+    ]
     validate(doc, _register())
+
+
+def test_rule_8_reads_the_gaps_prevents_not_a_kind_dot_field_key() -> None:
+    """The bug's shape: ``requires_knowledge`` is bare field names and the old rule compared it to
+    ``"<kind>.<field>"``, so no real gap could ever intersect it. Here the gap's field equals the
+    datum's requirement exactly and ``prevents`` names the datum; the datum is refused."""
+    doc = _with_army_cost()
+    doc["knowledge_gaps"] = [_gap("blocking", "cost", ("participant.army_cost",))]
+    _rejected(doc, 8)
+
+
+def test_a_whole_build_gap_withholds_every_datum_that_needs_any_knowledge() -> None:
+    """It names no entity and no field, so no field key could ever match it. It blocks the datum
+    that needs knowledge even when its ``prevents`` list is empty, and no other."""
+    from aoe2stats_core.truth.validate import validate
+
+    doc = _with_army_cost()
+    doc["knowledge_gaps"] = [_gap("blocking", None, ())]
+    _rejected(doc, 8)
+
+    unaffected = _good()  # no datum present needs knowledge
+    unaffected["knowledge_gaps"] = [_gap("blocking", None, ())]
+    validate(unaffected, _register())
 
 
 # Rules 9 and 10
@@ -455,15 +492,16 @@ def test_a_datum_with_no_declared_non_claim_needs_none() -> None:
 
 
 # Wildcard paths (T656): the register publishes `engine.deps.*` and
-# `participants[].age_up_commands.*` for mappings whose keys are data. A `.*` path covers any leaf
-# strictly beneath its prefix; an exact path stays exact.
+# `participants[].age_up_commands.*` for mappings whose keys are data. A `.*` path covers exactly
+# one key of the mapping at its prefix, whose value is a scalar of the declared type (T666a); an
+# exact path stays exact.
 
 
 def _wild_register() -> dict[str, Entry]:
     register = _register()
     register["engine.dependencies"] = Entry("engine.deps.*", Tier.OBSERVED)
-    register["participant.age_up_commands_by_age"] = Entry(
-        "participants[].age_up_commands_by_age.*", Tier.OBSERVED
+    register["participant.age_up_commands"] = Entry(
+        "participants[].age_up_commands.*", Tier.OBSERVED
     )
     return register
 
@@ -471,9 +509,8 @@ def _wild_register() -> dict[str, Entry]:
 def _wild_good() -> dict[str, Any]:
     doc = _good()
     doc["engine"] = {"deps": {"aoe2rec-py": "1.0", "zope.interface": "7.0"}}
-    doc["participants"][0]["age_up_commands_by_age"] = {"2": 100, "3": 200}
+    doc["participants"][0]["age_up_commands"] = {"101": 100, "102": 200}
     doc["provenance"]["engine.dependencies"] = _prov("observed")
-    doc["provenance"]["participant.age_up_commands_by_age"] = _prov("observed")
     return doc
 
 
@@ -504,7 +541,7 @@ def test_a_leaf_beneath_a_wildcard_path_is_accepted_and_the_datum_counts_as_pres
     [
         ("engine", "depsX"),  # a sibling that merely shares the prefix's characters
         ("engine", "other"),  # a sibling under the same parent
-        ("participants[0]", "age_up_commands_by_ageX"),
+        ("participants[0]", "age_up_commandsX"),
     ],
 )
 def test_a_leaf_at_a_sibling_of_a_wildcard_prefix_is_rejected(where: str, leaf: str) -> None:
@@ -572,3 +609,65 @@ def test_a_wildcard_does_not_resolve_planned_data() -> None:
         validate(_wild_good(), register)
 
     assert 1 in info.value.rules
+
+
+# A wildcard covers one key with a scalar value (T666a, FR-011, SC-003). Without that, a prose
+# verdict nested under a mapping whose keys are data passed as an observed value.
+
+
+def _under(doc: dict[str, Any], where: str) -> dict[str, Any]:
+    target: dict[str, Any] = (
+        doc["engine"]["deps"] if where == "deps" else doc["participants"][0]["age_up_commands"]
+    )
+    return target
+
+
+@pytest.mark.parametrize(
+    "where, key, value",
+    [
+        ("deps", "verdict", {"player_1": "lost the fight"}),  # a nested mapping
+        ("deps", "zope.interface", {"7": "ok"}),  # a real name, one level too deep
+        ("deps", "verdict", ["lost the fight"]),  # a list
+        ("deps", "aoe2rec-py", 1),  # a version is a string
+        ("deps", "verdict", None),
+        ("commands", "coaching_note", "should have walled earlier"),  # prose, not a time
+        ("commands", "101", {"at": 1}),
+        ("commands", "101", [100]),
+        ("commands", "101", True),  # a bool is not a time
+        ("commands", "101", None),
+    ],
+)
+def test_a_wildcard_refuses_a_value_that_is_not_its_one_scalar(
+    where: str, key: str, value: Any
+) -> None:
+    doc = _wild_good()
+    _under(doc, where)[key] = value
+
+    message = _wild_rejected(doc, 1)
+
+    assert key in message
+
+
+def test_a_wildcard_accepts_a_dependency_name_with_dots_and_each_declared_scalar() -> None:
+    from aoe2stats_core.truth.validate import validate
+
+    doc = _wild_good()
+    _under(doc, "deps").update({"zope.interface": "7.0", "a.b.c": "1"})
+    _under(doc, "commands").update({"103": 300})
+
+    validate(doc, _wild_register())
+
+
+def test_a_wildcard_path_the_validator_declares_no_type_for_covers_nothing() -> None:
+    register = _wild_register()
+    register["engine.undeclared_thing"] = Entry("engine.undeclared.*", Tier.OBSERVED)
+    doc = _wild_good()
+    doc["engine"]["undeclared"] = {"x": "1"}
+    doc["provenance"]["engine.undeclared_thing"] = _prov("observed")
+    from aoe2stats_core.truth.validate import DocumentInvalid, validate
+
+    with pytest.raises(DocumentInvalid) as info:
+        validate(doc, register)
+
+    assert 1 in info.value.rules
+    assert "engine.undeclared.x" in str(info.value)

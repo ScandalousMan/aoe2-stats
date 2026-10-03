@@ -18,14 +18,20 @@ contract.
 - `match_analyses.identity_digest` — nullable, no backfill. A row published before this feature has
   none, which the staleness test reads as stale and recomputes once (T657a, data-model.md §8).
   Nothing about 003's behaviour or its primary key changes (FR-048).
+- `match_analyses.recording_build` — nullable integer, no backfill, beside the digest. The build the
+  recording's own stream named (`-1` where it named none, data-model.md §7), written on publish, so
+  the staleness test can compute the current digest from the row and never read the object store
+  (T666b, SC-006). A row with it NULL reads as stale and recomputes once. Folded into this revision
+  rather than a second one because this revision has not been applied anywhere but throwaway test
+  databases.
 
 Apply it **before** the deploy that carries it: the same change bumps
 `aoe2stats_storage.revision.EXPECTED_SCHEMA_REVISION`, so a database that lags the build answers
 503 on `/api/health` and fails the smoke workflow. Follow `docs/runbooks/database-migrations.md`.
 
-`downgrade` drops both and the two enum types this revision created; it is the exact inverse, and
-loses the recorded gaps and digests, which is acceptable for a throwaway database and a deliberate
-act anywhere else.
+`downgrade` drops both columns, the table and the two enum types this revision created; it is the
+exact inverse, and loses the recorded gaps, digests and builds, which is acceptable for a throwaway
+database and a deliberate act anywhere else.
 """
 
 from __future__ import annotations
@@ -110,9 +116,11 @@ def upgrade() -> None:
     )
 
     op.add_column("match_analyses", sa.Column("identity_digest", sa.Text(), nullable=True))
+    op.add_column("match_analyses", sa.Column("recording_build", sa.Integer(), nullable=True))
 
 
 def downgrade() -> None:
+    op.drop_column("match_analyses", "recording_build")
     op.drop_column("match_analyses", "identity_digest")
 
     op.drop_index(

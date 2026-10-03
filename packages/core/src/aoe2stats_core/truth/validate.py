@@ -48,20 +48,49 @@ class DocumentInvalid(ValueError):
         super().__init__("; ".join(f"rule {rule}: {text}" for rule, text in violations))
 
 
-def _leaves(node: Any, path: str) -> Iterator[tuple[str, bool]]:
+# The value type each wildcard register path admits beneath its one key. The register states the
+# path, not the type, so the type is stated here and a wildcard path not listed covers nothing: a
+# new wildcard in ``register.toml`` is refused (rule 1) until it is declared here, never silently
+# widened to "anything" (FR-011, SC-003). ``engine.deps.*`` is a dependency name to its installed
+# version string; ``participants[].age_up_commands.*`` is an age-technology id to the match-clock
+# time of the command in milliseconds, which the extractor emits as an integer. ``bool`` is an
+# ``int`` to Python and is not a time, so it is excluded explicitly.
+_WILDCARD_VALUES: dict[str, type] = {
+    "engine.deps.*": str,
+    "participants[].age_up_commands.*": int,
+}
+
+
+def _scalar_of_kind(value: object, kind: type) -> bool:
+    return isinstance(value, kind) and not isinstance(value, bool)
+
+
+def _leaves(node: Any, path: str, wildcards: Mapping[str, type]) -> Iterator[tuple[str, bool]]:
     """Yield each leaf as ``(path, empty_mapping)``: dict keys joined by '.', every list index
     collapsed to '[]'. ``empty_mapping`` marks the leaf an empty dict leaves behind — a mapping
-    with no entry beneath it, which is not a value."""
+    with no entry beneath it, which is not a value.
+
+    ``wildcards`` maps a wildcard root (``engine.deps``) to the type its values must have. A mapping
+    at such a root is walked key by key and each key is **one** leaf, ``<root>.*``, provided its
+    value is a scalar of that type: the key is never spliced into a path, so a dependency name with
+    dots in it is one key, and nothing nested beneath it is ever a leaf of the wildcard. A key whose
+    value is anything else (a mapping, a list, prose where a number belongs) yields the key's own
+    path, which no register datum publishes, so rule 1 refuses it by name."""
     if isinstance(node, dict):
         if not node and path:
             yield path, True
+        kind = wildcards.get(path)
         for key, value in node.items():
-            yield from _leaves(value, f"{path}.{key}" if path else str(key))
+            child = f"{path}.{key}" if path else str(key)
+            if kind is not None:
+                yield (f"{path}.*" if _scalar_of_kind(value, kind) else child), False
+            else:
+                yield from _leaves(value, child, wildcards)
     elif isinstance(node, list):
         if not node:
             yield f"{path}[]", False
         for item in node:
-            yield from _leaves(item, f"{path}[]")
+            yield from _leaves(item, f"{path}[]", wildcards)
     else:
         yield path, False
 
@@ -78,32 +107,30 @@ def validate(document: Mapping[str, Any], register: Mapping[str, Entry]) -> None
         found.append((rule, text))
 
     # An exact path matches one leaf. A path ending ``.*`` is the register's wildcard for a mapping
-    # whose keys are data (``engine.deps.*``): it matches every leaf strictly beneath its prefix and
-    # nothing else, so ``engine.depsX.foo`` and the bare ``engine.deps`` are not covered.
+    # whose keys are data (``engine.deps.*``): the walk (``_leaves``) turns each key of such a
+    # mapping whose value is a scalar of the declared type into the one leaf ``<root>.*``, so the
+    # wildcard resolves like an exact path and covers exactly one key, one level deep. A wildcard
+    # path with no declared value type is not resolvable at all.
     published_by_path: dict[str, list[str]] = {}
-    wildcards: list[tuple[str, str]] = []  # (prefix including the trailing '.', datum id)
+    wildcards: dict[str, type] = {}  # wildcard root (without the trailing '.*') -> value type
     for reg_id, reg_entry in register.items():
         if reg_entry.status == "published" and reg_entry.path is not None:
+            kind = _WILDCARD_VALUES.get(reg_entry.path)
             if reg_entry.path.endswith(".*"):
-                wildcards.append((reg_entry.path[:-1], reg_id))
-            else:
-                published_by_path.setdefault(reg_entry.path, []).append(reg_id)
-    wildcard_roots = {prefix[:-1] for prefix, _ in wildcards}
+                if kind is None:
+                    continue
+                wildcards[reg_entry.path[:-2]] = kind
+            published_by_path.setdefault(reg_entry.path, []).append(reg_id)
 
     def resolve(leaf: str) -> list[str]:
-        covered = [
-            datum
-            for prefix, datum in wildcards
-            if leaf.startswith(prefix) and len(leaf) > len(prefix)
-        ]
-        return [*published_by_path.get(leaf, []), *covered]
+        return published_by_path.get(leaf, [])
 
     # Rule 1 and the set of data present outside ``inferred``.
     present: set[str] = set()
     for key, value in document.items():
         if key in _EXEMPT or key == _INFERRED:
             continue
-        for leaf, empty_mapping in _leaves(value, str(key)):
+        for leaf, empty_mapping in _leaves(value, str(key), wildcards):
             matches = resolve(leaf)
             if len(matches) == 1:
                 present.add(matches[0])
@@ -112,7 +139,7 @@ def validate(document: Mapping[str, Any], register: Mapping[str, Entry]) -> None
                     p.startswith(leaf + ".") or p.startswith(leaf + "[]") for p in published_by_path
                 ):
                     continue  # an empty list whose elements are described further down
-                if empty_mapping and leaf in wildcard_roots:
+                if empty_mapping and leaf in wildcards:
                     continue  # an empty mapping whose entries the wildcard describes: no value
                 fail(1, f"leaf {leaf!r} resolves to no published register datum")
             else:
@@ -204,18 +231,27 @@ def validate(document: Mapping[str, Any], register: Mapping[str, Entry]) -> None
                     f"({source_entry.tier.value})",
                 )
 
-    # Rule 8: nothing present may need knowledge a blocking gap says is missing.
+    # Rule 8: nothing present may need knowledge a blocking gap says is missing. A gap's
+    # ``prevents`` is the register data it stops, computed from the register's own
+    # ``requires_knowledge`` (bare field names such as ``cost``) when the gap was made, so the
+    # validator compares datum ids and never re-derives a field key. A whole-build gap names no
+    # entity and no field because nothing about the build is known: it blocks every datum that
+    # needs any knowledge at all, whatever its ``prevents`` lists.
     gaps = document.get("knowledge_gaps", [])
     blocked: set[str] = set()
+    whole_build = False
     for gap in gaps if isinstance(gaps, list) else []:
-        if isinstance(gap, Mapping) and gap.get("severity") == "blocking":
-            entity = gap.get("entity")
-            kind = entity.get("kind") if isinstance(entity, Mapping) else None
-            blocked.add(f"{kind}.{gap.get('field')}")
+        if not isinstance(gap, Mapping) or gap.get("severity") != "blocking":
+            continue
+        prevents = gap.get("prevents")
+        if isinstance(prevents, list):
+            blocked.update(item for item in prevents if isinstance(item, str))
+        if gap.get("entity") is None and gap.get("field") is None:
+            whole_build = True
     for datum in sorted(everything):
-        hit = blocked.intersection(register[datum].requires_knowledge)
-        if hit:
-            fail(8, f"{datum!r} is present but needs {sorted(hit)}, blocked by a knowledge gap")
+        needs = register[datum].requires_knowledge
+        if needs and (whole_build or datum in blocked):
+            fail(8, f"{datum!r} is present but needs {sorted(needs)}, blocked by a knowledge gap")
 
     # Rules 9 and 10.
     identity = document.get("identity")

@@ -58,6 +58,7 @@ import uuid
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import pytest
 from sqlalchemy import select
@@ -66,6 +67,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from aoe2stats_analyzer import extract
 from aoe2stats_core.replay.events import CanonicalEvent, EventKind, MatchStartedPayload
 from aoe2stats_core.replay.validation import EngineParseError
+from aoe2stats_knowledge import snapshot
 from aoe2stats_providers.base import NotFound, ReplayBlob
 from aoe2stats_storage.models import (
     AoeProfile,
@@ -1176,17 +1178,29 @@ async def test_recomputing_the_same_identity_writes_the_same_key_and_no_second_o
 _SNAPSHOT_BUILD = 180059
 
 
+#: A build the packaged knowledge base holds no snapshot for: the identity's knowledge component is
+#: then the absence record, which names the build under `build` instead of `describes_build`.
+_BUILD_WITHOUT_A_SNAPSHOT = 999_999
+
+
 class _BuildNamingExtractor(_FakeExtractor):
     """`_FakeExtractor` whose stream names a build: the knowledge component of the identity is a
-    function of the recording's build, so a test about the knowledge version needs one."""
+    function of the recording's build, so a test about the knowledge version needs one. `build=None`
+    is a stream that names none, which the document records as `-1`."""
+
+    def __init__(self, *, build: int | None = _SNAPSHOT_BUILD, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self._build = build
 
     def events(self, zip_bytes: bytes) -> Iterator[CanonicalEvent]:
+        if self._build is None:
+            return iter(())
         return iter(
             (
                 CanonicalEvent(
                     clock_ms=0,
                     kind=EventKind.MATCH_STARTED,
-                    payload=MatchStartedPayload(build=_SNAPSHOT_BUILD, map_name=None),
+                    payload=MatchStartedPayload(build=self._build, map_name=None),
                 ),
             )
         )
@@ -1204,9 +1218,13 @@ class _Published:
 
 
 async def _publish_once(
-    session_factory: async_sessionmaker[AsyncSession], *, game_id: int
+    session_factory: async_sessionmaker[AsyncSession],
+    *,
+    game_id: int,
+    build: int | None = _SNAPSHOT_BUILD,
 ) -> _Published:
-    """One ordinary first analysis under `_ENGINE_VERSION_1`, naming a build that has a snapshot."""
+    """One ordinary first analysis under `_ENGINE_VERSION_1`, naming a build that has a snapshot
+    unless `build` says otherwise."""
     from aoe2stats_analyzer.run import run_once
 
     profile_a, profile_b = game_id + 1, game_id + 2
@@ -1227,7 +1245,9 @@ async def _publish_once(
             ReplayBlob(content=b"raw bytes", filename="r.zip", content_type="application/zip"),
             max_calls=1,
         ),
-        extractor=_BuildNamingExtractor(point_of_view_profile_id=profile_a, max_calls=1),
+        extractor=_BuildNamingExtractor(
+            build=build, point_of_view_profile_id=profile_a, max_calls=1
+        ),
         object_store=store,
     )
     row = await _get_analysis(session_factory, game_id)
@@ -1251,12 +1271,14 @@ async def _ask_again(
     *,
     engine_version: str = _ENGINE_VERSION_1,
     max_calls: int,
+    build: int | None = _SNAPSHOT_BUILD,
 ) -> _BuildNamingExtractor:
     """Open the same match again, the source forbidden, and return the extractor to read its calls.
     `max_calls` is the canary: 0 where nothing may be parsed, 1 where exactly one recompute may."""
     from aoe2stats_analyzer.run import run_once
 
     extractor = _BuildNamingExtractor(
+        build=build,
         point_of_view_profile_id=published.profile_id,
         engine_version=engine_version,
         max_calls=max_calls,
@@ -1405,20 +1427,203 @@ async def test_a_row_published_before_the_digest_existed_recomputes_once_then_is
     assert published.store.put_calls == puts_after_recompute
 
 
-async def test_a_stored_document_that_cannot_be_read_as_an_identity_is_stale(
+async def test_a_row_without_a_recorded_build_recomputes_once_then_is_fresh(
     session_factory: async_sessionmaker[AsyncSession], clean_database: None
 ) -> None:
-    """The current digest is read through the stored document's own identity block; one that is not
-    readable cannot confirm freshness, and recomputing replaces it with one that is."""
+    """Replaces "a stored document that cannot be read as an identity is stale" (T666b): the
+    staleness test no longer reads the stored document, so that case cannot exist. Its row-based
+    equivalent is the row that cannot supply the current digest's inputs - here a NULL
+    `recording_build` beside a digest - which cannot confirm freshness either, and recomputing
+    replaces it with a row that can."""
     published = await _publish_once(session_factory, game_id=500_657_006)
-    published.store.objects[published.key] = b"not json"
+    async with session_scope(session_factory) as session:
+        row = await session.get(MatchAnalysis, published.game_id)
+        assert row is not None
+        row.recording_build = None
 
-    extractor = await _ask_again(session_factory, published, max_calls=1)
+    recomputed = await _ask_again(session_factory, published, max_calls=1)
 
-    assert len(extractor.calls) == 1
+    assert len(recomputed.calls) == 1
+    after = await _get_analysis(session_factory, published.game_id)
+    assert after is not None
+    assert after.identity_digest == published.row.identity_digest
+    assert after.recording_build == _SNAPSHOT_BUILD
+    assert after.result_key == published.key
+
+    again = await _ask_again(session_factory, published, max_calls=0)
+    assert again.calls == []
+
+
+# --- T666b: the build is on the row, and the staleness path never touches the object store -------
+
+
+async def test_the_recordings_build_is_written_on_publish_whichever_way_the_stream_named_it(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """data-model.md §8: the snapshot's `describes_build`, the absence record's `build`, and `-1`
+    where the stream named none (§7) - one value, read from the document's knowledge record."""
+    expected = {
+        500_666_001: (_SNAPSHOT_BUILD, _SNAPSHOT_BUILD),
+        500_666_011: (_BUILD_WITHOUT_A_SNAPSHOT, _BUILD_WITHOUT_A_SNAPSHOT),
+        500_666_021: (None, -1),
+    }
+    for game_id, (named, recorded) in expected.items():
+        published = await _publish_once(session_factory, game_id=game_id, build=named)
+        assert published.row.recording_build == recorded
+
+
+async def test_a_row_published_under_the_minus_one_build_is_fresh_on_the_next_request(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """The sentinel is a real value on the row, not a missing one: `-1` resolves to the same
+    absence record the document carries, so the digest matches and nothing is recomputed."""
+    published = await _publish_once(session_factory, game_id=500_666_031, build=None)
+    assert published.row.recording_build == -1
+
+    again = await _ask_again(session_factory, published, max_calls=0, build=None)
+
+    assert again.calls == []
     after = await _get_analysis(session_factory, published.game_id)
     assert after is not None
     assert after.result_key == published.key
-    assert json.loads(published.store.objects[published.key])["identity"]["digest"] == (
-        published.row.identity_digest
+
+
+async def test_a_fresh_published_match_is_served_without_reading_the_object_store(
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """SC-006: a request on a fresh published match does the row read it did before this feature.
+    A store outage must not turn it into a 500, so the store's `get` is made to fail outright."""
+    published = await _publish_once(session_factory, game_id=500_666_041)
+    published.store.get_calls.clear()
+
+    async def outage(key: str) -> bytes:
+        raise ConnectionError(f"object store unreachable reading {key}")
+
+    monkeypatch.setattr(published.store, "get", outage)
+
+    extractor = await _ask_again(session_factory, published, max_calls=0)
+
+    assert extractor.calls == []
+    assert published.store.get_calls == []
+
+
+async def test_a_stale_match_reads_the_store_only_for_the_retained_recording(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """The staleness decision reads no object. The one read a recompute makes is the retained
+    recording, after the decision; the current analysis's document is never read - against the old
+    code its key came first."""
+    published = await _publish_once(session_factory, game_id=500_666_051)
+    retained = await _get_analysis_recording(session_factory, published)
+    published.store.get_calls.clear()
+
+    extractor = await _ask_again(
+        session_factory, published, engine_version=_ENGINE_VERSION_2, max_calls=1
+    )
+
+    assert len(extractor.calls) == 1
+    assert published.store.get_calls == [retained.object_key]
+
+
+async def _get_analysis_recording(
+    session_factory: async_sessionmaker[AsyncSession], published: _Published
+) -> RetainedRecording:
+    retained = await _get_retained_recording(
+        session_factory, published.game_id, published.profile_id
+    )
+    assert retained is not None
+    return retained
+
+
+@dataclass(frozen=True, slots=True)
+class _RowSnapshot:
+    state: MatchAnalysisState
+    identity_digest: str | None
+    recording_build: int | None
+    result_key: str | None
+    parser_version: str | None
+    finished_at: datetime | None
+
+
+def _snapshot_of(row: MatchAnalysis) -> _RowSnapshot:
+    return _RowSnapshot(
+        state=row.state,
+        identity_digest=row.identity_digest,
+        recording_build=row.recording_build,
+        result_key=row.result_key,
+        parser_version=row.parser_version,
+        finished_at=row.finished_at,
+    )
+
+
+async def _assert_a_deployment_fault_stops_the_request_before_any_recompute(
+    session_factory: async_sessionmaker[AsyncSession],
+    published: _Published,
+    *,
+    extractor_dependencies: dict[str, str] | None = None,
+) -> None:
+    """T666b: an error computing the current digest is a deployment fault, not staleness. It
+    propagates; the extractor is never called, no retained recording is read, no access-log row is
+    written and the row is exactly as it was."""
+    from aoe2stats_analyzer.run import run_once
+
+    before = _snapshot_of(published.row)
+    log_before = len(await _access_log_rows(session_factory))
+    published.store.get_calls.clear()
+    extractor = _BuildNamingExtractor(point_of_view_profile_id=published.profile_id, max_calls=0)
+    if extractor_dependencies is not None:
+        extractor.engine_dependencies = extractor_dependencies
+
+    with pytest.raises(ValueError):
+        await run_once(
+            published.game_id,
+            _BUDGET_SECONDS,
+            published.requester,
+            session_factory=session_factory,
+            replay_provider=_RefusingReplayProvider(),
+            extractor=extractor,
+            object_store=published.store,
+        )
+
+    assert extractor.calls == []
+    assert published.store.get_calls == []
+    assert len(await _access_log_rows(session_factory)) == log_before
+    after = await _get_analysis(session_factory, published.game_id)
+    assert after is not None
+    assert _snapshot_of(after) == before
+
+
+@pytest.mark.parametrize(
+    "fault", [snapshot.SnapshotError, snapshot.SnapshotDigestMismatch], ids=lambda c: c.__name__
+)
+async def test_a_broken_snapshot_during_the_staleness_check_raises_instead_of_reading_as_stale(
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+    fault: type[snapshot.SnapshotError],
+) -> None:
+    """Reviewer H2: `SnapshotError` is a `ValueError`, and the old `except` read it as "stale" - so
+    every click cost a retained-recording read, an access-log row and a full parse, then a 500."""
+    published = await _publish_once(session_factory, game_id=500_666_061)
+
+    def broken(build: int) -> object:
+        raise fault(f"snapshot for build {build} cannot be loaded")
+
+    monkeypatch.setattr(extract, "snapshot_for", broken)
+
+    await _assert_a_deployment_fault_stops_the_request_before_any_recompute(
+        session_factory, published
+    )
+
+
+async def test_an_empty_dependency_record_during_the_staleness_check_raises_too(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """FR-044's refusal is the same kind of fault: not a reason to parse, and not "stale"."""
+    published = await _publish_once(session_factory, game_id=500_666_071)
+
+    await _assert_a_deployment_fault_stops_the_request_before_any_recompute(
+        session_factory, published, extractor_dependencies={}
     )

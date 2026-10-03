@@ -1359,7 +1359,7 @@ being written down. **These block #109's merge and T665.** Two were arbitration 
 (2026-10-03); the decision is recorded in the task that carries it. T666a and T666b touch disjoint
 files and may run as one parallel batch; the rest are sequential, in order.
 
-- [ ] T666a [P] [US3] **Make the validator's two locks hold against the real register.** (a) Rule 8
+- [x] T666a [P] [US3] **Make the validator's two locks hold against the real register.** (a) Rule 8
       in `packages/core/src/aoe2stats_core/truth/validate.py` builds its blocked set as
       `kind.field`, but `packages/core/src/aoe2stats_core/truth/register.toml` writes
       `requires_knowledge` as bare field names (`["cost"]`) and a whole-build gap adds `None.None`,
@@ -1375,7 +1375,7 @@ files and may run as one parallel batch; the rest are sequential, in order.
       key whose value is a scalar; dependency names contain dots, so not a string-prefix rule.
       Contrast cases: a real dependency name with dots is accepted; a nested mapping or a string
       verdict under either wildcard is refused
-- [ ] T666b [P] [US6] **Put the recording's build on the row and take the store off the staleness
+- [x] T666b [P] [US6] **Put the recording's build on the row and take the store off the staleness
       path.** Decided 2026-10-03: amend the unapplied revision `53375d9435fc` (T663) to add a
       nullable `match_analyses.recording_build` integer beside `identity_digest`, written on publish
       from the document's knowledge record (`-1` where the stream named none, as in

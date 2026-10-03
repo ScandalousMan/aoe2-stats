@@ -1,6 +1,6 @@
-"""The 006 revision (`53375d9435fc`, T663): `analysis_knowledge_gaps` and
-`match_analyses.identity_digest`, tested through the real Alembic migrations against a throwaway
-database of this module's own.
+"""The 006 revision (`53375d9435fc`, T663): `analysis_knowledge_gaps` and the two nullable
+`match_analyses` columns `identity_digest` and `recording_build` (T666b), tested through the real
+Alembic migrations against a throwaway database of this module's own.
 
 A database of its own, not the session-wide one `tests/db.py` shares: this module runs
 `downgrade -1`, which would pull the schema out from under every other integration test in the
@@ -11,7 +11,8 @@ environment, which on a developer machine is production.
 Three claims, in the order the revision's own docstring makes them:
 
 - the schema at head is what data-model.md §7 and §8 name — the non-nullable `build` T652b's `-1`
-  sentinel relies on, the one nullable identity column, the nullable digest on 003's table;
+  sentinel relies on, the one nullable identity column, the nullable digest and recording build on
+  003's table;
 - the unique index delivers "a reproduced analysis records nothing twice", including for the NULL
   civilisation a plain constraint would let through;
 - the revision is reversible, and `alembic check` finds no drift between it and `models.py`.
@@ -113,6 +114,13 @@ def test_the_identity_digest_is_a_nullable_text_column_on_match_analyses(
     assert _columns(migrated_url, "match_analyses")["identity_digest"] == ("text", "YES")
 
 
+def test_the_recording_build_is_a_nullable_integer_column_on_match_analyses(
+    migrated_url: str,
+) -> None:
+    """T666b: beside the digest, nullable and unbackfilled - a NULL on either reads as stale."""
+    assert _columns(migrated_url, "match_analyses")["recording_build"] == ("integer", "YES")
+
+
 def test_a_gap_naming_no_build_is_recorded_with_the_minus_one_sentinel(
     migrated_url: str,
 ) -> None:
@@ -154,6 +162,7 @@ def test_the_revision_downgrades_cleanly_and_upgrades_again(migrated_url: str) -
 
     assert _columns(migrated_url, "analysis_knowledge_gaps") == {}
     assert "identity_digest" not in _columns(migrated_url, "match_analyses")
+    assert "recording_build" not in _columns(migrated_url, "match_analyses")
     assert (
         _scalar(
             migrated_url,
@@ -166,6 +175,7 @@ def test_the_revision_downgrades_cleanly_and_upgrades_again(migrated_url: str) -
     _alembic(migrated_url, "upgrade", "head")
 
     assert "identity_digest" in _columns(migrated_url, "match_analyses")
+    assert "recording_build" in _columns(migrated_url, "match_analyses")
     assert "build" in _columns(migrated_url, "analysis_knowledge_gaps")
     assert _scalar(migrated_url, "SELECT version_num FROM alembic_version") == REVISION
 
