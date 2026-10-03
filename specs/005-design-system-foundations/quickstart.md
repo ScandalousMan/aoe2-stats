@@ -1190,8 +1190,9 @@ judged on the first frame of its 120ms outline fade, 1.17:1 in dark — and no r
 pointer-only target, so that sweep's positive control is its planted pages, not a route. **Item 13
 is Met for routes at rest, populated, with every `Dialog` and `Menu` open and with the two loading
 states held, on the head carrying T676** — verified locally (361 tests of the four suites and
-`tests/visual/fixtures/` passing in Chromium on macOS); the CI run that backs it is the pull
-request's `visual` job, to be cited here once it is green, and the full-page baselines in
+`tests/visual/fixtures/` passing in Chromium on macOS); the CI run that backs it is PR #107's `visual`
+job, run 37105781660 (383 tests passing on Linux: the four suites, `tests/visual/fixtures/` and
+`tests/visual/app-routes.spec.ts` in one step), and the full-page baselines in
 `tests/visual/app-routes.spec.ts` are CI-authoritative and unchanged by this task.
 
 ### Item 15's general-reviewer half — outstanding, no pull request covers this head
