@@ -1996,6 +1996,83 @@ function storyRendersComponent(storyObj, componentName) {
   return findRenderComponentTag(storyObj, componentName) != null
 }
 
+// Whether a story's own `render:` can put anything of its component's own module on screen — `true`
+// for an `args`-only story (Storybook renders `<Component {...args} />` implicitly) and for a
+// `render:` whose body references (a) the component itself, (b) a name imported from the story's
+// own directory (`ErasedScreen`, a second export of `AccountErasurePanel/index.tsx`), or (c) a
+// story-file helper that in turn references one of those (`SearchBox.stories.tsx`'s own
+// `DemoSearchBox` wrapper). `false` only when `render:` mounts nothing of the sort: a raw `<button>`,
+// or a primitive imported from another module (`<Menu>`), which shows none of the component's own
+// source, so no instance declared there can be what its force-state targets (T685). Deliberately an
+// over-approximation by identifier reference, not by JSX tag: a helper call (`renderRow(args)`) or a
+// `render: Template` reference reaches exactly as a tag does, so this is `false` only when it
+// *cannot* reach — a story that mounts the component through anything this cannot see stays
+// credited, as before. Separate from `storyRendersComponent`, which also gates
+// `findUnaccountedForceStates` and `pendingDisabledChecks` and must keep its narrower meaning.
+function storyReachesComponentModule(storyObj, sourceFile, componentName) {
+  const renderExpr = getProp(storyObj, 'render')
+  if (!renderExpr) return true
+  const reaching = new Set([componentName])
+  for (const stmt of sourceFile.statements) {
+    if (!ts.isImportDeclaration(stmt) || !ts.isStringLiteral(stmt.moduleSpecifier)) continue
+    if (!stmt.moduleSpecifier.text.startsWith('.')) continue
+    // `./index`, `.`, `./`, `./Helper` — the component's own directory. A `../` specifier names
+    // another component's module and never reaches this one.
+    if (stmt.moduleSpecifier.text.startsWith('..')) continue
+    const clause = stmt.importClause
+    if (!clause) continue
+    if (clause.name) reaching.add(clause.name.text)
+    const bindings = clause.namedBindings
+    if (bindings && ts.isNamedImports(bindings)) {
+      for (const el of bindings.elements) reaching.add(el.name.text)
+    } else if (bindings && ts.isNamespaceImport(bindings)) {
+      reaching.add(bindings.name.text)
+    }
+  }
+  const referencedIdentifiers = (node) => {
+    const names = new Set()
+    const visit = (n) => {
+      // An intrinsic JSX tag (`button`, `a`) is a DOM element, never a reference to a binding.
+      const isIntrinsicTag =
+        ts.isIdentifier(n) &&
+        /^[a-z]/.test(n.text) &&
+        n.parent &&
+        (ts.isJsxOpeningElement(n.parent) ||
+          ts.isJsxSelfClosingElement(n.parent) ||
+          ts.isJsxClosingElement(n.parent)) &&
+        n.parent.tagName === n
+      if (ts.isIdentifier(n) && !isIntrinsicTag) names.add(n.text)
+      ts.forEachChild(n, visit)
+    }
+    visit(node)
+    return names
+  }
+  const declared = new Map()
+  for (const stmt of sourceFile.statements) {
+    if (ts.isFunctionDeclaration(stmt) && stmt.name) {
+      declared.set(stmt.name.text, referencedIdentifiers(stmt))
+    } else if (ts.isVariableStatement(stmt)) {
+      for (const decl of stmt.declarationList.declarations) {
+        if (ts.isIdentifier(decl.name) && decl.initializer) {
+          declared.set(decl.name.text, referencedIdentifiers(decl.initializer))
+        }
+      }
+    }
+  }
+  let grew = true
+  while (grew) {
+    grew = false
+    for (const [name, refs] of declared) {
+      if (reaching.has(name)) continue
+      if ([...refs].some((r) => reaching.has(r))) {
+        reaching.add(name)
+        grew = true
+      }
+    }
+  }
+  return [...referencedIdentifiers(renderExpr)].some((r) => reaching.has(r))
+}
+
 // The explicit JSX props a story's own `render: () => <ComponentName prop={x} />` passes to the
 // component under test — `MatchRow.stories.tsx`'s `render: () => <MatchRow match={base} />`
 // shape, none of it visible to `resolveStoryAxisValues`/`buildStoryPropsScope`, which only ever
@@ -3283,6 +3360,9 @@ export function computeStateCoverage({ componentDirs, filesByPath }) {
           argsHasDisabledTrue,
           scope,
           rendersComponent,
+          // T685: the wider question `rendersComponent` cannot answer — see
+          // `storyReachesComponentModule`. Gates crediting only, never the unaccounted-force report.
+          reachesComponentModule: storyReachesComponentModule(node, sourceFile, componentDirName),
         }
       })
       storyStatesByComponent.set(componentKey, [
@@ -3387,6 +3467,9 @@ export function computeStateCoverage({ componentDirs, filesByPath }) {
           storyLineRange: [storyStartLine, storyEndLine],
           argsLiterals,
           propsScope,
+          // T685: a `render:` story that reaches nothing of the component's own module shows none
+          // of its source, so no instance declared there can be what its force-state targets.
+          reachesComponentModule: storyReachesComponentModule(node, sourceFile, componentDirName),
         })
       }
     }
@@ -3413,6 +3496,8 @@ export function computeStateCoverage({ componentDirs, filesByPath }) {
   const confirmedComposedElsewhereByKey = new Map()
   for (const entry of pendingComposedMatches) {
     if (!entry.forced.role) continue
+    // T685: a story that reaches nothing of the component reaches no composed-elsewhere target either.
+    if (entry.reachesComponentModule === false) continue
     const targetsForComponent = composedElsewhereNamesByKey.get(entry.componentKey)
     if (!targetsForComponent || targetsForComponent.size === 0) continue
     let targetComponentKey
@@ -3643,6 +3728,7 @@ export function resolveComposedStoryMatches(
     storyLineRange,
     argsLiterals,
     propsScope,
+    reachesComponentModule,
   } of pending) {
     // A `selector`-targeted force-state (`FavouritesList`'s own `Hover`/`FocusVisible`/`Active`,
     // `selector: 'a[href="/players/1"]'`) names no `role` at all — it targets a specific CSS
@@ -3662,6 +3748,22 @@ export function resolveComposedStoryMatches(
           (c) => c.file === file && c.line >= storyLineRange[0] && c.line <= storyLineRange[1],
         )
         if (inRange.length > 0) candidates = inRange
+      }
+      // T685: a `render:` story whose body reaches nothing of the component's module (a raw
+      // `<button>`, a `<Menu>` beside nothing of this component's) depicts none of its source, so the
+      // instances `candidates` holds from that source — `MatchRow`'s own composed
+      // `<Button variant="primary" size="lg">` — are not what it forces. The only instances such a
+      // story can show are the ones its own `render:` JSX declares, inside its own line range; with
+      // none of those the story credits this primitive nothing (the same exclusion
+      // `findUnaccountedForceStates` already grants it, rather than a frame it silently loses).
+      if (reachesComponentModule === false) {
+        candidates = candidates.filter(
+          (c) =>
+            c.file === file &&
+            storyLineRange &&
+            c.line >= storyLineRange[0] &&
+            c.line <= storyLineRange[1],
+        )
       }
       // A candidate whose own guards evaluate `'unreached'` against this story's own props/args
       // scope is not a sibling this story could possibly render — excluded outright, not merely
@@ -4238,12 +4340,20 @@ function buildElementCells(
       playClick,
       argsLiterals,
       scope,
+      reachesComponentModule,
     } of storyObjectsWithMeta) {
       // A `selector`-targeted force-state names no `role` — never a candidate for a local
       // element matched by role (the same fix `resolveComposedStoryMatches` carries, and its own
       // comment explains: `FavouritesList`'s row link itself is `selector`-targeted, and must not
       // be treated as a wildcard match against every role-bearing element in the component).
-      if (forced && forced.role && forced.role === impliedRole) {
+      // T685: nor a candidate when the story's own `render:` reaches nothing of this component's
+      // module — a raw `<a href>` in its body is not this component's `<a>`.
+      if (
+        forced &&
+        forced.role &&
+        forced.role === impliedRole &&
+        reachesComponentModule !== false
+      ) {
         const verdict = resolveNameMatch({
           candidate: el,
           pool,

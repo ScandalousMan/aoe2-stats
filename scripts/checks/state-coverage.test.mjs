@@ -7628,3 +7628,268 @@ test('checkCellGate: a covered cell and an impossible cell need no entry at all'
     undefined,
   )
 })
+
+// --- T685 (row 8, H5): a raw element is not a primitive instance ---------------------------------
+//
+// A story whose `render:` mounts a raw `<button>` (and no `<MatchRow>`, no `<Button>`) used to be
+// credited to the `Button` instance the *component under the story* composes elsewhere
+// (`MatchRow`'s own `<Button variant="primary" size="lg">` retry control): with no instance of the
+// primitive inside the story's own line range, `resolveComposedStoryMatches` fell back to every
+// instance in the component's own source, and a single role match there needs no further
+// disambiguation. The raw element is not that instance, and a story that mounts none of the
+// component renders none of its source either — the frame depicts nothing in this component.
+// The same path credited a raw `<a href>` to the component's own local `<a>` (record 1) and, for a
+// story mounting `<Menu>`, to the unrelated `Button` the component composes. Every case below is
+// planted against a small composite (`Row`) that composes one `Button` and one `Link` and declares
+// one local `<a>`, so the unfixed fallback has a single, unambiguous wrong target to land on.
+
+const T685_PRIMITIVE_SOURCES = {
+  Button: `
+export function Button({ variant = 'secondary', size = 'md', disabled, loading, children }) {
+  return <button disabled={disabled || loading}>{children}</button>
+}
+`,
+  Link: `
+export function Link({ variant = 'inline', href, children }) {
+  return <a href={href}>{children}</a>
+}
+`,
+  Field: `
+export function Field({ variant = 'text', size = 'md', children }) {
+  return <input />
+}
+`,
+  Menu: MENU_INDEX_SOURCE,
+}
+
+const T685_ROW_INDEX_SOURCE = `
+import { Button } from '../../primitives/Button'
+import { Link } from '../../primitives/Link'
+export function Row({ onRetry, href }) {
+  return (
+    <div>
+      <a href={href} className="hover:underline">
+        Open
+      </a>
+      <Link href="/help" variant="standalone">
+        Help
+      </Link>
+      <Button variant="primary" size="lg" onClick={onRetry}>
+        Retry
+      </Button>
+    </div>
+  )
+}
+`
+
+// Every cell any planted story is credited on, flattened to `Primitive|row|state` (record 3) and
+// `local:<tag>|state` (record 1). The planted story is the only `Row` story, so every entry whose
+// text names `Row:Planted` is the planted story's own.
+function t685Credits(
+  renderJsx,
+  forced,
+  {
+    rowIndexSource = T685_ROW_INDEX_SOURCE,
+    storyImports = "import { Row } from './index'",
+    storyHelpers = '',
+  } = {},
+) {
+  const componentDirs = [
+    ...Object.keys(T685_PRIMITIVE_SOURCES).map((name) => ({ segment: 'primitives', name })),
+    { segment: 'composites', name: 'Row' },
+  ]
+  const filesByPath = new Map(
+    Object.entries(T685_PRIMITIVE_SOURCES).map(([name, source]) => [
+      path.join(REPO_SRC_DIR, `primitives/${name}/index.tsx`),
+      source,
+    ]),
+  )
+  filesByPath.set(path.join(REPO_SRC_DIR, 'composites/Row/index.tsx'), rowIndexSource)
+  filesByPath.set(
+    path.join(REPO_SRC_DIR, 'composites/Row/Row.stories.tsx'),
+    `
+${storyImports}
+const meta = { component: Row }
+export default meta
+${storyHelpers}
+export const Planted = {
+  render: () => (${renderJsx}),
+  parameters: { visualForceState: { state: 'hover', ${forced} } },
+}
+`,
+  )
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const credits = []
+  for (const [primitive, rows] of Object.entries(computed.matrices)) {
+    for (const row of rows) {
+      for (const state of ['rest', 'hover', 'focus-visible', 'press', 'disabled']) {
+        if ((row[state] ?? []).some((c) => c === 'Row:Planted')) {
+          credits.push(`${primitive}|${row.variantSize}|${state}`)
+        }
+      }
+    }
+  }
+  const local = computed.localElements.find((c) => c.componentKey === 'composites/Row')
+  for (const el of local?.elements ?? []) {
+    for (const state of ['hover', 'focus-visible', 'active']) {
+      if ((el.coveredBy[state] ?? []).some((c) => c === 'Planted' || c === 'Row:Planted')) {
+        credits.push(`local:${el.tag}|${state}`)
+      }
+    }
+  }
+  return credits.sort()
+}
+
+test('T685: a story whose render mounts only a raw <button> credits no Button cell (the fallback onto Row’s own composed Button is closed)', () => {
+  assert.deepEqual(
+    t685Credits('<button type="button">Raw</button>', "role: 'button'"),
+    [],
+    'a raw <button> is not a Button instance, and Row is not mounted',
+  )
+})
+
+test('T685 contrast: a story mounting <Button> at the same variant and size is still credited to that cell', () => {
+  assert.deepEqual(
+    t685Credits('<Button variant="primary" size="lg">Retry</Button>', "role: 'button'"),
+    ['Button|primary|lg|hover'],
+  )
+})
+
+test('T685 contrast: a story mounting <Button> at a different variant credits that variant’s cell, never Row’s composed primary|lg', () => {
+  assert.deepEqual(
+    t685Credits('<Button variant="ghost" size="sm">Back</Button>', "role: 'button'"),
+    ['Button|ghost|sm|hover'],
+  )
+})
+
+test('T685 sibling: a raw <a href> credits no Link cell and no local <a> of Row (it is neither a Link nor Row)', () => {
+  assert.deepEqual(t685Credits('<a href="/x">Raw</a>', "role: 'link'"), [])
+})
+
+test('T685 sibling contrast: a story mounting <Link> credits only that Link cell, not Row’s local <a>', () => {
+  assert.deepEqual(t685Credits('<Link href="/x" variant="standalone">L</Link>', "role: 'link'"), [
+    'Link|standalone|hover',
+  ])
+})
+
+test('T685 sibling: a raw <input>, <select> or <textarea> credits no cell anywhere', () => {
+  assert.deepEqual(t685Credits('<input aria-label="x" />', "role: 'textbox'"), [])
+  assert.deepEqual(
+    t685Credits('<select aria-label="x"><option>a</option></select>', "role: 'combobox'"),
+    [],
+  )
+  assert.deepEqual(t685Credits('<textarea aria-label="x" />', "role: 'textbox'"), [])
+})
+
+test('T685 sibling contrast (pin, already today’s behaviour): a story mounting <Field> credits no hover cell — Field renders under no single fixed role, so a role-based force never matches it', () => {
+  assert.deepEqual(t685Credits('<Field variant="text" size="md" />', "role: 'textbox'"), [])
+})
+
+test('T685 sibling: a raw element carrying role="button" credits no Button cell', () => {
+  assert.deepEqual(t685Credits('<div role="button" tabIndex={0}>Raw</div>', "role: 'button'"), [])
+})
+
+test('T685 sibling contrast: a story mounting <Menu> credits Menu’s cell, and no longer the unrelated Button Row composes', () => {
+  // Before T685 this also read `Button|primary|lg|hover`: Menu renders role `button` too, and the
+  // fallback matched Row's own composed Button for the same forced role.
+  assert.deepEqual(t685Credits('<Menu variant="actions" />', "role: 'button'"), [
+    'Menu|actions|hover',
+  ])
+})
+
+test('T685: a raw <button> beside a real <Button> in one render adds nothing — only the real one is credited, and only at its own cell', () => {
+  assert.deepEqual(
+    t685Credits(
+      '<><button type="button">Raw</button><Button variant="secondary" size="sm">Real</Button></>',
+      "role: 'button'",
+    ),
+    ['Button|secondary|sm|hover'],
+  )
+})
+
+test('T685: Row itself mounted is unchanged — the force still resolves against Row’s own composed Button and local elements (the component-is-rendered path)', () => {
+  // `render: () => <Row />` mounts the component, so its own source is the right candidate set.
+  // `name: "Retry"` pins Row's composed Button (primary|lg); Row's raw local <a> is another role.
+  assert.deepEqual(t685Credits('<Row />', "role: 'button', name: 'Retry'"), [
+    'Button|primary|lg|hover',
+  ])
+})
+
+test('T685: a raw <button> inside a component that itself composes a real Button elsewhere is not credited as that Button', () => {
+  const rowWithRawButton = `
+import { Button } from '../../primitives/Button'
+export function Row({ onRetry }) {
+  return (
+    <div>
+      <button type="button" className="hover:bg-surface-sunken">
+        Raw
+      </button>
+      <Button variant="primary" size="lg" onClick={onRetry}>
+        Retry
+      </Button>
+    </div>
+  )
+}
+`
+  // The story mounts a raw <button> only: neither Row's raw local button nor its composed Button
+  // is on screen, so neither is credited.
+  assert.deepEqual(
+    t685Credits('<button type="button">Raw</button>', "role: 'button'", {
+      rowIndexSource: rowWithRawButton,
+    }),
+    [],
+  )
+  // Row mounted and the force naming the composed Button's own text: the Button is credited, the
+  // raw local button is not (it is left `unresolved`, never `covered`, which the helper above
+  // reads as no credit).
+  assert.deepEqual(
+    t685Credits('<Row />', "role: 'button', name: 'Retry'", { rowIndexSource: rowWithRawButton }),
+    ['Button|primary|lg|hover'],
+  )
+})
+
+// The wider question T685's gate asks is "can this render reach anything of the component's own
+// module", not "does it spell `<Row>`": the real tree mounts a sibling export of the module
+// (`AccountErasurePanel`'s `<ErasedScreen>`) and a wrapper declared in the story file
+// (`SearchBox.stories.tsx`'s `<DemoSearchBox>`), and both still depict the component.
+test('T685 contrast: a render mounting a sibling export of the component’s own module still resolves against the component’s source (ErasedScreen shape)', () => {
+  const rowWithSibling = `${T685_ROW_INDEX_SOURCE}
+export function RowCompact(props) {
+  return <Row {...props} />
+}
+`
+  assert.deepEqual(
+    t685Credits('<RowCompact />', "role: 'button'", {
+      rowIndexSource: rowWithSibling,
+      storyImports: "import { Row, RowCompact } from './index'",
+    }),
+    ['Button|primary|lg|hover'],
+  )
+})
+
+test('T685 contrast: a render mounting a story-file wrapper that mounts the component still resolves against the component’s source (DemoSearchBox shape)', () => {
+  assert.deepEqual(
+    t685Credits('<Demo />', "role: 'button'", {
+      storyHelpers: 'function Demo() {\n  return <Row />\n}',
+    }),
+    ['Button|primary|lg|hover'],
+  )
+})
+
+test('T685: a story-file wrapper that mounts only a raw element does not reach the component, so it still credits nothing', () => {
+  assert.deepEqual(
+    t685Credits('<Demo />', "role: 'button'", {
+      storyHelpers: 'function Demo() {\n  return <button type="button">Raw</button>\n}',
+    }),
+    [],
+  )
+})
+
+test('T685: an import from another component’s module (../../) is not the component’s own module and does not reach it', () => {
+  assert.deepEqual(
+    t685Credits('<Other />', "role: 'button'", {
+      storyImports: "import { Row } from './index'\nimport { Other } from '../../composites/Other'",
+    }),
+    [],
+  )
+})
