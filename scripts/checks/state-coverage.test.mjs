@@ -486,7 +486,13 @@ test("buildAxisMatrix leaves Menu's actions variant with no forced state when ev
   // from it unnoticed.
   const componentDirs = [{ segment: 'primitives', name: 'Menu' }]
   const filesByPath = new Map([
-    ['/repo/packages/design-system/src/primitives/Menu/index.tsx', MENU_INDEX_SOURCE],
+    // T686: the own-story credit is checked against what Menu renders, so the fixture's Menu must
+    // render the `menuitemradio` its stories force (`MenuItemRow`'s own dynamic role); a Menu that
+    // returns null depicts no such frame.
+    [
+      '/repo/packages/design-system/src/primitives/Menu/index.tsx',
+      MENU_WITH_DYNAMIC_ROW_INDEX_SOURCE,
+    ],
     ['/repo/packages/design-system/src/primitives/Menu/Menu.stories.tsx', MENU_STORIES_SOURCE],
   ])
   const computed = computeStateCoverage({ componentDirs, filesByPath })
@@ -8628,7 +8634,10 @@ test('T685 report message: the message follows the computed entry end to end, fo
 // the real tree with one forced story appended, must exit 1 and print the message for its cause.
 // A copy, because the script reads a fixed `packages/design-system/src` beside itself; symlinks only
 // for `node_modules`.
-function runCheckOnPlantedTree(storyAppendix) {
+function runCheckOnPlantedTree(
+  storyAppendix,
+  storyFileSegments = ['composites', 'MatchRow', 'MatchRow.stories.tsx'],
+) {
   const checksDir = path.dirname(fileURLToPath(import.meta.url))
   const repoRoot = path.resolve(checksDir, '..', '..')
   const dsDir = path.join(repoRoot, 'packages', 'design-system')
@@ -8654,15 +8663,7 @@ function runCheckOnPlantedTree(storyAppendix) {
       path.join(tmp, 'packages', 'design-system', 'node_modules'),
     )
     appendFileSync(
-      path.join(
-        tmp,
-        'packages',
-        'design-system',
-        'src',
-        'composites',
-        'MatchRow',
-        'MatchRow.stories.tsx',
-      ),
+      path.join(tmp, 'packages', 'design-system', 'src', ...storyFileSegments),
       storyAppendix,
     )
     return spawnSync(
@@ -8736,5 +8737,292 @@ test('T685 helper: a raw-render Switch story with disabled: true credits no Disa
       `export const Planted = { render: () => <div>Raw</div>, args: { disabled: true } }`,
     ),
     [],
+  )
+})
+
+// --- T686 (row 8, H5): an own story's credit is checked against what the primitive renders --------
+//
+// Level: the own-story axis-matrix path of the primitive pool (`computeStateCoverage`'s own-story
+// branch → `buildAxisMatrix`), not record 1 and not the composed-story paths. Two defects, one
+// shape — a primitive's own story was credited to its axis matrix without verifying it depicts the
+// primitive: (1) a forced role/selector the primitive never renders, (2) a `render:` that never
+// mounts the primitive, which fell back to the story's `args`.
+function menuAxisComputed(storyBody, indexSource = MENU_WITH_DYNAMIC_ROW_INDEX_SOURCE) {
+  return computeStateCoverage({
+    componentDirs: [{ segment: 'primitives', name: 'Menu' }],
+    filesByPath: new Map([
+      [path.join(REPO_SRC_DIR, 'primitives/Menu/index.tsx'), indexSource],
+      [
+        path.join(REPO_SRC_DIR, 'primitives/Menu/Menu.stories.tsx'),
+        `import { Menu } from './index'\nconst meta = { component: Menu }\nexport default meta\n${storyBody}`,
+      ],
+    ]),
+  })
+}
+const menuAxisCredits = (storyBody) =>
+  plantedCredits(menuAxisComputed(storyBody)).filter((c) => c.startsWith('Menu|'))
+const menuAxisReport = (storyBody) => menuAxisComputed(storyBody).unaccountedForceStates.missing
+const T686_FORCE = (state, target) =>
+  `parameters: { visualForceState: { state: '${state}', ${target} } }`
+const T686_SELECTION_ARGS = `args: { variant: 'selection', items: [{ id: 'p2', label: 'aoe2alt' }] }`
+const T686_MENU_RENDER = `render: (args) => <Menu {...args} />`
+
+test('T686 (a): a story forcing a role Menu never renders credits no cell, whatever the state, and is reported', () => {
+  for (const state of ['hover', 'focus-visible', 'active']) {
+    const body = `export const Planted = {
+      ${T686_MENU_RENDER},
+      ${T686_SELECTION_ARGS},
+      ${T686_FORCE(state, "role: 'slider'")},
+    }`
+    assert.deepEqual(menuAxisCredits(body), [], state)
+    const matrixRows = menuAxisComputed(body).matrices.Menu
+    assert.doesNotMatch(JSON.stringify(matrixRows), /Planted/, state)
+    assert.equal(
+      matrixRows.some((r) => r.variantSize === '(no axis)'),
+      false,
+      `${state}: no (no axis) row is opened for a story that credits nothing`,
+    )
+    const missing = menuAxisReport(body)
+    assert.deepEqual(
+      missing.map((m) => [m.componentKey, m.exportName, m.state]),
+      [['primitives/Menu', 'Planted', state]],
+      state,
+    )
+    assert.match(describeMissingForceState(missing[0]), /slider/, 'the report names the role')
+    assert.match(describeMissingForceState(missing[0]), /renders no element/)
+  }
+})
+
+test('T686 (a): a name or nth beside the unrendered role changes nothing, and a role-only force on it is refused the same way', () => {
+  for (const target of [
+    "role: 'slider', name: 'aoe2alt'",
+    "role: 'slider', nth: 0",
+    "role: 'slider'",
+  ]) {
+    const body = `export const Planted = {
+      ${T686_MENU_RENDER},
+      ${T686_SELECTION_ARGS},
+      ${T686_FORCE('hover', target)},
+    }`
+    assert.deepEqual(menuAxisCredits(body), [], target)
+    assert.equal(menuAxisReport(body).length, 1, target)
+  }
+})
+
+test('T686 (a): a selector no element of Menu matches credits no cell, and one that does is still credited', () => {
+  const selectorStory = (selector) => `export const Planted = {
+      ${T686_MENU_RENDER},
+      ${T686_SELECTION_ARGS},
+      ${T686_FORCE('hover', `selector: '${selector}'`)},
+    }`
+  assert.deepEqual(menuAxisCredits(selectorStory('a[href="/x"]')), [])
+  assert.equal(menuAxisReport(selectorStory('a[href="/x"]')).length, 1)
+  assert.deepEqual(menuAxisCredits(selectorStory('button[type="button"]')), [
+    'Menu|(no axis)|hover',
+  ])
+  assert.deepEqual(menuAxisReport(selectorStory('button[type="button"]')), [])
+})
+
+test('T686 (a): a force naming neither a role nor a selector resolves against nothing, so it credits no cell and is reported', () => {
+  const body = `export const Planted = {
+    ${T686_MENU_RENDER},
+    ${T686_SELECTION_ARGS},
+    ${T686_FORCE('hover', "name: 'aoe2alt'")},
+  }`
+  assert.deepEqual(menuAxisCredits(body), [])
+  assert.equal(menuAxisReport(body).length, 1)
+})
+
+test('T686 (a) contrast: a story forcing a role Menu renders is credited at the same cell as before, for every state and for the trigger, the static and the dynamic role', () => {
+  const credit = (state, target, args = T686_SELECTION_ARGS) =>
+    menuAxisCredits(`export const Planted = {
+      ${T686_MENU_RENDER},
+      ${args},
+      ${T686_FORCE(state, target)},
+    }`)
+  assert.deepEqual(credit('hover', "role: 'menuitemradio', name: 'aoe2alt'"), [
+    'Menu|(no axis)|hover',
+  ])
+  assert.deepEqual(credit('focus-visible', "role: 'menuitemradio', name: 'aoe2alt'"), [
+    'Menu|(no axis)|focusVisible',
+  ])
+  assert.deepEqual(credit('active', "role: 'menuitemradio'"), ['Menu|(no axis)|active'])
+  assert.deepEqual(credit('hover', "role: 'button'"), ['Menu|(no axis)|hover'])
+  assert.deepEqual(
+    credit(
+      'hover',
+      "role: 'menuitem'",
+      `args: { variant: 'actions', items: [{ id: 'a', label: 'Open' }] }`,
+    ),
+    ['Menu|(no axis)|hover'],
+  )
+  assert.deepEqual(
+    menuAxisReport(`export const Planted = {
+      ${T686_MENU_RENDER},
+      ${T686_SELECTION_ARGS},
+      ${T686_FORCE('hover', "role: 'menuitemradio', name: 'aoe2alt'")},
+    }`),
+    [],
+  )
+})
+
+test('T686 (a): a dynamic role is checked per story — a force on menuitemradio from a story whose args render menuitem credits nothing', () => {
+  const body = `export const Planted = {
+    ${T686_MENU_RENDER},
+    args: { variant: 'actions', items: [{ id: 'a', label: 'aoe2alt' }] },
+    ${T686_FORCE('hover', "role: 'menuitemradio', name: 'aoe2alt'")},
+  }`
+  assert.deepEqual(menuAxisCredits(body), [])
+  assert.equal(menuAxisReport(body).length, 1)
+})
+
+test('T686 (a): when the role cannot be told — a dynamic role no story data settles — the credit is refused, never kept (the safe error direction)', () => {
+  const body = `export const Planted = {
+    ${T686_MENU_RENDER},
+    args: { items: [{ id: 'a', label: 'aoe2alt' }] },
+    ${T686_FORCE('hover', "role: 'menuitemradio', name: 'aoe2alt'")},
+  }`
+  const index = MENU_WITH_DYNAMIC_ROW_INDEX_SOURCE.replace(
+    "variant === 'selection' ? 'menuitemradio' : 'menuitem'",
+    'pickRole(item)',
+  ).replace('<button type="button" className="hover:bg-surface-sunken">Trigger</button>', '')
+  const computed = menuAxisComputed(body, index)
+  assert.deepEqual(
+    plantedCredits(computed).filter((c) => c.startsWith('Menu|')),
+    [],
+  )
+  assert.match(describeMissingForceState(computed.unaccountedForceStates.missing[0]), /cannot tell/)
+})
+
+test('T686 (a), play-focus half: a play() focusing a role Menu never renders adds no focus-visible note, while one focusing a rendered role keeps its note', () => {
+  const play = (role) => `play: async ({ canvasElement }) => {
+      const item = within(canvasElement).getByRole('${role}')
+      item.focus()
+      await expect(item).toHaveFocus()
+    }`
+  const focusText = (role) =>
+    JSON.stringify(
+      menuAxisComputed(`export const Planted = {
+        ${T686_MENU_RENDER},
+        ${T686_SELECTION_ARGS},
+        ${play(role)},
+      }`).matrices.Menu,
+    )
+  assert.doesNotMatch(focusText('slider'), /play-driven/)
+  assert.match(
+    focusText('menuitemradio'),
+    /Menu:Planted \(play-driven; frame not provable statically\)/,
+  )
+})
+
+test('T686 (c): a story whose render is only a raw <div role="menuitemradio"> credits no cell of Menu’s axis matrix, forced or not, and a forced one is reported as reaching nothing', () => {
+  const raw = (extra) => `export const Planted = {
+    render: () => <div role="menuitemradio" tabIndex={0}>aoe2alt</div>,
+    ${T686_SELECTION_ARGS},
+    ${extra}
+  }`
+  const forced = raw(`${T686_FORCE('hover', "role: 'menuitemradio', name: 'aoe2alt'")},`)
+  assert.deepEqual(menuAxisCredits(forced), [])
+  assert.doesNotMatch(JSON.stringify(menuAxisComputed(forced).matrices.Menu), /Planted/)
+  const missing = menuAxisReport(forced)
+  assert.equal(missing.length, 1)
+  assert.equal(missing[0].reachedNothing, true)
+  assert.deepEqual(menuAxisCredits(raw('')), [])
+  assert.deepEqual(
+    menuAxisCredits(raw(`args: { variant: 'selection', items: [], disabled: true },`)),
+    [],
+  )
+})
+
+test('T686 (a): a forced story mounting Menu only through a story-file wrapper, on a role Menu never renders, is reported though its render holds no <Menu> tag', () => {
+  const body = `function Demo(props) { return <Menu {...props} /> }
+  export const Planted = {
+    render: (args) => <Demo {...args} />,
+    ${T686_SELECTION_ARGS},
+    ${T686_FORCE('hover', "role: 'slider'")},
+  }`
+  assert.deepEqual(menuAxisCredits(body), [])
+  const missing = menuAxisReport(body)
+  assert.equal(missing.length, 1)
+  assert.match(describeMissingForceState(missing[0]), /renders no element of role "slider"/)
+})
+
+test('T686 (d) contrast: a story whose render mounts <Menu>, an args-only story, and a render mounting through a story-file wrapper are all still credited at the same cell', () => {
+  const force = T686_FORCE('hover', "role: 'menuitemradio', name: 'aoe2alt'")
+  assert.deepEqual(
+    menuAxisCredits(`export const Planted = {
+      render: () => <Menu variant="selection" items={[{ id: 'p2', label: 'aoe2alt' }]} />,
+      ${force},
+    }`),
+    ['Menu|selection|hover'],
+  )
+  assert.deepEqual(menuAxisCredits(`export const Planted = { ${T686_SELECTION_ARGS}, ${force} }`), [
+    'Menu|selection|hover',
+  ])
+  assert.deepEqual(
+    menuAxisCredits(`function Demo(props) { return <Menu {...props} /> }
+    export const Planted = { render: (args) => <Demo {...args} />, ${T686_SELECTION_ARGS}, ${force} }`),
+    ['Menu|selection|hover'],
+  )
+})
+
+// `Field` renders the control its caller passes; its own source holds no input element. What a
+// story forcing `textbox` depicts is therefore the control its own render supplies.
+const FIELD_CLONING_INDEX_SOURCE = `
+export function Field({ label, size = 'md', children }) {
+  const control = cloneElement(children, { id: 'x' })
+  return (
+    <div>
+      <label>{label}</label>
+      {control}
+    </div>
+  )
+}
+`
+function fieldAxisCredits(storyBody) {
+  return plantedCredits(
+    computeStateCoverage({
+      componentDirs: [{ segment: 'primitives', name: 'Field' }],
+      filesByPath: new Map([
+        [path.join(REPO_SRC_DIR, 'primitives/Field/index.tsx'), FIELD_CLONING_INDEX_SOURCE],
+        [
+          path.join(REPO_SRC_DIR, 'primitives/Field/Field.stories.tsx'),
+          `import { Field } from './index'\nimport { Foreign } from '../Elsewhere'\nconst meta = { component: Field }\nexport default meta\n${storyBody}`,
+        ],
+      ]),
+    }),
+  ).filter((c) => c.startsWith('Field|'))
+}
+const FIELD_FORCE = T686_FORCE('hover', "role: 'textbox'")
+
+test('T686 (a), a primitive that renders its caller’s control: the control the story’s own render supplies decides the role', () => {
+  const story = (child) => `export const Planted = {
+    render: () => <Field label="Name">${child}</Field>,
+    ${FIELD_FORCE},
+  }`
+  assert.deepEqual(fieldAxisCredits(story('<input />')), ['Field|md|hover'])
+  assert.deepEqual(
+    fieldAxisCredits(
+      `function DemoInput() { return <input className="x" /> }\n${story('<DemoInput />')}`,
+    ),
+    ['Field|md|hover'],
+  )
+  assert.deepEqual(fieldAxisCredits(story('<div />')), [])
+  assert.deepEqual(fieldAxisCredits(story('<Foreign />')), [], 'an imported control cannot be told')
+})
+
+test('T686 report, end to end: the real tree with a slider story appended to Menu’s own story file fails the check, names the role, and credits no cell', () => {
+  const planted = `
+export const ZzPlanted: Story = {
+  render: (args) => <Menu {...args} />,
+  args: { variant: 'selection', items: [{ id: 'p2', label: 'aoe2alt' }] },
+  parameters: { visualForceState: { state: 'focus-visible', role: 'slider' } },
+}
+`
+  const result = runCheckOnPlantedTree(planted, ['primitives', 'Menu', 'Menu.stories.tsx'])
+  assert.equal(result.status, 1, result.stdout + result.stderr)
+  assert.match(
+    result.stderr,
+    /primitives\/Menu's own ZzPlanted forces "focus-visible" and is credited on no cell: .*"slider"/,
   )
 })

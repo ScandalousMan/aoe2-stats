@@ -3248,7 +3248,13 @@ export function findUnaccountedForceStates(storyStatesByComponent, regionText) {
       // (`reachesComponentModule === false`, T685) is: it shows none of the component's source, so
       // a frame it forces that is credited nowhere is exactly what this report exists for, and
       // skipping it would let a wrongly-false predicate drop a credit with no failure anywhere.
-      if (rendersComponent === false && entry.reachesComponentModule !== false) continue
+      if (
+        rendersComponent === false &&
+        entry.reachesComponentModule !== false &&
+        !entry.ownCreditRefusal
+      ) {
+        continue
+      }
       if (storyIsCreditedInItsStateColumn(componentKey, entry, columns, hasSoleStoryFile)) continue
       const filed = KNOWN_UNACCOUNTED_FORCE_STATES.find(
         (k) => k.componentKey === componentKey && k.exportName === exportName,
@@ -3261,6 +3267,8 @@ export function findUnaccountedForceStates(storyStatesByComponent, regionText) {
           exportName,
           state: forced.state,
           ...(entry.reachesComponentModule === false ? { reachedNothing: true } : {}),
+          // T686: why the own-story path refused the credit, when it did.
+          ...(entry.ownCreditRefusal ? { refusal: entry.ownCreditRefusal } : {}),
         })
         continue
       }
@@ -3306,6 +3314,226 @@ function qualifyStoryNamesWhereAmbiguous(storyStatesByComponent) {
 // standing in for the bare export name. A hand-built fixture carries none and reads unchanged.
 function asPrinted(storyObjectsWithMeta) {
   return storyObjectsWithMeta.map((s) => (s.displayName ? { ...s, exportName: s.displayName } : s))
+}
+
+// --- T686: an own story's credit is verified against what its primitive renders ---------------------
+//
+// A primitive's own story is credited to the primitive's axis matrix. Until T686 nothing checked that
+// the story depicts the primitive at all: a forced role the primitive never renders (`slider` on
+// `Menu`) and a `render:` that mounts something else (a raw `<div role="menuitemradio">`, falling
+// back to the story's `args`) were both credited, to a frame no story shows. Two checks close them,
+// and both fail in the same direction: when this pass cannot tell, the story is NOT credited and the
+// force-state report names it. An over-credit prints a frame nobody captured; a refusal prints a
+// report line a reader can resolve. (A wrongly-refused real credit is caught the same day, by the
+// report failing the run and by the unchanged cells of row 8's own region.)
+
+// Whether a primitive's own source renders a caller-supplied child (`{children}`, or `children`
+// handed to `cloneElement`): a value reference to the identifier `children`, outside a type, a
+// destructuring binding or a property label. Decides whether the content a story passes between the
+// primitive's tags is part of what the primitive renders (`Field` clones its control from it;
+// `Menu` renders items from data and drops its children).
+function sourceRendersChildren(sourceFile) {
+  let found = false
+  const visit = (n) => {
+    if (found) return
+    if (ts.isTypeNode(n) || ts.isInterfaceDeclaration(n) || ts.isTypeAliasDeclaration(n)) return
+    if (ts.isIdentifier(n) && n.text === 'children') {
+      const p = n.parent
+      const label =
+        (ts.isBindingElement(p) && (p.name === n || p.propertyName === n)) ||
+        (ts.isPropertyAccessExpression(p) && p.name === n) ||
+        (ts.isPropertyAssignment(p) && p.name === n) ||
+        (ts.isParameter(p) && p.name === n) ||
+        ts.isJsxAttribute(p)
+      if (!label) found = true
+      return
+    }
+    ts.forEachChild(n, visit)
+  }
+  visit(sourceFile)
+  return found
+}
+
+// The roles and tags of what a story passes to its primitive as content — the JSX between the
+// primitive's own tags in `render:`, and any JSX in the story's or meta's `args` — read the way
+// `findLocalElements` reads an element (an explicit `role`, else the structural or intrinsic role of
+// the tag). A capitalised tag declared in the story file is followed into its own body (`DemoInput`,
+// `<input>`); one imported from elsewhere, or a dynamic `role`, is `undetermined`: nothing here can
+// say what it renders.
+function findStoryContentRoles(storyObj, metaObj, primitiveName, sourceFile) {
+  const roles = new Set()
+  const tags = new Set()
+  let undetermined = false
+  const declarations = new Map()
+  for (const stmt of sourceFile.statements) {
+    if (ts.isFunctionDeclaration(stmt) && stmt.name) declarations.set(stmt.name.text, stmt)
+    else if (ts.isVariableStatement(stmt)) {
+      for (const decl of stmt.declarationList.declarations) {
+        if (ts.isIdentifier(decl.name) && decl.initializer) {
+          declarations.set(decl.name.text, decl.initializer)
+        }
+      }
+    }
+  }
+  const followed = new Set()
+  const readJsx = (node) => {
+    if (isJsxTag(node)) {
+      const tag = tagNameOf(node)
+      const opening = openingOf(node)
+      if (/^[a-z]/.test(tag)) {
+        const roleAttr = attrLiteral(getAttr(opening, 'role'))
+        let role
+        if (roleAttr.present && !roleAttr.literal) undetermined = true
+        else if (roleAttr.present) role = roleAttr.value
+        else role = deriveStructuralRole(tag, opening) ?? INTRINSIC_ROLE[tag] ?? null
+        if (role) roles.add(role)
+        tags.add(tag)
+      } else if (PRIMITIVE_NAMES.includes(tag)) {
+        const role = impliedRoleForPrimitiveInstance(tag, { hasHref: getAttr(opening, 'href') })
+        if (role) roles.add(role)
+        else undetermined = true
+      } else if (tag !== 'Fragment' && !tag.includes('.')) {
+        if (declarations.has(tag)) {
+          if (!followed.has(tag)) {
+            followed.add(tag)
+            visit(declarations.get(tag))
+          }
+        } else undetermined = true
+      } else if (tag !== 'Fragment') undetermined = true
+    }
+  }
+  const visit = (node) => {
+    readJsx(node)
+    ts.forEachChild(node, visit)
+  }
+  // Content between the primitive's own tags: every JSX descendant of each such element.
+  const visitRender = (node) => {
+    if (isJsxTag(node) && tagNameOf(node) === primitiveName) {
+      if (ts.isJsxElement(node)) for (const child of node.children) visit(child)
+      return
+    }
+    ts.forEachChild(node, visitRender)
+  }
+  const renderExpr = getProp(storyObj, 'render')
+  if (renderExpr) visitRender(renderExpr)
+  for (const args of [getProp(metaObj, 'args'), getProp(storyObj, 'args')]) {
+    if (args) visit(args)
+  }
+  return { roles, tags, undetermined }
+}
+
+// Whether the target a primitive's own forced story names — a `role`, or a `selector` — resolves
+// against what the primitive renders, for that story: the primitive's own local elements (a dynamic
+// `role={…}` evaluated against the story's own scope, an element a guard rules out of this story
+// skipped), the call sites of tracked primitives it composes, and, only when the primitive renders
+// its caller's children, the content the story supplies. Returns `{ resolves: true }`, or
+// `{ resolves: false, reason }`; a role no element is known to render, and a role this pass cannot
+// settle (`undetermined`) both refuse, with a reason that says which.
+function resolveOwnStoryTarget({
+  forced,
+  componentKey,
+  localElementsByComponent,
+  instancesByPrimitive,
+  scope,
+  content,
+}) {
+  const roles = new Set()
+  const tags = new Set()
+  let undetermined = false
+  for (const el of localElementsByComponent.get(componentKey) ?? []) {
+    if (el.ariaHidden) continue
+    if (scope && evaluateGuards(el.guards ?? [], scope) === 'unreached') continue
+    tags.add(el.tag)
+    if (el.role === 'unresolved') {
+      const expr = el.attrExprs?.get('role')?.expr ?? null
+      const value = expr
+        ? evaluateExpr(expr, scopeWithLocalConsts(scope ?? new Map(), el.localConsts))
+        : null
+      if (value?.resolved && typeof value.value === 'string') roles.add(value.value)
+      else undetermined = true
+    } else {
+      const role = impliedRoleOf(el)
+      if (role) roles.add(role)
+    }
+  }
+  for (const primitive of PRIMITIVE_NAMES) {
+    for (const inst of instancesByPrimitive.get(primitive) ?? []) {
+      if (inst.kind !== 'jsx' || inst.componentKey !== componentKey || inst.ariaHidden) continue
+      if (scope && evaluateGuards(inst.guards ?? [], scope) === 'unreached') continue
+      const role = impliedRoleForPrimitiveInstance(primitive, inst)
+      if (role) roles.add(role)
+      else undetermined = true
+    }
+  }
+  if (content) {
+    for (const role of content.roles) roles.add(role)
+    for (const tag of content.tags) tags.add(tag)
+    if (content.undetermined) undetermined = true
+  }
+  if (forced.role) {
+    if (roles.has(forced.role)) return { resolves: true }
+    return {
+      resolves: false,
+      reason: undetermined
+        ? `this pass cannot tell whether ${componentKey} renders role ${JSON.stringify(forced.role)} for this story: one of its elements has a role this story's data does not settle`
+        : `${componentKey} renders no element of role ${JSON.stringify(forced.role)} for this story`,
+    }
+  }
+  if (forced.selector) {
+    const parsed = parseSelector(forced.selector)
+    if (parsed && tags.has(parsed.tag)) return { resolves: true }
+    return {
+      resolves: false,
+      reason: parsed
+        ? `${componentKey} renders no <${parsed.tag}> for the selector ${JSON.stringify(forced.selector)}`
+        : `the selector ${JSON.stringify(forced.selector)} cannot be parsed`,
+    }
+  }
+  return {
+    resolves: false,
+    reason: `its force-state names neither a role nor a selector, so nothing in ${componentKey} can be matched to it`,
+  }
+}
+
+// Applies `resolveOwnStoryTarget` to every pending own story, once every local element and every
+// composed call site is known. A forced story whose target does not resolve loses all its instances
+// (it depicts no cell of the matrix) and its story-state entry records why, which
+// `findUnaccountedForceStates` reports. A play-driven focus target is held to the same check when it
+// names a literal role: its credit is only the note "a play() may leave a focus frame", never a
+// confirmed cell, but a note about a role the primitive never renders claims a frame no story could
+// leave, so the focus claim is dropped and the story is left at its plain, `rest` depiction (it
+// still mounts the primitive). A play-focus role no static read settles (`'unresolved'`) is kept:
+// that note says "cannot tell" already.
+function resolveOwnStoryCredits(
+  pending,
+  instancesByPrimitive,
+  localElementsByComponent,
+  storyStatesByComponent,
+  rendersChildrenByKey,
+) {
+  for (const p of pending) {
+    const entry = (storyStatesByComponent.get(p.componentKey) ?? []).find(
+      (e) => !e.synthetic && e.storyFile === p.storyFile && e.exportName === p.exportName,
+    )
+    const target = p.forced ?? (p.playFocus?.role ? { role: p.playFocus.role } : null)
+    if (!target || target.role === 'unresolved') continue
+    const verdict = resolveOwnStoryTarget({
+      forced: target,
+      componentKey: p.componentKey,
+      localElementsByComponent,
+      instancesByPrimitive,
+      scope: entry?.scope ?? null,
+      content: rendersChildrenByKey.get(p.componentKey) ? p.content : null,
+    })
+    if (verdict.resolves) continue
+    if (p.forced) {
+      const kept = instancesByPrimitive.get(p.primitive).filter((i) => !p.instances.includes(i))
+      instancesByPrimitive.get(p.primitive).splice(0, Infinity, ...kept)
+      if (entry) entry.ownCreditRefusal = verdict.reason
+    } else {
+      for (const inst of p.instances) inst.playFocus = null
+    }
+  }
 }
 
 export function computeStateCoverage({ componentDirs, filesByPath }) {
@@ -3356,6 +3584,11 @@ export function computeStateCoverage({ componentDirs, filesByPath }) {
   const instancesByPrimitive = new Map(PRIMITIVE_NAMES.map((p) => [p, []]))
   const storyStatesByComponent = new Map()
   const pendingComposedMatches = []
+  // T686: whether each component's own `index.tsx` renders a caller-supplied child, and the own
+  // stories of tracked primitives whose credit waits for every local element to be known (a story
+  // file is read before the `index.tsx` beside it).
+  const rendersChildrenByKey = new Map()
+  const pendingOwnStoryCredits = []
   // One entry per story of a *non-primitive-owning* component (composite or screen), forced or
   // not — `resolveDisabledFromStories` needs every one of them, since a story that resolves a
   // `Button`/`Link`/`Field`/`Menu` call site's own `disabled`/`loading` prop true through its own
@@ -3374,6 +3607,9 @@ export function computeStateCoverage({ componentDirs, filesByPath }) {
     const componentDirName = componentKey.split('/')[1]
 
     let localHelperCallSites = new Map()
+    if (!isStory && path.basename(filePath) === 'index.tsx') {
+      rendersChildrenByKey.set(componentKey, sourceRendersChildren(sourceFile))
+    }
     if (!isStory) {
       const helperIterationContext = findHelperInvocationIterationContext(sourceFile)
       localHelperCallSites = findHelperCallSites(sourceFile)
@@ -3505,10 +3741,22 @@ export function computeStateCoverage({ componentDirs, filesByPath }) {
           getProp(metaObj, 'args'),
           getProp(node, 'args'),
         )
+        // T686: a `render:` that mounts no `<Primitive>` tag and reaches nothing of the primitive's
+        // module (`storyReachesComponentModule`, T685's predicate) depicts none of it, so it is
+        // credited to no cell — falling back to its `args` is what credited a raw
+        // `<div role="menuitemradio">` to `Menu`'s own axis matrix. A forced one is reported by
+        // `findUnaccountedForceStates` as reaching nothing; the same predicate gates it.
         const renderInstances = findOwnStoryRenderInstances(node, ownPrimitive, defaults, metaObj)
+        if (
+          !renderInstances &&
+          storyReachesComponentModule(node, sourceFile, componentDirName) === false
+        ) {
+          continue
+        }
+        const pushed = []
         if (renderInstances) {
           for (const ri of renderInstances) {
-            instancesByPrimitive.get(ownPrimitive).push({
+            pushed.push({
               primitive: ownPrimitive,
               kind: 'own-story',
               componentKey,
@@ -3523,7 +3771,7 @@ export function computeStateCoverage({ componentDirs, filesByPath }) {
           }
         } else {
           const axis = resolveStoryAxisValues(metaObj, node, defaults)
-          instancesByPrimitive.get(ownPrimitive).push({
+          pushed.push({
             primitive: ownPrimitive,
             kind: 'own-story',
             componentKey,
@@ -3534,6 +3782,20 @@ export function computeStateCoverage({ componentDirs, filesByPath }) {
             disabled: argsDisabled,
             forced,
             playFocus,
+          })
+        }
+        for (const inst of pushed) instancesByPrimitive.get(ownPrimitive).push(inst)
+        // Decided once every local element is known: `resolveOwnStoryCredits`, below.
+        if (forced || playFocus) {
+          pendingOwnStoryCredits.push({
+            instances: pushed,
+            primitive: ownPrimitive,
+            componentKey,
+            storyFile: path.basename(filePath),
+            exportName,
+            forced,
+            playFocus,
+            content: findStoryContentRoles(node, metaObj, ownPrimitive, sourceFile),
           })
         }
       }
@@ -3594,6 +3856,14 @@ export function computeStateCoverage({ componentDirs, filesByPath }) {
       }
     }
   }
+
+  resolveOwnStoryCredits(
+    pendingOwnStoryCredits,
+    instancesByPrimitive,
+    localElementsByComponent,
+    storyStatesByComponent,
+    rendersChildrenByKey,
+  )
 
   qualifyStoryNamesWhereAmbiguous(storyStatesByComponent)
 
@@ -6760,7 +7030,18 @@ export function checkCellGate(
 // its `render:` was judged to reach nothing of the component's module (`reachedNothing`, T685) says
 // so: that verdict can be the predicate's miss rather than the story's, and a message that calls it
 // "a lost frame" sends the reader to the resolver instead.
-export function describeMissingForceState({ componentKey, exportName, state, reachedNothing }) {
+export function describeMissingForceState({
+  componentKey,
+  exportName,
+  state,
+  reachedNothing,
+  refusal,
+}) {
+  // T686: an own story of a tracked primitive whose force-state resolves against nothing the
+  // primitive renders. Checked first: the story can also reach nothing, and the target is the sharper cause.
+  if (refusal && !reachedNothing) {
+    return `${componentKey}'s own ${exportName} forces "${state}" and is credited on no cell: ${refusal}.`
+  }
   if (reachedNothing) {
     return (
       `${componentKey}'s own ${exportName} forces "${state}" and is credited on no cell: ` +
