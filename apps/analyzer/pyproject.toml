@@ -25,8 +25,18 @@ requires-python = ">=3.13,<3.14"
 # Vercel installed `aoe2stats-analyzer` on its own and neither was reachable from it. Declared here
 # now for the same reason as the two above: a dependency this package's own code imports belongs on
 # this package's own manifest, not borrowed from a sibling that happens to also need it.
+#
+# `aoe2stats-knowledge` (T655, feature 006): `extract.py` is the first application code to import it
+# (the snapshot an analysis names, and the coverage pass that reports what that snapshot cannot
+# answer). Nothing declared it before, and workspace membership is not a declaration — it is the
+# exact shape of the 2026-09-04 fault above: every local `uv sync --all-packages` installs it
+# anyway, and the deployed function is the first thing to find out. The root manifest names
+# `aoe2stats-analyzer`, so declaring it here is what makes the root's dependency walk pull it in
+# transitively; `scripts/checks/api_entrypoint_deps.py` cannot catch this one, because it reads
+# only the module-scope imports of files under `api/` and this import is one hop further down.
 dependencies = [
   "aoe2stats-core",
+  "aoe2stats-knowledge",
   "aoe2stats-providers",
   "aoe2stats-replay-engine",
   "aoe2stats-storage",
@@ -34,6 +44,7 @@ dependencies = [
 
 [tool.uv.sources]
 aoe2stats-core = { workspace = true }
+aoe2stats-knowledge = { workspace = true }
 aoe2stats-providers = { workspace = true }
 aoe2stats-replay-engine = { workspace = true }
 aoe2stats-storage = { workspace = true }

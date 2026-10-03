@@ -177,6 +177,14 @@ could be produced.
 Unique on (`identity_digest`, `entity_kind`, `entity_id`, `field`, `civilisation_id`), so a
 reproduced analysis records nothing twice. It holds no personal data: a participant is not a column.
 
+A whole-build gap (`no-snapshot-for-build`) names no entity, field or civilisation, and those three
+columns are not nullable, so its row stores `build`, `*`, `*` there; a real entity kind and a real
+field name cannot collide with them. Its `build` column is the recording's build, or `-1` where the
+stream named none — and the report script prints that as "build unknown (stream named none)", never
+as a build (T662). Rows are written by `run.py` in the transaction that publishes the document,
+insert-or-ignore against the unique index, from the document's own `knowledge_gaps` block, so the
+rows and the published list are one set. A document the validator refuses records none.
+
 The index has no team, so the coverage pass emits at most one gap per key within one analysis. Two
 gaps equal on it — two allies naming the same unmodelled teammate, or one civilisation seated on two
 teams — collapse to the first in (civilisation, team) order (T652v). If they differ in `cause`, the
@@ -203,3 +211,13 @@ table. It is what the staleness test compares; a row with none is stale. Adding 
 003's table changes none of 003's behaviour and leaves its primary key alone (FR-048). The published object's key carries
 it; `match_analyses.result_key` names the current one; earlier objects are never deleted (research
 D9). The wall-clock extraction time is **outside** the identity and outside the compared body.
+
+The staleness test must compute the current digest from the row alone, without reading the object
+store (SC-006), and one of its inputs - the recording's build, which selects the knowledge snapshot
+- is named only by the recording. So the same revision adds a second nullable column,
+`match_analyses.recording_build`, an integer written on publish from the document's knowledge record
+(the snapshot's `describes_build`, or the absence record's `build`, which is `-1` where the stream
+named none, as in section 7). The recording component comes from the retained recording's row, which
+the recompute path reads anyway. A row with either column NULL is stale and recomputes once. The
+revision was amended in place rather than followed by a second one because it had not been applied
+anywhere but throwaway test databases (T666b).

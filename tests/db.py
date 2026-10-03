@@ -248,12 +248,10 @@ async def clean_database(
 
     Filtered against the database's own `pg_tables`, not simply every name `Base.metadata` knows
     about (006-replay-analysis-foundations T652): a model can land in `models.py` — and therefore
-    in `Base.metadata` — a whole phase before the migration that actually creates its table
-    (`analysis_knowledge_gaps`, deliberately additive-only and deferred to T663). Truncating a
-    name `_migrate_to_head` never created would fail every test in the session with `relation ...
-    does not exist`, for a table this feature's own tests create for themselves directly against
-    `Base.metadata` (see `packages/storage/tests/repositories/test_knowledge_gaps.py`) — a real
-    regression this harness must not reintroduce the moment the next such table lands.
+    in `Base.metadata` — a whole phase before the migration that creates its table (as
+    `analysis_knowledge_gaps` did, until T663's revision). Truncating a name `_migrate_to_head`
+    never created would fail every test in the session with `relation ... does not exist`; the
+    filter keeps the next such table from reintroducing that.
     """
     async with session_factory() as session:
         existing = await session.execute(

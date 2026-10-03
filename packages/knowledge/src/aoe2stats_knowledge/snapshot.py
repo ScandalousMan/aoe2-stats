@@ -54,6 +54,11 @@ edit adding a `strategy=`/`allow_nearest=` parameter fails loudly rather than si
 the substitution FR-027 forbids. A build with no promoted snapshot returns `NoSnapshotForBuild`
 rather than `None` or a raised exception — a gap is data, not a control-flow signal.
 
+**Reproduction (FR-043, T658)**: `pinned_snapshot(snapshot)` is the one way a demoted snapshot is
+answerable by build, and only for the duration of a block the caller opens on purpose — it names the
+snapshot, it never searches for one. `load_all_snapshots` is how a caller finds the snapshot an
+identity names.
+
 **T647**: `snapshot_for` returns `gaps.KnowledgeGap` directly — the full FR-035 to FR-037 record —
 rather than a second, parallel gap type. `cause="no-snapshot-for-build"` is the literal
 contracts/knowledge-base.md, "Resolution by build" already names. This call site has only a build
@@ -65,10 +70,12 @@ case — the gap means *nothing about this build is known*, not that one field o
 
 from __future__ import annotations
 
+import contextlib
+import contextvars
 import functools
 import hashlib
 import tomllib
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
 from importlib import resources
 from typing import Any, Final
@@ -549,7 +556,7 @@ def load_resolvable_snapshots() -> tuple[Snapshot, ...]:
 
 
 @functools.cache
-def snapshot_for(build: int) -> Snapshot | KnowledgeGap:
+def _promoted_snapshot_for(build: int) -> Snapshot | KnowledgeGap:
     """FR-027's build resolution: an exact match on `describes_build` among
     `load_resolvable_snapshots()`, or a gap.
 
@@ -586,3 +593,53 @@ def snapshot_for(build: int) -> Snapshot | KnowledgeGap:
             f"{[snapshot.directory for snapshot in matches]}"
         )
     return matches[0]
+
+
+#: The one snapshot a reproduction has pinned for the current context (FR-043, T658), or `None` —
+#: its value in every other call. A `ContextVar` and not a module global: it is set and restored by
+#: `pinned_snapshot` below and nowhere else, and a concurrent task or thread never sees it.
+_pinned: contextvars.ContextVar[Snapshot | None] = contextvars.ContextVar(
+    "aoe2stats_knowledge_pinned_snapshot", default=None
+)
+
+
+@contextlib.contextmanager
+def pinned_snapshot(pinned: Snapshot) -> Iterator[None]:
+    """Resolve `pinned.identity.describes_build` to `pinned` itself while the block runs, whether
+    or not it is promoted (FR-043, SC-005).
+
+    Reproducing an analysis means resolving **the snapshot its identity names**, never "the one
+    promoted for the build now": a knowledge refresh promotes a second snapshot and demotes the
+    first, and the first must stay answerable by the identity that recorded it. Every reader of
+    `snapshot_for` — the query surface, the coverage pass, a document builder — then sees the one
+    snapshot, so no part of a reproduction can quietly read the newer one.
+
+    This pins only what the caller passes: it does not choose a snapshot, does not search for one
+    and falls back to nothing. A build the pinned snapshot does not describe resolves exactly as it
+    always does. The previous pin (`None`, for every real call) is restored on exit even if the body
+    raises.
+    """
+    token = _pinned.set(pinned)
+    try:
+        yield
+    finally:
+        _pinned.reset(token)
+
+
+def snapshot_for(build: int) -> Snapshot | KnowledgeGap:
+    """FR-027's build resolution — see `_promoted_snapshot_for` — unless `pinned_snapshot` is
+    active for this build, in which case the pinned snapshot (FR-043).
+
+    Exactly one parameter, no more: there is no nearest, no latest and no fallback parameter,
+    because an argument that exists will eventually be passed. The pin is context, not an argument,
+    and only a reproduction sets it.
+    """
+    pinned = _pinned.get()
+    if pinned is not None and pinned.identity.describes_build == build:
+        return pinned
+    return _promoted_snapshot_for(build)
+
+
+# `snapshot_for` is a plain function over a cached one: the cache is still cleared the way every
+# existing caller clears it (`snapshot_for.cache_clear()`), and still never holds a pinned answer.
+snapshot_for.cache_clear = _promoted_snapshot_for.cache_clear  # type: ignore[attr-defined]
