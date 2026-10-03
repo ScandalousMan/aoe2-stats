@@ -3666,8 +3666,8 @@ than kept as a second copy of the fact.
 T676 (2026-10-03) closed the last row the same way: the four sub-suites now also run the populated scenarios in
 `tests/visual/fixtures/suite-scenarios.ts` (matches, favourites, search results, match participants and the
 analysis section's lists, a second linked profile), each asserted in a browser by `enterScenario` against that
-file's per-route list inventory. Error, empty and transient branches are not reached, and neither are two
-success-branch controls, the `objected` `ArchivalControl` and `DataExportPanel`'s `ready` link (T682). No
+file's per-route list inventory. Two success-branch controls are not
+reached, the `objected` `ArchivalControl` and `DataExportPanel`'s `ready` link (T682). No
 fixture player carries an `avatar_hash`, and every suite fails if a page requests a host other than the application's own, so none can
 reach `avatars.steamstatic.com`; it adds one scenario per `Dialog` and `Menu`, opened by keyboard — the theme
 `Menu` on every route, `ProfileSummary`'s switcher and Manage `Menu`s, the unlink `Dialog` and the

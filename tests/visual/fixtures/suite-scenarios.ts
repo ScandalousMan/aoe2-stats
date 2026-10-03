@@ -8,7 +8,7 @@
 //    favourites, search results, match participants, a second linked profile). The empty `ROUTE_SCENARIOS` are kept as
 //    they are: an empty state is a state too, and leaving them untouched keeps the full-page
 //    screenshots `app-routes.spec.ts` takes (CI-authoritative baselines) exactly where they were.
-// 2. SURFACE_SCENARIOS — one scenario per openable surface, opened by keyboard: the theme `Menu` in
+// 2. SURFACE_SCENARIOS — one scenario per `Dialog` and `Menu`, opened by keyboard: the theme `Menu` in
 //    the shared header on every route, `ProfileSummary`'s profile-switcher and Manage `Menu`s, the
 //    unlink `Dialog` and the account-erasure `Dialog`.
 //
@@ -434,7 +434,9 @@ const MATCH_DETAIL_ROSTER: readonly ListExpectation[] = [
   },
   {
     name: 'replay availability rows',
-    selector: 'main section ul > li:not(:has-text("Colour:"))',
+    // Scoped by the list's own section (`ReplayAvailabilityList`'s `<h3>`), not by what a
+    // participant card says of itself.
+    selector: 'main section:has(> h3:text-is("Recorded games")) > ul > li',
     min: 4,
   },
 ]

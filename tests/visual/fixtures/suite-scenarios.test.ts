@@ -6,9 +6,9 @@
 // 1. every entry of the per-route list inventory in `./suite-scenarios` is declared by a populated
 //    scenario of *that route* (exact match, never a label prefix), and in a browser each populated
 //    scenario renders what it declares and shows no error callout or loading region, judged inside
-//    `enterScenario` so the four route suites cannot skip it. Error, empty and transient branches
-//    are not reached; two success-branch controls (the `objected` `ArchivalControl`, the
-//    `DataExportPanel` `ready` link) are not either, and belong to T682;
+//    `enterScenario` so the four route suites cannot skip it. Two success-branch controls (the
+//    `objected` `ArchivalControl`, the `DataExportPanel` `ready` link) are not reached, and belong
+//    to T682;
 // 2. no fixture player carries an `avatar_hash` (constitution III: no suite reaches
 //    `avatars.steamstatic.com`);
 // 3. every `<Menu>` and `<Dialog>` an application route can open has a scenario — a new consumer
@@ -344,6 +344,87 @@ test.describe('populated scenarios render their success branch', () => {
         /\(populated\): match rows \(main table tbody tr\) rendered fewer than 3 item\(s\)/,
       )
     })
+
+    // The replay availability list is told from the participant cards by its own section's heading,
+    // not by what a card says of itself. Both planted pages below are the real populated match page,
+    // altered in the browser after it renders, so the rest of the page is exactly what ships.
+    const REPLAY_ROWS_BEFORE_SCOPING = 'main section ul > li:not(:has-text("Colour:"))'
+
+    const removeRecordedGames = () => {
+      const strip = () => {
+        for (const heading of document.querySelectorAll('h3')) {
+          if (heading.textContent === 'Recorded games') heading.closest('section')?.remove()
+        }
+      }
+      new MutationObserver(strip).observe(document, { childList: true, subtree: true })
+    }
+
+    const blankSwatchText = () => {
+      const blank = () => {
+        for (const label of document.querySelectorAll('.sr-only')) {
+          if (label.textContent?.startsWith('Colour:')) label.textContent = ''
+        }
+      }
+      new MutationObserver(blank).observe(document, { childList: true, subtree: true })
+    }
+
+    function matchDetailAltered(script: () => void, renders?: PopulatedScenario['renders']) {
+      if (!POPULATED_MATCH_DETAIL) throw new Error('/matches/$gameId (populated) is gone')
+      const base = POPULATED_MATCH_DETAIL
+      const planted: PopulatedScenario = {
+        ...base,
+        renders: renders ?? base.renders,
+        stub: async (target) => {
+          await base.stub(target)
+          await target.addInitScript(script)
+        },
+      }
+      return planted
+    }
+
+    function listNamed(name: string) {
+      const list = POPULATED_MATCH_DETAIL?.renders.find((entry) => entry.name === name)
+      if (!list) throw new Error(`/matches/$gameId (populated) declares no '${name}'`)
+      return list
+    }
+
+    // The width the suites measure at: 1280px is a table, 375px stacked cards.
+    for (const width of [1280, 375]) {
+      test(`planted: participant cards without the "Recorded games" list yield no replay rows and fail, at ${width}px`, async ({
+        page,
+      }) => {
+        await page.setViewportSize({ width, height: 800 })
+        const planted = matchDetailAltered(removeRecordedGames)
+        await expect(enterScenario(page, planted, harness.baseUrl, 'light')).rejects.toThrow(
+          /\(populated\): replay availability rows/,
+        )
+        const roster = listNamed('participant rows')
+        const cards = width === 1280 ? roster.selector : (roster.stacked?.selector ?? '')
+        expect(
+          await page.locator(cards).count(),
+          'the participant cards must still be on screen, or this planted page proves nothing',
+        ).toBeGreaterThanOrEqual(roster.min)
+        expect(await page.getByRole('heading', { name: 'Recorded games' }).count()).toBe(0)
+        expect(await page.locator(listNamed('replay availability rows').selector).count()).toBe(0)
+      })
+
+      test(`contrast: the replay rows are the same four with the swatch's text gone, at ${width}px`, async ({
+        page,
+      }) => {
+        await page.setViewportSize({ width, height: 800 })
+        const replay = listNamed('replay availability rows')
+        const planted = matchDetailAltered(blankSwatchText, [replay])
+        await enterScenario(page, planted, harness.baseUrl, 'light')
+        expect(
+          await page.locator('main :text("Colour:")').count(),
+          'the swatch text must be gone, or this page proves nothing',
+        ).toBe(0)
+        expect(await page.locator(replay.selector).count()).toBe(4)
+        // What the selector used to be: it read the swatch's text, so with it gone each stacked
+        // participant card (375px; at 1280px they are table rows, no list) counts as a replay row too.
+        expect(await page.locator(REPLAY_ROWS_BEFORE_SCOPING).count()).toBe(width === 375 ? 8 : 4)
+      })
+    }
 
     test('a populated scenario whose list arrives late is judged only after the list renders', async ({
       page,

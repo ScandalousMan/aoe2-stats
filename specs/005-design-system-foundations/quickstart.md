@@ -1168,16 +1168,15 @@ suites in both themes, the 22 of `tests/visual/app-routes.spec.ts`, and the 36 p
 under `tests/visual/fixtures/`, which fail each suite's guard on a page carrying the defect it
 exists to catch.
 
-**Widened, 2026-10-03 (T676).** The scope above is superseded: the four suites now also run what a
-route renders once used, and T676's own row of `packages/design-system/specs/README.md`'s
+**Widened, 2026-10-03 (T676).** The scope above is superseded: T676's own row of `packages/design-system/specs/README.md`'s
 "Verification-coverage gap register" is deleted. Each of the four suites iterates
 `SUITE_SCENARIOS` in `tests/visual/fixtures/suite-scenarios.ts` — the route scenarios at rest, the
 same routes populated per that file's per-route list inventory (matches, favourites, search results
 submitted, match participants, the analysis section's four ordered lists and its Recompute, Request
 analysis and Try requesting analysis buttons, the upload control, a second linked profile), each
 scenario asserted in a browser, inside `enterScenario`, to render what it declares with no error
-callout or loading region. Error, empty and transient branches are not reached, and neither are two
-success-branch controls, the `objected` `ArchivalControl` and `DataExportPanel`'s `ready` link
+callout or loading region. Two success-branch controls are not
+reached, the `objected` `ArchivalControl` and `DataExportPanel`'s `ready` link
 (T682). The suites also run one
 scenario per `Dialog` and `Menu`, opened by keyboard:
 the theme `Menu` on every route, the profile-switcher `Menu` on `/dashboard` and `/matches`, the
@@ -1190,17 +1189,16 @@ and assert the `Skeleton` (`pulse`) and `Spinner` (`spin`) loops are running ani
 preference and are stopped under it, the same element still on screen. No `Tooltip` is opened by any
 scenario (T681). No fixture player carries an
 `avatar_hash`, and every scenario fails if the page requests a host other than the application's
-own. Three things the old verdict did not say, found by running the populated scenarios: the Tab
+own. Two things the old verdict did not say, found by running the populated scenarios: the Tab
 walk now starts from the top of the document when a scenario left focus mid-page, and reads a
-focus ring after the element's own transitions have finished — a populated `PlayerResultRow` was
-judged on the first frame of its 120ms outline fade, 1.17:1 in dark — and no real route holds a
-pointer-only target, so that sweep's positive control is its planted pages, not a route. **Item 13
+focus ring after the element's own transitions have finished (a populated `PlayerResultRow` was
+judged on the first frame of its 120ms outline fade, 1.17:1 in dark). **Item 13
 is Met for routes at rest, for the populated scenarios in that inventory, and with every `Dialog`
 and `Menu` open, on the head carrying T676; the two loading states are held in the reduced-motion
 suite only, so the keyboard, focus-visibility and touch-footprint suites do not run them; no
 `Tooltip` is opened (T681) and the two success-branch controls above are not rendered (T682); it
 is partly met overall until the T681 and T682 rows are deleted** — local run only, macOS Chromium,
-437 tests. The full-page baselines in `tests/visual/app-routes.spec.ts` are CI-authoritative and unchanged by this task.
+441 tests. The full-page baselines in `tests/visual/app-routes.spec.ts` are CI-authoritative and unchanged by this task.
 
 ### Item 15's general-reviewer half — outstanding, no pull request covers this head
 
