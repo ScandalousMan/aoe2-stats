@@ -8810,15 +8810,16 @@ test('T686 (a): a name or nth beside the unrendered role changes nothing, and a 
 })
 
 test('T686 (a): a selector no element of Menu matches credits no cell, and one that does is still credited', () => {
+  // An args-only story, so the credit lands on a real cell of the matrix (`selection`), not on the
+  // `(no axis)` row a `{...args}` spread opens for a primitive with no `variant` default.
   const selectorStory = (selector) => `export const Planted = {
-      ${T686_MENU_RENDER},
       ${T686_SELECTION_ARGS},
       ${T686_FORCE('hover', `selector: '${selector}'`)},
     }`
   assert.deepEqual(menuAxisCredits(selectorStory('a[href="/x"]')), [])
   assert.equal(menuAxisReport(selectorStory('a[href="/x"]')).length, 1)
   assert.deepEqual(menuAxisCredits(selectorStory('button[type="button"]')), [
-    'Menu|(no axis)|hover',
+    'Menu|selection|hover',
   ])
   assert.deepEqual(menuAxisReport(selectorStory('button[type="button"]')), [])
 })
@@ -8834,31 +8835,30 @@ test('T686 (a): a force naming neither a role nor a selector resolves against no
 })
 
 test('T686 (a) contrast: a story forcing a role Menu renders is credited at the same cell as before, for every state and for the trigger, the static and the dynamic role', () => {
+  // Args-only stories: each credit lands on the real row its `variant` names.
   const credit = (state, target, args = T686_SELECTION_ARGS) =>
     menuAxisCredits(`export const Planted = {
-      ${T686_MENU_RENDER},
       ${args},
       ${T686_FORCE(state, target)},
     }`)
   assert.deepEqual(credit('hover', "role: 'menuitemradio', name: 'aoe2alt'"), [
-    'Menu|(no axis)|hover',
+    'Menu|selection|hover',
   ])
   assert.deepEqual(credit('focus-visible', "role: 'menuitemradio', name: 'aoe2alt'"), [
-    'Menu|(no axis)|focusVisible',
+    'Menu|selection|focusVisible',
   ])
-  assert.deepEqual(credit('active', "role: 'menuitemradio'"), ['Menu|(no axis)|active'])
-  assert.deepEqual(credit('hover', "role: 'button'"), ['Menu|(no axis)|hover'])
+  assert.deepEqual(credit('active', "role: 'menuitemradio'"), ['Menu|selection|active'])
+  assert.deepEqual(credit('hover', "role: 'button'"), ['Menu|selection|hover'])
   assert.deepEqual(
     credit(
       'hover',
       "role: 'menuitem'",
       `args: { variant: 'actions', items: [{ id: 'a', label: 'Open' }] }`,
     ),
-    ['Menu|(no axis)|hover'],
+    ['Menu|actions|hover'],
   )
   assert.deepEqual(
     menuAxisReport(`export const Planted = {
-      ${T686_MENU_RENDER},
       ${T686_SELECTION_ARGS},
       ${T686_FORCE('hover', "role: 'menuitemradio', name: 'aoe2alt'")},
     }`),
@@ -8947,7 +8947,7 @@ test('T686 (a): a forced story mounting Menu only through a story-file wrapper, 
   assert.match(describeMissingForceState(missing[0]), /renders no element of role "slider"/)
 })
 
-test('T686 (d) contrast: a story whose render mounts <Menu>, an args-only story, and a render mounting through a story-file wrapper are all still credited at the same cell', () => {
+test('T686 (d) contrast: a story whose render mounts <Menu>, an args-only story, and a render mounting through a story-file wrapper that hands its props to <Menu> are all still credited at the same cell', () => {
   const force = T686_FORCE('hover', "role: 'menuitemradio', name: 'aoe2alt'")
   assert.deepEqual(
     menuAxisCredits(`export const Planted = {
@@ -9024,5 +9024,445 @@ export const ZzPlanted: Story = {
   assert.match(
     result.stderr,
     /primitives\/Menu's own ZzPlanted forces "focus-visible" and is credited on no cell: .*"slider"/,
+  )
+})
+
+// --- T686 remediation (review of #112): one verdict per own story, shared by every record --------
+//
+// Three defects, one shape. (1) The `args` fallback credited a story whose `render:` merely REACHES
+// the primitive's module (a wrapper that mounts a different `<Menu>`, a render context's `component`
+// that is never mounted): reach is a reporting predicate, never a credit gate. (2) The verdict
+// reached for the axis matrix was not the verdict record 1 read, so a refused own story was still
+// credited on an element of the primitive's own record. (3) A selector resolved by tag alone.
+const T686R_BUTTON_INDEX_SOURCE = `
+export function Button({ variant = 'primary', size = 'md', href, disabled, children }) {
+  if (href !== undefined) {
+    return <a href={href} className="hover:bg-surface-sunken focus-visible:outline-2">{children}</a>
+  }
+  return (
+    <button type="button" disabled={disabled} className="hover:bg-surface-sunken focus-visible:outline-2">
+      {children}
+    </button>
+  )
+}
+`
+function t686rComputed(name, indexSource, storyBody) {
+  return computeStateCoverage({
+    componentDirs: [{ segment: 'primitives', name }],
+    filesByPath: new Map([
+      [path.join(REPO_SRC_DIR, `primitives/${name}/index.tsx`), indexSource],
+      [
+        path.join(REPO_SRC_DIR, `primitives/${name}/${name}.stories.tsx`),
+        `import { ${name} } from './index'\nconst meta = { component: ${name} }\nexport default meta\n${storyBody}`,
+      ],
+    ]),
+  })
+}
+const t686rMenu = (storyBody) =>
+  t686rComputed('Menu', MENU_WITH_DYNAMIC_ROW_INDEX_SOURCE, storyBody)
+const t686rButton = (storyBody) => t686rComputed('Button', T686R_BUTTON_INDEX_SOURCE, storyBody)
+const t686rReport = (computed) =>
+  computed.unaccountedForceStates.missing.filter((m) => m.exportName === 'Planted')
+const T686R_ITEM = `{ id: 'p2', label: 'aoe2alt' }`
+const T686R_RADIO_FORCE = T686_FORCE('hover', "role: 'menuitemradio', name: 'aoe2alt'")
+
+// HIGH 1 -------------------------------------------------------------------------------------------
+
+test('T686r HIGH 1: a render that reaches Menu through a wrapper mounting ANOTHER Menu, with the forced role in a raw child, credits no cell of any record and is reported', () => {
+  const body = `function Frame({ children }) {
+    return <div><Menu variant="actions" triggerLabel="x" items={[]} />{children}</div>
+  }
+  export const Planted = {
+    render: () => <Frame><div role="menuitemradio" tabIndex={0}>aoe2alt</div></Frame>,
+    args: { variant: 'selection', items: [${T686R_ITEM}] },
+    ${T686R_RADIO_FORCE},
+  }`
+  const computed = t686rMenu(body)
+  assert.deepEqual(plantedCredits(computed), [])
+  const missing = t686rReport(computed)
+  assert.equal(missing.length, 1)
+  assert.match(describeMissingForceState(missing[0]), /credited on no cell/)
+})
+
+test('T686r HIGH 1: a render that reads the render context’s component but mounts a raw element credits no cell of any record and is reported', () => {
+  const body = `export const Planted = {
+    render: (_args, { component: C }) => <div role="menuitemradio" tabIndex={0} data-c={String(C)}>aoe2alt</div>,
+    args: { variant: 'selection', items: [${T686R_ITEM}] },
+    ${T686R_RADIO_FORCE},
+  }`
+  const computed = t686rMenu(body)
+  assert.deepEqual(plantedCredits(computed), [])
+  assert.equal(t686rReport(computed).length, 1)
+})
+
+test('T686r HIGH 1: the same two renders UNFORCED, with a nested disabled item, credit no Rest or Disabled cell either, in any record', () => {
+  const wrapper = `function Frame({ children }) {
+    return <div><Menu variant="actions" items={[]} />{children}</div>
+  }
+  export const Planted = {
+    render: () => <Frame><div role="menuitemradio">aoe2alt</div></Frame>,
+    args: { variant: 'selection', items: [{ id: 'p2', label: 'aoe2alt', disabled: true }] },
+  }`
+  const raw = `export const Planted = {
+    render: (_args, { component: C }) => <div data-c={String(C)} />,
+    args: { variant: 'selection', items: [{ id: 'p2', label: 'aoe2alt', disabled: true }] },
+  }`
+  // The wrapper does mount a Menu — of variant "actions", literally — so it may be credited at
+  // THAT row (what it shows), never at the row its args name.
+  const credits = plantedCredits(t686rMenu(wrapper))
+  assert.deepEqual(
+    credits.filter((c) => c.startsWith('Menu|selection')),
+    [],
+    'nothing is credited on the args-named row',
+  )
+  assert.deepEqual(plantedCredits(t686rMenu(raw)), [])
+})
+
+test('T686r HIGH 1 contrast: a render context component used AS A JSX TAG is a mount, credited at the row its props name', () => {
+  assert.deepEqual(
+    plantedCredits(
+      t686rMenu(`export const Planted = {
+        render: (args, { component: C }) => <C {...args} />,
+        args: { variant: 'selection', items: [${T686R_ITEM}] },
+        ${T686R_RADIO_FORCE},
+      }`),
+    ).filter((c) => c.startsWith('Menu|')),
+    ['Menu|selection|hover'],
+  )
+})
+
+test('T686r HIGH 1 contrast: a wrapper whose own <Menu> tag fixes its axis is credited at THAT tag’s row, not the row the story args name', () => {
+  const body = `function Frame() { return <Menu variant="selection" items={[${T686R_ITEM}]} /> }
+  export const Planted = {
+    render: () => <Frame />,
+    args: { variant: 'actions', items: [] },
+    ${T686R_RADIO_FORCE},
+  }`
+  assert.deepEqual(
+    plantedCredits(t686rMenu(body)).filter((c) => c.startsWith('Menu|')),
+    ['Menu|selection|hover'],
+  )
+})
+
+test('T686r HIGH 1 contrast: a wrapper that forwards its props to <Menu> is credited at the row the story args name, and its call site’s literal prop wins over them', () => {
+  const wrapper = `function Demo(props) { return <Menu {...props} /> }`
+  assert.deepEqual(
+    plantedCredits(
+      t686rMenu(`${wrapper}
+      export const Planted = {
+        render: (args) => <Demo {...args} />,
+        args: { variant: 'selection', items: [${T686R_ITEM}] },
+        ${T686R_RADIO_FORCE},
+      }`),
+    ).filter((c) => c.startsWith('Menu|')),
+    ['Menu|selection|hover'],
+  )
+  assert.deepEqual(
+    plantedCredits(
+      t686rMenu(`${wrapper}
+      export const Planted = {
+        render: (args) => <Demo {...args} variant="selection" />,
+        args: { variant: 'actions', items: [${T686R_ITEM}] },
+        ${T686R_RADIO_FORCE},
+      }`),
+    ).filter((c) => c.startsWith('Menu|')),
+    ['Menu|selection|hover'],
+  )
+})
+
+test('T686r HIGH 1: what the check cannot follow is refused and reported with a reason, never credited — a wrapper spreading something else, a non-literal axis, an imported wrapper, a render that is not a function', () => {
+  const cases = {
+    'a spread of something other than the wrapper’s props': `function Demo() { return <Menu {...pick()} /> }
+      export const Planted = { render: () => <Demo />, args: { variant: 'selection', items: [${T686R_ITEM}] }, ${T686R_RADIO_FORCE} }`,
+    'a non-literal axis': `function Demo({ v }) { return <Menu variant={v} items={[${T686R_ITEM}]} /> }
+      export const Planted = { render: () => <Demo v="selection" />, args: {}, ${T686R_RADIO_FORCE} }`,
+    'an imported wrapper': `export const Planted = { render: () => <Elsewhere />, args: { variant: 'selection', items: [${T686R_ITEM}] }, ${T686R_RADIO_FORCE} }`,
+    'a render that is not a function': `const Tpl = (args) => <Menu {...args} />
+      export const Planted = { render: Tpl.bind({}), args: { variant: 'selection', items: [${T686R_ITEM}] }, ${T686R_RADIO_FORCE} }`,
+  }
+  for (const [label, body] of Object.entries(cases)) {
+    const computed = t686rMenu(`import { Elsewhere } from '../Elsewhere'\n${body}`)
+    assert.deepEqual(plantedCredits(computed), [], label)
+    const missing = t686rReport(computed)
+    assert.equal(missing.length, 1, label)
+    assert.match(describeMissingForceState(missing[0]), /credited on no cell: .+/, label)
+  }
+})
+
+// HIGH 2 -------------------------------------------------------------------------------------------
+
+test('T686r HIGH 2: an args-only Button story forcing a link with no href is refused by every record — no Button row and no element of Button’s own record is credited — and reported once', () => {
+  const body = `export const Planted = {
+    args: { variant: 'secondary', size: 'md' },
+    ${T686_FORCE('hover', "role: 'link'")},
+  }`
+  const computed = t686rButton(body)
+  assert.deepEqual(plantedCredits(computed), [])
+  const missing = t686rReport(computed)
+  assert.equal(missing.length, 1)
+  assert.match(describeMissingForceState(missing[0]), /renders no element of role "link"/)
+  // Contrast: with an href the `<a>` is rendered, and both records credit it.
+  const withHref = t686rButton(`export const Planted = {
+    args: { variant: 'secondary', size: 'md', href: '/x' },
+    ${T686_FORCE('hover', "role: 'link'")},
+  }`)
+  assert.deepEqual(plantedCredits(withHref), [
+    'Button|secondary|md|hover',
+    'local:primitives/Button:a|hover',
+  ])
+  assert.deepEqual(t686rReport(withHref), [])
+})
+
+// One story, every record that credits an own story: the axis matrix, record 1's element cells (hover,
+// focus-visible, active; the selector, dynamic-role and play-focus paths) and the Disabled column.
+// A story refused by one is credited by none and reported exactly once; a story accepted by one is
+// credited by every record that has a cell for it.
+test('T686r HIGH 2, agreement: for every planted story, refused-by-one means credited-by-none and reported once; accepted means credited and not reported', () => {
+  const FORCE_HOVER_RADIO = T686R_RADIO_FORCE
+  const menuSel = `args: { variant: 'selection', items: [${T686R_ITEM}] }`
+  const stories = [
+    {
+      label: 'Button forced link without href',
+      compute: t686rButton,
+      body: `args: { variant: 'secondary', size: 'md' }, ${T686_FORCE('hover', "role: 'link'")}`,
+      refused: true,
+    },
+    {
+      label: 'Button forced link with href',
+      compute: t686rButton,
+      body: `args: { variant: 'secondary', size: 'md', href: '/x' }, ${T686_FORCE('hover', "role: 'link'")}`,
+      refused: false,
+    },
+    {
+      label: 'Button forced focus-visible link without href',
+      compute: t686rButton,
+      body: `args: { size: 'md' }, ${T686_FORCE('focus-visible', "role: 'link'")}`,
+      refused: true,
+    },
+    {
+      label: 'Button forced selector a[href] without href',
+      compute: t686rButton,
+      body: `args: { size: 'md' }, ${T686_FORCE('hover', `selector: 'a[href="/x"]'`)}`,
+      refused: true,
+    },
+    {
+      label: 'Button forced selector a[href] with that href',
+      compute: t686rButton,
+      body: `args: { size: 'md', href: '/x' }, ${T686_FORCE('hover', `selector: 'a[href="/x"]'`)}`,
+      refused: false,
+    },
+    {
+      label: 'Menu forced slider',
+      compute: t686rMenu,
+      body: `${menuSel}, ${T686_FORCE('hover', "role: 'slider'")}`,
+      refused: true,
+    },
+    {
+      label: 'Menu forced radio from an args-only story',
+      compute: t686rMenu,
+      body: `${menuSel}, ${FORCE_HOVER_RADIO}`,
+      refused: false,
+    },
+    {
+      label: 'Menu raw render naming the radio through the context component only',
+      compute: t686rMenu,
+      body: `render: (_a, { component: C }) => <div role="menuitemradio">aoe2alt</div>, ${menuSel}, ${FORCE_HOVER_RADIO}`,
+      refused: true,
+    },
+    {
+      label: 'Menu dynamic role resolved to menuitem, force names menuitemradio',
+      compute: t686rMenu,
+      body: `args: { variant: 'actions', items: [${T686R_ITEM}] }, ${FORCE_HOVER_RADIO}`,
+      refused: true,
+    },
+  ]
+  const problems = []
+  for (const { label, compute, body, refused } of stories) {
+    const computed = compute(`export const Planted = { ${body} }`)
+    const credits = plantedCredits(computed)
+    const missing = t686rReport(computed)
+    if (refused) {
+      if (credits.length > 0) problems.push(`${label}: refused but credited by ${credits}`)
+      if (missing.length !== 1) problems.push(`${label}: refused but reported ${missing.length}x`)
+    } else {
+      if (missing.length !== 0) problems.push(`${label}: accepted but reported`)
+      if (!(
+        credits.some((c) => c.startsWith('local:')) && credits.some((c) => !c.startsWith('local:'))
+      )) {
+        problems.push(`${label}: accepted but not credited by both records (${credits})`)
+      }
+    }
+  }
+  assert.deepEqual(problems, [])
+})
+
+// Record 1's cells of Button's own elements, as text (the element objects carry syntax nodes).
+const record1Text = (computed) =>
+  JSON.stringify(
+    computed.localElements
+      .find((l) => l.componentKey === 'primitives/Button')
+      .elements.map((el) => el.coveredBy),
+  )
+
+const T686R_PLAY = `play: async ({ canvasElement }) => {
+      const item = within(canvasElement).getByRole('link')
+      item.focus()
+      await expect(item).toHaveFocus()
+    }`
+
+test('T686r HIGH 2, sibling Disabled column: a render that never mounts the primitive adds no Disabled credit, a mounting one keeps it', () => {
+  // The Disabled column of a tracked primitive lives in its axis matrix alone (record 1 prints no
+  // such column for it), so that is the one place this sibling is read.
+  const disabledStory = (render) => `export const Planted = {
+    ${render}
+    args: { variant: 'secondary', size: 'md', disabled: true },
+  }`
+  assert.ok(
+    plantedCredits(
+      t686rButton(
+        disabledStory('render: () => <Button variant="secondary" size="md" disabled>Go</Button>,'),
+      ),
+    ).includes('Button|secondary|md|disabled'),
+    'a mounting render keeps its Disabled credit',
+  )
+  assert.deepEqual(
+    plantedCredits(
+      t686rButton(disabledStory('render: (_a, { component: C }) => <div data-c={String(C)} />,')),
+    ),
+    [],
+    'a render that never mounts Button credits no cell, in any record',
+  )
+})
+
+test('T686r HIGH 2, sibling play-focus note: a play() focusing a link the story does not render adds no note in the axis matrix or in record 1', () => {
+  const noHref = t686rButton(
+    `export const Planted = { args: { variant: 'secondary', size: 'md' }, ${T686R_PLAY} }`,
+  )
+  assert.doesNotMatch(JSON.stringify(noHref.matrices.Button), /play-driven/)
+  assert.doesNotMatch(
+    record1Text(noHref),
+    /play-driven/,
+    'record 1 holds no play-focus note for a link the story does not render',
+  )
+})
+
+test('T686r HIGH 2, sibling play-focus note, contrast: a play() focusing a link the story renders keeps its note in both records', () => {
+  const withHref = t686rButton(
+    `export const Planted = { args: { variant: 'secondary', size: 'md', href: '/x' }, ${T686R_PLAY} }`,
+  )
+  assert.match(JSON.stringify(withHref.matrices.Button), /play-driven/)
+  assert.match(record1Text(withHref), /play-driven/)
+})
+
+// MEDIUM 4 -----------------------------------------------------------------------------------------
+
+test('T686r MEDIUM 4: a selector whose tag matches but whose attribute does not credits no cell and is reported; the matching attribute is still credited', () => {
+  const menu = (selector) => `export const Planted = {
+    args: { variant: 'selection', items: [${T686R_ITEM}] },
+    ${T686_FORCE('hover', `selector: '${selector}'`)},
+  }`
+  const wrongAttr = t686rMenu(menu('button[data-nothing="never"]'))
+  assert.deepEqual(plantedCredits(wrongAttr), [])
+  assert.equal(t686rReport(wrongAttr).length, 1)
+  assert.match(describeMissingForceState(t686rReport(wrongAttr)[0]), /data-nothing/)
+  const wrongValue = t686rMenu(menu('button[type="submit"]'))
+  assert.deepEqual(plantedCredits(wrongValue), [])
+  assert.equal(t686rReport(wrongValue).length, 1)
+  const rightAttr = t686rMenu(menu('button[type="button"]'))
+  assert.deepEqual(
+    plantedCredits(rightAttr).filter((c) => c.startsWith('Menu|')),
+    ['Menu|selection|hover'],
+  )
+  assert.deepEqual(t686rReport(rightAttr), [])
+})
+
+test('T686r MEDIUM 4: a selector whose attribute comes from the story’s own props is resolved against them — the right value is credited, the wrong one refused, an unresolvable one refused with a reason', () => {
+  const button = (args, selector) => `export const Planted = {
+    args: { size: 'md'${args} },
+    ${T686_FORCE('hover', `selector: '${selector}'`)},
+  }`
+  const right = t686rButton(button(", href: '/x'", 'a[href="/x"]'))
+  assert.deepEqual(
+    plantedCredits(right).filter((c) => c.startsWith('Button|')),
+    ['Button|primary|md|hover'],
+  )
+  assert.deepEqual(t686rReport(right), [])
+  const wrong = t686rButton(button(", href: '/x'", 'a[href="/y"]'))
+  assert.deepEqual(plantedCredits(wrong), [])
+  assert.equal(t686rReport(wrong).length, 1)
+  // The element carries no literal or story-resolvable `data-x`: ambiguous, so refused, not guessed.
+  const ambiguous = t686rButton(button(", href: '/x'", 'a[data-x="1"]'))
+  assert.deepEqual(plantedCredits(ambiguous), [])
+  assert.equal(t686rReport(ambiguous).length, 1)
+})
+
+test('T686r report, end to end: the real tree with E1 (no href, forced link) appended to Button’s own story file and E3 (a wrapper mounting another Menu) appended to Menu’s fails the check once each and leaves the generated region unchanged', () => {
+  const e1 = runCheckOnPlantedTree(
+    `
+export const ZzE1: Story = {
+  args: { variant: 'secondary', size: 'md' },
+  parameters: { visualForceState: { state: 'hover', role: 'link' } },
+}
+`,
+    ['primitives', 'Button', 'Button.stories.tsx'],
+  )
+  assert.equal(e1.status, 1, e1.stdout + e1.stderr)
+  assert.match(
+    e1.stderr,
+    /primitives\/Button's own ZzE1 forces "hover" and is credited on no cell: .*"link"/,
+  )
+  assert.doesNotMatch(
+    e1.stderr,
+    /disagrees with a fresh render/,
+    'no cell moved, so the region is unchanged',
+  )
+  const e3 = runCheckOnPlantedTree(
+    `
+function ZzFrame({ children }: { children: React.ReactNode }) {
+  return (
+    <div>
+      <Menu variant="actions" triggerLabel="x" items={[]} />
+      {children}
+    </div>
+  )
+}
+export const ZzE3: Story = {
+  render: () => (
+    <ZzFrame>
+      <div role="menuitemradio" tabIndex={0}>aoe2alt</div>
+    </ZzFrame>
+  ),
+  args: { variant: 'selection', triggerLabel: 'aoe2guy', items: [{ id: 'p2', label: 'aoe2alt' }] },
+  parameters: { visualForceState: { state: 'hover', role: 'menuitemradio', name: 'aoe2alt' } },
+}
+`,
+    ['primitives', 'Menu', 'Menu.stories.tsx'],
+  )
+  assert.equal(e3.status, 1, e3.stdout + e3.stderr)
+  assert.match(e3.stderr, /primitives\/Menu's own ZzE3 forces "hover" and is credited on no cell: /)
+  assert.doesNotMatch(e3.stderr, /disagrees with a fresh render/)
+})
+
+test('T686r: an UNFORCED own story the verdict refuses is listed in refusedOwnStories with its reason, a forced one is not (it fails the run instead), an accepted one is not', () => {
+  const unforced = t686rMenu(`export const Planted = {
+    render: (_a, { component: C }) => <div data-c={String(C)} />,
+    args: { variant: 'selection', items: [] },
+  }`)
+  assert.deepEqual(
+    unforced.refusedOwnStories.map((r) => [r.componentKey, r.exportName]),
+    [['primitives/Menu', 'Planted']],
+  )
+  assert.match(unforced.refusedOwnStories[0].refusal, /mounts no <Menu>/)
+  const forced = t686rMenu(`export const Planted = {
+    render: (_a, { component: C }) => <div data-c={String(C)} />,
+    args: { variant: 'selection', items: [] },
+    ${T686_FORCE('hover', "role: 'button'")},
+  }`)
+  assert.deepEqual(forced.refusedOwnStories, [])
+  assert.equal(t686rReport(forced).length, 1)
+  assert.deepEqual(
+    t686rMenu(`export const Planted = { args: { variant: 'selection', items: [] } }`)
+      .refusedOwnStories,
+    [],
   )
 })
