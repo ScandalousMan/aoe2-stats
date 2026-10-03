@@ -82,7 +82,6 @@ from aoe2stats_storage.repositories.base import session_scope
 
 _SC004 = pytest.mark.xfail(strict=True, reason="T655/T659 not implemented yet")
 _SC005 = pytest.mark.xfail(strict=True, reason="T657/T657a/T658 not implemented yet")
-_NEW_KEY = pytest.mark.xfail(strict=True, reason="T657/T657a not implemented yet")
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _FIXTURE_ZIP = _REPO_ROOT / "tests" / "fixtures" / "replays" / "AgeIIDE_Replay_500546441.zip"
@@ -666,7 +665,6 @@ async def test_each_object_key_carries_its_own_identity_digest(
     assert flow.first.identity["digest"] != flow.second.identity["digest"]
 
 
-@_NEW_KEY
 async def test_a_changed_parser_version_writes_a_new_key_and_leaves_the_old_one_untouched(
     session_factory: async_sessionmaker[AsyncSession],
     clean_database: None,

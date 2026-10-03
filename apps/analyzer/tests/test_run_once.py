@@ -974,3 +974,148 @@ async def test_every_read_of_a_retained_recording_is_logged_on_first_analysis_an
     assert second_row.replay_capture_id is None
     assert second_row.retained_recording_id == retained.id
     assert second_row.purpose != "download"
+
+
+# --- FR-042 / T657: the published object key carries the identity digest -------------------------
+
+
+def _analysis_keys(store: _FakeObjectStore) -> list[str]:
+    return sorted(key for key in store.objects if key.startswith("analyses/"))
+
+
+async def _publish_then_recompute_under(
+    session_factory: async_sessionmaker[AsyncSession],
+    *,
+    game_id: int,
+    second_engine_version: str,
+    mark_row_stale: bool,
+) -> tuple[_FakeObjectStore, MatchAnalysis, bytes, MatchAnalysis]:
+    """Publish once under `_ENGINE_VERSION_1`, then run again under `second_engine_version`.
+
+    Returns the store, the row and the object bytes after the first publish, and the row after
+    the second run. `mark_row_stale` rewinds the row's recorded parser version so the staleness
+    branch fires even when the second extractor reports the same version as the first: that is
+    the only way to reach "same identity, recomputed" through `run_once` today (T657a widens the
+    condition; this task does not).
+    """
+    from aoe2stats_analyzer.run import run_once
+
+    profile_a, profile_b = 300_101, 300_102
+    await _seed_match(
+        session_factory,
+        game_id=game_id,
+        completed_at=datetime.now(UTC) - timedelta(days=1),
+        profile_ids=[profile_a, profile_b],
+    )
+    requester = await _seed_user(session_factory)
+    provider = _FakeReplayProvider(
+        ReplayBlob(content=b"raw bytes", filename="r.zip", content_type="application/zip")
+    )
+    store = _FakeObjectStore()
+
+    await run_once(
+        game_id,
+        _BUDGET_SECONDS,
+        requester,
+        session_factory=session_factory,
+        replay_provider=provider,
+        extractor=_FakeExtractor(
+            point_of_view_profile_id=profile_a, engine_version=_ENGINE_VERSION_1
+        ),
+        object_store=store,
+    )
+    first = await _get_analysis(session_factory, game_id)
+    assert first is not None
+    assert first.result_key is not None
+    first_bytes = store.objects[first.result_key]
+
+    if mark_row_stale:
+        async with session_scope(session_factory) as session:
+            row = await session.get(MatchAnalysis, game_id)
+            assert row is not None
+            row.parser_version = "0.0.0"
+
+    await run_once(
+        game_id,
+        _BUDGET_SECONDS,
+        requester,
+        session_factory=session_factory,
+        replay_provider=_RefusingReplayProvider(),
+        extractor=_FakeExtractor(
+            point_of_view_profile_id=profile_a,
+            engine_version=second_engine_version,
+            max_calls=1,
+        ),
+        object_store=store,
+    )
+    second = await _get_analysis(session_factory, game_id)
+    assert second is not None
+    return store, first, first_bytes, second
+
+
+async def test_a_published_object_is_keyed_by_its_identity_digest_and_the_row_records_it(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """T657: `analyses/{game_id}` then the identity digest's hex; `result_key` names that object
+    and `identity_digest` records the digest T657a will compare."""
+    import json
+
+    game_id = 500_546_451
+    store, first, first_bytes, _ = await _publish_then_recompute_under(
+        session_factory,
+        game_id=game_id,
+        second_engine_version=_ENGINE_VERSION_2,
+        mark_row_stale=False,
+    )
+
+    digest = json.loads(first_bytes)["identity"]["digest"]
+    assert first.identity_digest == digest
+    assert first.result_key == f"analyses/{game_id}/{digest}.json"
+    assert first.result_key in store.objects
+
+
+async def test_a_different_identity_writes_a_new_object_and_leaves_the_old_one_byte_identical(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """FR-042: a new parser version is a new analysis. Against the one-key-per-match code this
+    fails: the second publish overwrote `analyses/{game_id}.json`, so the first object's bytes
+    were gone and `analyses/` held a single key."""
+    game_id = 500_546_452
+    store, first, first_bytes, second = await _publish_then_recompute_under(
+        session_factory,
+        game_id=game_id,
+        second_engine_version=_ENGINE_VERSION_2,
+        mark_row_stale=False,
+    )
+
+    assert first.result_key is not None
+    assert second.result_key is not None
+    assert second.result_key != first.result_key
+    assert second.identity_digest != first.identity_digest
+    assert _analysis_keys(store) == sorted([first.result_key, second.result_key])
+    assert store.objects[first.result_key] == first_bytes
+    assert store.put_calls.count(first.result_key) == 1
+    assert store.put_calls.count(second.result_key) == 1
+    # The row keeps its primary key and names only the current document.
+    assert second.game_id == first.game_id == game_id
+    assert second.parser_version == _ENGINE_VERSION_2
+
+
+async def test_recomputing_the_same_identity_writes_the_same_key_and_no_second_object(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """The contrast: an identical identity addresses the identical key, so a recompute that
+    reproduces an analysis accumulates no duplicate object. (The fake extractor's bytes are a pure
+    function of the identity, so the rewrite is byte-identical outside the wall-clock set.)"""
+    game_id = 500_546_453
+    store, first, _, second = await _publish_then_recompute_under(
+        session_factory,
+        game_id=game_id,
+        second_engine_version=_ENGINE_VERSION_1,
+        mark_row_stale=True,
+    )
+
+    assert first.result_key is not None
+    assert second.result_key == first.result_key
+    assert second.identity_digest == first.identity_digest
+    assert _analysis_keys(store) == [first.result_key]

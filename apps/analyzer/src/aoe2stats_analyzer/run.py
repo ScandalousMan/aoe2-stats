@@ -103,11 +103,16 @@ _TERMINAL_STATES = (
 )
 
 
-def _result_key(game_id: int) -> str:
-    """`contracts/analysis.md`'s own key shape for the published document — stable across a
-    recompute, so `match_analyses.result_key` never changes value merely because the parser did.
+def _result_key(game_id: int, identity_digest: str) -> str:
+    """`analyses/{game_id}/{identity digest hex}.json` (FR-042, T657).
+
+    The per-match prefix keeps every version of one match's analysis listable by one prefix, and
+    the digest makes the key a function of the identity: two different identities never share a
+    key, so a recompute under a new parser, knowledge or analytics version writes a **new** object
+    and rewrites nothing, while the same identity addresses the same key. `match_analyses.
+    result_key` names the current one; it changes value exactly when the identity does.
     """
-    return f"analyses/{game_id}.json"
+    return f"analyses/{game_id}/{identity_digest}.json"
 
 
 def _now() -> datetime:
@@ -236,6 +241,9 @@ async def _publish(
     writes a result, which is what keeps `result_key`'s own shape (`_result_key`) identical
     whichever path reached it.
 
+    `identity_digest` records which identity the current document was produced under (T657); the
+    staleness condition that reads it is T657a's, not this function's.
+
     Everything is read back from `document`, the object just written, so the row cannot name a
     parser the object does not. `engine_deps` is the same record the document carries (FR-044,
     T655) — the column has existed through two migrations and nothing wrote it before.
@@ -249,6 +257,7 @@ async def _publish(
         analysis.parser_name = document["engine"]["name"]
         analysis.parser_version = document["engine"]["version"]
         analysis.engine_deps = dict(document["engine"]["deps"])
+        analysis.identity_digest = document["identity"]["digest"]
         analysis.result_key = result_key
         analysis.finished_at = now
         analysis.error_class = None
@@ -297,7 +306,9 @@ async def _extract_and_publish(
         )
         return
 
-    result_key = _result_key(game_id)
+    # FR-042: the key carries the identity digest, so an analysis under a different identity is a
+    # new object and the previous one is left exactly as it was. Nothing here ever deletes.
+    result_key = _result_key(game_id, document["identity"]["digest"])
     await object_store.put(
         result_key, json.dumps(document).encode("utf-8"), content_type="application/json"
     )

@@ -1267,7 +1267,7 @@ after everything underneath it moves.
       inferred datum can pass. The move belongs here and not in T633 — a status is earned by the
       change that publishes, and until this task nothing does. The `event.*` entries stay planned:
       the stream is never persisted
-- [ ] T657 [US6] Make the published object's key carry the identity digest, and keep
+- [x] T657 [US6] Make the published object's key carry the identity digest, and keep
       `match_analyses.result_key` pointing at the current document (**FR-042**). Today one object
       per match is overwritten on recompute, which destroys an existing analysis — a new parser,
       patch, knowledge version or analytics version must produce a **new** analysis and rewrite
