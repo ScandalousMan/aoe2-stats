@@ -63,6 +63,7 @@ from aoe2stats_analyzer.extract import (
     DocumentInvalid,
     TierPlacementError,
     build_document,
+    current_identity_digest,
     validate_document,
 )
 from aoe2stats_analyzer.retain import retain_recording, retrieve_recording
@@ -113,6 +114,35 @@ def _result_key(game_id: int, identity_digest: str) -> str:
     result_key` names the current one; it changes value exactly when the identity does.
     """
     return f"analyses/{game_id}/{identity_digest}.json"
+
+
+async def _is_stale(
+    analysis: MatchAnalysis, *, extractor: AnalysisExtractor, object_store: ObjectStore
+) -> bool:
+    """FR-042, T657a: a published row is stale when the identity it was produced under is not the
+    identity an analysis would carry now — any of parser, dependencies, knowledge or analytics.
+
+    The stored digest is compared with `extract.current_identity_digest`, never parsed back out of
+    `result_key` (a storage layout is not a record). A row with no stored digest was published
+    before this feature and reads as stale without touching the store: it recomputes once.
+
+    Computing the current digest needs the recording's build, which no column holds and which
+    parsing would be needed to recover; the stored document records it, so one `get` of the current
+    analysis answers it — no fetch, no parse (SC-006). A document that cannot be read as an
+    identity is stale (recomputing writes a readable one). An error from the store itself is not
+    caught: an outage must not read as "stale" and cost a re-parse.
+
+    Equal digests mean fresh, so an unchanged identity never reaches `_recompute` and a key, once
+    written, is never written again.
+    """
+    if analysis.identity_digest is None or analysis.result_key is None:
+        return True
+    stored = await object_store.get(analysis.result_key)
+    try:
+        current = current_identity_digest(extractor, json.loads(stored))
+    except (KeyError, TypeError, ValueError):
+        return True
+    return current != analysis.identity_digest
 
 
 def _now() -> datetime:
@@ -241,8 +271,8 @@ async def _publish(
     writes a result, which is what keeps `result_key`'s own shape (`_result_key`) identical
     whichever path reached it.
 
-    `identity_digest` records which identity the current document was produced under (T657); the
-    staleness condition that reads it is T657a's, not this function's.
+    `identity_digest` records which identity the current document was produced under (T657);
+    `_is_stale` compares it with the identity an analysis would carry now (T657a).
 
     Everything is read back from `document`, the object just written, so the row cannot name a
     parser the object does not. `engine_deps` is the same record the document carries (FR-044,
@@ -416,11 +446,7 @@ async def run_once(
             )
             return
     elif existing.state is MatchAnalysisState.PUBLISHED:
-        stale = (
-            existing.parser_name != extractor.engine_name
-            or existing.parser_version != extractor.engine_version
-        )
-        if not stale:
+        if not await _is_stale(existing, extractor=extractor, object_store=object_store):
             return  # SC-006: serve the stored result, fetching and parsing nothing again.
         await _recompute(
             session_factory,

@@ -51,16 +51,20 @@ assumption above was wrong to make.
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
+import json
 import uuid
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from aoe2stats_core.replay.events import CanonicalEvent
+from aoe2stats_analyzer import extract
+from aoe2stats_core.replay.events import CanonicalEvent, EventKind, MatchStartedPayload
 from aoe2stats_core.replay.validation import EngineParseError
 from aoe2stats_providers.base import NotFound, ReplayBlob
 from aoe2stats_storage.models import (
@@ -993,10 +997,10 @@ async def _publish_then_recompute_under(
     """Publish once under `_ENGINE_VERSION_1`, then run again under `second_engine_version`.
 
     Returns the store, the row and the object bytes after the first publish, and the row after
-    the second run. `mark_row_stale` rewinds the row's recorded parser version so the staleness
-    branch fires even when the second extractor reports the same version as the first: that is
-    the only way to reach "same identity, recomputed" through `run_once` today (T657a widens the
-    condition; this task does not).
+    the second run. `mark_row_stale` rewinds the row's recorded identity digest so the staleness
+    branch fires even when the second extractor carries the same identity as the first: that is
+    the only way to reach "same identity, recomputed" through `run_once` (T657a's condition
+    compares digests, so an unchanged identity is otherwise fresh and never recomputes).
     """
     from aoe2stats_analyzer.run import run_once
 
@@ -1033,7 +1037,7 @@ async def _publish_then_recompute_under(
         async with session_scope(session_factory) as session:
             row = await session.get(MatchAnalysis, game_id)
             assert row is not None
-            row.parser_version = "0.0.0"
+            row.identity_digest = "0" * 64
 
     await run_once(
         game_id,
@@ -1119,3 +1123,259 @@ async def test_recomputing_the_same_identity_writes_the_same_key_and_no_second_o
     assert second.result_key == first.result_key
     assert second.identity_digest == first.identity_digest
     assert _analysis_keys(store) == [first.result_key]
+
+
+# --- FR-042 / T657a: staleness compares the identity digest, not the parser alone ----------------
+
+#: A build the packaged knowledge base holds a promoted snapshot for
+#: (`packages/knowledge/snapshots`), so the document's `knowledge` component names a snapshot
+#: instead of the absence record.
+_SNAPSHOT_BUILD = 180059
+
+
+class _BuildNamingExtractor(_FakeExtractor):
+    """`_FakeExtractor` whose stream names a build: the knowledge component of the identity is a
+    function of the recording's build, so a test about the knowledge version needs one."""
+
+    def events(self, zip_bytes: bytes) -> Iterator[CanonicalEvent]:
+        return iter(
+            (
+                CanonicalEvent(
+                    clock_ms=0,
+                    kind=EventKind.MATCH_STARTED,
+                    payload=MatchStartedPayload(build=_SNAPSHOT_BUILD, map_name=None),
+                ),
+            )
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class _Published:
+    game_id: int
+    requester: uuid.UUID
+    profile_id: int
+    store: _FakeObjectStore
+    row: MatchAnalysis
+    key: str
+    body: bytes
+
+
+async def _publish_once(
+    session_factory: async_sessionmaker[AsyncSession], *, game_id: int
+) -> _Published:
+    """One ordinary first analysis under `_ENGINE_VERSION_1`, naming a build that has a snapshot."""
+    from aoe2stats_analyzer.run import run_once
+
+    profile_a, profile_b = game_id + 1, game_id + 2
+    await _seed_match(
+        session_factory,
+        game_id=game_id,
+        completed_at=datetime.now(UTC) - timedelta(days=1),
+        profile_ids=[profile_a, profile_b],
+    )
+    requester = await _seed_user(session_factory)
+    store = _FakeObjectStore()
+    await run_once(
+        game_id,
+        _BUDGET_SECONDS,
+        requester,
+        session_factory=session_factory,
+        replay_provider=_FakeReplayProvider(
+            ReplayBlob(content=b"raw bytes", filename="r.zip", content_type="application/zip"),
+            max_calls=1,
+        ),
+        extractor=_BuildNamingExtractor(point_of_view_profile_id=profile_a, max_calls=1),
+        object_store=store,
+    )
+    row = await _get_analysis(session_factory, game_id)
+    assert row is not None
+    assert row.identity_digest is not None
+    assert row.result_key is not None
+    return _Published(
+        game_id=game_id,
+        requester=requester,
+        profile_id=profile_a,
+        store=store,
+        row=row,
+        key=row.result_key,
+        body=store.objects[row.result_key],
+    )
+
+
+async def _ask_again(
+    session_factory: async_sessionmaker[AsyncSession],
+    published: _Published,
+    *,
+    engine_version: str = _ENGINE_VERSION_1,
+    max_calls: int,
+) -> _BuildNamingExtractor:
+    """Open the same match again, the source forbidden, and return the extractor to read its calls.
+    `max_calls` is the canary: 0 where nothing may be parsed, 1 where exactly one recompute may."""
+    from aoe2stats_analyzer.run import run_once
+
+    extractor = _BuildNamingExtractor(
+        point_of_view_profile_id=published.profile_id,
+        engine_version=engine_version,
+        max_calls=max_calls,
+    )
+    await run_once(
+        published.game_id,
+        _BUDGET_SECONDS,
+        published.requester,
+        session_factory=session_factory,
+        replay_provider=_RefusingReplayProvider(),
+        extractor=extractor,
+        object_store=published.store,
+    )
+    return extractor
+
+
+async def _assert_recomputed_to_a_new_key(
+    session_factory: async_sessionmaker[AsyncSession],
+    published: _Published,
+    extractor: _BuildNamingExtractor,
+) -> MatchAnalysis:
+    """A changed identity writes a new object, the row names it, and the old one is untouched."""
+    assert len(extractor.calls) == 1, "a changed identity must recompute from the retained bytes"
+    after = await _get_analysis(session_factory, published.game_id)
+    assert after is not None
+    assert after.state == MatchAnalysisState.PUBLISHED
+    assert after.identity_digest != published.row.identity_digest
+    assert after.result_key is not None
+    assert after.result_key != published.key
+    assert after.result_key == f"analyses/{published.game_id}/{after.identity_digest}.json"
+    assert _analysis_keys(published.store) == sorted([published.key, after.result_key])
+    assert published.store.objects[published.key] == published.body
+    assert published.store.put_calls.count(published.key) == 1
+    return after
+
+
+async def test_a_new_knowledge_snapshot_for_the_same_build_triggers_a_recompute_and_a_new_key(
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """FR-042: the parser is unchanged, the recording is unchanged, the build is unchanged - only
+    the snapshot that answers for the build is a different one. The parser-only condition returned
+    early here and the new knowledge never produced a new analysis."""
+    published = await _publish_once(session_factory, game_id=500_657_001)
+    real_snapshot_for = extract.snapshot_for
+
+    def refreshed(build: int) -> object:
+        resolved = real_snapshot_for(build)
+        assert isinstance(resolved, extract.Snapshot)
+        identity = dataclasses.replace(
+            resolved.identity,
+            source_version=f"{resolved.identity.source_version}-refresh",
+            digest="sha256:" + "ab" * 32,
+        )
+        return dataclasses.replace(resolved, identity=identity)
+
+    monkeypatch.setattr(extract, "snapshot_for", refreshed)
+
+    extractor = await _ask_again(session_factory, published, max_calls=1)
+
+    after = await _assert_recomputed_to_a_new_key(session_factory, published, extractor)
+    knowledge = json.loads(published.store.objects[after.result_key or ""])["identity"]["knowledge"]
+    assert knowledge["digest"] == "sha256:" + "ab" * 32
+    assert after.parser_version == published.row.parser_version
+
+
+async def test_a_new_analytics_version_triggers_a_recompute_and_a_new_key(
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """FR-042: analytics is a real version, so a banding or coverage change recomputes."""
+    published = await _publish_once(session_factory, game_id=500_657_002)
+    monkeypatch.setattr(extract, "ANALYTICS_VERSION", f"{extract.ANALYTICS_VERSION}+next")
+
+    extractor = await _ask_again(session_factory, published, max_calls=1)
+
+    await _assert_recomputed_to_a_new_key(session_factory, published, extractor)
+
+
+async def test_a_new_parser_version_still_triggers_a_recompute_and_a_new_key(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """The case the old condition already handled, through the digest path: the row now carries a
+    digest, and the parser version is one of the identity's components."""
+    published = await _publish_once(session_factory, game_id=500_657_003)
+
+    extractor = await _ask_again(
+        session_factory, published, engine_version=_ENGINE_VERSION_2, max_calls=1
+    )
+
+    after = await _assert_recomputed_to_a_new_key(session_factory, published, extractor)
+    assert after.parser_version == _ENGINE_VERSION_2
+
+
+async def test_an_unchanged_identity_is_fresh_and_never_puts_a_key_twice(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """The contrast, and `contracts/analysis-document.md`'s "a key, once written, is never written
+    again": the same identity is served as it is. The extractor's canary allows no call at all, and
+    the store records exactly the one put the first analysis made - no exists-check on the store is
+    needed, because a fresh row never reaches the write."""
+    published = await _publish_once(session_factory, game_id=500_657_004)
+    puts_after_first_analysis = list(published.store.put_calls)
+
+    for _ in range(2):
+        extractor = await _ask_again(session_factory, published, max_calls=0)
+        assert extractor.calls == []
+
+    after = await _get_analysis(session_factory, published.game_id)
+    assert after is not None
+    assert after.result_key == published.key
+    assert after.identity_digest == published.row.identity_digest
+    assert published.store.put_calls == puts_after_first_analysis
+    assert _analysis_keys(published.store) == [published.key]
+
+
+async def test_a_row_published_before_the_digest_existed_recomputes_once_then_is_fresh(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """A NULL `identity_digest` reads as stale - the intended outcome for a legacy row, whose
+    parser version matches the running engine, so the old condition left it alone for good. The
+    next call, with the same identity, is fresh: one recompute, not one per request."""
+    published = await _publish_once(session_factory, game_id=500_657_005)
+    legacy_key = f"analyses/{published.game_id}.json"
+    async with session_scope(session_factory) as session:
+        row = await session.get(MatchAnalysis, published.game_id)
+        assert row is not None
+        row.identity_digest = None
+        row.result_key = legacy_key
+    published.store.objects[legacy_key] = b"{}"
+
+    recomputed = await _ask_again(session_factory, published, max_calls=1)
+
+    assert len(recomputed.calls) == 1
+    after = await _get_analysis(session_factory, published.game_id)
+    assert after is not None
+    assert after.identity_digest == published.row.identity_digest
+    assert after.result_key == published.key
+    assert published.store.objects[legacy_key] == b"{}"
+
+    puts_after_recompute = list(published.store.put_calls)
+    again = await _ask_again(session_factory, published, max_calls=0)
+    assert again.calls == []
+    assert published.store.put_calls == puts_after_recompute
+
+
+async def test_a_stored_document_that_cannot_be_read_as_an_identity_is_stale(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """The current digest is read through the stored document's own identity block; one that is not
+    readable cannot confirm freshness, and recomputing replaces it with one that is."""
+    published = await _publish_once(session_factory, game_id=500_657_006)
+    published.store.objects[published.key] = b"not json"
+
+    extractor = await _ask_again(session_factory, published, max_calls=1)
+
+    assert len(extractor.calls) == 1
+    after = await _get_analysis(session_factory, published.game_id)
+    assert after is not None
+    assert after.result_key == published.key
+    assert json.loads(published.store.objects[published.key])["identity"]["digest"] == (
+        published.row.identity_digest
+    )

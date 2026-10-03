@@ -46,7 +46,12 @@ from datetime import datetime
 from typing import Any, cast
 
 from aoe2stats_core.replay.analysis import AnalysisExtractor, MatchTimeline, ReplayExtractor
-from aoe2stats_core.replay.events import CanonicalEvent, EventKind, MatchStartedPayload
+from aoe2stats_core.replay.events import (
+    CanonicalEvent,
+    CanonicalEventSource,
+    EventKind,
+    MatchStartedPayload,
+)
 from aoe2stats_core.truth.identity import AnalysisIdentity
 from aoe2stats_core.truth.placement import (
     InferredInstances,
@@ -126,6 +131,7 @@ __all__ = [
     "DocumentInvalid",
     "TierPlacementError",
     "build_document",
+    "current_identity_digest",
     "extract_timeline",
     "published_document",
     "validate_document",
@@ -293,6 +299,21 @@ def _knowledge_identity(build: int | None, gaps: Sequence[KnowledgeGap]) -> dict
     """The snapshot the analysis names, or the explicit record that none matched (FR-027)."""
     resolved = snapshot_for(build) if build is not None else None
     if isinstance(resolved, Snapshot):
+        return _knowledge_record(resolved)
+    # The coverage pass reports exactly one whole-build gap when no snapshot can answer, and it is
+    # the one that carries the build (`-1` where the stream named none).
+    whole_build = next((gap for gap in gaps if gap.cause == "no-snapshot-for-build"), None)
+    if whole_build is None:  # pragma: no cover - coverage() always emits it in this case
+        raise RuntimeError("no snapshot resolved and the coverage pass reported no gap for it")
+    return _knowledge_record(whole_build)
+
+
+def _knowledge_record(resolved: Snapshot | KnowledgeGap) -> dict[str, Any]:
+    """The identity's `knowledge` component for one resolution of a build: the snapshot's own
+    four-field identity, or the explicit absence record. The one place its shape is written, so the
+    document `build_document` publishes and the digest `current_identity_digest` recomputes cannot
+    disagree about it."""
+    if isinstance(resolved, Snapshot):
         identity = resolved.identity
         return {
             "source": identity.source,
@@ -300,12 +321,42 @@ def _knowledge_identity(build: int | None, gaps: Sequence[KnowledgeGap]) -> dict
             "describes_build": identity.describes_build,
             "digest": identity.digest,
         }
-    # The coverage pass reports exactly one whole-build gap when no snapshot can answer, and it is
-    # the one that carries the build (`-1` where the stream named none).
-    whole_build = next((gap for gap in gaps if gap.cause == "no-snapshot-for-build"), None)
-    if whole_build is None:  # pragma: no cover - coverage() always emits it in this case
-        raise RuntimeError("no snapshot resolved and the coverage pass reported no gap for it")
-    return {"absent": whole_build.cause, "build": whole_build.build}
+    return {"absent": resolved.cause, "build": resolved.build}
+
+
+def current_identity_digest(
+    extractor: CanonicalEventSource, stored_document: Mapping[str, Any]
+) -> str:
+    """The digest this analysis would carry if it were produced **now**, without parsing anything
+    (FR-042, T657a).
+
+    The staleness test needs it on every request for a published match, where parsing again is
+    exactly what SC-006 forbids. Five of the six identity components are known without the
+    recording: the retained recording (immutable once written, so the stored document's own record
+    of it is the current one), the parser name, version and dependencies (attributes of the
+    running extractor), the analytics version (a constant of this module) and the reconstruction
+    marker. The sixth, the knowledge snapshot, depends on the recording's **build**, which only the
+    recording names (`match-started`) and which no column of 003's tables holds. The stored
+    document already carries it — in its `knowledge` component, as `describes_build` or, for an
+    absent snapshot, `build` — and a recording's build cannot change, so the build is read from
+    there and resolved against the snapshots installed now. A knowledge refresh of that build
+    therefore changes the digest; a build gaining its first snapshot does too.
+
+    Raises `KeyError` or `TypeError` when `stored_document` has no readable identity block, which
+    the caller treats as stale, and `ValueError` when the running extractor's dependency record is
+    empty (FR-044), the same refusal `build_document` makes.
+    """
+    stored = stored_document["identity"]
+    knowledge = stored["knowledge"]
+    build = knowledge["describes_build"] if "describes_build" in knowledge else knowledge["build"]
+    return AnalysisIdentity(
+        recording=stored["recording"],
+        parser_name=extractor.engine_name,
+        parser_version=extractor.engine_version,
+        parser_dependencies=extractor.engine_dependencies,
+        knowledge=_knowledge_record(snapshot_for(build)),
+        analytics=ANALYTICS_VERSION,
+    ).digest
 
 
 def _gap_record(gap: KnowledgeGap) -> dict[str, Any]:

@@ -1273,7 +1273,7 @@ after everything underneath it moves.
       patch, knowledge version or analytics version must produce a **new** analysis and rewrite
       nothing. `match_analyses` keeps its primary key: that key is 003's double-click dedupe and is
       not this feature's to change (**FR-048** — where this feature and 003 meet, 003 stands)
-- [ ] T657a [US6] Extend the staleness test in `apps/analyzer/src/aoe2stats_analyzer/run.py` so a
+- [x] T657a [US6] Extend the staleness test in `apps/analyzer/src/aoe2stats_analyzer/run.py` so a
       recompute is actually triggered (**FR-042**). Today a published row is stale only when the
       parser's name or version differs, so a new knowledge or analytics version returns early and
       never recomputes — the identity-addressed key in T657 would then preserve analyses that are

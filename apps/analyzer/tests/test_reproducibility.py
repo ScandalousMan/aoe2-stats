@@ -625,7 +625,6 @@ async def test_the_newer_snapshot_is_not_substituted_when_reproducing_an_older_i
     assert reproduced["identity"]["knowledge"] != second_knowledge
 
 
-@_SC005
 async def test_the_previous_version_remains_available_after_a_recompute_under_a_new_snapshot(
     session_factory: async_sessionmaker[AsyncSession],
     clean_database: None,
@@ -648,7 +647,6 @@ async def test_the_previous_version_remains_available_after_a_recompute_under_a_
     assert flow.first.row_identity_digest == flow.first.identity["digest"]
 
 
-@_SC005
 async def test_each_object_key_carries_its_own_identity_digest(
     session_factory: async_sessionmaker[AsyncSession],
     clean_database: None,
