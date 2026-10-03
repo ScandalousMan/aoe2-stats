@@ -259,8 +259,10 @@ jobs:
       # `zero`/`zero-despite-clip` (no signal at all), `clip-fixes`/`clipped-still-under-threshold`
       # (a signal too small to survive the comparator, clipped or not) and `state-not-reproduced`
       # (the sweep could not even confirm the state frame it measured) all fail, every story named,
-      # no allowlist. So do a story file it cannot key, a state story it cannot measure, and a
-      # measurable story that comes back unclassified (review of #105, M1/N3).
+      # no allowlist. So do a story file it cannot key, a state story it cannot measure, a
+      # measurable story that comes back unclassified (review of #105, M1/N3), an indexed story the
+      # source parse does not produce, a state story the index does not list, a story file on disk
+      # the index has no story for, and a missing or unusable index (T679).
       # Every state story renders twice more here (its own rest, alongside itself) —
       # unscoped on purpose, never `pr.yml`'s diff-scoped `visual` job. Its own job rather than a
       # step of `visual-full` (review of #105, M3): as `visual-full`'s first step, a sweep failure or
