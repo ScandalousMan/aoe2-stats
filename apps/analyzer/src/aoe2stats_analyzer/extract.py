@@ -29,8 +29,12 @@ version, because the web reader requires it there.
   invite being read as "nothing was lost", which no recording can say.
 - `knowledge_gaps` (FR-035 to FR-037): the coverage pass's output, verbatim.
 
-**Validation is not run here.** `validate_document` is the one gate, but running it before the
-object is written is T656's. **Canonical serialisation is not here either** (T659).
+**Where a value may be written is structural, not checked afterwards (FR-011, T656).** A datum at
+an ordinary document path passes `aoe2stats_core.truth.placement.require_outside_inferred` when
+its provenance entry is written, which refuses inferred and predicted; the `inferred` block is
+produced only by `placement.inferred_block` from `InferredInstances`, which refuses a stronger
+tier, a missing confidence and a dropped non-claim. `validate_document` is the second lock, run by
+`run.py` before the object is written. **Canonical serialisation is not here** (T659).
 """
 
 from __future__ import annotations
@@ -44,10 +48,17 @@ from typing import Any, cast
 from aoe2stats_core.replay.analysis import AnalysisExtractor, MatchTimeline, ReplayExtractor
 from aoe2stats_core.replay.events import CanonicalEvent, EventKind, MatchStartedPayload
 from aoe2stats_core.truth.identity import AnalysisIdentity
+from aoe2stats_core.truth.placement import (
+    InferredInstances,
+    TierPlacementError,
+    inferred_block,
+    require_outside_inferred,
+)
 from aoe2stats_core.truth.provenance import Method
 from aoe2stats_core.truth.register import REGISTER
+from aoe2stats_core.truth.register import Entry as RegisterEntry
+from aoe2stats_core.truth.validate import DocumentInvalid, validate
 from aoe2stats_core.truth.validate import Entry as ValidatorEntry
-from aoe2stats_core.truth.validate import validate
 from aoe2stats_knowledge.coverage import coverage
 from aoe2stats_knowledge.gaps import KnowledgeGap
 from aoe2stats_knowledge.snapshot import Snapshot, snapshot_for
@@ -76,12 +87,12 @@ ANALYTICS_VERSION = (
 )
 
 #: The top-level keys that are not register data, exactly the validator's own exempt set
-#: (`aoe2stats_core.truth.validate._EXEMPT`) plus the block it reads separately: the wall-clock set,
-#: the format version and the blocks that describe the document rather than carry values. Presence
-#: here has to agree with the validator's, or rule 2 would reject the provenance written below.
+#: (`aoe2stats_core.truth.validate._EXEMPT`) plus the block it reads separately: the wall-clock set
+#: and the blocks that describe the document rather than carry values. Presence here has to agree
+#: with the validator's, or rule 2 would reject the provenance written below. `schema_version` is
+#: register data (`document.schema_version`) and carries its provenance entry (FR-007).
 _NOT_REGISTER_DATA = frozenset(
     {
-        "schema_version",
         "envelope",
         "extracted_at",
         "identity",
@@ -96,6 +107,7 @@ _NOT_REGISTER_DATA = frozenset(
 #: method is exactly what FR-009 forbids, so a datum the register publishes without a method here
 #: fails loudly at build time instead of being labelled by default.
 _METHODS: tuple[tuple[str, Method], ...] = (
+    ("document.", Method("analyzer-constant.write", "1")),
     ("match.", Method("request.copy", "1")),
     ("source_recording.", Method("retention-record.copy", "1")),
     ("engine.", Method("distribution-metadata.read", "1")),
@@ -105,9 +117,14 @@ _METHODS: tuple[tuple[str, Method], ...] = (
     ("participant.", Method("timeline.fold", "1")),
 )
 
+# `DocumentInvalid` and `TierPlacementError` are re-exported for `run.py`: the request path may not
+# import `aoe2stats_core.truth` itself (FR-049, the 006 boundaries architecture test), and reaches
+# the truth types only through this module.
 __all__ = [
     "ANALYTICS_VERSION",
     "SCHEMA_VERSION",
+    "DocumentInvalid",
+    "TierPlacementError",
     "build_document",
     "extract_timeline",
     "published_document",
@@ -310,31 +327,39 @@ def _gap_record(gap: KnowledgeGap) -> dict[str, Any]:
 def _inferred_block(episodes: Sequence[GroupSilenceEpisode]) -> dict[str, Any]:
     """The `inferred` block (FR-010, FR-011): the only place a value at that tier is written.
 
-    Field names say what was measured. `from_ms` is the match-clock time of the group's last
-    command and `until_ms` where the silence stopped being observed; `units` is how many unit
-    objects were named together — a size of the group, never a count of anything lost. Each
-    instance carries its confidence and the register's non-claim (FR-013).
+    Built through `placement.inferred_block`, whose carrier refuses an instance without a
+    confidence or without the non-claim its provenance names, and refuses a provenance stronger
+    than inferred. Field names say what was measured. `from_ms` is the match-clock time of the
+    group's last command and `until_ms` where the silence stopped being observed; `units` is how
+    many unit objects were named together — a size of the group, never a count of anything lost.
     """
     if not episodes:
         return {}
-    return {
-        _SILENCE_DATUM: [
-            {
-                "participant": episode.participant,
-                "from_ms": episode.last_commanded_at_ms,
-                "until_ms": episode.silence_ends_at_ms,
-                "units": len(episode.unit_objects),
-                "unit_objects": list(episode.unit_objects),
-                "commanded_together": episode.occurrences,
-                "confidence": {
-                    "level": episode.confidence.level.value,
-                    "basis": episode.confidence.basis,
-                },
-                "non_claim": episode.non_claim,
-            }
-            for episode in episodes
-        ]
-    }
+    return dict(
+        inferred_block(
+            [
+                InferredInstances(
+                    provenance=episodes[0].provenance,
+                    instances=tuple(
+                        {
+                            "participant": episode.participant,
+                            "from_ms": episode.last_commanded_at_ms,
+                            "until_ms": episode.silence_ends_at_ms,
+                            "units": len(episode.unit_objects),
+                            "unit_objects": list(episode.unit_objects),
+                            "commanded_together": episode.occurrences,
+                            "confidence": {
+                                "level": episode.confidence.level.value,
+                                "basis": episode.confidence.basis,
+                            },
+                            "non_claim": episode.non_claim,
+                        }
+                        for episode in episodes
+                    ),
+                )
+            ]
+        )
+    )
 
 
 def _method_for(datum_id: str) -> str:
@@ -375,14 +400,16 @@ def _present(path: str, leaves: frozenset[str]) -> bool:
 
 
 def _provenance(
-    document: Mapping[str, Any], episodes: Sequence[GroupSilenceEpisode]
+    document: Mapping[str, Any],
+    episodes: Sequence[GroupSilenceEpisode],
+    register: Iterable[RegisterEntry] = REGISTER,
 ) -> dict[str, Any]:
     """FR-007, FR-009: the tier and method of every published datum the document carries.
 
     The tier is read from the register — nothing here can assert a stronger one (FR-008) — and
-    `inputs` are the register's own `depends_on`. `schema_version` is a register datum the
-    validator exempts from presence, so it is outside `leaves` and carries no entry — a provenance
-    key for it would be reported as "not in the document" (rule 2).
+    `inputs` are the register's own `depends_on`. A datum the register publishes at an ordinary
+    path at inferred or predicted is refused here (FR-011): such a datum has no path, it lives under
+    `inferred`.
     """
     leaves = frozenset(
         leaf
@@ -391,9 +418,10 @@ def _provenance(
         for leaf in _leaf_paths(value, str(key))
     )
     provenance: dict[str, Any] = {}
-    for entry in REGISTER:
+    for entry in register:
         if entry.status != "published" or entry.path is None or entry.tier is None:
             continue
+        require_outside_inferred(entry.id, entry.tier)
         if _present(entry.path, leaves):
             provenance[entry.id] = {
                 "tier": entry.tier.value,

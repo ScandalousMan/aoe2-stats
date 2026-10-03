@@ -17,7 +17,10 @@ API chosen here, which T619 must implement in ``aoe2stats_core.truth.validate``:
   ``digest`` itself; rule 10 compares ``identity["digest"]`` against it.
 - Leaves outside rule 1 are the wall-clock set (``envelope``, ``extracted_at``) and the blocks
   ``identity``, ``provenance``, ``knowledge_gaps``; the ``inferred`` block is checked per rules
-  5 to 7 instead, its instances being keyed by datum id.
+  5 to 7 instead, its instances being keyed by datum id. ``schema_version`` is not outside rule 1:
+  it is a published datum and carries a provenance entry like any other (FR-007).
+- A register path ending ``.*`` covers every leaf strictly beneath its prefix (T656); an exact
+  path is exact.
 """
 
 from __future__ import annotations
@@ -42,6 +45,7 @@ class Entry:
 
 def _register() -> dict[str, Entry]:
     return {
+        "document.schema_version": Entry("schema_version", Tier.OBSERVED),
         "match.game_id": Entry("game_id", Tier.OBSERVED),
         "participant.civ_id": Entry("participants[].civ_id", Tier.OBSERVED),
         "participant.age_up_commands": Entry("participants[].age_up_commands[]", Tier.OBSERVED),
@@ -91,6 +95,7 @@ def _good() -> dict[str, Any]:
         ],
         "identity": _identity(),
         "provenance": {
+            "document.schema_version": _prov("observed"),
             "match.game_id": _prov("observed"),
             "participant.civ_id": _prov("observed"),
             "participant.age_up_commands": _prov("observed"),
@@ -130,6 +135,12 @@ def test_a_conforming_document_is_accepted() -> None:
     from aoe2stats_core.truth.validate import validate
 
     validate(_good(), _register())
+
+
+def test_the_schema_version_is_a_published_datum_and_owes_a_provenance_entry() -> None:
+    doc = _good()
+    del doc["provenance"]["document.schema_version"]
+    _rejected(doc, 2)
 
 
 def test_the_wall_clock_set_is_exempt_from_the_register() -> None:
@@ -441,3 +452,123 @@ def test_a_datum_with_no_declared_non_claim_needs_none() -> None:
         {"confidence": {"level": "high", "basis": "b"}, "value": "x"}
     ]
     validate(doc, register)
+
+
+# Wildcard paths (T656): the register publishes `engine.deps.*` and
+# `participants[].age_up_commands.*` for mappings whose keys are data. A `.*` path covers any leaf
+# strictly beneath its prefix; an exact path stays exact.
+
+
+def _wild_register() -> dict[str, Entry]:
+    register = _register()
+    register["engine.dependencies"] = Entry("engine.deps.*", Tier.OBSERVED)
+    register["participant.age_up_commands_by_age"] = Entry(
+        "participants[].age_up_commands_by_age.*", Tier.OBSERVED
+    )
+    return register
+
+
+def _wild_good() -> dict[str, Any]:
+    doc = _good()
+    doc["engine"] = {"deps": {"aoe2rec-py": "1.0", "zope.interface": "7.0"}}
+    doc["participants"][0]["age_up_commands_by_age"] = {"2": 100, "3": 200}
+    doc["provenance"]["engine.dependencies"] = _prov("observed")
+    doc["provenance"]["participant.age_up_commands_by_age"] = _prov("observed")
+    return doc
+
+
+def _wild_rejected(doc: dict[str, Any], *rules: int, exact: bool = True) -> str:
+    from aoe2stats_core.truth.validate import DocumentInvalid, validate
+
+    with pytest.raises(DocumentInvalid) as info:
+        validate(doc, _wild_register())
+    if exact:
+        assert info.value.rules == frozenset(rules)
+    else:
+        assert set(rules) <= info.value.rules
+    return str(info.value)
+
+
+def test_a_leaf_beneath_a_wildcard_path_is_accepted_and_the_datum_counts_as_present() -> None:
+    from aoe2stats_core.truth.validate import validate
+
+    validate(_wild_good(), _wild_register())  # keys with dots in them are still beneath the prefix
+
+    doc = _wild_good()
+    del doc["provenance"]["engine.dependencies"]
+    _wild_rejected(doc, 2)  # present, so its provenance entry is owed
+
+
+@pytest.mark.parametrize(
+    "where, leaf",
+    [
+        ("engine", "depsX"),  # a sibling that merely shares the prefix's characters
+        ("engine", "other"),  # a sibling under the same parent
+        ("participants[0]", "age_up_commands_by_ageX"),
+    ],
+)
+def test_a_leaf_at_a_sibling_of_a_wildcard_prefix_is_rejected(where: str, leaf: str) -> None:
+    doc = _wild_good()
+    target = doc["engine"] if where == "engine" else doc["participants"][0]
+    target[leaf] = {"foo": 1} if leaf == "depsX" else 1
+
+    message = _wild_rejected(doc, 1)
+
+    assert leaf in message
+
+
+def test_the_bare_prefix_does_not_satisfy_presence() -> None:
+    """``engine.deps`` empty has no leaf beneath the wildcard: nothing is present, so a provenance
+    entry for it names something not in the document (rule 2). The empty mapping itself is not a
+    rule 1 violation — it carries no value, like an empty list whose elements are described further
+    down — and the empty record is refused by rule 9 where it matters."""
+    doc = _wild_good()
+    doc["engine"]["deps"] = {}
+
+    message = _wild_rejected(doc, 2)
+    assert "engine.dependencies" in message
+
+    del doc["provenance"]["engine.dependencies"]
+    from aoe2stats_core.truth.validate import validate
+
+    validate(doc, _wild_register())
+
+
+def test_a_scalar_at_the_bare_prefix_is_rejected_not_taken_for_a_mapping() -> None:
+    doc = _wild_good()
+    doc["engine"]["deps"] = "1.0"
+
+    _wild_rejected(doc, 1, 2, exact=False)
+
+
+def test_an_exact_path_is_not_widened() -> None:
+    doc = _wild_good()
+    doc["game_id"] = {"nested": 7}
+    doc["participants"][0]["civ_id"] = {"nested": 3}
+
+    message = _wild_rejected(doc, 1, 2, exact=False)
+
+    assert "game_id.nested" in message
+    assert "participants[].civ_id.nested" in message
+
+
+def test_two_wildcards_covering_one_leaf_are_ambiguous() -> None:
+    register = _wild_register()
+    register["engine.dependencies_twin"] = Entry("engine.deps.*", Tier.OBSERVED)
+    from aoe2stats_core.truth.validate import DocumentInvalid, validate
+
+    with pytest.raises(DocumentInvalid) as info:
+        validate(_wild_good(), register)
+
+    assert 1 in info.value.rules
+
+
+def test_a_wildcard_does_not_resolve_planned_data() -> None:
+    register = _wild_register()
+    register["engine.dependencies"] = Entry("engine.deps.*", Tier.OBSERVED, "planned")
+    from aoe2stats_core.truth.validate import DocumentInvalid, validate
+
+    with pytest.raises(DocumentInvalid) as info:
+        validate(_wild_good(), register)
+
+    assert 1 in info.value.rules

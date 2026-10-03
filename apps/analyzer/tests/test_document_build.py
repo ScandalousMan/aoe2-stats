@@ -1,9 +1,10 @@
 """The version 2 document `build_document` publishes (T655, US3, FR-007 to FR-011, FR-040, FR-044).
 
 Built from the committed reference recording and the real adapter, so every assertion below is
-about what production would write. Validation is not exercised here beyond the one expected failure
-at the bottom: running it before the write is T656's, and the validator's own rules have their own
-suite (`packages/core/tests/test_validate.py`, `test_document_validation.py`).
+about what production would write. Validation is exercised here once, at the bottom: a real
+document must pass the real register (T656 runs it before the write in `run.py`), and the
+validator's own rules have their own suite (`packages/core/tests/test_validate.py`,
+`test_document_validation.py`).
 """
 
 from __future__ import annotations
@@ -284,8 +285,6 @@ def test_every_published_register_path_resolves_to_a_method() -> None:
     change that publishes it, instead of at an analysis (FR-009)."""
     for entry in REGISTER:
         if entry.status == "published" and entry.path is not None:
-            if entry.id.startswith("document."):
-                continue  # `schema_version` is exempt from the validator and carries no entry
             assert _method_for(entry.id)
 
 
@@ -392,13 +391,69 @@ def test_the_builder_never_loads_the_parser() -> None:
     assert completed.stdout.strip() == "ok"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "T656: the validator looks register paths up exactly, but the register publishes wildcard "
-        "paths (`engine.deps.*`, `participants[].age_up_commands.*`), and the group-silence entry "
-        "is still planned in the packaged register"
-    ),
-)
-def test_a_real_document_passes_the_real_register(document: dict[str, Any]) -> None:
+_RECORDINGS = sorted((_REPO_ROOT / "tests" / "fixtures" / "replays").glob("*.zip"))
+
+
+def test_the_recordings_are_found() -> None:
+    """A glob over a moved directory parametrises nothing and passes; refuse that."""
+    assert len(_RECORDINGS) >= 2, _RECORDINGS
+
+
+@pytest.mark.parametrize("recording", _RECORDINGS, ids=lambda path: path.stem)
+def test_a_real_document_passes_the_real_register(
+    recording: Path, extractor: Aoe2RecExtractor
+) -> None:
+    """Every committed recording, found by glob so a later one is covered automatically: `run.py`
+    fails an analysis terminally on `DocumentInvalid`, so a real recording the validator refuses
+    would be a permanently failed analysis in production. Covers both knowledge branches: a
+    recording with a snapshot, and one without (absent record plus a blocking gap)."""
+    document = build_document(
+        extractor,
+        recording.read_bytes(),
+        game_id=_GAME_ID,
+        object_key=_OBJECT_KEY,
+        zip_sha256=_SHA256,
+        extracted_at=_EXTRACTED_AT,
+    )
+
     validate_document(document)
+
+    if "absent" in document["identity"]["knowledge"]:
+        assert any(g["cause"] == "no-snapshot-for-build" for g in document["knowledge_gaps"])
+
+
+def test_a_real_recording_with_no_snapshot_for_its_build_passes_the_real_register(
+    extractor: Aoe2RecExtractor,
+) -> None:
+    """Neither committed recording takes the no-snapshot branch (both resolve a snapshot), so the
+    branch is forced by giving the real recording a build no snapshot describes: the absent
+    knowledge record and the one blocking whole-build gap must still validate (FR-027)."""
+    document = _build(_Wrapped(extractor, build=1))
+
+    assert document["identity"]["knowledge"] == {"absent": "no-snapshot-for-build", "build": 1}
+    assert [g["severity"] for g in document["knowledge_gaps"]] == ["blocking"]
+    validate_document(document)
+
+
+def test_a_register_that_publishes_a_conclusion_at_an_ordinary_path_is_refused_at_build(
+    document: dict[str, Any],
+) -> None:
+    """FR-011, the first lock: a datum at inferred or predicted that the register places at a
+    document path cannot get a provenance entry there, so no document is ever built that carries
+    it outside `inferred`."""
+    from dataclasses import replace
+
+    from aoe2stats_analyzer.extract import _provenance
+    from aoe2stats_core.truth.placement import TierPlacementError
+
+    stray = replace(
+        REGISTER["participant.civ_id"],
+        id="participant.coaching_note",
+        classification="inferred",
+        path="participants[].civ_id",
+        confidence_method="x",
+        non_claim="x",
+    )
+
+    with pytest.raises(TierPlacementError, match="only under inferred"):
+        _provenance(document, [], [*REGISTER, stray])

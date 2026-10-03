@@ -15,11 +15,12 @@ from aoe2stats_core.truth.tiers import Tier
 
 LEVELS = frozenset({"low", "medium", "high"})
 
-# Top-level keys that are not register data: the wall-clock set, the format version and the
-# blocks that describe the document rather than carry values.
-_EXEMPT = frozenset(
-    {"schema_version", "envelope", "extracted_at", "identity", "provenance", "knowledge_gaps"}
-)
+# Top-level keys that are not register data, exactly as the contract's rule 1 words them: the
+# wall-clock set and the blocks that describe the document rather than carry values.
+# ``schema_version`` is deliberately not here: the register publishes it as
+# ``document.schema_version``, so it resolves like any other datum and carries a provenance entry
+# (FR-007).
+_EXEMPT = frozenset({"envelope", "extracted_at", "identity", "provenance", "knowledge_gaps"})
 _INFERRED = "inferred"
 
 
@@ -47,20 +48,22 @@ class DocumentInvalid(ValueError):
         super().__init__("; ".join(f"rule {rule}: {text}" for rule, text in violations))
 
 
-def _leaves(node: Any, path: str) -> Iterator[str]:
-    """Yield the path of each leaf: dict keys joined by '.', every list index collapsed to '[]'."""
+def _leaves(node: Any, path: str) -> Iterator[tuple[str, bool]]:
+    """Yield each leaf as ``(path, empty_mapping)``: dict keys joined by '.', every list index
+    collapsed to '[]'. ``empty_mapping`` marks the leaf an empty dict leaves behind — a mapping
+    with no entry beneath it, which is not a value."""
     if isinstance(node, dict):
         if not node and path:
-            yield path
+            yield path, True
         for key, value in node.items():
             yield from _leaves(value, f"{path}.{key}" if path else str(key))
     elif isinstance(node, list):
         if not node:
-            yield f"{path}[]"
+            yield f"{path}[]", False
         for item in node:
             yield from _leaves(item, f"{path}[]")
     else:
-        yield path
+        yield path, False
 
 
 def _blank(value: object) -> bool:
@@ -74,18 +77,34 @@ def validate(document: Mapping[str, Any], register: Mapping[str, Entry]) -> None
     def fail(rule: int, text: str) -> None:
         found.append((rule, text))
 
+    # An exact path matches one leaf. A path ending ``.*`` is the register's wildcard for a mapping
+    # whose keys are data (``engine.deps.*``): it matches every leaf strictly beneath its prefix and
+    # nothing else, so ``engine.depsX.foo`` and the bare ``engine.deps`` are not covered.
     published_by_path: dict[str, list[str]] = {}
+    wildcards: list[tuple[str, str]] = []  # (prefix including the trailing '.', datum id)
     for reg_id, reg_entry in register.items():
         if reg_entry.status == "published" and reg_entry.path is not None:
-            published_by_path.setdefault(reg_entry.path, []).append(reg_id)
+            if reg_entry.path.endswith(".*"):
+                wildcards.append((reg_entry.path[:-1], reg_id))
+            else:
+                published_by_path.setdefault(reg_entry.path, []).append(reg_id)
+    wildcard_roots = {prefix[:-1] for prefix, _ in wildcards}
+
+    def resolve(leaf: str) -> list[str]:
+        covered = [
+            datum
+            for prefix, datum in wildcards
+            if leaf.startswith(prefix) and len(leaf) > len(prefix)
+        ]
+        return [*published_by_path.get(leaf, []), *covered]
 
     # Rule 1 and the set of data present outside ``inferred``.
     present: set[str] = set()
     for key, value in document.items():
         if key in _EXEMPT or key == _INFERRED:
             continue
-        for leaf in _leaves(value, str(key)):
-            matches = published_by_path.get(leaf, [])
+        for leaf, empty_mapping in _leaves(value, str(key)):
+            matches = resolve(leaf)
             if len(matches) == 1:
                 present.add(matches[0])
             elif not matches:
@@ -93,6 +112,8 @@ def validate(document: Mapping[str, Any], register: Mapping[str, Entry]) -> None
                     p.startswith(leaf + ".") or p.startswith(leaf + "[]") for p in published_by_path
                 ):
                     continue  # an empty list whose elements are described further down
+                if empty_mapping and leaf in wildcard_roots:
+                    continue  # an empty mapping whose entries the wildcard describes: no value
                 fail(1, f"leaf {leaf!r} resolves to no published register datum")
             else:
                 fail(1, f"leaf {leaf!r} resolves to several data: {sorted(matches)}")

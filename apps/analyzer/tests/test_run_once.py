@@ -631,6 +631,122 @@ async def test_an_unparsable_recording_fails_on_the_first_attempt_and_is_never_r
     assert len(extractor.calls) == 1
 
 
+# --- T656 / FR-011: a document that breaks the contract is not published -----------------------
+
+
+@dataclass(frozen=True, slots=True)
+class _ParticipantWithAStrayField(_FakeParticipantTimeline):
+    """A participant carrying a field the register does not publish — the shape of a conclusion
+    smuggled into the document. `dataclasses.asdict` carries it through by name, so the validator,
+    not the builder, is what has to refuse it (rule 1)."""
+
+    coaching_note: str = "player 1 should have walled earlier"
+
+
+class _ExtractorWritingAStrayField(_FakeExtractor):
+    def extract(self, zip_bytes: bytes) -> _FakeMatchTimeline:
+        timeline = super().extract(zip_bytes)
+        stray = _ParticipantWithAStrayField(
+            profile_id=1, player_number=1, civ_id=1, resolved_team_id=1
+        )
+        return _FakeMatchTimeline(
+            engine_name=timeline.engine_name,
+            engine_version=timeline.engine_version,
+            point_of_view_profile_id=timeline.point_of_view_profile_id,
+            world_time_ms=timeline.world_time_ms,
+            participants=(stray,),
+        )
+
+
+async def test_a_document_that_fails_validation_writes_no_object_and_the_row_fails(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """The failing document is not published: no analysis object is written, no row points at one,
+    and the analysis ends in 003's own `failed` state with the validator's message — which names the
+    rule — through the failure path a parse failure already uses (FR-036), never retried."""
+    from aoe2stats_analyzer.run import run_once
+
+    game_id = 500_546_461
+    profile_a, profile_b = 300_031, 300_032
+    await _seed_match(
+        session_factory,
+        game_id=game_id,
+        completed_at=datetime.now(UTC) - timedelta(days=1),
+        profile_ids=[profile_a, profile_b],
+    )
+    requester = await _seed_user(session_factory)
+    provider = _FakeReplayProvider(
+        ReplayBlob(content=b"raw bytes", filename="r.zip", content_type="application/zip"),
+        max_calls=1,
+    )
+    extractor = _ExtractorWritingAStrayField(point_of_view_profile_id=profile_a, max_calls=1)
+    store = _FakeObjectStore()
+
+    for _ in range(2):  # the second request meets a terminal row and does nothing
+        await run_once(
+            game_id,
+            _BUDGET_SECONDS,
+            requester,
+            session_factory=session_factory,
+            replay_provider=provider,
+            extractor=extractor,
+            object_store=store,
+        )
+
+    analysis = await _get_analysis(session_factory, game_id)
+    assert analysis is not None
+    assert analysis.state == MatchAnalysisState.FAILED
+    assert analysis.result_key is None
+    assert analysis.error_class == "DocumentInvalid"
+    assert analysis.error_message is not None
+    assert "rule 1" in analysis.error_message
+    assert "participants[].coaching_note" in analysis.error_message
+    assert not [key for key in store.objects if key.startswith("analyses/")]
+    assert len(extractor.calls) == 1
+
+
+async def test_a_document_that_passes_validation_is_written_and_the_row_points_at_it(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """The contrast: the same flow, with nothing stray in the document."""
+    import json
+
+    from aoe2stats_analyzer.extract import validate_document
+    from aoe2stats_analyzer.run import run_once
+
+    game_id = 500_546_462
+    profile_a, profile_b = 300_033, 300_034
+    await _seed_match(
+        session_factory,
+        game_id=game_id,
+        completed_at=datetime.now(UTC) - timedelta(days=1),
+        profile_ids=[profile_a, profile_b],
+    )
+    requester = await _seed_user(session_factory)
+    provider = _FakeReplayProvider(
+        ReplayBlob(content=b"raw bytes", filename="r.zip", content_type="application/zip")
+    )
+    extractor = _FakeExtractor(point_of_view_profile_id=profile_a)
+    store = _FakeObjectStore()
+
+    await run_once(
+        game_id,
+        _BUDGET_SECONDS,
+        requester,
+        session_factory=session_factory,
+        replay_provider=provider,
+        extractor=extractor,
+        object_store=store,
+    )
+
+    analysis = await _get_analysis(session_factory, game_id)
+    assert analysis is not None
+    assert analysis.state == MatchAnalysisState.PUBLISHED
+    assert analysis.error_class is None
+    assert analysis.result_key is not None
+    validate_document(json.loads(store.objects[analysis.result_key]))
+
+
 # --- Scenario 8.5 / FR-034 -----------------------------------------------------------------------
 
 

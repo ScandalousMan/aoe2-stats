@@ -41,11 +41,6 @@ import pytest
 from aoe2stats_core.truth.tiers import Tier
 from aoe2stats_core.truth.validate import identity_digest
 
-# T655 defined `validate_document`, so every case that injects its own register passes. The one
-# left needs the *packaged* register to publish `participant.group_silence_episodes`, which T656
-# promotes (and T656 wires the validator before the write): remove this marker with that change.
-_PENDING = pytest.mark.xfail(strict=True, reason="T656 promotes the datum in the packaged register")
-
 
 @dataclass(frozen=True)
 class Entry:
@@ -60,6 +55,7 @@ class Entry:
 
 def _register(*, silence_status: str = "published") -> dict[str, Entry]:
     return {
+        "document.schema_version": Entry("schema_version", Tier.OBSERVED),
         "participant.civ_id": Entry("participants[].civ_id", Tier.OBSERVED),
         "participant.army_cost": Entry(
             "participants[].army_cost", Tier.DERIVED, requires_knowledge=("unit.cost",)
@@ -98,6 +94,7 @@ def _document() -> dict[str, Any]:
         "participants": [{"civ_id": 3, "army_cost": 120}],
         "identity": _identity(),
         "provenance": {
+            "document.schema_version": {"tier": "observed", "method": "write@1", "inputs": []},
             "participant.civ_id": {"tier": "observed", "method": "decode@1", "inputs": []},
             "participant.army_cost": {
                 "tier": "derived",
@@ -246,19 +243,22 @@ def test_an_inferred_datum_whose_register_status_is_not_published_is_rejected() 
     assert "not a published register datum" in str(error)
 
 
-@_PENDING
 def test_the_packaged_register_publishes_the_one_inferred_datum_this_feature_ships() -> None:
-    """Against the real register, not an injected one: until T656 promotes the entry from planned
-    to published, no document carrying ``participant.group_silence_episodes`` can pass."""
+    """Against the real register, not an injected one: the entry is published (T656), so a document
+    carrying ``participant.group_silence_episodes`` passes, and ``schema_version`` — a published
+    datum — owes its provenance entry like any other (FR-007)."""
     from aoe2stats_analyzer.extract import validate_document
 
     document = {
         "schema_version": 2,
         "identity": _identity(),
         "provenance": {
+            "document.schema_version": copy.deepcopy(
+                _document()["provenance"]["document.schema_version"]
+            ),
             "participant.group_silence_episodes": copy.deepcopy(
                 _document()["provenance"]["participant.group_silence_episodes"]
-            )
+            ),
         },
         "inferred": copy.deepcopy(_document()["inferred"]),
         "knowledge_gaps": [],

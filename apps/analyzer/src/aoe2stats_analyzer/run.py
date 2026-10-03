@@ -59,7 +59,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from aoe2stats_analyzer.claim import claim_for_analysis
-from aoe2stats_analyzer.extract import build_document
+from aoe2stats_analyzer.extract import (
+    DocumentInvalid,
+    TierPlacementError,
+    build_document,
+    validate_document,
+)
 from aoe2stats_analyzer.retain import retain_recording, retrieve_recording
 from aoe2stats_core.replay.analysis import AnalysisExtractor
 from aoe2stats_core.replay.validation import ReplayValidationError
@@ -261,8 +266,16 @@ async def _extract_and_publish(
     zip_sha256: str,
     now: datetime,
 ) -> None:
-    """The tail shared by both paths, from "bytes in hand" onward: parse, and either publish or
-    record why it failed. Never retried by this function's own caller — see `_TERMINAL_STATES`.
+    """The tail shared by both paths, from "bytes in hand" onward: parse, validate, and either
+    publish or record why it failed. Never retried by this function's own caller — see
+    `_TERMINAL_STATES`.
+
+    **The document is validated before anything is written (FR-011, T656).** A document that breaks
+    one of `contracts/analysis-document.md`'s rules is not published: no object is written, no row
+    points at one, and the analysis ends `failed` through the same `_mark_failed` a parse failure
+    uses, its `error_message` being the validator's own text — which names every rule broken. A
+    `TierPlacementError` (the builder refusing to place a datum where its tier does not belong) is
+    the first lock of the same rule and takes the same path.
     """
     try:
         document = build_document(
@@ -273,7 +286,8 @@ async def _extract_and_publish(
             zip_sha256=zip_sha256,
             extracted_at=now,
         )
-    except ReplayValidationError as exc:
+        validate_document(document)
+    except (ReplayValidationError, DocumentInvalid, TierPlacementError) as exc:
         await _mark_failed(
             session_factory,
             game_id=game_id,
