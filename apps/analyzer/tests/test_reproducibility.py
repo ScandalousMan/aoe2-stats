@@ -80,7 +80,6 @@ from aoe2stats_storage.repositories.base import session_scope
 
 # `session_factory` and `clean_database` come from `apps/analyzer/tests/conftest.py`.
 
-_SC004 = pytest.mark.xfail(strict=True, reason="T655/T659 not implemented yet")
 _SC005 = pytest.mark.xfail(strict=True, reason="T657/T657a/T658 not implemented yet")
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -211,7 +210,6 @@ def _analyse_in_a_fresh_process() -> _Run:
 _FIRST_RUN_CLOCK = datetime(2020, 1, 1, tzinfo=UTC)
 
 
-@_SC004
 def test_a_second_run_in_a_fresh_process_is_byte_identical_outside_the_wall_clock_set() -> None:
     """SC-004: a whole-document comparison fails on every run and proves nothing; the compared
     body is everything outside the wall-clock set, and it must match to the byte."""
@@ -222,7 +220,6 @@ def test_a_second_run_in_a_fresh_process_is_byte_identical_outside_the_wall_cloc
     assert first.body == second.body
 
 
-@_SC004
 def test_the_compared_body_is_not_trivially_small_and_carries_a_populated_identity() -> None:
     """The equality above must be over something: a body that is just `{}` is byte-identical to
     itself in every process. The identity is part of the compared body (FR-040, FR-041) and its
@@ -237,7 +234,6 @@ def test_the_compared_body_is_not_trivially_small_and_carries_a_populated_identi
     assert body["game_id"] == _GAME_ID
 
 
-@_SC004
 def test_the_excluded_wall_clock_fields_really_differ_between_the_two_runs() -> None:
     """The contrast case: the exclusion is exercised, not vacuous. Both wall-clock paths carry a
     different time in the two runs, so the full documents differ while the compared bodies do not
@@ -252,7 +248,6 @@ def test_the_excluded_wall_clock_fields_really_differ_between_the_two_runs() -> 
     assert first.body == second.body
 
 
-@_SC004
 def test_the_compared_body_excludes_exactly_the_wall_clock_set() -> None:
     """The exclusion is neither too narrow (a clock leaks into the body and every run differs) nor
     too wide (a real field is dropped and two different analyses compare equal)."""

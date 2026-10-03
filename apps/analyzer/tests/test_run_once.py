@@ -751,6 +751,49 @@ async def test_a_document_that_passes_validation_is_written_and_the_row_points_a
     validate_document(json.loads(store.objects[analysis.result_key]))
 
 
+async def test_the_stored_object_is_exactly_the_canonical_serialisation_of_its_document(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """T659, FR-041: `run_once` stores `canonical_bytes(document)` and nothing else, so what a
+    reproduction compares against is what was written. Canonical bytes are a fixed point: reading
+    the stored object and serialising it again changes nothing."""
+    import json
+
+    from aoe2stats_analyzer.extract import canonical_bytes
+    from aoe2stats_analyzer.run import run_once
+
+    game_id = 500_546_463
+    profile_a, profile_b = 300_035, 300_036
+    await _seed_match(
+        session_factory,
+        game_id=game_id,
+        completed_at=datetime.now(UTC) - timedelta(days=1),
+        profile_ids=[profile_a, profile_b],
+    )
+    requester = await _seed_user(session_factory)
+    provider = _FakeReplayProvider(
+        ReplayBlob(content=b"raw bytes", filename="r.zip", content_type="application/zip")
+    )
+
+    await run_once(
+        game_id,
+        _BUDGET_SECONDS,
+        requester,
+        session_factory=session_factory,
+        replay_provider=provider,
+        extractor=_FakeExtractor(point_of_view_profile_id=profile_a),
+        object_store=(store := _FakeObjectStore()),
+    )
+
+    analysis = await _get_analysis(session_factory, game_id)
+    assert analysis is not None
+    assert analysis.result_key is not None
+    stored = store.objects[analysis.result_key]
+    assert stored == canonical_bytes(json.loads(stored))
+    assert b"\n" not in stored
+    assert not stored.endswith(b" ")
+
+
 # --- Scenario 8.5 / FR-034 -----------------------------------------------------------------------
 
 

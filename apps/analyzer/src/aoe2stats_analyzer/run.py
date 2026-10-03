@@ -63,6 +63,7 @@ from aoe2stats_analyzer.extract import (
     DocumentInvalid,
     TierPlacementError,
     build_document,
+    canonical_bytes,
     current_identity_digest,
     validate_document,
 )
@@ -339,9 +340,8 @@ async def _extract_and_publish(
     # FR-042: the key carries the identity digest, so an analysis under a different identity is a
     # new object and the previous one is left exactly as it was. Nothing here ever deletes.
     result_key = _result_key(game_id, document["identity"]["digest"])
-    await object_store.put(
-        result_key, json.dumps(document).encode("utf-8"), content_type="application/json"
-    )
+    # FR-041, T659: exactly the canonical bytes, so a reproduction compares against what was stored.
+    await object_store.put(result_key, canonical_bytes(document), content_type="application/json")
     await _publish(
         session_factory, game_id=game_id, document=document, result_key=result_key, now=now
     )

@@ -34,7 +34,9 @@ an ordinary document path passes `aoe2stats_core.truth.placement.require_outside
 its provenance entry is written, which refuses inferred and predicted; the `inferred` block is
 produced only by `placement.inferred_block` from `InferredInstances`, which refuses a stronger
 tier, a missing confidence and a dropped non-claim. `validate_document` is the second lock, run by
-`run.py` before the object is written. **Canonical serialisation is not here** (T659).
+`run.py` before the object is written. **Canonical serialisation** (T659, FR-041) is
+`canonical.py`'s, re-exported here: `canonical_bytes` is what `run.py` stores and `compared_body`
+is the same minus the wall-clock set.
 """
 
 from __future__ import annotations
@@ -45,6 +47,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from datetime import datetime
 from typing import Any, cast
 
+from aoe2stats_analyzer.canonical import WALL_CLOCK_FIELDS, canonical_bytes, compared_body
 from aoe2stats_core.replay.analysis import AnalysisExtractor, MatchTimeline, ReplayExtractor
 from aoe2stats_core.replay.events import (
     CanonicalEvent,
@@ -96,16 +99,7 @@ ANALYTICS_VERSION = (
 #: and the blocks that describe the document rather than carry values. Presence here has to agree
 #: with the validator's, or rule 2 would reject the provenance written below. `schema_version` is
 #: register data (`document.schema_version`) and carries its provenance entry (FR-007).
-_NOT_REGISTER_DATA = frozenset(
-    {
-        "envelope",
-        "extracted_at",
-        "identity",
-        "provenance",
-        "knowledge_gaps",
-        "inferred",
-    }
-)
+_NOT_REGISTER_DATA = WALL_CLOCK_FIELDS | {"identity", "provenance", "knowledge_gaps", "inferred"}
 
 #: The method behind each family of published datum, by register id prefix. Every published datum
 #: with a document path must resolve to one (`_method_for` raises otherwise): a value with no
@@ -128,9 +122,12 @@ _METHODS: tuple[tuple[str, Method], ...] = (
 __all__ = [
     "ANALYTICS_VERSION",
     "SCHEMA_VERSION",
+    "WALL_CLOCK_FIELDS",
     "DocumentInvalid",
     "TierPlacementError",
     "build_document",
+    "canonical_bytes",
+    "compared_body",
     "current_identity_digest",
     "extract_timeline",
     "published_document",

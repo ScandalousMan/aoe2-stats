@@ -1256,7 +1256,7 @@ after everything underneath it moves.
       cannot catch this one: it parses only the module-scope imports of files under `api/` and this
       import is one hop further down, inside `aoe2stats_analyzer`. Declaring it on the analyzer is
       what makes the root manifest's existing `aoe2stats-analyzer` entry pull it transitively
-- [ ] T656 [US3] Place inferred and predicted data **structurally** under the inferred block alone,
+- [x] T656 [US3] Place inferred and predicted data **structurally** under the inferred block alone,
       so a coaching conclusion cannot occupy a field typed observed, decoded or reconstructed
       (**FR-011**) by construction, with T619's validator as the second lock. Run the validator
       **before** the object is written: a failing document is not published and the analysis fails
@@ -1291,7 +1291,7 @@ after everything underneath it moves.
       reproducing under a different parser and calling the result the same analysis is the silent
       rewrite **FR-042** forbids, so the honest outcomes are identical, or cannot reproduce here
       because
-- [ ] T659 [US6] Make the compared body a pure function of the identity (**FR-041**): canonical
+- [x] T659 [US6] Make the compared body a pure function of the identity (**FR-041**): canonical
       serialisation with sorted keys where order carries no meaning, stream order where it does, one
       fixed float format, and the wall-clock field excluded from both the identity and the
       comparison. The legacy top-level extraction time stays at its current path for one version
