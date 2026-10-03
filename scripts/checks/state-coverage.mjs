@@ -2041,14 +2041,15 @@ function storyReachesComponentModule(storyObj, sourceFile, componentName) {
       reaching.add(bindings.name.text)
     }
   }
-  // The story file's meta object, by name: the default export, a declaration typed `Meta<…>`, one
-  // `satisfies`/`as` `Meta<…>`, or the object `findMeta` identifies. Its name never reaches.
+  // The story file's meta object, by name: the default export, a declaration typed `Meta<…>`, or
+  // one `satisfies`/`as` `Meta<…>`. Its name never reaches. `findMeta` is deliberately not a rule:
+  // it returns the first object with a `component` key and unwraps no `satisfies`/`as`, so it would
+  // exclude a story-file helper that merely carries a `component` key, the wrongly-false direction.
   const isMetaType = (t) =>
     t != null &&
     ts.isTypeReferenceNode(t) &&
     ts.isIdentifier(t.typeName) &&
     t.typeName.text === 'Meta'
-  const metaObject = findMeta(sourceFile)
   const metaNames = new Set()
   for (const stmt of sourceFile.statements) {
     if (ts.isExportAssignment(stmt) && !stmt.isExportEquals) {
@@ -2059,11 +2060,7 @@ function storyReachesComponentModule(storyObj, sourceFile, componentName) {
         if (!ts.isIdentifier(decl.name) || !decl.initializer) continue
         const init = decl.initializer
         const checked = ts.isSatisfiesExpression(init) || ts.isAsExpression(init)
-        if (
-          isMetaType(decl.type) ||
-          (checked && isMetaType(init.type)) ||
-          (metaObject && unwrapExpression(init) === metaObject)
-        ) {
+        if (isMetaType(decl.type) || (checked && isMetaType(init.type))) {
           metaNames.add(decl.name.text)
         }
       }

@@ -8310,8 +8310,6 @@ test('T685 predicate: the meta object never reaches, however the file identifies
     'declared type only': 'const meta: Meta<typeof Row> = { subcomponents: { Row } }',
     'satisfies only': 'const meta = { subcomponents: { Row } } satisfies Meta<typeof Row>',
     'as only': 'const meta = { subcomponents: { Row } } as Meta<typeof Row>',
-    'findMeta only (a component key, exported under another name)':
-      'const meta = { component: Row }\nconst other = {}\nexport default other',
   }
   for (const [how, storyMeta] of Object.entries(metas)) {
     assert.deepEqual(
@@ -8324,6 +8322,58 @@ test('T685 predicate: the meta object never reaches, however the file identifies
       how,
     )
   }
+})
+
+// `findMeta` returns the first top-level object with a `component` key and unwraps no
+// `satisfies`/`as`, so it is not a meta-identification rule here: a story-file helper that merely
+// carries a `component` key is a helper, and a story mounting through it reaches. The wrongly-false
+// verdict is the one direction this predicate must never take.
+const T685_CREDITED = ['Button|primary|lg|hover']
+const T685_COMPONENT_KEY_HELPER = 'const zzHelpers = { component: Row, error: () => <Row /> }'
+
+test('T685 predicate (P1a): a component-key helper declared before the default-exported meta is not the meta — a story mounting through it reaches', () => {
+  assert.deepEqual(
+    t685Credits('zzHelpers.error()', T685_BUTTON_ROLE, {
+      storyMeta: `${T685_COMPONENT_KEY_HELPER}\nconst meta = { component: Row }\nexport default meta`,
+    }),
+    T685_CREDITED,
+  )
+})
+
+test('T685 predicate (P1b): a component-key helper declared after a `satisfies Meta<…>` meta is not the meta — a story mounting through it reaches', () => {
+  assert.deepEqual(
+    t685Credits('zzHelpers.error()', T685_BUTTON_ROLE, {
+      storyMeta: 'const meta = { component: Row } satisfies Meta<typeof Row>',
+      storyHelpers: T685_COMPONENT_KEY_HELPER,
+    }),
+    T685_CREDITED,
+  )
+})
+
+test('T685 predicate: a component-key object default-exported under another name is not the meta — a story mounting through it reaches', () => {
+  assert.deepEqual(
+    t685Credits('zzOther.error()', T685_BUTTON_ROLE, {
+      storyMeta:
+        'const zzOther = { component: Row, error: () => <Row /> }\nconst other = {}\nexport default other',
+    }),
+    T685_CREDITED,
+  )
+})
+
+test('T685 predicate (P1c control): a helper without a component key reaches (already credited, stays so)', () => {
+  assert.deepEqual(
+    t685Credits('zzHelpers.error()', T685_BUTTON_ROLE, {
+      storyHelpers: 'const zzHelpers = { error: () => <Row /> }',
+    }),
+    T685_CREDITED,
+  )
+})
+
+test('T685 predicate: reading the real meta (`meta.title`) stays closed after the findMeta rule is gone', () => {
+  assert.deepEqual(
+    t685Credits('<button type="button" title={meta.title}>Raw</button>', T685_BUTTON_ROLE),
+    [],
+  )
 })
 
 test('T685 predicate: a name that only labels a member does not reach — a destructuring property name, a class property, method and accessors', () => {
@@ -8615,9 +8665,14 @@ function runCheckOnPlantedTree(storyAppendix) {
       ),
       storyAppendix,
     )
-    return spawnSync('node', [path.join(tmp, 'scripts', 'checks', 'state-coverage.mjs')], {
-      encoding: 'utf8',
-    })
+    return spawnSync(
+      process.execPath,
+      [path.join(tmp, 'scripts', 'checks', 'state-coverage.mjs')],
+      {
+        encoding: 'utf8',
+        timeout: 120000,
+      },
+    )
   } finally {
     rmSync(tmp, { recursive: true, force: true })
   }
