@@ -2773,6 +2773,63 @@ function isValidIsoDate(value) {
 // own empty-list steady state already models.
 export const KNOWN_UNACCOUNTED_FORCE_STATES = []
 
+// The generated region split by who owns the bare story names printed in it (T684). A story's
+// own component prints its stories by bare export name in exactly two places — its own Record 1
+// rows (first cell: the component key) and, for a primitive with no `variant`/`size` axis, its own
+// `#### \`Name\`` section of Record 3 — while every credit printed anywhere else is a qualified
+// label (`cellName`, `injectComposedPrimitiveLocalCredits`, `resolveDisabledFromStories`). A bare
+// name found in another component's rows is another component's story.
+function scopeRegionByOwner(regionText) {
+  const record1ByKey = new Map()
+  const sectionByName = new Map()
+  let section = null
+  for (const line of regionText.split('\n')) {
+    const heading = /^#### `(.+)`$/.exec(line)
+    if (heading) {
+      section = heading[1]
+      sectionByName.set(section, '')
+    } else if (section !== null) {
+      // The column header row (`| Row | Rest | Hover | ...`) names states, never a story.
+      if (/^\| (?:Row|---) /.test(line)) continue
+      sectionByName.set(section, `${sectionByName.get(section)}${line}\n`)
+    } else {
+      const row = /^\| ([^|\s][^|]*?) \|/.exec(line)
+      if (row) record1ByKey.set(row[1], `${record1ByKey.get(row[1]) ?? ''}${line}\n`)
+    }
+  }
+  return { record1ByKey, sectionByName }
+}
+
+function escapeRegExp(text) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+// Whether the region names *this* story — its own identity (component, story file, export name),
+// never the export name alone (T684). Three forms, the only three the region ever prints a story
+// in: a qualified `<story file>:<export>` label anywhere (`Footer:Hover`); the file-qualified
+// `<componentKey>/<story file>:<export>` an axis matrix's own unresolved reasons print; and the
+// bare export name inside the story's own component's own rows (`scopeRegionByOwner`). A bare name
+// never counts when preceded by `:` (the tail of another story's qualified label), `"` (a quoted
+// accessible name in an unresolved reason) or a word character. An entry that carries no
+// `storyFile` (a hand-built fixture) is read as `<Component>.stories.tsx`, the convention every
+// real component directory follows.
+function storyIsNamedInRegion(componentKey, entry, scopes, regionText) {
+  const { exportName } = entry
+  const componentName = componentKey.split('/').pop()
+  const storyFile = entry.storyFile ?? `${componentName}.stories.tsx`
+  const labelBase = storyFile.replace(/\.stories\.tsx$/, '')
+  const name = escapeRegExp(exportName)
+  const qualified = new RegExp(
+    `(?<![\\w$])(?:${escapeRegExp(labelBase)}|${escapeRegExp(`${componentKey}/${storyFile}`)}):${name}(?![\\w$])`,
+  )
+  if (qualified.test(regionText)) return true
+  const bare = new RegExp(`(?<![\\w$:"-])${name}(?![\\w$])`)
+  return (
+    bare.test(scopes.record1ByKey.get(componentKey) ?? '') ||
+    bare.test(scopes.sectionByName.get(componentName) ?? '')
+  )
+}
+
 // Every real `visualForceState` in every story under this package's three tiers is either credited
 // on some cell (a real match) or named in some cell's own `unresolved: <reason>` text — the two
 // ways this region ever shows that a force-state was compared against anything at all. A
@@ -2782,7 +2839,11 @@ export const KNOWN_UNACCOUNTED_FORCE_STATES = []
 // T595 orchestrator finding on this task's own hand-back: "a real forced frame that appears
 // nowhere"). Checked against the region's own rendered text — the same text a reader actually
 // opens — rather than re-derived a second, parallel way from `coveredBy`/`ambiguousReasons` that
-// could itself drift from what renders. A story whose own `render:` never mounts the component
+// could itself drift from what renders. A story is looked up by its own identity in that text
+// (`storyIsNamedInRegion`, T684), never by its export name as a bare word anywhere in it: the
+// region prints conventional exports (`Hover`, `FocusVisible`, `Active`) on the cells of many
+// components, so a forced `Hover` credited nowhere used to pass because another component's
+// `Hover` was printed. A story whose own `render:` never mounts the component
 // (`rendersComponent`, `storyRendersComponent`) is excluded: it has nothing to say about any
 // candidate and legitimately credits nothing, the same exclusion `pendingDisabledChecks` already
 // applies — never a loss. A `synthetic` entry (a credit this pass manufactured on another
@@ -2800,12 +2861,12 @@ export function findUnaccountedForceStates(storyStatesByComponent, regionText) {
   const known = []
   const expired = []
   const today = new Date().toISOString().slice(0, 10)
+  const scopes = scopeRegionByOwner(regionText)
   for (const [componentKey, entries] of storyStatesByComponent) {
-    for (const { exportName, forced, rendersComponent, synthetic } of entries) {
+    for (const entry of entries) {
+      const { exportName, forced, rendersComponent, synthetic } = entry
       if (!forced || synthetic || rendersComponent === false) continue
-      const escaped = exportName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-      const re = new RegExp(`\\b${escaped}\\b`)
-      if (re.test(regionText)) continue
+      if (storyIsNamedInRegion(componentKey, entry, scopes, regionText)) continue
       const filed = KNOWN_UNACCOUNTED_FORCE_STATES.find(
         (k) => k.componentKey === componentKey && k.exportName === exportName,
       )
@@ -2996,6 +3057,9 @@ export function computeStateCoverage({ componentDirs, filesByPath }) {
         const rendersComponent = storyRendersComponent(node, componentDirName)
         return {
           exportName,
+          // The story file's own basename: the identity half `findUnaccountedForceStates` reads a
+          // qualified credit label back through (T684), `cellName`'s own `<basename>:<export>`.
+          storyFile: path.basename(filePath),
           forced,
           playFocus,
           playClick,

@@ -2109,7 +2109,7 @@ test('findUnaccountedForceStates catches a real force-state that is credited now
   ])
   const { missing, known, expired } = findUnaccountedForceStates(
     storyStatesByComponent,
-    '| Lost | button | none | none | none |',
+    '| composites/Lost | button | none | none | none |',
   )
   assert.deepEqual(known, [])
   assert.deepEqual(expired, [])
@@ -2149,12 +2149,215 @@ test('contrast: findUnaccountedForceStates does not flag a force-state that is g
     ],
   ])
   const regionText =
-    '| Credited | button | RealHover | none | none |\n' +
-    '| Named | button | unresolved: AmbiguousHover: 2 candidates share role "button" | none | none |'
+    '| composites/Credited | button | RealHover | none | none |\n' +
+    '| composites/Named | button | unresolved: AmbiguousHover: 2 candidates share role "button" | none | none |'
   const { missing, known, expired } = findUnaccountedForceStates(storyStatesByComponent, regionText)
   assert.deepEqual(missing, [])
   assert.deepEqual(known, [])
   assert.deepEqual(expired, [])
+})
+
+// --- T684: a story is accounted for by its own identity, never by a bare word -----------------
+//
+// The region already names conventional exports (`Hover`, `FocusVisible`, `Active`) on cells of
+// other components, so a bare-word match let a forced story with one of those names pass without
+// being credited anywhere. The accounting is per story: the story's own component's own rows for a
+// bare name, or a `<story file>:<export>` label anywhere (the form every cross-component credit
+// is printed in).
+
+const SHARED_NAME_REGION = [
+  '| Component | Element | File:Line | Hover | Focus-visible | Active |',
+  '| --- | --- | --- | --- | --- | --- |',
+  '| composites/Alpha | button | index.tsx:3 | hover:bg-x → Hover | none → none | none → none |',
+  '| composites/Beta | button | index.tsx:3 | hover:bg-x → none | none → none | none → none |',
+].join('\n')
+
+test('findUnaccountedForceStates reports an uncredited forced story named Hover in one component while another component credits its own Hover (T684, primary case)', () => {
+  const forcedHover = { exportName: 'Hover', forced: { state: 'hover', role: 'button' } }
+  const storyStatesByComponent = new Map([
+    ['composites/Alpha', [forcedHover]],
+    ['composites/Beta', [forcedHover]],
+  ])
+  const { missing, known, expired } = findUnaccountedForceStates(
+    storyStatesByComponent,
+    SHARED_NAME_REGION,
+  )
+  assert.deepEqual(known, [])
+  assert.deepEqual(expired, [])
+  assert.deepEqual(missing, [
+    { componentKey: 'composites/Beta', exportName: 'Hover', state: 'hover' },
+  ])
+})
+
+test("findUnaccountedForceStates does not take another component's qualified credit label for a bare-named story of the same export name (T684)", () => {
+  // `Footer:Hover` credits Footer's own story, on a cell of some other component. A different
+  // component's own `Hover` is neither that story nor credited by it.
+  const storyStatesByComponent = new Map([
+    ['composites/Header', [{ exportName: 'Hover', forced: { state: 'hover', role: 'link' } }]],
+  ])
+  const { missing } = findUnaccountedForceStates(
+    storyStatesByComponent,
+    '| composites/Alpha | a | index.tsx:3 | hover:x → Footer:Hover | none → none | none → none |',
+  )
+  assert.deepEqual(missing, [
+    { componentKey: 'composites/Header', exportName: 'Hover', state: 'hover' },
+  ])
+})
+
+test('contrast: findUnaccountedForceStates keeps a forced story accounted for through its own credit, a qualified cross-component label, a file-qualified unresolved reason, its own primitive section, or an unresolved reason on its own rows (T684)', () => {
+  const forced = { state: 'hover', role: 'button' }
+  const storyStatesByComponent = new Map([
+    ['composites/Alpha', [{ exportName: 'Hover', forced }]],
+    // Credited only as a cross-component label on a primitive's axis matrix (`Footer:Hover`).
+    ['composites/Footer', [{ exportName: 'Hover', forced }]],
+    // A story file whose basename is not its component's name keeps its own label base.
+    ['composites/Panel', [{ exportName: 'Hover', forced, storyFile: 'Rows.stories.tsx' }]],
+    // Named in an axis matrix's own file-qualified unresolved reason.
+    ['composites/Card', [{ exportName: 'Hover', forced }]],
+    // A primitive's own element matrix section prints its own stories by bare name.
+    ['primitives/Tooltip', [{ exportName: 'Hover', forced }]],
+    ['composites/Named', [{ exportName: 'Hover', forced }]],
+  ])
+  const regionText = [
+    '| composites/Alpha | button | index.tsx:3 | hover:bg-x → Hover | none → none | none → none |',
+    '| composites/Named | button | index.tsx:3 | hover:bg-x → unresolved: Hover: 2 candidates share role "button" | none → none | none → none |',
+    '',
+    '#### `Button`',
+    '',
+    '| Row | Rest | Hover | Focus-visible | Press (active) | Disabled |',
+    '| --- | --- | --- | --- | --- | --- |',
+    '| primary|md | composites/Alpha (a.tsx:1) | Footer:Hover; Rows:Hover | none | none | none |',
+    '| ghost|md | composites/Alpha (a.tsx:2) | unresolved: composites/Card/Card.stories.tsx:Hover — ambiguous | none | none | none |',
+    '',
+    '#### `Tooltip`',
+    '',
+    '| Row | Rest | Hover | Focus-visible | Press (active) | Disabled |',
+    '| --- | --- | --- | --- | --- | --- |',
+    '| button @ index.tsx:9 | index.tsx:9 | Hover | none | none | none |',
+  ].join('\n')
+  const { missing, known, expired } = findUnaccountedForceStates(storyStatesByComponent, regionText)
+  assert.deepEqual(missing, [])
+  assert.deepEqual(known, [])
+  assert.deepEqual(expired, [])
+})
+
+test('findUnaccountedForceStates: a bare name credited in a primitive section of a different name, or only inside a quoted accessible name, accounts for nothing (T684)', () => {
+  const forced = { state: 'hover', role: 'button' }
+  const storyStatesByComponent = new Map([
+    ['primitives/Tooltip', [{ exportName: 'Hover', forced }]],
+    ['composites/Quoted', [{ exportName: 'Hover', forced }]],
+  ])
+  const regionText = [
+    '| composites/Quoted | button | index.tsx:3 | none → unresolved: Other: 2 candidates share role "button", name "Hover" not literally resolvable | none → none | none → none |',
+    '',
+    '#### `Menu`',
+    '',
+    '| Row | Rest | Hover | Focus-visible | Press (active) | Disabled |',
+    '| --- | --- | --- | --- | --- | --- |',
+    '| actions | composites/Quoted (a.tsx:1) | Hover | none | none | none |',
+  ].join('\n')
+  const { missing } = findUnaccountedForceStates(storyStatesByComponent, regionText)
+  assert.deepEqual(missing.map((m) => `${m.componentKey}:${m.exportName}`).sort(), [
+    'composites/Quoted:Hover',
+    'primitives/Tooltip:Hover',
+  ])
+})
+
+test('contrast: a filed exception for the uncredited Hover stays known while the credited Hover of a sibling component with the same export name stays accounted for (T684)', () => {
+  const forcedHover = { exportName: 'Hover', forced: { state: 'hover', role: 'button' } }
+  const storyStatesByComponent = new Map([
+    ['composites/Alpha', [forcedHover]],
+    ['composites/Beta', [forcedHover]],
+  ])
+  const farFuture = new Date()
+  farFuture.setFullYear(farFuture.getFullYear() + 10)
+  const saved = [...KNOWN_UNACCOUNTED_FORCE_STATES]
+  KNOWN_UNACCOUNTED_FORCE_STATES.length = 0
+  KNOWN_UNACCOUNTED_FORCE_STATES.push({
+    componentKey: 'composites/Beta',
+    exportName: 'Hover',
+    date: '2026-10-03',
+    fixOwed: 'T000',
+    fixBy: farFuture.toISOString().slice(0, 10),
+    reason: 'test fixture, not yet due',
+  })
+  try {
+    const { missing, known, expired } = findUnaccountedForceStates(
+      storyStatesByComponent,
+      SHARED_NAME_REGION,
+    )
+    assert.deepEqual(missing, [])
+    assert.deepEqual(expired, [])
+    assert.equal(known.length, 1)
+    assert.equal(known[0].componentKey, 'composites/Beta')
+  } finally {
+    KNOWN_UNACCOUNTED_FORCE_STATES.length = 0
+    KNOWN_UNACCOUNTED_FORCE_STATES.push(...saved)
+  }
+})
+
+const SHARED_NAME_NOTICE_INDEX = `
+export function Notice({ href }) {
+  return (
+    <a href={href} className="hover:text-link-hover focus-visible:outline-2 active:text-link-hover">
+      Read
+    </a>
+  )
+}
+`
+const SHARED_NAME_NOTICE_STORIES = `
+import { Notice } from './index'
+const meta = { component: Notice, args: { href: '/a' } }
+export default meta
+export const Hover = {
+  args: {},
+  parameters: { visualForceState: { state: 'hover', role: 'link' } },
+}
+`
+// No element of role `link` anywhere in this component, so the forced story below can be credited
+// on no cell and named in no unresolved reason: a lost frame, under a name another component's
+// credited story already prints in the region.
+const SHARED_NAME_PLAIN_INDEX = `
+export function Plain() {
+  return (
+    <button type="button" className="hover:bg-surface-raised">
+      Go
+    </button>
+  )
+}
+`
+const SHARED_NAME_PLAIN_STORIES = `
+import { Plain } from './index'
+const meta = { component: Plain }
+export default meta
+export const Hover = {
+  args: {},
+  parameters: { visualForceState: { state: 'hover', role: 'link' } },
+}
+`
+
+test('findUnaccountedForceStates (via computeStateCoverage): an uncredited args-only Hover is reported although a credited Hover of another component is in the region (T684, real pipeline)', () => {
+  const componentDirs = [
+    { segment: 'primitives', name: 'Notice' },
+    { segment: 'primitives', name: 'Plain' },
+  ]
+  const filesByPath = new Map([
+    [path.join(REPO_SRC_DIR, 'primitives/Notice/index.tsx'), SHARED_NAME_NOTICE_INDEX],
+    [path.join(REPO_SRC_DIR, 'primitives/Notice/Notice.stories.tsx'), SHARED_NAME_NOTICE_STORIES],
+    [path.join(REPO_SRC_DIR, 'primitives/Plain/index.tsx'), SHARED_NAME_PLAIN_INDEX],
+    [path.join(REPO_SRC_DIR, 'primitives/Plain/Plain.stories.tsx'), SHARED_NAME_PLAIN_STORIES],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const notice = computed.localElements.find((c) => c.componentKey === 'primitives/Notice')
+  assert.deepEqual(notice.elements[0].coveredBy.hover, ['Hover'])
+  const plain = computed.localElements.find((c) => c.componentKey === 'primitives/Plain')
+  assert.deepEqual(plain.elements[0].coveredBy.hover, ['none'])
+  const { missing, known, expired } = computed.unaccountedForceStates
+  assert.deepEqual(known, [])
+  assert.deepEqual(expired, [])
+  assert.deepEqual(missing, [
+    { componentKey: 'primitives/Plain', exportName: 'Hover', state: 'hover' },
+  ])
 })
 
 test("findUnaccountedForceStates (via computeStateCoverage): KNOWN_UNACCOUNTED_FORCE_STATES is empty and the whole real tree reports zero missing, zero known and zero expired — T598's own completion condition, not a cell count (T595's own exception, ProfileSummary's SwitcherFocusVisibleAndOpen, closed by injectComposedPrimitiveLocalCredits)", () => {
