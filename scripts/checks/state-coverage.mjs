@@ -1996,6 +1996,172 @@ function storyRendersComponent(storyObj, componentName) {
   return findRenderComponentTag(storyObj, componentName) != null
 }
 
+// Whether a story's own `render:` can put anything of its component's own module on screen — `true`
+// for an `args`-only story (Storybook renders `<Component {...args} />` implicitly) and for a
+// `render:` whose body holds a value reference to (a) the component itself, (b) a name imported from
+// the story's own directory (`ErasedScreen`, a second export of `AccountErasurePanel/index.tsx`),
+// (c) a story-file declaration (function, class or constant, of any initializer shape) that in turn
+// holds one, or (d) the component through the story's meta or the render context
+// (`meta.component`, a render's second parameter `{ component: C }`). `false` only when `render:`
+// holds none: a raw `<button>`, or a primitive imported from another module (`<Menu>`), which shows
+// none of the component's own source, so no instance declared there can be what its force-state
+// targets (T685).
+//
+// Deliberately an over-approximation, and its safe error is `true`: a wrongly-true verdict only
+// reproduces the over-credit this predicate closes, in a contrived shape, while a wrongly-false one
+// drops a real credit. So a declaration reaches if ANY value reference inside its initializer does,
+// whatever the shape (alias, conditional, array, call, `memo(Inner)`, `Tpl.bind({})`, a nested
+// object, a class). An object that holds the component as data (`{ C: Row }`) therefore reaches too,
+// because `<registry.C />` mounts through it and a reference cannot tell that from `registry.C.name`.
+// What is not a value reference: a type position (`typeof MatchRow`), a property-access member name,
+// a member or object key, a binding element's property name, a JSX attribute name, a string.
+// The one declaration excluded is the story file's own meta object (the default export, or the
+// object typed or `satisfies`-checked as `Meta`): it names the component as data (`component: Row`)
+// and mounts nothing, and counting it made every story that read `meta.title` reach the module.
+// Separate from `storyRendersComponent`, which also gates `pendingDisabledChecks` and must keep its
+// narrower meaning; `findUnaccountedForceStates` reads both (a story this reaches nothing of is
+// reported as such, one it merely does not tag-mount is skipped while it reaches the module).
+function storyReachesComponentModule(storyObj, sourceFile, componentName) {
+  const renderExpr = getProp(storyObj, 'render')
+  if (!renderExpr) return true
+  const reaching = new Set([componentName])
+  for (const stmt of sourceFile.statements) {
+    if (!ts.isImportDeclaration(stmt) || !ts.isStringLiteral(stmt.moduleSpecifier)) continue
+    if (!stmt.moduleSpecifier.text.startsWith('.')) continue
+    // `./index`, `.`, `./`, `./Helper` — the component's own directory. A `../` specifier names
+    // another component's module and never reaches this one.
+    if (stmt.moduleSpecifier.text.startsWith('..')) continue
+    const clause = stmt.importClause
+    if (!clause) continue
+    if (clause.name) reaching.add(clause.name.text)
+    const bindings = clause.namedBindings
+    if (bindings && ts.isNamedImports(bindings)) {
+      for (const el of bindings.elements) reaching.add(el.name.text)
+    } else if (bindings && ts.isNamespaceImport(bindings)) {
+      reaching.add(bindings.name.text)
+    }
+  }
+  // The story file's meta object, by name: the default export, a declaration typed `Meta<…>`, or
+  // one `satisfies`/`as` `Meta<…>`. Its name never reaches. `findMeta` is deliberately not a rule:
+  // it returns the first object with a `component` key and unwraps no `satisfies`/`as`, so it would
+  // exclude a story-file helper that merely carries a `component` key, the wrongly-false direction.
+  const isMetaType = (t) =>
+    t != null &&
+    ts.isTypeReferenceNode(t) &&
+    ts.isIdentifier(t.typeName) &&
+    t.typeName.text === 'Meta'
+  const metaNames = new Set()
+  for (const stmt of sourceFile.statements) {
+    if (ts.isExportAssignment(stmt) && !stmt.isExportEquals) {
+      const exported = unwrapExpression(stmt.expression)
+      if (ts.isIdentifier(exported)) metaNames.add(exported.text)
+    } else if (ts.isVariableStatement(stmt)) {
+      for (const decl of stmt.declarationList.declarations) {
+        if (!ts.isIdentifier(decl.name) || !decl.initializer) continue
+        const init = decl.initializer
+        const checked = ts.isSatisfiesExpression(init) || ts.isAsExpression(init)
+        if (isMetaType(decl.type) || (checked && isMetaType(init.type))) {
+          metaNames.add(decl.name.text)
+        }
+      }
+    }
+  }
+  // A name that only labels something: an object-literal or class member key, or a binding
+  // element's property name (`{ Row: R } = x` reads `x.Row`). A JSX attribute name is handled where
+  // the attribute is visited.
+  const isLabel = (n) => {
+    const p = n.parent
+    if (!p) return false
+    if (ts.isBindingElement(p)) return p.propertyName === n
+    return (
+      (ts.isPropertyAssignment(p) ||
+        ts.isMethodDeclaration(p) ||
+        ts.isPropertyDeclaration(p) ||
+        ts.isGetAccessorDeclaration(p) ||
+        ts.isSetAccessorDeclaration(p)) &&
+      p.name === n
+    )
+  }
+  // The component through the render context: a function's second parameter is Storybook's story
+  // context, whose `component` is the meta's. Destructured (`(args, { component: C })`) or read off
+  // the parameter (`ctx.component`).
+  const contextNames = new Set()
+  const readsContextComponent = (fn) => {
+    const ctx = fn.parameters?.[1]
+    if (!ctx) return false
+    if (ts.isIdentifier(ctx.name)) contextNames.add(ctx.name.text)
+    if (!ts.isObjectBindingPattern(ctx.name)) return false
+    return ctx.name.elements.some((el) => (el.propertyName ?? el.name).text === 'component')
+  }
+  // Value references only: see the doc comment above. A call's callee is visited with its arguments
+  // (`Tpl.bind({})`), and so is everything else under a node but the exclusions below.
+  const referencedIdentifiers = (node) => {
+    const names = new Set()
+    const visit = (n) => {
+      // `class Wrap extends Row`: the heritage expression is a value, though TypeScript types it.
+      if (ts.isExpressionWithTypeArguments(n)) {
+        const extendsClause =
+          ts.isHeritageClause(n.parent) && n.parent.token === ts.SyntaxKind.ExtendsKeyword
+        if (extendsClause && ts.isClassLike(n.parent.parent)) visit(n.expression)
+        return
+      }
+      if (ts.isTypeNode(n) || ts.isTypeAliasDeclaration(n) || ts.isInterfaceDeclaration(n)) return
+      if (ts.isIdentifier(n)) {
+        // An intrinsic JSX tag (`button`, `a`) is a DOM element, never a reference to a binding.
+        const isIntrinsicTag =
+          /^[a-z]/.test(n.text) &&
+          n.parent &&
+          (ts.isJsxOpeningElement(n.parent) ||
+            ts.isJsxSelfClosingElement(n.parent) ||
+            ts.isJsxClosingElement(n.parent)) &&
+          n.parent.tagName === n
+        if (!isIntrinsicTag && !isLabel(n)) names.add(n.text)
+        return
+      }
+      if (ts.isPropertyAccessExpression(n)) {
+        const owner = ts.isIdentifier(n.expression) ? n.expression.text : null
+        if (
+          n.name.text === 'component' &&
+          owner &&
+          (metaNames.has(owner) || contextNames.has(owner))
+        ) {
+          names.add(componentName)
+        }
+        return visit(n.expression)
+      }
+      if (ts.isJsxAttribute(n)) return n.initializer ? visit(n.initializer) : undefined
+      if (ts.isFunctionLike(n) && readsContextComponent(n)) names.add(componentName)
+      ts.forEachChild(n, visit)
+    }
+    visit(node)
+    return names
+  }
+  const declared = new Map()
+  for (const stmt of sourceFile.statements) {
+    if ((ts.isFunctionDeclaration(stmt) || ts.isClassDeclaration(stmt)) && stmt.name) {
+      declared.set(stmt.name.text, referencedIdentifiers(stmt))
+    } else if (ts.isVariableStatement(stmt)) {
+      for (const decl of stmt.declarationList.declarations) {
+        if (ts.isIdentifier(decl.name) && decl.initializer && !metaNames.has(decl.name.text)) {
+          declared.set(decl.name.text, referencedIdentifiers(decl.initializer))
+        }
+      }
+    }
+  }
+  let grew = true
+  while (grew) {
+    grew = false
+    for (const [name, refs] of declared) {
+      if (reaching.has(name)) continue
+      if ([...refs].some((r) => reaching.has(r))) {
+        reaching.add(name)
+        grew = true
+      }
+    }
+  }
+  return [...referencedIdentifiers(renderExpr)].some((r) => reaching.has(r))
+}
+
 // The explicit JSX props a story's own `render: () => <ComponentName prop={x} />` passes to the
 // component under test — `MatchRow.stories.tsx`'s `render: () => <MatchRow match={base} />`
 // shape, none of it visible to `resolveStoryAxisValues`/`buildStoryPropsScope`, which only ever
@@ -2636,6 +2802,25 @@ function buildComposedCallSiteScope(
   return scope
 }
 
+// The call sites of a primitive a forced story could be depicting, out of `candidates` (every
+// instance of that primitive in the forcing component's own files). The story's own `render:` JSX
+// is the best evidence: instances inside its line range, when it has any, are the only ones it can
+// show. With none, the story falls back to the component's whole source — the instances of the
+// component it renders — *unless* its `render:` reaches nothing of the component's module
+// (`reachesComponentModule === false`, T685): then it shows none of that source and the fallback
+// is empty. Shared by `resolveComposedStoryMatches` and `injectComposedPrimitiveLocalCredits`,
+// the two consumers of `pendingComposedMatches` that read call sites; a copy of the fallback in
+// either one is what the review of #111 found ungated.
+function candidatesForStory(candidates, { file, storyLineRange, reachesComponentModule }) {
+  if (storyLineRange && candidates.some((c) => c.file === file)) {
+    const inRange = candidates.filter(
+      (c) => c.file === file && c.line >= storyLineRange[0] && c.line <= storyLineRange[1],
+    )
+    if (inRange.length > 0) return inRange
+  }
+  return reachesComponentModule === false ? [] : candidates
+}
+
 // `pending`: `pendingComposedMatches`, the same role-bearing force-states
 // `resolveComposedStoryMatches` reads. For each, and for each tracked primitive P the forcing
 // component composes directly whose own record-1 pool could plausibly carry the force-state's
@@ -2668,18 +2853,12 @@ export function injectComposedPrimitiveLocalCredits(
           !el.ariaHidden && (el.role === 'unresolved' || impliedRoleOf(el) === entry.forced.role),
       )
       if (!maybeRelevant) continue
-      let candidates = (instancesByPrimitive.get(primitive) ?? []).filter(
-        (i) => i.kind === 'jsx' && i.componentKey === entry.componentKey && !i.ariaHidden,
+      const candidates = candidatesForStory(
+        (instancesByPrimitive.get(primitive) ?? []).filter(
+          (i) => i.kind === 'jsx' && i.componentKey === entry.componentKey && !i.ariaHidden,
+        ),
+        entry,
       )
-      if (entry.storyLineRange && candidates.some((c) => c.file === entry.file)) {
-        const inRange = candidates.filter(
-          (c) =>
-            c.file === entry.file &&
-            c.line >= entry.storyLineRange[0] &&
-            c.line <= entry.storyLineRange[1],
-        )
-        if (inRange.length > 0) candidates = inRange
-      }
       const reachable = candidates.filter(
         (c) => evaluateGuards(c.guards ?? [], entry.propsScope) !== 'unreached',
       )
@@ -3027,10 +3206,13 @@ function storyIsCreditedInItsStateColumn(componentKey, entry, columns, hasSoleSt
 // T684), never by its export name as a bare word anywhere in the region: the region prints
 // conventional exports (`Hover`, `FocusVisible`, `Active`) on the cells of many components, so a
 // forced `Hover` credited nowhere used to pass because another component's `Hover` was printed, and
-// a story named after its own component passed on the component's own path. A story whose own `render:` never mounts the component
-// (`rendersComponent`, `storyRendersComponent`) is excluded: it has nothing to say about any
-// candidate and legitimately credits nothing, the same exclusion `pendingDisabledChecks` already
-// applies — never a loss. A `synthetic` entry (a credit this pass manufactured on another
+// a story named after its own component passed on the component's own path. A story whose own
+// `render:` mounts no `<Component>` tag (`rendersComponent`, `storyRendersComponent`) but reaches
+// the component's module through a wrapper or a sibling export is excluded: it is not asked for an
+// accounting here. One that reaches nothing of the module (`reachesComponentModule === false`,
+// T685) is not excluded: it shows none of the component's source, so it is credited only to what
+// its own render mounts, and a forced frame credited nowhere is what this report is for. It is
+// reported with `reachedNothing` set and its own message (`describeMissingForceState`). A `synthetic` entry (a credit this pass manufactured on another
 // component's behalf, T595's own composed-elsewhere mechanism) is excluded too: it is not a real
 // exported story object anywhere, and the real story it originated from is checked under its own
 // name in its own component's own list. Returns three groups, never merged so a genuinely new loss
@@ -3060,13 +3242,26 @@ export function findUnaccountedForceStates(storyStatesByComponent, regionText) {
     const hasSoleStoryFile = new Set(realEntries.map((e) => e.storyFile)).size <= 1
     for (const entry of entries) {
       const { exportName, forced, rendersComponent, synthetic } = entry
-      if (!forced || synthetic || rendersComponent === false) continue
+      if (!forced || synthetic) continue
+      // A `render:` that mounts no `<Component>` tag but still reaches the module (a wrapper, a
+      // sibling export) is not asked for an accounting. One that reaches *nothing* of the module
+      // (`reachesComponentModule === false`, T685) is: it shows none of the component's source, so
+      // a frame it forces that is credited nowhere is exactly what this report exists for, and
+      // skipping it would let a wrongly-false predicate drop a credit with no failure anywhere.
+      if (rendersComponent === false && entry.reachesComponentModule !== false) continue
       if (storyIsCreditedInItsStateColumn(componentKey, entry, columns, hasSoleStoryFile)) continue
       const filed = KNOWN_UNACCOUNTED_FORCE_STATES.find(
         (k) => k.componentKey === componentKey && k.exportName === exportName,
       )
       if (!filed) {
-        missing.push({ componentKey, exportName, state: forced.state })
+        // `reachedNothing` says why the story is credited nowhere when the cause is the reach
+        // predicate and not the resolver: the message must tell a wrongly-false predicate apart.
+        missing.push({
+          componentKey,
+          exportName,
+          state: forced.state,
+          ...(entry.reachesComponentModule === false ? { reachedNothing: true } : {}),
+        })
         continue
       }
       const malformed = ['date', 'fixOwed', 'fixBy'].filter((field) => {
@@ -3264,12 +3459,12 @@ export function computeStateCoverage({ componentDirs, filesByPath }) {
           ...storyArgsStringLiterals(metaObj, node, storyConstNodeMap),
           ...collectScopeStringLiterals(scope),
         ])
-        // A `render:` story whose own body never mounts the component (`storyRendersComponent`,
+        // A `render:` story whose own body mounts no `<Component>` tag (`storyRendersComponent`,
         // T595) has nothing to say about any candidate inside it, the same exclusion
         // `pendingDisabledChecks` above already applies — carried here too so
-        // `findUnaccountedForceStates` (below) never demands an accounting a story that renders
-        // nothing could not possibly have given, a legitimate `'credits nothing'` this pass must
-        // not confuse with a lost frame.
+        // `findUnaccountedForceStates` (below) skips it while `reachesComponentModule` (below) says
+        // it still reaches the module (a wrapper, a sibling export): a legitimate `'credits
+        // nothing'` this pass must not confuse with a lost frame.
         const rendersComponent = storyRendersComponent(node, componentDirName)
         return {
           exportName,
@@ -3283,6 +3478,11 @@ export function computeStateCoverage({ componentDirs, filesByPath }) {
           argsHasDisabledTrue,
           scope,
           rendersComponent,
+          // T685: the wider question `rendersComponent` cannot answer — see
+          // `storyReachesComponentModule`. `false` gates every path that credits this story, and
+          // makes `findUnaccountedForceStates` report a forced story it does not credit even when
+          // `rendersComponent` is `false`.
+          reachesComponentModule: storyReachesComponentModule(node, sourceFile, componentDirName),
         }
       })
       storyStatesByComponent.set(componentKey, [
@@ -3387,6 +3587,9 @@ export function computeStateCoverage({ componentDirs, filesByPath }) {
           storyLineRange: [storyStartLine, storyEndLine],
           argsLiterals,
           propsScope,
+          // T685: a `render:` story that reaches nothing of the component's own module shows none
+          // of its source, so no instance declared there can be what its force-state targets.
+          reachesComponentModule: storyReachesComponentModule(node, sourceFile, componentDirName),
         })
       }
     }
@@ -3413,6 +3616,8 @@ export function computeStateCoverage({ componentDirs, filesByPath }) {
   const confirmedComposedElsewhereByKey = new Map()
   for (const entry of pendingComposedMatches) {
     if (!entry.forced.role) continue
+    // T685: a story that reaches nothing of the component reaches no composed-elsewhere target either.
+    if (entry.reachesComponentModule === false) continue
     const targetsForComponent = composedElsewhereNamesByKey.get(entry.componentKey)
     if (!targetsForComponent || targetsForComponent.size === 0) continue
     let targetComponentKey
@@ -3643,6 +3848,7 @@ export function resolveComposedStoryMatches(
     storyLineRange,
     argsLiterals,
     propsScope,
+    reachesComponentModule,
   } of pending) {
     // A `selector`-targeted force-state (`FavouritesList`'s own `Hover`/`FocusVisible`/`Active`,
     // `selector: 'a[href="/players/1"]'`) names no `role` at all — it targets a specific CSS
@@ -3654,15 +3860,18 @@ export function resolveComposedStoryMatches(
     // unresolved pair instead of two force-states this primitive was never the target of at all.
     if (!forced.role) continue
     for (const primitive of PRIMITIVE_NAMES) {
-      let candidates = instancesByPrimitive
-        .get(primitive)
-        .filter((i) => i.kind === 'jsx' && i.componentKey === componentKey && !i.ariaHidden)
-      if (storyLineRange && candidates.some((c) => c.file === file)) {
-        const inRange = candidates.filter(
-          (c) => c.file === file && c.line >= storyLineRange[0] && c.line <= storyLineRange[1],
-        )
-        if (inRange.length > 0) candidates = inRange
-      }
+      // T685: `candidatesForStory` narrows to the story's own `render:` JSX and, when that holds none,
+      // falls back to the component's source only for a story that reaches it. A `render:` that
+      // mounts a raw `<button>`, or a `<Menu>` beside nothing of this component's, depicts none of
+      // that source: the component's own composed `<Button variant="primary" size="lg">` is not
+      // what it forces, so it credits this primitive nothing (the same exclusion
+      // `findUnaccountedForceStates` reports rather than a frame silently lost).
+      let candidates = candidatesForStory(
+        instancesByPrimitive
+          .get(primitive)
+          .filter((i) => i.kind === 'jsx' && i.componentKey === componentKey && !i.ariaHidden),
+        { file, storyLineRange, reachesComponentModule },
+      )
       // A candidate whose own guards evaluate `'unreached'` against this story's own props/args
       // scope is not a sibling this story could possibly render — excluded outright, not merely
       // deprioritised (`FavouriteToggle`'s `SignedOutControl` button, guarded `!authenticated`,
@@ -4238,7 +4447,13 @@ function buildElementCells(
       playClick,
       argsLiterals,
       scope,
+      reachesComponentModule,
     } of storyObjectsWithMeta) {
+      // T685: a story whose own `render:` reaches nothing of this component's module shows none of
+      // its elements — a raw `<a href>` or `<button>` in its body is not this component's — so it
+      // is no candidate for any local element, whether it forces by role, by `play()` click or by
+      // `play()` focus. (The selector and dynamic-role passes below carry the same gate.)
+      if (reachesComponentModule === false) continue
       // A `selector`-targeted force-state names no `role` — never a candidate for a local
       // element matched by role (the same fix `resolveComposedStoryMatches` carries, and its own
       // comment explains: `FavouritesList`'s row link itself is `selector`-targeted, and must not
@@ -4350,8 +4565,18 @@ function buildElementCells(
         const v = evaluateExpr(candidateExpr, scopeWithLocalConsts(scope, candidate.localConsts))
         return v.resolved && typeof v.value === 'string' ? v.value : null
       }
-      for (const { exportName, forced, playFocus, argsLiterals, scope } of storyObjectsWithMeta) {
+      for (const {
+        exportName,
+        forced,
+        playFocus,
+        argsLiterals,
+        scope,
+        reachesComponentModule,
+      } of storyObjectsWithMeta) {
         if (!scope) continue
+        // T685: a story that reaches nothing of this module renders no `MenuItemRow`, whatever its
+        // `args` resolve the dynamic role to.
+        if (reachesComponentModule === false) continue
         if (evaluateGuards(el.guards ?? [], scope) === 'unreached') continue
         const resolved = evaluateExpr(roleExpr, scopeWithLocalConsts(scope, el.localConsts))
         if (!resolved.resolved || typeof resolved.value !== 'string') continue
@@ -4405,8 +4630,11 @@ function buildElementCells(
   // matched against every element sharing the selector's own tag rather than `impliedRole`'s pool
   // (T594's REJECT on #80, item 1 — previously dropped outright, `forced.role` required).
   if (!el.ariaHidden) {
-    for (const { exportName, forced, scope } of storyObjectsWithMeta) {
+    for (const { exportName, forced, scope, reachesComponentModule } of storyObjectsWithMeta) {
       if (!forced || forced.role || !forced.selector) continue
+      // T685: a raw `<a href>` story whose `args` resolve this element's `href` is not a rendering
+      // of this element.
+      if (reachesComponentModule === false) continue
       const parsed = parseSelector(forced.selector)
       if (!parsed) continue
       const tagPool = elements.filter((o) => o.tag === parsed.tag && !o.ariaHidden)
@@ -4593,7 +4821,9 @@ export function buildElementMatrix(
           const covering = [
             ...new Set(
               asPrinted(storyObjectsWithMeta)
-                .filter((s) => s.argsHasDisabledTrue)
+                // T685: a story whose `render:` reaches nothing of this module shows none of its
+                // elements, so its `args` cannot be what renders one disabled.
+                .filter((s) => s.argsHasDisabledTrue && s.reachesComponentModule !== false)
                 .map((s) => s.exportName),
             ),
           ]
@@ -6526,6 +6756,25 @@ export function checkCellGate(
   }
 }
 
+// The failure line for one `missing` entry of `findUnaccountedForceStates`. A story reported because
+// its `render:` was judged to reach nothing of the component's module (`reachedNothing`, T685) says
+// so: that verdict can be the predicate's miss rather than the story's, and a message that calls it
+// "a lost frame" sends the reader to the resolver instead.
+export function describeMissingForceState({ componentKey, exportName, state, reachedNothing }) {
+  if (reachedNothing) {
+    return (
+      `${componentKey}'s own ${exportName} forces "${state}" and is credited on no cell: ` +
+      `the reach predicate (storyReachesComponentModule) found no value reference from its ` +
+      `render: to ${componentKey}'s module. If the story does mount the component, the ` +
+      'predicate missed that shape.'
+    )
+  }
+  return (
+    `${componentKey}'s own ${exportName} forces "${state}" but is credited on no cell and ` +
+    'named in no unresolved reason anywhere in the region — a lost frame.'
+  )
+}
+
 // --- main --------------------------------------------------------------------------------------
 
 // Exported so a test can run `computeStateCoverage` against the live tree end to end — needed for
@@ -6559,12 +6808,7 @@ function main() {
   // deadline on is not an exception, it is a rename of the original bug (T598's own deadline is
   // 2026-09-27, the same date row 8 (H5) itself carries).
   const { missing, known, expired } = computed.unaccountedForceStates
-  for (const { componentKey, exportName, state } of missing) {
-    fail(
-      `${componentKey}'s own ${exportName} forces "${state}" but is credited on no cell and ` +
-        'named in no unresolved reason anywhere in the region — a lost frame.',
-    )
-  }
+  for (const entry of missing) fail(describeMissingForceState(entry))
   for (const entry of expired) {
     const detail = entry.malformed
       ? `malformed filed exception (${entry.malformed.join(', ')})`
