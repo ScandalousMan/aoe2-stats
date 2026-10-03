@@ -12,12 +12,12 @@
 // the state that reveals it — both already handled by `walkTabOrder` itself, which this function
 // reuses rather than re-implementing.
 import { expect, type Page } from '@playwright/test'
-import { walkTabOrder } from './keyboard-walk'
+import { type TabStop, walkTabOrder } from './keyboard-walk'
 
-export async function assertTouchFootprint(page: Page, context: string): Promise<void> {
-  const { steps } = await walkTabOrder(page)
-  expect(steps.length, `${context}: no interactive element found`).toBeGreaterThan(0)
-
+// The floor itself, over stops already collected: the Tab walk's own (`assertTouchFootprint`
+// below) or an opened `Menu`/`Dialog`'s (`open-surface.ts`, T676). Pure, so `touch-footprint.test.ts`
+// can hand it hand-made stops without a page.
+export function assertStopsClearFootprint(steps: readonly TabStop[], context: string): void {
   for (const step of steps) {
     if (step.exemptInlineLink) continue // WCAG 2.5.5's inline exception, read from data-variant
 
@@ -30,4 +30,10 @@ export async function assertTouchFootprint(page: Page, context: string): Promise
       `${context}: <${step.tag}> "${step.name}" is ${step.rect.height.toFixed(1)}px tall, below the 44px floor`,
     ).toBeGreaterThanOrEqual(44)
   }
+}
+
+export async function assertTouchFootprint(page: Page, context: string): Promise<void> {
+  const { steps } = await walkTabOrder(page)
+  expect(steps.length, `${context}: no interactive element found`).toBeGreaterThan(0)
+  assertStopsClearFootprint(steps, context)
 }

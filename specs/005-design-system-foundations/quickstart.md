@@ -1168,6 +1168,32 @@ suites in both themes, the 22 of `tests/visual/app-routes.spec.ts`, and the 36 p
 under `tests/visual/fixtures/`, which fail each suite's guard on a page carrying the defect it
 exists to catch.
 
+**Widened, 2026-10-03 (T676).** The scope above is superseded: the four suites now also run what a
+route renders once used, and row 1 of `packages/design-system/specs/README.md`'s
+"Verification-coverage gap register" is deleted. Each of the four suites iterates
+`SUITE_SCENARIOS` in `tests/visual/fixtures/suite-scenarios.ts` — the route scenarios at rest, the
+same routes with every list populated (matches, favourites, search results submitted, match
+participants, a second linked profile), and one scenario per openable surface, opened by keyboard:
+the theme `Menu` on every route, the profile-switcher `Menu` on `/dashboard` and `/matches`, the
+Manage `Menu` for a primary and a non-primary profile, the unlink `Dialog` and the account-erasure
+`Dialog`. An open surface is walked by its own keyboard contract rather than a Tab walk over the page
+behind it, and its stops feed the focus-ring and touch-footprint assertions. The touch suite adds a
+pointer-only sweep (every element with a pointer cursor or an interactive role that is not a Tab
+stop), and the reduced-motion suite adds two loading-state controls that hold an API response open
+and assert the `Skeleton` (`pulse`) and `Spinner` (`spin`) loops animate without the preference and
+are stopped under it, the same element still on screen. No fixture player carries an
+`avatar_hash`, and every scenario fails if the page requests a host other than the application's
+own. Three things the old verdict did not say, found by running the populated scenarios: the Tab
+walk now starts from the top of the document when a scenario left focus mid-page, and reads a
+focus ring after the element's own transitions have finished — a populated `PlayerResultRow` was
+judged on the first frame of its 120ms outline fade, 1.17:1 in dark — and no real route holds a
+pointer-only target, so that sweep's positive control is its planted pages, not a route. **Item 13
+is Met for routes at rest, populated, with every `Dialog` and `Menu` open and with the two loading
+states held, on the head carrying T676** — verified locally (361 tests of the four suites and
+`tests/visual/fixtures/` passing in Chromium on macOS); the CI run that backs it is the pull
+request's `visual` job, to be cited here once it is green, and the full-page baselines in
+`tests/visual/app-routes.spec.ts` are CI-authoritative and unchanged by this task.
+
 ### Item 15's general-reviewer half — outstanding, no pull request covers this head
 
 The `visual-reviewer` half is T595/T596/T600/T671's own, by their own words ("Production-readiness

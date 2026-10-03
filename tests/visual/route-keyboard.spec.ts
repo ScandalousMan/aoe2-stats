@@ -6,28 +6,21 @@
 // every route; this file adds the keyboard axis that leaves untouched.
 //
 // FR-049: "Every interactive element MUST be reachable and operable by keyboard, in an order that
-// matches its visual order, with no trap outside a modal surface that defines its own." No modal is
-// ever opened by this walk (a route-level Tab walk, not a component interaction test): a trap
-// surfaces as `assertFullTabCoverage`'s step-count guard (the walk producing more stops than
+// matches its visual order, with no trap outside a modal surface that defines its own." A route at
+// rest or populated is walked by Tab alone, with no modal open: a trap surfaces as `assertFullTabCoverage`'s step-count guard (the walk producing more stops than
 // candidates — see `keyboard-walk.ts`'s own comment on why a separate wrap-detection guard was
 // removed), not through containment. `assertStopsInsideChrome`, asserted separately below, checks
 // the containment `tests/visual/focus-ring.spec.ts` assumes implicitly: every stop stays inside the
 // route's one `main` landmark or its `header`/`footer` chrome.
 import { test } from '@playwright/test'
-import {
-  assertThemeApplied,
-  createAppServerHarness,
-  gotoScenario,
-  hasBuild,
-  ROUTE_SCENARIOS,
-  seedThemeOverride,
-  waitForFontsReady,
-} from './fixtures/app-routes-harness'
+import { createAppServerHarness, hasBuild } from './fixtures/app-routes-harness'
 import {
   assertFullTabCoverage,
   assertStopsInsideChrome,
   walkTabOrder,
 } from './fixtures/keyboard-walk'
+import { assertSurfaceKeyboard, walkOpenSurface } from './fixtures/open-surface'
+import { enterScenario, SUITE_SCENARIOS } from './fixtures/suite-scenarios'
 
 const harness = createAppServerHarness('4175')
 
@@ -61,32 +54,38 @@ test.describe('keyboard operation, every route, both themes', () => {
       harness.stop()
     })
 
-    for (const scenario of ROUTE_SCENARIOS) {
+    // T676: `SUITE_SCENARIOS` is the routes at rest (`ROUTE_SCENARIOS`), the same routes with every
+    // list populated, and one scenario per openable `Dialog`/`Menu`. A route at rest or populated
+    // gets the Tab walk below; a scenario that leaves a surface open gets that surface's own
+    // keyboard contract (`fixtures/open-surface.ts`) instead — Tab cycling inside a `Dialog`,
+    // roving-tabindex arrows through a `Menu` — because a Tab walk over the page behind an open
+    // modal measures the wrong thing.
+    for (const scenario of SUITE_SCENARIOS) {
       for (const theme of ['light', 'dark'] as const) {
-        test(`${scenario.label} — every interactive element is reachable, in order, inside the route's chrome (${theme})`, async ({
-          page,
-        }) => {
-          await seedThemeOverride(page, theme)
-          await scenario.stub(page)
+        const claim = scenario.surface
+          ? `the open ${scenario.surface} honours its keyboard contract`
+          : "every interactive element is reachable, in order, inside the route's chrome"
+        test(`${scenario.label} — ${claim} (${theme})`, async ({ page }) => {
+          const external = await enterScenario(page, scenario, harness.baseUrl, theme)
+          const context = `${scenario.label} (${theme})`
 
-          await gotoScenario(page, scenario, harness.baseUrl)
-          await page.getByRole('main').waitFor({ state: 'visible' })
-          // PR #102 review finding (low): proves the theme was actually *painted*, not merely
-          // seeded — `seedThemeOverride` only writes the storage key; `ThemeProvider.tsx` is what
-          // reads it and paints `data-theme`, and the two can drift.
-          await assertThemeApplied(page, theme)
-          await waitForFontsReady(page)
+          if (scenario.surface) {
+            assertSurfaceKeyboard(await walkOpenSurface(page, scenario.surface), context)
+          } else {
+            const result = await walkTabOrder(page)
 
-          const result = await walkTabOrder(page)
+            // FR-049's "no trap": every stop the walk actually reaches sits inside the route's one
+            // main landmark or its header/footer chrome — never off in a detached or hidden branch
+            // of the DOM a real keyboard user could not have reached either.
+            assertStopsInsideChrome(result.steps, context)
 
-          // FR-049's "no trap": every stop the walk actually reaches sits inside the route's one
-          // main landmark or its header/footer chrome — never off in a detached or hidden branch of
-          // the DOM a real keyboard user could not have reached either.
-          assertStopsInsideChrome(result.steps, `${scenario.label} (${theme})`)
+            // FR-049's "reachable, in order, with no trap": every candidate is reached exactly
+            // once, in DOM order. See `assertFullTabCoverage` for what each guard catches on its
+            // own.
+            assertFullTabCoverage(result, context)
+          }
 
-          // FR-049's "reachable, in order, with no trap": every candidate is reached exactly once,
-          // in DOM order. See `assertFullTabCoverage` for what each guard catches on its own.
-          assertFullTabCoverage(result, `${scenario.label} (${theme})`)
+          external.assertNone(context)
         })
       }
     }

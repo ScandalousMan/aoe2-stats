@@ -569,9 +569,10 @@ routes satisfy it, both already shipping, and a third is forbidden:
   space. It is not — it is the touch target.
 
 **How the floor is asserted, and its one exemption.** T674's touch-footprint sub-suite measures
-`getBoundingClientRect()` of every interactive element each route scenario renders at rest, at
-375px, in both themes, and fails on any box under 44 in either axis — populated lists and opened
-surfaces are not yet among them (Verification-coverage gap register, row 1). An input wrapped by its `<label>` is measured
+`getBoundingClientRect()` of every interactive element each route scenario renders — at rest, with every
+list populated, and with each `Dialog` and `Menu` open (T676) — at 375px, in both themes, and fails on any
+box under 44 in either axis; a separate sweep measures every pointer-only target, one a Tab walk cannot
+reach, found by its computed cursor or its interactive role. An input wrapped by its `<label>` is measured
 by the label's box; an element hidden until focused (`SiteHeader`'s skip link) is measured in the
 state that reveals it, never skipped. The one exemption is WCAG 2.5.5's inline exception, read from
 the DOM, never from layout: an anchor carrying `data-variant="inline"` — which only `Link` renders
@@ -3611,31 +3612,21 @@ same way (T674, 2026-09-28): all four sub-suites (`tests/visual/route-keyboard.s
 `route-focus-visibility.spec.ts`, `route-touch-footprint.spec.ts`, `route-reduced-motion.spec.ts`)
 run in CI against every route scenario `tests/visual/fixtures/app-routes-harness.ts` enumerates, in
 both themes — see quickstart.md's own walk for the verdict, its scope, and the run that backs it.
-That run backs item 13 only for what those scenarios render at rest; what they do not render is row 1
-below, and item 13 stays partly met until row 1 is deleted. The comparator row is deleted too (T675,
-2026-10-02; see the closing paragraph below). The row below is what is still open about this
-package's own verification harness, never about a component or a token, filed here for the reason
-the four registers above already are: the subject is this package's own tooling, so a future task
-changing that tooling needs this row updated, and it does not belong in a spec written once.
-
-1. **T674's route suites measure each route at rest, never what a route renders once used — found by
-   the adversarial review of #102 (2026-09-29, B3).** Every list fixture in
-   `tests/visual/fixtures/app-routes-harness.ts` is empty and no search is submitted, so row links,
-   result rows, favourites rows and participant links meet none of the four suites; the keyboard walk
-   is Tab-only and opens no `Dialog` or `Menu`, so their contents are neither walked nor measured; the
-   touch sweep measures only Tab stops, so a pointer-only target is never measured; and
-   `spin` and `pulse`, the only looping animations `packages/design-system/tokens/motion.json` defines,
-   live in loading states that are gone before the reduced-motion suite samples, so its looping half
-   has no positive control. Production-readiness item 13 is Met for what the scenarios render at rest
-   and partly met overall until this row is deleted. **Owner: T676. Fix by 2026-10-13.**
+That run backs item 13 only for what those scenarios render at rest; what they did not render — populated
+lists, opened `Dialog`s and `Menu`s, pointer-only targets and held loading states — was the register's last
+row, owned by T676 and deleted too (2026-10-03; see the closing paragraphs below), as is the comparator row
+(T675, 2026-10-02). No row is open as of 2026-10-03. The register stays because it is where a gap in this
+package's own verification harness — never in a component or a token — is filed when it is found, for the
+reason the four registers above already are: the subject is this package's own tooling, so a future task
+changing that tooling needs its row updated, and it does not belong in a spec written once.
 
 T674 (2026-09-28) runs all four of item 13's sub-suites in CI against every route scenario at rest,
 in both themes, and the sizing row this task's own filing opened (formerly row 1 of the Verification-coverage gap
 register above) is deleted rather than left as a passing exception — sizing the work is not doing
 it, the distinction an earlier draft of T597 collapsed and `reviewer` rejected on 2026-09-19, and
-deleting the row once the run backs the verdict is what tells the two apart. Row 1 above is what that
-run does not reach — populated lists, opened surfaces, loading states, pointer-only targets — and is
-T676's, not a reopening of T674's row. T675 closed the comparator row the same way: every fill-only state the sweep
+deleting the row once the run backs the verdict is what tells the two apart. What that run did not
+reach — populated lists, opened surfaces, loading states, pointer-only targets — was T676's row, not a
+reopening of T674's. T675 closed the comparator row the same way: every fill-only state the sweep
 found now carries the non-fill signal its own spec names (the decisions live in those specs, the
 2026-09-28 threshold decision in `playwright.config.ts`'s unchanged default), every state frame that
 measured at or under 1% unclipped is clipped to the element carrying its signal, and `node scripts/visual/run.mjs --state-signal-sweep`
@@ -3654,3 +3645,21 @@ the closed `Tooltip` surface. Run 36903179643 at `cf96edb5`, after that fix, mat
 with one test passing only on retry; the sweep's per-test timeout was raised from it, and this run,
 on the head carrying the sweep in its final form, is the one the verdict rests on. The gate now asserts what the row recorded, so the row is deleted rather
 than kept as a second copy of the fact.
+
+T676 (2026-10-03) closed the last row the same way: the four sub-suites now also run what a route renders once
+used. `tests/visual/fixtures/suite-scenarios.ts` populates every list a route renders (matches, favourites,
+search results, match participants, a second linked profile) with no fixture player carrying an
+`avatar_hash`, and every suite fails if a page requests a host other than the application's own, so none can
+reach `avatars.steamstatic.com`; it adds one scenario per openable surface, opened by keyboard — the theme
+`Menu` on every route, `ProfileSummary`'s switcher and Manage `Menu`s, the unlink `Dialog` and the
+account-erasure `Dialog` — and `tests/visual/fixtures/suite-scenarios.test.ts` fails when a `<Menu>` or
+`<Dialog>` usage appears in the source with no scenario. An open surface is walked by its own keyboard
+contract (`tests/visual/fixtures/open-surface.ts`: a `Dialog` traps Tab and Shift+Tab, a `Menu` has one tab
+stop and wraps its arrow keys) and its stops feed the focus-ring and touch-footprint assertions; the touch
+suite adds a sweep of every element with a pointer cursor or an interactive role that a Tab walk cannot reach
+(`tests/visual/fixtures/pointer-targets.ts`); and the reduced-motion suite holds a loading state open and
+asserts the `Skeleton` and `Spinner` loops animate without the preference and stop under it, the same
+element still on screen (`tests/visual/fixtures/loading-state.ts`). The suites run in
+`.github/workflows/pr.yml`'s `visual` job (named there) and in `.github/workflows/nightly.yml`'s
+`visual-full` job (every `tests/visual` spec), both themes, and needed no workflow edit to keep doing so. The
+row is deleted rather than kept as a second copy of the fact.

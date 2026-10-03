@@ -165,6 +165,24 @@ test.describe('keyboard-walk guards, planted pages', () => {
     expect(() => assertFullTabCoverage(result, 'redirect-and-skip-control')).not.toThrow()
   })
 
+  // T676: a scenario's `prepare` (a search submitted from its input, a menu opened from its trigger)
+  // leaves focus somewhere mid-page, and `blur()` alone leaves Chromium's sequential focus
+  // navigation starting point there — the next Tab continued from it and `/search (results
+  // submitted)` walked 5 stops for 14 candidates. The walk must start at the top whatever had focus.
+  test('a walk begun with focus already mid-page still starts at the top', async ({ page }) => {
+    await page.setContent(`
+      <button id="a">A</button>
+      <button id="b">B</button>
+      <button id="c">C</button>
+    `)
+    await page.focus('#c')
+
+    const result = await walkTabOrder(page)
+
+    expect(result.steps.map((step) => step.kbdId)).toEqual(['0', '1', '2'])
+    expect(() => assertFullTabCoverage(result, 'prior-focus')).not.toThrow()
+  })
+
   test('positive tabindex out of DOM order fails the DOM-order guard', async ({ page }) => {
     // This codebase itself never declares a positive `tabindex` (verified by grepping
     // `apps/web/src` and `packages/design-system/src` — every declared `tabindex` there is `"-1"`
