@@ -2476,7 +2476,7 @@ test('findUnaccountedForceStates: a story is accounted for only in the column of
 })
 
 // M3 — a second story file in a component directory cannot ride on the first file's bare name.
-test("findUnaccountedForceStates: a second story file in a component directory is accounted for by its qualified label, never by the first file's bare story of the same name (T684, M3)", () => {
+test("findUnaccountedForceStates: a second story file's story is accounted for by its qualified label; its uncredited Hover is reported although the first file's qualified Hover is printed (T684, M3)", () => {
   const storyStatesByComponent = new Map([
     [
       'composites/Gallery',
@@ -2731,6 +2731,216 @@ export const FocusVisible = { args: {}, parameters: { visualForceState: { state:
   assert.deepEqual(notice.elements[0].coveredBy.focusVisible, ['Extra:FocusVisible'])
   assert.deepEqual(missingIds(computed.unaccountedForceStates.missing), ['composites/Notice:Hover'])
   assert.equal(computed.unaccountedForceStates.missing[0].state, 'hover')
+})
+
+// --- T684, round 2: the three text forms a story is read back through each name one story ---------
+
+// M-A: a bare entry is the name followed by `: `, ` (` or the end of the entry. `<name>:` followed
+// by anything else is another story's qualified label.
+test("findUnaccountedForceStates: another story's qualified label `CountryFlag:FlagHoverRevealed` is not an entry of a story exported as CountryFlag (T684, M-A)", () => {
+  const storyStatesByComponent = new Map([
+    ['composites/Alpha', [storyFixture('composites/Alpha', 'CountryFlag')]],
+  ])
+  const { missing } = findUnaccountedForceStates(
+    storyStatesByComponent,
+    regionFixture({
+      record1: [r1Row('composites/Alpha', { hover: 'CountryFlag:FlagHoverRevealed' })],
+    }),
+  )
+  assert.deepEqual(missing, [
+    { componentKey: 'composites/Alpha', exportName: 'CountryFlag', state: 'hover' },
+  ])
+})
+
+test("contrast: a story's own bare reasons (`Name: N candidates …`, `Name: selector …`, `Name (play-driven; …)`, `Name (play-click-driven): …`) keep it accounted for, in every separator the reason builders print (T684, M-A)", () => {
+  const reasons = [
+    'unresolved: CountryFlag: 2 candidates share role "button"',
+    'unresolved: CountryFlag: selector "[data-x]" not resolvable against this element\'s own "data-x"',
+    'unresolved: CountryFlag (play-driven; frame not provable statically)',
+    'unresolved: CountryFlag (play-click-driven): 2 candidates share role "button"',
+    'unresolved: CountryFlag (play-driven): 2 candidates share role "button"',
+    'CountryFlag',
+    'Other; unresolved: CountryFlag: 2 candidates share role "button"',
+  ]
+  for (const reason of reasons) {
+    const { missing } = findUnaccountedForceStates(
+      new Map([['composites/Alpha', [storyFixture('composites/Alpha', 'CountryFlag')]]]),
+      regionFixture({ record1: [r1Row('composites/Alpha', { hover: reason })] }),
+    )
+    assert.deepEqual(missing, [], reason)
+  }
+})
+
+// A qualified label is not an entry of a story named like its base either.
+test('findUnaccountedForceStates: a qualified label whose export part continues the name does not credit the shorter name (T684, M-A)', () => {
+  const { missing } = findUnaccountedForceStates(
+    new Map([['composites/Alpha', [storyFixture('composites/Alpha', 'Flag')]]]),
+    regionFixture({ record1: [r1Row('composites/Alpha', { hover: 'Flag:Hover' })] }),
+  )
+  assert.deepEqual(missing, [
+    { componentKey: 'composites/Alpha', exportName: 'Flag', state: 'hover' },
+  ])
+})
+
+const PLANTED_STORY = (name, role, state = 'hover') =>
+  `\nexport const ${name} = { args: {}, parameters: { visualForceState: { state: '${state}', role: '${role}' } } }\n`
+
+// M-A on the real tree: `Tooltip` prints `CountryFlag:FlagHoverRevealed` in its own hover cell, and a
+// story planted as `CountryFlag` forcing a role nothing renders must still be reported.
+test("findUnaccountedForceStates (via computeStateCoverage): a story exported as CountryFlag, planted in Tooltip's stories, is reported beside its control (T684, M-A, real tree)", () => {
+  const { componentDirs, filesByPath } = readAllSourceFiles()
+  const tooltipStories = path.join(REPO_SRC_DIR, 'primitives/Tooltip/Tooltip.stories.tsx')
+  assert.ok(filesByPath.has(tooltipStories))
+  filesByPath.set(
+    tooltipStories,
+    filesByPath.get(tooltipStories) +
+      PLANTED_STORY('CountryFlag', 'slider') +
+      PLANTED_STORY('ZzCtlA', 'slider'),
+  )
+  const { missing, known, expired } = computeStateCoverage({
+    componentDirs,
+    filesByPath,
+  }).unaccountedForceStates
+  assert.deepEqual(known, [])
+  assert.deepEqual(expired, [])
+  assert.deepEqual(missingIds(missing), [
+    'primitives/Tooltip:CountryFlag',
+    'primitives/Tooltip:ZzCtlA',
+  ])
+})
+
+// M-B: `<base>:<export>` carries no component, so two story files sharing a base are a failure.
+const EXTRA_STORIES = `
+import { Notice } from './index'
+const meta = { component: Notice, args: { href: '/a' } }
+export default meta
+export const Hover = { args: {}, parameters: { visualForceState: { state: 'hover', role: 'link' } } }
+`
+const PLAIN_EXTRA_STORIES = `
+import { Plain } from './index'
+const meta = { component: Plain }
+export default meta
+export const Hover = { args: {}, parameters: { visualForceState: { state: 'hover', role: 'slider' } } }
+`
+const srcFile = (rel) => path.join(REPO_SRC_DIR, rel)
+
+test('computeStateCoverage throws, naming both files and the shared base, when two components have a story file of the same basename (T684, M-B)', () => {
+  const componentDirs = [
+    { segment: 'composites', name: 'Notice' },
+    { segment: 'composites', name: 'Plain' },
+  ]
+  const filesByPath = new Map([
+    [srcFile('composites/Notice/index.tsx'), SHARED_NAME_NOTICE_INDEX],
+    [srcFile('composites/Notice/Extra.stories.tsx'), EXTRA_STORIES],
+    [srcFile('composites/Plain/index.tsx'), SHARED_NAME_PLAIN_INDEX],
+    [srcFile('composites/Plain/Extra.stories.tsx'), PLAIN_EXTRA_STORIES],
+  ])
+  assert.throws(
+    () => computeStateCoverage({ componentDirs, filesByPath }),
+    (error) =>
+      /composites\/Notice\/Extra\.stories\.tsx/.test(error.message) &&
+      /composites\/Plain\/Extra\.stories\.tsx/.test(error.message) &&
+      /label base "Extra"/.test(error.message),
+  )
+})
+
+test('computeStateCoverage throws when a story file is not named after its component and another component has a story file of that name (T684, M-B)', () => {
+  const componentDirs = [
+    { segment: 'composites', name: 'Foo' },
+    { segment: 'composites', name: 'Bar' },
+  ]
+  const filesByPath = new Map([
+    [srcFile('composites/Foo/index.tsx'), SHARED_NAME_PLAIN_INDEX],
+    [srcFile('composites/Foo/Bar.stories.tsx'), PLAIN_EXTRA_STORIES],
+    [srcFile('composites/Bar/index.tsx'), SHARED_NAME_PLAIN_INDEX],
+    [srcFile('composites/Bar/Bar.stories.tsx'), PLAIN_EXTRA_STORIES],
+  ])
+  assert.throws(
+    () => computeStateCoverage({ componentDirs, filesByPath }),
+    (error) =>
+      /composites\/Foo\/Bar\.stories\.tsx/.test(error.message) &&
+      /composites\/Bar\/Bar\.stories\.tsx/.test(error.message) &&
+      /label base "Bar"/.test(error.message),
+  )
+})
+
+test("computeStateCoverage throws when two directories of one component hold story files of the same basename, which a component's own bare-or-qualified printing cannot tell apart (T684, M-B)", () => {
+  const componentDirs = [{ segment: 'composites', name: 'Notice' }]
+  const filesByPath = new Map([
+    [srcFile('composites/Notice/index.tsx'), SHARED_NAME_NOTICE_INDEX],
+    [srcFile('composites/Notice/Extra.stories.tsx'), EXTRA_STORIES],
+    [srcFile('composites/Notice/nested/Extra.stories.tsx'), EXTRA_STORIES],
+  ])
+  assert.throws(() => computeStateCoverage({ componentDirs, filesByPath }), /label base "Extra"/)
+})
+
+test("contrast: computeStateCoverage does not throw when only one component has Extra.stories.tsx, and that file's credited story stays accounted for (T684, M-B)", () => {
+  const componentDirs = [
+    { segment: 'composites', name: 'Notice' },
+    { segment: 'composites', name: 'Plain' },
+  ]
+  const filesByPath = new Map([
+    [srcFile('composites/Notice/index.tsx'), SHARED_NAME_NOTICE_INDEX],
+    [srcFile('composites/Notice/Extra.stories.tsx'), EXTRA_STORIES],
+    [srcFile('composites/Plain/index.tsx'), SHARED_NAME_PLAIN_INDEX],
+    [srcFile('composites/Plain/Plain.stories.tsx'), PLAIN_EXTRA_STORIES],
+  ])
+  const computed = computeStateCoverage({ componentDirs, filesByPath })
+  const notice = computed.localElements.find((c) => c.componentKey === 'composites/Notice')
+  assert.deepEqual(notice.elements[0].coveredBy.hover, ['Hover'])
+  assert.deepEqual(missingIds(computed.unaccountedForceStates.missing), ['composites/Plain:Hover'])
+})
+
+// M-B on the real tree: a copy of Footer's stories named `Extra` credits `Extra:Hover` on `Link`'s
+// matrix; a second `Extra.stories.tsx` in SearchBox used to be accounted for by it.
+test('computeStateCoverage (real tree): Extra.stories.tsx planted in both Footer and SearchBox throws; planted in Footer alone it does not and reports nothing (T684, M-B)', () => {
+  const { componentDirs, filesByPath } = readAllSourceFiles()
+  const footer = readFileSync(srcFile('composites/Footer/Footer.stories.tsx'), 'utf8')
+  filesByPath.set(srcFile('composites/Footer/Extra.stories.tsx'), footer)
+  const alone = computeStateCoverage({ componentDirs, filesByPath })
+  assert.deepEqual(alone.unaccountedForceStates.missing, [])
+  filesByPath.set(
+    srcFile('composites/SearchBox/Extra.stories.tsx'),
+    `import { SearchBox } from './index'\nconst meta = { component: SearchBox }\nexport default meta\n` +
+      PLANTED_STORY('Hover', 'slider') +
+      PLANTED_STORY('ZzCtlB', 'slider'),
+  )
+  assert.throws(
+    () => computeStateCoverage({ componentDirs, filesByPath }),
+    (error) =>
+      /composites\/Footer\/Extra\.stories\.tsx/.test(error.message) &&
+      /composites\/SearchBox\/Extra\.stories\.tsx/.test(error.message),
+  )
+})
+
+// L-1: one function spells the label base for every printer and for the reader, whatever the
+// story file's extension.
+test('buildAxisMatrix prints a `.stories.ts` file under the same label base findUnaccountedForceStates reads it back by (T684, L-1)', () => {
+  const instances = [
+    {
+      primitive: 'Menu',
+      kind: 'own-story',
+      componentKey: 'primitives/Menu',
+      file: 'packages/design-system/src/primitives/Menu/Extra.stories.ts',
+      storyName: 'Hover',
+      variant: { value: 'actions', resolved: 'explicit' },
+      size: { value: null, resolved: 'n/a' },
+      forced: { state: 'hover', role: 'button', name: null },
+      playFocus: null,
+    },
+  ]
+  const row = buildAxisMatrix('Menu', instances).find((r) => r.variantSize === 'actions')
+  assert.deepEqual(row.hover, ['Extra:Hover'])
+  const { missing } = findUnaccountedForceStates(
+    new Map([
+      [
+        'primitives/Menu',
+        [storyFixture('primitives/Menu', 'Hover', 'hover', { storyFile: 'Extra.stories.ts' })],
+      ],
+    ]),
+    regionFixture({ matrices: { Menu: [r3Row('actions', { hover: row.hover.join('; ') })] } }),
+  )
+  assert.deepEqual(missing, [])
 })
 
 test("findUnaccountedForceStates (via computeStateCoverage): KNOWN_UNACCOUNTED_FORCE_STATES is empty and the whole real tree reports zero missing, zero known and zero expired — T598's own completion condition, not a cell count (T595's own exception, ProfileSummary's SwitcherFocusVisibleAndOpen, closed by injectComposedPrimitiveLocalCredits)", () => {

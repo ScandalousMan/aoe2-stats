@@ -2684,7 +2684,7 @@ export function injectComposedPrimitiveLocalCredits(
         (c) => evaluateGuards(c.guards ?? [], entry.propsScope) !== 'unreached',
       )
       if (reachable.length === 0) continue
-      const label = `${path.basename(entry.file, '.stories.tsx')}:${entry.exportName}`
+      const label = storyLabel(entry.file, entry.exportName)
       for (const instance of reachable) {
         const scope = buildComposedCallSiteScope(
           primitiveKey,
@@ -2913,9 +2913,39 @@ function parseStateColumns(regionText) {
   return { record1, sections }
 }
 
-// A story file's label base: the `<base>` of the `<base>:<export>` label `cellName` prints.
+// A story file's label base: the `<base>` of the `<base>:<export>` label every printer below writes
+// and the reader (`storyIsCreditedInItsStateColumn`) reads back.
 function storyFileLabelBase(storyFile) {
   return storyFile.replace(/\.stories\.tsx?$/, '')
+}
+
+// The `<base>:<export>` label of a story, from a story file's path or basename. The one place a
+// label is spelled: `cellName`, the composed-story and own-story credits, `resolveDisabledFromStories`
+// and `qualifyStoryNamesWhereAmbiguous` all print through it.
+function storyLabel(storyFile, exportName) {
+  return `${storyFileLabelBase(path.basename(storyFile))}:${exportName}`
+}
+
+// A `<base>:<export>` label names one story only if no two story files share a base: the base
+// carries no component, so `composites/Footer/Extra.stories.tsx` and
+// `composites/SearchBox/Extra.stories.tsx` would both print `Extra:Hover`. Throws, naming the files
+// and the base, when two distinct story files (in two components, or two directories of one) share
+// one — the reader cannot tell their labels apart and the printers do not lengthen them.
+function assertStoryLabelBasesAreUnique(filePaths) {
+  const filesByBase = new Map()
+  for (const filePath of filePaths) {
+    if (!/\.stories\.tsx?$/.test(filePath)) continue
+    const base = storyFileLabelBase(path.basename(filePath))
+    filesByBase.set(base, [...(filesByBase.get(base) ?? []), filePath])
+  }
+  for (const [base, files] of filesByBase) {
+    if (files.length < 2) continue
+    throw new Error(
+      `state-coverage: story files ${files.map((f) => relPath(f)).join(' and ')} share the label ` +
+        `base ${JSON.stringify(base)}, so \`${base}:<export>\` would name a story of either — ` +
+        `rename one of the files`,
+    )
+  }
 }
 
 function escapeRegExp(text) {
@@ -2926,7 +2956,10 @@ function escapeRegExp(text) {
 // `Hover`, `unresolved: Hover: 2 candidates share role …`, `Hover (play-driven; …)`, joined by
 // `; ` — so a name is read at the start of an entry, never as a word inside another story's reason
 // text (`share role "button"`, `name "Hover" not literally resolvable`, an ancestor's own
-// `hover: RowLinkHover`).
+// `hover: RowLinkHover`). A name is followed by `: ` (`Hover: 2 candidates share role …`,
+// `Hover: selector …`), ` (` (`Hover (play-driven; …)`, `Hover (play-click-driven): …`) or the end
+// of the entry; `Hover:` followed by anything but a space is another story's qualified label
+// (`CountryFlag:FlagHoverRevealed` is not an entry of a story exported as `CountryFlag`).
 function bareCellEntries(text) {
   return text.split('; ').map((entry) => entry.trim().replace(/^unresolved: /, ''))
 }
@@ -2958,7 +2991,7 @@ function storyIsCreditedInItsStateColumn(componentKey, entry, columns, hasSoleSt
   const pseudoRowReason = new RegExp(
     `(?<![\\w$])${escapeRegExp(`${componentKey}/${storyFile}`)}:${name} — state "${escapeRegExp(state)}"`,
   )
-  const bare = new RegExp(`^${name}(?::| \\(|$)`)
+  const bare = new RegExp(`^${name}(?:: | \\(|$)`)
   const credits = (text, bareAllowed) =>
     qualified.test(text) || (bareAllowed && bareCellEntries(text).some((e) => bare.test(e)))
   for (const row of columns.record1) {
@@ -3070,7 +3103,7 @@ function qualifyStoryNamesWhereAmbiguous(storyStatesByComponent) {
   for (const entries of storyStatesByComponent.values()) {
     const real = entries.filter((e) => !e.synthetic && e.storyFile)
     if (new Set(real.map((e) => e.storyFile)).size <= 1) continue
-    for (const e of real) e.displayName = `${storyFileLabelBase(e.storyFile)}:${e.exportName}`
+    for (const e of real) e.displayName = storyLabel(e.storyFile, e.exportName)
   }
 }
 
@@ -3082,6 +3115,7 @@ function asPrinted(storyObjectsWithMeta) {
 
 export function computeStateCoverage({ componentDirs, filesByPath }) {
   const allFiles = [...filesByPath.keys()].sort()
+  assertStoryLabelBasesAreUnique(allFiles)
   const sourceFiles = new Map(allFiles.map((f) => [f, parseTsx(f, filesByPath.get(f))]))
 
   const defaultsByPrimitive = {}
@@ -3419,7 +3453,7 @@ export function computeStateCoverage({ componentDirs, filesByPath }) {
     // literal name/args match against `Tooltip`'s own file (where "Country:" appears nowhere at
     // all — it is `CountryFlag`'s own literal, a fact about the *composition*, not about `Tooltip`'s
     // own source) would only manufacture a fresh, false `'ambiguous'` on an already-settled match.
-    const label = `${path.basename(entry.file, '.stories.tsx')}:${entry.exportName}`
+    const label = storyLabel(entry.file, entry.exportName)
     storyStatesByComponent.set(targetComponentKey, [
       ...(storyStatesByComponent.get(targetComponentKey) ?? []),
       {
@@ -3759,7 +3793,7 @@ function scopeWithLocalConsts(baseScope, localConsts) {
 
 export function resolveDisabledFromStories(pendingStoryScopes, instancesByPrimitive) {
   for (const { componentKey, file, exportName, propsScope } of pendingStoryScopes) {
-    const label = `${path.basename(file, '.stories.tsx')}:${exportName}`
+    const label = storyLabel(file, exportName)
     for (const primitive of PRIMITIVE_NAMES) {
       const candidates = instancesByPrimitive
         .get(primitive)
@@ -3872,7 +3906,7 @@ function axisKey(inst) {
 
 function cellName(inst) {
   if (inst.kind === 'own-story' || inst.kind === 'composed-story')
-    return `${path.basename(inst.file, '.stories.tsx')}:${inst.storyName}`
+    return storyLabel(inst.file, inst.storyName)
   return `${inst.componentKey}`
 }
 
