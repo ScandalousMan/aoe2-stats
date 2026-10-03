@@ -1317,7 +1317,7 @@ after everything underneath it moves.
       recorded in [data-model.md](./data-model.md) §7, forced by a non-nullable column and a closed
       cause set. FR-039's rate query groups by build, so decide here how that row reads to an
       operator and do not let `-1` appear in the report as though it were a game build
-- [ ] T663 [US6] Add the single additive migration — the `analysis_knowledge_gaps` table and the
+- [x] T663 [US6] Add the single additive migration — the `analysis_knowledge_gaps` table and the
       nullable `match_analyses.identity_digest` column T657a reads — under
       `infra/migrations/versions/`, following that directory's naming convention and chaining from
       its current head, and bump the expected schema revision in `packages/storage` in the same

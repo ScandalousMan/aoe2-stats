@@ -645,9 +645,9 @@ class AnalysisKnowledgeGap(Base):
     not a cache fed by a separate counter. `KnowledgeGapsRepository.gap_rate`
     (`repositories/knowledge_gaps.py`) groups these rows by `build`, `cause` and `severity` over a
     window; `scripts/checks/knowledge_gap_rate.py` prints what that grouping returns. Both are
-    real, tested code as of this table landing — and both are dead code in production until
-    T663's single additive migration actually creates this table; nothing in this feature's own
-    call graph invokes either before then (T652's own task text).
+    real, tested code. This table is created by T663's single additive migration
+    (`53375d9435fc`), which also adds `match_analyses.identity_digest`; nothing in this feature's
+    own call graph invokes either before that revision is applied (T652's own task text).
 
     **Deliberately not the ingester's `ingest_runs.quarantined_total` shape.** That is one column
     on a per-run table, incremented by a multi-stage aggregator as a run drains
@@ -658,7 +658,7 @@ class AnalysisKnowledgeGap(Base):
 
     **No personal data: a participant is not a column** (data-model.md §7's own words). `game_id`
     names a match, `identity_digest` names the analysis that recorded the gap (T653's identity
-    tuple, not yet a column on `match_analyses` until T663) — neither is a profile, a Steam
+    tuple; `match_analyses.identity_digest` carries the current one) — neither is a profile, a Steam
     identity or anything scoped to one person's account.
 
     Unique on `(identity_digest, entity_kind, entity_id, field, civilisation_id)`
@@ -703,9 +703,9 @@ class AnalysisKnowledgeGap(Base):
     # contrast).
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     game_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("matches.game_id"), index=True)
-    # T653's identity tuple digest — the analysis that recorded this gap. No foreign key yet:
-    # `match_analyses.identity_digest` does not exist until T663's same additive migration adds it
-    # alongside this table.
+    # T653's identity tuple digest — the analysis that recorded this gap. No foreign key:
+    # `match_analyses.identity_digest` names only the *current* digest and is not unique, and
+    # earlier analyses' gaps are kept (research D9).
     identity_digest: Mapped[str] = mapped_column(Text, nullable=False)
     build: Mapped[int] = mapped_column(Integer, nullable=False)
     entity_kind: Mapped[str] = mapped_column(Text, nullable=False)
@@ -866,6 +866,11 @@ class MatchAnalysis(Base):
     error_class: Mapped[str | None] = mapped_column(Text)
     error_message: Mapped[str | None] = mapped_column(Text)
     result_key: Mapped[str | None] = mapped_column(Text)
+    # 006 (T663, data-model.md §8): the digest of the identity tuple the published document was
+    # produced under. Nullable because a row published before 006 has none — which the staleness
+    # test (T657a) reads as stale, recomputing it once. No backfill, and no change to 003's primary
+    # key or lease behaviour (FR-048).
+    identity_digest: Mapped[str | None] = mapped_column(Text)
 
 
 class RetainedRecording(Base):

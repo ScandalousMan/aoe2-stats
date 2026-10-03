@@ -12,15 +12,10 @@ one flat row per gap (`models.AnalysisKnowledgeGap`), and this one grouped query
 function grouping by build, cause and severity over a window" — and `scripts/checks/
 knowledge_gap_rate.py` is the one script that calls it and prints what it returns.
 
-**Dead code until T663.** `analysis_knowledge_gaps` does not exist in any applied migration yet —
-T663 adds it, in the same single additive revision that adds `match_analyses.identity_digest`. This
-module, and the script that calls it, are real and tested against the table `Base.metadata`
-already knows about (see `packages/storage/tests/repositories/test_knowledge_gaps.py`, which
-creates the table directly rather than through Alembic — precisely because no migration exists yet
-to create it through), but nothing in this feature's production call graph — `apps/analyzer`, a
-cron entry, a router — invokes either before T663's revision is actually applied. Wiring the script
-into `.github/workflows/nightly.yml` is T663's job too, not this module's: a nightly job against a
-table that does not exist would fail for the whole gap between the two phases.
+**Applied by T663.** `analysis_knowledge_gaps` is created by T663's single additive revision
+(`53375d9435fc`), which also adds `match_analyses.identity_digest` and wires the script into
+`.github/workflows/nightly.yml`. Until that revision is applied to a database, this module and the
+script fail with `UndefinedTable` there.
 """
 
 from __future__ import annotations

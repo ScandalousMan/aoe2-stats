@@ -129,6 +129,18 @@ jobs:
         run: uv run scripts/checks/capture_audit.py
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      # T663 (FR-039): the knowledge-gap rate by build, cause and severity over the trailing 30 days,
+      # printed to the job log. A report, not a gate — there is no threshold yet, because the first
+      # game patch that moves the rate is what sets one, and a step failing on an unmeasured number
+      # would cry wolf from its first run. `scripts/checks/knowledge_gap_rate.py` exits non-zero
+      # only when it cannot ask the question at all (`DATABASE_URL` unset), the same single case
+      # the audits above fail on. `if: always()` so a red capture audit does not also hide the rate.
+      # Needs `53375d9435fc` applied to the database this secret points at, else `UndefinedTable`.
+      - name: Report the knowledge-gap rate by build, cause and severity (FR-039, no threshold)
+        if: always()
+        run: uv run scripts/checks/knowledge_gap_rate.py
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
   alert-audit:
     name: Alert audit

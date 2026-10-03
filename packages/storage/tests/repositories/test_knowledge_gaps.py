@@ -2,15 +2,8 @@
 (T652; FR-039; contracts/knowledge-base.md's "Gaps"/"Aggregate";
 specs/006-replay-analysis-foundations/data-model.md §7).
 
-`analysis_knowledge_gaps` is not created by any applied migration yet — T663 adds it, in the same
-single additive revision that adds `match_analyses.identity_digest`. Every other integration test
-in this package (`test_captures.py`, `test_matches.py`, `test_ratings.py`) runs against the real
-migrated-to-head schema and never creates a table itself; this one is the first that has to, since
-its own table postdates the migrations this session's throwaway database was built from. See
-`gaps_session` below for exactly how, and `tests/db.py`'s own `clean_database` for the companion
-fix T652 needed to keep every *other* integration test green in the meantime (a model landing in
-`Base.metadata` a whole phase before its migration must not make the shared truncate-before-each-
-test fixture fail on a table that does not exist yet).
+`analysis_knowledge_gaps` is created by T663's revision (`53375d9435fc`), so these tests run
+against the real migrated-to-head schema like every other integration test in this package.
 """
 
 from __future__ import annotations
@@ -19,14 +12,13 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession
 from tests.db import clean_database, database_url, db_session, engine, session_factory
 
 from aoe2stats_storage.models import (
     AnalysisGapCause,
     AnalysisGapSeverity,
     AnalysisKnowledgeGap,
-    Base,
     Match,
 )
 from aoe2stats_storage.repositories.knowledge_gaps import KnowledgeGapsRepository
@@ -39,29 +31,9 @@ _LEADERBOARD_ID = 3
 
 
 @pytest.fixture
-async def gaps_session(engine: AsyncEngine, db_session: AsyncSession) -> AsyncSession:
-    """`db_session` alone is not enough here: the throwaway database `tests/db.py` builds is
-    migrated to `head` through the real Alembic migrations (`_migrate_to_head`), and
-    `analysis_knowledge_gaps` has no migration yet (T663's job). This fixture creates exactly that
-    one table directly from the ORM model — `checkfirst=True` so a second test in this module does
-    not try to create it twice — the same "assert against the schema the ORM defines, not a live
-    database" idea `packages/storage/tests/test_models.py`'s own module docstring already states,
-    applied here against a real database instead of only against `Base.metadata` in memory, because
-    this test needs to actually insert and query rows, which a structural, no-database test cannot
-    do.
-
-    Requesting `db_session` as a parameter (rather than only `engine`) is what guarantees
-    `clean_database` has already run — and, since T652's fix to it, already tolerated this table's
-    absence — before this fixture creates it; creating it first would risk `clean_database` finding
-    the table on the *next* test in the module before its own truncation query could plan around a
-    schema that legitimately changed size mid-session, which is not a real risk here (`CREATE
-    TABLE IF NOT EXISTS` behind `checkfirst=True` is idempotent) but is the ordering this fixture
-    keeps explicit anyway.
-    """
-    async with engine.begin() as connection:
-        await connection.run_sync(
-            Base.metadata.create_all, tables=[AnalysisKnowledgeGap.__table__], checkfirst=True
-        )
+async def gaps_session(db_session: AsyncSession) -> AsyncSession:
+    """The clean, migrated database's session — kept as a named fixture so the tests below read
+    as they did when the table had to be created by hand (T652, before T663's revision)."""
     return db_session
 
 

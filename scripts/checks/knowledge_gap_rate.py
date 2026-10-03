@@ -14,11 +14,10 @@ fact about the game (`docs/data-sources.md`'s own coverage measurements), not an
 exits `1` only when it cannot even ask the question (`DATABASE_URL` unset), the same convention
 `alert_audit.py`/`capture_audit.py` both use for that one case.
 
-**Dead code until T663.** `analysis_knowledge_gaps` is not created by any applied migration yet —
-T663 adds it. Running this script against a database at any revision before T663's would fail with
-`UndefinedTable`, which is exactly why nothing calls this script yet: it is wired into
-`.github/workflows/nightly.yml` by T663, not by this task (see `KnowledgeGapsRepository`'s own
-module docstring for the fuller reasoning).
+**Wired by T663.** `analysis_knowledge_gaps` is created by T663's revision (`53375d9435fc`), and
+`.github/workflows/nightly.yml` runs this script as a step of its `capture-audit` job, reporting and
+never failing on a rate. Against a database that revision has not reached it fails with
+`UndefinedTable`, which is why the revision is applied before the nightly that carries the step.
 
 Usage:  uv run scripts/checks/knowledge_gap_rate.py [--window-days N]
 Exit:   0 once the report has been printed (or nothing was ever reachable to ask); 1 only when
