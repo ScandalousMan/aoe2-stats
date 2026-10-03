@@ -11,6 +11,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from tests.db import clean_database, database_url, db_session, engine, session_factory
@@ -21,7 +22,14 @@ from aoe2stats_storage.models import (
     AnalysisKnowledgeGap,
     Match,
 )
-from aoe2stats_storage.repositories.knowledge_gaps import KnowledgeGapsRepository
+from aoe2stats_storage.repositories.knowledge_gaps import (
+    NO_BUILD,
+    WHOLE_BUILD_ENTITY_ID,
+    WHOLE_BUILD_ENTITY_KIND,
+    WHOLE_BUILD_FIELD,
+    GapToRecord,
+    KnowledgeGapsRepository,
+)
 
 # Re-exported so ruff sees these names used and pytest discovers each imported fixture exactly as
 # if it had been defined here — the same convention `test_captures.py` and `test_matches.py` use.
@@ -286,3 +294,109 @@ async def test_the_unique_constraint_rejects_a_reproduced_analysis_recording_the
     # `test_ratings.py`'s own equivalent test applies, since the `db_session` fixture's teardown
     # still needs a session it can commit.
     await gaps_session.rollback()
+
+
+# --- T662: recording the gaps, insert-or-ignore ---------------------------------------------------
+
+
+def _gap(
+    *,
+    entity_id: str = "unit-1",
+    field_name: str = "cost",
+    civilisation_id: str | None = None,
+    cause: str = "field-absent",
+    severity: str = "blocking",
+    build: int = 101,
+) -> GapToRecord:
+    return GapToRecord(
+        build=build,
+        entity_kind="unit",
+        entity_id=entity_id,
+        field=field_name,
+        civilisation_id=civilisation_id,
+        cause=cause,
+        severity=severity,
+    )
+
+
+async def _stored(session: AsyncSession) -> list[AnalysisKnowledgeGap]:
+    result = await session.execute(select(AnalysisKnowledgeGap).order_by(AnalysisKnowledgeGap.id))
+    return list(result.scalars())
+
+
+async def test_record_gaps_inserts_one_row_per_gap(gaps_session: AsyncSession) -> None:
+    await _seed_match(gaps_session, game_id=10)
+    repository = KnowledgeGapsRepository(gaps_session)
+
+    inserted = await repository.record_gaps(
+        game_id=10,
+        identity_digest="digest-a",
+        gaps=[_gap(entity_id="1"), _gap(entity_id="2", civilisation_id="Franks")],
+    )
+
+    assert inserted == 2
+    rows = await _stored(gaps_session)
+    assert [(row.entity_id, row.civilisation_id) for row in rows] == [("1", None), ("2", "Franks")]
+    assert {row.identity_digest for row in rows} == {"digest-a"}
+    assert {row.cause for row in rows} == {AnalysisGapCause.FIELD_ABSENT}
+    assert {row.severity for row in rows} == {AnalysisGapSeverity.BLOCKING}
+
+
+async def test_a_second_identical_record_adds_zero_rows_and_raises_nothing(
+    gaps_session: AsyncSession,
+) -> None:
+    """T662: a reproduced or re-run analysis records nothing twice. Both a gap with a civilisation
+    and one with none — the case a plain unique constraint would let through, NULL being unequal to
+    NULL — are ignored the second time."""
+    await _seed_match(gaps_session, game_id=11)
+    repository = KnowledgeGapsRepository(gaps_session)
+    gaps = [_gap(entity_id="1", civilisation_id="Franks"), _gap(entity_id="2")]
+    await repository.record_gaps(game_id=11, identity_digest="digest-a", gaps=gaps)
+    before = await _stored(gaps_session)
+
+    inserted = await repository.record_gaps(game_id=11, identity_digest="digest-a", gaps=gaps)
+
+    assert inserted == 0
+    after = await _stored(gaps_session)
+    assert [row.id for row in after] == [row.id for row in before]
+
+
+async def test_a_different_identity_records_its_own_rows_and_leaves_the_old_ones_alone(
+    gaps_session: AsyncSession,
+) -> None:
+    """FR-042: history is not rewritten. The same gaps under a new identity digest are new rows;
+    the old identity's rows keep their ids and their recording time."""
+    await _seed_match(gaps_session, game_id=12)
+    repository = KnowledgeGapsRepository(gaps_session)
+    gaps = [_gap(entity_id="1"), _gap(entity_id="2", civilisation_id="Franks")]
+    await repository.record_gaps(game_id=12, identity_digest="digest-old", gaps=gaps)
+    old = [(row.id, row.recorded_at) for row in await _stored(gaps_session)]
+
+    inserted = await repository.record_gaps(game_id=12, identity_digest="digest-new", gaps=gaps)
+
+    assert inserted == 2
+    rows = await _stored(gaps_session)
+    assert [(row.id, row.recorded_at) for row in rows if row.identity_digest == "digest-old"] == old
+    assert sum(1 for row in rows if row.identity_digest == "digest-new") == 2
+
+
+async def test_record_gaps_with_nothing_to_record_writes_nothing(
+    gaps_session: AsyncSession,
+) -> None:
+    await _seed_match(gaps_session, game_id=13)
+
+    inserted = await KnowledgeGapsRepository(gaps_session).record_gaps(
+        game_id=13, identity_digest="digest-a", gaps=[]
+    )
+
+    assert inserted == 0
+    assert await _stored(gaps_session) == []
+
+
+async def test_the_no_build_sentinel_is_a_negative_number_no_real_build_can_be() -> None:
+    assert NO_BUILD == -1
+    assert (WHOLE_BUILD_ENTITY_KIND, WHOLE_BUILD_ENTITY_ID, WHOLE_BUILD_FIELD) == (
+        "build",
+        "*",
+        "*",
+    )

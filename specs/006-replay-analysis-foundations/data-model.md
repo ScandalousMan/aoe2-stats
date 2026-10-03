@@ -177,6 +177,14 @@ could be produced.
 Unique on (`identity_digest`, `entity_kind`, `entity_id`, `field`, `civilisation_id`), so a
 reproduced analysis records nothing twice. It holds no personal data: a participant is not a column.
 
+A whole-build gap (`no-snapshot-for-build`) names no entity, field or civilisation, and those three
+columns are not nullable, so its row stores `build`, `*`, `*` there; a real entity kind and a real
+field name cannot collide with them. Its `build` column is the recording's build, or `-1` where the
+stream named none — and the report script prints that as "build unknown (stream named none)", never
+as a build (T662). Rows are written by `run.py` in the transaction that publishes the document,
+insert-or-ignore against the unique index, from the document's own `knowledge_gaps` block, so the
+rows and the published list are one set. A document the validator refuses records none.
+
 The index has no team, so the coverage pass emits at most one gap per key within one analysis. Two
 gaps equal on it — two allies naming the same unmodelled teammate, or one civilisation seated on two
 teams — collapse to the first in (civilisation, team) order (T652v). If they differ in `cause`, the

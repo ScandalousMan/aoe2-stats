@@ -1309,7 +1309,7 @@ after everything underneath it moves.
       a document whose dependency record is empty is rejected (**SC-011**); a document carrying a
       datum whose required knowledge intersects a blocking gap is rejected (**FR-037**); a document
       with no tier on a value is rejected (**SC-002**)
-- [ ] T662 [US5] Write the gap rows from the coverage pass in
+- [x] T662 [US5] Write the gap rows from the coverage pass in
       `apps/analyzer/src/aoe2stats_analyzer/run.py`, keyed so a reproduced analysis records nothing
       twice, and publish the gap list in the document. When no snapshot matches the recording's
       build, the knowledge block records the absence explicitly and one blocking gap says so

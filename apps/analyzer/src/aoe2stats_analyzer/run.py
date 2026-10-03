@@ -65,6 +65,7 @@ from aoe2stats_analyzer.extract import (
     build_document,
     canonical_bytes,
     current_identity_digest,
+    gap_rows,
     validate_document,
 )
 from aoe2stats_analyzer.retain import retain_recording, retrieve_recording
@@ -81,6 +82,7 @@ from aoe2stats_storage.models import (
 )
 from aoe2stats_storage.objects import ObjectStore
 from aoe2stats_storage.repositories.base import session_scope
+from aoe2stats_storage.repositories.knowledge_gaps import KnowledgeGapsRepository
 
 #: `.env.example`'s own `CAPTURE_BUDGET_DAYS` — the module docstring's paragraph on `capture_
 #: budget_days` explains why this exists only as a fallback for a caller (this package's own test
@@ -278,6 +280,14 @@ async def _publish(
     Everything is read back from `document`, the object just written, so the row cannot name a
     parser the object does not. `engine_deps` is the same record the document carries (FR-044,
     T655) — the column has existed through two migrations and nothing wrote it before.
+
+    **The gap rows are written here, in this transaction (T662).** One `analysis_knowledge_gaps`
+    row per entry of the document's `knowledge_gaps`, keyed by the identity digest and inserted
+    insert-or-ignore, so a re-run of the same identity records nothing twice while a different
+    identity adds rows of its own and leaves the earlier ones alone (FR-042). They commit with the
+    row that publishes, so a publish that fails leaves no orphan gap row; and because a document
+    the validator refused never reaches this function (`_extract_and_publish` marks it failed
+    first), a refused document records no gaps either.
     """
     async with session_scope(session_factory) as session:
         analysis = await session.get(MatchAnalysis, game_id)
@@ -293,6 +303,11 @@ async def _publish(
         analysis.finished_at = now
         analysis.error_class = None
         analysis.error_message = None
+        await KnowledgeGapsRepository(session).record_gaps(
+            game_id=game_id,
+            identity_digest=document["identity"]["digest"],
+            gaps=gap_rows(document),
+        )
 
 
 async def _extract_and_publish(

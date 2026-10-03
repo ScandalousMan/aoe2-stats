@@ -71,6 +71,12 @@ from aoe2stats_knowledge.coverage import coverage
 from aoe2stats_knowledge.gaps import KnowledgeGap
 from aoe2stats_knowledge.snapshot import Snapshot, snapshot_for
 from aoe2stats_replay_engine.silence import GroupSilenceEpisode, compute_group_silence_episodes
+from aoe2stats_storage.repositories.knowledge_gaps import (
+    WHOLE_BUILD_ENTITY_ID,
+    WHOLE_BUILD_ENTITY_KIND,
+    WHOLE_BUILD_FIELD,
+    GapToRecord,
+)
 
 #: `contracts/analysis-document.md`: "`schema_version` increments". Bumped only when the shape of
 #: the JSON this module writes changes, never when `MatchTimeline` itself gains a field: the
@@ -130,6 +136,7 @@ __all__ = [
     "compared_body",
     "current_identity_digest",
     "extract_timeline",
+    "gap_rows",
     "published_document",
     "validate_document",
 ]
@@ -370,6 +377,35 @@ def _gap_record(gap: KnowledgeGap) -> dict[str, Any]:
         "prevents": list(gap.prevents),
         "severity": gap.severity,
     }
+
+
+def gap_rows(document: Mapping[str, Any]) -> tuple[GapToRecord, ...]:
+    """The `analysis_knowledge_gaps` rows for a document: one per entry of its `knowledge_gaps`
+    block, read **from the document** (T662).
+
+    The rows are derived from the published list rather than from a second call to the coverage
+    pass, so the two cannot disagree: whatever the reader of the document is told is what the
+    aggregate report counts. Nothing is recomputed, deduplicated or dropped here (the coverage pass
+    already emits at most one gap per unique-index key, T652k/T652v); a gap that names no entity and
+    no field — the whole-build `no-snapshot-for-build` gap — is stored under the storage layer's
+    whole-build sentinels because those columns are not nullable, and carries `build` as the
+    document does, `-1` where the stream named none.
+    """
+    rows: list[GapToRecord] = []
+    for gap in document["knowledge_gaps"]:
+        entity = gap["entity"]
+        rows.append(
+            GapToRecord(
+                build=gap["build"],
+                entity_kind=WHOLE_BUILD_ENTITY_KIND if entity is None else entity["kind"],
+                entity_id=WHOLE_BUILD_ENTITY_ID if entity is None else entity["id"],
+                field=WHOLE_BUILD_FIELD if gap["field"] is None else gap["field"],
+                civilisation_id=gap["civilisation"],
+                cause=gap["cause"],
+                severity=gap["severity"],
+            )
+        )
+    return tuple(rows)
 
 
 def _inferred_block(episodes: Sequence[GroupSilenceEpisode]) -> dict[str, Any]:

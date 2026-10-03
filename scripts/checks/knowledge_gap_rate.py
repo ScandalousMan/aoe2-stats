@@ -32,7 +32,11 @@ import os
 from datetime import UTC, datetime, timedelta
 
 from aoe2stats_storage.repositories.base import build_engine, build_session_factory
-from aoe2stats_storage.repositories.knowledge_gaps import GapRateRow, KnowledgeGapsRepository
+from aoe2stats_storage.repositories.knowledge_gaps import (
+    NO_BUILD,
+    GapRateRow,
+    KnowledgeGapsRepository,
+)
 
 _DATABASE_URL_ENV = "DATABASE_URL"
 
@@ -40,6 +44,17 @@ _DATABASE_URL_ENV = "DATABASE_URL"
 #: the report growing unbounded the way a lifetime sum would — the same reasoning `capture_audit.py`
 #: gives for windowing `expired_total` rather than summing forever.
 _DEFAULT_WINDOW_DAYS = 30
+
+
+#: How a row whose stream named no build reads. The table's `build` column is not nullable, so such
+#: a gap is stored under `NO_BUILD` (-1, T652b); printing that as `build=-1` would look like a game
+#: build in a report whose whole point is to be read per build (T662). It is also not a number a
+#: patch could have introduced, so it is labelled as what it is.
+_NO_BUILD_LABEL = "build unknown (stream named none)"
+
+
+def _build_label(build: int) -> str:
+    return _NO_BUILD_LABEL if build == NO_BUILD else f"build={build}"
 
 
 def render_report(rows: list[GapRateRow], *, window_start: datetime, window_end: datetime) -> str:
@@ -57,8 +72,8 @@ def render_report(rows: list[GapRateRow], *, window_start: datetime, window_end:
     lines = [header, f"  total gaps: {total}"]
     for row in rows:
         lines.append(
-            f"  build={row.build} cause={row.cause.value} severity={row.severity.value} "
-            f"count={row.count}"
+            f"  {_build_label(row.build)} cause={row.cause.value} "
+            f"severity={row.severity.value} count={row.count}"
         )
     return "\n".join(lines)
 
