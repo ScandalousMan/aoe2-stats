@@ -1224,7 +1224,7 @@ older analysis reproduces exactly after a knowledge refresh.
 **Story goal (US3)**: every number says where it came from. **(US6)**: an analysis stays reproducible
 after everything underneath it moves.
 
-- [ ] T653 [US6] Implement `packages/core/src/aoe2stats_core/truth/identity.py`: the tuple of
+- [x] T653 [US6] Implement `packages/core/src/aoe2stats_core/truth/identity.py`: the tuple of
       recording, parser name and version, parser dependencies, knowledge version, reconstruction
       engine version and analytics version (**FR-040**), with a digest over its canonical
       serialisation. The reconstruction engine carries an explicit not-applicable marker until 007

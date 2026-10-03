@@ -1,10 +1,9 @@
 """Tests for the analysis identity (T654, written before T653): FR-040, FR-042, FR-044.
 
-Every test is ``xfail(strict=True)`` until ``aoe2stats_core.truth.identity`` exists. The module is
-imported inside each body: a module-scope import of a missing module would be a collection error
-that reddens the whole workspace, and a skip would hide the day T653 lands.
+Written ``xfail(strict=True)`` ahead of T653, which removed the markers. The module is still
+imported inside each body, which is how it was written before the module existed.
 
-Interface assumed from data-model.md section 8 (T653 must match, or amend this file):
+The interface, from data-model.md section 8:
 
 - ``AnalysisIdentity``: a frozen dataclass built with keyword arguments ``recording``,
   ``parser_name``, ``parser_version``, ``parser_dependencies``, ``knowledge``, ``analytics`` and
@@ -26,8 +25,6 @@ import sys
 from typing import Any
 
 import pytest
-
-pending = pytest.mark.xfail(strict=True, reason="T653 not implemented yet")
 
 BASE: dict[str, Any] = {
     "recording": {"object_key": "replays/2026/10/abc.zip", "sha256": "a" * 64},
@@ -88,7 +85,6 @@ def _digest_in_fresh_process(kwargs: dict[str, Any], hash_seed: str) -> str:
     return out.stdout.strip()
 
 
-@pending
 def test_digest_is_stable_across_processes() -> None:
     here = _build().digest
     assert here
@@ -96,7 +92,6 @@ def test_digest_is_stable_across_processes() -> None:
     assert _digest_in_fresh_process(BASE, "2") == here
 
 
-@pending
 def test_digest_is_insensitive_to_field_ordering() -> None:
     from aoe2stats_core.truth.identity import AnalysisIdentity
 
@@ -105,7 +100,6 @@ def test_digest_is_insensitive_to_field_ordering() -> None:
     assert AnalysisIdentity(**reversed_kwargs).digest == _build().digest
 
 
-@pending
 def test_digest_is_insensitive_to_key_order_inside_each_mapping() -> None:
     shuffled = {
         name: dict(reversed(list(value.items()))) if isinstance(value, dict) else value
@@ -114,7 +108,6 @@ def test_digest_is_insensitive_to_key_order_inside_each_mapping() -> None:
     assert _build(**shuffled).digest == _build().digest
 
 
-@pending
 def test_reordering_dependency_entries_does_not_change_the_digest() -> None:
     deps = BASE["parser_dependencies"]
     reordered = dict(reversed(list(deps.items())))
@@ -122,14 +115,12 @@ def test_reordering_dependency_entries_does_not_change_the_digest() -> None:
     assert _build(parser_dependencies=reordered).digest == _build().digest
 
 
-@pending
 @pytest.mark.parametrize("component", sorted(VARIANTS))
 def test_differing_in_any_one_component_changes_the_digest(component: str) -> None:
     assert BASE[component] != VARIANTS[component]
     assert _build(**{component: VARIANTS[component]}).digest != _build().digest
 
 
-@pending
 def test_every_component_has_a_variant() -> None:
     # Guards the parametrisation: a component added to the tuple without a case here fails.
     from dataclasses import fields
@@ -140,18 +131,15 @@ def test_every_component_has_a_variant() -> None:
     assert components == set(BASE) == set(VARIANTS)
 
 
-@pending
 def test_an_empty_dependency_record_is_refused() -> None:
     with pytest.raises(ValueError, match="dependenc"):
         _build(parser_dependencies={})
 
 
-@pending
 def test_a_non_empty_dependency_record_is_accepted() -> None:
     assert _build(parser_dependencies={"aoe2rec-py": "0.3.1"}).digest
 
 
-@pending
 def test_reconstruction_engine_carries_the_not_applicable_marker() -> None:
     from aoe2stats_core.truth.identity import NOT_APPLICABLE, AnalysisIdentity
 
@@ -160,7 +148,6 @@ def test_reconstruction_engine_carries_the_not_applicable_marker() -> None:
     assert AnalysisIdentity(**without_engine).reconstruction_engine == NOT_APPLICABLE
 
 
-@pending
 def test_analytics_is_never_not_applicable() -> None:
     from aoe2stats_core.truth.identity import NOT_APPLICABLE, AnalysisIdentity
 

@@ -7,11 +7,10 @@ depends on nothing but the tier type. It reports every violated rule, not only t
 
 from __future__ import annotations
 
-import hashlib
-import json
 from collections.abc import Iterator, Mapping
 from typing import Any, Protocol
 
+from aoe2stats_core.truth.identity import identity_digest
 from aoe2stats_core.truth.tiers import Tier
 
 LEVELS = frozenset({"low", "medium", "high"})
@@ -46,13 +45,6 @@ class DocumentInvalid(ValueError):
         self.rules: frozenset[int] = frozenset(rule for rule, _ in violations)
         self.violations = tuple(violations)
         super().__init__("; ".join(f"rule {rule}: {text}" for rule, text in violations))
-
-
-def identity_digest(identity: Mapping[str, Any]) -> str:
-    """Digest of every identity field except ``digest`` itself, over canonical JSON."""
-    body = {k: v for k, v in identity.items() if k != "digest"}
-    canonical = json.dumps(body, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def _leaves(node: Any, path: str) -> Iterator[str]:
