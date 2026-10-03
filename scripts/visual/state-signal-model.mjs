@@ -608,9 +608,8 @@ export function decideSweepGate({
 }
 
 // T675 remediation (M1): the pure per-file decision `run.mjs`'s own file-scan loop needs —
-// extracted here so it is unit-testable without the filesystem/browser discipline this module
-// already holds everywhere else (see this file's own header comment). Takes a file path and its
-// already-read source (the caller's job, per that same discipline) and returns either:
+// extracted here so it is unit-testable without touching the filesystem or a browser. Takes a
+// file path and its already-read source (the caller's job) and returns either:
 //   - `{ unkeyable: { file, detail } }` when `extractFileStoryStates` throws, i.e. cannot key the
 //     file — this used to be swallowed by a `try`/`catch`/`continue` in `run.mjs` with nothing but a
 //     log line to show for it; now it is a value the caller collects and the gate above can fail
