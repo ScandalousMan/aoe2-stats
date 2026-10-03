@@ -69,7 +69,7 @@ from aoe2stats_core.truth.validate import DocumentInvalid, validate
 from aoe2stats_core.truth.validate import Entry as ValidatorEntry
 from aoe2stats_knowledge.coverage import coverage
 from aoe2stats_knowledge.gaps import KnowledgeGap
-from aoe2stats_knowledge.snapshot import Snapshot, snapshot_for
+from aoe2stats_knowledge.snapshot import Snapshot, SnapshotError, snapshot_for
 from aoe2stats_replay_engine.silence import GroupSilenceEpisode, compute_group_silence_episodes
 from aoe2stats_storage.repositories.knowledge_gaps import (
     WHOLE_BUILD_ENTITY_ID,
@@ -122,14 +122,15 @@ _METHODS: tuple[tuple[str, Method], ...] = (
     ("participant.", Method("timeline.fold", "1")),
 )
 
-# `DocumentInvalid` and `TierPlacementError` are re-exported for `run.py`: the request path may not
-# import `aoe2stats_core.truth` itself (FR-049, the 006 boundaries architecture test), and reaches
-# the truth types only through this module.
+# `DocumentInvalid`, `TierPlacementError` and `SnapshotError` are re-exported for `run.py`: the
+# request path may not import `aoe2stats_core.truth` or `aoe2stats_knowledge` itself (FR-049, the
+# 006 boundaries architecture test), and reaches those types only through this module.
 __all__ = [
     "ANALYTICS_VERSION",
     "SCHEMA_VERSION",
     "WALL_CLOCK_FIELDS",
     "DocumentInvalid",
+    "SnapshotError",
     "TierPlacementError",
     "build_document",
     "canonical_bytes",

@@ -54,8 +54,9 @@ from __future__ import annotations
 import dataclasses
 import hashlib
 import json
+import logging
 import uuid
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -65,11 +66,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from aoe2stats_analyzer import extract
+from aoe2stats_analyzer import run as run_module
 from aoe2stats_core.replay.events import CanonicalEvent, EventKind, MatchStartedPayload
 from aoe2stats_core.replay.validation import EngineParseError
+from aoe2stats_core.truth.placement import TierPlacementError
 from aoe2stats_knowledge import snapshot
 from aoe2stats_providers.base import NotFound, ReplayBlob
 from aoe2stats_storage.models import (
+    AnalysisKnowledgeGap,
     AoeProfile,
     Match,
     MatchAnalysis,
@@ -80,6 +84,7 @@ from aoe2stats_storage.models import (
     User,
 )
 from aoe2stats_storage.repositories.base import session_scope
+from aoe2stats_storage.repositories.knowledge_gaps import GapToRecord
 
 # `session_factory` and `clean_database` below come from `apps/analyzer/tests/conftest.py`
 # (T362's own addition, re-exporting `tests/db.py`'s harness exactly as `apps/api/tests/conftest.py`
@@ -1627,3 +1632,354 @@ async def test_an_empty_dependency_record_during_the_staleness_check_raises_too(
     await _assert_a_deployment_fault_stops_the_request_before_any_recompute(
         session_factory, published, extractor_dependencies={}
     )
+
+
+# --- T666c: a failed recompute keeps the analysis it was replacing -------------------------------
+#
+# 003's failure path (`_mark_failed`: `failed`, `result_key` NULL, terminal) was written for a first
+# analysis. A recompute is triggered by a knowledge or analytics change on a row that is already
+# served, so the same path would unpublish a good analysis because a newer one could not be built
+# (FR-042). Decided 2026-10-03: on the recompute path the refusal is logged and the row stays as it
+# was. The same six causes are run through both paths below; each is a source this feature added or
+# a refusal 003 already routed to `failed`.
+
+
+@pytest.fixture(autouse=True)
+def _enable_the_analyzer_logger() -> Iterator[None]:
+    """`infra/migrations/env.py` runs `logging.config.fileConfig` the first time the throwaway
+    database is migrated, which disables every logger that already exists - this package's among
+    them - so a `caplog` assertion would otherwise depend on test order (see
+    `apps/ingester/tests/test_run.py`'s identical fixture)."""
+    run_module.logger.disabled = False
+    yield
+    run_module.logger.disabled = False
+
+
+_GAP_BUILD_OUT_OF_RANGE = 2**40  # past the `build` integer column: the insert itself is refused
+
+
+class _StrayBuildNamingExtractor(_BuildNamingExtractor):
+    """A build-naming extractor whose document carries a field the register does not publish."""
+
+    def extract(self, zip_bytes: bytes) -> _FakeMatchTimeline:
+        timeline = super().extract(zip_bytes)
+        stray = _ParticipantWithAStrayField(
+            profile_id=1, player_number=1, civ_id=1, resolved_team_id=1
+        )
+        return _FakeMatchTimeline(
+            engine_name=timeline.engine_name,
+            engine_version=timeline.engine_version,
+            point_of_view_profile_id=timeline.point_of_view_profile_id,
+            world_time_ms=timeline.world_time_ms,
+            participants=(stray,),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class _Cause:
+    """One way an analysis can be refused. `install(monkeypatch, allowed_snapshot_reads)` plants the
+    fault; `allowed_snapshot_reads` is how many real `snapshot_for` calls come first - the recompute
+    path's staleness check makes one before the build does, and a first analysis makes none."""
+
+    name: str
+    error_class: str | None
+    extractor: Callable[..., _BuildNamingExtractor]
+    install: Callable[[pytest.MonkeyPatch, int], None]
+    #: Whether the identity the refused analysis would have carried can still be computed.
+    would_be_digest_known: bool = True
+
+
+def _no_fault(monkeypatch: pytest.MonkeyPatch, allowed_snapshot_reads: int) -> None:
+    return None
+
+
+def _a_placement_fault(monkeypatch: pytest.MonkeyPatch, allowed_snapshot_reads: int) -> None:
+    def refuse(datum: str, tier: object) -> None:
+        raise TierPlacementError(f"{datum} may not be placed at an ordinary path")
+
+    monkeypatch.setattr(extract, "require_outside_inferred", refuse)
+
+
+def _a_snapshot_fault(monkeypatch: pytest.MonkeyPatch, allowed_snapshot_reads: int) -> None:
+    real_snapshot_for = extract.snapshot_for
+    reads = 0
+
+    def flaky(build: int) -> object:
+        nonlocal reads
+        reads += 1
+        if reads > allowed_snapshot_reads:
+            raise snapshot.SnapshotDigestMismatch(f"snapshot for build {build} fails its digest")
+        return real_snapshot_for(build)
+
+    monkeypatch.setattr(extract, "snapshot_for", flaky)
+
+
+def _a_serialiser_fault(monkeypatch: pytest.MonkeyPatch, allowed_snapshot_reads: int) -> None:
+    def refuse(document: object) -> bytes:
+        raise ValueError("non-finite float at participants[0].actions_per_minute")
+
+    monkeypatch.setattr(run_module, "canonical_bytes", refuse)
+
+
+def _a_gap_insert_fault(monkeypatch: pytest.MonkeyPatch, allowed_snapshot_reads: int) -> None:
+    def impossible(document: object) -> tuple[GapToRecord, ...]:
+        return (
+            GapToRecord(
+                build=_GAP_BUILD_OUT_OF_RANGE,
+                entity_kind="build",
+                entity_id="*",
+                field="*",
+                civilisation_id=None,
+                cause="no-snapshot-for-build",
+                severity="blocking",
+            ),
+        )
+
+    monkeypatch.setattr(run_module, "gap_rows", impossible)
+
+
+def _parse_failing(**kwargs: Any) -> _BuildNamingExtractor:
+    return _BuildNamingExtractor(
+        raises=EngineParseError("the archive is well-formed but the engine rejected it"), **kwargs
+    )
+
+
+_CAUSES = (
+    _Cause("document-invalid", "DocumentInvalid", _StrayBuildNamingExtractor, _no_fault),
+    _Cause("parse-failure", "EngineParseError", _parse_failing, _no_fault),
+    _Cause("tier-placement", "TierPlacementError", _BuildNamingExtractor, _a_placement_fault),
+    _Cause(
+        "snapshot-error",
+        "SnapshotDigestMismatch",
+        _BuildNamingExtractor,
+        _a_snapshot_fault,
+        would_be_digest_known=False,
+    ),
+    _Cause("serialiser-refusal", "ValueError", _BuildNamingExtractor, _a_serialiser_fault),
+    _Cause("gap-insert-error", None, _BuildNamingExtractor, _a_gap_insert_fault),
+)
+_CAUSE_IDS = [cause.name for cause in _CAUSES]
+
+
+async def _gap_row_count(session_factory: async_sessionmaker[AsyncSession]) -> int:
+    async with session_scope(session_factory) as session:
+        result = await session.execute(select(AnalysisKnowledgeGap.id))
+        return len(result.all())
+
+
+async def _set_lease(
+    session_factory: async_sessionmaker[AsyncSession], game_id: int, lease: datetime | None
+) -> None:
+    async with session_scope(session_factory) as session:
+        row = await session.get(MatchAnalysis, game_id)
+        assert row is not None
+        row.lease_expires_at = lease
+
+
+async def _ask_to_recompute(
+    session_factory: async_sessionmaker[AsyncSession],
+    published: _Published,
+    cause: _Cause,
+    *,
+    max_calls: int = 1,
+) -> _BuildNamingExtractor:
+    """Open a published match again under a newer parser, so it is stale, with the source forbidden
+    and `cause` planted. `max_calls` is the canary on the extractor."""
+    extractor = cause.extractor(
+        point_of_view_profile_id=published.profile_id,
+        engine_version=_ENGINE_VERSION_2,
+        max_calls=max_calls,
+    )
+    await run_module.run_once(
+        published.game_id,
+        _BUDGET_SECONDS,
+        published.requester,
+        session_factory=session_factory,
+        replay_provider=_RefusingReplayProvider(),
+        extractor=extractor,
+        object_store=published.store,
+    )
+    return extractor
+
+
+@pytest.mark.parametrize("cause", _CAUSES, ids=_CAUSE_IDS)
+async def test_a_failed_recompute_keeps_the_analysis_it_was_replacing(
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    cause: _Cause,
+) -> None:
+    """FR-042 over the literal reading of FR-048: the row stays published on its previous key,
+    digest and build, the old object is still the one served and untouched, nothing new is written,
+    and the refusal is logged with the match, the old identity digest, the would-be one and why."""
+    published = await _publish_once(
+        session_factory, game_id=500_666_100 + _CAUSE_IDS.index(cause.name) * 10
+    )
+    before = _snapshot_of(published.row)
+    gaps_before = await _gap_row_count(session_factory)
+    puts_before = list(published.store.put_calls)
+    objects_before = dict(published.store.objects)
+    cause.install(monkeypatch, 1)
+
+    with caplog.at_level(logging.WARNING, logger=run_module.logger.name):
+        await _ask_to_recompute(session_factory, published, cause)
+
+    after = await _get_analysis(session_factory, published.game_id)
+    assert after is not None
+    assert _snapshot_of(after) == before
+    assert after.state == MatchAnalysisState.PUBLISHED
+    assert after.result_key == published.key
+    assert after.error_class is None
+    assert published.store.put_calls == puts_before
+    assert published.store.objects == objects_before
+    assert published.store.objects[published.key] == published.body
+    assert await _gap_row_count(session_factory) == gaps_before
+
+    messages = [record.getMessage() for record in caplog.records]
+    assert len(messages) == 1, messages
+    message = messages[0]
+    assert str(published.game_id) in message
+    assert published.row.identity_digest is not None
+    assert published.row.identity_digest in message
+    if cause.error_class is not None:
+        assert cause.error_class in message
+    if cause.would_be_digest_known:
+        would_be = extract.current_identity_digest(
+            _BuildNamingExtractor(
+                point_of_view_profile_id=published.profile_id, engine_version=_ENGINE_VERSION_2
+            ),
+            recording={
+                "object_key": (
+                    await _get_analysis_recording(session_factory, published)
+                ).object_key,
+                "sha256": (await _get_analysis_recording(session_factory, published)).zip_sha256,
+            },
+            build=_SNAPSHOT_BUILD,
+        )
+        assert would_be in message
+
+
+@pytest.mark.parametrize("cause", _CAUSES, ids=_CAUSE_IDS)
+async def test_a_first_analysis_that_cannot_be_completed_ends_failed_and_is_never_fetched_again(
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+    cause: _Cause,
+) -> None:
+    """The contrast, and the new sources: with no analysis to keep, 003's failure path applies
+    unchanged - `failed`, no result, no object, no gap rows. A cause that instead raised out of
+    `run_once` left the row `running`, and once its lease expired the next request claimed it again
+    and fetched the recording from the source a second time (the lease is the only thing that
+    decides; `claim_for_analysis` never looks at what was already retained)."""
+    game_id = 500_666_200 + _CAUSE_IDS.index(cause.name) * 10
+    profile_a, profile_b = game_id + 1, game_id + 2
+    await _seed_match(
+        session_factory,
+        game_id=game_id,
+        completed_at=datetime.now(UTC) - timedelta(days=1),
+        profile_ids=[profile_a, profile_b],
+    )
+    requester = await _seed_user(session_factory)
+    provider = _FakeReplayProvider(
+        ReplayBlob(content=b"raw bytes", filename="r.zip", content_type="application/zip"),
+        max_calls=1,
+    )
+    store = _FakeObjectStore()
+    cause.install(monkeypatch, 0)
+
+    async def ask() -> None:
+        await run_module.run_once(
+            game_id,
+            _BUDGET_SECONDS,
+            requester,
+            session_factory=session_factory,
+            replay_provider=provider,
+            extractor=cause.extractor(point_of_view_profile_id=profile_a, max_calls=1),
+            object_store=store,
+        )
+
+    await ask()
+
+    row = await _get_analysis(session_factory, game_id)
+    assert row is not None
+    assert row.state == MatchAnalysisState.FAILED
+    assert row.result_key is None
+    assert row.identity_digest is None
+    assert row.error_class
+    if cause.error_class is not None:
+        assert row.error_class == cause.error_class
+    assert row.error_message
+    assert _analysis_keys(store) == []
+    assert await _gap_row_count(session_factory) == 0
+
+    # The scenario the fix closes: even once any lease would have lapsed, nothing is fetched again
+    # (`provider` raises on a second call).
+    await _set_lease(session_factory, game_id, datetime.now(UTC) - timedelta(minutes=5))
+    await ask()
+    assert len(provider.calls) == 1
+    again = await _get_analysis(session_factory, game_id)
+    assert again is not None
+    assert again.state == MatchAnalysisState.FAILED
+
+
+async def test_a_published_row_carries_no_lease(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """The retry window below is kept in `lease_expires_at`, so a publish must clear the lease the
+    claim took: otherwise a recompute asked for inside the claim's own lease would read as backed
+    off."""
+    published = await _publish_once(session_factory, game_id=500_666_301)
+    assert published.row.lease_expires_at is None
+
+
+async def test_a_failed_recompute_is_not_attempted_again_until_the_retry_window_passes(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """The bound on repetition. The cause is a function of the recording and the code, so asking
+    again changes nothing - yet the digest still differs, so without a bound every click would read
+    the retained recording, log an access and parse it in full. The refusal puts the row's
+    `lease_expires_at` (unused by a published row) out by the retry window and the recompute path
+    skips the row until then: one parse per window, not one per request."""
+    published = await _publish_once(session_factory, game_id=500_666_302)
+    cause = _CAUSES[0]
+    await _ask_to_recompute(session_factory, published, cause)
+    refused = await _get_analysis(session_factory, published.game_id)
+    assert refused is not None
+    assert refused.lease_expires_at is not None
+    assert refused.lease_expires_at > datetime.now(UTC) + timedelta(minutes=30)
+    log_after_first = len(await _access_log_rows(session_factory))
+    published.store.get_calls.clear()
+
+    # Inside the window: nothing is read, logged or parsed, and the row is exactly as it was.
+    inside = await _ask_to_recompute(session_factory, published, cause, max_calls=0)
+
+    assert inside.calls == []
+    assert published.store.get_calls == []
+    assert len(await _access_log_rows(session_factory)) == log_after_first
+    unchanged = await _get_analysis(session_factory, published.game_id)
+    assert unchanged is not None
+    assert _snapshot_of(unchanged) == _snapshot_of(published.row)
+    assert unchanged.lease_expires_at == refused.lease_expires_at
+
+    # Past the window: one more attempt is made, and it is a recompute again (the fix may be in).
+    await _set_lease(session_factory, published.game_id, datetime.now(UTC) - timedelta(seconds=1))
+    past = await _ask_to_recompute(session_factory, published, cause)
+    assert len(past.calls) == 1
+    assert len(await _access_log_rows(session_factory)) == log_after_first + 1
+
+
+async def test_a_recompute_after_the_retry_window_that_succeeds_publishes_and_clears_the_window(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """The window is a backoff, not a verdict: once the cause is fixed the next attempt past it
+    publishes a new key, and the row carries no lease again."""
+    published = await _publish_once(session_factory, game_id=500_666_303)
+    await _ask_to_recompute(session_factory, published, _CAUSES[0])
+    await _set_lease(session_factory, published.game_id, datetime.now(UTC) - timedelta(seconds=1))
+
+    healthy = _Cause("healthy", None, _BuildNamingExtractor, _no_fault)
+    extractor = await _ask_to_recompute(session_factory, published, healthy)
+
+    after = await _assert_recomputed_to_a_new_key(session_factory, published, extractor)
+    assert after.lease_expires_at is None

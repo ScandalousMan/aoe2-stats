@@ -1389,7 +1389,7 @@ files and may run as one parallel batch; the rest are sequential, in order.
       "stale" and costs a retained-recording read and a full parse on every click. Test it at that
       shape: a raising knowledge resolution leaves the extractor uncalled, no access-log row and the
       row unchanged. Bump nothing: the revision id stays
-- [ ] T666c [US6] **A failed recompute keeps the analysis it was replacing.** Decided 2026-10-03:
+- [x] T666c [US6] **A failed recompute keeps the analysis it was replacing.** Decided 2026-10-03:
       **FR-042** wins over the literal reading of **FR-048** here, because 003's failure path was
       written for a first analysis and recomputes of this kind did not exist. On the recompute path
       only, a refused document, a placement error or a parse failure is logged and the row stays
