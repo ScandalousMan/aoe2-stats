@@ -35,6 +35,56 @@ test.describe('focus-ring-visible guard, planted pages', () => {
     expect(() => assertFocusRingVisible(step, 'clean-control')).not.toThrow()
   })
 
+  // T676: found by the first populated route (`PlayerResultRow`, dark theme). Its link carries
+  // `transition-colors duration-120` and `outline-color` is a transitioned property, so the stop was
+  // read in the first frame after Tab — the outline still on its way from its resting colour
+  // (black) to the ring colour — and judged 1.17:1. A user gets the final ring 120ms later; WCAG
+  // 1.4.11 judges that, not the first frame. The walk waits for the focused element's transitions
+  // to finish before reading it.
+  test('a ring still fading in when Tab lands is judged on its final colour', async ({ page }) => {
+    await page.setContent(`
+      <style>
+        body { background: rgb(27, 22, 14); }
+        a { color: black; outline: 0 solid transparent; transition: outline-color 120ms linear; }
+        a:focus-visible { outline: 2px solid rgb(240, 240, 240); }
+      </style>
+      <a id="a" href="#">A</a>
+    `)
+
+    const { steps } = await walkTabOrder(page)
+    expect(steps).toHaveLength(1)
+    const [step] = steps
+
+    expect(step.outline.color).toBe('rgb(240, 240, 240)')
+    expect(() => assertFocusRingVisible(step, 'fading-ring')).not.toThrow()
+  })
+
+  // T676 review (L1): `readFocusedStop` finishes the focused element's transitions before it reads
+  // the ring, so a ring that really takes five seconds to appear, or two seconds to start, is judged
+  // on its end state exactly like the 120ms token fade — the finish() that makes the read fair also
+  // hides the timing. The walk now refuses any transition whose delay plus duration exceeds the
+  // longest duration `packages/design-system/tokens/motion.json` defines.
+  for (const [name, transition] of [
+    ['a 5s fade', 'outline-color 5s linear'],
+    ['a 2s delay', 'outline-color 120ms linear 2s'],
+  ] as const) {
+    test(`${name} on the focus ring fails the transition bound instead of being finished`, async ({
+      page,
+    }) => {
+      await page.setContent(`
+        <style>
+          a { color: black; outline: 0 solid transparent; transition: ${transition}; }
+          a:focus-visible { outline: 2px solid rgb(0, 0, 0); }
+        </style>
+        <a id="a" href="#">A</a>
+      `)
+
+      await expect(walkTabOrder(page)).rejects.toThrow(
+        /a transition on <a> "A" \(outline-color\) lasts \d+ms \(delay \+ duration\), longer than the \d+ms the slowest motion token allows/,
+      )
+    })
+  }
+
   test('outline: none fails the "painted a ring" check', async ({ page }) => {
     await page.setContent(`
       <button id="a" style="background: white; outline: none;">A</button>

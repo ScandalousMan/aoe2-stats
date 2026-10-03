@@ -15,16 +15,10 @@
 // planted-page guard tests (PR #102 review finding M1) so neither caller's contract can drift from
 // the other's.
 import { expect, test } from '@playwright/test'
-import {
-  assertThemeApplied,
-  createAppServerHarness,
-  gotoScenario,
-  hasBuild,
-  ROUTE_SCENARIOS,
-  seedThemeOverride,
-  waitForFontsReady,
-} from './fixtures/app-routes-harness'
+import { createAppServerHarness, hasBuild } from './fixtures/app-routes-harness'
 import { assertFocusRingVisible, walkTabOrder } from './fixtures/keyboard-walk'
+import { distinctSurfaceStops, walkOpenSurface } from './fixtures/open-surface'
+import { enterScenario, SUITE_SCENARIOS } from './fixtures/suite-scenarios'
 
 const harness = createAppServerHarness('4176')
 
@@ -59,31 +53,27 @@ test.describe('focus visibility, every route, both themes', () => {
       harness.stop()
     })
 
-    for (const scenario of ROUTE_SCENARIOS) {
+    // T676: every route at rest, populated, and with each `Dialog`/`Menu` open. An open surface's
+    // stops are the ones its own keys visit (`fixtures/open-surface.ts`), each ring-checked the same
+    // way a Tab stop is — including the `Menu` items that are only ever reached by arrow key.
+    for (const scenario of SUITE_SCENARIOS) {
       for (const theme of ['light', 'dark'] as const) {
         test(`${scenario.label} — every interactive element rings visibly on Tab, 3:1 against its own surface (${theme})`, async ({
           page,
         }) => {
-          await seedThemeOverride(page, theme)
-          await scenario.stub(page)
+          const external = await enterScenario(page, scenario, harness.baseUrl, theme)
+          const context = `${scenario.label} (${theme})`
 
-          await gotoScenario(page, scenario, harness.baseUrl)
-          await page.getByRole('main').waitFor({ state: 'visible' })
-          // PR #102 review finding (low): proves the theme was actually *painted*, not merely
-          // seeded — `seedThemeOverride` only writes the storage key; `ThemeProvider.tsx` is what
-          // reads it and paints `data-theme`, and the two can drift.
-          await assertThemeApplied(page, theme)
-          await waitForFontsReady(page)
-
-          const { steps } = await walkTabOrder(page)
-          expect(
-            steps.length,
-            `${scenario.label} (${theme}): no interactive element found`,
-          ).toBeGreaterThan(0)
+          const steps = scenario.surface
+            ? distinctSurfaceStops(await walkOpenSurface(page, scenario.surface))
+            : (await walkTabOrder(page)).steps
+          expect(steps.length, `${context}: no interactive element found`).toBeGreaterThan(0)
 
           for (const step of steps) {
-            assertFocusRingVisible(step, `${scenario.label} (${theme})`)
+            assertFocusRingVisible(step, context)
           }
+
+          external.assertNone(context)
         })
       }
     }

@@ -16,16 +16,15 @@
 // govern today, which would silently stop covering a future component that reaches for a `duration-*`
 // utility without also reaching for `motion-reduce:duration-0`.
 import { test } from '@playwright/test'
-import {
-  assertThemeApplied,
-  createAppServerHarness,
-  gotoScenario,
-  hasBuild,
-  ROUTE_SCENARIOS,
-  seedThemeOverride,
-  waitForFontsReady,
-} from './fixtures/app-routes-harness'
+import { createAppServerHarness, hasBuild } from './fixtures/app-routes-harness'
+import { assertLoopsAnimating, assertLoopsStopped, LOOP_SELECTOR } from './fixtures/loading-state'
 import { assertReducedMotion } from './fixtures/reduced-motion'
+import {
+  enterScenario,
+  holdLoadingRequest,
+  LOADING_SCENARIOS,
+  SUITE_SCENARIOS,
+} from './fixtures/suite-scenarios'
 
 const harness = createAppServerHarness('4178')
 
@@ -58,7 +57,10 @@ test.describe('reduced motion, every route, both themes', () => {
       harness.stop()
     })
 
-    for (const scenario of ROUTE_SCENARIOS) {
+    // T676: every route at rest, populated, and with each `Dialog`/`Menu` open — a `Menu` item's
+    // and a `Dialog` button's transitions are the ones this sweep could not see while the surface
+    // was closed.
+    for (const scenario of SUITE_SCENARIOS) {
       for (const theme of ['light', 'dark'] as const) {
         test(`${scenario.label} — no transition or looping animation keeps a perceptible duration (${theme})`, async ({
           page,
@@ -66,16 +68,53 @@ test.describe('reduced motion, every route, both themes', () => {
           // Set before navigation (this file's own header comment) so the reduced-motion preference
           // is already in effect for the very first render — never a post-load toggle that could
           // race a transition already mid-flight.
-          await page.emulateMedia({ reducedMotion: 'reduce' })
-          await seedThemeOverride(page, theme)
-          await scenario.stub(page)
+          const external = await enterScenario(page, scenario, harness.baseUrl, theme, {
+            reducedMotion: true,
+          })
+          const context = `${scenario.label} (${theme})`
 
-          await gotoScenario(page, scenario, harness.baseUrl)
-          await page.getByRole('main').waitFor({ state: 'visible' })
-          await assertThemeApplied(page, theme)
-          await waitForFontsReady(page)
+          await assertReducedMotion(page, context)
+          external.assertNone(context)
+        })
+      }
+    }
 
-          await assertReducedMotion(page, `${scenario.label} (${theme})`)
+    // T676, the positive control for the looping half. `assertReducedMotion` above can only say
+    // "nothing loops" about a route whose loading states have already finished, which a route that
+    // had *no* loop gated behind `motion-safe:` would also satisfy. Here the loading state is held
+    // on screen; the loop element is found by structure (`LOOP_SELECTOR`, the `motion-safe:` class
+    // token the markup carries in both modes), asserted to animate with no preference, then — with
+    // the preference switched on *live*, so it is provably the same element — asserted stopped,
+    // still on screen. Switching live is deliberate and differs from the sweep above, which sets the
+    // preference first: a before/after on one element is what makes "stopped" mean something.
+    for (const scenario of LOADING_SCENARIOS) {
+      for (const theme of ['light', 'dark'] as const) {
+        test(`${scenario.label} — the ${scenario.loop} animates, then stops under reduce (${theme})`, async ({
+          page,
+        }) => {
+          const context = `${scenario.label} (${theme})`
+          let release: (() => Promise<void>) | undefined
+          try {
+            const external = await enterScenario(page, scenario, harness.baseUrl, theme, {
+              beforeNavigate: async (target) => {
+                release = (await holdLoadingRequest(target, scenario)).release
+              },
+            })
+
+            // The skeleton appears after `useDelayedVisible`'s 200ms; wait for the structure, never
+            // for an animation.
+            await page.locator(LOOP_SELECTOR[scenario.loop]).first().waitFor({ state: 'visible' })
+
+            const animating = await assertLoopsAnimating(page, scenario.loop, context)
+            await page.emulateMedia({ reducedMotion: 'reduce' })
+            await assertLoopsStopped(page, scenario.loop, context, animating)
+            // The whole-page sweep, on the loading state this time.
+            await assertReducedMotion(page, context)
+
+            external.assertNone(context)
+          } finally {
+            await release?.()
+          }
         })
       }
     }

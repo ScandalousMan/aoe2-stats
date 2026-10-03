@@ -569,9 +569,10 @@ routes satisfy it, both already shipping, and a third is forbidden:
   space. It is not — it is the touch target.
 
 **How the floor is asserted, and its one exemption.** T674's touch-footprint sub-suite measures
-`getBoundingClientRect()` of every interactive element each route scenario renders at rest, at
-375px, in both themes, and fails on any box under 44 in either axis — populated lists and opened
-surfaces are not yet among them (Verification-coverage gap register, row 1). An input wrapped by its `<label>` is measured
+`getBoundingClientRect()` of every interactive element each route scenario renders — at rest, in the
+populated scenarios of `tests/visual/fixtures/suite-scenarios.ts`, and with each `Dialog` and `Menu` open (T676) — at 375px, in both themes, and fails on any
+box under 44 in either axis; a separate sweep measures every pointer-only target, one a Tab walk cannot
+reach, found by its computed cursor or its interactive role. An input wrapped by its `<label>` is measured
 by the label's box; an element hidden until focused (`SiteHeader`'s skip link) is measured in the
 state that reveals it, never skipped. The one exemption is WCAG 2.5.5's inline exception, read from
 the DOM, never from layout: an anchor carrying `data-variant="inline"` — which only `Link` renders
@@ -3611,31 +3612,38 @@ same way (T674, 2026-09-28): all four sub-suites (`tests/visual/route-keyboard.s
 `route-focus-visibility.spec.ts`, `route-touch-footprint.spec.ts`, `route-reduced-motion.spec.ts`)
 run in CI against every route scenario `tests/visual/fixtures/app-routes-harness.ts` enumerates, in
 both themes — see quickstart.md's own walk for the verdict, its scope, and the run that backs it.
-That run backs item 13 only for what those scenarios render at rest; what they do not render is row 1
-below, and item 13 stays partly met until row 1 is deleted. The comparator row is deleted too (T675,
-2026-10-02; see the closing paragraph below). The row below is what is still open about this
-package's own verification harness, never about a component or a token, filed here for the reason
-the four registers above already are: the subject is this package's own tooling, so a future task
-changing that tooling needs this row updated, and it does not belong in a spec written once.
+That run backs item 13 only for what those scenarios render at rest; what they did not render
+was owned by T676, whose own row is deleted too (2026-10-03; see the closing paragraphs below), as is the
+comparator row (T675, 2026-10-02). The adversarial reviews of #107 then filed what T676 does not reach,
+below under its owning tasks (T681, T682). The register stays because it is where a gap in this
+package's own verification harness — never in a component or a token — is filed when it is found, for the
+reason the four registers above already are: the subject is this package's own tooling, so a future task
+changing that tooling needs its row updated, and it does not belong in a spec written once.
 
-1. **T674's route suites measure each route at rest, never what a route renders once used — found by
-   the adversarial review of #102 (2026-09-29, B3).** Every list fixture in
-   `tests/visual/fixtures/app-routes-harness.ts` is empty and no search is submitted, so row links,
-   result rows, favourites rows and participant links meet none of the four suites; the keyboard walk
-   is Tab-only and opens no `Dialog` or `Menu`, so their contents are neither walked nor measured; the
-   touch sweep measures only Tab stops, so a pointer-only target is never measured; and
-   `spin` and `pulse`, the only looping animations `packages/design-system/tokens/motion.json` defines,
-   live in loading states that are gone before the reduced-motion suite samples, so its looping half
-   has no positive control. Production-readiness item 13 is Met for what the scenarios render at rest
-   and partly met overall until this row is deleted. **Owner: T676. Fix by 2026-10-13.**
+1. **T676's route suites open every `Dialog` and `Menu` and no `Tooltip` — found by the adversarial
+   review of #107 (2026-10-03, M2).** `CountryFlag`'s `Tooltip`, rendered in the populated lists and on
+   `ProfileSummary`'s name line, only ever meets the four suites closed. Its surface carries
+   `motion-reduce:duration-0` beside `isOpen ? 'duration-120' : 'duration-0'`, and a closed tooltip is
+   `duration-0` with or without the preference, so a regression that drops the `motion-reduce:` utility
+   passes every route suite; its Escape-dismiss contract (`packages/design-system/specs/tooltip.md` §8) is
+   never walked at route level either. Production-readiness item 13 is partly met overall until the
+   T681 and T682 rows are deleted. **Owner: T681. Fix by 2026-10-16.**
+2. **T676's route suites never render two success-branch controls — found by the second adversarial
+   review of #107 (2026-10-03, M1).** Every fixture in `tests/visual/fixtures/app-routes-harness.ts`
+   sets `archival_objected: false`, so `ArchivalControl`'s `objected` state (its "Resume archival"
+   button and callout) on `/dashboard` and `/privacy` meets none of the four suites, and
+   `DataExportPanel`'s `ready` state, the download link a user reaches after requesting an export on
+   `/privacy`, is never rendered. Neither is a list, so the per-route list inventory in
+   `tests/visual/fixtures/suite-scenarios.ts` has no entry for either. Production-readiness item 13 is
+   partly met overall until this row and the T681 row are deleted. **Owner: T682. Fix by 2026-10-16.**
 
 T674 (2026-09-28) runs all four of item 13's sub-suites in CI against every route scenario at rest,
-in both themes, and the sizing row this task's own filing opened (formerly row 1 of the Verification-coverage gap
+in both themes, and the sizing row this task's own filing opened (formerly in the Verification-coverage gap
 register above) is deleted rather than left as a passing exception — sizing the work is not doing
 it, the distinction an earlier draft of T597 collapsed and `reviewer` rejected on 2026-09-19, and
-deleting the row once the run backs the verdict is what tells the two apart. Row 1 above is what that
-run does not reach — populated lists, opened surfaces, loading states, pointer-only targets — and is
-T676's, not a reopening of T674's row. T675 closed the comparator row the same way: every fill-only state the sweep
+deleting the row once the run backs the verdict is what tells the two apart. What that run did not
+reach — populated lists, opened surfaces, loading states, pointer-only targets — was T676's row, not a
+reopening of T674's. T675 closed the comparator row the same way: every fill-only state the sweep
 found now carries the non-fill signal its own spec names (the decisions live in those specs, the
 2026-09-28 threshold decision in `playwright.config.ts`'s unchanged default), every state frame that
 measured at or under 1% unclipped is clipped to the element carrying its signal, and `node scripts/visual/run.mjs --state-signal-sweep`
@@ -3654,3 +3662,24 @@ the closed `Tooltip` surface. Run 36903179643 at `cf96edb5`, after that fix, mat
 with one test passing only on retry; the sweep's per-test timeout was raised from it, and this run,
 on the head carrying the sweep in its final form, is the one the verdict rests on. The gate now asserts what the row recorded, so the row is deleted rather
 than kept as a second copy of the fact.
+
+T676 (2026-10-03) closed the last row the same way: the four sub-suites now also run the populated scenarios in
+`tests/visual/fixtures/suite-scenarios.ts` (matches, favourites, search results, match participants and the
+analysis section's lists, a second linked profile), each asserted in a browser by `enterScenario` against that
+file's per-route list inventory. Two success-branch controls are not
+reached, the `objected` `ArchivalControl` and `DataExportPanel`'s `ready` link (T682). No
+fixture player carries an `avatar_hash`, and every suite fails if a page requests a host other than the application's own, so none can
+reach `avatars.steamstatic.com`; it adds one scenario per `Dialog` and `Menu`, opened by keyboard — the theme
+`Menu` on every route, `ProfileSummary`'s switcher and Manage `Menu`s, the unlink `Dialog` and the
+account-erasure `Dialog` — and `tests/visual/fixtures/suite-scenarios.test.ts` fails when a `<Menu>` or
+`<Dialog>` usage appears in the source with no scenario (no `Tooltip` is opened: T681). An open surface is walked by its own keyboard
+contract (`tests/visual/fixtures/open-surface.ts`: a `Dialog` traps Tab and Shift+Tab, a `Menu` has one tab
+stop and wraps its arrow keys) and its stops feed the focus-ring and touch-footprint assertions; the touch
+suite adds a sweep of every element with a pointer cursor or an interactive role that a Tab walk cannot reach
+(`tests/visual/fixtures/pointer-targets.ts`); and the reduced-motion suite holds a loading state open and
+asserts the `Skeleton` and `Spinner` loops are running animations without the preference and stop under it, the
+same element still on screen (`tests/visual/fixtures/loading-state.ts`); those two loading states run through the
+reduced-motion suite only. The suites run in
+`.github/workflows/pr.yml`'s `visual` job (named there) and in `.github/workflows/nightly.yml`'s
+`visual-full` job (every `tests/visual` spec), both themes, and needed no workflow edit to keep doing so. The
+row is deleted rather than kept as a second copy of the fact; the reviews of #107 then filed the T681 and T682 rows above.

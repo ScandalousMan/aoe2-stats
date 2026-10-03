@@ -1,6 +1,6 @@
-// T674: production-readiness item 13 is Met only for what the route scenarios below render at rest
-// — see `packages/design-system/specs/README.md`'s "Verification-coverage gap register" (row 1,
-// owned by T676) for what a route renders once used that this fixture does not reach. This file
+// T674: the route scenarios below render each route at rest, with empty lists. What a route renders
+// once used — populated lists, opened `Dialog`s and `Menu`s, loading states — is T676's
+// (`./suite-scenarios.ts`, which builds on the stubs exported here). This file
 // holds the fixture data, `/api/*` stubs and route list
 // `tests/visual/app-routes.spec.ts` (T108/T553) already built for its own landmark-count and
 // full-page-screenshot suite, factored out so the four keyboard/focus-visibility/touch-footprint/
@@ -21,9 +21,9 @@ export const hasBuild = existsSync(path.join(distDir, 'index.html'))
 
 export type ThemeOverride = 'light' | 'dark'
 
-const SIGNED_OUT_ME = { authenticated: false }
+export const SIGNED_OUT_ME = { authenticated: false }
 
-const SIGNED_IN_ME = {
+export const SIGNED_IN_ME = {
   authenticated: true,
   user_id: 'visual-suite-user',
   allowlisted: true,
@@ -32,7 +32,7 @@ const SIGNED_IN_ME = {
   profiles: [{ profile_id: 4242, alias: 'VisualSuitePlayer', country: 'FR', is_primary: true }],
 }
 
-const PROFILES_RESPONSE = {
+export const PROFILES_RESPONSE = {
   profiles: [
     {
       profile_id: 4242,
@@ -59,9 +59,9 @@ const PROFILES_RESPONSE = {
 
 const FAVOURITES_RESPONSE = { favourites: [] }
 const MATCHES_RESPONSE = { matches: [], next_cursor: null }
-const THIRD_PARTY_PROFILE_ID = 9001
+export const THIRD_PARTY_PROFILE_ID = 9001
 
-const PLAYER_PROFILE_RESPONSE = {
+export const PLAYER_PROFILE_RESPONSE = {
   profile_id: THIRD_PARTY_PROFILE_ID,
   alias: 'ThirdPartyPlayer',
   country: 'DE',
@@ -82,9 +82,9 @@ const PLAYER_PROFILE_RESPONSE = {
   ],
 }
 
-const SAMPLE_GAME_ID = '555000123'
+export const SAMPLE_GAME_ID = '555000123'
 
-const MATCH_DETAIL_RESPONSE = {
+export const MATCH_DETAIL_RESPONSE = {
   game_id: Number(SAMPLE_GAME_ID),
   started_at: '2026-08-29T09:00:00Z',
   completed_at: '2026-08-29T09:45:00Z',
@@ -98,31 +98,31 @@ const MATCH_DETAIL_RESPONSE = {
   capture_deadline_at: null,
 }
 
-async function fulfillJson(route: Route, body: unknown): Promise<void> {
+export async function fulfillJson(route: Route, body: unknown): Promise<void> {
   await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
 }
 
-async function stubMe(page: Page, response: unknown): Promise<void> {
+export async function stubMe(page: Page, response: unknown): Promise<void> {
   await page.route('**/api/me', (route) => fulfillJson(route, response))
 }
-async function stubProfiles(page: Page): Promise<void> {
+export async function stubProfiles(page: Page): Promise<void> {
   await page.route('**/api/profiles', (route) => fulfillJson(route, PROFILES_RESPONSE))
 }
-async function stubFavourites(page: Page): Promise<void> {
+export async function stubFavourites(page: Page): Promise<void> {
   await page.route('**/api/favourites', (route) => fulfillJson(route, FAVOURITES_RESPONSE))
 }
-async function stubMatchesList(page: Page): Promise<void> {
+export async function stubMatchesList(page: Page): Promise<void> {
   await page.route('**/api/matches?*', (route) => fulfillJson(route, MATCHES_RESPONSE))
 }
-async function stubMatchDetail(page: Page, gameId: string): Promise<void> {
+export async function stubMatchDetail(page: Page, gameId: string): Promise<void> {
   await page.route(`**/api/matches/${gameId}`, (route) => fulfillJson(route, MATCH_DETAIL_RESPONSE))
 }
-async function stubPlayerProfile(page: Page, profileId: number): Promise<void> {
+export async function stubPlayerProfile(page: Page, profileId: number): Promise<void> {
   await page.route(`**/api/players/${profileId}`, (route) =>
     fulfillJson(route, PLAYER_PROFILE_RESPONSE),
   )
 }
-async function stubPlayerMatches(page: Page, profileId: number): Promise<void> {
+export async function stubPlayerMatches(page: Page, profileId: number): Promise<void> {
   await page.route(`**/api/players/${profileId}/matches*`, (route) =>
     fulfillJson(route, MATCHES_RESPONSE),
   )

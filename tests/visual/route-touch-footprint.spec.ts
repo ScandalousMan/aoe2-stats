@@ -14,16 +14,11 @@
 // (README's own "forbidden: enlarging a target with an overlay" rule) with nothing a bounding-box
 // sweep alone can observe, so it stays a spec rule rather than a geometry assertion here.
 import { test } from '@playwright/test'
-import {
-  assertThemeApplied,
-  createAppServerHarness,
-  gotoScenario,
-  hasBuild,
-  ROUTE_SCENARIOS,
-  seedThemeOverride,
-  waitForFontsReady,
-} from './fixtures/app-routes-harness'
-import { assertTouchFootprint } from './fixtures/touch-footprint'
+import { createAppServerHarness, hasBuild } from './fixtures/app-routes-harness'
+import { distinctSurfaceStops, walkOpenSurface } from './fixtures/open-surface'
+import { assertPointerTargetFootprint } from './fixtures/pointer-targets'
+import { enterScenario, SUITE_SCENARIOS } from './fixtures/suite-scenarios'
+import { assertStopsClearFootprint, assertTouchFootprint } from './fixtures/touch-footprint'
 
 const harness = createAppServerHarness('4177')
 
@@ -64,20 +59,29 @@ test.describe('touch footprints at 375px, every route, both themes', () => {
       harness.stop()
     })
 
-    for (const scenario of ROUTE_SCENARIOS) {
+    // T676: three kinds of target are measured, not one. The Tab stops of every route at rest and
+    // populated (`assertTouchFootprint`); the items of every open `Dialog`/`Menu`, reached by the
+    // surface's own keys (`walkOpenSurface`); and every *pointer-only* target — clickable but not
+    // focusable, found by computed `cursor: pointer` or an interactive role
+    // (`assertPointerTargetFootprint`) — which a Tab walk can never reach. The pointer sweep runs
+    // first, before a surface walk closes the surface it is looking at.
+    for (const scenario of SUITE_SCENARIOS) {
       for (const theme of ['light', 'dark'] as const) {
         test(`${scenario.label} — every non-exempt interactive target clears 44×44 at 375px (${theme})`, async ({
           page,
         }) => {
-          await seedThemeOverride(page, theme)
-          await scenario.stub(page)
+          const external = await enterScenario(page, scenario, harness.baseUrl, theme)
+          const context = `${scenario.label} (${theme})`
 
-          await gotoScenario(page, scenario, harness.baseUrl)
-          await page.getByRole('main').waitFor({ state: 'visible' })
-          await assertThemeApplied(page, theme)
-          await waitForFontsReady(page)
+          await assertPointerTargetFootprint(page, context)
+          if (scenario.surface) {
+            const stops = distinctSurfaceStops(await walkOpenSurface(page, scenario.surface))
+            assertStopsClearFootprint(stops, context)
+          } else {
+            await assertTouchFootprint(page, context)
+          }
 
-          await assertTouchFootprint(page, `${scenario.label} (${theme})`)
+          external.assertNone(context)
         })
       }
     }

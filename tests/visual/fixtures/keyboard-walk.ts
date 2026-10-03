@@ -21,11 +21,43 @@
 // it over what is actually behind it. `assertFocusRingVisible` below is now the one place that
 // judgment lives too, shared between the real-route suite and this file's own planted-page guard
 // tests (`focus-ring-walk.test.ts`), for the same reason `assertFullTabCoverage` above is shared.
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import { expect, type Page } from '@playwright/test'
 // `.mjs` rather than `.cjs`: `focus-ring.spec.ts`'s own header comment explains why (Vite transforms
 // a local ESM module, `Colour.stories.tsx` also imports it, and Node has no CommonJS sibling to fall
 // back to for either consumer).
 import { contrastRatioRgb } from '../../../packages/design-system/tokens/contrast.mjs'
+
+/** A motion token's duration as milliseconds. Only `ms` and `s` are known; any other unit, and any
+ * value that does not come out a finite number, throws rather than being read as milliseconds. */
+export function durationMs(value: string): number {
+  const match = /^(.+?)(ms|s)$/.exec(value.trim())
+  const amount = match ? Number(match[1]) : Number.NaN
+  if (!match || !Number.isFinite(amount)) {
+    throw new Error(
+      `motion token duration "${value}" is not a finite number followed by "ms" or "s"`,
+    )
+  }
+  return match[2] === 's' ? amount * 1000 : amount
+}
+
+// The longest duration `packages/design-system/tokens/motion.json` defines — read from the token
+// file, never restated, so adding a slower token moves the bound with it. `readFocusedStop` finishes
+// every transition on the focused element before reading it; this is what keeps that from hiding a
+// ring that takes seconds to appear.
+export const MAX_TRANSITION_MS: number = Math.max(
+  ...Object.values(
+    (
+      JSON.parse(
+        readFileSync(
+          path.resolve(__dirname, '..', '..', '..', 'packages/design-system/tokens/motion.json'),
+          'utf8',
+        ),
+      ) as { duration: Record<string, string> }
+    ).duration,
+  ).map(durationMs),
+)
 
 export interface TabStop {
   /** The marker this walk stamps on every candidate before pressing Tab — never re-derived from a
@@ -91,7 +123,7 @@ export interface TabWalkResult {
 // clause excludes a closed `Menu`'s own roving-tabindex items, which a plain Tab walk over the
 // route (no menu ever opened) could never reach either — the same reachability a real keyboard
 // user has, not an inflated candidate set this walk could never satisfy.
-const FOCUSABLE_SELECTOR =
+export const FOCUSABLE_SELECTOR =
   'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), ' +
   'select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
@@ -104,6 +136,28 @@ const FOCUSABLE_SELECTOR =
 // passed into `page.evaluate` as an argument rather than closed over, because a function Playwright
 // serialises into the browser cannot see an outer module constant.
 export const BACKGROUND_UNRESOLVABLE_DARK_SCHEME = '__no-opaque-surface--dark-color-scheme__'
+
+/** Start from the top of the document, whatever had focus before (T676: a scenario's `prepare`
+ * may have typed into a field or opened a menu). `blur()` alone leaves Chromium's sequential
+ * focus navigation starting point where the element was, so the first Tab would continue from
+ * there and skip every candidate before it. When something *was* focused, focus a throwaway
+ * `tabindex="-1"` sentinel inserted as the body's first child and remove it again: the starting
+ * point is then the top of the document, where a fresh page load leaves it. A page where nothing
+ * was focused is left alone — its starting point is already right, and a sentinel would change
+ * how a positive `tabindex` orders (this codebase declares none; `keyboard-walk.test.ts` plants
+ * one deliberately). Shared by `walkTabOrder` and `tabTo` (`./open-surface`). */
+export async function resetFocusToDocumentStart(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const active = document.activeElement as HTMLElement | null
+    if (active === null || active === document.body) return
+    active.blur()
+    const sentinel = document.createElement('span')
+    sentinel.setAttribute('tabindex', '-1')
+    document.body.insertBefore(sentinel, document.body.firstChild)
+    sentinel.focus()
+    sentinel.remove()
+  })
+}
 
 export async function walkTabOrder(page: Page, maxStepsOverride?: number): Promise<TabWalkResult> {
   const candidateCount = await page.evaluate(
@@ -128,145 +182,195 @@ export async function walkTabOrder(page: Page, maxStepsOverride?: number): Promi
     { selector: FOCUSABLE_SELECTOR },
   )
 
-  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
+  await resetFocusToDocumentStart(page)
 
   const maxSteps = maxStepsOverride ?? candidateCount + 5
   const steps: TabStop[] = []
 
   for (let i = 0; i < maxSteps; i += 1) {
     await page.keyboard.press('Tab')
-    const step = await page.evaluate(
-      ({ unresolvableDarkSchemeMarker }) => {
-        const el = document.activeElement as HTMLElement | null
-        if (el === null || el === document.body) return null
-
-        const computed = getComputedStyle(el)
-
-        // PR #102 review finding M1 (remediation): an outline paints outward from the border edge by
-        // its own width, so its outward edge sits at `offset + width`. The ring sits entirely over the
-        // element's OWN surface only when that outward edge never crosses the border at all —
-        // `offset <= -width`. Anything less negative than that — offset 0 included, where the ring
-        // starts exactly at the border edge and paints entirely outward from there, and any
-        // `-width < offset < 0`, where part of the ring is still outward — means at least part of the
-        // ring is painted over the PARENT's surface instead. The pre-remediation `outlineOffsetPx > 0`
-        // check treated offset 0 (and every negative offset) as "on the element", missing both.
-        const outlineOffsetPx = parseFloat(computed.outlineOffset) || 0
-        const outlineWidthPx = parseFloat(computed.outlineWidth) || 0
-        const backgroundStartNode: Element =
-          outlineOffsetPx > -outlineWidthPx && el.parentElement ? el.parentElement : el
-
-        function parseLayer(bg: string): { r: number; g: number; b: number; alpha: number } | null {
-          const match = bg.match(/rgba?\(([^)]+)\)/)
-          if (!match) return null
-          const parts = match[1].split(',').map((part) => parseFloat(part.trim()))
-          const [r, g, b] = parts
-          return { r, g, b, alpha: parts[3] ?? 1 }
-        }
-
-        // PR #102 review finding M1: a translucent background (alpha < 1) used to be treated as
-        // opaque the instant it was merely non-zero, reading its raw channel values instead of what a
-        // real render actually composites it over. Collect every non-transparent layer walking up
-        // from `backgroundStartNode`, stopping once a fully opaque one is found.
-        const layers: Array<{ r: number; g: number; b: number; alpha: number }> = []
-        let node: Element | null = backgroundStartNode
-        while (node) {
-          const layer = parseLayer(getComputedStyle(node).backgroundColor)
-          if (layer && layer.alpha > 0) {
-            layers.push(layer)
-            if (layer.alpha >= 1) break
-          }
-          node = node.parentElement
-        }
-        // No opaque layer was found anywhere up to the document root (every ancestor declared a
-        // translucent or absent background). A page that declares no `color-scheme` (or only "light")
-        // behaves like the browser's own default light canvas, so falling back to white matches what
-        // actually renders. PR #102 review finding M1 (remediation, part 3): a page whose `color-
-        // scheme` includes "dark" gives no such guarantee — Chromium's own default canvas behind a
-        // dark-scheme page is not white, and guessing white there would be exactly the "not what
-        // actually renders" bug this walk exists to avoid — surface that as `backgroundColor` itself
-        // instead of finishing a composite built on a guess.
-        let unresolvableDarkScheme = false
-        if (layers.length === 0 || layers[layers.length - 1].alpha < 1) {
-          const rootColorScheme = getComputedStyle(document.documentElement).colorScheme
-          if (rootColorScheme.includes('dark')) {
-            unresolvableDarkScheme = true
-          } else {
-            layers.push({ r: 255, g: 255, b: 255, alpha: 1 })
-          }
-        }
-
-        let backgroundColor: string
-        if (unresolvableDarkScheme) {
-          backgroundColor = unresolvableDarkSchemeMarker
-        } else {
-          // Composite back-to-front: the last layer found (the nearest opaque ancestor) is the
-          // backdrop; each layer walking back toward the element blends its own colour over that
-          // backdrop by its own alpha (the standard "over" operator) — the same colour a real render
-          // paints, never a raw, uncomposited `rgba(...)` read off one layer alone.
-          let composite = {
-            r: layers[layers.length - 1].r,
-            g: layers[layers.length - 1].g,
-            b: layers[layers.length - 1].b,
-          }
-          for (let i = layers.length - 2; i >= 0; i -= 1) {
-            const layer = layers[i]
-            composite = {
-              r: layer.r * layer.alpha + composite.r * (1 - layer.alpha),
-              g: layer.g * layer.alpha + composite.g * (1 - layer.alpha),
-              b: layer.b * layer.alpha + composite.b * (1 - layer.alpha),
-            }
-          }
-          backgroundColor = `rgb(${Math.round(composite.r)}, ${Math.round(composite.g)}, ${Math.round(composite.b)})`
-        }
-
-        // A wrapping <label> (never an htmlFor association, which leaves the control unwrapped) is
-        // the real hit area a pointer reaches — `specs/README.md`'s own "Minimum interactive
-        // footprint" convention. Generalised (PR #102 review finding, low) from `<input>` alone to
-        // every labelable control a `<label>` can wrap.
-        const LABELABLE_TAGS = [
-          'INPUT',
-          'SELECT',
-          'TEXTAREA',
-          'BUTTON',
-          'METER',
-          'OUTPUT',
-          'PROGRESS',
-        ]
-        const wrappingLabel = LABELABLE_TAGS.includes(el.tagName) ? el.closest('label') : null
-        const rect = (wrappingLabel ?? el).getBoundingClientRect()
-        const parentText = el.parentElement?.textContent?.trim() ?? ''
-        const ownText = el.textContent?.trim() ?? ''
-        const dataVariant = el.getAttribute('data-variant')
-        const exemptInlineLink =
-          el.tagName === 'A' && dataVariant === 'inline' && parentText.length > ownText.length
-
-        return {
-          kbdId: el.getAttribute('data-kbd-walk-id'),
-          tag: el.tagName.toLowerCase(),
-          role: el.getAttribute('role') ?? '',
-          name: (el.getAttribute('aria-label') ?? el.textContent ?? '').trim().slice(0, 60),
-          outerHTMLPrefix: el.outerHTML.slice(0, 160),
-          insideChrome: el.closest('main, header, footer') !== null,
-          rect: { width: rect.width, height: rect.height },
-          isFocusVisible: el.matches(':focus-visible'),
-          outline: {
-            style: computed.outlineStyle,
-            width: computed.outlineWidth,
-            color: computed.outlineColor,
-          },
-          backgroundColor,
-          dataVariant,
-          exemptInlineLink,
-        }
-      },
-      { unresolvableDarkSchemeMarker: BACKGROUND_UNRESOLVABLE_DARK_SCHEME },
-    )
+    const step = await readFocusedStop(page)
 
     if (step === null) break // focus returned to `document.body` (or off the document)
     steps.push(step)
   }
 
   return { candidateCount, steps }
+}
+
+/** The route chrome `TabStop.insideChrome` is judged against by default: the route's one `main`
+ * landmark plus its `header`/`footer`. An open `Menu` or `Dialog` passes its own surface selector
+ * instead (`open-surface.ts`) — inside an open modal, the surface *is* the container. */
+export const CHROME_SELECTOR = 'main, header, footer'
+
+/** Reads everything one Tab stop's assertions need from `document.activeElement`, or `null` when
+ * focus is on `document.body` (or off the document). Factored out of `walkTabOrder` (T676) so the
+ * open-surface walks in `open-surface.ts` — arrow-key steps through a `Menu`, Tab steps inside a
+ * `Dialog` — read the very same facts through the very same code, never a second copy that could
+ * drift from the one the focus-ring and touch-footprint assertions were written against. */
+export async function readFocusedStop(
+  page: Page,
+  chromeSelector: string = CHROME_SELECTOR,
+): Promise<TabStop | null> {
+  return page.evaluate(
+    ({ unresolvableDarkSchemeMarker, chromeSelector, maxTransitionMs }) => {
+      const el = document.activeElement as HTMLElement | null
+      if (el === null || el === document.body) return null
+
+      // T676: finish the element's own *transitions* before reading anything off it. Tab has just
+      // moved focus, so `outline-color` (a transitioned property on every `transition-colors`
+      // element) is still on its way from the resting colour to the ring colour, and the first
+      // frame would be judged instead of the ring a user ends up looking at. `finish()` jumps a
+      // transition to its end state at once, so this costs no waiting. Only `CSSTransition`s: an
+      // infinite `CSSAnimation` (`spin`, `pulse`) has no end to jump to.
+      //
+      // `finish()` also makes timing invisible: a ring that takes five seconds to appear, or starts
+      // two seconds late, would be judged on its end state exactly like the 120ms token fade. So the
+      // transition's delay plus duration is checked first, against the slowest motion token.
+      for (const animation of el.getAnimations()) {
+        if (animation instanceof CSSTransition) {
+          const timing = animation.effect?.getComputedTiming()
+          const total =
+            Number(timing?.delay ?? 0) +
+            Number(timing?.duration ?? 0) +
+            Number(timing?.endDelay ?? 0)
+          if (total > maxTransitionMs) {
+            throw new Error(
+              `a transition on <${el.tagName.toLowerCase()}> "${(el.getAttribute('aria-label') ?? el.textContent ?? '').trim().slice(0, 60)}" ` +
+                `(${animation.transitionProperty}) lasts ${total}ms (delay + duration), longer than ` +
+                `the ${maxTransitionMs}ms the slowest motion token allows ` +
+                `(packages/design-system/tokens/motion.json) — finishing it would hide the delay`,
+            )
+          }
+          animation.finish()
+        }
+      }
+
+      const computed = getComputedStyle(el)
+
+      // PR #102 review finding M1 (remediation): an outline paints outward from the border edge by
+      // its own width, so its outward edge sits at `offset + width`. The ring sits entirely over the
+      // element's OWN surface only when that outward edge never crosses the border at all —
+      // `offset <= -width`. Anything less negative than that — offset 0 included, where the ring
+      // starts exactly at the border edge and paints entirely outward from there, and any
+      // `-width < offset < 0`, where part of the ring is still outward — means at least part of the
+      // ring is painted over the PARENT's surface instead. The pre-remediation `outlineOffsetPx > 0`
+      // check treated offset 0 (and every negative offset) as "on the element", missing both.
+      const outlineOffsetPx = parseFloat(computed.outlineOffset) || 0
+      const outlineWidthPx = parseFloat(computed.outlineWidth) || 0
+      const backgroundStartNode: Element =
+        outlineOffsetPx > -outlineWidthPx && el.parentElement ? el.parentElement : el
+
+      function parseLayer(bg: string): { r: number; g: number; b: number; alpha: number } | null {
+        const match = bg.match(/rgba?\(([^)]+)\)/)
+        if (!match) return null
+        const parts = match[1].split(',').map((part) => parseFloat(part.trim()))
+        const [r, g, b] = parts
+        return { r, g, b, alpha: parts[3] ?? 1 }
+      }
+
+      // PR #102 review finding M1: a translucent background (alpha < 1) used to be treated as
+      // opaque the instant it was merely non-zero, reading its raw channel values instead of what a
+      // real render actually composites it over. Collect every non-transparent layer walking up
+      // from `backgroundStartNode`, stopping once a fully opaque one is found.
+      const layers: Array<{ r: number; g: number; b: number; alpha: number }> = []
+      let node: Element | null = backgroundStartNode
+      while (node) {
+        const layer = parseLayer(getComputedStyle(node).backgroundColor)
+        if (layer && layer.alpha > 0) {
+          layers.push(layer)
+          if (layer.alpha >= 1) break
+        }
+        node = node.parentElement
+      }
+      // No opaque layer was found anywhere up to the document root (every ancestor declared a
+      // translucent or absent background). A page that declares no `color-scheme` (or only "light")
+      // behaves like the browser's own default light canvas, so falling back to white matches what
+      // actually renders. PR #102 review finding M1 (remediation, part 3): a page whose `color-
+      // scheme` includes "dark" gives no such guarantee — Chromium's own default canvas behind a
+      // dark-scheme page is not white, and guessing white there would be exactly the "not what
+      // actually renders" bug this walk exists to avoid — surface that as `backgroundColor` itself
+      // instead of finishing a composite built on a guess.
+      let unresolvableDarkScheme = false
+      if (layers.length === 0 || layers[layers.length - 1].alpha < 1) {
+        const rootColorScheme = getComputedStyle(document.documentElement).colorScheme
+        if (rootColorScheme.includes('dark')) {
+          unresolvableDarkScheme = true
+        } else {
+          layers.push({ r: 255, g: 255, b: 255, alpha: 1 })
+        }
+      }
+
+      let backgroundColor: string
+      if (unresolvableDarkScheme) {
+        backgroundColor = unresolvableDarkSchemeMarker
+      } else {
+        // Composite back-to-front: the last layer found (the nearest opaque ancestor) is the
+        // backdrop; each layer walking back toward the element blends its own colour over that
+        // backdrop by its own alpha (the standard "over" operator) — the same colour a real render
+        // paints, never a raw, uncomposited `rgba(...)` read off one layer alone.
+        let composite = {
+          r: layers[layers.length - 1].r,
+          g: layers[layers.length - 1].g,
+          b: layers[layers.length - 1].b,
+        }
+        for (let i = layers.length - 2; i >= 0; i -= 1) {
+          const layer = layers[i]
+          composite = {
+            r: layer.r * layer.alpha + composite.r * (1 - layer.alpha),
+            g: layer.g * layer.alpha + composite.g * (1 - layer.alpha),
+            b: layer.b * layer.alpha + composite.b * (1 - layer.alpha),
+          }
+        }
+        backgroundColor = `rgb(${Math.round(composite.r)}, ${Math.round(composite.g)}, ${Math.round(composite.b)})`
+      }
+
+      // A wrapping <label> (never an htmlFor association, which leaves the control unwrapped) is
+      // the real hit area a pointer reaches — `specs/README.md`'s own "Minimum interactive
+      // footprint" convention. Generalised (PR #102 review finding, low) from `<input>` alone to
+      // every labelable control a `<label>` can wrap.
+      const LABELABLE_TAGS = [
+        'INPUT',
+        'SELECT',
+        'TEXTAREA',
+        'BUTTON',
+        'METER',
+        'OUTPUT',
+        'PROGRESS',
+      ]
+      const wrappingLabel = LABELABLE_TAGS.includes(el.tagName) ? el.closest('label') : null
+      const rect = (wrappingLabel ?? el).getBoundingClientRect()
+      const parentText = el.parentElement?.textContent?.trim() ?? ''
+      const ownText = el.textContent?.trim() ?? ''
+      const dataVariant = el.getAttribute('data-variant')
+      const exemptInlineLink =
+        el.tagName === 'A' && dataVariant === 'inline' && parentText.length > ownText.length
+
+      return {
+        kbdId: el.getAttribute('data-kbd-walk-id'),
+        tag: el.tagName.toLowerCase(),
+        role: el.getAttribute('role') ?? '',
+        name: (el.getAttribute('aria-label') ?? el.textContent ?? '').trim().slice(0, 60),
+        outerHTMLPrefix: el.outerHTML.slice(0, 160),
+        insideChrome: el.closest(chromeSelector) !== null,
+        rect: { width: rect.width, height: rect.height },
+        isFocusVisible: el.matches(':focus-visible'),
+        outline: {
+          style: computed.outlineStyle,
+          width: computed.outlineWidth,
+          color: computed.outlineColor,
+        },
+        backgroundColor,
+        dataVariant,
+        exemptInlineLink,
+      }
+    },
+    {
+      unresolvableDarkSchemeMarker: BACKGROUND_UNRESOLVABLE_DARK_SCHEME,
+      chromeSelector,
+      maxTransitionMs: MAX_TRANSITION_MS,
+    },
+  )
 }
 
 /** The one place FR-049's route-level coverage guards live — shared verbatim between

@@ -959,8 +959,8 @@ half is recorded separately, at the end.
 
 ### Item 3 (landmark half) — now Met, by a completed run
 
-T577's own words: *"the first half needs `tests/visual/app-routes.spec.ts` run in a browser… recorded
-as unconfirmed rather than assumed passing."* Run this session:
+T577's own words: _"the first half needs `tests/visual/app-routes.spec.ts` run in a browser… recorded
+as unconfirmed rather than assumed passing."_ Run this session:
 `pnpm --filter web build && pnpm exec playwright test tests/visual/app-routes.spec.ts`. The build
 succeeded (`vite build`, 1.26s). The suite completed — it did not hang, and needed no retry for
 timeout reasons — but its own `test.describe.configure({ mode: 'serial' })` halts the whole describe
@@ -1076,7 +1076,7 @@ four: **"Met for coverage and structure, not re-verified for determinism this se
 does not re-verify determinism either — building the harness is explicitly out of this task's scope.
 The coverage/structure half stays Met: the 14 missing baseline units above are a capture-lag problem
 (the stories exist, are enumerated, and are exactly what `story-baselines.mjs` is complaining is
-*missing*, which is itself evidence the structural enumeration works), not a coverage-claim failure.
+_missing_, which is itself evidence the structural enumeration works), not a coverage-claim failure.
 The determinism half — "render each twice and compare" — still has no harness anywhere in this
 repository, confirmed again this session: `playwright.config.ts` still carries no `repeatEach`, and
 T568's own double render is still an uncommitted, one-time, by-hand proof. Sized, dated and given an
@@ -1159,14 +1159,46 @@ The "Met" above claimed more than the suites check: every list fixture in
 `Menu` is opened, no loading state is on screen when the reduced-motion suite samples, and the touch
 sweep measures only Tab stops. The same review found that run 36400703606, cited above, concluded
 as a failure overall, and that none of the four suites had been seen failing. **Item 13 is Met for
-what the route scenarios render at rest, and partly met overall** until row 1 of
-`packages/design-system/specs/README.md`'s "Verification-coverage gap register" (T676) is deleted.
+what the route scenarios render at rest, and partly met overall** until T676's own row of
+`packages/design-system/specs/README.md`'s "Verification-coverage gap register" is deleted.
 The run backing the scoped verdict is PR #102's run
 [36673269608](https://github.com/ScandalousMan/aoe2-stats/actions/runs/36673269608) at `8ef5135a`,
 green in every job. Its `visual` job ran 146 route-level tests with none skipped: the 88 of the four
 suites in both themes, the 22 of `tests/visual/app-routes.spec.ts`, and the 36 planted-page tests
 under `tests/visual/fixtures/`, which fail each suite's guard on a page carrying the defect it
 exists to catch.
+
+**Widened, 2026-10-03 (T676).** The scope above is superseded: T676's own row of `packages/design-system/specs/README.md`'s
+"Verification-coverage gap register" is deleted. Each of the four suites iterates
+`SUITE_SCENARIOS` in `tests/visual/fixtures/suite-scenarios.ts` — the route scenarios at rest, the
+same routes populated per that file's per-route list inventory (matches, favourites, search results
+submitted, match participants, the analysis section's four ordered lists and its Recompute, Request
+analysis and Try requesting analysis buttons, the upload control, a second linked profile), each
+scenario asserted in a browser, inside `enterScenario`, to render what it declares with no error
+callout or loading region. Two success-branch controls are not
+reached, the `objected` `ArchivalControl` and `DataExportPanel`'s `ready` link
+(T682). The suites also run one
+scenario per `Dialog` and `Menu`, opened by keyboard:
+the theme `Menu` on every route, the profile-switcher `Menu` on `/dashboard` and `/matches`, the
+Manage `Menu` for a primary and a non-primary profile, the unlink `Dialog` and the account-erasure
+`Dialog`. An open surface is walked by its own keyboard contract rather than a Tab walk over the page
+behind it, and its stops feed the focus-ring and touch-footprint assertions. The touch suite adds a
+pointer-only sweep (every element with a pointer cursor or an interactive role that is not a Tab
+stop), and the reduced-motion suite adds two loading-state controls that hold an API response open
+and assert the `Skeleton` (`pulse`) and `Spinner` (`spin`) loops are running animations without the
+preference and are stopped under it, the same element still on screen. No `Tooltip` is opened by any
+scenario (T681). No fixture player carries an
+`avatar_hash`, and every scenario fails if the page requests a host other than the application's
+own. Two things the old verdict did not say, found by running the populated scenarios: the Tab
+walk now starts from the top of the document when a scenario left focus mid-page, and reads a
+focus ring after the element's own transitions have finished (a populated `PlayerResultRow` was
+judged on the first frame of its 120ms outline fade, 1.17:1 in dark). **Item 13
+is Met for routes at rest, for the populated scenarios in that inventory, and with every `Dialog`
+and `Menu` open, on the head carrying T676; the two loading states are held in the reduced-motion
+suite only, so the keyboard, focus-visibility and touch-footprint suites do not run them; no
+`Tooltip` is opened (T681) and the two success-branch controls above are not rendered (T682); it
+is partly met overall until the T681 and T682 rows are deleted** — local run only, macOS Chromium,
+441 tests. The full-page baselines in `tests/visual/app-routes.spec.ts` are CI-authoritative and unchanged by this task.
 
 ### Item 15's general-reviewer half — outstanding, no pull request covers this head
 
@@ -1215,7 +1247,7 @@ agent, landing in the same pull request, out of this task's own scope (`Dialog.s
 file this task touches) — established that `Dialog`'s `Hover`/`Active` stories were captured
 **unclipped**, so at every width their state signal sat below `playwright.config.ts`'s
 `maxDiffPixelRatio` of 0.01: those 12 units could not detect their own loss. `visual-reviewer`'s PASS
-above was rendered on frames whose *content* is correct but whose *framing* was inadequate to detect
+above was rendered on frames whose _content_ is correct but whose _framing_ was inadequate to detect
 a regression, and that
 PASS is recorded on that basis rather than withheld or overstated. **Corrected 2026-09-23, row 8's own
 debt-closure remediation, then re-clipped and landed in `e26e85fa`:** the re-clip does not settle this
