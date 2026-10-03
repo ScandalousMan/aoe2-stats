@@ -3,9 +3,12 @@
 // each with its absence case planted rather than assumed (every guard below is a function the real
 // check and its planted case both call, so the two cannot drift):
 //
-// 1. every list and control group a route renders is declared by a populated scenario of *that
-//    route* (exact match, never a label prefix), and in a browser each populated scenario renders
-//    what it declares and shows no error callout or loading region;
+// 1. every entry of the per-route list inventory in `./suite-scenarios` is declared by a populated
+//    scenario of *that route* (exact match, never a label prefix), and in a browser each populated
+//    scenario renders what it declares and shows no error callout or loading region, judged inside
+//    `enterScenario` so the four route suites cannot skip it. Error, empty and transient branches
+//    are not reached; two success-branch controls (the `objected` `ArchivalControl`, the
+//    `DataExportPanel` `ready` link) are not either, and belong to T682;
 // 2. no fixture player carries an `avatar_hash` (constitution III: no suite reaches
 //    `avatars.steamstatic.com`);
 // 3. every `<Menu>` and `<Dialog>` an application route can open has a scenario — a new consumer
@@ -27,7 +30,6 @@ import {
   stubMe,
 } from './app-routes-harness'
 import {
-  assertPopulatedScenario,
   enterScenario,
   findAvatarHashes,
   POPULATED_FIXTURES,
@@ -122,7 +124,7 @@ test.describe('suite scenarios', () => {
   test('removing /players/$profileId (favourited) is caught, though its matches route starts with it', () => {
     const missing = unpopulatedLists(without('/players/$profileId (favourited)'))
     expect(missing).toEqual([
-      '/players/$profileId: rating table rows',
+      '/players/$profileId: rating rows',
       '/players/$profileId: unfavourite toggle',
     ])
   })
@@ -165,6 +167,14 @@ test.describe('suite scenarios', () => {
       '/matches/$gameId: replay download buttons',
     ])
     expect(unpopulatedLists(POPULATED_SCENARIOS)).toEqual([])
+  })
+
+  test("the dashboard's declared lists are the data-driven ones only", () => {
+    // `main ul > li` on the dashboard matched the archival explanation's static copy, which renders
+    // whatever the data is, so declaring it proved nothing.
+    expect(ROUTE_REQUIRED_LISTS['/dashboard']).toEqual(['rating rows'])
+    const dashboard = POPULATED_SCENARIOS.find((scenario) => scenario.route === '/dashboard')
+    expect(dashboard?.renders.map((entry) => entry.name)).toEqual(['rating rows'])
   })
 
   test('the populated fixtures are populated', () => {
@@ -259,13 +269,23 @@ test.describe('populated scenarios render their success branch', () => {
       test(`${scenario.label} — every declared list has its items, no error or loading region`, async ({
         page,
       }) => {
+        // `enterScenario` itself judges a populated scenario once its lists have had time to arrive.
         const external = await enterScenario(page, scenario, harness.baseUrl, 'light')
-        await assertPopulatedScenario(page, scenario, scenario.label)
         external.assertNone(scenario.label)
       })
     }
 
-    // The planted cases, one per way a "populated" fixture can quietly render something else.
+    // The touch suite measures at 375px, where a table is stacked cards: each scenario's declared
+    // lists must be on screen there too, not only at the default 1280px the test above runs at.
+    for (const scenario of POPULATED_SCENARIOS) {
+      test(`${scenario.label} — the same lists are on screen at 375px`, async ({ page }) => {
+        await page.setViewportSize({ width: 375, height: 800 })
+        await enterScenario(page, scenario, harness.baseUrl, 'light')
+      })
+    }
+
+    // The planted cases, one per way a "populated" fixture can quietly render something else. Each
+    // is judged inside `enterScenario`, which is what the four route suites call.
     test('planted: a match page whose body has no analysis key renders the error callout and fails', async ({
       page,
     }) => {
@@ -283,9 +303,8 @@ test.describe('populated scenarios render their success branch', () => {
           )
         },
       }
-      await enterScenario(page, planted, harness.baseUrl, 'light')
-      await expect(assertPopulatedScenario(page, planted, 'planted')).rejects.toThrow(
-        /planted: (an error callout \(role="alert"\) is on screen|analysis participant cards)/,
+      await expect(enterScenario(page, planted, harness.baseUrl, 'light')).rejects.toThrow(
+        /\(populated\): (an error callout \(role="alert"\) is on screen|analysis participant cards)/,
       )
     })
 
@@ -302,9 +321,8 @@ test.describe('populated scenarios render their success branch', () => {
           )
         },
       }
-      await enterScenario(page, planted, harness.baseUrl, 'light')
-      await expect(assertPopulatedScenario(page, planted, 'planted')).rejects.toThrow(
-        /planted: (analysis participant cards|analysis ordered lists|analysis list items)/,
+      await expect(enterScenario(page, planted, harness.baseUrl, 'light')).rejects.toThrow(
+        /\(populated\): (analysis participant cards|analysis ordered lists|analysis list items)/,
       )
     })
 
@@ -322,9 +340,77 @@ test.describe('populated scenarios render their success branch', () => {
           )
         },
       }
+      await expect(enterScenario(page, planted, harness.baseUrl, 'light')).rejects.toThrow(
+        /\(populated\): match rows \(main table tbody tr\) rendered fewer than 3 item\(s\)/,
+      )
+    })
+
+    test('a populated scenario whose list arrives late is judged only after the list renders', async ({
+      page,
+    }) => {
+      const matches = POPULATED_SCENARIOS.find(
+        (scenario) => scenario.label === '/matches (populated)',
+      )
+      if (!matches) throw new Error('/matches (populated) is gone')
+      let delayed = 0
+      const planted: PopulatedScenario = {
+        ...matches,
+        stub: async (target) => {
+          await matches.stub(target)
+          // Registered after the scenario's own stub, so it answers first — 2s later, well past the
+          // `main`, theme and font waits `enterScenario` always did.
+          await target.route('**/api/matches?*', async (route) => {
+            delayed += 1
+            await new Promise((resolve) => setTimeout(resolve, 2000))
+            await fulfillJson(route, POPULATED_FIXTURES.matches)
+          })
+        },
+      }
       await enterScenario(page, planted, harness.baseUrl, 'light')
-      await expect(assertPopulatedScenario(page, planted, 'planted')).rejects.toThrow(
-        /planted: match rows \(main table tbody tr\) rendered fewer than 3 item\(s\)/,
+      expect(delayed, 'the delayed stub never answered a request').toBeGreaterThan(0)
+      // No polling here: when `enterScenario` returns, the rows must already be on screen.
+      expect(await page.locator('main table tbody tr').count()).toBeGreaterThanOrEqual(3)
+    })
+
+    test('contrast: a populated scenario whose list never arrives fails inside enterScenario', async ({
+      page,
+    }) => {
+      const matches = POPULATED_SCENARIOS.find(
+        (scenario) => scenario.label === '/matches (populated)',
+      )
+      if (!matches) throw new Error('/matches (populated) is gone')
+      const planted: PopulatedScenario = {
+        ...matches,
+        stub: async (target) => {
+          await matches.stub(target)
+          await target.route('**/api/matches?*', () => new Promise(() => {}))
+        },
+      }
+      await expect(enterScenario(page, planted, harness.baseUrl, 'light')).rejects.toThrow(
+        /\(populated\): match rows \(main table tbody tr\) rendered fewer than 3 item\(s\)/,
+      )
+    })
+
+    test('a dashboard whose profiles carry no ratings fails on its rating rows', async ({
+      page,
+    }) => {
+      // The dashboard's one declared list is data-driven, so it is sensitive to the data. (Its old
+      // second entry, a `main ul > li` over static copy, rendered whatever the data was.)
+      const dashboard = POPULATED_SCENARIOS.find((scenario) => scenario.route === '/dashboard')
+      if (!dashboard) throw new Error('the /dashboard populated scenario is gone')
+      const planted: PopulatedScenario = {
+        ...dashboard,
+        stub: async (target) => {
+          await stubMe(target, SIGNED_IN_ME)
+          await target.route('**/api/profiles', (route) =>
+            fulfillJson(route, {
+              profiles: PROFILES_RESPONSE.profiles.map((profile) => ({ ...profile, ratings: [] })),
+            }),
+          )
+        },
+      }
+      await expect(enterScenario(page, planted, harness.baseUrl, 'light')).rejects.toThrow(
+        /\(two linked profiles\): rating rows/,
       )
     })
   }

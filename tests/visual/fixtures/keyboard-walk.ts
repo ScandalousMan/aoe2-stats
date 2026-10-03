@@ -29,6 +29,19 @@ import { expect, type Page } from '@playwright/test'
 // back to for either consumer).
 import { contrastRatioRgb } from '../../../packages/design-system/tokens/contrast.mjs'
 
+/** A motion token's duration as milliseconds. Only `ms` and `s` are known; any other unit, and any
+ * value that does not come out a finite number, throws rather than being read as milliseconds. */
+export function durationMs(value: string): number {
+  const match = /^(.+?)(ms|s)$/.exec(value.trim())
+  const amount = match ? Number(match[1]) : Number.NaN
+  if (!match || !Number.isFinite(amount)) {
+    throw new Error(
+      `motion token duration "${value}" is not a finite number followed by "ms" or "s"`,
+    )
+  }
+  return match[2] === 's' ? amount * 1000 : amount
+}
+
 // The longest duration `packages/design-system/tokens/motion.json` defines — read from the token
 // file, never restated, so adding a slower token moves the bound with it. `readFocusedStop` finishes
 // every transition on the focused element before reading it; this is what keeps that from hiding a
@@ -43,7 +56,7 @@ export const MAX_TRANSITION_MS: number = Math.max(
         ),
       ) as { duration: Record<string, string> }
     ).duration,
-  ).map((value) => parseFloat(value)),
+  ).map(durationMs),
 )
 
 export interface TabStop {

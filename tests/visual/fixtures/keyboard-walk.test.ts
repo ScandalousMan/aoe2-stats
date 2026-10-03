@@ -21,7 +21,43 @@
 // a trap that only starts after every candidate has already been reached once now trips the
 // step-count guard instead, at the walk's own default budget, below.
 import { test, expect } from '@playwright/test'
-import { assertFullTabCoverage, assertStopsInsideChrome, walkTabOrder } from './keyboard-walk'
+import {
+  assertFullTabCoverage,
+  assertStopsInsideChrome,
+  durationMs,
+  MAX_TRANSITION_MS,
+  walkTabOrder,
+} from './keyboard-walk'
+
+// `MAX_TRANSITION_MS` is read from `packages/design-system/tokens/motion.json` with `durationMs`.
+// `parseFloat` alone read "0.4s" as 0.4 — a millisecond bound a thousand times too small — and read
+// any unit it did not know as if it were milliseconds.
+test.describe('motion token durations', () => {
+  test('milliseconds and seconds are both read as milliseconds', () => {
+    expect(durationMs('120ms')).toBe(120)
+    expect(durationMs('0ms')).toBe(0)
+    expect(durationMs('0.4s')).toBe(400)
+    expect(durationMs('2s')).toBe(2000)
+  })
+
+  test('a unit that is neither ms nor s throws, naming the value', () => {
+    expect(() => durationMs('1m')).toThrow(/"1m"/)
+    expect(() => durationMs('120')).toThrow(/"120"/)
+    expect(() => durationMs('120px')).toThrow(/"120px"/)
+  })
+
+  test('a value that is not a finite number throws', () => {
+    expect(() => durationMs('abc')).toThrow(/"abc"/)
+    expect(() => durationMs('ms')).toThrow(/"ms"/)
+    expect(() => durationMs('Infinitys')).toThrow(/"Infinitys"/)
+    expect(() => durationMs('NaNms')).toThrow(/"NaNms"/)
+  })
+
+  test("the bound read from motion.json is finite and the slowest token's", () => {
+    expect(Number.isFinite(MAX_TRANSITION_MS)).toBe(true)
+    expect(MAX_TRANSITION_MS).toBeGreaterThan(0)
+  })
+})
 
 test.describe('keyboard-walk guards, planted pages', () => {
   test('a trap that starts only after every candidate is reached fails the step-count guard', async ({

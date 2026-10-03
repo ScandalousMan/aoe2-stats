@@ -4,8 +4,8 @@
 // left row links, result rows, favourites rows, participant links, dialog contents and menu items
 // meeting none of the four suites. This file adds, on top of the same stubs:
 //
-// 1. POPULATED_SCENARIOS — every list a route renders, populated (matches, favourites, search
-//    results, match participants, a second linked profile). The empty `ROUTE_SCENARIOS` are kept as
+// 1. POPULATED_SCENARIOS — the lists in `ROUTE_REQUIRED_LISTS` below, populated (matches,
+//    favourites, search results, match participants, a second linked profile). The empty `ROUTE_SCENARIOS` are kept as
 //    they are: an empty state is a state too, and leaving them untouched keeps the full-page
 //    screenshots `app-routes.spec.ts` takes (CI-authoritative baselines) exactly where they were.
 // 2. SURFACE_SCENARIOS — one scenario per openable surface, opened by keyboard: the theme `Menu` in
@@ -19,6 +19,8 @@
 // field), `enterScenario` installs `installSteamAvatarStub` as a backstop, and it watches every
 // request the page makes (`./external-requests`) so the suites fail, rather than quietly pass, if
 // one ever reaches another host — constitution III, `player-avatar.md` §9.
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import { expect, type Page } from '@playwright/test'
 import {
   assertThemeApplied,
@@ -58,6 +60,31 @@ export interface ListExpectation {
   name: string
   selector: string
   min: number
+  /** Set when the list swaps layout at a breakpoint (a `<table>` above it, stacked cards below):
+   * `selector` then applies at or above that breakpoint and `selector` here below it. The touch suite
+   * measures at 375px, the other three at Playwright's default 1280px, so one selector cannot serve
+   * both. */
+  stacked?: { below: Breakpoint; selector: string }
+}
+
+type Breakpoint = 'md' | 'lg' | 'xl'
+
+// Read from the token file `useBreakpoint` is generated from, never restated.
+const BREAKPOINT_PX = JSON.parse(
+  readFileSync(
+    path.resolve(__dirname, '..', '..', '..', 'packages/design-system/tokens/breakpoint.json'),
+    'utf8',
+  ),
+) as Record<Breakpoint, number>
+
+async function selectorFor(page: Page, list: ListExpectation): Promise<string> {
+  if (!list.stacked) return list.selector
+  const px = BREAKPOINT_PX[list.stacked.below]
+  const atOrAbove = await page.evaluate(
+    (width) => window.matchMedia(`(min-width: ${width}px)`).matches,
+    px,
+  )
+  return atOrAbove ? list.selector : list.stacked.selector
 }
 
 /** A scenario that renders a route's success branch. Its label is always `${route} (${variant})`,
@@ -69,6 +96,13 @@ export interface PopulatedScenario extends SuiteScenario {
   variant: string
   /** What this scenario puts on screen, asserted in the browser by `assertPopulatedScenario`. */
   renders: readonly ListExpectation[]
+  /** Set when the lists only exist once `prepare` has run (a search has to be submitted first), so
+   * `enterScenario` judges them after `prepare` instead of before it. */
+  listsNeedPrepare?: boolean
+}
+
+function isPopulatedScenario(scenario: SuiteScenario): scenario is PopulatedScenario {
+  return 'renders' in scenario
 }
 
 function populated(
@@ -372,17 +406,37 @@ async function stubPopulatedFavourites(page: Page): Promise<void> {
 // list item, an `<ol>`), never a class, and each `min` is the count the fixture above produces, so
 // a list that silently renders fewer rows fails as well as one that renders none.
 const RATING_ROWS: ListExpectation = {
-  name: 'rating table rows',
+  name: 'rating rows',
+  // A `<table>` row from `lg` up, a `RatingCard` article below it (`ProfileSummary` renders one
+  // layout, never both).
   selector: 'main table tbody tr',
   min: 1,
+  stacked: { below: 'lg', selector: 'main article[aria-labelledby^="entry-"]' },
 }
 const MATCH_ROWS: readonly ListExpectation[] = [
-  { name: 'match rows', selector: 'main table tbody tr', min: 3 },
+  // A `<table>` row from `xl` up, a labelled `<ul>` of cards below it (one layout, never both).
+  {
+    name: 'match rows',
+    selector: 'main table tbody tr',
+    min: 3,
+    stacked: { below: 'xl', selector: 'main ul[aria-label] > li' },
+  },
   { name: 'match row links', selector: 'main a[href^="/matches/"]', min: 3 },
 ]
 const MATCH_DETAIL_ROSTER: readonly ListExpectation[] = [
-  { name: 'participant rows', selector: 'main table tbody tr', min: 4 },
-  { name: 'replay availability rows', selector: 'main ul > li', min: 4 },
+  // A `<table>` row from `xl` up, a card in the team's `<ul>` below it, the one list item carrying
+  // the player's colour swatch ("Colour: Blue"); the replay availability list is the other `<ul>`.
+  {
+    name: 'participant rows',
+    selector: 'main table tbody tr',
+    min: 4,
+    stacked: { below: 'xl', selector: 'main ul > li:has-text("Colour:")' },
+  },
+  {
+    name: 'replay availability rows',
+    selector: 'main section ul > li:not(:has-text("Colour:"))',
+    min: 4,
+  },
 ]
 // Four participants, each with all four of Age ups, Build order, Training order and Research, two
 // events apiece.
@@ -411,7 +465,7 @@ export const POPULATED_SCENARIOS: readonly PopulatedScenario[] = [
   populated('/dashboard', 'two linked profiles', {
     path: '/',
     landedPath: '/dashboard',
-    renders: [RATING_ROWS, { name: 'archival explanation list', selector: 'main ul > li', min: 1 }],
+    renders: [RATING_ROWS],
     stub: async (page) => {
       await stubMe(page, SIGNED_IN_ME)
       await stubPopulatedProfiles(page, TWO_PROFILES_RESPONSE)
@@ -419,6 +473,7 @@ export const POPULATED_SCENARIOS: readonly PopulatedScenario[] = [
   }),
   populated('/search', 'results submitted', {
     path: '/search',
+    listsNeedPrepare: true,
     renders: [
       { name: 'search results', selector: 'main ul > li', min: 3 },
       { name: 'search result links', selector: 'main a[href^="/players/"]', min: 3 },
@@ -535,13 +590,15 @@ export const POPULATED_SCENARIOS: readonly PopulatedScenario[] = [
   }),
 ]
 
-// The lists and control groups each route's success branch renders, by `ROUTE_SCENARIOS` label.
-// This is the inventory the guards below are checked against: `unpopulatedLists` fails by name for
+// The per-route list inventory, by `ROUTE_SCENARIOS` label: the one the guards below check, and
+// nothing more. Error, empty and transient branches are not in it, and neither are two success-
+// branch controls (the `objected` `ArchivalControl`, `DataExportPanel`'s `ready` link; T682).
+// `unpopulatedLists` fails by name for
 // any entry no populated scenario of *that route* declares, and `assertPopulatedScenario` asserts
 // each declaration in the browser. A route absent here and from `ROUTES_WITHOUT_A_LIST`
 // (`suite-scenarios.test.ts`) fails there.
 export const ROUTE_REQUIRED_LISTS: Readonly<Record<string, readonly string[]>> = {
-  '/dashboard': ['rating table rows', 'archival explanation list'],
+  '/dashboard': ['rating rows'],
   '/search': ['search results', 'search result links'],
   '/favourites': ['favourite rows', 'favourite row links', 'remove buttons'],
   '/matches': ['match rows', 'match row links'],
@@ -557,7 +614,7 @@ export const ROUTE_REQUIRED_LISTS: Readonly<Record<string, readonly string[]>> =
     'upload control',
     'Try requesting analysis button',
   ],
-  '/players/$profileId': ['rating table rows', 'unfavourite toggle'],
+  '/players/$profileId': ['rating rows', 'unfavourite toggle'],
   '/players/$profileId/matches': ['match rows', 'match row links'],
 }
 
@@ -592,10 +649,11 @@ export async function assertPopulatedScenario(
   context: string,
 ): Promise<void> {
   for (const list of scenario.renders) {
+    const selector = await selectorFor(page, list)
     await expect
-      .poll(() => page.locator(list.selector).count(), {
+      .poll(() => page.locator(selector).count(), {
         message:
-          `${context}: ${list.name} (${list.selector}) rendered fewer than ${list.min} item(s) — ` +
+          `${context}: ${list.name} (${selector}) rendered fewer than ${list.min} item(s) — ` +
           `the route is showing an empty, loading or error branch instead of its populated one`,
       })
       .toBeGreaterThanOrEqual(list.min)
@@ -791,8 +849,10 @@ export interface EnterOptions {
 
 /** The setup every suite repeated inline, in one place: avatar stub and external-request watch,
  * reduced-motion preference, theme seed, API stubs, navigation, theme-painted and font checks, then
- * the scenario's own `prepare` (search submitted, surface opened). Returns the external-request
- * watch for the caller to assert at the end of its test. */
+ * the scenario's own `prepare` (search submitted, surface opened). A populated scenario is judged
+ * by `assertPopulatedScenario` here — before `prepare`, or after it when `listsNeedPrepare` — so no
+ * suite measures a page whose lists are still on their way. Returns the external-request watch for
+ * the caller to assert at the end of its test. */
 export async function enterScenario(
   page: Page,
   scenario: SuiteScenario,
@@ -813,7 +873,12 @@ export async function enterScenario(
   await assertThemeApplied(page, theme)
   await waitForFontsReady(page)
 
+  const judged = isPopulatedScenario(scenario) ? scenario : undefined
+  if (judged && !judged.listsNeedPrepare) {
+    await assertPopulatedScenario(page, judged, judged.label)
+  }
   await scenario.prepare?.(page)
+  if (judged?.listsNeedPrepare) await assertPopulatedScenario(page, judged, judged.label)
   return external
 }
 
