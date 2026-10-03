@@ -4,13 +4,11 @@
 // numbers and this task's own text in tasks.md for the Done clause this slice closes: "the sweep
 // runs against every state story in the tree").
 //
-// Pure discovery + self-pairing + classification logic for the comparator-blind-spot sweep. Nothing
-// in this file touches the filesystem beyond reading `.stories.tsx` source (`readFileSync` is the
-// caller's job, not this module's — every exported function here takes source text or already-
-// parsed data, the same "no filesystem access below the pure functions" discipline
-// `scripts/checks/state-coverage.mjs` documents at its own top) and nothing here launches a
-// browser — `tests/visual/state-signal-sweep.spec.ts` is the one Playwright consumer, and
-// `state-signal-model.test.mjs` is the one `node --test` consumer, of the exact same functions.
+// Pure discovery + self-pairing + classification logic for the comparator-blind-spot sweep.
+// `listStoryFilesOnDisk` (T679) lists story files on disk; reading `.stories.tsx` source
+// (`readFileSync`) is the caller's job, and `buildStateSignalWork` takes it as an injected
+// `readSource`. `tests/visual/state-signal-sweep.spec.ts` is the Playwright consumer and
+// `state-signal-model.test.mjs` the `node --test` consumer.
 //
 // **Slice 1's sibling-pairing rule is retired, not kept alongside this one.** It paired a state
 // story against a *different* sibling story sharing the same resolved args, `play` and `render` —
@@ -26,7 +24,7 @@
 // with it, per this task's own instruction not to leave a second pairing rule alive.
 //
 // Story extraction below reuses `scripts/checks/state-coverage.mjs`'s own exported AST helpers
-// (`parseTsx`, `findMeta`, `findExportedStoryObjects`, `extractVisualForceState`,
+// (`parseTsx`, `findExportedStoryObjects`, `extractVisualForceState`,
 // `buildTopLevelConstNodeMap`, `findPlayFocusTarget`) rather than writing a second parser, per this
 // task's own instruction. Two things that file has no reason to expose are written fresh here, each
 // narrowly scoped to what this sweep alone needs:
@@ -37,19 +35,18 @@
 //   - `extractVisualCaptureClip` reads `parameters.visualCaptureClip` the same way
 //     `extractVisualForceState` reads `parameters.visualForceState` — state-coverage.mjs never
 //     reads this parameter at all (grep confirms zero occurrences), so there is nothing to reuse.
+import { readdirSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { createRequire } from 'node:module'
 import {
   parseTsx,
-  findMeta,
   findExportedStoryObjects,
   extractVisualForceState,
   buildTopLevelConstNodeMap,
   findPlayFocusTarget,
   unwrapExpression,
 } from '../checks/state-coverage.mjs'
-import { listComponentDirs, findStoryFile } from '../checks/story-docs.mjs'
 import { REVIEW_WIDTHS } from './review-widths.mjs'
 
 export const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
@@ -84,16 +81,23 @@ export const WIDTHS = REVIEW_WIDTHS
 // number invented for this file.
 export const CLIP_FIX_THRESHOLD = 0.01
 
-// --- Tiny AST accessors state-coverage.mjs keeps private -----------------------------------------
-// (`getProp`/`literalOf` there are exactly this shape; not exported, so mirrored here rather than
-// guessed at. Neither reads or resolves anything `state-coverage.mjs` does not already resolve the
-// same way elsewhere in that file.)
+// --- Tiny AST accessors ---------------------------------------------------------------------------
 
+// The text of a property's name when it is a plain identifier or string-literal key (`id` and
+// `'id'` are the same key); `null` for a computed key, which this file cannot read statically.
+function propertyNameText(nameNode) {
+  if (ts.isIdentifier(nameNode) || ts.isStringLiteralLike(nameNode)) return nameNode.text
+  return null
+}
+
+// The initializer of the property `name` of an object literal (a shorthand property yields its
+// identifier); `undefined` when the node is not an object literal or has no such property.
 function getProp(objLiteral, name) {
   if (!objLiteral || !ts.isObjectLiteralExpression(objLiteral)) return undefined
   for (const prop of objLiteral.properties) {
-    if (ts.isPropertyAssignment(prop) && prop.name.getText() === name) return prop.initializer
-    if (ts.isShorthandPropertyAssignment(prop) && prop.name.getText() === name) return prop.name
+    if (ts.isPropertyAssignment(prop) && propertyNameText(prop.name) === name)
+      return prop.initializer
+    if (ts.isShorthandPropertyAssignment(prop) && prop.name.text === name) return prop.name
   }
   return undefined
 }
@@ -199,7 +203,70 @@ export function extractVisualCaptureClip(storyObj, constNodeMap = new Map()) {
   return { parts, pad: pad.present && pad.literal ? pad.value : undefined }
 }
 
+// What a file's default export is: `export default meta` (a top-level
+// variable, with or without a type annotation, `satisfies`, `as` or parentheses on its initializer),
+// `export { meta as default }`, an inline `export default { ... }` (likewise wrapped).
+// `{ present, meta }`: `present` is whether the file has a default export at all (including
+// `export default function ...` and a re-export from another module); `meta` is the object literal
+// it names in this file, or `null` when it names something else (a call such as `defineMeta(...)`,
+// an import, a function).
+function findDefaultExport(sourceFile, constNodeMap) {
+  const resolve = (expr) => {
+    expr = unwrapExpression(expr)
+    if (expr && ts.isIdentifier(expr)) expr = constNodeMap.get(expr.text)
+    return expr && ts.isObjectLiteralExpression(expr) ? expr : null
+  }
+  let present = false
+  for (const statement of sourceFile.statements) {
+    if (ts.isExportAssignment(statement) && !statement.isExportEquals) {
+      present = true
+      const found = resolve(statement.expression)
+      if (found) return { present, meta: found }
+    }
+    if (
+      (ts.isFunctionDeclaration(statement) || ts.isClassDeclaration(statement)) &&
+      statement.modifiers?.some((m) => m.kind === ts.SyntaxKind.DefaultKeyword)
+    ) {
+      present = true
+    }
+    if (
+      ts.isExportDeclaration(statement) &&
+      statement.exportClause &&
+      ts.isNamedExports(statement.exportClause)
+    ) {
+      for (const specifier of statement.exportClause.elements) {
+        if (specifier.name.text !== 'default') continue
+        present = true
+        if (statement.moduleSpecifier) continue
+        const found = resolve(specifier.propertyName ?? specifier.name)
+        if (found) return { present, meta: found }
+      }
+    }
+  }
+  return { present, meta: null }
+}
+
+// Whether a meta object can carry a `component`: it names one (`component: C`, `'component': C`,
+// shorthand), or it holds something this file cannot read statically (a spread, a computed key) that
+// might. The conservative reading is the strict one — such a meta is a component file.
+function mayCarryComponent(metaObj) {
+  return metaObj.properties.some((prop) => {
+    if (ts.isSpreadAssignment(prop)) return true
+    if (!prop.name) return false
+    if (ts.isComputedPropertyName(prop.name)) return true
+    return propertyNameText(prop.name) === 'component'
+  })
+}
+
 // --- Per-file story-state extraction ---------------------------------------------------------
+
+function noLiteralIdMessage(filePath) {
+  return (
+    `${filePath}: meta has no string-literal "id" — every component story file this sweep has ` +
+    'seen so far sets one explicitly (a component is never keyed by its title); extend this ' +
+    'function deliberately before relying on title-derived ids for one.'
+  )
+}
 
 // One exported story's own shape this sweep needs — never the full record `state-coverage.mjs`'s
 // own `computeStateCoverage` builds, which answers a different question (does *some* story credit a
@@ -207,37 +274,47 @@ export function extractVisualCaptureClip(storyObj, constNodeMap = new Map()) {
 // rest — itself, with the state not applied — and what does the comparator say about the two).
 export function extractFileStoryStates(filePath, source) {
   const sourceFile = parseTsx(filePath, source)
-  const metaObj = findMeta(sourceFile)
-  if (!metaObj) {
-    // T675 remediation (N3, the twin of M1(a)): used to `return null` here, and
-    // `buildStoryFileWork`'s own `if (result) { ... }` below turned that into an empty
-    // `{ measurable: [], notMeasurable: [] }` silently — a story file `findMeta` cannot locate a
-    // meta object in at all (no top-level `const x = { component: ..., ... }`) vanished from the
-    // sweep exactly the way an unkeyable file (no literal `meta.id`, thrown below) used to before
-    // M1. Thrown here for the same reason and caught the same way: `buildStoryFileWork`'s own
-    // `try`/`catch` already turns any throw from this function into an `unkeyable` entry, named by
-    // file, which is the only path M1 built for "this sweep cannot key this file at all".
-    throw new Error(
-      `${filePath}: no default-exported meta object found (no top-level const with a "component" ` +
-        'property) — every story file this sweep has seen so far has one; extend this function ' +
-        'deliberately before relying on a different shape.',
-    )
-  }
-  const idLit = literalOf(getProp(metaObj, 'id'))
-  if (!idLit.present || !idLit.literal) {
-    // Every story file with a `visualForceState` in the tree today sets an explicit `meta.id`
-    // (confirmed by reading all 25) — a file relying instead on Storybook's own title-derived id
-    // would need this sweep to sanitise `title` the same way `toId` does with no explicit `name`
-    // half, which `toId` itself already does when called with only one argument; rather than
-    // silently guess which of the two shapes a new file might pick, this throws so a future file
-    // that breaks the convention is caught here rather than mis-attributed.
-    throw new Error(
-      `${filePath}: meta has no string-literal "id" — every story file this sweep has seen so far ` +
-        'sets one explicitly; extend this function deliberately before relying on title-derived ids.',
-    )
-  }
-  const kind = idLit.value
   const constNodeMap = buildTopLevelConstNodeMap(sourceFile)
+  // T679: the meta is the object the file's default export names (`findDefaultExport`). Whether the
+  // file is a *component* file or a componentless page (a foundations page under
+  // `.storybook/foundations/`, documenting the token system itself) is decided from that object
+  // alone: a meta that carries a `component` — or might, see `mayCarryComponent` — is a component
+  // file. A default export that names something other than an object literal in this file is
+  // unkeyable, not a cue to look for some other object that resembles a meta.
+  const defaultExport = findDefaultExport(sourceFile, constNodeMap)
+  const metaObj = defaultExport.meta
+  if (!metaObj) {
+    // `buildStoryFileWork` turns a throw from this function into an `unkeyable` entry.
+    throw new Error(
+      defaultExport.present
+        ? `${filePath}: the default export does not resolve to an object literal in this file (an ` +
+            'import, a call, a function) — this sweep reads the meta from that object, so it ' +
+            'cannot key the file; extend this function deliberately before relying on a ' +
+            'different shape.'
+        : `${filePath}: no default-exported meta object found (the file has no default export) — ` +
+            'extend this function deliberately before relying on a different shape.',
+    )
+  }
+  // Storybook derives story ids from `meta.id` when set, else from `meta.title` (`toId` below). This
+  // sweep reads an explicit `id` where there is one and falls back to the literal `title` for a
+  // componentless page; a component file without a literal `id` is refused.
+  const idLit = literalOf(getProp(metaObj, 'id'))
+  let kind
+  if (idLit.present) {
+    if (!idLit.literal) throw new Error(noLiteralIdMessage(filePath))
+    kind = idLit.value
+  } else if (mayCarryComponent(metaObj)) {
+    throw new Error(noLiteralIdMessage(filePath))
+  } else {
+    const titleLit = literalOf(getProp(metaObj, 'title'))
+    if (!titleLit.present || !titleLit.literal) {
+      throw new Error(
+        `${filePath}: meta has no "component" and no string-literal "title" — a componentless ` +
+          'page is keyed by its literal title, and this one has none this sweep can read.',
+      )
+    }
+    kind = titleLit.value
+  }
   const storyObjs = findExportedStoryObjects(sourceFile)
 
   const stories = storyObjs.map(({ exportName, node }) => {
@@ -407,11 +484,10 @@ const SWEEP_GATE_FAILING_BUCKETS = new Set([
 // T675 remediation (M1): the sweep used to fail open in three ways that made "no allowlist" untrue
 // in practice, all closed here rather than papered over with an allowlist per this finding's own
 // instruction:
-//   (a) a story file this sweep cannot key at all (`extractFileStoryStates` throws — no literal
-//       `meta.id`) was only logged and skipped by the caller, never turned into a result this
-//       function could see. Now the caller (`buildStoryFileWork` below) turns that throw into an
-//       `unkeyableFiles` entry, and every one of those is an unconditional gate failure, named by
-//       file.
+//   (a) a story file this sweep cannot key at all (`extractFileStoryStates` throws) was only logged
+//       and skipped by the caller, not turned into a result this function could see. Now the caller
+//       (`buildStoryFileWork` below) turns that throw into an `unkeyableFiles` entry, and each one
+//       is a gate failure, named by file.
 //   (b) a not-measurable state story (`planSelfRest`'s own `measurable: false`) never reached this
 //       function at all — the caller only ever passed `measurable`'s eventual classifications.
 //       There is no genuinely-by-design "not measurable" case in this tree today: the one static
@@ -440,8 +516,21 @@ export function decideSweepGate({
   measurableIds,
   notMeasurable = [],
   unkeyableFiles = [],
+  discoveryGaps = [],
 }) {
   const failures = []
+
+  // T679: each gap `buildStateSignalWork` found between Storybook's built index, the source parse
+  // and the story files on disk is a failure, named.
+  for (const g of discoveryGaps) {
+    failures.push({
+      kind: 'discovery-gap',
+      stateId: g.stateId ?? null,
+      bucket: `discovery-gap:${g.kind}`,
+      file: g.file,
+      detail: g.detail,
+    })
+  }
 
   for (const u of unkeyableFiles) {
     failures.push({
@@ -519,13 +608,12 @@ export function decideSweepGate({
 }
 
 // T675 remediation (M1): the pure per-file decision `run.mjs`'s own file-scan loop needs —
-// extracted here so it is unit-testable without the filesystem/browser discipline this module
-// already holds everywhere else (see this file's own header comment). Takes a file path and its
-// already-read source (the caller's job, per that same discipline) and returns either:
-//   - `{ unkeyable: { file, detail } }` when `extractFileStoryStates` cannot key the file at all (no
-//     literal `meta.id`) — this used to be swallowed by a `try`/`catch`/`continue` in `run.mjs` with
-//     nothing but a log line to show for it; now it is a value the caller collects and the gate
-//     above can fail on, named.
+// extracted here so it is unit-testable without touching the filesystem or a browser. Takes a
+// file path and its already-read source (the caller's job) and returns either:
+//   - `{ unkeyable: { file, detail } }` when `extractFileStoryStates` throws, i.e. cannot key the
+//     file — this used to be swallowed by a `try`/`catch`/`continue` in `run.mjs` with nothing but a
+//     log line to show for it; now it is a value the caller collects and the gate above can fail
+//     on, named.
 //   - `{ measurable: [...], notMeasurable: [...] }` otherwise — the same two lists
 //     `buildStateSignalWork` (`run.mjs`) used to build inline.
 export function buildStoryFileWork(filePath, source) {
@@ -537,6 +625,9 @@ export function buildStoryFileWork(filePath, source) {
   }
   const measurable = []
   const notMeasurable = []
+  // T679: the exported story ids the parse saw, state or not — `reconcileFile` compares these
+  // against the ids the built Storybook index lists for the same file.
+  const storyIds = result ? result.stories.map((story) => story.id) : []
   if (result) {
     const relFile = path.relative(rootDir, filePath)
     for (const story of result.stories) {
@@ -561,20 +652,197 @@ export function buildStoryFileWork(filePath, source) {
       }
     }
   }
-  return { measurable, notMeasurable }
+  return { measurable, notMeasurable, storyIds }
 }
 
 // --- Discovery ---------------------------------------------------------------------------------
 
-// Every `*.stories.tsx` file under the package's three tiers — `listComponentDirs`/`findStoryFile`
-// reused from `scripts/checks/story-docs.mjs` rather than a third directory walk (`run.mjs` reads
-// the built Storybook index instead; `state-coverage.mjs` reads the filesystem the same way this
-// does).
-export function discoverStoryFiles(rootSrcDir = srcDir) {
-  const files = []
-  for (const { segment, name } of listComponentDirs(rootSrcDir)) {
-    const storyFile = findStoryFile(rootSrcDir, segment, name)
-    if (storyFile) files.push(storyFile)
+// T679: discovery used to be a filesystem walk (`findStoryFile`, the first `*.stories.tsx` per
+// directory under three tiers), so a second story file in one directory, or a state story outside
+// those tiers (`.storybook/foundations/`), was neither swept nor reported. The source of truth is
+// now the built Storybook index, the same file `scripts/checks/story-baselines.mjs` reads: each
+// story file it lists is parsed, and the gate fails (`decideSweepGate`, `discoveryGaps`) on these
+// disagreements, each named:
+//   - an indexed story the parse of its file never produced (`reconcileFile`) — the index carries no
+//     notion of a *state* story (that is a source-level fact), so a story the parse missed could be
+//     one;
+//   - a state story the parse found that the index does not list (`reconcileFile`);
+//   - an indexed file that cannot be read;
+//   - a story file on disk (`listStoryFilesOnDisk`) that the index lists no story for
+//     (`findUnindexedStoryFiles`) — what a build that predates a story file looks like. A build that
+//     changed a story's args or parameters under the same ids is not detectable this way.
+
+// Stories (not `docs` entries) of a parsed `index.json`, as `{ id, file }` with `file` relative to
+// the design-system package, the shape `entry.importPath` has once its leading `./` is removed.
+export function indexedStories(index) {
+  return Object.values(index?.entries ?? index?.stories ?? {})
+    .filter((entry) => entry.type === undefined || entry.type === 'story')
+    .map((entry) => ({ id: entry.id, file: (entry.importPath ?? '').replace(/^\.\//, '') }))
+}
+
+// Index story ids grouped by the story file that declares them, files in a stable order.
+export function groupIndexByFile(index) {
+  const byFile = new Map()
+  for (const { id, file } of indexedStories(index)) {
+    if (!byFile.has(file)) byFile.set(file, [])
+    byFile.get(file).push(id)
   }
-  return files
+  return new Map([...byFile.entries()].sort(([a], [b]) => a.localeCompare(b)))
+}
+
+// Pure reconciliation of one story file's index entry against its parse. `parsed` is
+// `buildStoryFileWork`'s own result for that file. Returns the gaps (possibly none), each
+// `{ kind, file, stateId?, detail }`:
+//   - `'indexed-story-not-parsed'`: the index lists a story id the source parse never produced — the
+//     parse cannot say whether it is a state story, so it is a failure rather than a guess.
+//   - `'state-story-not-indexed'`: the parse found a state story the index does not list for this
+//     file — a stale build, or a story Storybook excludes.
+export function reconcileFile({ file, indexedIds, parsed }) {
+  const gaps = []
+  const parsedIds = new Set(parsed.storyIds)
+  const indexedSet = new Set(indexedIds)
+  for (const id of indexedIds) {
+    if (!parsedIds.has(id)) {
+      gaps.push({
+        kind: 'indexed-story-not-parsed',
+        file,
+        stateId: id,
+        detail:
+          `${id} is listed by the built Storybook index for ${file}, but the source parse of that ` +
+          'file produced no story with this id — whether it is a state story cannot be decided, ' +
+          'so it is not swept.',
+      })
+    }
+  }
+  for (const item of [...parsed.measurable, ...parsed.notMeasurable]) {
+    if (!indexedSet.has(item.stateId)) {
+      gaps.push({
+        kind: 'state-story-not-indexed',
+        file,
+        stateId: item.stateId,
+        detail:
+          `${item.stateId} is a state story in ${file}, but the built Storybook index does not ` +
+          'list it — the index is stale (rebuild Storybook) or the story is excluded from it.',
+      })
+    }
+  }
+  return gaps
+}
+
+// Story files on disk (`stories` globs of `.storybook/main.ts`) that the index lists no story for.
+// This is what catches a stale build that predates a new story file, which enumerating the
+// index alone cannot see.
+export function findUnindexedStoryFiles({ indexedFiles, diskFiles }) {
+  const indexed = new Set(indexedFiles)
+  return [...diskFiles]
+    .filter((file) => !indexed.has(file))
+    .sort()
+    .map((file) => ({
+      kind: 'story-file-not-indexed',
+      file,
+      stateId: null,
+      detail:
+        `${file} is a story file on disk but the built Storybook index lists no story for it — ` +
+        'the index is stale (rebuild Storybook), or the file is outside the `stories` globs of ' +
+        '.storybook/main.ts and is never rendered.',
+    }))
+}
+
+// The whole pure pipeline: index in, work and gaps out. `readSource(absolutePath)` is the caller's
+// (filesystem) job, injected;
+// `diskFiles` is the caller's listing of story files on disk, relative to the package.
+export function buildStateSignalWork({ index, readSource, diskFiles = null, baseDir = dsDir }) {
+  const measurable = []
+  const notMeasurable = []
+  const unkeyableFiles = []
+  const discoveryGaps = []
+  const byFile = groupIndexByFile(index)
+  for (const [file, indexedIds] of byFile) {
+    const filePath = path.join(baseDir, file)
+    let source
+    try {
+      source = readSource(filePath)
+    } catch (err) {
+      discoveryGaps.push({
+        kind: 'unreadable-story-file',
+        file,
+        stateId: null,
+        detail: `${file} is listed by the built Storybook index but cannot be read: ${err.message}`,
+      })
+      continue
+    }
+    const work = buildStoryFileWork(filePath, source)
+    if (work.unkeyable) {
+      unkeyableFiles.push(work.unkeyable)
+      continue
+    }
+    measurable.push(...work.measurable)
+    notMeasurable.push(...work.notMeasurable)
+    discoveryGaps.push(...reconcileFile({ file, indexedIds, parsed: work }))
+  }
+  if (diskFiles) {
+    discoveryGaps.push(...findUnindexedStoryFiles({ indexedFiles: byFile.keys(), diskFiles }))
+  }
+  return {
+    measurable,
+    notMeasurable,
+    unkeyableFiles,
+    discoveryGaps,
+    filesDiscovered: byFile.size,
+    indexedStoryCount: [...byFile.values()].reduce((n, ids) => n + ids.length, 0),
+  }
+}
+
+// The directories `.storybook/main.ts`'s `stories` globs start from, relative to the package
+// (`../src/**/*.stories.@(ts|tsx)` and `./foundations/**/*.stories.@(ts|tsx)`), and the file
+// extensions those globs match. A second copy of both, so `state-signal-model.test.mjs` reads the
+// real `stories` array and fails when it and these lists stop agreeing.
+export const STORY_WALK_ROOTS = ['src', '.storybook/foundations']
+export const STORY_FILE_EXTENSIONS = ['ts', 'tsx']
+
+// The `*.stories.<extension>` files under `STORY_WALK_ROOTS`, as paths relative to the package. The
+// one filesystem-touching function in this module, kept next to the pure ones it feeds
+// (`findUnindexedStoryFiles`) and called by `run.mjs`. Below a root it skips `node_modules` and
+// dot-entries, as a `**` glob with picomatch's default `dot: false` does; a root that is itself a
+// dot-directory (`.storybook/foundations`) is walked, being named explicitly. A root that does not
+// exist is an empty listing; any other read error propagates. `readdir` is injectable for tests.
+export function listStoryFilesOnDisk(
+  baseDir = dsDir,
+  { extensions = STORY_FILE_EXTENSIONS, readdir = readdirSync } = {},
+) {
+  const suffixes = extensions.map((extension) => `.stories.${extension}`)
+  const files = []
+  const walk = (relDir, isRoot) => {
+    let entries
+    try {
+      entries = readdir(path.join(baseDir, relDir), { withFileTypes: true })
+    } catch (err) {
+      if (isRoot && err.code === 'ENOENT') return
+      throw err
+    }
+    for (const entry of entries) {
+      if (entry.name === 'node_modules' || entry.name.startsWith('.')) continue
+      const rel = path.posix.join(relDir, entry.name)
+      if (entry.isDirectory()) walk(rel, false)
+      else if (suffixes.some((suffix) => entry.name.endsWith(suffix))) files.push(rel)
+    }
+  }
+  for (const root of STORY_WALK_ROOTS) walk(root, true)
+  return files.sort()
+}
+
+// A parsed `index.json` the sweep can work from: an object with at least one story. The sweep's
+// work list is built from this alone, so an unparseable text, a shape without entries, or an index
+// with no story is a failure (`run.mjs` exits 1 on the throw).
+export function parseSweepIndex(text) {
+  let index
+  try {
+    index = JSON.parse(text)
+  } catch (err) {
+    throw new Error(`index.json is not valid JSON (${err.message})`)
+  }
+  if (indexedStories(index).length === 0) {
+    throw new Error('index.json lists no story (no "entries"/"stories" object with a story in it)')
+  }
+  return index
 }

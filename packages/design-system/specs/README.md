@@ -3649,7 +3649,13 @@ found now carries the non-fill signal its own spec names (the decisions live in 
 measured at or under 1% unclipped is clipped to the element carrying its signal, and `node scripts/visual/run.mjs --state-signal-sweep`
 is a nightly gate with no allowlist, in its own job (`.github/workflows/nightly.yml`,
 `state-signal-sweep`): it fails on a story file it cannot key, a state story it cannot measure, and
-a measurable story it did not classify. Nightly run
+a measurable story it did not classify. Which stories it sweeps is not decided by walking directories
+(T679, filed from the review of #105): every story file the built Storybook index lists is parsed,
+wherever it lives (a second file in one directory, or a foundations page outside the three tiers).
+The run fails, naming the story or file, when an indexed story is not produced by the parse, when a
+parsed state story is not in the index, or when a story file on disk has no story in the index; the
+last also catches a build that predates a story file, though not one that changed a story's args or
+parameters under the same ids. A missing or unusable index fails the sweep rather than passing it. Nightly run
 [36920376304](https://github.com/ScandalousMan/aoe2-stats/actions/runs/36920376304) at `3955e07b`
 (2026-10-01), green in every job with no test retried, measured
 114 of 114 state stories, none unmeasurable: 98 defended on a clipped frame, 8 defended unclipped,
