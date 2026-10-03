@@ -4,7 +4,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import path from 'node:path'
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, readdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { createRequire } from 'node:module'
 import {
@@ -21,9 +21,11 @@ import {
   listStoryFilesOnDisk,
   parseSweepIndex,
   STORY_WALK_ROOTS,
+  STORY_FILE_EXTENSIONS,
   dsDir,
   rootDir,
 } from './state-signal-model.mjs'
+import { decideMissingIndex, BUILD_STORYBOOK_COMMAND } from './missing-index.mjs'
 
 // A minimal CSF file exercising every shape `planSelfRest` decides between:
 //   - `Primary`: a plain resting story (not a state story at all).
@@ -690,8 +692,8 @@ export const Primary: Story = {
 
 // --- T679: discovery is the built Storybook index, not a first-file-per-directory walk ------------
 // Filed from the adversarial review of #105 (F6): a second `*.stories.tsx` in one component
-// directory, or a state story outside the three tiers (`.storybook/foundations/`), was never swept
-// and never reported. The cases below plant exactly those shapes in a virtual index + virtual
+// directory, or a state story outside the three tiers (`.storybook/foundations/`), was not swept
+// or reported. The cases below plant those shapes in a virtual index + virtual
 // sources and assert they are swept or fail the gate, named.
 
 const WIDGET_STORIES = `
@@ -706,7 +708,7 @@ export const Primary: Story = { args: { variant: 'primary' } }
 `
 
 // A second story file in the same directory, carrying a state story the old first-file-wins walk
-// never read.
+// did not read.
 const WIDGET_STATES_STORIES = `
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { Widget } from './index'
@@ -948,7 +950,7 @@ test('extractFileStoryStates: a componentless page is keyed by its literal title
 // `component` key. A component file written any other way (`satisfies`, `as`, an inline default
 // export) was therefore treated as componentless and keyed by its title — silently, where before
 // T679 it failed the gate as unkeyable. The rule is now decided from the default-exported meta
-// object itself: a `component` key makes the file a component file, in every syntax.
+// object itself: a `component` key makes the file a component file.
 const STORY_PATH = path.join(rootDir, 'src/primitives/Widget/Widget.stories.tsx')
 const COMPONENT_STORIES_BODY = `
 export const Hover = {
@@ -1149,8 +1151,8 @@ test("listStoryFilesOnDisk reaches the base directory of every glob in the real 
   }
 })
 
-// Storybook's `**` (picomatch, `dot: false` by default) never descends into a dot-directory, so a
-// story file under one is not in the index and must not be reported as missing from it.
+// The walker skips a dot-directory below a root, as a `**` glob does under picomatch's default
+// `dot: false`, so a story file under one is not reported as missing from the index.
 test('listStoryFilesOnDisk: a dot-directory below a root is not walked; an explicit dot-directory root still is', () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'story-dot-'))
   try {
@@ -1189,6 +1191,204 @@ test("storiesGlobsOf / globBaseDir read a planted stories array's base directori
     storiesGlobsOf(`export default { stories: ['../src/**/*.stories.tsx'] }`).map(globBaseDir),
     ['src'],
   )
+})
+
+// Review of #108 (finding 3): the walker's file-name pattern is a second fact `.storybook/main.ts`
+// owns (the extensions its globs match), next to the base directories above. The walker takes the
+// set as an argument; the first test derives it from a planted glob, and the second pins the
+// walker's default to the real globs.
+function storyExtensionsOfGlobs(globs) {
+  const extensions = new Set()
+  for (const glob of globs) {
+    const match = /^\*\.stories\.(?:@\(([^)]+)\)|([A-Za-z0-9]+))$/.exec(glob.split('/').at(-1))
+    assert.ok(match, `story file pattern not recognised in glob: ${glob}`)
+    for (const extension of (match[1] ?? match[2]).split('|')) extensions.add(extension)
+  }
+  return [...extensions].sort()
+}
+
+test('listStoryFilesOnDisk: lists the extensions a planted glob names, and not index.tsx or a test file', () => {
+  const extensions = storyExtensionsOfGlobs(
+    storiesGlobsOf(`export default { stories: ['../src/**/*.stories.@(js|ts|tsx)'] }`),
+  )
+  assert.deepEqual(extensions, ['js', 'ts', 'tsx'])
+  const dir = mkdtempSync(path.join(tmpdir(), 'story-ext-'))
+  try {
+    for (const rel of [
+      'src/a/Foo.stories.js',
+      'src/a/Foo.stories.ts',
+      'src/a/Bar.stories.tsx',
+      'src/a/index.tsx',
+      'src/a/Foo.test.tsx',
+      'src/a/Foo.stories.tsx.snap',
+      'src/a/Foo.stories.mdx',
+    ]) {
+      mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true })
+      writeFileSync(path.join(dir, rel), '')
+    }
+    assert.deepEqual(listStoryFilesOnDisk(dir, { extensions }), [
+      'src/a/Bar.stories.tsx',
+      'src/a/Foo.stories.js',
+      'src/a/Foo.stories.ts',
+    ])
+    // Contrast: with the set the real globs name, the `.js` file is not a story file.
+    assert.deepEqual(listStoryFilesOnDisk(dir, { extensions: ['ts', 'tsx'] }), [
+      'src/a/Bar.stories.tsx',
+      'src/a/Foo.stories.ts',
+    ])
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test("the walker's default extensions equal those the real .storybook/main.ts stories globs match", () => {
+  assert.deepEqual(
+    [...STORY_FILE_EXTENSIONS].sort(),
+    storyExtensionsOfGlobs(storiesGlobsOf(readFileSync(MAIN_TS_PATH, 'utf8'))),
+  )
+})
+
+// Review of #108 (finding 7): a missing root is an empty listing; any other read error propagates.
+function plantedDir(files) {
+  const dir = mkdtempSync(path.join(tmpdir(), 'story-walk-'))
+  for (const rel of files) {
+    mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true })
+    writeFileSync(path.join(dir, rel), '')
+  }
+  return dir
+}
+
+test('listStoryFilesOnDisk: a missing root is an empty listing, not an error', () => {
+  const dir = plantedDir([])
+  try {
+    assert.deepEqual(listStoryFilesOnDisk(dir), [])
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('listStoryFilesOnDisk: a root that is not a directory rethrows (ENOTDIR)', () => {
+  const dir = plantedDir(['src'])
+  try {
+    assert.throws(() => listStoryFilesOnDisk(dir), { code: 'ENOTDIR' })
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('listStoryFilesOnDisk: an unreadable directory rethrows, at a root and below one', () => {
+  const dir = plantedDir(['src/a/Foo.stories.tsx'])
+  try {
+    const denied = (blocked) => (target, options) => {
+      if (path.relative(dir, target) === blocked) {
+        throw Object.assign(new Error(`EACCES: permission denied, scandir '${target}'`), {
+          code: 'EACCES',
+        })
+      }
+      return readdirSync(target, options)
+    }
+    assert.throws(() => listStoryFilesOnDisk(dir, { readdir: denied('src') }), { code: 'EACCES' })
+    assert.throws(() => listStoryFilesOnDisk(dir, { readdir: denied('src/a') }), {
+      code: 'EACCES',
+    })
+    // Contrast: the same injected reader with nothing blocked lists the file.
+    assert.deepEqual(listStoryFilesOnDisk(dir, { readdir: denied('nowhere') }), [
+      'src/a/Foo.stories.tsx',
+    ])
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('listStoryFilesOnDisk: a directory that vanishes below a root rethrows (ENOENT is swallowed for a root alone)', () => {
+  const dir = plantedDir(['src/a/Foo.stories.tsx'])
+  try {
+    const vanishing = (target, options) => {
+      if (path.relative(dir, target) === 'src/a') {
+        throw Object.assign(new Error(`ENOENT: no such file or directory, scandir '${target}'`), {
+          code: 'ENOENT',
+        })
+      }
+      return readdirSync(target, options)
+    }
+    assert.throws(() => listStoryFilesOnDisk(dir, { readdir: vanishing }), { code: 'ENOENT' })
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+// Review of #108 (finding 5): a default export that does not resolve to an object literal here
+// (an import, a call) leaves the file unkeyable. Another object in the file that happens to carry a
+// `component` key is not the meta Storybook reads, so it must not stand in for it.
+const UNRESOLVABLE_DEFAULT_EXPORTS = {
+  'imported meta, with a decoy component object in the file': `
+import meta from './shared'
+const helper = { component: Other, id: 'composite-other' }
+export default meta
+${COMPONENT_STORIES_BODY}`,
+  'a call': `
+const decoy = { component: Other, id: 'composite-other' }
+export default defineMeta(decoy)
+${COMPONENT_STORIES_BODY}`,
+  'a re-export of another module default': `
+const decoy = { component: Other, id: 'composite-other' }
+export { default } from './shared'
+${COMPONENT_STORIES_BODY}`,
+  'a renamed re-export of another module export': `
+const decoy = { component: Other, id: 'composite-other' }
+export { meta as default } from './shared'
+${COMPONENT_STORIES_BODY}`,
+  'a default-exported function': `
+const decoy = { component: Other, id: 'composite-other' }
+export default function meta() {}
+${COMPONENT_STORIES_BODY}`,
+}
+
+for (const [shape, body] of Object.entries(UNRESOLVABLE_DEFAULT_EXPORTS)) {
+  test(`buildStoryFileWork: an unresolvable default export is unkeyable, naming it, never keyed by another object — ${shape}`, () => {
+    const work = buildStoryFileWork(STORY_PATH, body)
+    assert.ok(work.unkeyable, `expected an unkeyable result for: ${shape}`)
+    assert.match(work.unkeyable.detail, /default export/)
+    assert.match(work.unkeyable.detail, /does not resolve to an object literal/)
+    assert.equal(work.storyIds, undefined)
+  })
+}
+
+test('buildStoryFileWork: a file with a decoy component object and no default export at all is unkeyable', () => {
+  const work = buildStoryFileWork(
+    STORY_PATH,
+    `const decoy = { component: Other, id: 'composite-other' }\n${COMPONENT_STORIES_BODY}`,
+  )
+  assert.ok(work.unkeyable)
+  assert.match(work.unkeyable.detail, /no default-exported meta object found/)
+})
+
+// Review of #108 (finding 2): the two modes differ on a missing Storybook build. The
+// sweep's work list comes from the built index, so with none it has measured nothing and fails;
+// the ordinary run has nothing to test and exits 0.
+test('decideMissingIndex: the sweep with no index fails with exit 1, naming the build command', () => {
+  const decision = decideMissingIndex({ indexExists: false, sweepMode: true })
+  assert.equal(decision.proceed, false)
+  assert.equal(decision.exitCode, 1)
+  assert.ok(decision.message.includes(BUILD_STORYBOOK_COMMAND), decision.message)
+  assert.match(decision.message, /gate failed/)
+})
+
+test('decideMissingIndex: contrast — an ordinary run with no index exits 0, naming the build command', () => {
+  const decision = decideMissingIndex({ indexExists: false, sweepMode: false })
+  assert.equal(decision.proceed, false)
+  assert.equal(decision.exitCode, 0)
+  assert.ok(decision.message.includes(BUILD_STORYBOOK_COMMAND), decision.message)
+  assert.doesNotMatch(decision.message, /gate failed/)
+})
+
+test('decideMissingIndex: with an index, either mode proceeds and exits nothing', () => {
+  for (const sweepMode of [true, false]) {
+    const decision = decideMissingIndex({ indexExists: true, sweepMode })
+    assert.equal(decision.proceed, true)
+    assert.equal(decision.exitCode, undefined)
+    assert.equal(decision.message, undefined)
+  }
 })
 
 test('parseSweepIndex: valid JSON with at least one story is returned as parsed', () => {

@@ -41,7 +41,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 // T675: the package-wide comparator-blind-spot sweep's own self-pairing and classification live in
 // `./state-signal-model.mjs`, which `runStateSignalSweep()` below loads with a dynamic `import()`
-// — never a static one here. That module needs `storybook/internal/csf` (ESM-only) and
+// — not a static one here. That module needs `storybook/internal/csf` (ESM-only) and
 // `typescript` at load time, so a static import made every ordinary `pnpm test:visual` /
 // `--changed` run load them too, and die at import on any Node that cannot load them, though only
 // `--state-signal-sweep` has any use for them.
@@ -51,6 +51,7 @@ import { fileURLToPath } from 'node:url'
 // `tests/visual/stories.spec.ts`, the module's other consumer.
 import { resetResultsDir, checkStaleness } from './a11y-scan.cjs'
 import { REVIEW_WIDTHS } from './review-widths.mjs'
+import { decideMissingIndex, BUILD_STORYBOOK_COMMAND } from './missing-index.mjs'
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const designSystemDir = path.join(rootDir, 'packages', 'design-system')
@@ -81,8 +82,8 @@ const GLOBAL_REACH_PREFIXES = [
 const changedOnly = process.argv.slice(2).includes('--changed')
 // T675 (slice 1/N): a report, never part of the ordinary `pnpm test:visual` / `--changed` selection
 // below — its own entry point, `pnpm exec node scripts/visual/run.mjs --state-signal-sweep` (see
-// `package.json`'s `test:visual:state-signal-sweep` script). Branched on at the top of `main()`, before
-// any story selection, so this flow never touches the ordinary story-selection logic at all.
+// `package.json`'s `test:visual:state-signal-sweep` script). Branched on at the top of `main()`,
+// before any story selection.
 const stateSignalSweep = process.argv.slice(2).includes('--state-signal-sweep')
 
 // Every ordinary visual spec under `tests/visual/` *except* the sweep's own — computed from the
@@ -156,26 +157,14 @@ function changedFiles() {
 
 const storyGlob = /\.stories\.[jt]sx?$/
 
-const BUILD_STORYBOOK_COMMAND = 'pnpm --filter design-system build-storybook'
-
 async function main() {
-  if (!existsSync(indexPath)) {
-    // The two modes disagree on purpose. The ordinary run has nothing to test before any story
-    // exists. The sweep's work list comes from the built index alone, so with no index it has
-    // measured nothing — a gate failure, never a pass.
-    if (stateSignalSweep) {
-      log(
-        'state-signal-sweep: gate failed — no Storybook build found at ' +
-          'packages/design-system/storybook-static/index.json, so there is nothing to sweep. ' +
-          `Run \`${BUILD_STORYBOOK_COMMAND}\` first.`,
-      )
-      process.exit(1)
-    }
-    log(
-      'no Storybook build found at packages/design-system/storybook-static/index.json — nothing ' +
-        `to test. Run \`${BUILD_STORYBOOK_COMMAND}\` first if stories already exist.`,
-    )
-    process.exit(0)
+  const missing = decideMissingIndex({
+    indexExists: existsSync(indexPath),
+    sweepMode: stateSignalSweep,
+  })
+  if (!missing.proceed) {
+    log(missing.message)
+    process.exit(missing.exitCode)
   }
 
   if (stateSignalSweep) {
@@ -340,14 +329,13 @@ async function main() {
 
 // --- T675: package-wide comparator-blind-spot sweep --------------------------------
 
-// Every state story in the built Storybook index (`state-signal-model.mjs`'s own
-// `buildStateSignalWork`: every story file the index lists, parsed, then reconciled against the
+// The state stories of the built Storybook index (`state-signal-model.mjs`'s own
+// `buildStateSignalWork`: the story files the index lists, parsed, then reconciled against the
 // index and against the story files on disk — T679), self-paired against its own resting frame —
 // split into `measurable` (a story `tests/visual/state-signal-sweep.spec.ts` will actually render
-// twice), `notMeasurable` (reported as-is, no rendering — see `planSelfRest`'s own comment for the
-// one static case), `unkeyableFiles` (a story file that cannot be keyed at all: a component meta
-// with no literal `id`, or a componentless page with no literal `title`) and `discoveryGaps` (the
-// index, the parse and the story files on disk disagree about which stories exist).
+// twice), `notMeasurable` (reported as-is, no rendering — see `planSelfRest`), `unkeyableFiles` (a
+// story file `extractFileStoryStates` cannot key) and `discoveryGaps` (the index, the parse and the
+// story files on disk disagree about which stories exist).
 //
 // T675 remediation (M1): `unkeyableFiles` used to be only a log line here, with the file silently
 // dropped from the sweep entirely — `decideSweepGate` never even learned it existed. It is now
@@ -543,8 +531,8 @@ async function runStateSignalSweep() {
   // (`unkeyableFiles`), on any not-measurable state story (`notMeasurable`, named with its own
   // reason), on any disagreement between the built Storybook index and the source parse
   // (`discoveryGaps`, T679 — a state story the sweep did not reach, named), and on `classified`
-  // being empty or not matching `measurable`'s own count. No allowlist: every failure is named,
-  // every run.
+  // being empty or not matching `measurable`'s own count. There is no allowlist; each failure is
+  // named.
   const gate = decideSweepGate({
     classified,
     measurableCount: measurable.length,
