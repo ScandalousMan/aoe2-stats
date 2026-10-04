@@ -1,9 +1,12 @@
-"""T411 — `upsert_match_player` (`discover.py`) writes `match_players.color_id` from Relic's own
+"""T411 — `upsert_match_players` (`discover.py`) writes `match_players.color_id` from Relic's own
 `slotinfo`, and never erases a stored colour with a `NULL` projection.
 
-Both `match_players` writers — `DiscoverStage.__call__` and `routers/players.py`'s
-`_refresh_third_party_history` — call this one function, so this file is the whole of the wiring
-proof; the decode itself is `packages/storage/tests/test_match_projection.py`'s.
+Every `match_players` writer — `DiscoverStage.__call__`, `ReconcileStage` and the API's on-view
+refreshes — reaches this one function through `persist_matches_and_profiles` (T459), so this file
+is the whole of the wiring proof; the decode itself is
+`packages/storage/tests/test_match_projection.py`'s. (T459a removed the single-row
+`upsert_match`/`upsert_match_player` wrappers, which had no production caller; this file calls the
+plural functions with one-element batches.)
 
 The `COALESCE(excluded.color_id, match_players.color_id)` in the statement's `SET` clause is the
 asymmetry under test: a payload the projection cannot read (no `slotinfo` — a synthetic
@@ -58,8 +61,8 @@ def _raw_match(entry: dict[str, Any]) -> RawMatch:
 async def _upsert(session: AsyncSession, raw_match: RawMatch) -> None:
     from aoe2stats_ingester import discover
 
-    await discover.upsert_match(session, raw_match)
-    await discover.upsert_match_player(session, raw_match, _PROFILE_ID)
+    await discover.upsert_matches(session, [raw_match])
+    await discover.upsert_match_players(session, [(raw_match, _PROFILE_ID)])
 
 
 async def _colour(session_factory: async_sessionmaker[AsyncSession]) -> int | None:
