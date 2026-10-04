@@ -11,6 +11,7 @@ after (a rebuild carrying another identity); none of them needs a database.
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import json
 import shutil
@@ -28,6 +29,7 @@ from aoe2stats_analyzer.reproduce import ReproductionRefused, reproduce
 from aoe2stats_core.truth.identity import AnalysisIdentity
 from aoe2stats_knowledge import snapshot
 from aoe2stats_replay_engine.aoe2rec import Aoe2RecExtractor
+from aoe2stats_storage.objects import ObjectNotFound
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _FIXTURE_ZIP = _REPO_ROOT / "tests" / "fixtures" / "replays" / "AgeIIDE_Replay_500546441.zip"
@@ -64,6 +66,8 @@ class _ReadOnlyStore:
 
     async def get(self, key: str) -> bytes:
         self.reads.append(key)
+        if key not in self.objects:
+            raise ObjectNotFound(key)  # what `ObjectStore.get` raises, and the only "missing"
         return self.objects[key]
 
 
@@ -395,18 +399,45 @@ async def test_a_store_outage_is_not_a_refusal(original: _Original) -> None:
         await reproduce(original.identity, object_store=_Down(), extractor=original.extractor)
 
 
-async def test_a_store_reporting_no_such_key_is_a_refusal(original: _Original) -> None:
-    class _NoSuchKey(Exception):
-        response: ClassVar[dict[str, Any]] = {"Error": {"Code": "NoSuchKey"}}
-
+async def test_a_store_reporting_the_object_not_found_is_a_refusal(original: _Original) -> None:
     class _Empty:
         async def get(self, key: str) -> bytes:
-            raise _NoSuchKey(key)
+            raise ObjectNotFound(key)
 
     with pytest.raises(ReproductionRefused) as exc_info:
         await reproduce(original.identity, object_store=_Empty(), extractor=original.extractor)
 
     assert _KEY in _refusal(exc_info)
+
+
+async def test_a_key_error_from_a_store_is_a_bug_and_propagates(original: _Original) -> None:
+    """T666e: a `KeyError` is what a defect in a store (a dict lookup, a missing option) raises, and
+    reading it as 'no such object' turned the defect into a refusal that hid it. Only the store's
+    own not-found signal is a missing object."""
+
+    class _Buggy:
+        async def get(self, key: str) -> bytes:
+            return {}[key]
+
+    with pytest.raises(KeyError):
+        await reproduce(original.identity, object_store=_Buggy(), extractor=original.extractor)
+
+
+async def test_a_raw_client_error_is_not_a_missing_object_unless_the_store_mapped_it(
+    original: _Original,
+) -> None:
+    """The store maps the wire's `NoSuchKey` to `ObjectNotFound` (`packages/storage`); an exception
+    that merely carries that code in a `response` attribute is not the store's own signal."""
+
+    class _Unmapped(Exception):
+        response: ClassVar[dict[str, Any]] = {"Error": {"Code": "NoSuchKey"}}
+
+    class _Raw:
+        async def get(self, key: str) -> bytes:
+            raise _Unmapped(key)
+
+    with pytest.raises(_Unmapped):
+        await reproduce(original.identity, object_store=_Raw(), extractor=original.extractor)
 
 
 async def test_an_identity_recording_no_checksum_is_refused(original: _Original) -> None:
@@ -436,3 +467,87 @@ async def test_a_key_that_is_not_a_retained_recording_key_needs_a_game_id(
         identity, object_store=store, extractor=original.extractor, game_id=_GAME_ID
     )
     assert json.loads(reproduced)["game_id"] == _GAME_ID
+
+
+# --- A caller-supplied match id is checked against the retained key (T666e) -------------------
+
+
+async def test_a_game_id_that_disagrees_with_the_retained_key_is_refused_and_both_are_named(
+    original: _Original,
+) -> None:
+    """The document carries a `game_id` no digest covers, so a caller's wrong one would be rebuilt
+    into a document that differs from the original in a field nothing verifies - and be returned as
+    'identical'. The key records the match the recording belongs to; a disagreeing id is refused,
+    before the store is touched."""
+    store = original.store()
+
+    with pytest.raises(ReproductionRefused) as exc_info:
+        await reproduce(
+            original.identity,
+            object_store=store,
+            extractor=original.extractor,
+            game_id=_GAME_ID + 1,
+        )
+
+    message = _refusal(exc_info)
+    assert str(_GAME_ID + 1) in message
+    assert str(_GAME_ID) in message
+    assert _KEY in message
+    assert store.reads == []
+
+
+async def test_a_game_id_that_matches_the_retained_key_reproduces(original: _Original) -> None:
+    reproduced = await reproduce(
+        original.identity,
+        object_store=original.store(),
+        extractor=original.extractor,
+        game_id=_GAME_ID,
+    )
+
+    assert json.loads(reproduced)["game_id"] == _GAME_ID
+    assert compared_body(json.loads(reproduced)) == compared_body(original.document)
+
+
+# --- A refused document is a refusal, not a third outcome (T666e) ------------------------------
+
+
+class _ExtractorWritingAStrayField:
+    """The real extractor, whose timeline's first participant carries a field no register datum
+    publishes: the one shape `run.py`'s own test uses to make the validator refuse a document."""
+
+    def __init__(self, inner: Aoe2RecExtractor) -> None:
+        self._inner = inner
+        self.engine_name = inner.engine_name
+        self.engine_version = inner.engine_version
+        self.engine_dependencies = inner.engine_dependencies
+
+    def extract(self, zip_bytes: bytes) -> Any:
+        timeline = self._inner.extract(zip_bytes)
+        first, *rest = timeline.participants
+        fields = {f.name: getattr(first, f.name) for f in dataclasses.fields(first)}
+        stray_type = dataclasses.make_dataclass(
+            "StrayParticipant",
+            [("coaching_note", str, dataclasses.field(default="should have walled earlier"))],
+            bases=(type(first),),
+            frozen=True,
+        )
+        return dataclasses.replace(timeline, participants=(stray_type(**fields), *rest))
+
+    def events(self, zip_bytes: bytes) -> Any:
+        return self._inner.events(zip_bytes)
+
+
+async def test_a_document_the_validator_refuses_is_a_refusal_naming_its_reason(
+    original: _Original,
+) -> None:
+    """`DocumentInvalid` used to escape from `reproduce` as a third outcome, though the contract
+    is 'identical, or cannot reproduce here because'. It is now a `ReproductionRefused` carrying
+    the validator's own text, rule number and offending path included."""
+    extractor = _ExtractorWritingAStrayField(original.extractor)
+
+    with pytest.raises(ReproductionRefused) as exc_info:
+        await reproduce(original.identity, object_store=original.store(), extractor=extractor)
+
+    message = _refusal(exc_info)
+    assert "rule 1" in message
+    assert "participants[].coaching_note" in message

@@ -38,6 +38,26 @@ DEFAULT_SIGNED_URL_EXPIRES_IN_SECONDS = 300
 _PRECONDITION_FAILED = "PreconditionFailed"
 _PRECONDITION_FAILED_STATUS = 412
 
+#: The error codes a `GetObject` carries when the key is not there. Read by **code**, never by the
+#: 404 status alone: `NoSuchBucket` is a 404 too, and a bucket that does not exist is a deployment
+#: fault, not a missing object (`"404"` and `NotFound` are what a bodyless response, a `HeadObject`
+#: for one, carries in place of `NoSuchKey`).
+_NOT_FOUND_CODES = frozenset({"NoSuchKey", "NotFound", "404"})
+
+
+class ObjectNotFound(Exception):
+    """The store answered that no object exists under `key`.
+
+    The one signal a caller may read as "missing". It is deliberately not a `KeyError` or any other
+    `LookupError`: those are what a bug in a caller or a stand-in raises, and a caller that treated
+    them as "no such object" would turn a defect into a refusal. Every other store error - an
+    outage, a denied request, a missing bucket - propagates as itself.
+    """
+
+    def __init__(self, key: str) -> None:
+        self.key = key
+        super().__init__(f"no object is stored under {key!r}")
+
 
 def replay_object_key(game_id: int, profile_id: int) -> str:
     """The key scheme for an archived replay: one object per `(game_id, profile_id)`.
@@ -78,6 +98,20 @@ def retained_recording_object_key(game_id: int, profile_id: int) -> str:
     return f"retained-recordings/{game_id}/{profile_id}.zip"
 
 
+def analysis_object_key(game_id: int, identity_digest: str) -> str:
+    """The key of one published analysis: `analyses/{game_id}/{identity digest}.json` (FR-042).
+
+    The per-match prefix keeps every version of one match's analysis listable by one prefix, and
+    the digest makes the key a function of the identity: two different identities never share a
+    key, so a recompute under a new parser, knowledge or analytics version writes a **new** object
+    and rewrites nothing, while the same identity addresses the same key. `match_analyses.
+    result_key` names the current one and changes value exactly when the identity does. This
+    function is the layout's only writer (specs/006 contracts/analysis-document.md names this
+    package as its owner); `read_analysis` is its reader, and nothing parses a key back.
+    """
+    return f"analyses/{game_id}/{identity_digest}.json"
+
+
 @dataclass(frozen=True, slots=True)
 class ObjectStoreConfig:
     """The four variables `.env.example` says are the only ones that differ by provider."""
@@ -87,6 +121,24 @@ class ObjectStoreConfig:
     access_key_id: str
     secret_access_key: str
     region: str
+
+
+class ObjectReader(Protocol):
+    """The one thing a read asks of a store: `get`. No `put`, no `delete` - a reader typed to this
+    cannot write, so a write is a type error before it is a bug."""
+
+    async def get(self, key: str) -> bytes: ...
+
+
+async def read_analysis(store: ObjectReader, *, game_id: int, identity_digest: str) -> bytes:
+    """The published analysis an identity names, read **by identity** (FR-042, SC-005).
+
+    The key is a function of the identity (`analysis_object_key`), so an analysis a later recompute
+    replaced as the current one is still resolved directly: nothing consults `match_analyses`,
+    which names only the current document. Raises `ObjectNotFound` when no analysis was ever
+    published under that identity.
+    """
+    return await store.get(analysis_object_key(game_id, identity_digest))
 
 
 class S3Client(Protocol):
@@ -185,7 +237,7 @@ class ObjectStore:
         return True
 
     async def get(self, key: str) -> bytes:
-        """Download the full body stored under `key`.
+        """Download the full body stored under `key`; `ObjectNotFound` if nothing is stored there.
 
         The counterpart to `put`: capture's reclaim path (`apps/ingester/src/
         aoe2stats_ingester/capture.py`) is what this exists for — a stale `downloading` row that
@@ -199,7 +251,12 @@ class ObjectStore:
         return await asyncio.to_thread(self._get_sync, key)
 
     def _get_sync(self, key: str) -> bytes:
-        response = self._client.get_object(Bucket=self._bucket, Key=key)
+        try:
+            response = self._client.get_object(Bucket=self._bucket, Key=key)
+        except ClientError as exc:
+            if exc.response.get("Error", {}).get("Code") in _NOT_FOUND_CODES:
+                raise ObjectNotFound(key) from exc
+            raise
         body: bytes = response["Body"].read()
         return body
 

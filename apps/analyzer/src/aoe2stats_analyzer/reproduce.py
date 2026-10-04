@@ -29,9 +29,13 @@ compared with the identity, and every difference is collected into one `Reproduc
   with a different digest. A snapshot whose packaged files no longer match their own recorded digest
   is refused by the loader (FR-025), and that refusal is named too.
 
-Then the recording: absent from the store, or present with a checksum that is not the one the
-identity records. Last, **the built analysis must carry the identity it was asked for**: its
-identity digest is compared with the requested one and a mismatch names the components that differ.
+Then the recording: absent from the store (the store's own `ObjectNotFound`, and nothing else: a
+`KeyError` or any other error is a defect or an outage and propagates), or present with a checksum
+that is not the one the identity records. A caller-supplied match id that disagrees with the one the
+retained key was built from is refused before the store is read, and a rebuilt document the
+validator refuses is reported as a refusal naming the validator's reason (T666e). Last, **the built
+analysis must carry the identity it was asked for**: its identity digest is compared with the
+requested one and a mismatch names the components that differ.
 That check is what makes "identical" a measured outcome rather than a hope — it covers the one case
 the checks above cannot, an identity whose knowledge is the explicit absence of a snapshot for the
 build, and a snapshot that has since been promoted for that build.
@@ -47,10 +51,11 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import Any, Protocol
+from typing import Any
 
 from aoe2stats_analyzer.extract import (
     ANALYTICS_VERSION,
+    DocumentInvalid,
     build_document,
     canonical_bytes,
     validate_document,
@@ -63,23 +68,15 @@ from aoe2stats_knowledge.snapshot import (
     load_all_snapshots,
     pinned_snapshot,
 )
-from aoe2stats_storage.objects import retained_recording_object_key
+from aoe2stats_storage.objects import ObjectNotFound, ObjectReader, retained_recording_object_key
 
 __all__ = ["RecordingSource", "ReproductionRefused", "reproduce"]
 
 #: The four fields a snapshot is named by (`SnapshotIdentity`), as the identity records them.
 _SNAPSHOT_FIELDS = ("source", "source_version", "describes_build", "digest")
 
-#: Object-store error codes that mean "no such object", as botocore reports them. Read off the
-#: exception's `response` rather than imported: this package does not depend on botocore, and any
-#: other store error (an outage, a denied request) is deliberately **not** a refusal.
-_NO_SUCH_OBJECT_CODES = frozenset({"NoSuchKey", "404", "NotFound"})
-
-
-class RecordingSource(Protocol):
-    """The one thing reproduction asks of an object store: read an object. No `put`, no `delete`."""
-
-    async def get(self, key: str) -> bytes: ...
+#: The one thing reproduction asks of an object store: read an object. No `put`, no `delete`.
+RecordingSource = ObjectReader
 
 
 class ReproductionRefused(Exception):
@@ -119,6 +116,8 @@ async def reproduce(
         raise ReproductionRefused(reasons)
 
     object_key, recorded_sha256 = _recording_record(identity)
+    if game_id is not None:
+        _check_game_id_against_key(game_id, object_key)
     zip_bytes = await _read_recording(object_store, object_key)
     actual_sha256 = hashlib.sha256(zip_bytes).hexdigest()
     if actual_sha256 != recorded_sha256:
@@ -165,7 +164,14 @@ def _build(
             zip_sha256=sha256,
             extracted_at=datetime.now(UTC),
         )
-        validate_document(document)
+        try:
+            validate_document(document)
+        except DocumentInvalid as exc:
+            # The contract has two outcomes, identical or "cannot reproduce here because": a
+            # document this installed code cannot publish is the second, with the validator's text.
+            raise ReproductionRefused(
+                [f"the analysis rebuilt here is refused by the document validator ({exc})"]
+            ) from exc
         return document
 
     if named is None:
@@ -174,19 +180,41 @@ def _build(
         return build()
 
 
-def _game_id_from_key(object_key: str) -> int:
-    """The match id a retained recording's key was built from, checked by rebuilding the key."""
+def _retained_key_game_id(object_key: str) -> int | None:
+    """The match id a retained recording's key was built from, checked by rebuilding the key; `None`
+    for a key that is not a retained-recording key."""
     parts = object_key.split("/")
     if len(parts) == 3 and parts[1].isdigit() and parts[2].removesuffix(".zip").isdigit():
         game_id, profile_id = int(parts[1]), int(parts[2].removesuffix(".zip"))
         if retained_recording_object_key(game_id, profile_id) == object_key:
             return game_id
-    raise ReproductionRefused(
-        [
-            f"the match id cannot be read from the recording key {object_key!r}: "
-            "it is not a retained-recording key, and none was given"
-        ]
-    )
+    return None
+
+
+def _game_id_from_key(object_key: str) -> int:
+    game_id = _retained_key_game_id(object_key)
+    if game_id is None:
+        raise ReproductionRefused(
+            [
+                f"the match id cannot be read from the recording key {object_key!r}: "
+                "it is not a retained-recording key, and none was given"
+            ]
+        )
+    return game_id
+
+
+def _check_game_id_against_key(game_id: int, object_key: str) -> None:
+    """A supplied match id is an input no digest covers, so it is checked against the one place the
+    identity records it: the key. A key that is not a retained-recording key records no match, and
+    the caller's id stands."""
+    from_key = _retained_key_game_id(object_key)
+    if from_key is not None and from_key != game_id:
+        raise ReproductionRefused(
+            [
+                f"the match id {game_id} was given, but the retained recording key "
+                f"{object_key!r} was built for match {from_key}"
+            ]
+        )
 
 
 def _installed_code_differences(
@@ -292,13 +320,10 @@ def _recording_record(identity: AnalysisIdentity) -> tuple[str, str]:
 async def _read_recording(object_store: RecordingSource, object_key: str) -> bytes:
     try:
         return await object_store.get(object_key)
-    except KeyError:
-        pass
-    except Exception as exc:
-        code = getattr(exc, "response", {}).get("Error", {}).get("Code")
-        if code not in _NO_SUCH_OBJECT_CODES:
-            raise
-    raise ReproductionRefused([f"the retained recording {object_key!r} is not in the object store"])
+    except ObjectNotFound:
+        raise ReproductionRefused(
+            [f"the retained recording {object_key!r} is not in the object store"]
+        ) from None
 
 
 def _component_differences(identity: AnalysisIdentity, built: Mapping[str, Any]) -> list[str]:

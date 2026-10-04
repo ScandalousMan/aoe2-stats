@@ -350,6 +350,23 @@ def capture_budget_mentions(source: str) -> list[str]:
     return sorted(mentioned)
 
 
+def analysis_key_literals(source: str) -> list[str]:
+    """String constants, f-string fragments included, that spell the analysis key layout's prefix.
+    Docstrings and comments may name it; code may not, because the layout has one owner."""
+    tree = ast.parse(source)
+    skip = _docstring_nodes(tree)
+    return sorted(
+        {
+            node.value
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Constant)
+            and isinstance(node.value, str)
+            and id(node) not in skip
+            and "analyses/" in node.value
+        }
+    )
+
+
 def vocabulary_definitions(source: str) -> list[str]:
     """Top-level function and class names that reuse 003's behaviour vocabulary."""
     tree = ast.parse(source)
@@ -388,6 +405,24 @@ def test_no_request_path_module_imports_the_new_packages() -> None:
     assert not violations, (
         f"006 packages must stay off the request/capture path (FR-049): {violations}"
     )
+
+
+def test_the_document_builder_imports_nothing_from_storage() -> None:
+    """T666e: `extract.py` turns a recording into a document and knows no table. The conversion of
+    the document's gaps into rows is the run side's (`run.py` may import `packages/storage`), so a
+    storage repository type or sentinel never reaches the builder."""
+    source = (_ANALYZER_SRC / "extract.py").read_text(encoding="utf-8")
+
+    assert imports_of(source, ("aoe2stats_storage",)) == []
+
+
+def test_the_analysis_key_layout_is_written_in_the_storage_package_only() -> None:
+    """T666e: `contracts/analysis-document.md` names `packages/storage` as the owner of the key
+    layout. The analyzer asks `analysis_object_key` for a key and `read_analysis` for an object; a
+    second spelling of the prefix in `apps/analyzer` is a second layout waiting to drift."""
+    violations = _violations((_ANALYZER_SRC,), analysis_key_literals)
+
+    assert not violations, f"the analysis key layout belongs to packages/storage: {violations}"
 
 
 def test_new_code_does_not_use_the_capture_budget() -> None:
@@ -529,6 +564,28 @@ def test_imports_of_does_not_flag_sibling_core_modules_or_lookalikes() -> None:
     assert imports_of("from aoe2stats_core.replay import analysis\n", _NEW_PACKAGES) == []
     assert imports_of("import aoe2stats_core\n", _NEW_PACKAGES) == []
     assert imports_of("import aoe2stats_knowledge_other\n", _NEW_PACKAGES) == []
+
+
+def test_imports_of_flags_a_storage_repository_type_in_the_builder() -> None:
+    """The contrast to the builder test: the shape it forbids is detected."""
+    source = (
+        "from aoe2stats_storage.repositories.knowledge_gaps import GapToRecord\n"
+        "import aoe2stats_storage.models\n"
+    )
+
+    assert imports_of(source, ("aoe2stats_storage",)) == [
+        "aoe2stats_storage.models",
+        "aoe2stats_storage.repositories.knowledge_gaps",
+        "aoe2stats_storage.repositories.knowledge_gaps.GapToRecord",
+    ]
+
+
+def test_analysis_key_literals_flags_a_private_layout_but_not_prose() -> None:
+    assert analysis_key_literals('def key(g, d):\n    return f"analyses/{g}/{d}.json"\n') == [
+        "analyses/"
+    ]
+    assert analysis_key_literals('def f():\n    """Reads `analyses/1/x.json`."""\n') == []
+    assert analysis_key_literals("# analyses/1/x.json\nx = 1\n") == []
 
 
 def test_capture_budget_mentions_flags_code_use_but_not_prose() -> None:

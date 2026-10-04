@@ -671,3 +671,51 @@ def test_a_wildcard_path_the_validator_declares_no_type_for_covers_nothing() -> 
 
     assert 1 in info.value.rules
     assert "engine.undeclared.x" in str(info.value)
+
+
+# --- present_data: the validator's own reading of presence, for the provenance builder (T666e) ---
+
+
+def _present(doc: dict[str, Any]) -> frozenset[str]:
+    from aoe2stats_core.truth.validate import present_data
+
+    return present_data(doc, _wild_register())
+
+
+def test_present_data_names_the_data_a_wildcard_key_and_an_exact_leaf_carry() -> None:
+    assert _present(_wild_good()) == {
+        "document.schema_version",
+        "engine.dependencies",
+        "match.game_id",
+        "participant.age_up_commands",
+        "participant.civ_id",
+        "participant.pace",
+        "participant.villagers_ordered",
+    }
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda doc: doc["engine"].__setitem__("deps", {"pkg": {"inner": "1.0"}}),  # nested
+        lambda doc: doc["engine"].__setitem__("deps", {"pkg": 1}),  # wrong scalar type
+        lambda doc: doc["engine"].__setitem__("deps", {}),  # an empty mapping is no value
+    ],
+)
+def test_present_data_does_not_count_what_the_validator_does_not_resolve(mutate: Any) -> None:
+    """The old string-prefix reading counted any leaf beneath ``engine.deps.`` as the datum; the
+    validator's key-by-key walk does not, and ``present_data`` is the validator's."""
+    doc = _wild_good()
+    mutate(doc)
+
+    assert "engine.dependencies" not in _present(doc)
+
+
+def test_present_data_agrees_with_validate_about_rule_2() -> None:
+    from aoe2stats_core.truth.validate import validate
+
+    doc = _wild_good()
+    present = _present(doc)
+    validate(doc, _wild_register())  # every present datum has its entry, and no other has one
+    # The provenance block also names the one inferred datum, which lives under `inferred`.
+    assert set(doc["provenance"]) - present == {"participant.group_control_lost"}

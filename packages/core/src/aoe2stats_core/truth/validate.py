@@ -7,7 +7,7 @@ depends on nothing but the tier type. It reports every violated rule, not only t
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from typing import Any, Protocol
 
 from aoe2stats_core.truth.identity import identity_digest
@@ -99,13 +99,14 @@ def _blank(value: object) -> bool:
     return not isinstance(value, str) or not value.strip()
 
 
-def validate(document: Mapping[str, Any], register: Mapping[str, Entry]) -> None:
-    """Raise ``DocumentInvalid`` naming every rule the document breaks; return None if none."""
-    found: list[tuple[int, str]] = []
-
-    def fail(rule: int, text: str) -> None:
-        found.append((rule, text))
-
+def _present_outside_inferred(
+    document: Mapping[str, Any],
+    register: Mapping[str, Entry],
+    fail: Callable[[int, str], None],
+) -> set[str]:
+    """Rule 1, and the set of published data present outside ``inferred``: the one reading of what
+    a document carries, shared by ``validate`` and ``present_data`` so the two cannot disagree.
+    ``fail`` receives each rule 1 violation met on the way."""
     # An exact path matches one leaf. A path ending ``.*`` is the register's wildcard for a mapping
     # whose keys are data (``engine.deps.*``): the walk (``_leaves``) turns each key of such a
     # mapping whose value is a scalar of the declared type into the one leaf ``<root>.*``, so the
@@ -125,7 +126,6 @@ def validate(document: Mapping[str, Any], register: Mapping[str, Entry]) -> None
     def resolve(leaf: str) -> list[str]:
         return published_by_path.get(leaf, [])
 
-    # Rule 1 and the set of data present outside ``inferred``.
     present: set[str] = set()
     for key, value in document.items():
         if key in _EXEMPT or key == _INFERRED:
@@ -144,6 +144,28 @@ def validate(document: Mapping[str, Any], register: Mapping[str, Entry]) -> None
                 fail(1, f"leaf {leaf!r} resolves to no published register datum")
             else:
                 fail(1, f"leaf {leaf!r} resolves to several data: {sorted(matches)}")
+    return present
+
+
+def present_data(document: Mapping[str, Any], register: Mapping[str, Entry]) -> frozenset[str]:
+    """The ids of the published data ``document`` carries outside ``inferred``, read exactly as
+    ``validate`` reads them (rule 1's walk, wildcard keys and exempt blocks included).
+
+    It exists for the builder that writes the provenance block: that block must name precisely the
+    data the validator will find present (rule 2), so the builder asks the validator rather than
+    keeping a second reading that can drift. A leaf that resolves to no datum, or to several, is
+    not present here; ``validate`` is what refuses it."""
+    return frozenset(_present_outside_inferred(document, register, lambda _rule, _text: None))
+
+
+def validate(document: Mapping[str, Any], register: Mapping[str, Entry]) -> None:
+    """Raise ``DocumentInvalid`` naming every rule the document breaks; return None if none."""
+    found: list[tuple[int, str]] = []
+
+    def fail(rule: int, text: str) -> None:
+        found.append((rule, text))
+
+    present = _present_outside_inferred(document, register, fail)
 
     # Rules 5 to 7 on the inferred block.
     inferred = document.get(_INFERRED, {})

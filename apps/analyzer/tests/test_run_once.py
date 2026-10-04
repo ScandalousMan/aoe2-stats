@@ -83,6 +83,7 @@ from aoe2stats_storage.models import (
     RetainedRecording,
     User,
 )
+from aoe2stats_storage.objects import ObjectNotFound
 from aoe2stats_storage.repositories.base import session_scope
 from aoe2stats_storage.repositories.knowledge_gaps import GapToRecord
 
@@ -210,6 +211,8 @@ class _FakeObjectStore:
 
     async def get(self, key: str) -> bytes:
         self.get_calls.append(key)
+        if key not in self.objects:
+            raise ObjectNotFound(key)
         return self.objects[key]
 
 

@@ -74,7 +74,6 @@ from aoe2stats_analyzer.extract import (
     canonical_bytes,
     current_identity_digest,
     document_recording_build,
-    gap_rows,
     validate_document,
 )
 from aoe2stats_analyzer.retain import retain_recording, retrieve_recording
@@ -89,9 +88,15 @@ from aoe2stats_storage.models import (
     ReplayAccessLog,
     RetainedRecording,
 )
-from aoe2stats_storage.objects import ObjectStore
+from aoe2stats_storage.objects import ObjectStore, analysis_object_key
 from aoe2stats_storage.repositories.base import session_scope
-from aoe2stats_storage.repositories.knowledge_gaps import KnowledgeGapsRepository
+from aoe2stats_storage.repositories.knowledge_gaps import (
+    WHOLE_BUILD_ENTITY_ID,
+    WHOLE_BUILD_ENTITY_KIND,
+    WHOLE_BUILD_FIELD,
+    GapToRecord,
+    KnowledgeGapsRepository,
+)
 
 #: One logger named for the package, as `apps/api` and `apps/ingester` do, so a deployment's log
 #: aggregator groups every line this package emits under one name.
@@ -129,16 +134,36 @@ _TERMINAL_STATES = (
 )
 
 
-def _result_key(game_id: int, identity_digest: str) -> str:
-    """`analyses/{game_id}/{identity digest hex}.json` (FR-042, T657).
+def gap_rows(document: Mapping[str, Any]) -> tuple[GapToRecord, ...]:
+    """The `analysis_knowledge_gaps` rows for a document: one per entry of its `knowledge_gaps`
+    block, read **from the document** (T662).
 
-    The per-match prefix keeps every version of one match's analysis listable by one prefix, and
-    the digest makes the key a function of the identity: two different identities never share a
-    key, so a recompute under a new parser, knowledge or analytics version writes a **new** object
-    and rewrites nothing, while the same identity addresses the same key. `match_analyses.
-    result_key` names the current one; it changes value exactly when the identity does.
+    The rows are derived from the published list rather than from a second call to the coverage
+    pass, so the two cannot disagree: whatever the reader of the document is told is what the
+    aggregate report counts. Nothing is recomputed, deduplicated or dropped here (the coverage pass
+    already emits at most one gap per unique-index key, T652k/T652v); a gap that names no entity and
+    no field - the whole-build `no-snapshot-for-build` gap - is stored under the storage layer's
+    whole-build sentinels because those columns are not nullable, and carries `build` as the
+    document does, `-1` where the stream named none.
+
+    It lives here and not in `extract.py` (T666e): the document builder knows no table, and the
+    conversion to rows is the publish step's own.
     """
-    return f"analyses/{game_id}/{identity_digest}.json"
+    rows: list[GapToRecord] = []
+    for gap in document["knowledge_gaps"]:
+        entity = gap["entity"]
+        rows.append(
+            GapToRecord(
+                build=gap["build"],
+                entity_kind=WHOLE_BUILD_ENTITY_KIND if entity is None else entity["kind"],
+                entity_id=WHOLE_BUILD_ENTITY_ID if entity is None else entity["id"],
+                field=WHOLE_BUILD_FIELD if gap["field"] is None else gap["field"],
+                civilisation_id=gap["civilisation"],
+                cause=gap["cause"],
+                severity=gap["severity"],
+            )
+        )
+    return tuple(rows)
 
 
 async def _is_stale(
@@ -325,7 +350,7 @@ async def _publish(
     """FR-031/FR-032: write the analysis object and mark the row `published`, carrying which point
     of view and which parser version produced it. Shared by both the first-analysis and the
     recompute path - the one place either one ever writes a result, which is what keeps
-    `result_key`'s own shape (`_result_key`) identical whichever path reached it.
+    `result_key`'s own shape (`analysis_object_key`) identical whichever path reached it.
 
     `identity_digest` records which identity the current document was produced under (T657);
     `_is_stale` compares it with the identity an analysis would carry now (T657a). `recording_build`
@@ -572,7 +597,7 @@ async def _extract_and_publish(
 
     # FR-042: the key carries the identity digest, so an analysis under a different identity is a
     # new object and the previous one is left exactly as it was. Nothing here ever deletes.
-    result_key = _result_key(game_id, document["identity"]["digest"])
+    result_key = analysis_object_key(game_id, document["identity"]["digest"])
     try:
         await _publish(
             session_factory,

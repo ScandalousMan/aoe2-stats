@@ -198,14 +198,16 @@ apps/analyzer/
 ├── pyproject.toml                     # + aoe2stats-knowledge, declared not inherited (phase 5)
 └── src/aoe2stats_analyzer/
     ├── extract.py                     # additive document version; identity; provenance; gaps
-    └── run.py                         # identity-addressed result key; gap rows
+    └── run.py                         # publishes at the storage package's key; gap rows
 apps/analyzer/tests/
 
 apps/web/
 └── src/features/analysis/             # a test pinning that the next version parses; no code, no UI
 
 packages/storage/
-└── src/aoe2stats_storage/models.py    # + analysis_knowledge_gaps
+└── src/aoe2stats_storage/
+    ├── models.py                      # + analysis_knowledge_gaps
+    └── objects.py                     # + the analysis key layout and the read by identity
 
 infra/migrations/versions/             # one expand-only revision
 

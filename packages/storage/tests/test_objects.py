@@ -193,9 +193,13 @@ def _header(request: Any, name: str) -> str | None:
     return value.decode() if isinstance(value, bytes) else value
 
 
-def _store_over_a_real_client(config: ObjectStoreConfig, recorder: _WireRecorder) -> ObjectStore:
+def _store_over_a_real_client(
+    config: ObjectStoreConfig, recorder: _WireRecorder, operation: str = "PutObject"
+) -> ObjectStore:
     client = objects._build_client(config)
-    client.meta.events.register("before-send.s3.PutObject", recorder)  # type: ignore[attr-defined]
+    client.meta.events.register(  # type: ignore[attr-defined]
+        f"before-send.s3.{operation}", recorder
+    )
     return ObjectStore(config, client=client)
 
 
@@ -325,12 +329,106 @@ async def test_get_reads_back_the_body_previously_put(config: ObjectStoreConfig)
     assert client.get_calls == [{"Bucket": "aoe2-stats-replays", "Key": "replays/1/2.zip"}]
 
 
-async def test_get_raises_for_a_key_never_written(config: ObjectStoreConfig) -> None:
+async def test_get_raises_the_stores_own_not_found_for_a_key_never_written(
+    config: ObjectStoreConfig,
+) -> None:
     client = _FakeS3Client()
     store = ObjectStore(config, client=client)
 
-    with pytest.raises(ClientError):
+    with pytest.raises(objects.ObjectNotFound) as raised:
         await store.get("never/written.zip")
+
+    assert raised.value.key == "never/written.zip"
+    assert "never/written.zip" in str(raised.value)
+
+
+@pytest.mark.parametrize(("status", "code"), [(404, "NoSuchKey"), (404, "NotFound")])
+async def test_get_maps_the_wire_not_found_to_object_not_found(
+    config: ObjectStoreConfig, status: int, code: str
+) -> None:
+    """The mapping is made on what a real botocore client raises for the response, not on a
+    hand-built exception."""
+    store = _store_over_a_real_client(
+        config, _WireRecorder(status=status, code=code), operation="GetObject"
+    )
+
+    with pytest.raises(objects.ObjectNotFound):
+        await store.get("analyses/1/abc.json")
+
+
+@pytest.mark.parametrize(
+    ("status", "code"),
+    [
+        (404, "NoSuchBucket"),  # a missing bucket is a deployment fault, not a missing object
+        (403, "AccessDenied"),
+    ],
+)
+async def test_get_does_not_read_any_other_store_error_as_a_missing_object(
+    config: ObjectStoreConfig, status: int, code: str
+) -> None:
+    store = _store_over_a_real_client(
+        config, _WireRecorder(status=status, code=code), operation="GetObject"
+    )
+
+    with pytest.raises(ClientError) as raised:
+        await store.get("analyses/1/abc.json")
+
+    assert not isinstance(raised.value, objects.ObjectNotFound)
+
+
+async def test_get_propagates_a_connection_error(config: ObjectStoreConfig) -> None:
+    class _Unreachable(_FakeS3Client):
+        def get_object(self, **kwargs: Any) -> dict[str, Any]:
+            raise EndpointConnectionError(endpoint_url="https://store.invalid")
+
+    with pytest.raises(EndpointConnectionError):
+        await ObjectStore(config, client=_Unreachable()).get("a/b.json")
+
+
+# --- the analysis key layout and read-by-identity (T666e) ---------------------------------------
+
+
+def test_analysis_object_key_is_the_per_match_prefix_then_the_identity_digest() -> None:
+    assert objects.analysis_object_key(123, "abc123") == "analyses/123/abc123.json"
+
+
+def test_two_identities_never_share_an_analysis_key_and_one_identity_always_does() -> None:
+    assert objects.analysis_object_key(1, "aaa") != objects.analysis_object_key(1, "bbb")
+    assert objects.analysis_object_key(1, "aaa") != objects.analysis_object_key(2, "aaa")
+    assert objects.analysis_object_key(1, "aaa") == objects.analysis_object_key(1, "aaa")
+
+
+def test_the_analysis_prefix_is_distinct_from_both_recording_prefixes() -> None:
+    analysis = objects.analysis_object_key(1, "2")
+    assert not analysis.startswith("replays/")
+    assert not analysis.startswith("retained-recordings/")
+
+
+async def test_read_analysis_resolves_the_object_an_identity_names(
+    config: ObjectStoreConfig,
+) -> None:
+    client = _FakeS3Client()
+    store = ObjectStore(config, client=client)
+    await store.put(objects.analysis_object_key(7, "old"), b"first")
+    await store.put(objects.analysis_object_key(7, "new"), b"second")
+
+    assert await objects.read_analysis(store, game_id=7, identity_digest="old") == b"first"
+    assert await objects.read_analysis(store, game_id=7, identity_digest="new") == b"second"
+    assert [call["Key"] for call in client.get_calls] == [
+        "analyses/7/old.json",
+        "analyses/7/new.json",
+    ]
+
+
+async def test_read_analysis_of_an_identity_never_published_is_not_found(
+    config: ObjectStoreConfig,
+) -> None:
+    store = ObjectStore(config, client=_FakeS3Client())
+
+    with pytest.raises(objects.ObjectNotFound) as raised:
+        await objects.read_analysis(store, game_id=7, identity_digest="never")
+
+    assert raised.value.key == "analyses/7/never.json"
 
 
 # --- signed_get_url ----------------------------------------------------------------------------

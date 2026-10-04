@@ -417,3 +417,55 @@ async def test_a_document_the_validator_refuses_writes_no_gap_rows(
     other_user = await _seed(session_factory, other_game)
     await _run_once(session_factory, other_game, other_user, _Store(), _Extractor())
     assert await _rows(session_factory)
+
+
+# --- The conversion to rows is the run side's, not the document builder's (T666e) ---------------
+
+
+def test_gap_rows_is_the_run_sides_and_the_builder_no_longer_carries_it() -> None:
+    from aoe2stats_analyzer import extract
+
+    assert callable(run.gap_rows)
+    assert not hasattr(extract, "gap_rows")
+    assert "gap_rows" not in extract.__all__
+
+
+def test_a_whole_build_gap_and_an_entity_gap_become_their_rows() -> None:
+    document = {
+        "knowledge_gaps": [
+            {
+                "entity": None,
+                "field": None,
+                "build": -1,
+                "civilisation": None,
+                "cause": "no-snapshot-for-build",
+                "prevents": [],
+                "severity": "blocking",
+            },
+            {
+                "entity": {"kind": "unit", "id": "83"},
+                "field": "cost",
+                "build": 180059,
+                "civilisation": "franks",
+                "cause": "field-absent",
+                "prevents": [],
+                "severity": "degrading",
+            },
+        ]
+    }
+
+    whole_build, entity = run.gap_rows(document)
+
+    assert (whole_build.entity_kind, whole_build.entity_id, whole_build.field) == (
+        "build",
+        "*",
+        "*",
+    )
+    assert (whole_build.build, whole_build.civilisation_id) == (-1, None)
+    assert (entity.entity_kind, entity.entity_id, entity.field) == ("unit", "83", "cost")
+    assert (entity.civilisation_id, entity.cause, entity.severity) == (
+        "franks",
+        "field-absent",
+        "degrading",
+    )
+    assert run.gap_rows({"knowledge_gaps": []}) == ()

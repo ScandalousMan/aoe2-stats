@@ -1406,7 +1406,7 @@ files and may run as one parallel batch; the rest are sequential, in order.
       stores that support it, in both the production store and the test fakes — and when the key
       already exists, point the row at it without writing. Correct the two tests in
       `apps/analyzer/tests/test_run_once.py` that assert the overwrite as the desired outcome
-- [ ] T666e [US6] **Put the key layout where the contract says it lives, and close reproduction's
+- [x] T666e [US6] **Put the key layout where the contract says it lives, and close reproduction's
       gaps.** contracts/analysis-document.md names `packages/storage` as the owner of the key layout
       and a read-by-identity function; [plan.md](./plan.md) says `run.py` — the contract stands, and
       plan.md is amended to match. Move the layout out of `run.py`'s private helper and add the read.

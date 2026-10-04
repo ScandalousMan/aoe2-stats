@@ -76,6 +76,7 @@ from aoe2stats_knowledge import effects, query, snapshot
 from aoe2stats_providers.base import NotFound, ReplayBlob
 from aoe2stats_replay_engine.aoe2rec import Aoe2RecExtractor
 from aoe2stats_storage.models import AoeProfile, Match, MatchAnalysis, MatchPlayer, User
+from aoe2stats_storage.objects import ObjectNotFound, read_analysis
 from aoe2stats_storage.repositories.base import session_scope
 
 # `session_factory` and `clean_database` come from `apps/analyzer/tests/conftest.py`.
@@ -303,6 +304,8 @@ class _FakeObjectStore:
         return True
 
     async def get(self, key: str) -> bytes:
+        if key not in self.objects:
+            raise ObjectNotFound(key)
         return self.objects[key]
 
     def analysis_keys(self) -> list[str]:
@@ -645,6 +648,31 @@ async def test_the_previous_version_remains_available_after_a_recompute_under_a_
     assert row.result_key == flow.second.key
     assert row.identity_digest == flow.second.identity["digest"]
     assert flow.first.row_identity_digest == flow.first.identity["digest"]
+
+
+async def test_the_older_analysis_is_read_by_the_identity_that_named_it(
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """SC-005 through the storage package's own read-by-identity function (T666e): the row names
+    only the newer document, yet each identity resolves its own object, byte for byte, and an
+    identity never published is the store's not-found - not another document."""
+    flow = await _publish_promote_recompute(session_factory, monkeypatch, tmp_path)
+
+    older = await read_analysis(
+        flow.store, game_id=_GAME_ID, identity_digest=flow.first.identity["digest"]
+    )
+    newer = await read_analysis(
+        flow.store, game_id=_GAME_ID, identity_digest=flow.second.identity["digest"]
+    )
+
+    assert older == flow.first.raw
+    assert newer == flow.second.raw
+    assert older != newer
+    with pytest.raises(ObjectNotFound):
+        await read_analysis(flow.store, game_id=_GAME_ID, identity_digest="sha256:never")
 
 
 async def test_each_object_key_carries_its_own_identity_digest(

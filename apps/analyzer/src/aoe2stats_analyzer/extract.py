@@ -65,18 +65,12 @@ from aoe2stats_core.truth.placement import (
 from aoe2stats_core.truth.provenance import Method
 from aoe2stats_core.truth.register import REGISTER
 from aoe2stats_core.truth.register import Entry as RegisterEntry
-from aoe2stats_core.truth.validate import DocumentInvalid, validate
+from aoe2stats_core.truth.validate import DocumentInvalid, present_data, validate
 from aoe2stats_core.truth.validate import Entry as ValidatorEntry
 from aoe2stats_knowledge.coverage import coverage
 from aoe2stats_knowledge.gaps import KnowledgeGap
 from aoe2stats_knowledge.snapshot import Snapshot, SnapshotError, snapshot_for
 from aoe2stats_replay_engine.silence import GroupSilenceEpisode, compute_group_silence_episodes
-from aoe2stats_storage.repositories.knowledge_gaps import (
-    WHOLE_BUILD_ENTITY_ID,
-    WHOLE_BUILD_ENTITY_KIND,
-    WHOLE_BUILD_FIELD,
-    GapToRecord,
-)
 
 #: `contracts/analysis-document.md`: "`schema_version` increments". Bumped only when the shape of
 #: the JSON this module writes changes, never when `MatchTimeline` itself gains a field: the
@@ -99,13 +93,6 @@ ANALYTICS_VERSION = (
     f"coverage@1+{_SILENCE_METHOD}"
     f"+{hashlib.sha256(REGISTER[_SILENCE_DATUM].method.encode('utf-8')).hexdigest()[:12]}"
 )
-
-#: The top-level keys that are not register data, exactly the validator's own exempt set
-#: (`aoe2stats_core.truth.validate._EXEMPT`) plus the block it reads separately: the wall-clock set
-#: and the blocks that describe the document rather than carry values. Presence here has to agree
-#: with the validator's, or rule 2 would reject the provenance written below. `schema_version` is
-#: register data (`document.schema_version`) and carries its provenance entry (FR-007).
-_NOT_REGISTER_DATA = WALL_CLOCK_FIELDS | {"identity", "provenance", "knowledge_gaps", "inferred"}
 
 #: The method behind each family of published datum, by register id prefix. Every published datum
 #: with a document path must resolve to one (`_method_for` raises otherwise): a value with no
@@ -138,7 +125,6 @@ __all__ = [
     "current_identity_digest",
     "document_recording_build",
     "extract_timeline",
-    "gap_rows",
     "published_document",
     "validate_document",
 ]
@@ -388,35 +374,6 @@ def _gap_record(gap: KnowledgeGap) -> dict[str, Any]:
     }
 
 
-def gap_rows(document: Mapping[str, Any]) -> tuple[GapToRecord, ...]:
-    """The `analysis_knowledge_gaps` rows for a document: one per entry of its `knowledge_gaps`
-    block, read **from the document** (T662).
-
-    The rows are derived from the published list rather than from a second call to the coverage
-    pass, so the two cannot disagree: whatever the reader of the document is told is what the
-    aggregate report counts. Nothing is recomputed, deduplicated or dropped here (the coverage pass
-    already emits at most one gap per unique-index key, T652k/T652v); a gap that names no entity and
-    no field — the whole-build `no-snapshot-for-build` gap — is stored under the storage layer's
-    whole-build sentinels because those columns are not nullable, and carries `build` as the
-    document does, `-1` where the stream named none.
-    """
-    rows: list[GapToRecord] = []
-    for gap in document["knowledge_gaps"]:
-        entity = gap["entity"]
-        rows.append(
-            GapToRecord(
-                build=gap["build"],
-                entity_kind=WHOLE_BUILD_ENTITY_KIND if entity is None else entity["kind"],
-                entity_id=WHOLE_BUILD_ENTITY_ID if entity is None else entity["id"],
-                field=WHOLE_BUILD_FIELD if gap["field"] is None else gap["field"],
-                civilisation_id=gap["civilisation"],
-                cause=gap["cause"],
-                severity=gap["severity"],
-            )
-        )
-    return tuple(rows)
-
-
 def _inferred_block(episodes: Sequence[GroupSilenceEpisode]) -> dict[str, Any]:
     """The `inferred` block (FR-010, FR-011): the only place a value at that tier is written.
 
@@ -465,33 +422,6 @@ def _method_for(datum_id: str) -> str:
     )
 
 
-def _leaf_paths(node: Any, path: str) -> Iterable[str]:
-    """Each leaf's path: dict keys joined by '.', every list index collapsed to '[]'. The same
-    reading as `aoe2stats_core.truth.validate`'s, so presence here is presence there."""
-    if isinstance(node, dict):
-        if not node and path:
-            yield path
-        for key, value in node.items():
-            yield from _leaf_paths(value, f"{path}.{key}" if path else str(key))
-    elif isinstance(node, list):
-        if not node:
-            yield f"{path}[]"
-        for item in node:
-            yield from _leaf_paths(item, f"{path}[]")
-    else:
-        yield path
-
-
-def _present(path: str, leaves: frozenset[str]) -> bool:
-    """Whether the document carries the register path. A trailing `.*` is the register's wildcard
-    for a mapping whose keys are data (`engine.deps.*`, `participants[].age_up_commands.*`): it is
-    present when any leaf lies beneath it."""
-    if path.endswith(".*"):
-        prefix = path[:-1]
-        return any(leaf.startswith(prefix) for leaf in leaves)
-    return path in leaves
-
-
 def _provenance(
     document: Mapping[str, Any],
     episodes: Sequence[GroupSilenceEpisode],
@@ -504,18 +434,18 @@ def _provenance(
     path at inferred or predicted is refused here (FR-011): such a datum has no path, it lives under
     `inferred`.
     """
-    leaves = frozenset(
-        leaf
-        for key, value in document.items()
-        if key not in _NOT_REGISTER_DATA
-        for leaf in _leaf_paths(value, str(key))
-    )
-    provenance: dict[str, Any] = {}
+    published: dict[str, RegisterEntry] = {}
     for entry in register:
         if entry.status != "published" or entry.path is None or entry.tier is None:
             continue
         require_outside_inferred(entry.id, entry.tier)
-        if _present(entry.path, leaves):
+        published[entry.id] = entry
+    # Presence is the validator's own reading (`present_data`), never a second one kept here: the
+    # block written below has to name exactly the data rule 2 will find in the document.
+    present = present_data(document, cast("Mapping[str, ValidatorEntry]", published))
+    provenance: dict[str, Any] = {}
+    for entry in published.values():
+        if entry.id in present and entry.tier is not None:
             provenance[entry.id] = {
                 "tier": entry.tier.value,
                 "method": _method_for(entry.id),

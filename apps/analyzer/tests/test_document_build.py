@@ -9,6 +9,7 @@ validator's own rules have their own suite (`packages/core/tests/test_validate.p
 
 from __future__ import annotations
 
+import copy
 import dataclasses
 import json
 import re
@@ -457,3 +458,69 @@ def test_a_register_that_publishes_a_conclusion_at_an_ordinary_path_is_refused_a
 
     with pytest.raises(TierPlacementError, match="only under inferred"):
         _provenance(document, [], [*REGISTER, stray])
+
+
+# --- T666e: the provenance builder reads presence exactly as the validator does ----------------
+
+
+def _with_provenance_rebuilt(document: dict[str, Any]) -> dict[str, Any]:
+    """`document` with its provenance block recomputed by the builder's own function, as
+    `build_document` would have written it for this exact body."""
+    from aoe2stats_analyzer.extract import _provenance
+
+    rebuilt = copy.deepcopy(document)
+    rebuilt["provenance"] = _provenance(rebuilt, [])
+    # The inferred datum's entry is written from the episodes, not from presence: carry it over.
+    if _SILENCE in document["provenance"]:
+        rebuilt["provenance"][_SILENCE] = document["provenance"][_SILENCE]
+    return rebuilt
+
+
+def _nested_under_dependency_name(document: dict[str, Any]) -> None:
+    document["engine"]["deps"] = {"nested-dep": {"inner": "1.0"}}
+
+
+def _prose_where_a_time_belongs(document: dict[str, Any]) -> None:
+    for participant in document["participants"]:
+        participant["age_up_commands"] = {"feudal": "soon"}
+
+
+@pytest.mark.parametrize(
+    ("datum", "corrupt"),
+    [
+        ("engine.dependencies", _nested_under_dependency_name),
+        ("participant.age_up_commands", _prose_where_a_time_belongs),
+    ],
+)
+def test_a_value_the_validator_does_not_count_as_present_is_not_given_a_provenance_entry(
+    document: dict[str, Any], datum: str, corrupt: Any
+) -> None:
+    """The old builder read a wildcard as 'any leaf whose path starts with the prefix', so a
+    mapping nested beneath a wildcard key, or prose where a time belongs, counted as the datum
+    being present. The validator walks key by key with declared scalar types and reads neither as
+    the datum, so the two disagreed: the builder wrote a provenance entry for a datum the validator
+    found absent (rule 2). Now the builder asks the validator, and the only thing left to say about
+    the corrupted body is rule 1's refusal of the leaf itself."""
+    from aoe2stats_core.truth.validate import DocumentInvalid
+
+    # Contrast baseline: the well-formed document has the datum, so its entry is written.
+    assert datum in _with_provenance_rebuilt(document)["provenance"]
+    corrupted = copy.deepcopy(document)
+    corrupt(corrupted)
+
+    with pytest.raises(DocumentInvalid) as info:
+        validate_document(_with_provenance_rebuilt(corrupted))
+
+    assert info.value.rules == frozenset({1}), str(info.value)
+
+
+def test_the_builders_provenance_names_exactly_the_data_the_validator_finds_present(
+    document: dict[str, Any],
+) -> None:
+    """The contrast and the standing agreement: for the real document, and for one whose dependency
+    names contain dots, the entries the builder writes are the set `validate` accepts under rule 2
+    (every present datum has one, no entry names an absent datum)."""
+    dotted = copy.deepcopy(document)
+    dotted["engine"]["deps"] = {"a.b.c": "1.0", **dotted["engine"]["deps"]}
+    for candidate in (document, dotted):
+        validate_document(_with_provenance_rebuilt(candidate))
