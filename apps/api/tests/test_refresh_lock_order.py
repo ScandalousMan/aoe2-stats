@@ -696,9 +696,9 @@ class _LockRecorder:
     three ranked tables, with the key of every row each one carries — multi-row `VALUES` lists and
     `IN (...)` lists included. An `executemany` is recorded once per parameter set, in order.
 
-    An `INSERT ... VALUES`, `UPDATE`, `DELETE` or `SELECT ... FOR UPDATE` against a ranked table
-    whose keys this class cannot read **fails the test** instead of being skipped. Other statement
-    shapes (`INSERT ... SELECT`, a `WITH` writer) are not read at all.
+    An `INSERT ... VALUES`, `UPDATE` or `DELETE` against a ranked table whose keys this class
+    cannot read **fails the test** instead of being skipped. Other statement shapes may go
+    unrecorded; `_keys` is what decides.
 
     Only a multi-row `INSERT` takes its row locks in the order its `VALUES` list gives, and a
     `SELECT ... FOR UPDATE` that really carries `ORDER BY <table>.<key columns>` takes them in

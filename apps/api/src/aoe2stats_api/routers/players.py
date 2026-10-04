@@ -748,11 +748,12 @@ async def get_player_match_history(
 
     **Colour enrichment (T450, FR-003; reordered by T459a).** `fetch_colour_fills`
     (`routers/matches.py`, imported above) is called here once, batched over the stored page's
-    game ids and those of the fetched matches that can be served — `GET /api/matches::list_matches`
-    does the same for the owner-scoped route — this route already reads the source live on every
-    call (the paragraph above), so a batched companion call here crosses no boundary that route
-    does not already cross. It is a *fetch*: the fills are persisted with the batch, in the
-    batch's savepoint, so no network call happens after the first write. Before T450 this route
+    game ids and those of the fetched matches `_matches_that_can_be_served` keeps —
+    `GET /api/matches::list_matches` does the same for the owner-scoped route — this route already
+    reads the source live on every call (the paragraph above), so a batched companion call here
+    crosses no boundary that route does not already cross. It is a *fetch*: the fills are
+    persisted with the batch, in the batch's savepoint, so no network call happens after the first
+    write. Before T450 this route
     never called it at all, so
     `color_id` stayed `NULL` for a profile viewed only through this route and every swatch
     rendered the neutral token even though `GET /api/matches` had already coloured the identical
@@ -780,8 +781,8 @@ async def get_player_match_history(
             ) from exc
 
     # T459a: the stored page is read first, before any write, for two reasons. It rejects a bad
-    # cursor before the network is touched; and its game ids are, with those of the fetched
-    # matches that can be served, the candidates for companion's colours.
+    # cursor before the network is touched; and its game ids are among the candidates for
+    # companion's colours.
     stored_page = await _read_page()
 
     # T459 / T459a: every network call first (history, identity, companion's colours), then one
@@ -791,7 +792,6 @@ async def get_player_match_history(
     identity = await _fetch_profile_identity(db_session, profile_id)
     # T450 / T409: batched over every candidate game id at once, never one call per match; this
     # route's own `profile_id` is companion's required query parameter.
-    # Only matches that can be on the served page are candidates.
     candidates = _matches_that_can_be_served(raw_matches, stored_page, limit)
     fills = await fetch_colour_fills(
         db_session,
