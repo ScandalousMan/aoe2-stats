@@ -63,6 +63,7 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 
 from aoe2stats_analyzer.admission import check_admission
+from aoe2stats_analyzer.extract import DeploymentFault
 from aoe2stats_analyzer.run import run_once
 from aoe2stats_api import ratelimit, security
 from aoe2stats_api.analyze_stages import build_analyze_dependencies
@@ -125,6 +126,21 @@ def _invalid_body() -> JSONResponse:
         status_code=400,
         code="invalid_request",
         message='Body must be {"game_id": <int>}.',
+    )
+
+
+def _deployment_fault(fault: DeploymentFault) -> JSONResponse:
+    """`500` (T666h): the service cannot analyse any recording as deployed, found by `run_once`
+    before it claimed, fetched or wrote anything - so the match is not failed and the person who
+    asks again after the fix gets an ordinary first analysis. The body names the fault *class*
+    (an operator's diagnosis) and nothing `run_once` logged about it: which snapshot, which digest
+    and which packaged path stay in the log, as `app.py`'s own unexpected-error handler does for
+    the same reason."""
+    return error_response(
+        status_code=500,
+        code="analysis_deployment_fault",
+        message="Analysis is unavailable because of a fault in this service. Try again later.",
+        detail={"fault": fault.fault_class},
     )
 
 
@@ -204,6 +220,8 @@ async def _analyze(request: Request) -> JSONResponse:
         )
     except LookupError:
         return _not_found()
+    except DeploymentFault as fault:
+        return _deployment_fault(fault)
 
     async with deps.session_factory() as session:
         row = await _analysis_row(session, game_id=game_id)

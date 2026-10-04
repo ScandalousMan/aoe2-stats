@@ -53,6 +53,14 @@ unloadable knowledge snapshot, a serialiser refusal or a gap row the table refus
 the row stays `published` on its previous key, digest and build (`_keep_prior`). The same causes
 on a first analysis end `failed` - none of them leaves the row `running`, which would let its
 lease expire and the next request fetch the recording from the source again.
+
+**A broken deployment is refused before anything is claimed (T666h).** The faults that are facts
+about the deployment rather than about one recording - an installed snapshot that does not load or
+verify, two promoted snapshots for one build, an empty dependency record - raise `DeploymentFault`
+before `claim_for_analysis`, so nothing is fetched from the source, retained, logged or written and
+the match is not `failed`: the next request after the fix is a first analysis like any other.
+Reaching the failure routing above for a snapshot fault now means only one a particular build can
+reach.
 """
 
 from __future__ import annotations
@@ -69,12 +77,14 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from aoe2stats_analyzer.claim import claim_for_analysis
 from aoe2stats_analyzer.extract import (
+    DeploymentFault,
     SnapshotError,
     build_document,
     canonical_bytes,
     current_identity_digest,
     document_recording_build,
     validate_document,
+    verify_deployment,
 )
 from aoe2stats_analyzer.retain import retain_recording, retrieve_recording
 from aoe2stats_analyzer.staleness import is_stale, retry_window_open
@@ -584,6 +594,11 @@ async def _extract_and_publish(
         # stored. Serialised before anything is written: the serialiser can refuse.
         payload = canonical_bytes(document)
     except (ReplayValidationError, ValueError) as exc:
+        # A refused document caused by a *code* defect (a builder that places a datum where its
+        # tier forbids, a serialiser refusal, a snapshot fault only this recording's build can
+        # reach) cannot be checked in advance, so it stays on 003's failure path: a first analysis
+        # ends `failed` (`_mark_failed`), a recompute keeps its prior analysis (`_keep_prior`).
+        # What can be checked in advance is checked before the claim (`verify_deployment`, T666h).
         await _refuse(
             session_factory,
             extractor=extractor,
@@ -696,7 +711,10 @@ async def run_once(
     """Analyse `game_id` once, on this one request — see the module docstring for the two paths
     this dispatches between and the ordering FR-029 requires. Never raises on an ordinary outcome
     (a parse failure, an expired match, a lease held by someone else): every one of those is a
-    normal return, with the outcome recorded in `match_analyses` for the caller to read back.
+    normal return, with the outcome recorded in `match_analyses` for the caller to read back. The
+    one exception to "never raises on an ordinary outcome" is a deployment that cannot analyse any
+    recording (`DeploymentFault`, T666h): that is not an outcome for a match, so it raises, and
+    only for a request that would have claimed.
 
     `budget_seconds` is threaded into `claim_for_analysis` as the claim's own `lease_seconds` —
     the same number `api/analyze.py`'s `maxDuration` will carry (T366), so a lease this call takes
@@ -744,6 +762,24 @@ async def run_once(
         return
     elif existing.state in _TERMINAL_STATES:
         return
+
+    # T666h, constitution I: everything that is a fact about the deployment and not about this
+    # recording is checked before the claim. A broken knowledge deploy, or an extractor reporting no
+    # dependency record, would otherwise fetch the recording from the source, retain it, log the
+    # read and parse it - spending the budget capture depends on - and then end the match terminally
+    # `failed`, which fixing the deployment does not undo. Raised here, nothing has been written,
+    # fetched or logged, so the request errors and the next one after the fix is a first analysis
+    # like any other. Cost per request: see `extract.verify_deployment` (cached, no I/O).
+    try:
+        verify_deployment(extractor)
+    except DeploymentFault as fault:
+        logger.error(
+            "deployment fault, request refused before any claim or fetch: game_id=%s %s: %s",
+            game_id,
+            fault.fault_class,
+            fault.detail,
+        )
+        raise
 
     # Reaches here for a brand-new, not-yet-expired match, or an existing row that is `queued` or
     # `running` under a lease that may have expired (R6) — the one path `claim_for_analysis` (T361)

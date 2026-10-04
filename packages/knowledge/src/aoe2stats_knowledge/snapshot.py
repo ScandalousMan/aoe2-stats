@@ -595,6 +595,29 @@ def _promoted_snapshot_for(build: int) -> Snapshot | KnowledgeGap:
     return matches[0]
 
 
+def verify_installed_snapshots() -> None:
+    """Raise if the installed knowledge cannot answer for **any** build, whichever recording asks
+    (T666h) - everything that is a fact about the deployment rather than about one recording.
+
+    Three conditions, none of which needs a recording: every packaged snapshot loads and passes its
+    digest check (`load_all_snapshots` raises on the first that does not, `SnapshotDigestMismatch`
+    or another `SnapshotError`); and no two promoted snapshots describe one build, which is the
+    condition `snapshot_for` raises on - read here through `_promoted_snapshot_for` itself, once
+    per build the promoted snapshots describe, so the check and the resolver cannot disagree about
+    what counts as a duplicate.
+
+    **It is cheap after the first call and says nothing it did not find.** Both resolvers are
+    `functools.cache`d, so a healthy deployment pays one tree read for the process's life and
+    thereafter one cache lookup per promoted build, with no I/O. A failure is *not* cached - a
+    raised call is not memoised - so the first request after a repair sees it. A build with no
+    promoted snapshot is a gap, not a fault, and passes. Returns nothing; raises `SnapshotError`
+    (or an `OSError` for a packaged file that cannot be read).
+    """
+    builds = {snapshot.identity.describes_build for snapshot in load_resolvable_snapshots()}
+    for build in sorted(builds):
+        _promoted_snapshot_for(build)
+
+
 #: The one snapshot a reproduction has pinned for the current context (FR-043, T658), or `None` —
 #: its value in every other call. A `ContextVar` and not a module global: it is set and restored by
 #: `pinned_snapshot` below and nowhere else, and a concurrent task or thread never sees it.

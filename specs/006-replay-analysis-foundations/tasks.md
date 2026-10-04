@@ -1448,7 +1448,7 @@ parallel batch; T666h, T666i and T666j follow, in order — all three edit `run.
       would do nothing. Contrast cases: parser change, knowledge refresh and analytics change each
       read stale; an identical identity does not; a row in its retry window does not; a row with no
       digest or no build does
-- [ ] T666h [US6] **Refuse a broken deployment before claiming anything.** Decided 2026-10-04,
+- [x] T666h [US6] **Refuse a broken deployment before claiming anything.** Decided 2026-10-04,
       replacing T666c's handling of the case: a first analysis whose snapshot load fails today
       fetches from the source, retains, parses and then ends terminally failed, so a broken knowledge
       deploy spends capture's budget (constitution I) and leaves every match requested meanwhile

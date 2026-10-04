@@ -51,6 +51,7 @@ from aoe2stats_knowledge.snapshot import (
     parse_promotion,
     pinned_snapshot,
     snapshot_for,
+    verify_installed_snapshots,
 )
 
 _RULES_JSON = b'{"entities": {}}'
@@ -813,6 +814,89 @@ def test_snapshot_for_raises_when_two_promoted_snapshots_describe_the_same_build
 
     with pytest.raises(SnapshotError, match="more than one promoted snapshot"):
         snapshot_for(101102)
+
+
+def _promoted_toml(rules: bytes, *, build: str) -> str:
+    return _identity_toml(
+        describes_build=build,
+        digest=compute_digest(rules, _EFFECTS_TOML),
+        extra="promoted = true\n\n" + _validation_toml(),
+    )
+
+
+def test_verify_installed_snapshots_passes_on_the_committed_tree() -> None:
+    """T666h: the deployment check a request makes before it claims anything."""
+    verify_installed_snapshots()
+
+
+def test_verify_installed_snapshots_passes_when_a_build_has_no_promoted_snapshot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A build with no snapshot is a gap (FR-027), a fact about one recording, not a fault."""
+    _write_snapshot_dir(tmp_path, "unpromoted")
+    monkeypatch.setattr(snapshot_module, "_snapshots_root", lambda: tmp_path)
+    verify_installed_snapshots()
+
+
+def test_verify_installed_snapshots_raises_for_a_snapshot_that_fails_its_digest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_snapshot_dir(tmp_path, "one")
+    (tmp_path / "one" / "rules.json").write_bytes(b'{"entities": {"tampered": true}}')
+    monkeypatch.setattr(snapshot_module, "_snapshots_root", lambda: tmp_path)
+    with pytest.raises(SnapshotDigestMismatch):
+        verify_installed_snapshots()
+
+
+def test_verify_installed_snapshots_raises_when_two_promoted_snapshots_describe_one_build(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The condition `snapshot_for` raises on, found without asking about any build."""
+    first_rules, second_rules = b'{"entities": {"first": 1}}', b'{"entities": {"second": 1}}'
+    _write_snapshot_dir(
+        tmp_path,
+        "first",
+        rules_json=first_rules,
+        snapshot_toml=_promoted_toml(first_rules, build="101102"),
+    )
+    _write_snapshot_dir(
+        tmp_path,
+        "second",
+        rules_json=second_rules,
+        snapshot_toml=_promoted_toml(second_rules, build="101102"),
+    )
+    monkeypatch.setattr(snapshot_module, "_snapshots_root", lambda: tmp_path)
+    with pytest.raises(SnapshotError, match="more than one promoted snapshot"):
+        verify_installed_snapshots()
+
+
+def test_verify_installed_snapshots_reads_the_tree_once_and_never_caches_a_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The per-request cost: one tree read per process while healthy, none after; and a failure is
+    not memoised, so the first call after a repair passes."""
+    _write_snapshot_dir(tmp_path, "one")
+    rules = tmp_path / "one" / "rules.json"
+    rules.write_bytes(b'{"entities": {"tampered": true}}')
+    monkeypatch.setattr(snapshot_module, "_snapshots_root", lambda: tmp_path)
+    with pytest.raises(SnapshotDigestMismatch):
+        verify_installed_snapshots()
+
+    rules.write_bytes(_RULES_JSON)
+    loads = 0
+    real_load = snapshot_module.load_snapshot
+
+    def counting(directory: str) -> Snapshot:
+        nonlocal loads
+        loads += 1
+        return real_load(directory)
+
+    monkeypatch.setattr(snapshot_module, "load_snapshot", counting)
+    verify_installed_snapshots()
+    assert loads == 1
+    verify_installed_snapshots()
+    verify_installed_snapshots()
+    assert loads == 1
 
 
 def test_snapshot_for_resolves_the_committed_promoted_fixture_by_its_real_build() -> None:

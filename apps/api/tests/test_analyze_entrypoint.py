@@ -33,6 +33,7 @@ module docstring on why `REQUIRED_ENV`'s own placeholder is deliberately unreach
 from __future__ import annotations
 
 import dataclasses
+import logging
 import secrets
 from datetime import UTC, datetime, timedelta
 from importlib import metadata
@@ -449,3 +450,55 @@ async def test_analyze_refuses_when_the_retention_cap_is_reached(
     assert response.status_code == 409
     assert response.json()["error"]["code"] == "analysis_cap_reached"
     assert await db_session.get(MatchAnalysis, _FIXTURE_GAME_ID) is None
+
+
+# ================================================================================================
+# T666h: a deployment that cannot analyse any recording answers 500, before anything is spent
+# ================================================================================================
+
+
+async def test_analyze_answers_500_for_a_broken_deployment_before_fetching_or_claiming_anything(
+    db_session: AsyncSession,
+    database_url: str,
+    clean_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The refusal is a 5xx the person asking can read, naming the fault class and nothing else:
+    the snapshot loader's own message (a packaged path and digests here, with a sentinel standing
+    for anything that must never leak) stays in the log. The source is never called, no row is
+    written (that the next request after a fix analyses normally is `apps/analyzer`'s own test)."""
+    from aoe2stats_knowledge import snapshot
+
+    sentinel = "SENTINEL-must-not-reach-the-response"
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    _install_no_calls_allowed_upstream(monkeypatch)
+    fake_store = _install_fake_object_store(monkeypatch)
+    await _seed_fixture_match(db_session)
+    user = await _seed_user(db_session)
+
+    def broken() -> object:
+        raise snapshot.SnapshotDigestMismatch(f"{sentinel}: digest does not match")
+
+    # The migrations' `fileConfig` disables loggers that already exist (`apps/analyzer/tests/
+    # test_run_once.py`'s identical fixture), which would hide the line asserted below.
+    logging.getLogger("aoe2stats_analyzer").disabled = False
+    snapshot.load_all_snapshots.cache_clear()
+    monkeypatch.setattr(snapshot, "load_all_snapshots", broken)
+    monkeypatch.setattr(snapshot, "load_resolvable_snapshots", broken)
+
+    with _client() as client:
+        await _sign_in(client, db_session, user)
+        with caplog.at_level(logging.ERROR, logger="aoe2stats_analyzer"):
+            response = client.post("/api/analyze", json={"game_id": _FIXTURE_GAME_ID})
+
+        assert response.status_code == 500
+        body = response.json()
+        assert body["error"]["code"] == "analysis_deployment_fault"
+        assert body["error"]["detail"] == {"fault": "SnapshotDigestMismatch"}
+        assert sentinel not in response.text
+        assert await db_session.get(MatchAnalysis, _FIXTURE_GAME_ID) is None
+        assert fake_store.put_calls == []
+
+        # The operator still gets the detail, from the log.
+        assert any(sentinel in record.getMessage() for record in caplog.records)

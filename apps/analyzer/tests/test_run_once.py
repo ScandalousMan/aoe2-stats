@@ -54,6 +54,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import shutil
 import uuid
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field
@@ -64,7 +65,12 @@ from typing import Any
 import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-from tests.snapshot_refresh import isolate_snapshot_root, promote_a_refreshed_snapshot
+from tests.snapshot_refresh import (
+    REAL_SNAPSHOT_DIRECTORY,
+    clear_snapshot_resolution_caches,
+    isolate_snapshot_root,
+    promote_a_refreshed_snapshot,
+)
 
 from aoe2stats_analyzer import extract
 from aoe2stats_analyzer import run as run_module
@@ -2238,3 +2244,296 @@ async def test_a_recompute_after_the_retry_window_that_succeeds_publishes_and_cl
 
     after = await _assert_recomputed_to_a_new_key(session_factory, published, extractor)
     assert after.lease_expires_at is None
+
+
+# --- T666h: a broken deployment is refused before anything is claimed -----------------------
+#
+# T666c routed a snapshot fault on a first analysis to 003's `_mark_failed`, but it surfaces after
+# `claim_for_analysis`: the request had already fetched the recording from the source (capture's
+# budget, constitution I), retained it, written an access-log row and parsed it, and the match then
+# ended terminally `failed` - which fixing the deployment does not undo. What is independent of any
+# recording (every installed snapshot loads and verifies, no two promoted snapshots describe one
+# build, the extractor's dependency record is not empty) is checked before the claim instead.
+
+
+@dataclass(slots=True)
+class _FirstRequest:
+    session_factory: async_sessionmaker[AsyncSession]
+    game_id: int
+    requester: uuid.UUID
+    profile_id: int
+    provider: _FakeReplayProvider
+    store: _FakeObjectStore
+
+    async def ask(
+        self, *, dependencies: dict[str, str] | None = None, max_calls: int = 1
+    ) -> _BuildNamingExtractor:
+        extractor = _BuildNamingExtractor(
+            point_of_view_profile_id=self.profile_id, max_calls=max_calls
+        )
+        if dependencies is not None:
+            extractor.engine_dependencies = dependencies
+        await run_module.run_once(
+            self.game_id,
+            _BUDGET_SECONDS,
+            self.requester,
+            session_factory=self.session_factory,
+            replay_provider=self.provider,
+            extractor=extractor,
+            object_store=self.store,
+        )
+        return extractor
+
+
+async def _a_first_request(
+    session_factory: async_sessionmaker[AsyncSession], *, game_id: int
+) -> _FirstRequest:
+    profile_a, profile_b = game_id + 1, game_id + 2
+    await _seed_match(
+        session_factory,
+        game_id=game_id,
+        completed_at=datetime.now(UTC) - timedelta(days=1),
+        profile_ids=[profile_a, profile_b],
+    )
+    return _FirstRequest(
+        session_factory=session_factory,
+        game_id=game_id,
+        requester=await _seed_user(session_factory),
+        profile_id=profile_a,
+        provider=_FakeReplayProvider(
+            ReplayBlob(content=b"raw bytes", filename="r.zip", content_type="application/zip"),
+            max_calls=1,
+        ),
+        store=_FakeObjectStore(),
+    )
+
+
+async def _assert_the_request_touched_nothing(request: _FirstRequest) -> None:
+    """The refusal's whole point: no byte fetched, no row written, nothing retained or logged."""
+    assert request.provider.calls == []
+    assert await _get_analysis(request.session_factory, request.game_id) is None
+    assert (
+        await _get_retained_recording(request.session_factory, request.game_id, request.profile_id)
+        is None
+    )
+    assert await _access_log_rows(request.session_factory) == []
+    assert request.store.objects == {}
+    assert request.store.put_calls == []
+
+
+def _break_a_snapshot(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Callable[[], None]:
+    """Corrupt the one installed snapshot (its content no longer matches the recorded digest) and
+    return the repair. The root is a throwaway copy; the committed tree is never touched."""
+    root = isolate_snapshot_root(monkeypatch, tmp_path)
+    effects_file = root / REAL_SNAPSHOT_DIRECTORY / "effects.toml"
+    original = effects_file.read_bytes()
+    effects_file.write_bytes(original + b"\n# edited after the digest was recorded\n")
+    return lambda: effects_file.write_bytes(original)
+
+
+def _promote_two_snapshots_of_one_build(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> Callable[[], None]:
+    """A second, byte-identical copy of the promoted snapshot under another directory name: both
+    load and verify, and both are promoted for one build - the condition `snapshot_for` raises on.
+    Returns the repair: the copy removed *and the process's caches cleared*, because this fault is
+    unlike a digest mismatch - both snapshots load and verify, so the tree read is a success and a
+    success is cached for the process's life. Repairing it is a redeploy (a new process), which is
+    what the cache clear stands for; the packaged tree is immutable inside one."""
+    root = isolate_snapshot_root(monkeypatch, tmp_path)
+    duplicate = root / "aoe2techtree-180059-duplicate"
+    shutil.copytree(root / REAL_SNAPSHOT_DIRECTORY, duplicate)
+
+    def repair() -> None:
+        shutil.rmtree(duplicate)
+        clear_snapshot_resolution_caches()
+
+    return repair
+
+
+def _no_deployment_fault(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Callable[[], None]:
+    return lambda: None
+
+
+@dataclass(frozen=True, slots=True)
+class _DeploymentFaultCase:
+    name: str
+    install: Callable[[pytest.MonkeyPatch, Path], Callable[[], None]]
+    #: The extractor's dependency record for the faulty request; `None` keeps the healthy one.
+    dependencies: dict[str, str] | None
+    fault_class: str
+
+
+_DEPLOYMENT_FAULTS = (
+    _DeploymentFaultCase(
+        "snapshot-digest-mismatch", _break_a_snapshot, None, "SnapshotDigestMismatch"
+    ),
+    _DeploymentFaultCase(
+        "two-promoted-snapshots", _promote_two_snapshots_of_one_build, None, "SnapshotError"
+    ),
+    _DeploymentFaultCase(
+        "empty-dependency-record", _no_deployment_fault, {}, "EmptyDependencyRecord"
+    ),
+)
+_FAULT_IDS = [case.name for case in _DEPLOYMENT_FAULTS]
+
+
+@pytest.mark.parametrize("case", _DEPLOYMENT_FAULTS, ids=_FAULT_IDS)
+async def test_a_broken_deployment_is_refused_before_anything_is_fetched_claimed_or_retained(
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+    case: _DeploymentFaultCase,
+) -> None:
+    """T666h: the request errors - it does not spend the source's budget to end `failed`. The
+    exception names the fault class and carries nothing from the packaged files or the
+    environment (the API shows it to the person who asked)."""
+    case.install(monkeypatch, tmp_path)
+    request = await _a_first_request(
+        session_factory, game_id=500_666_800 + _FAULT_IDS.index(case.name) * 10
+    )
+
+    with (
+        caplog.at_level(logging.ERROR, logger=run_module.logger.name),
+        pytest.raises(extract.DeploymentFault) as raised,
+    ):
+        await request.ask(dependencies=case.dependencies, max_calls=0)
+
+    await _assert_the_request_touched_nothing(request)
+    assert raised.value.fault_class == case.fault_class
+    assert case.fault_class in str(raised.value)
+    assert str(tmp_path) not in str(raised.value)
+    assert "effects.toml" not in str(raised.value)
+    assert [record.levelno for record in caplog.records] == [logging.ERROR]
+    assert case.fault_class in caplog.records[0].getMessage()
+
+
+@pytest.mark.parametrize("case", _DEPLOYMENT_FAULTS, ids=_FAULT_IDS)
+async def test_after_the_deployment_is_fixed_the_next_request_analyses_the_match_normally(
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    case: _DeploymentFaultCase,
+) -> None:
+    """The contrast that makes the refusal safe: the match was never claimed, so it is not
+    `failed` (a terminal state), and the request after the fix is a first analysis like any other.
+    A load that failed is not cached, so a repaired snapshot is seen at once; a fault that loaded
+    fine (two promoted snapshots) is repaired by a redeploy, modelled by the cache clear in its
+    repair."""
+    repair = case.install(monkeypatch, tmp_path)
+    request = await _a_first_request(
+        session_factory, game_id=500_666_850 + _FAULT_IDS.index(case.name) * 10
+    )
+    with pytest.raises(extract.DeploymentFault):
+        await request.ask(dependencies=case.dependencies, max_calls=0)
+    await _assert_the_request_touched_nothing(request)
+
+    repair()
+    extractor = await request.ask()
+
+    row = await _get_analysis(session_factory, request.game_id)
+    assert row is not None
+    assert row.state == MatchAnalysisState.PUBLISHED
+    assert row.error_class is None
+    assert row.result_key is not None
+    assert len(request.provider.calls) == 1
+    assert len(extractor.calls) == 1
+
+
+async def test_a_queued_row_that_already_exists_is_left_untouched_by_the_refusal(
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """`claim_for_analysis` creates the row on a first ask, but another writer may have queued it
+    first (its own docstring names the admission gate): the refusal does not claim it, so it stays
+    `queued` with no attempt counted and the next request claims it."""
+    repair = _break_a_snapshot(monkeypatch, tmp_path)
+    request = await _a_first_request(session_factory, game_id=500_666_890)
+    async with session_scope(session_factory) as session:
+        session.add(
+            MatchAnalysis(
+                game_id=request.game_id,
+                state=MatchAnalysisState.QUEUED,
+                point_of_view_profile_id=request.profile_id,
+                requested_by_user_id=request.requester,
+                requested_at=datetime.now(UTC),
+            )
+        )
+
+    with pytest.raises(extract.DeploymentFault):
+        await request.ask(max_calls=0)
+
+    row = await _get_analysis(session_factory, request.game_id)
+    assert row is not None
+    assert row.state == MatchAnalysisState.QUEUED
+    assert row.attempts == 0
+    assert row.claimed_at is None
+    assert request.provider.calls == []
+
+    repair()
+    await request.ask()
+    published = await _get_analysis(session_factory, request.game_id)
+    assert published is not None
+    assert published.state == MatchAnalysisState.PUBLISHED
+
+
+async def test_a_healthy_deployment_still_analyses_on_the_first_request(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """The contrast to the refusals: the check costs a healthy request nothing it can see."""
+    request = await _a_first_request(session_factory, game_id=500_666_900)
+
+    await request.ask()
+
+    row = await _get_analysis(session_factory, request.game_id)
+    assert row is not None
+    assert row.state == MatchAnalysisState.PUBLISHED
+    assert len(request.provider.calls) == 1
+    assert len(await _access_log_rows(session_factory)) == 1
+
+
+async def test_the_deployment_check_is_cached_and_does_no_io_after_the_first_request(
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Per-request cost of the check: the snapshot tree is read and digested once per process
+    (`load_all_snapshots` is `functools.cache`d - the packaged tree is immutable, FR-025); every
+    later request is a cache lookup per promoted build plus one truthiness test. Counted at the
+    loader, with the check counted at its seam so a request that skipped it would not pass."""
+    loads = 0
+    real_load_snapshot = snapshot.load_snapshot
+
+    def counting_load(directory: str) -> snapshot.Snapshot:
+        nonlocal loads
+        loads += 1
+        return real_load_snapshot(directory)
+
+    checks = 0
+    real_check = extract.verify_deployment
+
+    def counting_check(extractor: object) -> None:
+        nonlocal checks
+        checks += 1
+        real_check(extractor)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(snapshot, "load_snapshot", counting_load)
+    monkeypatch.setattr(extract, "verify_deployment", counting_check)
+    monkeypatch.setattr(run_module, "verify_deployment", counting_check)
+
+    first = await _a_first_request(session_factory, game_id=500_666_910)
+    await first.ask()
+    loads_after_first = loads
+    assert loads_after_first == len(snapshot.list_snapshot_directories()) > 0
+    assert checks == 1
+
+    second = await _a_first_request(session_factory, game_id=500_666_920)
+    await second.ask()
+
+    assert checks == 2
+    assert loads == loads_after_first, "a second request re-read or re-verified the snapshots"

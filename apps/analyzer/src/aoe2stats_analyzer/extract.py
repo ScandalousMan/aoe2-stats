@@ -68,7 +68,12 @@ from aoe2stats_core.truth.validate import DocumentInvalid, present_data, validat
 from aoe2stats_core.truth.validate import Entry as ValidatorEntry
 from aoe2stats_knowledge.coverage import coverage
 from aoe2stats_knowledge.gaps import KnowledgeGap
-from aoe2stats_knowledge.snapshot import Snapshot, SnapshotError, snapshot_for
+from aoe2stats_knowledge.snapshot import (
+    Snapshot,
+    SnapshotError,
+    snapshot_for,
+    verify_installed_snapshots,
+)
 from aoe2stats_replay_engine.silence import GroupSilenceEpisode, compute_group_silence_episodes
 
 #: `contracts/analysis-document.md`: "`schema_version` increments". Bumped only when the shape of
@@ -115,6 +120,7 @@ __all__ = [
     "ANALYTICS_VERSION",
     "SCHEMA_VERSION",
     "WALL_CLOCK_FIELDS",
+    "DeploymentFault",
     "DocumentInvalid",
     "EngineIdentity",
     "SnapshotError",
@@ -127,6 +133,7 @@ __all__ = [
     "extract_timeline",
     "published_document",
     "validate_document",
+    "verify_deployment",
 ]
 
 
@@ -372,6 +379,48 @@ def current_identity_digest(
         knowledge=_knowledge_record(snapshot_for(build)),
         analytics=ANALYTICS_VERSION,
     ).digest
+
+
+class DeploymentFault(Exception):
+    """The deployment cannot analyse **any** recording, found before one was touched (T666h).
+
+    `fault_class` names the kind of fault and is the only thing the message carries: the person who
+    asked sees it (`api/analyze.py`), and the detail - which snapshot, which digest, which packaged
+    file - describes this deployment's internals. That detail is `detail`, for the operator's log
+    line (`run.py`), never for a response. It is not a `ValueError`: a caller that swallows the
+    `ValueError`s a document can raise (`run.py`'s first-analysis path) must not swallow this one.
+    """
+
+    def __init__(self, fault_class: str, detail: str) -> None:
+        super().__init__(f"the deployment cannot analyse any recording: {fault_class}")
+        self.fault_class = fault_class
+        self.detail = detail
+
+
+def verify_deployment(extractor: EngineIdentity) -> None:
+    """Refuse a deployment that cannot analyse any recording, before a request spends anything on
+    one (T666h, constitution I). Raises `DeploymentFault`; returns nothing.
+
+    What it checks is independent of the recording and already cached: every installed knowledge
+    snapshot loads and passes its digest check, no two promoted snapshots describe one build
+    (`aoe2stats_knowledge.snapshot.verify_installed_snapshots`), and the extractor's dependency
+    record is not empty (FR-044 - the same refusal `AnalysisIdentity` makes, found here without a
+    recording to build one from). **Per-request cost**: one attribute read and, after the first call
+    in a process, one cache lookup per promoted build - no I/O, no database and no parse. A fault is
+    not cached, so the first request after a repair proceeds.
+
+    A snapshot fault only one build can reach (a snapshot that resolves for every other build) is
+    not found here and keeps its path through `run.py`'s first-analysis failure routing (T666c).
+    """
+    try:
+        verify_installed_snapshots()
+    except (SnapshotError, OSError) as exc:
+        raise DeploymentFault(type(exc).__name__, str(exc)) from exc
+    if not extractor.engine_dependencies:
+        raise DeploymentFault(
+            "EmptyDependencyRecord",
+            f"{extractor.engine_name} {extractor.engine_version} reports no dependency record",
+        )
 
 
 def _gap_record(gap: KnowledgeGap) -> dict[str, Any]:
