@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Backfill `match_players`' six Relic-derived columns from `matches.raw_payload` (T415, T411).
 
-**The gap this closes.** `upsert_match_player` (`apps/ingester/.../discover.py`) wrote only the
-`(game_id, profile_id)` primary key until T413 gave it `civ_id`, `team_id`, `rating`,
-`rating_diff` and `result` too — but that fix only reaches matches discovered *after* it ships.
+**The gap this closes.** Until T413 a `match_players` row carried only its `(game_id,
+profile_id)` primary key; `civ_id`, `team_id`, `rating`, `rating_diff` and `result` are now written
+from `matches.raw_payload`, but that only reaches matches discovered *after* it shipped.
 Every row written before it carries those five columns `NULL`, which is US1's own acceptance test
 ("load a profile with known matches") failing on the first real profile it is pointed at. This
 script is the one-time (and safely re-runnable) sweep over what is already on disk.

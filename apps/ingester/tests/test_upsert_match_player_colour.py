@@ -1,16 +1,16 @@
-"""T411 — `upsert_match_player` (`discover.py`) writes `match_players.color_id` from Relic's own
+"""T411 — `upsert_match_players` (`discover.py`) writes `match_players.color_id` from Relic's own
 `slotinfo`, and never erases a stored colour with a `NULL` projection.
 
-Both `match_players` writers — `DiscoverStage.__call__` and `routers/players.py`'s
-`_refresh_third_party_history` — call this one function, so this file is the whole of the wiring
-proof; the decode itself is `packages/storage/tests/test_match_projection.py`'s.
+`persist_matches_and_profiles` (T459) writes `match_players` through this one function, so this
+file is the whole of the wiring proof; the decode itself is
+`packages/storage/tests/test_match_projection.py`'s. It calls the function with one-element
+batches.
 
 The `COALESCE(excluded.color_id, match_players.color_id)` in the statement's `SET` clause is the
 asymmetry under test: a payload the projection cannot read (no `slotinfo` — a synthetic
 `raw_payload`, or a shape Relic has not served yet) projects `None`, and `None` means "unknown".
-A colour stored by an earlier sighting, or by the companion fallback
-(`routers/matches.py::enrich_colours`), must survive that rediscovery; a non-`None` projection
-must win, Relic being the primary source.
+A colour stored by an earlier sighting, or by the companion fallback, must survive that
+rediscovery; a non-`None` projection must win, Relic being the primary source.
 """
 
 from __future__ import annotations
@@ -58,8 +58,8 @@ def _raw_match(entry: dict[str, Any]) -> RawMatch:
 async def _upsert(session: AsyncSession, raw_match: RawMatch) -> None:
     from aoe2stats_ingester import discover
 
-    await discover.upsert_match(session, raw_match)
-    await discover.upsert_match_player(session, raw_match, _PROFILE_ID)
+    await discover.upsert_matches(session, [raw_match])
+    await discover.upsert_match_players(session, [(raw_match, _PROFILE_ID)])
 
 
 async def _colour(session_factory: async_sessionmaker[AsyncSession]) -> int | None:

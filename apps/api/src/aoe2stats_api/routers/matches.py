@@ -145,87 +145,51 @@ and `unavailable`; every other `CaptureStatus` (`pending`, `downloading`, `faile
 behaviour change for those five and does not depend on remembering which two statuses currently
 matter if `derive_availability` ever learns to read a third.
 
-**Read-time colour enrichment (T420, FR-003) — a fallback since T411.** `research.md` **D2**
-held that `match_players.color_id` has no Relic source; it does — `slotinfo[].metaData.
-ScenarioPlayerIndex`, which `project_match_player` now reads and `upsert_match_player` writes at
-discovery (`docs/data-sources.md` §1). `enrich_colours` below therefore only ever fires for a row
-the projection left `NULL`, and its `color_id IS NULL` gate makes it a no-op for every match the
-ingester or the T415 backfill has already coloured. It is called from `list_matches` alone
-— "batched over the page's game ids" is `list_matches`'s own vocabulary, not `get_match_detail`'s,
-and every one of T419's tests drives it through `GET /api/matches` — on **the display path only**,
-never from `apps/ingester` and never from the capture path: colour never changes once a match is
-over, so wiring this into discovery would make it part of what is captured for no benefit, and it
-is not on the FR-014 replay-quarantine surface at all. `get_match_detail` still serves whatever
-`color_id` `list_matches` has already cached (per `contracts/http-api.md`: "Unchanged. It already
-serves ... `color_id`") — it does not enrich on its own, so a match viewed only through its detail
-route and never listed keeps `color_id: null`, the same legitimate FR-010 resting state
-`data-model.md` §6 describes for a match companion does not know, rather than a second, uncontrolled
-companion call on a route nothing in this feature's own test suite exercises against it. It calls
-`CompanionEnrichmentProvider.enrich_matches` **once per page, batched over every game_id on it, not
-once per match** — but only when at least one participant among those game_ids is still missing a
-colour; once a page is fully coloured, a repeat view is a database read (`research.md` **D2**,
-`data-model.md` §6). A degraded companion (a 403, an outage, a malformed body — `enrich_matches`
-never raises, see `companion/provider.py`'s own module docstring) answers `{}` or a partial map: the
-`UPDATE` below only fires for a `(game_id, profile_id)` pair the response actually names a
-`color_id` for, and only ever replaces a `NULL` — never a colour already cached by an earlier,
-successful view (`data-model.md` §6: "a degraded companion writes nothing; it does not write
-`NULL`" — this is the one property `test_match_colour_enrichment.py` exists to prove, and the one
-an unconditional `SET` from an empty enrichment result would silently break). The wiring below
-(`_COMPANION_HTTP_CLIENT`, `_COMPANION_RATE_LIMITER`, `_companion_breaker`, `_companion_call_sink`)
-is `routers/players.py`'s own `_build_search_provider` wiring, duplicated rather than imported —
-this module's own convention of a self-contained file (see the docstrings above), and importing
-from `players.py` here would invert the existing `players.py -> matches.py` (`match_row_json`)
-dependency into a cycle.
+**Read-time colour enrichment (T420, FR-003) — a fallback since T411.** Relic's own response
+carries the colour (`slotinfo[].metaData.ScenarioPlayerIndex`, read by `project_match_player`;
+`docs/data-sources.md` §1), so companion is asked only when some participant's colour is still
+unknown, and fills only a `NULL`. `fetch_colour_fills` calls
+`CompanionEnrichmentProvider.enrich_matches` **once,
+batched over every game id it is given, not once per match**, and only when at least one
+participant among them is still missing a colour; once they are all coloured, a repeat view is a
+database read (`research.md` **D2**, `data-model.md` §6). It is on the display path only, never on
+the capture path: colour never changes once a match is over. A degraded companion (a 403, an
+outage, a malformed body — `enrich_matches` never raises, see `companion/provider.py`'s own module
+docstring) answers `{}` or a partial map: a fill is made only for a `(game_id, profile_id)` pair the
+response names a `color_id` for, and only into a `NULL`, never over a colour already stored
+(`data-model.md` §6: "a degraded companion writes nothing; it does not write `NULL`"). The wiring
+below (`_COMPANION_HTTP_CLIENT`, `_COMPANION_RATE_LIMITER`, `_companion_breaker`,
+`_companion_call_sink`) is duplicated from `routers/players.py`, not imported: this module is
+self-contained by convention, and importing from `players.py` here would invert that module's
+dependency on this one (`match_row_json`) into a cycle.
 
-**`enrich_colours` is also `routers/players.py`'s own writer (T450, FR-003).** `GET /api/players/
-{profile_id}/matches` (`get_player_match_history`) serves the identical row shape through the
-identical `match_row_json` (this module's own export, see that function's docstring) but, before
-T450, never called this function at all, so `color_id` stayed `NULL` for a freshly-viewed profile
-even though `GET /api/matches` had already coloured the same match. Public (no leading underscore)
-for exactly the reason `match_row_json` already is: so the two routes can never drift onto two
-different colour-enrichment implementations. `players.py` imports it directly rather than
-duplicating its body — unlike the companion wiring above (`_COMPANION_HTTP_CLIENT` and friends),
-which `players.py` already carries its own, independent copy of for `search.py`'s traffic, this
-function's *behaviour*, not merely its transport, is the thing FR-003 requires to be identical
-across both routes, which a second, separately-maintained copy could not guarantee. The one-way
-dependency this creates (`players.py -> matches.py`) is the same direction `match_row_json` already
-established; nothing here reverses it.
+**The identity refresh for the match page (defect fix, quickstart scenario 5).** A participant this
+service met only as a third party can carry its `str(profile_id)` numeric placeholder as `alias`
+for ever. `_fetch_match_identity` asks Relic's `getRecentMatchHistory` identity block
+(`RelicMatchHistoryProvider.recent_profiles`) about every participant of `game_id` whose alias is
+missing or a placeholder, in one call, and not at all when every participant already has a real one
+(constitution I: "capture outranks analysis" reads equally as "a view that needs nothing new must
+ask for nothing"). The Relic wiring below (`_RELIC_HTTP_CLIENT`, `_RELIC_RATE_LIMITER`,
+`_relic_call_sink`, `_build_match_history_provider`) is duplicated from `routers/players.py` for the
+reason the companion wiring above gives.
 
-**Colour enrichment is now also on `get_match_detail`'s own path (defect fix, quickstart scenario
-5).** T333's manual walk against production found `match_players.color_id` NULL forever on a match
-this service only ever met as a third party's opponent: `enrich_colours` above was wired into
-`list_matches` and `players.py::get_player_match_history` but never into `get_match_detail` itself,
-so a match viewed only through its detail route stayed uncoloured no matter how many times it was
-opened. `_fetch_detail_response` below now calls it too, batched over `[game_id]` alone — the same
-"at most one call, only when something is still missing" discipline described above, unchanged.
+**One persistence, fetches first (T459a, FR-017).** The colour fill is a `match_players` write, and
+the lock-order invariant (`aoe2stats_ingester.discover`'s module notes) is per transaction. Both
+network steps of the match page — companion's colours (`fetch_colour_fills`) and Relic's identity
+block (`_fetch_match_identity`) — therefore run **before the first write**, and the page then
+persists once, through `discover.persist_matches_and_profiles`, in a savepoint that degrades on a
+lock conflict: `aoe_profiles` ascending, then the colour fills among `match_players`, locked
+ascending.
 
-**The on-view identity refresh, narrowed to this route's own need (defect fix, quickstart scenario
-5).** The same manual walk found a participant this service met only as a third party still
-carrying its `str(profile_id)` numeric placeholder as `alias` on the detail page, forever — nothing
-on this route ever refreshed it. `routers/players.py::_refresh_profile_identity` already solves
-this for its own two routes, but pulls in two further steps (ladder standing, the avatar hash) this
-page has no use for; `_refresh_match_identity` below takes only its first step — Relic's
-`getRecentMatchHistory` identity block (`RelicMatchHistoryProvider.recent_profiles`), persisted
-through `discover.persist_matches_and_profiles` (T459) exactly as `players.py` already does —
-batched over every
-participant of `game_id` still carrying a missing or placeholder alias, in one call, never one per
-participant, and never called at all when every participant already has a real one (constitution I:
-"capture outranks analysis" reads equally as "a view that needs nothing new must ask for nothing").
-The Relic wiring below (`_RELIC_HTTP_CLIENT`, `_RELIC_RATE_LIMITER`, `_relic_call_sink`,
-`_build_match_history_provider`) is `players.py`'s own wiring, duplicated rather than imported —
-the identical reason the companion wiring above already gives: `players.py` imports `enrich_colours`
-and `match_row_json` from this module, so importing back from `players.py` here would invert that
-one-way dependency into a cycle.
-
-**The re-read, and why the first response must not skip it.** `enrich_colours` and
-`_refresh_match_identity` both write straight to the database — never to the already-materialised,
+**The re-read, and why the first response must not skip it.** The colour fill and the identity
+refresh both write straight to the database — never to the already-materialised,
 frozen `MatchDetail` this function already holds — so without reading it back, the very first
 (uncached) response after either write would still serialise the stale placeholder alias or `NULL`
 colour it just replaced, and a caller would only see the fix on a *second* view. `_fetch_detail_
-response` below re-reads `detail` once, but only when one of the two enrichments could plausibly
-have changed something — `colour_missing` (some participant still had `color_id is None` before
-`enrich_colours` ran) or a non-empty `placeholder_profile_ids` — so a match where every participant
-already carries a real alias and a real colour costs no second query at all.
+response` below re-reads `detail` once, but only when one of the two could plausibly have changed
+something — `colour_missing` (some participant still had `color_id is None` before the fill) or a
+non-empty `placeholder_profile_ids` — so a match where every participant already carries a real
+alias and a real colour costs no second query at all.
 """
 
 from __future__ import annotations
@@ -237,7 +201,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Query, Request
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.engine import Engine
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
@@ -248,7 +212,7 @@ from aoe2stats_api.deps import ResponseCacheDep, SessionDep, SettingsDep, cache_
 from aoe2stats_api.errors import APIError
 from aoe2stats_api.match_types import match_type_name
 from aoe2stats_ingester import discover
-from aoe2stats_providers.base import ProviderCallRecord
+from aoe2stats_providers.base import ProviderCallRecord, RawMatch, RawProfile
 from aoe2stats_providers.companion.provider import CompanionEnrichmentProvider
 from aoe2stats_providers.relic.matches import RelicMatchHistoryProvider
 from aoe2stats_providers.wiring import (
@@ -274,6 +238,7 @@ from aoe2stats_storage.repositories.matches import (
     MatchListRow,
     MatchParticipant,
     Opponent,
+    project_match_player,
 )
 
 router = APIRouter(tags=["matches"])
@@ -339,67 +304,112 @@ def _build_enrichment_provider(db_session: AsyncSession) -> CompanionEnrichmentP
     )
 
 
-async def enrich_colours(
-    db_session: AsyncSession, profile_ids: Sequence[int], game_ids: Sequence[int]
-) -> None:
-    """T420: the companion **fallback** writer of `match_players.color_id` — since T411 the
-    ingester's `upsert_match_player` writes it first, from Relic's own `slotinfo` (module
-    docstring), and this only reaches rows that projection left `NULL`. Public — `routers/
-    players.py::get_player_match_history` imports this directly (T450), the same "one writer, not
-    two" reasoning `match_row_json` already carries for the row shape itself. Calls
-    `CompanionEnrichmentProvider.enrich_matches` **at most once**, batched over every `game_id` in
-    `game_ids` together — never once per match — and only when at least one of them still carries a
-    `match_players` row with `color_id IS NULL`. Once every participant across `game_ids` already
-    has a colour cached, this returns without ever reaching the transport, which is what turns a
-    second view of the same matches into a database read (`research.md` **D2**).
+async def fetch_colour_fills(
+    db_session: AsyncSession,
+    profile_ids: Sequence[int],
+    game_ids: Sequence[int],
+    *,
+    fetched: Sequence[RawMatch] = (),
+) -> dict[tuple[int, int], int]:
+    """T420, T459a: the companion **fallback** for `match_players.color_id` — fetch half. Since T411
+    the ingester's `upsert_match_players` writes the colour first, from Relic's own `slotinfo`
+    (module docstring), and this only reaches pairs that projection left unknown. **It writes
+    nothing**: it returns the `(game_id, profile_id) -> color_id` fills for the caller to persist
+    through `discover.persist_matches_and_profiles(..., colour_fills=...)`, in the caller's one
+    savepoint, after every network call it has to make (module docstring's "One persistence,
+    fetches first").
+
+    Calls `CompanionEnrichmentProvider.enrich_matches` **at most once**, batched over every
+    `game_id` in `game_ids` together — never once per match — and only when at least one pair
+    across them still lacks a colour. Once every participant is coloured it returns `{}` without
+    reaching the transport, which is what turns a second view of the same matches into a database
+    read (`research.md` **D2**).
+
+    `fetched` (T459a): matches the caller has fetched from Relic and **not yet stored**. Their
+    colour is what the persistence will write — `project_match_player`'s, which wins outright —
+    so a pair Relic's payload colours is not "missing", and a pair it does not colour, with no
+    stored row (or a stored `NULL`), is. The caller passes `game_ids` as the union of those
+    matches and the stored page it is about to serve.
 
     `profile_ids` (T409 fix) is threaded straight through to `enrich_matches`: the companion
     endpoint is queried *by profile*, never by match (`companion/provider.py`'s "The endpoint"
-    note) — a caller passes the profiles it already knows are relevant to `game_ids` (a route's own
-    `profile_id`, or a match's participants), never a value derived here, since this function has
-    no other way to know which profiles' recent matches to ask the source for.
+    note) — a caller passes the profiles it already knows are relevant to `game_ids`.
 
-    A degraded companion (`enrich_matches` never raises — see `companion/provider.py`'s own module
-    docstring) answers `{}` or a partial map: the loop below only ever `UPDATE`s a `(game_id,
-    profile_id)` pair the response actually names a `color_id` for, and only ever replaces a row
-    still `NULL` (`MatchPlayer.color_id.is_(None)` in the `WHERE` clause) — a colour already cached
-    by an earlier, successful view is never overwritten, degraded response or not (`data-model.md`
-    §6, `test_match_colour_enrichment.py`'s own "does not write `NULL`" assertion). The identical
-    discipline covers a `game_id` companion's default page no longer carries at all (an old match
-    it stopped paging, T409's own "honest degrade"): absent from `enrichment`, so the loop below
-    never reaches its row — `color_id` stays exactly whatever it already was, never coerced to `0`
-    or any other placeholder.
+    Precedence, unchanged since T420: companion **fills a `NULL` and nothing else**. This function
+    drops a pair that already has a stored or Relic colour, and `discover.fill_missing_colours`
+    repeats the guard in SQL (`color_id IS NULL`) — the check that holds if a writer sets a colour
+    between this read and the write. A degraded companion (`enrich_matches` never raises — see
+    `companion/provider.py`'s own module docstring) answers `{}` or a partial map, and a pair it
+    names no `color_id` for is simply absent: nothing is ever written as `NULL`, `0` or any other
+    placeholder (`data-model.md` §6, `test_match_colour_enrichment.py`'s "does not write `NULL`").
     """
     if not profile_ids or not game_ids:
-        return
+        return {}
+    wanted_games = set(game_ids)
 
-    still_missing = await db_session.execute(
-        select(MatchPlayer.game_id)
-        .where(MatchPlayer.game_id.in_(game_ids), MatchPlayer.color_id.is_(None))
-        .limit(1)
+    stored_rows = await db_session.execute(
+        select(MatchPlayer.game_id, MatchPlayer.profile_id, MatchPlayer.color_id).where(
+            MatchPlayer.game_id.in_(wanted_games)
+        )
     )
-    if still_missing.scalar_one_or_none() is None:
+    stored: dict[tuple[int, int], int | None] = {
+        (game_id, profile_id): colour for game_id, profile_id, colour in stored_rows.all()
+    }
+    relic_coloured: set[tuple[int, int]] = set()
+    relic_unknown: set[tuple[int, int]] = set()
+    for raw_match in fetched:
+        if raw_match.game_id not in wanted_games:
+            continue
+        for profile_id in raw_match.player_profile_ids:
+            colour = project_match_player(raw_match.raw_payload, profile_id).color_id
+            (relic_unknown if colour is None else relic_coloured).add(
+                (raw_match.game_id, profile_id)
+            )
+
+    still_missing = any(
+        colour is None and key not in relic_coloured for key, colour in stored.items()
+    ) or any(stored.get(key) is None for key in relic_unknown)
+    if not still_missing:
         # Every participant across `game_ids` is already coloured — a repeat view, or a page
         # nobody has ever needed companion for. No companion call at all (module docstring).
-        return
+        return {}
 
     provider = _build_enrichment_provider(db_session)
     enrichment = await provider.enrich_matches(profile_ids, game_ids)
+    fills: dict[tuple[int, int], int] = {}
     for game_id, match_enrichment in enrichment.items():
         if match_enrichment.participants is None:
             continue
         for profile_id, participant in match_enrichment.participants.items():
-            if participant.color_id is None:
+            key = (game_id, profile_id)
+            if participant.color_id is None or key in relic_coloured:
                 continue
-            await db_session.execute(
-                update(MatchPlayer)
-                .where(
-                    MatchPlayer.game_id == game_id,
-                    MatchPlayer.profile_id == profile_id,
-                    MatchPlayer.color_id.is_(None),
-                )
-                .values(color_id=participant.color_id)
-            )
+            if stored.get(key) is not None:
+                continue
+            fills[key] = participant.color_id
+    return fills
+
+
+async def persist_colour_fills(db_session: AsyncSession, fills: dict[tuple[int, int], int]) -> None:
+    """T459a: write `fills` alone, with no batch beside them. One savepoint, one ascending lock
+    pass, one update; a lock conflict rolls the fills back and the page is served as stored, like
+    every other on-view write."""
+    if not fills:
+        return
+    async with discover.savepoint_tolerating_lock_conflicts(db_session):
+        await discover.persist_matches_and_profiles(db_session, [], (), fills)
+
+
+async def enrich_colours(
+    db_session: AsyncSession, profile_ids: Sequence[int], game_ids: Sequence[int]
+) -> None:
+    """T420: fetch companion's colours for `game_ids` and persist them (`fetch_colour_fills`, then
+    `persist_colour_fills`). Fetch and persist are separate functions so that a caller with a batch
+    of its own can make every network call before its first write and land everything in one
+    savepoint."""
+    await persist_colour_fills(
+        db_session, await fetch_colour_fills(db_session, profile_ids, game_ids)
+    )
 
 
 # --- On-view identity refresh, alias/country only (defect fix, module docstring) -----------------
@@ -452,42 +462,35 @@ def _build_match_history_provider(db_session: AsyncSession) -> RelicMatchHistory
     )
 
 
-async def _refresh_match_identity(db_session: AsyncSession, profile_ids: Sequence[int]) -> None:
-    """T333 remediation, FR-017: the alias/country half of `routers/players.py::_refresh_profile_
+async def _fetch_match_identity(
+    db_session: AsyncSession, profile_ids: Sequence[int]
+) -> list[RawProfile]:
+    """T333 remediation, FR-017: the alias/country half of `routers/players.py::_fetch_profile_
     identity` alone (module docstring) — never the ladder-standing or avatar-hash steps, which
     `get_match_detail` has no use for. One `RelicMatchHistoryProvider.recent_profiles` call, batched
-    over every id in `profile_ids` together, persisted through
-    `discover.persist_matches_and_profiles` for
-    every profile the response names (not only the ones asked for, exactly like `players.py`'s own
-    step 1) — a real alias overwrites the numeric-id placeholder, a missing or still-placeholder one
-    never clobbers a real alias already stored (`touch_aoe_profile`'s own "on conflict" docstring).
-    Persisted through `discover.persist_matches_and_profiles` (T459): one multi-row statement, rows
-    ascending by `profile_id`, so this route's lock order agrees with every other writer of
-    `aoe_profiles`; a lock conflict rolls back only this refresh and the page is served as stored.
+    over every id in `profile_ids` together. **Fetch only (T459a)**: the route persists what comes
+    back — every profile the response names, not only the ones asked for, exactly like
+    `players.py`'s own refresh — together with the colour fills, once, through
+    `discover.persist_matches_and_profiles` (T459): one multi-row statement, rows ascending by
+    `profile_id`, so this route's lock order agrees with every other writer of `aoe_profiles`. A
+    real alias overwrites the numeric-id placeholder; a missing or still-placeholder one never
+    clobbers a real alias already stored (`touch_aoe_profile`'s own "on conflict" docstring).
 
     Degrades silently, exactly like every other optional provider call in this codebase
     (`_fetch_third_party_history`'s own docstring in `players.py`): any exception from Relic is
-    swallowed, and the caller of this function is left with whatever `aoe_profiles` already held —
-    never a failed view over an identity refresh that was only ever a nice-to-have.
+    swallowed and an empty list comes back, leaving the caller with whatever `aoe_profiles`
+    already held — never a failed view over an identity refresh that was only ever a nice-to-have.
     """
     if not profile_ids:
-        return
+        return []
 
     relic_provider = _build_match_history_provider(db_session)
     try:
-        raw_profiles = await relic_provider.recent_profiles(profile_ids)
+        return list(await relic_provider.recent_profiles(profile_ids))
     except Exception:
         # See the docstring above: this fetch is optional, and its failure — however it is
         # shaped — must never turn into a failed view.
-        return
-
-    if not raw_profiles:
-        return
-
-    # T459: one batched, ascending write through the shared ordering helper, in a savepoint that
-    # degrades on a lock conflict (the same discipline `players.py`'s on-view refresh follows).
-    async with discover.savepoint_tolerating_lock_conflicts(db_session):
-        await discover.persist_matches_and_profiles(db_session, [], raw_profiles)
+        return []
 
 
 # --- Session resolution, the same discipline `auth.py`, `privacy.py`, `profiles.py` and
@@ -1048,28 +1051,29 @@ async def get_match_detail(
         if detail is None:
             raise _match_not_found()
 
-        # Defect fix (T333, quickstart scenario 5): colour, then identity, both on this route's
-        # own cache-miss path — module docstring's "Colour enrichment is now also on
-        # `get_match_detail`'s own path" and "The on-view identity refresh" notes. `colour_missing`
-        # is read off `detail` *before* `enrich_colours` runs, so it reflects what was true walking
+        # Defect fix (T333, quickstart scenario 5): colour and identity, both on this route's own
+        # cache-miss path — module docstring's "Read-time colour enrichment" and "The identity
+        # refresh for the match page" notes. `colour_missing`
+        # is read off `detail` *before* anything is written, so it reflects what was true walking
         # in, which is exactly what decides whether the re-read below is worth its own query.
         colour_missing = any(participant.color_id is None for participant in detail.participants)
-        # T409: companion is queried by profile, never by match — batching over both sides of the
-        # match (`detail.participants`) covers the whole match in the one call `enrich_colours`
-        # already promises, rather than one call per participant.
-        await enrich_colours(
-            db_session,
-            [participant.profile_id for participant in detail.participants],
-            [game_id],
-        )
-
         placeholder_profile_ids = [
             participant.profile_id
             for participant in detail.participants
             if participant.alias is None or participant.alias == str(participant.profile_id)
         ]
-        if placeholder_profile_ids:
-            await _refresh_match_identity(db_session, placeholder_profile_ids)
+        # T459a: every network call first, then one persistence (module docstring's "One
+        # persistence, fetches first"). T409: companion is queried by profile, never by match —
+        # batching over both sides of the match covers the whole match in the one call.
+        fills = await fetch_colour_fills(
+            db_session,
+            [participant.profile_id for participant in detail.participants],
+            [game_id],
+        )
+        raw_profiles = await _fetch_match_identity(db_session, placeholder_profile_ids)
+        if fills or raw_profiles:
+            async with discover.savepoint_tolerating_lock_conflicts(db_session):
+                await discover.persist_matches_and_profiles(db_session, [], raw_profiles, fills)
 
         if colour_missing or placeholder_profile_ids:
             # Neither write above lands on this already-materialised `detail` — re-read so the

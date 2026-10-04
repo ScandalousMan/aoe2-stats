@@ -101,9 +101,9 @@ ruled on, and names remain factual text in our own typeface.
 ### 2a. The unknown outcome, never rendered as a loss (Amended 2026-08-29)
 
 **A `result` this service has not yet recorded is not the same fact as a loss, and must never read
-as one.** `match_players.result` is `null` for every row this system has written to date
-(`apps/ingester/src/aoe2stats_ingester/discover.py`'s `upsert_match_player` inserts only
-`(game_id, profile_id)`; no enrichment stage yet fills in a player's result). Before this amendment,
+as one.** `match_players.result` is `null` where no result has been recorded for
+the row.
+Before this amendment,
 `formatOutcome` coerced anything that was not literally `"win"` — `null` included — to `"loss"`,
 which meant an eight-player match with no known result anywhere rendered as eight losses: a
 confident, false statement produced from an absence of information. This is the same failure

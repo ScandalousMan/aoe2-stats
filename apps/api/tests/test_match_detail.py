@@ -752,7 +752,7 @@ async def test_match_detail_widened_to_any_match_the_service_holds(
     assert body["completed_at"] == completed_at.isoformat()
     assert body["started_at"] == (completed_at - timedelta(seconds=1500)).isoformat()
     # FR-018's "game version" — `matches.patch`, the column the ingester already populates from
-    # the source (`discover.py`'s `_upsert_match`) and which, until T327, no route has surfaced.
+    # the source, and which, until T327, no route has surfaced.
     assert body["patch"] == "101102"
 
     by_profile = _participants_by_profile_id(body)

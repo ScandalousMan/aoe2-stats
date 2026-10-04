@@ -82,13 +82,9 @@ _CURSOR_SEPARATOR = "|"
 
 # --- projection: matches.raw_payload -> match_players (T413, research.md D1) ---------------------
 #
-# `upsert_match_player` (`apps/ingester/.../discover.py`) inserted only the `(game_id, profile_id)`
-# primary key: `civ_id`, `team_id`, `rating`, `rating_diff` and `result` were declared columns,
-# read by three routers and the privacy export, and written by nobody. Every one of them is
-# already sitting, unread, in `matches.raw_payload` — this section is the pure mapping T413 exists
-# to write once so both writers of `match_players` (`DiscoverStage.__call__` and
-# `apps/api/.../routers/players.py`'s `_refresh_third_party_history`) share it rather than each
-# growing its own copy.
+# Every `match_players` column other than the `(game_id, profile_id)` key is already sitting,
+# unread, in `matches.raw_payload`, which the same transaction holds — this section is the one pure
+# mapping from the payload to those columns, so no writer grows its own copy.
 
 
 @dataclass(frozen=True, slots=True)
@@ -231,9 +227,9 @@ def project_match_player(raw_match: Mapping[str, Any], profile_id: int) -> Proje
     `raw_match` carrying no `matchhistorymember[]` entry for `profile_id` at all — a payload
     shape from before this projection existed, or a caller assembling a synthetic `raw_payload`
     (several `apps/ingester` tests do exactly this) — is not a fault to raise on: it projects to
-    every field `None`, the same "nothing written yet" state `upsert_match_player` produced before
-    T413, so a payload this function cannot yet interpret degrades rather than blocking the write
-    of the row it *does* know how to place (the primary key).
+    every field `None`, the "nothing written yet" state, so a payload this function cannot yet
+    interpret degrades rather than blocking the write of the row it *does* know how to place (the
+    primary key).
     """
     member = next(
         (

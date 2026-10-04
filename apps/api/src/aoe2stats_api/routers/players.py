@@ -84,8 +84,9 @@ is the `rate_limited` envelope `contracts/http-api.md` names, carrying `retry_af
 from __future__ import annotations
 
 import functools
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Query, Request
@@ -97,7 +98,7 @@ from aoe2stats_api.deps import SessionDep, SettingsDep
 from aoe2stats_api.errors import APIError
 from aoe2stats_api.leaderboards import leaderboard_name
 from aoe2stats_api.ratelimit import check_and_increment
-from aoe2stats_api.routers.matches import enrich_colours, match_row_json
+from aoe2stats_api.routers.matches import fetch_colour_fills, match_row_json
 from aoe2stats_api.search import persist_avatar_hashes
 from aoe2stats_api.search import search_players as run_search
 from aoe2stats_ingester import discover
@@ -118,7 +119,11 @@ from aoe2stats_providers.wiring import (
 )
 from aoe2stats_storage.models import AoeProfile, ProviderCall
 from aoe2stats_storage.models import Session as SessionRow
-from aoe2stats_storage.repositories.matches import DEFAULT_PAGE_SIZE, MatchesRepository
+from aoe2stats_storage.repositories.matches import (
+    DEFAULT_PAGE_SIZE,
+    MatchesPage,
+    MatchesRepository,
+)
 from aoe2stats_storage.repositories.ratings import RatingsRepository
 
 router = APIRouter(tags=["players"])
@@ -344,13 +349,16 @@ async def _persist_on_view_refresh(
     *,
     raw_matches: Sequence[RawMatch] = (),
     identity: _IdentityFetch,
+    colour_fills: Mapping[tuple[int, int], int] | None = None,
 ) -> None:
     """T459, FR-017: persist everything an on-view refresh fetched, once, in one savepoint.
 
     Order inside the savepoint is the global lock order (`aoe2stats_ingester.discover`'s module
     notes): `persist_matches_and_profiles` writes `matches`, then `aoe_profiles` (history's
     participants and the identity block merged, one row per profile, ascending), then
-    `match_players`, in three statements whatever the batch size. The writes after it take no lock
+    `match_players` — the batch's rows and companion's `colour_fills` (T459a), locked in one
+    ascending pass — in a constant number of statements whatever the batch size. The writes after it
+    take no lock
     outside what it already took: `rating_snapshots` is insert-only with a foreign key on a profile
     row this transaction already holds, and `persist_avatar_hashes` updates only the viewed
     profile's own `aoe_profiles` row — present in the batch, since an avatar is only searched for
@@ -361,14 +369,19 @@ async def _persist_on_view_refresh(
     other database error propagates. Nothing fetched is persisted in that case, which is correct:
     the next view fetches it again.
     """
-    if not raw_matches and not identity.raw_profiles and not identity.snapshots:
+    if (
+        not raw_matches
+        and not identity.raw_profiles
+        and not identity.snapshots
+        and not colour_fills
+    ):
         # Nothing was fetched (an avatar hit implies an identity block, so it cannot be the sole
         # content): no savepoint, no statement.
         return
 
     async with discover.savepoint_tolerating_lock_conflicts(db_session):
         await discover.persist_matches_and_profiles(
-            db_session, list(raw_matches), identity.raw_profiles
+            db_session, list(raw_matches), identity.raw_profiles, colour_fills
         )
         ratings_repo = RatingsRepository(db_session)
         for snapshot in identity.snapshots:
@@ -685,6 +698,26 @@ async def get_player_rating_history(
 # --- GET /api/players/{profile_id}/matches — FR-007, FR-008a property 1, FR-011, FR-012 ---------
 
 
+def _newest_first(completed_at: datetime, game_id: int) -> tuple[datetime, int]:
+    """`MatchesRepository.list_matches`'s sort key: `(completed_at, game_id)`, newest first."""
+    return (completed_at if completed_at.tzinfo else completed_at.replace(tzinfo=UTC), game_id)
+
+
+def _matches_that_can_be_served(
+    raw_matches: Sequence[RawMatch], stored_page: MatchesPage, limit: int
+) -> list[RawMatch]:
+    """A superset of the fetched matches that can be on the page this request serves: all of them
+    when the stored page is not full, otherwise those sorting at or above its oldest row."""
+    if len(stored_page.matches) < limit:
+        return list(raw_matches)
+    oldest = min(_newest_first(row.completed_at, row.game_id) for row in stored_page.matches)
+    return [
+        raw_match
+        for raw_match in raw_matches
+        if _newest_first(raw_match.completed_at, raw_match.game_id) >= oldest
+    ]
+
+
 @router.get("/players/{profile_id}/matches")
 async def get_player_match_history(
     profile_id: int,
@@ -713,14 +746,18 @@ async def get_player_match_history(
     a chance to learn the subject's own real alias/country/avatar hash, and every opponent
     Relic's response names along the way, not only the matches themselves.
 
-    **Colour enrichment (T450, FR-003).** `enrich_colours` (`routers/matches.py`, imported above)
-    is called here batched over this page's own `game_ids`, exactly as `GET /api/matches::
-    list_matches` already calls it for the owner-scoped route — this route already reads the
-    source live on every call (the paragraph above), so a batched companion call here crosses no
-    boundary that route does not already cross. Before T450 this route never called it at all, so
+    **Colour enrichment (T450, FR-003; reordered by T459a).** `fetch_colour_fills`
+    (`routers/matches.py`, imported above) is called here once, batched over the stored page's
+    game ids and those of the fetched matches `_matches_that_can_be_served` keeps —
+    `GET /api/matches::list_matches` does the same for the owner-scoped route — this route already
+    reads the source live on every call (the paragraph above), so a batched companion call here
+    crosses no boundary that route does not already cross. It is a *fetch*: the fills are
+    persisted with the batch, in the batch's savepoint, so no network call happens after the first
+    write. Before T450 this route
+    never called it at all, so
     `color_id` stayed `NULL` for a profile viewed only through this route and every swatch
     rendered the neutral token even though `GET /api/matches` had already coloured the identical
-    match — `enrich_colours`'s own degrade discipline (never writes `NULL`, at most one call per
+    match — `fetch_colour_fills`'s own degrade discipline (never writes `NULL`, at most one call per
     page, a no-op once every row is coloured) applies here unchanged, since both routes share the
     one implementation."""
     secret = settings.app_secret_key.get_secret_value()
@@ -730,28 +767,48 @@ async def get_player_match_history(
     if profile is None:
         raise _profile_not_found()
 
-    # T459: every fetch first, then one persist of the union — never history persisted, then
-    # identity, which would write the same `aoe_profiles` rows twice in two different orders.
+    repository = MatchesRepository(db_session)
+
+    async def _read_page() -> MatchesPage:
+        try:
+            return await repository.list_matches(profile_id=profile_id, cursor=cursor, limit=limit)
+        except ValueError as exc:
+            raise APIError(
+                status_code=422,
+                code="validation_error",
+                message="The request could not be validated.",
+                detail={"errors": [str(exc)]},
+            ) from exc
+
+    # T459a: the stored page is read first, before any write, for two reasons. It rejects a bad
+    # cursor before the network is touched; and its game ids are among the candidates for
+    # companion's colours.
+    stored_page = await _read_page()
+
+    # T459 / T459a: every network call first (history, identity, companion's colours), then one
+    # persist of the union — never history persisted, then identity, then colours, which would
+    # write the same rows several times in several orders and hold their locks across a call.
     raw_matches = await _fetch_third_party_history(db_session, profile_id)
     identity = await _fetch_profile_identity(db_session, profile_id)
-    await _persist_on_view_refresh(db_session, raw_matches=raw_matches, identity=identity)
+    # T450 / T409: batched over every candidate game id at once, never one call per match; this
+    # route's own `profile_id` is companion's required query parameter.
+    candidates = _matches_that_can_be_served(raw_matches, stored_page, limit)
+    fills = await fetch_colour_fills(
+        db_session,
+        [profile_id],
+        sorted(
+            {raw_match.game_id for raw_match in candidates}
+            | {row.game_id for row in stored_page.matches}
+        ),
+        fetched=candidates,
+    )
+    await _persist_on_view_refresh(
+        db_session, raw_matches=raw_matches, identity=identity, colour_fills=fills
+    )
 
-    repository = MatchesRepository(db_session)
-    try:
-        page = await repository.list_matches(profile_id=profile_id, cursor=cursor, limit=limit)
-    except ValueError as exc:
-        raise APIError(
-            status_code=422,
-            code="validation_error",
-            message="The request could not be validated.",
-            detail={"errors": [str(exc)]},
-        ) from exc
-
-    # T450: batched over this page's own game_ids, never one call per match — the same discipline
-    # `routers/matches.py::list_matches` already applies, reused rather than duplicated (module
-    # docstring's "Colour enrichment" note). T409: this route's own `profile_id` is companion's
-    # required query parameter.
-    await enrich_colours(db_session, [profile_id], [row.game_id for row in page.matches])
+    # What was written can change the page (new matches, fresh aliases and colours): read it again,
+    # unless nothing was fetched and the stored page is still the answer.
+    page = await _read_page() if (raw_matches or identity.raw_profiles or fills) else stored_page
 
     return {
         "matches": [match_row_json(row) for row in page.matches],

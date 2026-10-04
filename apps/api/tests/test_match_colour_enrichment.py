@@ -2,31 +2,29 @@
 `quickstart.md` scenario 3, `data-model.md` §1 ("`color_id` alone, on the display path") and §6
 (the one state transition), `research.md` **D2** are ground truth.
 
-**Implemented by T420.** `routers/matches.py`'s `enrich_colours` calls
-`CompanionEnrichmentProvider.enrich_matches` from both `GET /api/matches` and
-`GET /api/matches/{game_id}`, on the display path only. This suite drives it entirely through the
-real routes and the real `match_players` table, the same boundary `test_players_routes.py`'s own
-`_FailingCompanionUpstream` and `test_third_party_history.py`'s `_FakeRelicMatchHistoryUpstream`
-already use for their own provider.
+**Implemented by T420.** `routers/matches.py`'s `fetch_colour_fills` calls
+`CompanionEnrichmentProvider.enrich_matches`, on the display path only. This suite drives it
+entirely through the real routes and the real `match_players` table, the same boundary
+`test_players_routes.py`'s own `_FailingCompanionUpstream` and `test_third_party_history.py`'s
+`_FakeRelicMatchHistoryUpstream` already use for their own provider.
 
-**Widened by T450.** `enrich_colours` is public (T450's own remediation, matches.py's module
-docstring) and is now also called from `routers/players.py::get_player_match_history` (`GET
-/api/players/{profile_id}/matches`), which previously never enriched colour at all. The block near
+**Widened by T450.** `GET /api/players/{profile_id}/matches` enriches colour too. The block near
 the bottom of this file, "the identical enrichment, mirrored onto the profile match-history route",
 replays this same suite's own three properties — batched-once, degrade-writes-nothing, second-view
 is a database read — against that route instead.
 
 **T453 reverses this file's own closing property.** `test_viewing_a_page_of_matches_makes_one_
 batched_companion_call_and_writes_colour` below used to end on `GET /api/players/{profile_id}`
-(the summary route) making no provider call whatsoever (T419/T426). `_refresh_profile_identity`
+(the summary route) making no provider call whatsoever (T419/T426). The on-view identity refresh
 (FR-017, `routers/players.py`) now runs on that route too, so viewing a profile there reaches Relic
 for its identity and, once that establishes a real alias, companion's own search endpoint for the
 avatar hash — this test's own closing assertion is rewritten to expect exactly that new call,
 rather than its absence (`test_players_routes.py`'s docstring near its `avatar_hash` tests carries
 the identical reversal for that file). The three T450 tests further down, against the *matches*
-route, are unaffected: none of them fakes Relic, so `_refresh_profile_identity`'s own Relic call
+route, are unaffected: none of them fakes Relic, so the identity refresh's Relic call
 there fails against this file's `_intercept_companion` fake (any non-companion host raises), is
-swallowed by that function's own broad `except Exception`, and never reaches companion at all —
+swallowed by `_fetch_profile_identity`'s own broad `except Exception`, and never reaches companion
+at all —
 the same "no real alias established this call, so no search" contrast `test_third_party_history.
 py`'s own dedicated T453 test proves directly.
 
@@ -83,7 +81,7 @@ SESSION_COOKIE_NAME = "session_id"
 #: catch, not silently pass through.
 _COMPANION_HOST = "data.aoe2companion.com"
 
-#: T453: `_refresh_profile_identity`'s own Relic host (`RelicMatchHistoryProvider`,
+#: T453: the on-view identity refresh's Relic host (`RelicMatchHistoryProvider`,
 #: `test_third_party_history.py`'s own `_RELIC_HOST`, duplicated here rather than imported — this
 #: suite's own self-contained-file convention, `routers/players.py`'s module docstring). Only the
 #: reversed closing property below ever needs it.
@@ -243,7 +241,7 @@ def _intercept_companion(monkeypatch: pytest.MonkeyPatch, fake: _CompanionUpstre
 
 
 class _RelicIdentityUpstream:
-    """T453/T454: stands in for both Relic endpoints `_refresh_profile_identity` reaches on `GET
+    """T453/T454: stands in for both Relic endpoints the identity refresh reaches on `GET
     /api/players/{profile_id}` now that it runs there (module docstring's "T453 reverses" note) —
     `getRecentMatchHistory`'s identity block (`test_third_party_history.py`'s own
     `_FakeRelicMatchHistoryUpstream`, duplicated here rather than imported) and, since T454,

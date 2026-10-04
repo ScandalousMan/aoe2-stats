@@ -78,7 +78,7 @@ _RECENT_MATCH_HISTORY_PATH = "getRecentMatchHistory"
 # T454: Relic's ladder-standing endpoint (`RelicProfileProvider.personal_stats`,
 # `packages/providers/src/aoe2stats_providers/relic/profile.py`), on the same `_RELIC_HOST` as
 # `getRecentMatchHistory` above but a distinct path — this file's own fake upstreams route on it
-# to answer the two calls `_refresh_profile_identity` now makes differently.
+# to answer the two calls the on-view identity refresh makes differently.
 _PERSONAL_STAT_PATH = "getPersonalStat"
 
 # The exact fixtures `test_auth_flow.py`'s own sign-in flow already exercises `personal_stats`
@@ -93,8 +93,8 @@ _RELIC_PERSONAL_STAT_UNREGISTERED = json.loads(
 )
 _RATED_SUBJECT_PROFILE_ID = 196240
 
-# T450: `GET /api/players/{profile_id}/matches` now also calls `enrich_colours`
-# (`routers/matches.py`) for the page it just persisted, batched over its own `game_ids` — the
+# T450: `GET /api/players/{profile_id}/matches` also asks companion for colours
+# (`fetch_colour_fills`, `routers/matches.py`), batched over the page's `game_ids` — the
 # freshly-upserted `match_players` rows below carry no `color_id` yet, so that call is genuinely
 # attempted, not skipped. This file's own `fake_send` therefore has to answer this host too, the
 # same "documented, expected bot-protection noise" `companion/provider.py`'s module docstring and
@@ -461,8 +461,8 @@ async def test_reading_a_third_partys_history_persists_the_matched_entry_verbati
 
 # --- T453: the shared on-view identity refresh, FR-007/FR-008a/FR-017 ---------------------------
 #
-# `_refresh_profile_identity` (`routers/players.py`) is the helper both this route and `GET
-# /api/players/{profile_id}` now trigger on every view: it persists the real alias/country Relic's
+# The on-view identity refresh (`_fetch_profile_identity`, `routers/players.py`) runs on every view
+# of this route and of `GET /api/players/{profile_id}`: it persists the real alias/country Relic's
 # `getRecentMatchHistory` identity block (`profiles[]`, T451's `recent_profiles`) carries — for
 # every profile the block names, not only the one being viewed — through T452's widened
 # `discover.touch_aoe_profile`, and then resolves the avatar hash via exactly one companion search
@@ -518,7 +518,7 @@ class _FakeCompanionSearchUpstream:
 
 class _RefusingCompanionUpstream:
     """Answers nothing: any request reaching it fails the test outright. Used for the "no real
-    alias established this call" contrast below, where `_refresh_profile_identity` must skip the
+    alias established this call" contrast below, where the identity refresh must skip the
     companion search entirely — a request count of zero is not, on its own, distinguishable from
     "the test forgot to check"; this makes the skip a hard failure instead of a silent pass."""
 
@@ -546,7 +546,7 @@ async def test_viewing_a_third_partys_summary_persists_real_alias_for_every_prof
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """T453, FR-007/FR-017: `GET /api/players/{profile_id}` — the summary route, which used to make
-    no provider call at all (T419/T426, reversed by T453) — now runs `_refresh_profile_identity`
+    no provider call at all (T419/T426, reversed by T453) — now runs the on-view identity refresh
     before answering. A subject still carrying the numeric-id placeholder (`touch_aoe_profile`'s
     own "on insert" case) gets its real alias/country from Relic's identity block, and an opponent
     the same response names for free gets its own `aoe_profiles` row too — the widened
@@ -582,7 +582,7 @@ async def test_viewing_a_third_partys_summary_persists_real_alias_for_every_prof
         self: httpx.AsyncClient, request: httpx.Request, **kwargs: object
     ) -> httpx.Response:
         if request.url.host == _COMPANION_HOST:
-            # The avatar-hash half of `_refresh_profile_identity` is this file's own separate
+            # The avatar-hash half of the identity refresh is this file's own separate
             # test below — degraded here so this test's own claim stands independent of it.
             return httpx.Response(403, request=request)
         if request.url.host != _RELIC_HOST:
@@ -618,7 +618,7 @@ async def test_viewing_a_third_partys_match_history_also_persists_real_alias_and
     """T453's twin of the summary-route test above, through `GET /api/players/{profile_id}/
     matches` — the route that already reads `matchHistoryStats` live
     (`test_reading_a_third_partys_history_persists_the_matched_entry_verbatim` above); this test's
-    own claim is the `profiles[]` half of the identical response, which `_refresh_profile_identity`
+    own claim is the `profiles[]` half of the identical response, which the identity refresh
     reads alongside it."""
     caller = await _seed_user(db_session)
     await _sign_in(client, db_session, caller)
@@ -764,7 +764,7 @@ async def test_a_failing_relic_identity_source_leaves_the_view_answering_from_st
 ) -> None:
     """FR-017's degrade discipline, the Relic half: "a source that is unavailable degrades to
     whatever the service already holds; it MUST NOT fail the view." A Relic call that fails
-    outright (never a `200`) is `_refresh_profile_identity`'s own deliberately broad catch (that
+    outright (never a `200`) is `_fetch_profile_identity`'s own deliberately broad catch (that
     function's docstring) — the view must still answer `200` from whatever `aoe_profiles` already
     carries, unmoved.
     """
@@ -898,8 +898,8 @@ async def test_no_real_alias_established_this_call_skips_the_companion_search_en
 
 # --- T454: ladder standing, FR-018/SC-007 --------------------------------------------------------
 #
-# `_refresh_profile_ratings` (`routers/players.py`) is the third, independent step
-# `_refresh_profile_identity` now runs on every view: Relic's `getPersonalStat`
+# The ladder standing is the third, independent step of the on-view refresh, run on every view:
+# Relic's `getPersonalStat`
 # (`RelicProfileProvider.personal_stats`), keyed on `profile_id` itself rather than on any alias
 # the identity step above may or may not have just established, persisted through the identical
 # `RatingsRepository.record_snapshot` path `routers/auth.py`'s sign-in flow and the ingester's own
@@ -913,7 +913,7 @@ async def test_no_real_alias_established_this_call_skips_the_companion_search_en
 class _FakeRelicIdentityAndRatingsUpstream:
     """Routes a `_RELIC_HOST` request to one of two fixed bodies by path — `getRecentMatchHistory`'s
     identity block (T453) or `getPersonalStat`'s ladder standing (T454), the two calls
-    `_refresh_profile_identity` now makes on every view — unlike `_FakeRelicMatchHistoryUpstream`
+    the identity refresh makes on every view — unlike `_FakeRelicMatchHistoryUpstream`
     above, which answers one fixed body regardless of path and predates this second call existing.
     """
 
@@ -1137,7 +1137,7 @@ async def test_a_failing_ratings_source_leaves_the_view_answering_from_storage(
 async def test_ratings_persist_even_when_no_alias_is_established_this_call(
     client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """T454's ordering constraint, pinned directly. Before this task, `_refresh_profile_identity`
+    """T454's ordering constraint, pinned directly. Before this task, the identity refresh
     `return`ed before ever reaching the avatar step once `subject_alias is None` — the same early
     return ratings must never sit behind. This call's own Relic identity fetch names nothing for
     the subject (an empty `profiles[]`, so a real alias already stored from an earlier view is

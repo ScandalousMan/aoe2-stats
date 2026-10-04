@@ -39,7 +39,7 @@ py`) — long before the 25-day reconciliation sweep (T054) would otherwise noti
 is the provider's response, unmodified, replaced wholesale rather than merged field by field, since
 merging would silently keep a stale value the provider has since corrected); since T413,
 `ON CONFLICT DO UPDATE` also refreshes `match_players`' own Relic-derived columns on a repeat
-sighting of the same participant, for the same reason (see `upsert_match_player`'s own docstring
+sighting of the same participant, for the same reason (see `upsert_match_players`'s own docstring
 for the one column deliberately excluded from that refresh); `ON CONFLICT DO NOTHING` on
 `replay_captures`' composite key makes the same `(game_id, profile_id)` capture a no-op rather than
 an error on a repeat sighting — which is also what keeps `capture_deadline_at` "computed once on
@@ -52,6 +52,8 @@ however many times the same match is rediscovered.
 per table — and the capture enqueue follows, in the same `(game_id, profile_id)` order. See the
 notes above `touch_aoe_profiles` for why: the API's on-view refreshes write the same rows in the
 same transaction shape, and two writers locking the same rows in different orders deadlock.
+**T459a**: the API's companion colour fills ride the same call (`colour_fills`), so the
+`match_players` rows they touch are locked in the same ascending pass as the batch's own.
 
 **`aoe_profiles.alias` on a third party this stage meets for the first time.** Every player in
 `RawMatch.player_profile_ids` gets an `aoe_profiles` row — data-model.md: "holds third parties too"
@@ -80,7 +82,20 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import Text, case, cast, func, select, text
+from sqlalchemy import (
+    BigInteger,
+    SmallInteger,
+    Text,
+    case,
+    cast,
+    column,
+    func,
+    select,
+    text,
+    tuple_,
+    update,
+    values,
+)
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -112,10 +127,11 @@ _DISCOVERY_BATCH_SIZE = 10
 
 #: `matches.source` — every match this stage discovers came from the one `MatchHistoryProvider`
 #: implementation wired up today (`packages/providers/src/aoe2stats_providers/relic/matches.py`).
-#: Public (no leading underscore): 003's `GET /api/players/{profile_id}/matches` (T328,
-#: `apps/api/src/aoe2stats_api/routers/players.py`) reuses this exact value for the identical
-#: reason it reuses `upsert_match`/`touch_aoe_profile`/`upsert_match_player` below — one source
-#: name for a match discovered either path.
+#: Public (no leading underscore): the API's on-view refresh (`GET /api/players/{profile_id}/
+#: matches`, `apps/api/src/aoe2stats_api/routers/players.py`) persists through the same
+#: `persist_matches_and_profiles` below, which stamps this value, so a match discovered by either
+#: path carries one source name; a test seeding a stored match reads it from here for the same
+#: reason.
 MATCH_SOURCE = "relic"
 
 
@@ -315,11 +331,6 @@ async def upsert_matches(session: AsyncSession, raw_matches: Iterable[RawMatch])
         )
 
 
-async def upsert_match(session: AsyncSession, raw_match: RawMatch) -> None:
-    """One-match call into `upsert_matches` (see its docstring for the semantics)."""
-    await upsert_matches(session, [raw_match])
-
-
 async def upsert_match_players(
     session: AsyncSession, pairs: Iterable[tuple[RawMatch, int]]
 ) -> None:
@@ -339,7 +350,7 @@ async def upsert_match_players(
     payload as the other five. Unlike them it is set with `COALESCE(excluded.color_id,
     match_players.color_id)`: a projection that could not read the blob yields `None`, and `None`
     here means "unknown", never "no colour" — it must not erase a colour an earlier sighting (or
-    the companion fallback, `routers/matches.py::enrich_colours`) already stored. A non-`None`
+    the companion fallback) already stored. A non-`None`
     projection wins outright: Relic is the primary source, and the colour of a finished match
     never changes.
     """
@@ -379,21 +390,73 @@ async def upsert_match_players(
         )
 
 
-async def upsert_match_player(session: AsyncSession, raw_match: RawMatch, profile_id: int) -> None:
-    """One-row call into `upsert_match_players` (see its docstring for the semantics)."""
-    await upsert_match_players(session, [(raw_match, profile_id)])
+async def lock_match_players(session: AsyncSession, keys: Iterable[tuple[int, int]]) -> None:
+    """T459a: take the row locks on every *existing* `match_players` row named by `keys`, in one
+    ascending `(game_id, profile_id)` pass — `SELECT ... ORDER BY game_id, profile_id FOR UPDATE`,
+    whose lock order is the sorted order (Postgres sorts, then locks). A key with no row is simply
+    absent from the result. This is what lets a caller write rows it did not fetch from the
+    provider (the companion colour fills) in the same ascending sequence as the batch: the pass
+    covers the union, so no row of either is first locked below one already held.
+    """
+    for chunk in _chunks(sorted(set(keys))):
+        await session.execute(
+            select(MatchPlayer.game_id, MatchPlayer.profile_id)
+            .where(tuple_(MatchPlayer.game_id, MatchPlayer.profile_id).in_(list(chunk)))
+            .order_by(MatchPlayer.game_id, MatchPlayer.profile_id)
+            .with_for_update()
+        )
+
+
+async def fill_missing_colours(session: AsyncSession, fills: Mapping[tuple[int, int], int]) -> None:
+    """T459a: write companion's `color_id` for each `(game_id, profile_id)` in `fills` — **only
+    where the stored colour is `NULL`**, never replacing one (`routers/matches.py::
+    fetch_colour_fills`'s docstring for the precedence). One `UPDATE ... FROM (VALUES ...)`
+    per `_BULK_ROW_LIMIT` keys; a key with no `match_players` row updates nothing. It takes no
+    lock of its own that `lock_match_players` has not already taken: callers lock first, through
+    `persist_matches_and_profiles`.
+    """
+    rows = sorted(fills.items())
+    for chunk in _chunks(rows):
+        fill = values(
+            column("game_id", BigInteger),
+            column("profile_id", BigInteger),
+            column("color_id", SmallInteger),
+            name="fill",
+        ).data([(game_id, profile_id, colour) for (game_id, profile_id), colour in chunk])
+        await session.execute(
+            update(MatchPlayer)
+            .where(
+                MatchPlayer.game_id == fill.c.game_id,
+                MatchPlayer.profile_id == fill.c.profile_id,
+                MatchPlayer.color_id.is_(None),
+            )
+            .values(color_id=fill.c.color_id)
+            .execution_options(synchronize_session=False)
+        )
 
 
 async def persist_matches_and_profiles(
     session: AsyncSession,
     raw_matches: Sequence[RawMatch],
     identities: Iterable[RawProfile] = (),
+    colour_fills: Mapping[tuple[int, int], int] | None = None,
 ) -> list[tuple[RawMatch, int]]:
     """T459: the one place a batch of raw matches and identity rows is written, in the global lock
     order (module notes above): `matches` ascending by `game_id`, then `aoe_profiles` ascending by
     `profile_id` — deduplicated, every participant of every match plus every identity row, a real
     alias/country merged in from whichever source carries one (`merge_sightings`) — then
     `match_players` ascending by `(game_id, profile_id)`. Three statements for any batch size.
+
+    **T459a, `colour_fills`.** Companion's colours, keyed `(game_id, profile_id)`, are written by
+    this call too, because they are `match_players` writes and the invariant is per transaction,
+    not per helper. When any are given, the `match_players` phase is: one ascending lock pass over
+    the union of the batch's keys and the fills' keys (`lock_match_players`), then the batch's
+    upsert, then the fills (`fill_missing_colours`, `NULL` colours only) — two statements more,
+    whatever the number of fills. The fills' rows may include stored rows below the batch's keys
+    (the stored page of a profile whose history was just refetched); the pass is what keeps those
+    from being locked after higher ones. A new `match_players` row is only inserted for a game this
+    same transaction has just upserted into `matches`, so two writers of one new key meet on
+    `matches` first and no cycle forms.
 
     Nothing in the caller's transaction may write an earlier table or a lower key afterwards; a
     caller that needs more rows (a capture enqueue, a rating snapshot) writes them after this
@@ -416,7 +479,11 @@ async def persist_matches_and_profiles(
         }.items()
     )
     ordered = [pair for _, pair in pairs]
+    if colour_fills:
+        await lock_match_players(session, {*(key for key, _ in pairs), *colour_fills})
     await upsert_match_players(session, ordered)
+    if colour_fills:
+        await fill_missing_colours(session, colour_fills)
     return ordered
 
 
@@ -430,8 +497,8 @@ async def savepoint_tolerating_lock_conflicts(session: AsyncSession) -> AsyncIte
     Every other database error propagates.
 
     `lock_timeout` is set `LOCAL` inside the savepoint (so it reverts with it) and restored to its
-    previous value when the block succeeds, so the rest of the request — colour enrichment, for
-    one — is not subject to a timeout it never asked for.
+    previous value when the block succeeds, so the rest of the request — its reads, and whatever a
+    caller does after the block — is not subject to a timeout it never asked for.
     """
     try:
         async with session.begin_nested():

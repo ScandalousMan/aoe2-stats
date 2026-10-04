@@ -1,7 +1,6 @@
 """Projection unit tests for T412 — the fix for research.md's **D1**: `match_players.civ_id`,
-`team_id`, `rating`, `rating_diff` and `result` have never been written (`upsert_match_player`
-inserts only the primary key), even though every one of them is already sitting in
-`matches.raw_payload`. This file is quickstart scenario 2's first half.
+`team_id`, `rating`, `rating_diff` and `result` had never been written, even though every one of
+them is already sitting in `matches.raw_payload`. This file is quickstart scenario 2's first half.
 
 T413 implemented `aoe2stats_storage.repositories.matches.project_match_player` against exactly the
 interface documented below, and every `xfail(strict=True, reason="T413 not implemented yet")`
@@ -22,9 +21,8 @@ that predates its own implementation (`test_relic_matches.py`'s `_provider`) —
   string — FR-004's neutral state, `data-model.md` §1).
 - `project_match_player(raw_match: Mapping[str, Any], profile_id: int) -> ProjectedMatchPlayer` —
   pure, no I/O, no session: one entry of `matches.raw_payload` (a `matchHistoryStats[]` item, the
-  shape `RawMatch.raw_payload` carries verbatim) plus the profile id `upsert_match_player`'s own
-  call site (`DiscoverStage.__call__`, `apps/ingester/.../discover.py`) already loops over, in and
-  a `MatchPlayer`-shaped result out. Rules, straight from data-model.md's `match_players` table:
+  shape `RawMatch.raw_payload` carries verbatim) plus the profile id, in and a
+  `MatchPlayer`-shaped result out. Rules, straight from data-model.md's `match_players` table:
     - `civ_id` <- `matchhistorymember[].civilization_id`, direct.
     - `team_id` <- `matchhistorymember[].teamid`, direct.
     - `rating` <- `matchhistorymember[].newrating`, the value *after* the match (FR-005).
