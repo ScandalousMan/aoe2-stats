@@ -1794,7 +1794,9 @@ hover:underline-offset-2` beside `active:underline-offset-4`, `src/screens/DataE
    evaluation for forces (`evaluateGuards`, `storyReachesComponentModule`, `storyRendersComponent`,
    `buildStoryPropsScope`, `buildFileValueScope`), `findRenderJsxProps`, `impliedRoleForPrimitiveInstance`
    (and `PRIMITIVE_INSTANCE_ROLES`, derived from it), `componentHasOwnCandidateForRole`,
-   `noImpliedRoleReason`'s ancestor and dynamic-role wording, and T686's own-story verification.
+   `noImpliedRoleReason`'s ancestor and dynamic-role wording, and T686's own-story verification;
+   T696 then removed, as dead, the helper call-site, guard and iteration machinery that fed only them
+   (`findHelperCallSites`, `findHelperInvocationGuards`, `findHelperInvocationIterationContext`).
    Each passage below that cites one describes the reading that was in force when that task closed, kept
    as the record of why the rule existed; the generated region above is read from the manifest and
    is the only current statement of what any cell credits. The same holds for the per-story redirect

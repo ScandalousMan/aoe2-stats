@@ -687,25 +687,9 @@ function deriveStructuralRole(tagName, opening) {
   return null
 }
 
-// --- Shared JSX walk: tracks the enclosing named-function context, the *reachability guards* an
-// early return or a conditional/`&&` puts between the file's own top and a given JSX node, and the
-// local `const` bindings in scope at that point — everything `findLocalElements`,
-// `findPrimitiveInstances` and the dynamic-props resolver below need, so none of them duplicate
-// this tracking three different ways. -------------------------------------------------------------
-
-// A `{ expr, truthy }` pair: for the JSX this guards to be reached, `expr` (evaluated against a
-// caller's own props/args, `evaluateExpr` below) must equal `truthy`. Collected from three shapes:
-//   - `if (cond) { return X }` with no `else` — `X` is guarded `{cond, true}`; every *sibling*
-//     statement after this `if` (this function's own remaining body) is guarded `{cond, false}`,
-//     because reaching them at all means the early return did not fire (`FavouriteToggle`'s own
-//     `if (!authenticated) return <SignedOutControl .../>`).
-//   - `if (cond) { A } else { B }` — `A` guarded `{cond, true}`, `B` guarded `{cond, false}`.
-//   - `cond ? A : B` / `cond && A` — the same two shapes as expressions, not statements.
-function blockAlwaysExits(statements) {
-  if (statements.length === 0) return false
-  const last = statements[statements.length - 1]
-  return ts.isReturnStatement(last) || ts.isThrowStatement(last)
-}
+// --- Shared JSX walk: visits every JSX tag of a file with the function-local `const` bindings in
+// scope at that point, which `findLocalElements` resolves a className through (`resolveClassParts`'s
+// `localConsts` namespace). Statements after a `return` in the same block are not visited. -----------
 
 function statementsOf(stmtOrBlock) {
   return ts.isBlock(stmtOrBlock) ? stmtOrBlock.statements : [stmtOrBlock]
@@ -713,48 +697,33 @@ function statementsOf(stmtOrBlock) {
 
 function walkJsxWithContext(sourceFile, visitJsx) {
   function visitBlockStatements(statements, ctx) {
-    let guards = ctx.guards
-    // A local `const` declared earlier in the same function body (`FavouriteToggle`'s own `const
-    // bounded = atLimit && !favourited`) is not a prop and not in scope for a later story-args
-    // evaluation unless its own initializer travels with the candidate — threaded the same way
-    // `guards` already is, reset at the same function boundaries (`visit` below), so a candidate's
-    // own `localConsts` map always reflects exactly what is declared and in scope at its own JSX
-    // position, in source order.
+    // A local `const` declared earlier in the same function body (`Button`'s own `const classes =
+    // cx(...)`) is resolved through its own initializer, which travels with the candidate, reset at
+    // the function boundaries (`visit` below), so a candidate's own `localConsts` map always reflects
+    // exactly what is declared and in scope at its own JSX position, in source order.
     let localConsts = ctx.localConsts
     for (const stmt of statements) {
       if (ts.isVariableStatement(stmt)) {
         for (const decl of stmt.declarationList.declarations) {
           if (ts.isIdentifier(decl.name) && decl.initializer) {
-            visit(decl.initializer, { ...ctx, guards, localConsts })
+            visit(decl.initializer, { ...ctx, localConsts })
             localConsts = new Map(localConsts)
             localConsts.set(decl.name.text, decl.initializer)
           }
         }
       } else if (ts.isIfStatement(stmt)) {
-        const cond = stmt.expression
-        const thenStmts = statementsOf(stmt.thenStatement)
-        visitBlockStatements(thenStmts, {
-          ...ctx,
-          guards: [...guards, { expr: cond, truthy: true }],
-          localConsts,
-        })
+        visitBlockStatements(statementsOf(stmt.thenStatement), { ...ctx, localConsts })
         if (stmt.elseStatement) {
           const elseStmts = ts.isIfStatement(stmt.elseStatement)
             ? [stmt.elseStatement]
             : statementsOf(stmt.elseStatement)
-          visitBlockStatements(elseStmts, {
-            ...ctx,
-            guards: [...guards, { expr: cond, truthy: false }],
-            localConsts,
-          })
-        } else if (blockAlwaysExits(thenStmts)) {
-          guards = [...guards, { expr: cond, truthy: false }]
+          visitBlockStatements(elseStmts, { ...ctx, localConsts })
         }
       } else if (ts.isReturnStatement(stmt)) {
-        if (stmt.expression) visit(stmt.expression, { ...ctx, guards, localConsts })
+        if (stmt.expression) visit(stmt.expression, { ...ctx, localConsts })
         return
       } else {
-        visit(stmt, { ...ctx, guards, localConsts })
+        visit(stmt, { ...ctx, localConsts })
       }
     }
   }
@@ -765,234 +734,32 @@ function walkJsxWithContext(sourceFile, visitJsx) {
       ts.forEachChild(node, (child) => visit(child, ctx))
       return
     }
-    if (ts.isConditionalExpression(node)) {
-      visit(node.condition, ctx)
-      visit(node.whenTrue, {
-        ...ctx,
-        guards: [...ctx.guards, { expr: node.condition, truthy: true }],
-      })
-      visit(node.whenFalse, {
-        ...ctx,
-        guards: [...ctx.guards, { expr: node.condition, truthy: false }],
-      })
-      return
-    }
-    if (
-      ts.isBinaryExpression(node) &&
-      node.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken
-    ) {
-      visit(node.left, ctx)
-      visit(node.right, { ...ctx, guards: [...ctx.guards, { expr: node.left, truthy: true }] })
-      return
-    }
     if (ts.isBlock(node)) {
       visitBlockStatements(node.statements, ctx)
       return
     }
     let nextCtx = ctx
     if (ts.isFunctionDeclaration(node) && node.name) {
-      nextCtx = { ...ctx, fnName: node.name.text, guards: [], localConsts: new Map() }
+      nextCtx = { ...ctx, localConsts: new Map() }
     } else if (
       ts.isVariableDeclaration(node) &&
       ts.isIdentifier(node.name) &&
       node.initializer &&
       (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer))
     ) {
-      // The name lives on the declaration; the fresh function scope starts at the initializer
-      // itself (visited next via forEachChild), which is where `guards`/`localConsts` should
-      // reset — done by threading the reset through this same `nextCtx`, since forEachChild's next
-      // call is exactly that initializer.
-      nextCtx = { ...ctx, fnName: node.name.text, guards: [], localConsts: new Map() }
-    }
-    if (
-      ts.isCallExpression(node) &&
-      ts.isPropertyAccessExpression(node.expression) &&
-      (node.expression.name.text === 'map' || node.expression.name.text === 'flatMap')
-    ) {
-      // The iteration's own variable name and array source (`entries.map((entry) => ...)`) — a
-      // selector-targeted local element inside a single-entry story (`FavouritesList`'s own
-      // `entries: [rated]`) resolves its dynamic attribute (`entry.href`) against the sole array
-      // element this way; `null` when the callback's own first parameter isn't a plain identifier
-      // (a destructuring pattern), left unresolved rather than guessed further.
-      const callback = node.arguments[0]
-      let iterationVar = null
-      if (
-        callback &&
-        (ts.isArrowFunction(callback) || ts.isFunctionExpression(callback)) &&
-        callback.parameters.length > 0 &&
-        ts.isIdentifier(callback.parameters[0].name)
-      ) {
-        iterationVar = callback.parameters[0].name.text
-      }
-      nextCtx = {
-        ...nextCtx,
-        inIteration: true,
-        iterationVar,
-        iterationArrayExpr: node.expression.expression,
-      }
+      // The fresh function scope starts at the initializer itself (visited next via forEachChild),
+      // which is where `localConsts` should reset, so the reset is threaded through this same
+      // `nextCtx`.
+      nextCtx = { ...ctx, localConsts: new Map() }
     }
     ts.forEachChild(node, (child) => visit(child, nextCtx))
   }
-  visit(sourceFile, {
-    fnName: null,
-    inIteration: false,
-    iterationVar: null,
-    iterationArrayExpr: null,
-    guards: [],
-    localConsts: new Map(),
-  })
-}
-
-// Every locally-declared helper *component* (a capitalised, non-primitive JSX tag invoked
-// somewhere in this file, `<SignedOutControl .../>`) mapped to the guards at its own call site —
-// `FavouriteToggle`'s `if (!authenticated) { return <SignedOutControl .../> } ... return button`
-// nests the *real* button structurally inside `FavouriteToggle`'s own body (guarded there), but
-// `SignedOutControl`'s own button sits inside a *separate* function declaration, invoked only
-// conditionally — its own reachability guards live at the call site, not inside its declaration,
-// so a plain structural walk of `SignedOutControl`'s body alone would never see them. Only a helper
-// invoked from exactly one call site can be attributed guards this way; more than one (with
-// differing guards) is `null` — unknown, not guessed.
-// A guard list's own identity, by AST position rather than by value — an AST node carries a
-// circular `.parent` pointer (`ts.createSourceFile`'s own `setParentNodes: true`), so comparing
-// guard lists with `JSON.stringify` throws; comparing each guard's `expr.pos`/`expr.end` instead
-// is cheap and exact; for the same parsed file, the same source span always means the same guard.
-function guardsKey(guards) {
-  return guards.map((g) => `${g.expr.pos}:${g.expr.end}:${g.truthy}`).join('|')
-}
-
-export function findHelperInvocationGuards(sourceFile) {
-  const map = new Map()
-  walkJsxWithContext(sourceFile, (node, context) => {
-    const tagName = tagNameOf(node)
-    if (!/^[A-Z]/.test(tagName) || PRIMITIVE_NAMES.includes(tagName)) return
-    if (!map.has(tagName)) {
-      map.set(tagName, context.guards)
-    } else {
-      const existing = map.get(tagName)
-      if (existing !== null && guardsKey(existing) !== guardsKey(context.guards)) {
-        map.set(tagName, null)
-      }
-    }
-  })
-  return map
-}
-
-// Every real invocation of a locally-declared helper *component*, each with its own line and its
-// own guards at that exact call site — the call-site-level sibling of `findHelperInvocationGuards`
-// above, which keeps only a single shared guard set and gives up the moment two call sites
-// disagree. A helper this file never `export`s cannot be invoked from anywhere this single-file
-// pass does not already see, so every one of its call sites is enumerable in full
-// (`PrivacyNotice`'s own `InlineLink`, invoked five times: four unconditional, one behind `hrefs.
-// processingRegister &&`) — mapped to its own array of `{ line, guards }` sites. An `export`ed
-// helper's call sites elsewhere in the tree are invisible to a pass over one file, so it is never
-// entered into this map at all (T595). Element data since T694: the `nth` walk that read it is
-// retired, a force being located by the browser.
-export function findHelperCallSites(sourceFile) {
-  const exported = new Set()
-  for (const statement of sourceFile.statements) {
-    const hasExportModifier = statement.modifiers?.some(
-      (m) => m.kind === ts.SyntaxKind.ExportKeyword,
-    )
-    if (!hasExportModifier) continue
-    if (ts.isFunctionDeclaration(statement) && statement.name) {
-      exported.add(statement.name.text)
-    } else if (ts.isVariableStatement(statement)) {
-      for (const decl of statement.declarationList.declarations) {
-        if (ts.isIdentifier(decl.name)) exported.add(decl.name.text)
-      }
-    }
-  }
-  const map = new Map()
-  walkJsxWithContext(sourceFile, (node, context) => {
-    const tagName = tagNameOf(node)
-    if (!/^[A-Z]/.test(tagName) || PRIMITIVE_NAMES.includes(tagName)) return
-    if (exported.has(tagName)) return
-    const site = { line: lineOf(sourceFile, node), guards: context.guards }
-    if (!map.has(tagName)) map.set(tagName, [site])
-    else map.get(tagName).push(site)
-  })
-  return map
-}
-
-// A helper component invoked from exactly one call site *inside* a `.map()`/`.flatMap()`
-// callback, one of whose own props passes that callback's own iteration variable through
-// literally (`FavouritesList`'s own `entry={entry}`, passed to the sibling `FavouriteRow`) — one
-// indirection past the inline shape `MatchRow`/`PlayerResultRow` render their own row link in,
-// where the local element sits directly inside the `.map()` callback rather than behind a second,
-// separately-declared component. Only a bare identifier prop value equal to the call site's own
-// iteration variable qualifies; a transform, a spread, more than one candidate prop at the same
-// call site, or more than one call site with a different answer all leave the helper unmapped —
-// found, never guessed. The mapped `iterationVar` is the *prop name* at the call site
-// (`FavouriteRow`'s own `entry`), not the caller's local name, since evaluating a dynamic
-// attribute inside the helper's body reads whatever identifier its own destructuring bound —
-// ordinarily the same name, by convention, but never assumed so: a helper that renamed its own
-// destructured binding simply fails to resolve further (`evaluateExpr` finds no such identifier
-// in scope), the same "unresolved, not guessed" default as every other static gap in this file.
-export function findHelperInvocationIterationContext(sourceFile) {
-  const map = new Map()
-  function entrySignature(entry) {
-    return entry
-      ? `${entry.propName}:${entry.iterationArrayExpr.pos}:${entry.iterationArrayExpr.end}`
-      : 'none'
-  }
-  walkJsxWithContext(sourceFile, (node, context) => {
-    const tagName = tagNameOf(node)
-    if (!/^[A-Z]/.test(tagName) || PRIMITIVE_NAMES.includes(tagName)) return
-    let entry = null
-    if (context.iterationVar) {
-      const opening = openingOf(node)
-      const candidates = []
-      for (const attr of opening.attributes.properties) {
-        if (!ts.isJsxAttribute(attr) || !attr.initializer) continue
-        const expr = ts.isJsxExpression(attr.initializer) ? attr.initializer.expression : null
-        if (expr && ts.isIdentifier(expr) && expr.text === context.iterationVar) {
-          candidates.push(attr.name.getText())
-        }
-      }
-      if (candidates.length === 1) {
-        entry = {
-          propName: candidates[0],
-          iterationArrayExpr: context.iterationArrayExpr,
-        }
-      }
-    }
-    if (!map.has(tagName)) {
-      map.set(tagName, entry)
-    } else {
-      const existing = map.get(tagName)
-      if (existing === 'ambiguous') return
-      if (entrySignature(existing) !== entrySignature(entry)) {
-        map.set(tagName, 'ambiguous')
-      }
-    }
-  })
-  const result = new Map()
-  for (const [name, entry] of map) {
-    if (entry && entry !== 'ambiguous') {
-      result.set(name, {
-        iterationVar: entry.propName,
-        iterationArrayExpr: entry.iterationArrayExpr,
-      })
-    }
-  }
-  return result
+  visit(sourceFile, { localConsts: new Map() })
 }
 
 // --- Record 1: local interactive elements -------------------------------------------------------
 
-// `mainComponentName`: the directory's own component name (`PrivacyNotice`) — an element whose
-// nearest enclosing named function is anything *else* (`InlineLink`, `SectionHeading`) is a reusable
-// local helper invoked from more than one place this static pass cannot enumerate, so its recorded
-// line is a declaration site, not a real render position (`isHelper: true`, excluded from `nth`
-// resolution below, never from Record 1's own listing).
-export function findLocalElements(
-  sourceFile,
-  filePath,
-  constMap,
-  mainComponentName = null,
-  helperIterationContext = new Map(),
-  helperCallSites = new Map(),
-) {
+export function findLocalElements(sourceFile, filePath, constMap) {
   const found = []
   // T675 M2: every `group`/`group/<name>` marker and every `group-hover`/`group-hover/<name>` match
   // seen anywhere in this file's own JSX, collected across the whole walk (not only from candidates
@@ -1071,33 +838,6 @@ export function findLocalElements(
       roleAttr.literal && (roleAttr.value === 'button' || roleAttr.value === 'link')
     const isTabIndexed = tabIndexAttr.present
     if (!(isIntrinsicInteractive || isRoleInteractive || isTabIndexed || hasPseudo)) return
-    // Whether this element carries *any* disabled-capable attribute at all (`disabled` or
-    // `aria-disabled`, literal or dynamic) — an element with neither can never render disabled, a
-    // confirmed `'none'`; one that does needs a story's own data checked before the disabled cell
-    // may say either `'none'` or name a story (T594's REJECT on #80, item 4).
-    const hasDisabledAttr = Boolean(
-      getAttr(opening, 'disabled') || getAttr(opening, 'aria-disabled'),
-    )
-    // Every attribute's own value, literal or not — the generic sibling of the named
-    // role/tabIndex/disabled reads above, read once so a `visualForceState: { selector:
-    // 'a[href="..."]' }` can resolve *any* attribute name a real selector in this tree names, not
-    // only the ones this file already has a dedicated reader for.
-    const attrExprs = new Map()
-    for (const attr of opening.attributes.properties) {
-      if (!ts.isJsxAttribute(attr)) continue
-      const attrName = attr.name.getText()
-      const lit = attrLiteral(attr)
-      let expr = null
-      if (attr.initializer && ts.isJsxExpression(attr.initializer))
-        expr = attr.initializer.expression
-      attrExprs.set(attrName, { literal: lit.present && lit.literal, value: lit.value, expr })
-    }
-    // A candidate lexically inside a helper component that has no iteration context of its own
-    // (a fresh function declaration, not directly nested in a `.map()`/`.flatMap()` callback) may
-    // still be *invoked* from one, one call site, through a prop passed literally —
-    // `findHelperInvocationIterationContext`'s own map, keyed by the helper's name.
-    const inheritedIteration =
-      !context.iterationVar && context.fnName ? helperIterationContext.get(context.fnName) : null
     found.push({
       file: filePath,
       line: lineOf(sourceFile, node),
@@ -1126,31 +866,8 @@ export function findLocalElements(
       activeStateConditional: stateConditionalActive,
       classUnresolvedRefs: unresolved,
       text: literalTextOf(node) || ariaLabelText(opening),
-      hasDisabledAttr,
-      attrExprs,
-      // Every local `const` in scope at this exact JSX position (`MenuItemRow`'s own `const role =
-      // variant === 'selection' ? 'menuitemradio' : 'menuitem'`) — the same read
-      // `findPrimitiveInstances` already keeps for a dynamic `disabled`/`loading` expression, needed
-      // here so a dynamic `role={role}` attribute (`attrExprs.get('role').expr`, below) can be
-      // resolved against a specific story's own scope (T595; element data only since T694).
-      localConsts: context.localConsts,
       ariaHidden: isAriaHidden(opening),
       inertByConstruction: isInertByConstruction(opening),
-      isHelper: context.fnName != null && context.fnName !== mainComponentName,
-      // Every real call site of this element's own enclosing helper, within this file, each with
-      // its own line and its own guards — `null` when the element is not inside a helper at all,
-      // or the helper is `export`ed and so not fully enumerable from this file alone
-      // (`findHelperCallSites`, T595). Element data only since T694: the `nth` walk that placed a helper
-      // candidate (`PrivacyNotice`'s own `InlineLink`) at one of its invocations is retired.
-      helperCallSites:
-        context.fnName != null && context.fnName !== mainComponentName
-          ? (helperCallSites.get(context.fnName) ?? null)
-          : null,
-      isInsideIteration: context.inIteration || Boolean(inheritedIteration),
-      iterationVar: context.iterationVar ?? inheritedIteration?.iterationVar ?? null,
-      iterationArrayExpr:
-        context.iterationArrayExpr ?? inheritedIteration?.iterationArrayExpr ?? null,
-      guards: context.guards,
       // Character offsets of this element's own JSX node — used only to tell whether one local
       // element's rendered range structurally contains another's (`buildElementMatrix`'s "ancestor
       // of a forced descendant" reason, `Table`'s own `<tr>` around its row link). Not meaningful
@@ -1218,14 +935,6 @@ function creditGroupHoverToAncestors(found, groupMarkerCandidates, groupHoverDes
 
 export const PRIMITIVE_NAMES = ['Button', 'Link', 'Field', 'Menu']
 
-// `Button` (`primitives/Button/index.tsx`: `disabled={disabled || loading}`) and `Field`
-// (`primitives/Field/index.tsx`: `const isDisabled = disabled || loading`) both render their own
-// `loading` prop through the exact same rendered-disabled state their `disabled` prop reaches —
-// `Link` and `Menu` carry no such fold. A call site that only ever sets `loading` (`FavouriteToggle`'s
-// own `AddingInFlight`/`RemovingInFlight`, never a literal `disabled`) is real, positive disabled
-// coverage this file must not miss (T594's row 8 sweep, item 1).
-const PRIMITIVES_WHERE_LOADING_DISABLES = new Set(['Button', 'Field'])
-
 // A destructuring default's string value: a string literal, or (T693) a member of a top-level
 // `const X = { ... } as const` object in the same file — `variant = BUTTON_AXIS_DEFAULTS.variant`,
 // where `BUTTON_AXIS_DEFAULTS` is the one constant `Button`'s destructuring and the runtime pass
@@ -1286,80 +995,33 @@ export function findVariantSizeDefaults(sourceFile) {
   return { variant: variantDefault, size: sizeDefault }
 }
 
-// The raw expression an attribute's `{...}` container wraps (never unwrapped through a literal) —
-// used to evaluate a *dynamic* `variant`/`size` (`Dialog`'s `primaryAction.variant ?? 'destructive'`)
-// against a specific story's own scope later, rather than discarding it the moment it fails to be a
-// literal.
-function attrExprOf(attr) {
-  if (!attr || !attr.initializer) return null
-  return ts.isJsxExpression(attr.initializer) ? attr.initializer.expression : null
-}
-
+// A call site of a tracked primitive in a design-system component file, read statically: its source
+// position and the `variant`/`size` it settles to (a literal, or the primitive's own default; a prop
+// the source cannot settle is `unresolved` and opens no row, `axisKey`). It fills `Rest` and nothing
+// else (T694, T695).
 export function findPrimitiveInstances(
   sourceFile,
   filePath,
   defaultsByPrimitive,
   skipPrimitives = [],
-  helperGuards = new Map(),
-  mainComponentName = null,
-  localHelperCallSites = new Map(),
 ) {
   const found = []
-  walkJsxWithContext(sourceFile, (node, context) => {
+  walkJsxWithContext(sourceFile, (node) => {
     const tagName = tagNameOf(node)
     if (!PRIMITIVE_NAMES.includes(tagName) || skipPrimitives.includes(tagName)) return
-    // A candidate declared inside a helper *component* invoked from exactly one, known call site
-    // inherits that call site's own guards, prepended — the mechanism that excludes
-    // `SignedOutControl`'s own button when a story's `authenticated: true` arg means
-    // `FavouriteToggle` never even calls it.
-    const inheritedGuards =
-      context.fnName && helperGuards.has(context.fnName)
-        ? (helperGuards.get(context.fnName) ?? [])
-        : []
-    const effectiveGuards = [...inheritedGuards, ...context.guards]
     const opening = openingOf(node)
     const defaults = defaultsByPrimitive[tagName] ?? {}
     const spread = hasSpreadAttr(opening)
-    // Every attribute's own value, literal or not — the same generic read `findLocalElements`
-    // already keeps for a record-1 local element's own attributes, needed here for exactly the
-    // same reason (T598): a component composing this primitive (`ProfileSummary`'s own `<Menu
-    // variant="selection">`) passes this exact call site's own real prop values, which a
-    // cross-component credit into the primitive's *own* record-1 local elements needed to resolve a
-    // dynamic role (`MenuItemRow`'s own `role={role}`, `role = variant === 'selection' ? ... :
-    // ...`) against — never guessed from the composing component's own unrelated scope. That credit
-    // is gone (T694: the browser's manifest places the element), so nothing reads this map now.
-    const attrExprs = new Map()
-    for (const attr of opening.attributes.properties) {
-      if (!ts.isJsxAttribute(attr)) continue
-      const attrName = attr.name.getText()
-      const lit = attrLiteral(attr)
-      let expr = null
-      if (attr.initializer && ts.isJsxExpression(attr.initializer))
-        expr = attr.initializer.expression
-      attrExprs.set(attrName, { literal: lit.present && lit.literal, value: lit.value, expr })
-    }
     const resolveProp = (propName) => {
-      const attr = getAttr(opening, propName)
-      const lit = attrLiteral(attr)
+      const lit = attrLiteral(getAttr(opening, propName))
       if (lit.present && lit.literal) return { value: lit.value, resolved: 'explicit' }
-      if (lit.present && !lit.literal)
-        return { value: null, resolved: 'unresolved', expr: attrExprOf(attr) }
+      if (lit.present && !lit.literal) return { value: null, resolved: 'unresolved' }
       if (spread) return { value: null, resolved: 'unresolved' }
       if (Object.prototype.hasOwnProperty.call(defaults, propName) && defaults[propName] != null) {
         return { value: defaults[propName], resolved: 'default' }
       }
       return { value: null, resolved: 'unresolved' }
     }
-    // A call site's `disabled` and `loading` are read for the expressions below only; neither gives a
-    // Disabled credit (T694: the Disabled column comes from the instances a story mounts, as rendered).
-    // `loadingExpr` is captured only for the primitives whose own rendering folds `loading` into
-    // `disabled` too.
-    const disabledAttr = getAttr(opening, 'disabled')
-    const disabledLit = attrLiteral(disabledAttr)
-    const loadingAttr = PRIMITIVES_WHERE_LOADING_DISABLES.has(tagName)
-      ? getAttr(opening, 'loading')
-      : undefined
-    const loadingLit = attrLiteral(loadingAttr)
     found.push({
       primitive: tagName,
       file: filePath,
@@ -1372,36 +1034,6 @@ export function findPrimitiveInstances(
         defaults.size != null || getAttr(opening, 'size')
           ? resolveProp('size')
           : { value: null, resolved: 'n/a' },
-      disabledExpr: disabledLit.present && !disabledLit.literal ? attrExprOf(disabledAttr) : null,
-      loadingExpr: loadingLit.present && !loadingLit.literal ? attrExprOf(loadingAttr) : null,
-      // Every attribute this exact call site passes, literal or dynamic (T598, above) — this
-      // primitive's own name as the caller wrote it, not resolved against anything yet.
-      attrExprs,
-      // Every local `const` in scope at this exact JSX position (`FavouriteToggle`'s own `const
-      // bounded = atLimit && !favourited`) — `disabledExpr`/`loadingExpr` above are frequently a
-      // bare reference to one of these, never resolvable against a story's own args without it.
-      localConsts: context.localConsts,
-      // `Button` renders `<a href>` rather than `<button>` once `href` is supplied (its own
-      // `index.tsx`) — its own implied role follows that, not a fixed per-primitive constant
-      // (T594's REJECT on #80, item 5).
-      hasHref: Boolean(getAttr(opening, 'href')),
-      text: literalTextOf(node) || ariaLabelText(opening),
-      childrenExpr: !literalTextOf(node) && ts.isJsxElement(node) ? node.children : null,
-      ariaHidden: isAriaHidden(opening),
-      isHelper: context.fnName != null && context.fnName !== mainComponentName,
-      // The same real-call-site enumeration `findLocalElements` already keeps for a record-1 helper
-      // candidate: a tracked primitive declared inside a local helper (T674: `PrivacyNotice`'s
-      // `InlineLink` composing `Link`) is as reusable from more than one call site as a raw local
-      // element. Nothing reads it since T694 (the static `nth` walk it fed is deleted; the browser
-      // reports the position). `null` when this instance is not inside a helper at all, or the helper
-      // is `export`ed and not fully enumerable from this file alone.
-      helperCallSites:
-        context.fnName != null && context.fnName !== mainComponentName
-          ? (localHelperCallSites.get(context.fnName) ?? null)
-          : null,
-      isInsideIteration: context.inIteration,
-      guards: effectiveGuards,
-      fnName: context.fnName,
     })
   })
   return found
@@ -1623,7 +1255,11 @@ export function metaComponentName(metaObj) {
 }
 
 export function extractVisualForceState(storyObj) {
-  const params = getProp(storyObj, 'parameters')
+  // A `parameters` that is not an object literal (an identifier, a call) carries no force this pass can
+  // read: `null`, never a throw (T696). `computeStateCoverage` names such a story
+  // (`hasUnreadableParameters`).
+  const params = unwrapExpression(getProp(storyObj, 'parameters'))
+  if (!params || !ts.isObjectLiteralExpression(params)) return null
   const forced = getProp(params, 'visualForceState')
   if (!forced || !ts.isObjectLiteralExpression(forced)) return null
   const state = literalOf(getProp(forced, 'state'))
@@ -1639,6 +1275,69 @@ export function extractVisualForceState(storyObj) {
     selector: selector.present && selector.literal ? selector.value : null,
     nth: nth.present && nth.literal ? nth.value : null,
   }
+}
+
+// Whether a story's own `parameters` is present and not an object literal (`parameters: shared`,
+// `parameters: make()`, a shorthand `parameters`): what it holds, a `visualForceState` among it, is
+// not readable from this object. A literal that spreads another object is not this case: the spread's
+// clip is `storyDeclaresClip`'s, and a force it hides is named when the manifest records one.
+function hasUnreadableParameters(storyObj) {
+  const expr = getProp(storyObj, 'parameters')
+  if (expr === undefined) return false
+  const object = unwrapExpression(expr)
+  return !object || !ts.isObjectLiteralExpression(object)
+}
+
+// The names, among `storyNames`, of the exported stories a file assigns to after their declaration: an
+// assignment to the story or to any member path of it (`X.parameters = …`, `X.tags ??= …`,
+// `X.parameters.foo = …`, `X['parameters'] = …`), or an `Object.assign`, `defineProperty` or
+// `defineProperties` call whose target is rooted at it. Storybook reads `parameters` and `tags` from
+// the module's exports after those run; this pass reads the object literal, so a clip or a tag set
+// that way is one it cannot see (T696). The whole file is walked, not only its top-level statements:
+// `if (…) { X.tags = [] }` mutates the story as much as a bare statement does.
+const ASSIGNMENT_MUTATORS = new Set(['assign', 'defineProperty', 'defineProperties'])
+
+function memberRootName(node) {
+  while (
+    node &&
+    (ts.isPropertyAccessExpression(node) ||
+      ts.isElementAccessExpression(node) ||
+      ts.isNonNullExpression(node) ||
+      ts.isParenthesizedExpression(node) ||
+      ts.isAsExpression(node) ||
+      ts.isSatisfiesExpression(node))
+  ) {
+    node = node.expression
+  }
+  return node && ts.isIdentifier(node) ? node.text : null
+}
+
+export function findStoriesAssignedAfterDeclaration(sourceFile, storyNames) {
+  const assigned = new Set()
+  const note = (target) => {
+    const name = memberRootName(target)
+    if (name !== null && storyNames.has(name)) assigned.add(name)
+  }
+  const visit = (node) => {
+    if (
+      ts.isBinaryExpression(node) &&
+      node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
+      node.operatorToken.kind <= ts.SyntaxKind.LastAssignment
+    ) {
+      note(node.left)
+    } else if (
+      ts.isCallExpression(node) &&
+      ts.isPropertyAccessExpression(node.expression) &&
+      ts.isIdentifier(node.expression.expression) &&
+      node.expression.expression.text === 'Object' &&
+      ASSIGNMENT_MUTATORS.has(node.expression.name.text)
+    ) {
+      note(node.arguments[0])
+    }
+    ts.forEachChild(node, visit)
+  }
+  visit(sourceFile)
+  return assigned
 }
 
 // Every string literal reachable at any depth inside an object/array literal — a story's own `args`
@@ -2478,6 +2177,19 @@ function instanceShapeProblem(instance, where, knownAxisValues) {
   return null
 }
 
+// An element record (a force's or a focus's) with a null stamp and a placing instance: the capture
+// finds the placing instance by walking up from the element's stamp, so an element no source file
+// stamped has none (`tests/visual/state-coverage-runtime.ts` writes `{ stamp: null, placedBy: null }`
+// for it). The pair is a manifest the pass did not write, and crediting it would give record 3 a cell
+// without the disabled refusal, which keys on the stamp (T696).
+function unstampedPlacedProblem(record, where) {
+  if (record.stamp !== null || (record.placedBy ?? null) === null) return null
+  return (
+    `${where} has a null stamp and a placedBy (${show(record.placedBy)}): an element no source file ` +
+    'stamped is placed by no tracked primitive, so the capture never writes that pair'
+  )
+}
+
 // What is wrong with the SHAPE of a manifest entry, or `null`. A malformed entry is not a refusal of
 // one story's credit; it is a manifest the pass did not write, so the check fails naming the story:
 //   - the entry's widths are not exactly the widths the capture takes (`REVIEW_WIDTHS`: the runtime
@@ -2486,10 +2198,12 @@ function instanceShapeProblem(instance, where, knownAxisValues) {
 //     one on a frame no capture takes, and none at all records nothing;
 //   - a width's record that is not an object, whose `mounts` is not an array, or one of whose mounts
 //     (`instanceShapeProblem`) is malformed, or whose `focus` is neither null nor an object with a
-//     string-or-null `stamp` and a null or well-formed `placedBy`;
+//     string-or-null `stamp` and a null or well-formed `placedBy`, a null `stamp` never with a `placedBy`
+//     (`unstampedPlacedProblem`);
 //   - for a forced story, a force record whose `count` is not a non-negative integer, and, at count 1,
 //     whose `stamp` is neither a string nor the explicit `null` of an element no source file stamped
-//     (a missing key is neither), or whose `placedBy` is neither null nor a well-formed instance.
+//     (a missing key is neither), or whose `placedBy` is neither null nor a well-formed instance, or
+//     whose `stamp` is null while its `placedBy` is not.
 // `knownAxisValues` is `readAxisValues` per primitive; absent, an axis value is not checked against it.
 export function entryShapeProblem(entry, { forced, knownAxisValues } = {}) {
   const recorded = Object.keys(entry?.widths ?? {})
@@ -2531,6 +2245,8 @@ export function entryShapeProblem(entry, { forced, knownAxisValues } = {}) {
         )
         if (problem) return problem
       }
+      const pair = unstampedPlacedProblem(focus, `${at}'s focus`)
+      if (pair) return pair
     }
   }
   if (forced) {
@@ -2549,6 +2265,8 @@ export function entryShapeProblem(entry, { forced, knownAxisValues } = {}) {
         const problem = instanceShapeProblem(force.placedBy, `${at}'s placedBy`, knownAxisValues)
         if (problem) return problem
       }
+      const pair = unstampedPlacedProblem(force, at)
+      if (pair) return pair
     }
   }
   return null
@@ -2849,18 +2567,8 @@ export function computeStateCoverage({
     const sourceFile = sourceFiles.get(filePath)
     const constMap = buildConstStringMap(sourceFile)
     const componentKey = componentKeyForFile(srcDir, filePath)
-    const componentDirName = componentKey.split('/')[1]
 
-    const helperIterationContext = findHelperInvocationIterationContext(sourceFile)
-    const localHelperCallSites = findHelperCallSites(sourceFile)
-    const locals = findLocalElements(
-      sourceFile,
-      relPath(filePath),
-      constMap,
-      componentDirName,
-      helperIterationContext,
-      localHelperCallSites,
-    )
+    const locals = findLocalElements(sourceFile, relPath(filePath), constMap)
     if (locals.length > 0) {
       localElementsByComponent.set(componentKey, [
         ...(localElementsByComponent.get(componentKey) ?? []),
@@ -2868,15 +2576,7 @@ export function computeStateCoverage({
       ])
     }
 
-    const jsxInstances = findPrimitiveInstances(
-      sourceFile,
-      relPath(filePath),
-      defaultsByPrimitive,
-      [],
-      findHelperInvocationGuards(sourceFile),
-      componentDirName,
-      localHelperCallSites,
-    )
+    const jsxInstances = findPrimitiveInstances(sourceFile, relPath(filePath), defaultsByPrimitive)
     for (const inst of jsxInstances) {
       instancesByPrimitive.get(inst.primitive).push({ ...inst, kind: 'jsx', componentKey })
     }
@@ -2893,14 +2593,26 @@ export function computeStateCoverage({
   }
   const overlayFiles = findOverlayFiles(filesByPath, sourceFiles)
   const entriesByLocation = new Map()
+  const manifestProblems = []
   for (const [id, entry] of Object.entries(manifest)) {
+    // An entry that is not an object (`null`, a string, an array) is a manifest the pass did not
+    // write: named by its key, never read for an `importPath` (T696).
+    if (!isPlainObject(entry)) {
+      manifestProblems.push({
+        kind: 'malformed-entry',
+        location: `${MANIFEST_PATH}:${id}`,
+        detail:
+          `${MANIFEST_PATH}'s entry ${id} is not an object (${show(entry)}). ` +
+          `Run \`${REWRITE_COMMAND}\` to rewrite it.`,
+      })
+      continue
+    }
     if (isFixtureImportPath(entry.importPath)) continue
     entriesByLocation.set(`${normaliseImportPath(entry.importPath)}#${entry.exportName}`, {
       id,
       entry,
     })
   }
-  const manifestProblems = []
   const partialRefusals = []
   const unkeyedMounts = []
   const seenLocations = new Set()
@@ -2920,7 +2632,12 @@ export function computeStateCoverage({
     const constNodeMap = buildTopLevelConstNodeMap(sourceFile)
     const defaultMeta = findDefaultMetaObject(sourceFile, constNodeMap) ?? metaObj
 
-    for (const { exportName, node } of findExportedStoryObjects(sourceFile)) {
+    const exportedStories = findExportedStoryObjects(sourceFile)
+    const assignedAfterDeclaration = findStoriesAssignedAfterDeclaration(
+      sourceFile,
+      new Set(exportedStories.map((story) => story.exportName)),
+    )
+    for (const { exportName, node } of exportedStories) {
       const location = `${packageRelative}#${exportName}`
       // A fixture story is a plant, not a published story, whichever directory it sits in: every other
       // reader of the stories (`scripts/visual/story-index.mjs`) identifies one by its tag, so this does
@@ -2941,6 +2658,17 @@ export function computeStateCoverage({
             'tags as string literals and spread nothing into the story or the default export.',
         })
       }
+      if (assignedAfterDeclaration.has(exportName)) {
+        manifestProblems.push({
+          kind: 'assigned-after-declaration',
+          location: `${packageRelative}:${exportName}`,
+          detail:
+            `story ${exportName} of ${packageRelative} is assigned to after its declaration ` +
+            '(`export const X = {...}` then `X.parameters = …`, `X.tags = …`, `Object.assign(X, …)`): ' +
+            'Storybook reads the result, and this pass reads the object literal, so a clip or a tag it ' +
+            'sets is invisible here. Write every annotation inside the story object literal.',
+        })
+      }
       const found = entriesByLocation.get(location)
       if (!found) {
         manifestProblems.push({
@@ -2957,7 +2685,37 @@ export function computeStateCoverage({
       const { entry } = found
       const forced = extractVisualForceState(node)
       const recordsAForce = Object.values(entry.widths ?? {}).some((record) => record?.force)
-      if (!forced && recordsAForce) {
+      const parametersUnreadable = hasUnreadableParameters(node)
+      if (parametersUnreadable) {
+        manifestProblems.push({
+          kind: 'unreadable-parameters',
+          location: `${packageRelative}:${exportName}`,
+          detail:
+            `story ${exportName} of ${packageRelative} carries a \`parameters\` that is not an object ` +
+            'literal (an identifier, a call), so this pass cannot read its `visualForceState` or tell ' +
+            'whether it declares a clip. Write the parameters as an object literal in the story.',
+        })
+      }
+      // A forced state outside the three the harness drives (`hover`, `focus-visible`, `active`) is
+      // rejected before anything is credited from it: an unknown string would credit the record-3
+      // column of that name (`disabled`, `rest`) or throw at record 1, and a case variant or a
+      // non-string is a state the browser does not apply either (T696). The manifest records no state,
+      // only the force's target, so `parameters.visualForceState` is the one place it is read.
+      if (
+        forced &&
+        !(typeof forced.state === 'string' && Object.hasOwn(RECORD1_STATE_HEADERS, forced.state))
+      ) {
+        manifestProblems.push({
+          kind: 'unknown-force-state',
+          location: `${packageRelative}:${exportName}`,
+          detail:
+            `story ${exportName} of ${packageRelative} forces state ${show(forced.state)}, which is ` +
+            `none of ${Object.keys(RECORD1_STATE_HEADERS).join(', ')}: the harness applies only those, ` +
+            'spelled exactly so.',
+        })
+        continue
+      }
+      if (!forced && recordsAForce && !parametersUnreadable) {
         manifestProblems.push({
           kind: 'unreadable-force',
           location: `${packageRelative}:${exportName}`,
@@ -2997,7 +2755,9 @@ export function computeStateCoverage({
       // state-signal sweep fails a forced story whose state frame differs from its rest frame by no more
       // than the threshold inside the captured frame; it does not check that the target lies in the clip.
       // A story object or default export that spreads another object may bring a clip in: clipped.
-      const clipped = storyDeclaresClip(defaultMeta, node)
+      // A story assigned to after its declaration may have had a clip set by that assignment: clipped.
+      const clipped =
+        assignedAfterDeclaration.has(exportName) || storyDeclaresClip(defaultMeta, node)
       const mayRenderOutsideRoot =
         !clipped &&
         !tags.has('visual-full-page') &&

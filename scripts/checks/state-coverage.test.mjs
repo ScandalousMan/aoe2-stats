@@ -43,7 +43,6 @@ import {
   extractGeneratedRegion,
   replaceGeneratedRegion,
   formatWithPrettier,
-  findHelperInvocationIterationContext,
   renderRecord1,
   computeStateCoverage,
   checkCitations,
@@ -398,7 +397,6 @@ test('buildElementMatrix never credits a play-click match when the element carri
       role: null,
       tabIndex: null,
       ariaHidden: false,
-      isHelper: false,
       text: '',
       file: 'Widget/index.tsx',
       line: 10,
@@ -866,28 +864,6 @@ export const FocusVisible = {
   const literals = storyArgsStringLiterals(metaObj, node)
   assert.ok(literals.has('Turn it off'))
   assert.ok(literals.has('Default heading'))
-})
-
-test('contrast (findPrimitiveInstances): a primitive instance declared behind a real, nested local helper still reads isHelper: true — only the owning component itself is excluded (T595)', () => {
-  const nestedHelperSource = `
-    function Decoy({ href }) {
-      return <Link href={href} variant="standalone">Decoy</Link>
-    }
-    export function TwoLinkFooter({ href }) {
-      return <div><Decoy href={href} /></div>
-    }
-  `
-  const sourceFile = parse(nestedHelperSource)
-  const found = findPrimitiveInstances(
-    sourceFile,
-    'fixture.tsx',
-    {},
-    [],
-    new Map(),
-    'TwoLinkFooter',
-  )
-  assert.equal(found.length, 1)
-  assert.equal(found[0].isHelper, true)
 })
 
 // --- The invariant itself: every real `visualForceState` is credited or named somewhere in the
@@ -1651,7 +1627,6 @@ test('buildElementMatrix reports "none" (not unresolved) when no force-state sha
       role: null,
       tabIndex: null,
       ariaHidden: false,
-      isHelper: false,
       text: '',
       file: 'f.tsx',
       line: 10,
@@ -1970,18 +1945,16 @@ test('buildAxisMatrix credits disabled from a story whose own args admit a neste
   assert.deepEqual(row.disabled, ['Menu:ActionsWithDisabledItem'])
 })
 
-test('contrast: buildElementMatrix keeps a confirmed none when the element carries no disabled-capable attribute at all', () => {
+test('contrast: buildElementMatrix leaves the Disabled cell none for a record-1 element nothing credits', () => {
   const elements = [
     {
       tag: 'a',
       role: null,
       tabIndex: null,
       ariaHidden: false,
-      isHelper: false,
       text: '',
       file: 'f.tsx',
       line: 10,
-      hasDisabledAttr: false,
     },
   ]
   const storyStates = [
@@ -1994,77 +1967,6 @@ test('contrast: buildElementMatrix keeps a confirmed none when the element carri
   ]
   const rows = buildElementMatrix(elements, storyStates)
   assert.deepEqual(rows[0].disabled, ['none'])
-})
-
-// T594's row-8 remediation, item 4: `FavouritesList`'s own row link sits one indirection past the
-// inline shape above — inside a sibling helper (`FavouriteRow`), invoked from `entries.map()` with
-// `entry={entry}`, a prop passed through literally. `findHelperInvocationIterationContext` finds
-// that mapping; `findLocalElements` applies it to a candidate declared inside the helper's own
-// body that has no iteration context of its own.
-
-const FAVOURITES_LIST_SHAPE_SOURCE = `
-function FavouritesList({ entries }) {
-  return (
-    <ul>
-      {entries.map((entry) => (
-        <FavouriteRow key={entry.profileId} entry={entry} />
-      ))}
-    </ul>
-  )
-}
-
-function FavouriteRow({ entry }) {
-  return (
-    <a href={entry.href} className="hover:bg-surface-sunken">
-      {entry.alias}
-    </a>
-  )
-}
-`
-
-test('findHelperInvocationIterationContext maps a helper invoked with a literal iteration-variable prop', () => {
-  const sourceFile = parse(FAVOURITES_LIST_SHAPE_SOURCE, 'index.tsx')
-  const map = findHelperInvocationIterationContext(sourceFile)
-  const entry = map.get('FavouriteRow')
-  assert.ok(entry, 'FavouriteRow must be mapped')
-  assert.equal(entry.iterationVar, 'entry')
-  assert.equal(entry.iterationArrayExpr.getText(), 'entries')
-})
-
-// Contrast: a prop whose value is not a bare identifier equal to the iteration variable (a
-// transform, here) never maps the helper — `findLocalElements` then finds no inherited iteration
-// context, and the candidate's own selector stays unresolved rather than guessed.
-const FAVOURITES_LIST_NON_LITERAL_PROP_SOURCE = `
-function FavouritesList({ entries }) {
-  return (
-    <ul>
-      {entries.map((entry) => (
-        <FavouriteRow key={entry.profileId} entry={{ ...entry, decorated: true }} />
-      ))}
-    </ul>
-  )
-}
-
-function FavouriteRow({ entry }) {
-  return (
-    <a href={entry.href} className="hover:bg-surface-sunken">
-      {entry.alias}
-    </a>
-  )
-}
-`
-
-test('contrast: a prop whose value is not passed through literally leaves the helper unmapped', () => {
-  const sourceFile = parse(FAVOURITES_LIST_NON_LITERAL_PROP_SOURCE, 'index.tsx')
-  const map = findHelperInvocationIterationContext(sourceFile)
-  assert.equal(map.get('FavouriteRow'), undefined)
-
-  const constMap = buildConstStringMap(sourceFile)
-  const found = findLocalElements(sourceFile, 'index.tsx', constMap, 'FavouritesList', map)
-  const anchor = found.find((el) => el.tag === 'a')
-  assert.ok(anchor)
-  assert.equal(anchor.iterationVar, null)
-  assert.equal(anchor.iterationArrayExpr, null)
 })
 
 // --- REJECT on #80, item 2: roles. INTRINSIC_ROLE lacked `main`/`region` and mapped every `input`
@@ -2149,7 +2051,7 @@ test('renderRecord1 emits a row for a component with no local interactive elemen
 // --- T595 (row 8, H5): closing the three shapes of the "no implied role" reason — `INTRINSIC_ROLE` widened
 // to the heading and table families, a dynamic `role={…}` resolved per story, and `hover`/`active`
 // credited from a confirmed descendant match. Routed through `computeStateCoverage`, not hand-built
-// instances, wherever a fixture needs `attrExprs`/`localConsts`/`guards`/`nodeStart`/`nodeEnd` —
+// instances, wherever a fixture needs `localConsts`/`nodeStart`/`nodeEnd` —
 // none of which a hand-built object can carry honestly. Each mechanism gets its own resolving case
 // and its own contrast (boundary) case, run against the pre-T595 code first (see the task hand-back
 // for the failing output). ------------------------------------------------------------------------
@@ -5425,7 +5327,6 @@ const elementFixture = (extra = {}) => ({
   role: null,
   tabIndex: null,
   ariaHidden: false,
-  isHelper: false,
   text: '',
   file: 'Tooltip/index.tsx',
   line: 259,
@@ -5506,7 +5407,7 @@ test('buildElementMatrix (record 1, static play-click credit): a click credits a
 })
 
 test('buildElementMatrix (record 1, Disabled column): a story’s args credit no Disabled cell, whatever the element carries and whatever files the story rendered', () => {
-  const elements = [elementFixture({ hasDisabledAttr: true })]
+  const elements = [elementFixture()]
   const story = (files) => ({
     exportName: 'ActionsWithDisabledItem',
     forced: null,
@@ -6383,8 +6284,13 @@ test('M1 contrast: a force whose stamp is the explicit null of an element no fil
     resolveRuntimeForce(entry, { recordOneKeys: new Set() }).refusal,
     /carries no source stamp/,
   )
-  // Menu rendered with no variant is a recorded `null`, a note and no row — not a malformed entry.
-  const menu = withForce({ count: 1, stamp: null, placedBy: placedInstance('Menu', null, null) })
+  // Menu rendered with no variant is a recorded `null`, a note and no row — not a malformed entry. Its
+  // element is stamped: a null stamp never comes with a placing instance (T696).
+  const menu = withForce({
+    count: 1,
+    stamp: `${STAMP_ROOT}primitives/Menu/index.tsx:10`,
+    placedBy: placedInstance('Menu', null, null),
+  })
   assert.equal(entryShapeProblem(menu, { forced: true }), null)
 })
 
@@ -6549,4 +6455,344 @@ test('the Rest label counts credits, not call sites, and the legend names the ga
     assert.match(REGION_LEGEND, phrase)
   }
   assert.doesNotMatch(REGION_LEGEND, /backs/)
+})
+
+// ---- T696: shapes the reviews of #116 left open. Each plant below credited, or threw, before it. ------
+
+const CARD_STORIES_LOCATION = 'src/composites/Card/Card.stories.tsx'
+const problemsOf = (computed) => computed.manifestProblems.map((p) => [p.kind, p.location])
+const DISABLED_BUTTON_STORY = (name) =>
+  `export const ${name} = { render: () => <Button disabled>Go</Button> }\n`
+const bothDisabledMounts = {
+  'zz-a': cardEntry('ZzA', { mounts: [disabledMount] }),
+  'zz-b': cardEntry('ZzB', { mounts: [disabledMount] }),
+}
+const afterDeclaration = (tail, extraStories = '') =>
+  cardRun({
+    stories: `${DISABLED_BUTTON_STORY('ZzA')}${DISABLED_BUTTON_STORY('ZzB')}${extraStories}${tail}`,
+    manifest: bothDisabledMounts,
+  })
+
+// (a) An annotation assigned to a story after its declaration is one Storybook still reads and this
+// pass does not: the check fails naming the story and gives it no mount credit.
+const POST_DECLARATION_ASSIGNMENTS = {
+  'X.parameters = …': `ZzA.parameters = { visualCaptureClip: ${CLIP} }\n`,
+  'X.tags = …': `ZzA.tags = ['visual-full-page']\n`,
+  'the nested X.parameters.foo = …': `ZzA.parameters.visualCaptureClip = ${CLIP}\n`,
+  "the computed X['parameters'] = …": `ZzA['parameters'] = { visualCaptureClip: ${CLIP} }\n`,
+  'a compound X.tags ??= …': `ZzA.tags ??= []\n`,
+  'an assignment inside a top-level block': `if (globalThis.x) {\n  ZzA.parameters = {}\n}\n`,
+  'Object.assign(X, …)': `Object.assign(ZzA, { parameters: {} })\n`,
+  'Object.defineProperty(X, …)': `Object.defineProperty(ZzA, 'parameters', { value: {} })\n`,
+}
+for (const [name, tail] of Object.entries(POST_DECLARATION_ASSIGNMENTS)) {
+  test(`T696 (a) plant: ${name} after an exported story's declaration fails the check naming the story and credits its mounts nothing`, () => {
+    const computed = afterDeclaration(tail)
+    assert.deepEqual(problemsOf(computed), [
+      ['assigned-after-declaration', `${CARD_STORIES_LOCATION}:ZzA`],
+    ])
+    assert.match(
+      computed.manifestProblems[0].detail,
+      /story ZzA of src\/composites\/Card\/Card\.stories\.tsx is assigned to after its declaration/,
+    )
+    assert.deepEqual(creditsOf(computed, 'ZzA'), [])
+    // The sibling it does not touch is credited as before, and is not named.
+    assert.deepEqual(creditsOf(computed, 'ZzB'), ['Button|secondary|md|disabled'])
+  })
+}
+
+test('T696 (a) contrast: a member assignment on a local that is not an exported story, and a story with its parameters inline, are credited as before', () => {
+  const computed = afterDeclaration(
+    `helper.parameters = { visualCaptureClip: ${CLIP} }\nhelper['tags'] = []\nObject.assign(helper, { parameters: {} })\n`,
+    `const helper = {}\nexport const ZzInline = { parameters: { layout: 'padded' }, render: () => <Button disabled>Go</Button> }\n`,
+  )
+  assert.deepEqual(
+    problemsOf(computed).filter(([kind]) => kind === 'assigned-after-declaration'),
+    [],
+  )
+  assert.deepEqual(creditsOf(computed, 'ZzA'), ['Button|secondary|md|disabled'])
+  const inline = cardRun({
+    stories: `export const ZzInline = { parameters: { layout: 'padded' }, render: () => <Button disabled>Go</Button> }\n`,
+    manifest: { 'zz-inline': cardEntry('ZzInline', { mounts: [disabledMount] }) },
+  })
+  assert.deepEqual(inline.manifestProblems, [])
+  assert.deepEqual(creditsOf(inline, 'ZzInline'), ['Button|secondary|md|disabled'])
+})
+
+test('T696 (a): a story exported by `export { Y as X }` is not one this pass reads, so its manifest entry is named stale; an assignment to its local is not what names it', () => {
+  const computed = cardRun({
+    stories: `const Y = { render: () => <Button disabled>Go</Button> }\nexport { Y as ZzAliased }\nY.parameters = {}\n`,
+    manifest: { 'zz-aliased': cardEntry('ZzAliased', { mounts: [disabledMount] }) },
+  })
+  assert.deepEqual(problemsOf(computed), [['stale-entry', `${CARD_STORIES_LOCATION}:ZzAliased`]])
+})
+
+test('T696 (a) end to end: the check exits 1 on the real tree with a member assigned to an exported story, naming it', () => {
+  const run = runCheckOnPlantedTree(`\nWin.tags = ['visual-full-page']\n`)
+  assert.equal(run.status, 1, run.stdout + run.stderr)
+  assert.match(
+    run.stderr,
+    /story Win of src\/composites\/MatchRow\/MatchRow\.stories\.tsx is assigned to after its declaration/,
+  )
+})
+
+// (b) A forced or focused element no source file stamped is placed by no tracked primitive: the
+// capture writes `{ stamp: null, placedBy: null }` for it, never a null stamp with an instance.
+const PAIR_GHOST = placedInstance('Button', 'ghost', 'md')
+const pairForce = (stamp, placedBy) => ({ count: 1, stamp, placedBy })
+const forceAtWidths = (byWidth) => ({
+  widths: Object.fromEntries(
+    WIDTHS.map((w) => [w, { mounts: [], force: byWidth[w] ?? pairForce(null, null) }]),
+  ),
+})
+const PAIR_STORY = `export const ZzPair = { parameters: { visualForceState: { state: 'hover', role: 'button' } } }\n`
+const pairRun = (entry) =>
+  miniRun(PAIR_STORY, {
+    'zz-pair': {
+      ...entry,
+      importPath: `./src/${MINI_STORIES}`,
+      exportName: 'ZzPair',
+      files: [BUTTON_FILE],
+    },
+  })
+const PAIR_PLANTS = {
+  'at every captured width': forceAtWidths(
+    Object.fromEntries(WIDTHS.map((w) => [w, pairForce(null, PAIR_GHOST)])),
+  ),
+  // Per matched element, per captured width: one width carries the bad pair, the others are legal.
+  'at one captured width only': forceAtWidths({ 768: pairForce(null, PAIR_GHOST) }),
+}
+for (const [name, entry] of Object.entries(PAIR_PLANTS)) {
+  test(`T696 (b) plant: a force with a null stamp and a placing instance ${name} is a malformed entry naming the story, credited nowhere`, () => {
+    const verdict = resolveRuntimeForce(entry, { recordOneKeys: new Set() })
+    assert.equal(typeof verdict.malformed, 'string', JSON.stringify(verdict))
+    assert.match(verdict.malformed, /null stamp and a placedBy/)
+    assert.equal(verdict.refusal, undefined)
+    const computed = pairRun(entry)
+    assert.deepEqual(problemsOf(computed), [
+      ['malformed-entry', 'src/primitives/Button/Button.stories.tsx:ZzPair'],
+    ])
+    assert.match(computed.manifestProblems[0].detail, /story ZzPair of /)
+    assert.deepEqual(creditsOf(computed, 'ZzPair'), [])
+  })
+}
+
+test('T696 (b) plant: a focus record with a null stamp and a placing instance is malformed too, naming the story', () => {
+  const entry = {
+    widths: atEveryWidth({ mounts: [], focus: { stamp: null, placedBy: PAIR_GHOST } }),
+  }
+  assert.match(entryShapeProblem(entry, { forced: false }), /null stamp and a placedBy/)
+  const computed = miniRun(`export const ZzFocusPair = {}\n`, {
+    'zz-focus-pair': miniEntry('ZzFocusPair', entry.widths[WIDTHS[0]]),
+  })
+  assert.deepEqual(problemsOf(computed), [
+    ['malformed-entry', 'src/primitives/Button/Button.stories.tsx:ZzFocusPair'],
+  ])
+})
+
+test('T696 (b) contrast: a null stamp with a null placing instance stays legal and is refused with its own reason', () => {
+  const entry = forceAtWidths({})
+  assert.equal(entryShapeProblem(entry, { forced: true }), null)
+  assert.equal(
+    resolveRuntimeForce(entry, { recordOneKeys: new Set() }).refusal,
+    'the located element carries no source stamp: no design-system source file wrote it (it is an element the story itself renders), so it is in no record-1 element and no tracked primitive placed it',
+  )
+  const computed = pairRun(entry)
+  assert.deepEqual(computed.manifestProblems, [])
+  assert.deepEqual(creditsOf(computed, 'ZzPair'), [])
+  assert.match(
+    refusalOf(computed, 'primitives/Button', 'ZzPair').refusal,
+    /carries no source stamp/,
+  )
+  // A stamped element with no placing instance, and a stamped one with an instance, stay legal.
+  assert.equal(
+    entryShapeProblem(forceAtWidths({ 768: pairForce(MINI_BUTTON_STAMP, null) }), { forced: true }),
+    null,
+  )
+  assert.equal(
+    entryShapeProblem(forceAtWidths({ 768: pairForce(MINI_BUTTON_STAMP, PAIR_GHOST) }), {
+      forced: true,
+    }),
+    null,
+  )
+})
+
+// (c) A `visualForceState.state` other than the three the harness drives credits the record-3 column
+// of that name (`disabled`, `rest`) or throws at record 1, and is not one the browser applies.
+for (const [name, state] of Object.entries({
+  'an unknown string': `'pressed'`,
+  'a column that is not a state': `'disabled'`,
+  'a case variant': `'Hover'`,
+  'a number': `1`,
+  'a boolean': `true`,
+})) {
+  test(`T696 (c) plant: a forced state that is ${name} fails the check naming the story, before crediting`, () => {
+    const computed = miniRun(
+      `export const ZzState = { parameters: { visualForceState: { state: ${state}, role: 'button' } } }\n`,
+      {
+        'zz-state': miniEntry(
+          'ZzState',
+          miniRecord([disabledMount], {
+            count: 1,
+            stamp: MINI_BUTTON_STAMP,
+            placedBy: PAIR_GHOST,
+          }),
+        ),
+      },
+    )
+    assert.deepEqual(problemsOf(computed), [
+      ['unknown-force-state', 'src/primitives/Button/Button.stories.tsx:ZzState'],
+    ])
+    assert.match(
+      computed.manifestProblems[0].detail,
+      /story ZzState of src\/primitives\/Button\/Button\.stories\.tsx forces state /,
+    )
+    assert.deepEqual(creditsOf(computed, 'ZzState'), [])
+  })
+}
+
+for (const [state, column] of [
+  ['hover', 'hover'],
+  ['focus-visible', 'focusVisible'],
+  ['active', 'active'],
+]) {
+  test(`T696 (c) contrast: a forced ${state} still credits the ${column} column of the placing row and of the element`, () => {
+    const computed = miniRun(
+      `export const ZzValid = { parameters: { visualForceState: { state: '${state}', role: 'button' } } }\n`,
+      {
+        'zz-valid': miniEntry(
+          'ZzValid',
+          miniRecord([], { count: 1, stamp: MINI_BUTTON_STAMP, placedBy: PAIR_GHOST }),
+        ),
+      },
+    )
+    assert.deepEqual(computed.manifestProblems, [])
+    assert.deepEqual(creditsOf(computed, 'ZzValid'), [
+      `Button|ghost|md|${column}`,
+      `record1|${MINI_BUTTON_STAMP}|${state === 'focus-visible' ? 'focusVisible' : state}`,
+    ])
+  })
+}
+
+// (d) Shapes that threw: a story whose `parameters` is not an object literal, a manifest entry that is
+// not an object.
+for (const [name, tail, parameters] of [
+  ['an identifier', `const shared = { layout: 'padded' }\n`, 'parameters: shared'],
+  ['a shorthand identifier', `const parameters = {}\n`, 'parameters'],
+  ['a call expression', `const make = () => ({})\n`, 'parameters: make()'],
+]) {
+  test(`T696 (d) plant: a story whose parameters is ${name} fails the check naming the story instead of throwing`, () => {
+    const computed = cardRun({
+      stories: `${tail}export const ZzParams = { ${parameters}, render: () => <Button disabled>Go</Button> }\n`,
+      manifest: { 'zz-params': cardEntry('ZzParams', { mounts: [disabledMount] }) },
+    })
+    assert.deepEqual(problemsOf(computed), [
+      ['unreadable-parameters', `${CARD_STORIES_LOCATION}:ZzParams`],
+    ])
+    assert.match(
+      computed.manifestProblems[0].detail,
+      /story ZzParams of src\/composites\/Card\/Card\.stories\.tsx carries a `parameters` that is not an object literal/,
+    )
+    assert.deepEqual(creditsOf(computed, 'ZzParams'), [])
+  })
+}
+
+test('T696 (d) plant: extractVisualForceState reads no force from a parameters that is not an object literal and does not throw', () => {
+  const stories = (source) => findExportedStoryObjects(parse(source))[0].node
+  for (const source of [
+    `const shared = {}\nexport const Z = { parameters: shared }\n`,
+    `export const Z = { parameters: make() }\n`,
+    `export const Z = { parameters }\n`,
+  ]) {
+    assert.equal(extractVisualForceState(stories(source)), null, source)
+  }
+})
+
+test('T696 (d) plant: a story whose parameters object literal is wrapped in `as const` is read, not thrown on', () => {
+  const computed = miniRun(
+    `export const ZzConst = { parameters: { visualForceState: { state: 'hover', role: 'button' } } as const }\n`,
+    {
+      'zz-const': miniEntry(
+        'ZzConst',
+        miniRecord([], { count: 1, stamp: MINI_BUTTON_STAMP, placedBy: PAIR_GHOST }),
+      ),
+    },
+  )
+  assert.deepEqual(computed.manifestProblems, [])
+  assert.deepEqual(creditsOf(computed, 'ZzConst'), [
+    'Button|ghost|md|hover',
+    `record1|${MINI_BUTTON_STAMP}|hover`,
+  ])
+})
+
+test('T696 (d) contrast: an object-literal parameters with a force recorded credits as before; a spread-only parameters is named by the unreadable force it hides', () => {
+  const forceRecord = { count: 1, stamp: MINI_BUTTON_STAMP, placedBy: PAIR_GHOST }
+  const literal = miniRun(
+    `export const ZzLit = { parameters: { visualForceState: { state: 'hover', role: 'button' } } }\n`,
+    { 'zz-lit': miniEntry('ZzLit', miniRecord([], forceRecord)) },
+  )
+  assert.deepEqual(literal.manifestProblems, [])
+  assert.deepEqual(creditsOf(literal, 'ZzLit'), [
+    'Button|ghost|md|hover',
+    `record1|${MINI_BUTTON_STAMP}|hover`,
+  ])
+  const spread = miniRun(
+    `const shared = { visualForceState: { state: 'hover', role: 'button' } }\nexport const ZzSpread = { parameters: { ...shared } }\n`,
+    { 'zz-spread': miniEntry('ZzSpread', miniRecord([], forceRecord)) },
+  )
+  assert.deepEqual(problemsOf(spread), [
+    ['unreadable-force', 'src/primitives/Button/Button.stories.tsx:ZzSpread'],
+  ])
+  assert.deepEqual(creditsOf(spread, 'ZzSpread'), [])
+})
+
+for (const [name, value] of [
+  ['null', null],
+  ['a string', 'x'],
+  ['an array', []],
+  ['a number', 3],
+]) {
+  test(`T696 (d) plant: a manifest entry that is ${name} fails the check naming its key instead of throwing`, () => {
+    const computed = cardRun({
+      stories: DISABLED_BUTTON_STORY('ZzB'),
+      manifest: { 'zz-broken-key': value, 'zz-b': cardEntry('ZzB', { mounts: [disabledMount] }) },
+    })
+    assert.deepEqual(problemsOf(computed), [
+      ['malformed-entry', 'packages/design-system/specs/state-coverage-runtime.json:zz-broken-key'],
+    ])
+    assert.match(computed.manifestProblems[0].detail, /entry zz-broken-key is not an object/)
+    assert.ok(computed.manifestProblems[0].detail.includes(REWRITE_COMMAND))
+    // Every other entry is still read.
+    assert.deepEqual(creditsOf(computed, 'ZzB'), ['Button|secondary|md|disabled'])
+  })
+}
+
+// (e) The focus record's `stamp` is a string or null; the branch that says so is pinned here, and the
+// mutation that removes it is the one that turns these red.
+for (const [name, stamp] of [
+  ['a number', 7],
+  ['an object', { file: 'x' }],
+  ['absent', undefined],
+]) {
+  test(`T696 (e): a focus record whose stamp is ${name} is a malformed entry naming the story`, () => {
+    const focus = stamp === undefined ? { placedBy: null } : { stamp, placedBy: null }
+    const entry = { widths: atEveryWidth({ mounts: [], focus }) }
+    assert.match(
+      entryShapeProblem(entry, { forced: false }),
+      /^its record at 375px's focus has a stamp that is neither a string nor null/,
+    )
+    const computed = miniRun(`export const ZzFocusStamp = {}\n`, {
+      'zz-focus-stamp': miniEntry('ZzFocusStamp', entry.widths[WIDTHS[0]]),
+    })
+    assert.deepEqual(problemsOf(computed), [
+      ['malformed-entry', 'src/primitives/Button/Button.stories.tsx:ZzFocusStamp'],
+    ])
+  })
+}
+
+test('T696 (e) contrast: a focus record with a string or null stamp is well-formed', () => {
+  for (const stamp of [MINI_BUTTON_STAMP, null]) {
+    const entry = { widths: atEveryWidth({ mounts: [], focus: { stamp, placedBy: null } }) }
+    assert.equal(entryShapeProblem(entry, { forced: false }), null)
+  }
 })
