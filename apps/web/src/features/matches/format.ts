@@ -52,9 +52,8 @@ export function formatDurationPrecise(durationSeconds: number | null): string {
   return `${minutes} min ${seconds} s`
 }
 
-/** `MatchRowData.outcome` / `ParticipantData.result` — `match_players.result` is `null` for every
- * row this system has written so far (no enrichment stage yet fills it in — `discover.py`'s own
- * `upsert_match_player` docstring), and a wire payload is never trusted blindly either (T037a), so
+/** `MatchRowData.outcome` / `ParticipantData.result` — `match_players.result` is `null` where no
+ * result has been recorded, and a wire payload is never trusted blindly either (T037a), so
  * anything that is not literally `"win"` or `"loss"` reads as **`"unknown"`**, never as a guessed
  * `"loss"`. Coercing an unknown result to a loss used to render a match this service has no result
  * for as a confident, false defeat for every participant — the same failure FR-020 already forbids

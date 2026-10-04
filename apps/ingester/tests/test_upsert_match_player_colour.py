@@ -1,19 +1,16 @@
 """T411 — `upsert_match_players` (`discover.py`) writes `match_players.color_id` from Relic's own
 `slotinfo`, and never erases a stored colour with a `NULL` projection.
 
-Every `match_players` writer — `DiscoverStage.__call__`, `ReconcileStage` and the API's on-view
-refreshes — reaches this one function through `persist_matches_and_profiles` (T459), so this file
-is the whole of the wiring proof; the decode itself is
-`packages/storage/tests/test_match_projection.py`'s. (T459a removed the single-row
-`upsert_match`/`upsert_match_player` wrappers, which had no production caller; this file calls the
-plural functions with one-element batches.)
+`persist_matches_and_profiles` (T459) writes `match_players` through this one function, so this
+file is the whole of the wiring proof; the decode itself is
+`packages/storage/tests/test_match_projection.py`'s. It calls the function with one-element
+batches.
 
 The `COALESCE(excluded.color_id, match_players.color_id)` in the statement's `SET` clause is the
 asymmetry under test: a payload the projection cannot read (no `slotinfo` — a synthetic
 `raw_payload`, or a shape Relic has not served yet) projects `None`, and `None` means "unknown".
-A colour stored by an earlier sighting, or by the companion fallback
-(`routers/matches.py::enrich_colours`), must survive that rediscovery; a non-`None` projection
-must win, Relic being the primary source.
+A colour stored by an earlier sighting, or by the companion fallback, must survive that
+rediscovery; a non-`None` projection must win, Relic being the primary source.
 """
 
 from __future__ import annotations

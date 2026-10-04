@@ -6,15 +6,12 @@ two facts stale for a participant this service only ever met as a third party, f
    participant discovered only through someone else's history keeps the `str(profile_id)`
    placeholder `touch_aoe_profile` writes on first sight, forever — the real alias is available for
    free in Relic's `getRecentMatchHistory` `profiles[]` identity block
-   (`RelicMatchHistoryProvider.recent_profiles`, T451), the same call `routers/players.py::
-   _refresh_profile_identity` already makes for its own two routes.
-2. **The colour.** `enrich_colours` (`matches.py`'s own `match_players.color_id` writer, T420) is
-   wired into `list_matches` and `players.py::get_player_match_history` but was never called from
-   `get_match_detail` at all, so a match viewed only through its detail route stayed uncoloured no
-   matter how many times it was opened.
+   (`RelicMatchHistoryProvider.recent_profiles`, T451).
+2. **The colour.** `get_match_detail` never filled `match_players.color_id`, so a match viewed only
+   through its detail route stayed uncoloured no matter how many times it was opened.
 
-`matches.py`'s own module docstring — "Colour enrichment is now also on `get_match_detail`'s own
-path" and "The on-view identity refresh" — is ground truth for the fix; this file drives it entirely
+`matches.py`'s own module docstring — "Read-time colour enrichment" and "The identity refresh for
+the match page" — is ground truth for the fix; this file drives it entirely
 through the real route, the real `match_players`/`aoe_profiles` tables, and the same `httpx.
 AsyncClient.send`-interception boundary `test_match_colour_enrichment.py` (`_CompanionUpstream`) and
 `test_third_party_history.py` (`_FakeRelicMatchHistoryUpstream`) already use for their own provider.
@@ -25,7 +22,7 @@ where they overlap, plus `test_match_colour_enrichment.py`'s companion double an
 history.py`'s Relic double for the two upstreams this fix newly reaches.
 
 **Why the re-read matters, and why every reproduction test below asserts it on the *first* call.**
-`enrich_colours`/`touch_aoe_profile` write straight to the database, never to the already-
+The colour fill and `touch_aoe_profile` write straight to the database, never to the already-
 materialised `MatchDetail` `get_match_detail` had already built before either ran — a fix that wrote
 the row but skipped the re-read would still serialise the stale placeholder/`NULL` on the very
 response a caller is looking at, and only a *second* view would show anything different. Every
@@ -286,7 +283,7 @@ async def test_match_detail_replaces_the_placeholder_alias_on_the_first_response
 ) -> None:
     """The defect itself: an opponent this service met only as a third party keeps its numeric-id
     placeholder as `alias` on the match-detail page forever, since `get_match_detail` never
-    triggered an identity refresh. Both participants already carry a real colour so `enrich_colours`
+    triggered an identity refresh. Both participants already carry a real colour so the colour fill
     is a no-op here — this test's own claim is the alias alone."""
     caller = await _seed_linked_caller(db_session)
     await _sign_in(client, db_session, caller)
@@ -334,7 +331,7 @@ async def test_match_detail_writes_and_serves_the_missing_colour_on_the_first_re
     client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The defect's second half: `match_players.color_id` stays `NULL` forever for a match viewed
-    only through its detail route, since `get_match_detail` never called `enrich_colours` at all.
+    only through its detail route, since `get_match_detail` never filled the colour at all.
     Both participants already carry real aliases so no Relic call happens here — this test's own
     claim is the colour alone."""
     caller = await _seed_linked_caller(db_session)

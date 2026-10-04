@@ -172,7 +172,7 @@ def _default_companion_degraded(monkeypatch: pytest.MonkeyPatch) -> Iterator[Non
 
     This fixture answers every request to `data.aoe2companion.com` with a plain `403` instead —
     the same "documented, expected bot-protection noise" `companion/provider.py`'s own module
-    docstring already treats as ordinary degradation — so `_enrich_colours` degrades exactly the
+    docstring already treats as ordinary degradation — so the colour enrichment degrades exactly the
     way FR-010 says it should, and no test outside this feature has to know companion exists at
     all. Every other host still reaches the *real*, unpatched `httpx.AsyncClient.send` this
     fixture captures before installing its own — `test_auth_flow.py`'s `fake_upstream` and every

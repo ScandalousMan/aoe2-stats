@@ -25,13 +25,13 @@ than at module scope — the same convention `test_favourite_no_capture.py` and 
 already use — so a signature mismatch would have been this file's own expected failure, not a
 collection error for the whole `apps/ingester/tests` suite.
 
-**Backward compatibility is a separate, already-green property.** `DiscoverStage.__call__` and
-`apps/api/src/aoe2stats_api/routers/players.py`'s `_refresh_third_party_history` both call
-`touch_aoe_profile(session, profile_id)` with no alias/country today, and every existing ingester
-integration test that exercises them (`test_shared_match.py`, `test_capture_objection.py`,
-`test_favourite_no_capture.py`, `test_reconcile.py`) keeps passing unmodified once T452 lands,
-because the new parameters default to `None` — this file adds coverage for the widened surface, it
-does not replace the coverage those files already carry for the unchanged one.
+**Backward compatibility is a separate, already-green property.**
+`touch_aoe_profile(session, profile_id)` with no alias/country keeps working, and every existing
+ingester integration test that exercises it (`test_shared_match.py`,
+`test_capture_objection.py`, `test_favourite_no_capture.py`, `test_reconcile.py`) keeps passing
+unmodified once T452 lands, because the new parameters default to `None` — this file adds
+coverage for the widened surface, it does not replace the coverage those files already carry for
+the unchanged one.
 """
 
 from __future__ import annotations
@@ -84,17 +84,15 @@ async def test_first_sight_with_a_real_alias_and_country_is_stored(
 async def test_first_sight_with_no_alias_stores_the_placeholder_and_null_country(
     db_session: AsyncSession,
 ) -> None:
-    """Not `xfail`: this is the already-green backward-compatible call — `DiscoverStage.__call__`
-    and `_refresh_third_party_history` supply neither `alias` nor `country` today, and this
-    exact call already stores the placeholder before T452 as well as after it. It stays here,
-    unmarked, precisely so a T452 implementation that breaks the unchanged path turns this test
-    red rather than merely `xfail`.
+    """Not `xfail`: this is the already-green backward-compatible call, supplying neither `alias`
+    nor `country`, which already stored the placeholder before T452 as well as after it. It stays
+    here, unmarked, precisely so a T452 implementation that breaks the unchanged path turns this
+    test red rather than merely `xfail`.
     """
     from aoe2stats_ingester.discover import touch_aoe_profile
 
     profile_id = _FIRST_SIGHT_NO_ALIAS_PROFILE_ID
-    # No alias/country supplied at all — the exact call `DiscoverStage.__call__` and
-    # `_refresh_third_party_history` make today, and must keep making unchanged.
+    # No alias/country supplied at all — the call that must keep working unchanged.
     await touch_aoe_profile(db_session, profile_id)
     await db_session.commit()
 

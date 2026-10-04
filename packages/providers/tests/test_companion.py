@@ -1038,9 +1038,9 @@ async def test_contrast_case_old_match_no_longer_paged_yields_no_entry() -> None
     paging, not a match id filter — and that match must come back absent from the dict, exactly
     like `test_a_match_companion_does_not_know_yields_no_entry_rather_than_nulls` above (the
     provider has no way to tell "too old to be on this page" apart from "companion has never heard
-    of it" — both are simply not in the response). `enrich_colours` (`routers/matches.py`) reads
-    this same absence to leave `match_players.color_id` exactly as it was — see
-    `apps/api/tests/test_match_colour_enrichment.py`'s own DB-level assertion of that.
+    of it" — both are simply not in the response). `apps/api/tests/test_match_colour_enrichment.py`
+    asserts at the database level that this absence leaves `match_players.color_id` exactly as it
+    was.
     """
     body = _load_matches_fixture()
     old_game_id = 400000001  # older than anything on the profiles' default page fixture carries

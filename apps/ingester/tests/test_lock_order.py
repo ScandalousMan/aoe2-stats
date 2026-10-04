@@ -67,22 +67,22 @@ class _Recorder:
         self, conn: Any, cursor: Any, statement: str, parameters: Any, context: Any, many: bool
     ) -> None:
         self.statements.append(statement)
-        if many:
-            # An `executemany` (a test seeding rows through the ORM): not a batch under test.
-            return
         found = re.match(r"INSERT INTO (\w+)", statement)
         if found is None or found.group(1) not in self._KEYS:
             return
         table = found.group(1)
         columns = self._KEYS[table]
-        rows: dict[int, list[int]] = {}
-        for key, value in dict(parameters).items():
-            for position, column in enumerate(columns):
-                matched = re.fullmatch(rf"{column}(?:_m(\d+))?", key)
-                if matched:
-                    index = int(matched.group(1) or 0)
-                    rows.setdefault(index, [0] * len(columns))[position] = value
-        self.inserts.append((table, [tuple(rows[i]) for i in sorted(rows)]))
+        # An `executemany` is a list of parameter sets, each recorded in order; a batched `INSERT`
+        # is one dict whose names carry a per-row suffix (`_m<N>` or `__<N>`).
+        for parameter_set in [parameters] if isinstance(parameters, dict) else parameters:
+            rows: dict[int, list[int]] = {}
+            for key, value in dict(parameter_set).items():
+                for position, column in enumerate(columns):
+                    matched = re.fullmatch(rf"{column}(?:(?:_m|__)(\d+))?", key)
+                    if matched:
+                        index = int(matched.group(1) or 0)
+                        rows.setdefault(index, [0] * len(columns))[position] = value
+            self.inserts.append((table, [tuple(rows[i]) for i in sorted(rows)]))
 
     def tables(self) -> list[str]:
         return [table for table, _ in self.inserts]
@@ -375,3 +375,25 @@ async def test_colour_fills_replace_nothing_that_is_stored(db_session: AsyncSess
         (await db_session.execute(select(MatchPlayer.profile_id, MatchPlayer.color_id))).all()
     )
     assert colours == {21: 3, 22: 9}
+
+
+async def test_recorder_sees_every_row_of_an_executemany(
+    db_session: AsyncSession, recorder: _Recorder
+) -> None:
+    """Two `match_players` rows added through the ORM are one `executemany`; the recorder must
+    list a row per parameter set, in order, not skip the statement."""
+    await _stored_match_players(db_session, [800_001], (31,), colour=None)
+    db_session.add(AoeProfile(profile_id=32, alias="32"))
+    db_session.add(AoeProfile(profile_id=33, alias="33"))
+    await db_session.flush()
+    recorder.inserts.clear()
+
+    db_session.add_all(
+        [MatchPlayer(game_id=800_001, profile_id=profile_id) for profile_id in (33, 32)]
+    )
+    await db_session.flush()
+
+    assert recorder.inserts == [
+        ("match_players", [(800_001, 33)]),
+        ("match_players", [(800_001, 32)]),
+    ]

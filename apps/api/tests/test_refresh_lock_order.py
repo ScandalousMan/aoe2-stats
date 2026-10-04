@@ -33,13 +33,13 @@ default second.
 - `test_lock_conflict_in_the_refresh_degrades_to_storage` and
   `test_other_database_errors_in_the_refresh_still_fail` are (d): `40P01`, `40001` and `55P03` (a
   `lock_timeout`) degrade, nothing else does.
-- `test_match_detail_identity_refresh_touches_in_profile_id_order` covers the third API caller,
-  `routers/matches.py::_refresh_match_identity`.
+- `test_match_detail_identity_refresh_touches_in_profile_id_order` covers the persistence of what
+  `routers/matches.py::_fetch_match_identity` returns.
 
-**T459a — the companion colour write is a writer too.** The review found `enrich_colours` writing
-`match_players` per row, in companion's order, outside the savepoint, on two routes that T459 had
-just ordered. The tests at the bottom of this file are written against the *shape* of the defect,
-not the two instances found:
+**T459a — the companion colour write is a writer too.** The review found the companion colour
+fill writing `match_players` per row, in companion's order, outside the savepoint, on two routes
+that T459 had just ordered. The tests at the bottom of this file are written against the *shape*
+of the defect, not the two instances found:
 
 - `test_every_row_lock_in_a_request_is_taken_in_the_global_order` records **every** row-locking
   statement (`INSERT`, `UPDATE`, `DELETE`, `SELECT ... FOR UPDATE`) each connection sends during a
@@ -618,7 +618,7 @@ async def test_savepoint_restores_lock_timeout_when_the_block_succeeds(
     assert after == before
 
 
-# --- routers/matches.py::_refresh_match_identity -------------------------------------------------
+# --- routers/matches.py::_fetch_match_identity ---------------------------------------------------
 
 
 async def test_match_detail_identity_refresh_touches_in_profile_id_order(
@@ -684,6 +684,8 @@ class _RowLock:
     table: str
     key: tuple[int, ...]
     statement: str
+    #: Postgres, not the statement's text, decides the order this lock was taken in.
+    unordered: bool = False
 
 
 @dataclass
@@ -692,19 +694,24 @@ class _LockRecorder:
     the SQL that reaches the driver (`before_cursor_execute`), so a writer cannot hide behind the
     ORM or behind a helper: `INSERT`, `UPDATE`, `DELETE` and `SELECT ... FOR UPDATE` against the
     three ranked tables, with the key of every row each one carries — multi-row `VALUES` lists and
-    `IN (...)` lists included, in the order the statement lists them.
+    `IN (...)` lists included. An `executemany` is recorded once per parameter set, in order.
 
     A locking statement against a ranked table whose keys this class cannot read **fails the
     test** instead of being skipped: a new statement shape must not slip past the invariant by
-    being unparseable. A `SELECT ... FOR UPDATE` is only credited with its keys in ascending order
-    if its text really carries `ORDER BY <table>.<key columns>`; without it the keys count in the
-    order the statement lists them. Tables outside the three (`provider_calls`, `rating_snapshots`,
-    `replay_captures`) are recorded but never ranked: they hold only rows this transaction
-    inserts, or reference the ranked rows by a foreign key that takes a non-conflicting lock.
+    being unparseable. Only a multi-row `INSERT` takes its row locks in the order its `VALUES`
+    list gives, and a `SELECT ... FOR UPDATE` that really carries `ORDER BY <table>.<key columns>`
+    takes them in ascending key order. Any other statement that locks several rows (`UPDATE ...
+    FROM (VALUES ...)`, a `SELECT ... FOR UPDATE` without that `ORDER BY`) locks them in a join or
+    scan order Postgres chooses: it is recorded as **unordered**, and is a violation unless every
+    key it touches is already held earlier in the transaction. Tables outside the three
+    (`provider_calls`, `rating_snapshots`, `replay_captures`) are recorded but never ranked: they
+    hold only rows this transaction inserts, or reference the ranked rows by a foreign key that
+    takes a non-conflicting lock.
     """
 
     engine: AsyncEngine
     by_connection: dict[int, list[_RowLock]] = field(default_factory=dict)
+    executemany_statements: int = 0
     _ids: ClassVar[Iterator[int]] = itertools.count(1)
 
     def __enter__(self) -> _LockRecorder:
@@ -729,8 +736,9 @@ class _LockRecorder:
 
     def _keys(
         self, sql: str, parameters: dict[str, Any]
-    ) -> tuple[str, list[tuple[int, ...]]] | None:
-        """`(table, keys)` for a row-locking statement against a ranked table, else `None`."""
+    ) -> tuple[str, list[tuple[int, ...]], bool] | None:
+        """`(table, keys, unordered)` for a row-locking statement against a ranked table, else
+        `None`."""
         insert = re.match(
             r"INSERT INTO (\w+) \(([^)]*)\) VALUES (.*?)(?: ON CONFLICT| RETURNING|$)", sql
         )
@@ -743,9 +751,11 @@ class _LockRecorder:
             columns = [column.strip() for column in insert.group(2).split(",")]
             positions = [columns.index(column) for column in _KEY_COLUMNS[table]]
             rows = self._tuples(insert.group(3))
-            return table, [
-                tuple(self._value(row[i], parameters) for i in positions) for row in rows
-            ]
+            return (
+                table,
+                [tuple(self._value(row[i], parameters) for i in positions) for row in rows],
+                False,
+            )
         if update:
             table = update.group(1)
             if table not in _RANK:
@@ -755,15 +765,19 @@ class _LockRecorder:
                 columns = [column.strip() for column in values.group(2).split(",")]
                 positions = [columns.index(column) for column in _KEY_COLUMNS[table]]
                 rows = self._tuples(values.group(1))
-                return table, [
-                    tuple(self._value(row[i], parameters) for i in positions) for row in rows
-                ]
+                return (
+                    table,
+                    [tuple(self._value(row[i], parameters) for i in positions) for row in rows],
+                    True,
+                )
             equalities = dict(re.findall(rf"{table}\.(\w+) = <<(\w+)>>", sql))
             if not all(column in equalities for column in _KEY_COLUMNS[table]):
                 raise AssertionError(f"cannot read the key of a locking statement: {sql}")
-            return table, [
-                tuple(int(parameters[equalities[column]]) for column in _KEY_COLUMNS[table])
-            ]
+            return (
+                table,
+                [tuple(int(parameters[equalities[column]]) for column in _KEY_COLUMNS[table])],
+                False,
+            )
         if select:
             table = select.group(1)
             if table not in _RANK:
@@ -777,34 +791,43 @@ class _LockRecorder:
                 for member in members
             ]
             ordered = " ORDER BY " + ", ".join(f"{table}.{c}" for c in _KEY_COLUMNS[table])
-            return table, sorted(keys) if ordered in sql else keys
+            return table, sorted(keys) if ordered in sql else keys, ordered not in sql
         return None
 
     def _record(
         self, conn: Any, cursor: Any, statement: str, parameters: Any, context: Any, many: bool
     ) -> None:
         sql = _BOUND.sub(lambda found: f"<<{found.group(1)}>>", " ".join(statement.split()))
-        if not isinstance(parameters, dict):
-            return
-        found = self._keys(sql, parameters)
-        if found is None:
-            return
-        table, keys = found
-        if not keys:
-            raise AssertionError(f"a locking statement with no readable key: {sql}")
-        driver = conn.connection.driver_connection
-        if not hasattr(driver, "_lock_recorder_id"):
-            driver._lock_recorder_id = next(self._ids)  # type: ignore[arg-type]
-        self.by_connection.setdefault(driver._lock_recorder_id, []).extend(
-            _RowLock(table, key, sql) for key in keys
-        )
+        # A list of parameter sets is an `executemany`: every set is a write and is recorded. A
+        # dict is one statement (a batched `INSERT` suffixes its names per row). A set that is not
+        # a dict cannot be read; against a ranked table `_keys` then fails the test instead of the
+        # statement going unrecorded.
+        if isinstance(parameters, dict):
+            parameter_sets = [parameters]
+        else:
+            parameter_sets = list(parameters or [])
+            self.executemany_statements += bool(parameter_sets)
+        for parameter_set in parameter_sets:
+            found = self._keys(sql, parameter_set if isinstance(parameter_set, dict) else {})
+            if found is None:
+                return
+            table, keys, unordered = found
+            if not keys:
+                raise AssertionError(f"a locking statement with no readable key: {sql}")
+            driver = conn.connection.driver_connection
+            if not hasattr(driver, "_lock_recorder_id"):
+                driver._lock_recorder_id = next(self._ids)  # type: ignore[arg-type]
+            self.by_connection.setdefault(driver._lock_recorder_id, []).extend(
+                _RowLock(table, key, sql, unordered) for key in keys
+            )
 
     def count(self) -> int:
         return sum(len(locks) for locks in self.by_connection.values())
 
     def violations(self) -> list[str]:
         """Every row first locked at a lower `(rank, key)` than one this connection had already
-        locked. A row locked earlier on the same connection is a re-touch, not an acquisition."""
+        locked, and every row first locked by an unordered statement. A row locked earlier on the
+        same connection is a re-touch, not an acquisition."""
         problems: list[str] = []
         for connection, locks in self.by_connection.items():
             held: set[tuple[str, tuple[int, ...]]] = set()
@@ -814,6 +837,13 @@ class _LockRecorder:
                 if (lock.table, lock.key) in held:
                     continue
                 held.add((lock.table, lock.key))
+                if lock.unordered:
+                    problems.append(
+                        f"connection {connection}: {lock.table}{lock.key} was first locked by a "
+                        f"statement whose lock order Postgres chooses, not the statement -- "
+                        f"`{lock.statement[:160]}`"
+                    )
+                    continue
                 position = (_RANK[lock.table], lock.key)
                 if position < highest:
                     assert highest_lock is not None
@@ -1151,3 +1181,124 @@ async def test_a_stored_colour_is_never_replaced_by_companions(
     for (game_id, profile_id), colour in stored.items():
         if (game_id, profile_id) not in stored_before and game_id in served:
             assert colour == 8, f"companion did not fill the NULL colour of {(game_id, profile_id)}"
+
+
+# --- T459d: the recorder must fail on what it cannot read, and prove it does ---------------------
+
+
+@pytest.mark.parametrize("late_writer", [False, True])
+async def test_recorder_reports_an_executemany_write_after_the_batch(
+    late_writer: bool,
+    engine: AsyncEngine,
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+) -> None:
+    """An ORM flush that updates two or more `match_players` rows is one `executemany` with a list
+    of parameter sets. A writer that does that after the batch, on rows *below* the batch's keys,
+    is exactly the inversion the invariant forbids; the recorder must see every parameter set.
+
+    The control (`late_writer=False`) is the same transaction without that writer."""
+    await _seed_subject(session_factory)
+    await _seed_stored_matches(session_factory, _STORED_OLD_GAMES, completed_at=_MATCH_COMPLETED_AT)
+
+    with _LockRecorder(engine) as recorder:
+        async with session_factory() as session:
+            await discover.persist_matches_and_profiles(
+                session, [_raw_match(game_id, _PROFILES) for game_id in _FETCHED_GAMES]
+            )
+            if late_writer:
+                rows = (
+                    (
+                        await session.execute(
+                            select(MatchPlayer).where(MatchPlayer.game_id.in_(_STORED_OLD_GAMES))
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
+                assert len(rows) >= 2
+                for row in rows:
+                    row.color_id = 5
+                await session.flush()
+            await session.commit()
+
+    if late_writer:
+        assert recorder.violations(), "the recorder missed an executemany write below the batch"
+        assert recorder.executemany_statements >= 1, "the late writer was not an executemany"
+    else:
+        assert recorder.count() > 0
+        assert not recorder.violations(), recorder.violations()
+
+
+async def test_recorder_reports_a_fills_only_request_whose_lock_pass_is_removed(
+    http: httpx.AsyncClient,
+    engine: AsyncEngine,
+    session_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`UPDATE ... FROM (VALUES ...)` locks its rows in join order, not `VALUES` order, so the
+    statement alone proves nothing about order: it is only safe when `lock_match_players` has
+    already taken every key it touches. Remove that pass and the recorder must fail; with it
+    (`test_every_row_lock_in_a_request_is_taken_in_the_global_order`, route `detail`) it must
+    not."""
+
+    async def _no_lock_pass(session: AsyncSession, keys: Any) -> None:
+        return None
+
+    await _seed_signed_in_caller(http, session_factory)
+    await _seed_subject(session_factory)
+    await _seed_stored_matches(
+        session_factory, _STORED_OLD_GAMES, completed_at=_MATCH_COMPLETED_AT, placeholders=False
+    )
+    game_id = _STORED_OLD_GAMES[0]
+    companion = _FakeCompanion({(game_id, profile_id): 4 for profile_id in _PROFILES})
+    _install_fake_providers(monkeypatch, _FakeRelic([], []))
+    monkeypatch.setattr(matches_router, "_build_enrichment_provider", lambda _s: companion)
+    monkeypatch.setattr(discover, "lock_match_players", _no_lock_pass)
+
+    with _LockRecorder(engine) as recorder:
+        response = await http.get(f"/api/matches/{game_id}")
+
+    assert response.status_code == 200, response.text
+    assert (await _stored_colours(session_factory))[(game_id, _SUBJECT)] == 4, "no fill happened"
+    assert recorder.violations(), (
+        "the recorder credited a VALUES list with an order it does not have"
+    )
+
+
+# --- T459d: companion is not asked about a match the served page cannot contain ------------------
+
+
+@pytest.mark.parametrize(("fetched_age_days", "companion_asked"), [(30, False), (-1, True)])
+async def test_an_uncoloured_match_outside_the_served_page_costs_no_companion_call(
+    fetched_age_days: int,
+    companion_asked: bool,
+    http: httpx.AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The stored page (`limit=2`) is full and fully coloured. A fetched match that Relic left
+    uncoloured and that is *older* than the page's oldest row cannot be on the page served, and
+    companion cannot be made to fill it later either, so asking about it would cost a call on
+    every view for ever. One *newer* than the page can be on it, and is asked about."""
+    await _seed_signed_in_caller(http, session_factory)
+    await _seed_subject(session_factory)
+    colours = {
+        (game_id, profile_id): 2 for game_id in _STORED_OLD_GAMES for profile_id in _PROFILES
+    }
+    await _seed_stored_matches(
+        session_factory, _STORED_OLD_GAMES, completed_at=_MATCH_COMPLETED_AT, colours=colours
+    )
+    fetched = _raw_match(_FETCHED_GAMES[0], _PROFILES).model_copy(
+        update={"completed_at": _MATCH_COMPLETED_AT - timedelta(days=fetched_age_days)}
+    )
+    companion = _FakeCompanion({(_FETCHED_GAMES[0], profile_id): 6 for profile_id in _PROFILES})
+    _install_fake_providers(monkeypatch, _FakeRelic([fetched], []))
+    monkeypatch.setattr(matches_router, "_build_enrichment_provider", lambda _s: companion)
+
+    response = await http.get(f"/api/players/{_SUBJECT}/matches?limit=2")
+
+    assert response.status_code == 200, response.text
+    assert bool(companion.game_ids_asked) is companion_asked, companion.game_ids_asked
+    served = [row["game_id"] for row in response.json()["matches"]]
+    assert (_FETCHED_GAMES[0] in served) is companion_asked, served

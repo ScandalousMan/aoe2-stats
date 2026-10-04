@@ -350,7 +350,7 @@ async def upsert_match_players(
     payload as the other five. Unlike them it is set with `COALESCE(excluded.color_id,
     match_players.color_id)`: a projection that could not read the blob yields `None`, and `None`
     here means "unknown", never "no colour" — it must not erase a colour an earlier sighting (or
-    the companion fallback, `routers/matches.py::enrich_colours`) already stored. A non-`None`
+    the companion fallback) already stored. A non-`None`
     projection wins outright: Relic is the primary source, and the colour of a finished match
     never changes.
     """
@@ -454,10 +454,9 @@ async def persist_matches_and_profiles(
     upsert, then the fills (`fill_missing_colours`, `NULL` colours only) — two statements more,
     whatever the number of fills. The fills' rows may include stored rows below the batch's keys
     (the stored page of a profile whose history was just refetched); the pass is what keeps those
-    from being locked after higher ones. The one residual: a *new* `match_players` row inserted by
-    the batch at a key below an *existing* row locked by the pass waits on a concurrent insert of
-    that same new key — which needs a second writer racing on a match neither has stored, with the
-    lower id arriving after a higher one.
+    from being locked after higher ones. A new `match_players` row is only inserted for a game this
+    same transaction has just upserted into `matches`, so two writers of one new key meet on
+    `matches` first and no cycle forms.
 
     Nothing in the caller's transaction may write an earlier table or a lower key afterwards; a
     caller that needs more rows (a capture enqueue, a rating snapshot) writes them after this

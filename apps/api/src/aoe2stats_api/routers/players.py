@@ -86,6 +86,7 @@ from __future__ import annotations
 import functools
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Query, Request
@@ -697,6 +698,30 @@ async def get_player_rating_history(
 # --- GET /api/players/{profile_id}/matches — FR-007, FR-008a property 1, FR-011, FR-012 ---------
 
 
+def _newest_first(completed_at: datetime, game_id: int) -> tuple[datetime, int]:
+    """`MatchesRepository.list_matches`'s sort key: `(completed_at, game_id)`, newest first."""
+    return (completed_at if completed_at.tzinfo else completed_at.replace(tzinfo=UTC), game_id)
+
+
+def _matches_that_can_be_served(
+    raw_matches: Sequence[RawMatch], stored_page: MatchesPage, limit: int
+) -> list[RawMatch]:
+    """The fetched matches that can be on the page this request serves.
+
+    The served page is the newest `limit` rows of the stored matches and the fetched ones together.
+    A full stored page already holds `limit` rows, so a fetched match older than its oldest row is
+    outside the page whatever the cursor; with fewer rows the page has room for every fetched match.
+    """
+    if len(stored_page.matches) < limit:
+        return list(raw_matches)
+    oldest = min(_newest_first(row.completed_at, row.game_id) for row in stored_page.matches)
+    return [
+        raw_match
+        for raw_match in raw_matches
+        if _newest_first(raw_match.completed_at, raw_match.game_id) >= oldest
+    ]
+
+
 @router.get("/players/{profile_id}/matches")
 async def get_player_match_history(
     profile_id: int,
@@ -772,14 +797,18 @@ async def get_player_match_history(
     identity = await _fetch_profile_identity(db_session, profile_id)
     # T450 / T409: batched over every candidate game id at once, never one call per match; this
     # route's own `profile_id` is companion's required query parameter.
+    # Only matches that can be on the served page are candidates: a fetched match older than a full
+    # stored page stays uncoloured whatever companion says, and asking about it would cost a call
+    # on every view.
+    candidates = _matches_that_can_be_served(raw_matches, stored_page, limit)
     fills = await fetch_colour_fills(
         db_session,
         [profile_id],
         sorted(
-            {raw_match.game_id for raw_match in raw_matches}
+            {raw_match.game_id for raw_match in candidates}
             | {row.game_id for row in stored_page.matches}
         ),
-        fetched=raw_matches,
+        fetched=candidates,
     )
     await _persist_on_view_refresh(
         db_session, raw_matches=raw_matches, identity=identity, colour_fills=fills
