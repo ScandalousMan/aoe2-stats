@@ -1514,6 +1514,18 @@ parallel batch; T666h, T666i and T666j follow, in order — all three edit `run.
       caller today. The analysis rate-limit charge on a deployment-fault 500 stays as 003 charges
       every other early refusal
 
+- [ ] T666n [US6] **The closing review's four follow-ups (PASS on T666m, 2026-10-04).** (a) The
+      keep-prior path's would-be digest in `apps/analyzer/src/aoe2stats_analyzer/run.py` still catches
+      only a value error, so the empty-dependency and missing-file faults T666m reclassified would
+      escape its warning after the row has committed; catch the deployment-fault set too. (b) 003's
+      failure and unavailable writers read the row, check it is not published, then write, with no
+      lock: a publish between the read and the commit is still unpublished. Make each write
+      conditional on the row not being published, in the statement itself. (c) The match page's lazy
+      import of the staleness module sits outside the handler that promises never to fail the page;
+      move it inside. (d) The snapshot loader in
+      `packages/knowledge/src/aoe2stats_knowledge/snapshot.py` decodes its descriptor before any
+      check, so invalid UTF-8 surfaces as a bare decode error rather than a snapshot fault; wrap it
+
 **Checkpoint**: every value carries its tier, every analysis carries its identity, and no version
 destroys its predecessor.
 
