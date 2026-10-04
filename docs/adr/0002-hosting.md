@@ -80,7 +80,7 @@ Constitution principle XII exists because of this ADR. In particular:
 - **The upload carries no test artifact and no secret.** `.vercelignore` keeps visual-test
   baselines, the Storybook build, Playwright output and tool caches out of every deployment, and
   `.env*` files (except `.env.example`, which `config-preflight.mjs` reads) out of a CLI upload,
-  since the CLI does not apply `.gitignore`. Deployment storage had reached ~86.9 GB of 10 GB.
+  since the CLI does not apply `.gitignore`. Deployment storage had reached ~86.9 GB of 10 GB on 2026-10-04.
 
 ## The single-page fallback is a host requirement, not a Vercel setting
 
