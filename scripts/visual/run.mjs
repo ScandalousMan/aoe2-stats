@@ -52,6 +52,8 @@ import { fileURLToPath } from 'node:url'
 import { resetResultsDir, checkStaleness } from './a11y-scan.cjs'
 import { REVIEW_WIDTHS } from './review-widths.mjs'
 import { decideMissingIndex, BUILD_STORYBOOK_COMMAND } from './missing-index.mjs'
+import { changedFiles, selectChangedStories } from './story-selection.mjs'
+import { listStories } from './story-index.mjs'
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const designSystemDir = path.join(rootDir, 'packages', 'design-system')
@@ -66,18 +68,6 @@ const THEMES = ['light', 'dark']
 // `review-widths.mjs` is the one place the literal itself lives in code (T529's design, low
 // remediation finding — see that module's own comment).
 const WIDTHS = REVIEW_WIDTHS
-
-// Paths whose diff repaints or can repaint *every* story, so touching any of them selects the
-// full story set rather than only the stories under the touched directory. Relative to the repo
-// root, matching how `changedFiles()` reports paths.
-const GLOBAL_REACH_PREFIXES = [
-  'packages/design-system/tokens/',
-  'packages/design-system/.storybook/',
-  'packages/design-system/src/lib/',
-  'packages/design-system/src/index.ts',
-  'tests/visual/',
-  'scripts/visual/',
-]
 
 const changedOnly = process.argv.slice(2).includes('--changed')
 // T675 (slice 1/N): a report, never part of the ordinary `pnpm test:visual` / `--changed` selection
@@ -95,67 +85,22 @@ const stateSignalSweep = process.argv.slice(2).includes('--state-signal-sweep')
 // have silently swept `state-signal-sweep.spec.ts` into every ordinary run and every PR `visual`
 // job the moment it existed as a sibling file.
 const STATE_SIGNAL_SWEEP_SPEC = 'tests/visual/state-signal-sweep.spec.ts'
+// T693: the runtime pass's own spec is likewise its own entry point
+// (`scripts/visual/state-coverage-runtime.mjs`), never part of an ordinary run — it needs the work
+// list that driver writes, and its plants are a dedicated pull-request step (`pr.yml`).
+const STATE_COVERAGE_RUNTIME_SPEC = 'tests/visual/state-coverage-runtime.spec.ts'
 function listOrdinaryVisualSpecFiles() {
   const visualDir = path.join(rootDir, 'tests', 'visual')
   return readdirSync(visualDir)
     .filter((f) => f.endsWith('.spec.ts'))
     .map((f) => path.posix.join('tests/visual', f))
-    .filter((f) => f !== STATE_SIGNAL_SWEEP_SPEC)
+    .filter((f) => f !== STATE_SIGNAL_SWEEP_SPEC && f !== STATE_COVERAGE_RUNTIME_SPEC)
     .sort()
 }
 
 function log(message) {
   console.log(`test:visual: ${message}`)
 }
-
-function runGit(args) {
-  const result = spawnSync('git', args, { cwd: rootDir, encoding: 'utf8' })
-  if (result.status !== 0) return []
-  return result.stdout
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-}
-
-// Same shape as runGit(), except a failed invocation is fatal rather than swallowed into `[]`.
-// Reserved for the one diff whose base is a name that might not resolve in this checkout at all
-// (`${base}...HEAD` below) — as opposed to a diff against `HEAD` or a listing of untracked files,
-// neither of which names anything that can fail to exist. Conflating "the command failed" with
-// "the command found nothing" is the defect this exists to end: a shallow CI checkout with no
-// `origin/main` locally available used to make every pull-request run silently select zero
-// stories and exit 0, looking identical to a docs-only change that genuinely touches none.
-function runGitOrFail(args, baseDescription) {
-  const result = spawnSync('git', args, { cwd: rootDir, encoding: 'utf8' })
-  if (result.status !== 0) {
-    const stderr = (result.stderr ?? '').trim()
-    log(
-      `--changed could not resolve its diff base, ${baseDescription} (\`git ${args.join(' ')}\`)` +
-        (stderr ? ` — ${stderr}` : '') +
-        '. This is not "nothing changed" — it is "the changed set is unknown" — so refusing to ' +
-        'report zero affected stories. Set VISUAL_BASE_REF to a ref this checkout can resolve ' +
-        '(a commit SHA already fetched, or a branch after `git fetch` has brought it in), or run ' +
-        'the full, unscoped `pnpm test:visual` instead.',
-    )
-    process.exit(1)
-  }
-  return result.stdout
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-}
-
-// Every file that differs from the diff base, plus anything uncommitted or untracked, so a run
-// before *and* after `git add` behaves the same way for a developer working locally.
-function changedFiles() {
-  const base = process.env.VISUAL_BASE_REF ?? 'origin/main'
-  const files = new Set()
-  for (const f of runGitOrFail(['diff', '--name-only', `${base}...HEAD`], `"${base}"`)) files.add(f)
-  for (const f of runGit(['diff', '--name-only', 'HEAD'])) files.add(f)
-  for (const f of runGit(['ls-files', '--others', '--exclude-standard'])) files.add(f)
-  return [...files]
-}
-
-const storyGlob = /\.stories\.[jt]sx?$/
 
 async function main() {
   const missing = decideMissingIndex({
@@ -173,8 +118,9 @@ async function main() {
   }
 
   const index = JSON.parse(readFileSync(indexPath, 'utf8'))
-  const entries = Object.values(index.entries ?? index.stories ?? {})
-  let stories = entries.filter((entry) => entry.type === undefined || entry.type === 'story')
+  // T693: `listStories` skips a `state-coverage-fixture` story by tag — a plant is built into
+  // Storybook for the runtime pass, never captured, scanned or given a baseline.
+  let stories = listStories(index)
 
   if (stories.length === 0) {
     log('Storybook build has no stories — nothing to test.')
@@ -182,38 +128,12 @@ async function main() {
   }
 
   if (changedOnly) {
-    const diff = changedFiles()
+    // See `selectChangedStories` (`story-selection.mjs`) for what a diff affects.
+    stories = selectChangedStories(stories, changedFiles()).stories
 
-    // A change under any of these paths repaints (or can repaint) every story — a token, the
-    // preview decorator, a shared `lib` helper, the public surface, or the harness itself — so it
-    // selects the full story set rather than narrowing to a directory. Without this, a change to
-    // `packages/design-system/tokens/color.json` would touch no `.stories.tsx` file and select
-    // zero stories, which is exactly the gap FR-060/FR-061 exist to close: an "affected" story is
-    // one whose *rendered output* the diff can change, not only one whose own file was edited.
-    const globallyAffected = diff.some((f) =>
-      GLOBAL_REACH_PREFIXES.some((prefix) => f.startsWith(prefix)),
-    )
-
-    if (!globallyAffected) {
-      // Directory of each story's own file, relative to the design-system package (matching
-      // `entry.importPath`, e.g. `src/primitives/Button`), so a change to the component's
-      // implementation file — not only to its `.stories.tsx` — selects the story too.
-      const touchedInPackage = diff
-        .filter((f) => f.startsWith('packages/design-system/'))
-        .map((f) => path.relative(designSystemDir, path.join(rootDir, f)).split(path.sep).join('/'))
-      const touchedDesignSystemDirs = new Set(touchedInPackage.map((f) => path.posix.dirname(f)))
-      const touchedStoryFiles = new Set(touchedInPackage.filter((f) => storyGlob.test(f)))
-
-      stories = stories.filter((entry) => {
-        const importPath = (entry.importPath ?? '').replace(/^\.\//, '')
-        if (touchedStoryFiles.has(importPath)) return true
-        return touchedDesignSystemDirs.has(path.posix.dirname(importPath))
-      })
-
-      if (stories.length === 0) {
-        log('--changed: nothing in the diff affects a story — nothing to test.')
-        process.exit(0)
-      }
+    if (stories.length === 0) {
+      log('--changed: nothing in the diff affects a story — nothing to test.')
+      process.exit(0)
     }
   }
 

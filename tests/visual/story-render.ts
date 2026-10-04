@@ -94,15 +94,34 @@ export async function readCaptureClip(
   }, storyId)
 }
 
+// What a clip part and a forced state both name: one element, by a CSS `selector`, or by ARIA `role`
+// optionally narrowed by `name`, with `nth` breaking a tie when either matches more than one.
+export interface ElementTarget {
+  selector?: string
+  role?: string
+  name?: string
+  nth?: number
+}
+
+// The one locator both `locateClipPart` below and `applyForceState` further down resolve a target
+// through (T693: factored out of the two places that each built it inline, so "which element does
+// this name" has one definition — and so `tests/visual/state-coverage-runtime.spec.ts`, which
+// records the answer for every forced story, asks the very same question the capture does). Scoped
+// to `root`; `nth` narrows it. Never throws and never counts: a caller decides what a count other
+// than one means.
+export function locateTarget(root: Locator, target: ElementTarget): Locator {
+  const role = target.role as Parameters<typeof root.getByRole>[0]
+  const located = target.selector
+    ? root.locator(target.selector)
+    : root.getByRole(role, target.name !== undefined ? { name: target.name } : undefined)
+  return typeof target.nth === 'number' ? located.nth(target.nth) : located
+}
+
 // One clip part's own box, located a selector or a role(+name), scoped to `root`, with `nth`
 // breaking a tie. Throws (never returns a shrunken or empty clip) when a part matches zero or
 // more-than-one element with no `nth` to disambiguate.
 export async function locateClipPart(root: Locator, storyId: string, part: VisualCaptureClipPart) {
-  const role = part.role as Parameters<typeof root.getByRole>[0]
-  const located = part.selector
-    ? root.locator(part.selector)
-    : root.getByRole(role, part.name !== undefined ? { name: part.name } : undefined)
-  const scoped = typeof part.nth === 'number' ? located.nth(part.nth) : located
+  const scoped = locateTarget(root, part)
   const count = await scoped.count()
   if (count !== 1) {
     throw new Error(
@@ -324,13 +343,20 @@ export async function applyForceState(
   await page.addStyleTag({
     content: '*, *::before, *::after { transition: none !important; animation: none !important; }',
   })
-  const target = (() => {
-    const role = forceState.role as Parameters<typeof root.getByRole>[0]
-    const located = forceState.selector
-      ? root.locator(forceState.selector)
-      : root.getByRole(role, forceState.name !== undefined ? { name: forceState.name } : undefined)
-    return typeof forceState.nth === 'number' ? located.nth(forceState.nth) : located
-  })()
+  const target = locateTarget(root, forceState)
+  // T693: a forced target must be exactly one element, as a clip part must (`locateClipPart`). Zero
+  // used to surface as a 30-second actionability timeout from `hover()`; two, as Playwright's strict
+  // mode refusing the action — and `focus-visible` goes through `evaluate`, which refuses the same
+  // way. Saying it here names the story and the target, and keeps "what the force selects" one
+  // answer, the one the runtime pass records.
+  const count = await target.count()
+  if (count !== 1) {
+    const storyId = new URL(page.url()).searchParams.get('id') ?? '(unknown story)'
+    throw new Error(
+      `visualForceState: target ${JSON.stringify(forceState)} of story "${storyId}" matched ${count} ` +
+        'element(s) — expected exactly 1 (add "nth" to disambiguate a target that matches more than one).',
+    )
+  }
 
   let releaseMouseAfterCapture = false
 

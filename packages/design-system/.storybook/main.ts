@@ -1,5 +1,10 @@
 import tailwindcss from '@tailwindcss/vite'
 import type { StorybookConfig } from '@storybook/react-vite'
+import { fileURLToPath } from 'node:url'
+import { sourceStampPlugin } from './source-stamp.mjs'
+
+// The repository root: the source stamps are repository-rooted (`./source-stamp.mjs`).
+const repoRoot = fileURLToPath(new URL('../../..', import.meta.url))
 
 // Storybook configuration (T016). No stories exist yet — the first component and its story land
 // in T035 — so `stories` names the pattern every future `*.stories.tsx` under src/ will match,
@@ -8,8 +13,18 @@ import type { StorybookConfig } from '@storybook/react-vite'
 // `./foundations/**` (T563, FR-040, FR-041) is the one deliberate exception to "every story lives
 // under src/": the foundation pages document the token system itself, not a component, so they
 // have no `src/` component directory to sit beside — this file is their only home.
+//
+// `./fixtures/**` (T693, feature 005) is the second: the plants `tests/visual/state-coverage-
+// runtime.spec.ts` asserts on — stories tagged `state-coverage-fixture`, kept out of the sidebar and
+// of autodocs, never captured or scanned (`scripts/visual/story-index.mjs` is how every reader of
+// the built index skips them). They are not under `src/` on purpose: the checks that walk `src/`
+// (`tier-deps`, `token-scale`, `story-docs`, `state-coverage`) must never reach them.
 const config: StorybookConfig = {
-  stories: ['../src/**/*.stories.@(ts|tsx)', './foundations/**/*.stories.@(ts|tsx)'],
+  stories: [
+    '../src/**/*.stories.@(ts|tsx)',
+    './foundations/**/*.stories.@(ts|tsx)',
+    './fixtures/**/*.stories.@(ts|tsx)',
+  ],
   addons: [
     // Accessibility checks against every story, for checklist point 5 in the design-system skill.
     '@storybook/addon-a11y',
@@ -57,6 +72,11 @@ const config: StorybookConfig = {
   viteFinal: async (viteConfig) => {
     viteConfig.plugins ??= []
     viteConfig.plugins.push(tailwindcss())
+    // T693: stamps every intrinsic JSX element of a design-system source file with the `file:line` it
+    // was written at, so the runtime pass can tell which component placed an element. Storybook
+    // only: `apps/web/vite.config.ts` does not wire it, and `scripts/checks/stamp-absent.mjs` fails
+    // when the app's build carries the attribute.
+    viteConfig.plugins.push(sourceStampPlugin({ rootDir: repoRoot }))
     return viteConfig
   },
 }

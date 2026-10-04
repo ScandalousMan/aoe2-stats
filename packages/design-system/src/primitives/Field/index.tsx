@@ -83,7 +83,7 @@ export function Field({
   labelHidden = false,
   hint,
   error,
-  size = 'md',
+  size = FIELD_AXIS_DEFAULTS.size,
   disabled = false,
   loading = false,
   id,
@@ -157,3 +157,7 @@ export function Field({
     </div>
   )
 }
+
+// The axis a caller that names none gets. Read by `Field`'s own destructuring above and by the runtime
+// pass (`tests/visual/state-coverage-runtime.spec.ts`, T693) — see `BUTTON_AXIS_DEFAULTS`.
+export const FIELD_AXIS_DEFAULTS = { size: 'md' } as const satisfies { size: FieldSize }

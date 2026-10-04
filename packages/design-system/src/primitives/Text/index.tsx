@@ -1,4 +1,4 @@
-import type { ElementType, HTMLAttributes, ReactNode } from 'react'
+import type { HTMLAttributes, ReactNode } from 'react'
 import { cx } from '../../lib/cx'
 
 // packages/design-system/specs/structural-tier.md §8 (T545, FR-020, FR-007).
@@ -73,7 +73,11 @@ export function Text<TRole extends TextRole>({ role, as, children, ...rest }: Te
   if (children === undefined || children === null || children === '') return null
 
   const config = roleConfig[role]
-  const Tag = (as ?? config.element) as ElementType
+  // A string at runtime — `as` and `config.element` are both `TextElementsByRole` members. Cast to
+  // that union spelled out, not to `ElementType` (which admits components): the Storybook-only
+  // source stamp (`.storybook/source-stamp.mjs`) reads the cast to know this tag is an intrinsic
+  // element and stamps it, and refuses a capitalised tag it cannot classify.
+  const Tag = (as ?? config.element) as 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'p' | 'span'
 
   return (
     <Tag className={cx(config.classes, focusRing)} {...rest}>

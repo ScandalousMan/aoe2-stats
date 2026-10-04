@@ -157,8 +157,8 @@ const base = cx(
 
 export function Button(props: ButtonProps) {
   const {
-    variant = 'secondary',
-    size = 'md',
+    variant = BUTTON_AXIS_DEFAULTS.variant,
+    size = BUTTON_AXIS_DEFAULTS.size,
     loading = false,
     loadingLabel,
     leadingIcon,
@@ -220,4 +220,13 @@ export function Button(props: ButtonProps) {
       {content}
     </button>
   )
+}
+
+// The axes a caller that names neither gets. Read by `Button`'s own destructuring above and by the
+// runtime pass (`tests/visual/state-coverage-runtime.spec.ts`, T693), which sees only the props a
+// caller passed and merges them over this to say which variant and size rendered — one constant, so
+// the two cannot disagree. Declared last in the file so adding it moves no element's line.
+export const BUTTON_AXIS_DEFAULTS = { variant: 'secondary', size: 'md' } as const satisfies {
+  variant: ButtonVariant
+  size: ButtonSize
 }

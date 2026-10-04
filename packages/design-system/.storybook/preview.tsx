@@ -2,6 +2,10 @@ import type { Decorator, Preview } from '@storybook/react-vite'
 import { useEffect } from 'react'
 import { MINIMAL_VIEWPORTS } from 'storybook/viewport'
 import { REVIEW_WIDTHS } from '../../../scripts/visual/review-widths.mjs'
+import { BUTTON_AXIS_DEFAULTS, Button } from '../src/primitives/Button'
+import { FIELD_AXIS_DEFAULTS, Field } from '../src/primitives/Field'
+import { LINK_AXIS_DEFAULTS, Link } from '../src/primitives/Link'
+import { Menu } from '../src/primitives/Menu'
 // The one stylesheet every consumer imports (see tokens/tailwind.css) — Storybook renders
 // components exactly the way apps/web does, tokens included, never a second copy of Tailwind.
 import '../tokens/tailwind.css'
@@ -21,6 +25,56 @@ const VIEWPORT_OPTIONS = {
     name: 'Review width (narrow)',
     styles: { width: `${REVIEW_WIDTHS[0]}px`, height: '667px' },
     type: 'mobile' as const,
+  },
+}
+
+// The tracked primitives, exposed to the page (T693 piece 2) so the runtime pass
+// (`tests/visual/state-coverage-runtime.spec.ts`) can tell, by function identity while walking
+// React's fiber up from a located element, which instance placed it and with which props. No
+// `data-*` marker is added to production markup for this — the page-level registry is the only
+// handle, and it exists in Storybook alone.
+//
+// `directory` is the repository-rooted directory a primitive's own source lives in: an element whose
+// source stamp (`./source-stamp.mjs`) falls under it was placed by the primitive's own code (or, for
+// `Field`, by its `cloneElement` call), as opposed to by a story or by another component rendered
+// inside it. `axes` is the primitive's own exported axis-defaults constant — the one its destructuring
+// reads; the fiber carries only the props a caller passed, so the pass merges those over it. An axis
+// with no default is `null` (`Menu`'s `variant` is required). Only `variant` and `size` are recorded,
+// and only for a primitive that lists them. Adding a primitive here is how it becomes tracked, and
+// `scripts/visual/tracked-axes.test.mjs` fails when a primitive's destructured defaults, its exported
+// constant and this registry stop agreeing on its axes.
+interface TrackedPrimitive {
+  component: unknown
+  directory: string
+  axes: Record<string, string | null>
+}
+declare global {
+  interface Window {
+    __DS_TRACKED_PRIMITIVES__?: Record<string, TrackedPrimitive>
+  }
+}
+window.__DS_TRACKED_PRIMITIVES__ = {
+  Button: {
+    component: Button,
+    directory: 'packages/design-system/src/primitives/Button/',
+    axes: BUTTON_AXIS_DEFAULTS,
+  },
+  Link: {
+    component: Link,
+    directory: 'packages/design-system/src/primitives/Link/',
+    axes: LINK_AXIS_DEFAULTS,
+  },
+  Field: {
+    component: Field,
+    directory: 'packages/design-system/src/primitives/Field/',
+    axes: FIELD_AXIS_DEFAULTS,
+  },
+  // `Menu`'s `variant` is required, so it has no default to merge: `null` records it as passed, or
+  // as `null` for a story that renders a `Menu` without one. `align` is not a matrix axis.
+  Menu: {
+    component: Menu,
+    directory: 'packages/design-system/src/primitives/Menu/',
+    axes: { variant: null },
   },
 }
 

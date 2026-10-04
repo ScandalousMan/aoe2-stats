@@ -275,6 +275,34 @@ jobs:
           name: state-signal-sweep-report
           path: test-results/state-signal-sweep/
 
+  # T693: the runtime pass in check mode over every story — the committed manifest
+  # (`packages/design-system/specs/state-coverage-runtime.json`) against what a real browser says
+  # about each story at every review width. `pr.yml`'s `visual` job runs the same command over the
+  # stories a diff selects, plus the browserless key check on every run; the browser pass over all
+  # of them is the factory constitution VII and FR-061 keep for nightly. Its own job, not a step of
+  # `visual-full`, for the reason `state-signal-sweep` is (review of #105, M3): a failure here must
+  # not skip the full visual run, nor the other way round.
+  state-coverage-runtime:
+    name: Visual — runtime record of every story's forced target
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm --filter design-system build-storybook
+      - run: node scripts/visual/state-coverage-runtime.mjs --keys
+      - run: node scripts/visual/state-coverage-runtime.mjs
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: state-coverage-runtime-raw
+          path: test-results/state-coverage-runtime/
+
   report:
     name: Open an issue on failure
     runs-on: ubuntu-latest
@@ -290,6 +318,7 @@ jobs:
         free-tier-watch,
         visual-full,
         state-signal-sweep,
+        state-coverage-runtime,
       ]
     if: failure()
     steps:

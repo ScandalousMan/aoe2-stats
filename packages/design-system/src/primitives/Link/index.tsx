@@ -131,7 +131,13 @@ function ExternalMark() {
   )
 }
 
-export function Link({ href, variant = 'inline', external = false, children, ...rest }: LinkProps) {
+export function Link({
+  href,
+  variant = LINK_AXIS_DEFAULTS.variant,
+  external = false,
+  children,
+  ...rest
+}: LinkProps) {
   // §9 "empty": "A `Link` with no text renders nothing." An icon-only link is forbidden in this
   // tier (README's iconography contract) — the mark is never the thing that is named.
   if (children === undefined || children === null || children === '') return null
@@ -172,3 +178,7 @@ export function Link({ href, variant = 'inline', external = false, children, ...
     </a>
   )
 }
+
+// The axis a caller that names none gets. Read by `Link`'s own destructuring above and by the runtime
+// pass (`tests/visual/state-coverage-runtime.spec.ts`, T693) — see `BUTTON_AXIS_DEFAULTS`.
+export const LINK_AXIS_DEFAULTS = { variant: 'inline' } as const satisfies { variant: LinkVariant }
