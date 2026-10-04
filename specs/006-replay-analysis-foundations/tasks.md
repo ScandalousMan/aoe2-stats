@@ -1425,6 +1425,72 @@ files and may run as one parallel batch; the rest are sequential, in order.
       the reader against the contract, and generating it from the builder would pin the reader
       against whatever the builder happens to emit
 
+### Review remediation, second round (pull request #109, `reviewer` REJECT 2026-10-04)
+
+The re-review confirmed T666a–T666f hold against the defects they targeted and rejected on their
+siblings. H-1 and M-1 were re-verified against the code before being written down. Two were
+arbitration and are decided (2026-10-04); the decision is recorded in the task that carries it.
+**These block #109's merge and T665.** T666g, T666k and T666l touch disjoint files and may run as one
+parallel batch; T666h, T666i and T666j follow, in order — all three edit `run.py`.
+
+- [ ] T666g [P] [US6] **Let the product reach the recompute T657a made possible.** The API's `stale`
+      flag in `apps/api/src/aoe2stats_api/routers/matches.py` still compares the parser version
+      alone, and the web reader offers Recompute only when it is true, so a knowledge refresh or an
+      analytics change never triggers anything outside a test (contracts/analysis-document.md: "a
+      recompute has to be triggered"). Decided 2026-10-04: the API compares the identity digest,
+      computed by **the same function** the analyzer's staleness test uses — one function, so the
+      button and the recompute cannot disagree — from the row, the retained-recording row and the
+      installed versions, with no object-store read and no parse. This needs the knowledge identity
+      on the API's request path: amend `tests/architecture/test_feature_006_boundaries.py` to allow
+      exactly that import and no other, and record in the test why it stays inside **FR-049** — a
+      cached, build-independent resolution, not request-path work. While a kept-prior failure's
+      retry window (T666c) is open the flag is false, so the button is not offered for a click that
+      would do nothing. Contrast cases: parser change, knowledge refresh and analytics change each
+      read stale; an identical identity does not; a row in its retry window does not; a row with no
+      digest or no build does
+- [ ] T666h [US6] **Refuse a broken deployment before claiming anything.** Decided 2026-10-04,
+      replacing T666c's handling of the case: a first analysis whose snapshot load fails today
+      fetches from the source, retains, parses and then ends terminally failed, so a broken knowledge
+      deploy spends capture's budget (constitution I) and leaves every match requested meanwhile
+      permanently failed. Before `claim_for_analysis` in `apps/analyzer/src/aoe2stats_analyzer/run.py`,
+      check what is independent of any recording and already cached: every installed snapshot loads
+      and passes its digest check, no two promoted snapshots describe one build, and the extractor's
+      dependency record is non-empty. A failure raises before any row is written or any byte fetched,
+      and the next request after the fix proceeds normally. A snapshot fault that still surfaces after
+      the check — one only a particular build can reach — keeps T666c's routing. The remaining shape
+      the review named — a refused document caused by a code defect, which cannot be checked in
+      advance — stays on 003's failure path, and this task says so in the code
+- [ ] T666i [US6] **Close the recompute path's two remaining unpublish and retry holes.** (a) A
+      published row whose retained-recording row is gone reads as stale, recomputes and is marked
+      unavailable, which unpublishes a served analysis (**FR-042**) — latent until 003's retention half
+      lands. A recording that cannot be recomputed is not stale: serve the prior analysis and never
+      unpublish it. (b) A retained object that fails its integrity check, or is missing from the
+      store, on the recompute path propagates with no backoff, costing a full read and a 500 on every
+      click; route the integrity failure through the keep-prior path with its retry window, and write
+      the access-log row for every read of retained bytes before the integrity verdict, as **FR-029**
+      requires. (c) `_publish` attributes a failure of the row update's flush to the gap rows; name
+      the step that actually failed
+- [ ] T666j [US6] **Source the recompute retry window from configuration.** The window is a code
+      default that the deployed entrypoint never threads, while the docstring says it is configured
+      like the capture budget. Read it from the API's settings and pass it through the analyze
+      entrypoint, with the variable declared wherever this repository declares environment keys
+      (constitution XII), or correct the docstring if configuration is rejected — say which
+- [ ] T666k [P] [US3] **Two second locks that still lean on the first.** (a) Rule 8 in
+      `packages/core/src/aoe2stats_core/truth/validate.py` reads each gap's `severity` and `prevents`
+      from the document, so a gap the builder mislabels informational, or emits with an empty
+      `prevents`, blocks nothing. Also block any present datum whose register `requires_knowledge`
+      names the gap's field, whatever the gap says it prevents. (b)
+      `apps/analyzer/src/aoe2stats_analyzer/reproduce.py` maps only `DocumentInvalid` to a refusal; a
+      placement error and the canonical serialiser's refusal still escape as a third outcome
+- [ ] T666l [P] **Bring the written record level with the amended revision.** `plan.md`'s Storage and
+      Summary paragraphs still describe one nullable column; name both. Correct the comment in
+      `packages/storage/src/aoe2stats_storage/revision.py` and the `match_analyses` docstring in
+      `packages/storage/src/aoe2stats_storage/models.py` to name `recording_build`. Record in
+      [data-model.md](./data-model.md) §8 the meaning T666c gave the lease column on a published row
+      — a retry window, not a claim — which the re-review made the condition of accepting it. Raise
+      `packages/storage`'s boto3 floor to the first release whose object put accepts the if-none-match
+      condition, which `put_if_absent` needs
+
 **Checkpoint**: every value carries its tier, every analysis carries its identity, and no version
 destroys its predecessor.
 
