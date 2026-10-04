@@ -35,7 +35,8 @@ provider call. The one asymmetry: a projection that could not read the blob yiel
 `None` is written **never** — not without `--force`, not with it. A `NULL` projection means
 "unknown", and a colour already stored (an earlier run, or the companion fallback) is worth more
 than that. Such a row stays a candidate on every run, counted and rewritten with what it already
-holds; that is the honest cost of not inventing a value.
+holds; that is the honest cost of not inventing a value. A pair Relic contradicts itself on
+(T459f) stays a candidate the same way: its disputed field projects to `NULL` on every run.
 
 Usage (quickstart scenario 2):
     DATABASE_URL=postgresql+psycopg://... uv run python scripts/ops/backfill_match_players.py \\
