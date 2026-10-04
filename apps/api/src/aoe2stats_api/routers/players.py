@@ -706,12 +706,8 @@ def _newest_first(completed_at: datetime, game_id: int) -> tuple[datetime, int]:
 def _matches_that_can_be_served(
     raw_matches: Sequence[RawMatch], stored_page: MatchesPage, limit: int
 ) -> list[RawMatch]:
-    """The fetched matches that can be on the page this request serves.
-
-    The served page is the newest `limit` rows of the stored matches and the fetched ones together.
-    A full stored page already holds `limit` rows, so a fetched match older than its oldest row is
-    outside the page whatever the cursor; with fewer rows the page has room for every fetched match.
-    """
+    """A superset of the fetched matches that can be on the page this request serves: all of them
+    when the stored page is not full, otherwise those sorting at or above its oldest row."""
     if len(stored_page.matches) < limit:
         return list(raw_matches)
     oldest = min(_newest_first(row.completed_at, row.game_id) for row in stored_page.matches)
@@ -751,12 +747,13 @@ async def get_player_match_history(
     Relic's response names along the way, not only the matches themselves.
 
     **Colour enrichment (T450, FR-003; reordered by T459a).** `fetch_colour_fills`
-    (`routers/matches.py`, imported above) is called here once, batched over the fetched matches'
-    game ids and the stored page's together — `GET /api/matches::list_matches` does the same for
-    the owner-scoped route — this route already reads the source live on every call (the paragraph
-    above), so a batched companion call here crosses no boundary that route does not already
-    cross. It is a *fetch*: the fills are persisted with the batch, in the batch's savepoint, so
-    no network call happens after the first write. Before T450 this route never called it at all, so
+    (`routers/matches.py`, imported above) is called here once, batched over the stored page's
+    game ids and those of the fetched matches that can be served — `GET /api/matches::list_matches`
+    does the same for the owner-scoped route — this route already reads the source live on every
+    call (the paragraph above), so a batched companion call here crosses no boundary that route
+    does not already cross. It is a *fetch*: the fills are persisted with the batch, in the
+    batch's savepoint, so no network call happens after the first write. Before T450 this route
+    never called it at all, so
     `color_id` stayed `NULL` for a profile viewed only through this route and every swatch
     rendered the neutral token even though `GET /api/matches` had already coloured the identical
     match — `fetch_colour_fills`'s own degrade discipline (never writes `NULL`, at most one call per
@@ -783,11 +780,8 @@ async def get_player_match_history(
             ) from exc
 
     # T459a: the stored page is read first, before any write, for two reasons. It rejects a bad
-    # cursor before the network is touched; and its game ids are, with the fetched matches', the
-    # candidates for companion's colours. The page served after the persist is a subset of those:
-    # a match in it is either one just fetched, or a stored one that is also in this stored page
-    # (the page is keyset-paged, so a stored match after the cursor and inside the newest `limit`
-    # of the union is inside the newest `limit` of the stored rows alone).
+    # cursor before the network is touched; and its game ids are, with those of the fetched
+    # matches that can be served, the candidates for companion's colours.
     stored_page = await _read_page()
 
     # T459 / T459a: every network call first (history, identity, companion's colours), then one
@@ -797,9 +791,7 @@ async def get_player_match_history(
     identity = await _fetch_profile_identity(db_session, profile_id)
     # T450 / T409: batched over every candidate game id at once, never one call per match; this
     # route's own `profile_id` is companion's required query parameter.
-    # Only matches that can be on the served page are candidates: a fetched match older than a full
-    # stored page stays uncoloured whatever companion says, and asking about it would cost a call
-    # on every view.
+    # Only matches that can be on the served page are candidates.
     candidates = _matches_that_can_be_served(raw_matches, stored_page, limit)
     fills = await fetch_colour_fills(
         db_session,

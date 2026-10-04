@@ -147,8 +147,9 @@ matter if `derive_availability` ever learns to read a third.
 
 **Read-time colour enrichment (T420, FR-003) — a fallback since T411.** Relic's own response
 carries the colour (`slotinfo[].metaData.ScenarioPlayerIndex`, read by `project_match_player`;
-`docs/data-sources.md` §1), so companion is asked only about a participant whose stored colour is
-still `NULL`. `fetch_colour_fills` calls `CompanionEnrichmentProvider.enrich_matches` **once,
+`docs/data-sources.md` §1), so companion is asked only when some participant's colour is still
+unknown, and fills only a `NULL`. `fetch_colour_fills` calls
+`CompanionEnrichmentProvider.enrich_matches` **once,
 batched over every game id it is given, not once per match**, and only when at least one
 participant among them is still missing a colour; once they are all coloured, a repeat view is a
 database read (`research.md` **D2**, `data-model.md` §6). It is on the display path only, never on

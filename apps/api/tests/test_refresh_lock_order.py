@@ -696,11 +696,13 @@ class _LockRecorder:
     three ranked tables, with the key of every row each one carries — multi-row `VALUES` lists and
     `IN (...)` lists included. An `executemany` is recorded once per parameter set, in order.
 
-    A locking statement against a ranked table whose keys this class cannot read **fails the
-    test** instead of being skipped: a new statement shape must not slip past the invariant by
-    being unparseable. Only a multi-row `INSERT` takes its row locks in the order its `VALUES`
-    list gives, and a `SELECT ... FOR UPDATE` that really carries `ORDER BY <table>.<key columns>`
-    takes them in ascending key order. Any other statement that locks several rows (`UPDATE ...
+    An `INSERT ... VALUES`, `UPDATE`, `DELETE` or `SELECT ... FOR UPDATE` against a ranked table
+    whose keys this class cannot read **fails the test** instead of being skipped. Other statement
+    shapes (`INSERT ... SELECT`, a `WITH` writer) are not read at all.
+
+    Only a multi-row `INSERT` takes its row locks in the order its `VALUES` list gives, and a
+    `SELECT ... FOR UPDATE` that really carries `ORDER BY <table>.<key columns>` takes them in
+    ascending key order. Any other statement that locks several rows (`UPDATE ...
     FROM (VALUES ...)`, a `SELECT ... FOR UPDATE` without that `ORDER BY`) locks them in a join or
     scan order Postgres chooses: it is recorded as **unordered**, and is a violation unless every
     key it touches is already held earlier in the transaction. Tables outside the three
@@ -1278,9 +1280,8 @@ async def test_an_uncoloured_match_outside_the_served_page_costs_no_companion_ca
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The stored page (`limit=2`) is full and fully coloured. A fetched match that Relic left
-    uncoloured and that is *older* than the page's oldest row cannot be on the page served, and
-    companion cannot be made to fill it later either, so asking about it would cost a call on
-    every view for ever. One *newer* than the page can be on it, and is asked about."""
+    uncoloured and that is *older* than the page's oldest row cannot be on the page served, so it
+    is not asked about. One *newer* than the page can be on it, and is asked about."""
     await _seed_signed_in_caller(http, session_factory)
     await _seed_subject(session_factory)
     colours = {
