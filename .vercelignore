@@ -17,3 +17,9 @@
 
 # Generated Storybook build (`pnpm --filter design-system build-storybook`)
 /packages/design-system/storybook-static/
+
+# Local environment files: the CLI uploads a working copy and does not apply `.gitignore`, so
+# without this a production `.env.vercel` would be uploaded. `.env.example` stays: the build's
+# `scripts/checks/config-preflight.mjs` reads it.
+.env*
+!.env.example
