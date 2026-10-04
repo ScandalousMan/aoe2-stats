@@ -46,15 +46,22 @@ an error on a repeat sighting — which is also what keeps `capture_deadline_at`
 insert, never recomputed" true across
 however many times the same match is rediscovered.
 
+**One lock order, three statements (T459).** Every batch is written through
+`persist_matches_and_profiles` — `matches` ascending by `game_id`, then `aoe_profiles` ascending by
+`profile_id`, then `match_players` ascending by `(game_id, profile_id)`, one multi-row statement
+per table — and the capture enqueue follows, in the same `(game_id, profile_id)` order. See the
+notes above `touch_aoe_profiles` for why: the API's on-view refreshes write the same rows in the
+same transaction shape, and two writers locking the same rows in different orders deadlock.
+
 **`aoe_profiles.alias` on a third party this stage meets for the first time.** Every player in
 `RawMatch.player_profile_ids` gets an `aoe_profiles` row — data-model.md: "holds third parties too"
 — but neither `RawMatch` nor `LeaderboardSnapshot` (`packages/providers/src/aoe2stats_providers/
 base.py`) carries a display name for anyone but the profile a caller already resolved at sign-in
 time (`ProfileRef`, sign-in only, T027). A profile this stage inserts for the first time therefore
 gets a placeholder alias (`str(profile_id)`) rather than inventing one — this stage itself never
-calls `touch_aoe_profile` (below) with a real one, so every sighting it drives still writes and
-re-touches only that placeholder, exactly as before T452. `touch_aoe_profile` itself now accepts an
-optional real `alias`/`country` for the caller that does have one (T453's on-view identity refresh)
+passes `persist_matches_and_profiles` (below) an identity row, so every sighting it drives still
+writes and re-touches only that placeholder, exactly as before T452. `touch_aoe_profiles` itself
+accepts a real `alias`/`country` for the caller that does have one (T453's on-view identity refresh)
 — and, since `alias` is "the last one observed, not a history" (`models.py`), a real alias a prior
 sighting established is never clobbered back down to the placeholder by a later sighting that has
 none: writing over a real alias with a placeholder would be a regression, not a refresh, and that
@@ -68,16 +75,18 @@ class with, which is T059's job (`run.py`'s own module docstring), not this one'
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import AsyncIterator, Iterable, Iterator, Mapping, Sequence
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import Text, case, cast, func, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from aoe2stats_ingester.budget import Budget, iter_within_budget
-from aoe2stats_providers.base import MatchHistoryProvider, ProfileProvider, RawMatch
+from aoe2stats_providers.base import MatchHistoryProvider, ProfileProvider, RawMatch, RawProfile
 from aoe2stats_storage.models import (
     AoeProfile,
     CaptureSource,
@@ -116,14 +125,127 @@ def _chunk(items: Sequence[int], size: int) -> Iterator[Sequence[int]]:
         yield items[start : start + size]
 
 
-# --- Persistence, shared with `apps/api`'s on-demand third-party history route (T328) -----------
+# --- Persistence, shared with `apps/api`'s on-demand routes (T328, T453, T459) ------------------
 #
 # Module-level, not `DiscoverStage` methods, precisely so they can be called without constructing
 # a whole stage (its consenting-profile query, its rating refresh, its capture enqueue — none of
 # which `GET /api/players/{profile_id}/matches` wants: FR-012 forbids that route from beginning
-# capture for a third party at all). `DiscoverStage.__call__` below calls these same three
-# functions for its own, consenting-profile discovery cycle — one persistence path, per
-# `CLAUDE.md`'s "reuse what exists" and this task's own instruction not to invent a second one.
+# capture for a third party at all). `DiscoverStage`, `ReconcileStage` and the API's on-view
+# refreshes all persist through `persist_matches_and_profiles` below — one persistence path, per
+# `CLAUDE.md`'s "reuse what exists".
+#
+# **T459: one global lock order, and a bounded number of statements.** Every transaction that
+# writes `matches`, `aoe_profiles` and `match_players` writes them table by table — `matches`
+# ascending by `game_id`, then `aoe_profiles` ascending by `profile_id`, then `match_players`
+# ascending by `(game_id, profile_id)` — and never goes back to an earlier table or a lower key.
+# Row locks are held to commit, so two transactions that lock the same rows in different orders can
+# wait on each other forever (production, 2026-10-04: `DeadlockDetected` in `touch_aoe_profile`
+# between the two player-page requests, and between an API request and a discovery cycle). A single
+# global order makes a cycle impossible.
+#
+# Each table is written with **one multi-row `INSERT ... ON CONFLICT` statement** (split only past
+# `_BULK_ROW_LIMIT` rows, to stay under the driver's bind-parameter ceiling), its rows sorted per
+# the order above: Postgres takes a multi-row insert's row locks in `VALUES` order. The same
+# change is what makes the work bounded — a 177-match, 770-player, 400-profile response is three
+# statements, not ~2,100 sequential round trips that no serverless request can finish.
+
+#: Rows per bulk statement. `match_players` binds 8 columns and `matches` 9 per row; psycopg's
+#: ceiling is 65,535 bind parameters per statement, so 5,000 rows stays well inside it. A batch
+#: larger than this is split into consecutive, still-ascending chunks.
+_BULK_ROW_LIMIT = 5_000
+
+#: SQLSTATEs the on-view refresh degrades on (`savepoint_tolerating_lock_conflicts`): a deadlock
+#: (`40P01`), a serialisation failure (`40001`) and a lock wait that outlived `lock_timeout`
+#: (`55P03`). Nothing broader.
+LOCK_CONFLICT_SQLSTATES = frozenset({"40P01", "40001", "55P03"})
+
+#: How long an on-view refresh will wait for a row lock another transaction holds before it gives
+#: up and lets the route answer from storage. Well inside the 10-second limit of the platform the
+#: API runs on (ADR 0002), so a refresh blocked behind a stuck transaction degrades instead of
+#: timing the request out.
+ON_VIEW_LOCK_TIMEOUT_MS = 3_000
+
+
+def _chunks[T](rows: Sequence[T]) -> Iterator[Sequence[T]]:
+    for start in range(0, len(rows), _BULK_ROW_LIMIT):
+        yield rows[start : start + _BULK_ROW_LIMIT]
+
+
+def _is_real_alias(profile_id: int, alias: str | None) -> bool:
+    return alias is not None and alias != str(profile_id)
+
+
+def merge_sightings(
+    participant_profile_ids: Iterable[int], identities: Iterable[RawProfile]
+) -> dict[int, RawProfile]:
+    """Deduplicate every sighting of every profile in one transaction into one entry per
+    `profile_id`, merging what the sources know: a real alias (and the country that arrived with
+    it) from any source wins over the numeric-id placeholder, and a source with no real alias never
+    erases one another source supplied. A bare participant sighting carries neither.
+    """
+    merged: dict[int, RawProfile] = {
+        profile_id: RawProfile(profile_id=profile_id) for profile_id in participant_profile_ids
+    }
+    for identity in identities:
+        current = merged.get(identity.profile_id, RawProfile(profile_id=identity.profile_id))
+        if _is_real_alias(identity.profile_id, identity.alias):
+            merged[identity.profile_id] = RawProfile(
+                profile_id=identity.profile_id, alias=identity.alias, country=identity.country
+            )
+        elif not _is_real_alias(current.profile_id, current.alias) and (
+            identity.country is not None
+        ):
+            merged[identity.profile_id] = RawProfile(
+                profile_id=identity.profile_id, alias=None, country=identity.country
+            )
+        else:
+            merged[identity.profile_id] = current
+    return merged
+
+
+async def touch_aoe_profiles(session: AsyncSession, sightings: Iterable[RawProfile]) -> None:
+    """Ensure an `aoe_profiles` row exists for every sighting and record that it was seen just now
+    — one multi-row `INSERT ... ON CONFLICT`, rows ascending by `profile_id` (module notes above).
+    Sightings of the same profile are merged first (`merge_sightings`).
+
+    Semantics are `touch_aoe_profile`'s, expressed row by row inside the one statement (its
+    docstring is the contract). On insert a real `alias` is stored, else the `str(profile_id)`
+    placeholder, and `country` is whatever was given. **On conflict**, a real alias — one that is
+    not the placeholder — overwrites the stored alias and country together; a sighting without one
+    changes neither, so a discovery cycle can never clobber a real name back down to the numeric id.
+    `last_seen_at` moves on every sighting. The "is this alias real" test runs in SQL against
+    `excluded` (`excluded.alias <> excluded.profile_id::text`), so one statement serves a batch
+    that mixes both kinds — splitting it in two would break the single ascending order.
+    """
+    merged = merge_sightings((), sightings)
+    now = datetime.now(UTC)
+    rows: list[dict[str, Any]] = []
+    for profile_id in sorted(merged):
+        sighting = merged[profile_id]
+        real = _is_real_alias(profile_id, sighting.alias)
+        rows.append(
+            {
+                "profile_id": profile_id,
+                "alias": sighting.alias if real else str(profile_id),
+                "country": sighting.country,
+                "first_seen_at": now,
+                "last_seen_at": now,
+            }
+        )
+    for chunk in _chunks(rows):
+        insert = pg_insert(AoeProfile).values(list(chunk))
+        excluded = insert.excluded
+        incoming_is_real = excluded.alias != cast(excluded.profile_id, Text)
+        await session.execute(
+            insert.on_conflict_do_update(
+                index_elements=[AoeProfile.profile_id],
+                set_={
+                    "alias": case((incoming_is_real, excluded.alias), else_=AoeProfile.alias),
+                    "country": case((incoming_is_real, excluded.country), else_=AoeProfile.country),
+                    "last_seen_at": excluded.last_seen_at,
+                },
+            )
+        )
 
 
 async def touch_aoe_profile(
@@ -135,87 +257,81 @@ async def touch_aoe_profile(
 ) -> None:
     """Ensure an `aoe_profiles` row exists for `profile_id` and record that it was seen just now.
 
-    `alias`/`country` are optional (T452, FR-007 partial): every caller that predates this task
-    — `DiscoverStage.__call__`, `apps/api/src/aoe2stats_api/routers/players.py`'s
-    `_refresh_third_party_history` — still calls this with neither, and that call is unchanged by
-    the widened signature below (see the module docstring's own paragraph on the placeholder).
+    A one-profile call into `touch_aoe_profiles` — the single definition of the semantics below.
+    Callers with more than one profile must use `touch_aoe_profiles` or
+    `persist_matches_and_profiles`, never a loop over this: a loop is one round trip per row and
+    takes its locks in the caller's order (T459).
+
+    `alias`/`country` are optional (T452, FR-007 partial): a caller with neither still gets the
+    `str(profile_id)` placeholder on insert, exactly as before.
 
     **On insert**, a real `alias` is stored when given; when it is not, `alias` falls back to the
-    `str(profile_id)` placeholder exactly as before, and `country` is whatever was given (`None`
-    when it was not, matching the placeholder's own "nothing real known yet" case).
+    `str(profile_id)` placeholder, and `country` is whatever was given (`None` when it was not,
+    matching the placeholder's own "nothing real known yet" case).
 
     **On conflict** (an existing row), the direction matters more than the write: a real `alias` —
     given, and not itself equal to the `str(profile_id)` placeholder — overwrites whatever the row
     already held (the numeric-id placeholder, or an out-of-date real name) and `country` is set
     alongside it. But when `alias` is absent, or is itself the placeholder, **nothing about the
     stored alias or country changes** — a plain discovery cycle re-touching a profile it has no
-    newer name for must never clobber a real alias a prior sighting (T453's on-view refresh, once
-    it lands) already established back down to the numeric id. `last_seen_at` moves on every
-    sighting regardless, insert or conflict, real alias or none.
+    newer name for must never clobber a real alias a prior sighting (T453's on-view refresh)
+    already established back down to the numeric id. `last_seen_at` moves on every sighting
+    regardless, insert or conflict, real alias or none.
     """
-    now = datetime.now(UTC)
-    placeholder = str(profile_id)
-    has_real_alias = alias is not None and alias != placeholder
-    insert_alias = alias if alias is not None else placeholder
-
-    set_: dict[str, Any] = {"last_seen_at": now}
-    if has_real_alias:
-        set_["alias"] = insert_alias
-        set_["country"] = country
-
-    statement = (
-        pg_insert(AoeProfile)
-        .values(
-            profile_id=profile_id,
-            alias=insert_alias,
-            country=country,
-            first_seen_at=now,
-            last_seen_at=now,
-        )
-        .on_conflict_do_update(
-            index_elements=[AoeProfile.profile_id],
-            set_=set_,
-        )
+    await touch_aoe_profiles(
+        session, [RawProfile(profile_id=profile_id, alias=alias, country=country)]
     )
-    await session.execute(statement)
+
+
+async def upsert_matches(session: AsyncSession, raw_matches: Iterable[RawMatch]) -> None:
+    """`ON CONFLICT DO UPDATE` on `matches.game_id`, one multi-row statement, rows ascending by
+    `game_id`: a match discovered again (the shared-match case, or simply re-polled the next day
+    before its replay is captured) gets its row replaced wholesale with the freshest response,
+    `raw_payload` included — never merged field by field, which could otherwise keep a value the
+    provider has since corrected. A `game_id` repeated in the input keeps its last occurrence.
+    """
+    by_game = {raw_match.game_id: raw_match for raw_match in raw_matches}
+    rows = [
+        {
+            "game_id": raw_match.game_id,
+            "leaderboard_id": raw_match.leaderboard_id,
+            "map_name": raw_match.map_name,
+            "patch": raw_match.patch,
+            "started_at": raw_match.started_at,
+            "completed_at": raw_match.completed_at,
+            "duration_seconds": raw_match.duration_seconds,
+            "source": MATCH_SOURCE,
+            "raw_payload": raw_match.raw_payload,
+        }
+        for _, raw_match in sorted(by_game.items())
+    ]
+    for chunk in _chunks(rows):
+        insert = pg_insert(Match).values(list(chunk))
+        await session.execute(
+            insert.on_conflict_do_update(
+                index_elements=[Match.game_id],
+                set_={key: insert.excluded[key] for key in rows[0] if key != "game_id"},
+            )
+        )
 
 
 async def upsert_match(session: AsyncSession, raw_match: RawMatch) -> None:
-    """`ON CONFLICT DO UPDATE` on `matches.game_id`: a match discovered again (the shared-match
-    case, or simply re-polled the next day before its replay is captured) gets its row replaced
-    wholesale with the freshest response, `raw_payload` included — never merged field by field,
-    which could otherwise keep a value the provider has since corrected.
-    """
-    values: dict[str, Any] = {
-        "game_id": raw_match.game_id,
-        "leaderboard_id": raw_match.leaderboard_id,
-        "map_name": raw_match.map_name,
-        "patch": raw_match.patch,
-        "started_at": raw_match.started_at,
-        "completed_at": raw_match.completed_at,
-        "duration_seconds": raw_match.duration_seconds,
-        "source": MATCH_SOURCE,
-        "raw_payload": raw_match.raw_payload,
-    }
-    statement = (
-        pg_insert(Match)
-        .values(**values)
-        .on_conflict_do_update(
-            index_elements=[Match.game_id],
-            set_={key: value for key, value in values.items() if key != "game_id"},
-        )
-    )
-    await session.execute(statement)
+    """One-match call into `upsert_matches` (see its docstring for the semantics)."""
+    await upsert_matches(session, [raw_match])
 
 
-async def upsert_match_player(session: AsyncSession, raw_match: RawMatch, profile_id: int) -> None:
-    """`ON CONFLICT DO UPDATE` on the `(game_id, profile_id)` primary key (T413, research.md D1):
-    this stage now knows a player's civilisation, team, rating, rating movement and result — every
-    one of them was already sitting, unread, in `raw_match.raw_payload`, the exact `matches.
-    raw_payload` this same transaction just wrote via `upsert_match` — and refreshes them on every
-    repeat sighting rather than leaving them null after the row's first insert.
+async def upsert_match_players(
+    session: AsyncSession, pairs: Iterable[tuple[RawMatch, int]]
+) -> None:
+    """`ON CONFLICT DO UPDATE` on the `(game_id, profile_id)` primary key (T413, research.md D1),
+    one multi-row statement, rows ascending by `(game_id, profile_id)`: this stage knows a
+    player's civilisation, team, rating, rating movement and result — every one of them already
+    sitting, unread, in `raw_match.raw_payload`, the exact `matches.raw_payload` the same
+    transaction just wrote via `upsert_matches` — and refreshes them on every repeat sighting
+    rather than leaving them null after the row's first insert.
     `aoe2stats_storage.repositories.matches.project_match_player` (T413) is the one place that
-    mapping is written; this function calls it rather than restating it.
+    mapping is written; this function calls it rather than restating it. A repeated
+    `(game_id, profile_id)` keeps its last occurrence.
 
     **`color_id` is the sixth column, since T411 (2026-09-04), and it is written differently.**
     The colour was in Relic's response all along — `slotinfo[].metaData.ScenarioPlayerIndex`,
@@ -227,29 +343,112 @@ async def upsert_match_player(session: AsyncSession, raw_match: RawMatch, profil
     projection wins outright: Relic is the primary source, and the colour of a finished match
     never changes.
     """
-    projected = project_match_player(raw_match.raw_payload, profile_id)
-    insert = pg_insert(MatchPlayer).values(
-        game_id=raw_match.game_id,
-        profile_id=profile_id,
-        civ_id=projected.civ_id,
-        team_id=projected.team_id,
-        rating=projected.rating,
-        rating_diff=projected.rating_diff,
-        result=projected.result,
-        color_id=projected.color_id,
+    latest: dict[tuple[int, int], RawMatch] = {}
+    for raw_match, profile_id in pairs:
+        latest[(raw_match.game_id, profile_id)] = raw_match
+    rows: list[dict[str, Any]] = []
+    for (game_id, profile_id), raw_match in sorted(latest.items()):
+        projected = project_match_player(raw_match.raw_payload, profile_id)
+        rows.append(
+            {
+                "game_id": game_id,
+                "profile_id": profile_id,
+                "civ_id": projected.civ_id,
+                "team_id": projected.team_id,
+                "rating": projected.rating,
+                "rating_diff": projected.rating_diff,
+                "result": projected.result,
+                "color_id": projected.color_id,
+            }
+        )
+    for chunk in _chunks(rows):
+        insert = pg_insert(MatchPlayer).values(list(chunk))
+        excluded = insert.excluded
+        await session.execute(
+            insert.on_conflict_do_update(
+                index_elements=[MatchPlayer.game_id, MatchPlayer.profile_id],
+                set_={
+                    "civ_id": excluded.civ_id,
+                    "team_id": excluded.team_id,
+                    "rating": excluded.rating,
+                    "rating_diff": excluded.rating_diff,
+                    "result": excluded.result,
+                    "color_id": func.coalesce(excluded.color_id, MatchPlayer.color_id),
+                },
+            )
+        )
+
+
+async def upsert_match_player(session: AsyncSession, raw_match: RawMatch, profile_id: int) -> None:
+    """One-row call into `upsert_match_players` (see its docstring for the semantics)."""
+    await upsert_match_players(session, [(raw_match, profile_id)])
+
+
+async def persist_matches_and_profiles(
+    session: AsyncSession,
+    raw_matches: Sequence[RawMatch],
+    identities: Iterable[RawProfile] = (),
+) -> list[tuple[RawMatch, int]]:
+    """T459: the one place a batch of raw matches and identity rows is written, in the global lock
+    order (module notes above): `matches` ascending by `game_id`, then `aoe_profiles` ascending by
+    `profile_id` — deduplicated, every participant of every match plus every identity row, a real
+    alias/country merged in from whichever source carries one (`merge_sightings`) — then
+    `match_players` ascending by `(game_id, profile_id)`. Three statements for any batch size.
+
+    Nothing in the caller's transaction may write an earlier table or a lower key afterwards; a
+    caller that needs more rows (a capture enqueue, a rating snapshot) writes them after this
+    returns, and only rows whose parents this call already locked.
+
+    Returns the `(raw_match, profile_id)` pairs written to `match_players`, ascending by
+    `(game_id, profile_id)`, so a caller that goes on to enqueue captures does so in the same order.
+    """
+    await upsert_matches(session, raw_matches)
+    by_game = {raw_match.game_id: raw_match for raw_match in raw_matches}
+    participants = [
+        profile_id for raw_match in by_game.values() for profile_id in raw_match.player_profile_ids
+    ]
+    await touch_aoe_profiles(session, merge_sightings(participants, identities).values())
+    pairs = sorted(
+        {
+            (game_id, profile_id): (raw_match, profile_id)
+            for game_id, raw_match in by_game.items()
+            for profile_id in raw_match.player_profile_ids
+        }.items()
     )
-    statement = insert.on_conflict_do_update(
-        index_elements=[MatchPlayer.game_id, MatchPlayer.profile_id],
-        set_={
-            "civ_id": projected.civ_id,
-            "team_id": projected.team_id,
-            "rating": projected.rating,
-            "rating_diff": projected.rating_diff,
-            "result": projected.result,
-            "color_id": func.coalesce(insert.excluded.color_id, MatchPlayer.color_id),
-        },
-    )
-    await session.execute(statement)
+    ordered = [pair for _, pair in pairs]
+    await upsert_match_players(session, ordered)
+    return ordered
+
+
+@asynccontextmanager
+async def savepoint_tolerating_lock_conflicts(session: AsyncSession) -> AsyncIterator[None]:
+    """T459, FR-017: run an on-view refresh's persistence inside a savepoint that gives up
+    quietly when the database reports a lock conflict — a deadlock (`40P01`), a serialisation
+    failure (`40001`) or a lock wait past `ON_VIEW_LOCK_TIMEOUT_MS` (`55P03`). The savepoint is
+    rolled back, nothing the block wrote survives, the surrounding request transaction is intact,
+    and the caller answers from storage — the same silent degrade a source failure already gets.
+    Every other database error propagates.
+
+    `lock_timeout` is set `LOCAL` inside the savepoint (so it reverts with it) and restored to its
+    previous value when the block succeeds, so the rest of the request — colour enrichment, for
+    one — is not subject to a timeout it never asked for.
+    """
+    try:
+        async with session.begin_nested():
+            previous = (
+                await session.execute(text("SELECT current_setting('lock_timeout')"))
+            ).scalar_one()
+            await session.execute(
+                text("SELECT set_config('lock_timeout', :value, true)"),
+                {"value": f"{ON_VIEW_LOCK_TIMEOUT_MS}ms"},
+            )
+            yield
+            await session.execute(
+                text("SELECT set_config('lock_timeout', :value, true)"), {"value": previous}
+            )
+    except DBAPIError as exc:
+        if getattr(exc.orig, "sqlstate", None) not in LOCK_CONFLICT_SQLSTATES:
+            raise
 
 
 class DiscoverStage:
@@ -303,18 +502,15 @@ class DiscoverStage:
             if not raw_matches:
                 continue
             async with session_scope(self._session_factory) as session:
-                for raw_match in raw_matches:
-                    await upsert_match(session, raw_match)
-                    matches_discovered += 1
-                    for player_profile_id in raw_match.player_profile_ids:
-                        await touch_aoe_profile(session, player_profile_id)
-                        await upsert_match_player(session, raw_match, player_profile_id)
-                        if player_profile_id in archiving_profile_ids:
-                            enqueued = await self._enqueue_capture(
-                                session, raw_match, player_profile_id
-                            )
-                            if enqueued:
-                                captures_enqueued += 1
+                written = await persist_matches_and_profiles(session, raw_matches)
+                matches_discovered += len(raw_matches)
+                for raw_match, player_profile_id in written:
+                    if player_profile_id in archiving_profile_ids:
+                        enqueued = await self._enqueue_capture(
+                            session, raw_match, player_profile_id
+                        )
+                        if enqueued:
+                            captures_enqueued += 1
 
         return {
             "profiles_polled": profiles_polled,

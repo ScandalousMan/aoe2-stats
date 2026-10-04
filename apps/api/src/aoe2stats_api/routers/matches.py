@@ -206,7 +206,8 @@ on this route ever refreshed it. `routers/players.py::_refresh_profile_identity`
 this for its own two routes, but pulls in two further steps (ladder standing, the avatar hash) this
 page has no use for; `_refresh_match_identity` below takes only its first step — Relic's
 `getRecentMatchHistory` identity block (`RelicMatchHistoryProvider.recent_profiles`), persisted
-through `discover.touch_aoe_profile` exactly as `players.py` already does — batched over every
+through `discover.persist_matches_and_profiles` (T459) exactly as `players.py` already does —
+batched over every
 participant of `game_id` still carrying a missing or placeholder alias, in one call, never one per
 participant, and never called at all when every participant already has a real one (constitution I:
 "capture outranks analysis" reads equally as "a view that needs nothing new must ask for nothing").
@@ -455,13 +456,17 @@ async def _refresh_match_identity(db_session: AsyncSession, profile_ids: Sequenc
     """T333 remediation, FR-017: the alias/country half of `routers/players.py::_refresh_profile_
     identity` alone (module docstring) — never the ladder-standing or avatar-hash steps, which
     `get_match_detail` has no use for. One `RelicMatchHistoryProvider.recent_profiles` call, batched
-    over every id in `profile_ids` together, persisted through `discover.touch_aoe_profile` for
+    over every id in `profile_ids` together, persisted through
+    `discover.persist_matches_and_profiles` for
     every profile the response names (not only the ones asked for, exactly like `players.py`'s own
     step 1) — a real alias overwrites the numeric-id placeholder, a missing or still-placeholder one
     never clobbers a real alias already stored (`touch_aoe_profile`'s own "on conflict" docstring).
+    Persisted through `discover.persist_matches_and_profiles` (T459): one multi-row statement, rows
+    ascending by `profile_id`, so this route's lock order agrees with every other writer of
+    `aoe_profiles`; a lock conflict rolls back only this refresh and the page is served as stored.
 
     Degrades silently, exactly like every other optional provider call in this codebase
-    (`_refresh_third_party_history`'s own docstring in `players.py`): any exception from Relic is
+    (`_fetch_third_party_history`'s own docstring in `players.py`): any exception from Relic is
     swallowed, and the caller of this function is left with whatever `aoe_profiles` already held —
     never a failed view over an identity refresh that was only ever a nice-to-have.
     """
@@ -476,13 +481,13 @@ async def _refresh_match_identity(db_session: AsyncSession, profile_ids: Sequenc
         # shaped — must never turn into a failed view.
         return
 
-    for raw_profile in raw_profiles:
-        await discover.touch_aoe_profile(
-            db_session,
-            raw_profile.profile_id,
-            alias=raw_profile.alias,
-            country=raw_profile.country,
-        )
+    if not raw_profiles:
+        return
+
+    # T459: one batched, ascending write through the shared ordering helper, in a savepoint that
+    # degrades on a lock conflict (the same discipline `players.py`'s on-view refresh follows).
+    async with discover.savepoint_tolerating_lock_conflicts(db_session):
+        await discover.persist_matches_and_profiles(db_session, [], raw_profiles)
 
 
 # --- Session resolution, the same discipline `auth.py`, `privacy.py`, `profiles.py` and

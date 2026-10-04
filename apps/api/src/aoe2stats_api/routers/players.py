@@ -9,13 +9,15 @@ routes here, this one writes: `spec.md`'s own Assumptions state "a third party's
 read from the source on demand and is no deeper than the source provides" — so every call fetches
 `profile_id`'s recent matches live from Relic and persists whatever comes back verbatim
 (constitution III, FR-011), through the *exact* upsert path `aoe2stats_ingester.discover`'s
-`DiscoverStage` already uses for a consenting user's own history (`upsert_match`,
-`touch_aoe_profile`, `upsert_match_player`, called directly rather than through the whole stage,
-which also refreshes ratings and enqueues captures system-wide — neither of which this route may
-do: FR-012 forbids beginning capture for a third party at all). A source outage does not fail the
+`DiscoverStage` already uses for a consenting user's own history (`persist_matches_and_profiles`,
+called directly rather than through the whole stage, which also refreshes ratings and enqueues
+captures system-wide — neither of which this route may do: FR-012 forbids beginning capture for a
+third party at all). **T459**: both on-view refreshes fetch first and persist once, in the global
+lock order every writer of `aoe_profiles` shares, in a savepoint that degrades on a lock conflict
+(`_persist_on_view_refresh`). A source outage does not fail the
 request: any failure of that fetch is swallowed and the route serves whatever this service already
 knows, the same honesty discipline `search.py` applies for FR-004d — see
-`_refresh_third_party_history`'s own docstring for why that catch is deliberately broader than
+`_fetch_third_party_history`'s own docstring for why that catch is deliberately broader than
 `ProviderError` alone. The response row shape is imported directly from `routers/matches.py`
 (`match_row_json`) rather than restated, so the two routes can never drift on the one shape
 `contracts/http-api.md` promises is identical.
@@ -82,7 +84,8 @@ is the `rate_limited` envelope `contracts/http-api.md` names, carrying `retry_af
 from __future__ import annotations
 
 import functools
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
+from dataclasses import dataclass
 from typing import Any
 
 from fastapi import APIRouter, Query, Request
@@ -98,7 +101,13 @@ from aoe2stats_api.routers.matches import enrich_colours, match_row_json
 from aoe2stats_api.search import persist_avatar_hashes
 from aoe2stats_api.search import search_players as run_search
 from aoe2stats_ingester import discover
-from aoe2stats_providers.base import ProviderCallRecord
+from aoe2stats_providers.base import (
+    LeaderboardSnapshot,
+    PlayerSearchResult,
+    ProviderCallRecord,
+    RawMatch,
+    RawProfile,
+)
 from aoe2stats_providers.companion.provider import CompanionEnrichmentProvider
 from aoe2stats_providers.relic.matches import RelicMatchHistoryProvider
 from aoe2stats_providers.relic.profile import RelicProfileProvider
@@ -175,120 +184,113 @@ def _build_profile_provider(db_session: AsyncSession) -> RelicProfileProvider:
     )
 
 
-async def _refresh_third_party_history(db_session: AsyncSession, profile_id: int) -> None:
-    """FR-007/FR-011, "read from the source on demand" (`spec.md`'s own Assumptions): fetch
-    `profile_id`'s recent matches live from Relic and persist them through the exact upsert path
-    `aoe2stats_ingester.discover.DiscoverStage` already uses for a consenting user's own history —
-    `discover.upsert_match`/`discover.touch_aoe_profile`/`discover.upsert_match_player`, called
-    directly rather than through a whole `DiscoverStage` (which also refreshes ratings system-wide
-    and enqueues captures for every consenting profile it finds, neither of which this route may
-    do: FR-012 forbids beginning capture for a third party at all, and this route touches only the
-    one profile it was asked about).
+@dataclass(frozen=True)
+class _IdentityFetch:
+    """What `_fetch_profile_identity` read from the sources, nothing persisted yet (T459): the
+    identity block, the ladder standing, and the companion search hits for the viewed profile's
+    avatar hash. Every field is empty when its source failed or had nothing."""
 
-    A source outage does not fail the request: any failure of this fetch is swallowed and the
-    route falls back to whatever this service already knows about `profile_id`, the same honesty
-    discipline `search.py` already applies for FR-004d. Deliberately broader than `ProviderError`
-    alone: this call is the one place in the codebase where a live Relic fetch is *optional* —
-    every other caller of `RelicMatchHistoryProvider`/`RelicProfileProvider` (the ingester, the
-    sign-in flow) needs a failure to propagate, because there is a person or a process waiting on
-    a real answer. This route already has one, drawn from storage a moment later regardless of
-    whether the refresh above succeeded, so nothing here is lost by treating "the fetch could not
-    be completed, for any reason" and "the fetch reported a provider failure" identically. This
-    function never enqueues a `replay_captures` row.
+    raw_profiles: list[RawProfile]
+    snapshots: list[LeaderboardSnapshot]
+    avatar_results: list[PlayerSearchResult]
+
+
+async def _fetch_third_party_history(db_session: AsyncSession, profile_id: int) -> list[RawMatch]:
+    """FR-007/FR-011, "read from the source on demand" (`spec.md`'s own Assumptions): fetch
+    `profile_id`'s recent matches live from Relic. **Fetch only (T459)** — persistence happens
+    once, for history and identity together, in `_persist_on_view_refresh`, through
+    `discover.persist_matches_and_profiles` (the path `aoe2stats_ingester.discover.DiscoverStage`
+    uses for a consenting user's own history, which also enforces the one global lock order every
+    writer of `aoe_profiles` follows). Not a whole `DiscoverStage`, which also refreshes ratings
+    system-wide and enqueues captures for every consenting profile it finds, neither of which this
+    route may do: FR-012 forbids beginning capture for a third party at all.
+
+    A source outage does not fail the request: any failure of this fetch is swallowed, an empty
+    list comes back, and the route falls back to whatever this service already knows about
+    `profile_id`, the same honesty discipline `search.py` already applies for FR-004d. Deliberately
+    broader than `ProviderError` alone: this call is the one place in the codebase where a live
+    Relic fetch is *optional* — every other caller of `RelicMatchHistoryProvider`/
+    `RelicProfileProvider` (the ingester, the sign-in flow) needs a failure to propagate, because
+    there is a person or a process waiting on a real answer. This route already has one, drawn
+    from storage a moment later regardless of whether the refresh above succeeded, so nothing here
+    is lost by treating "the fetch could not be completed, for any reason" and "the fetch reported
+    a provider failure" identically. This function never enqueues a `replay_captures` row.
     """
     provider = _build_match_history_provider(db_session)
     try:
-        raw_matches = await provider.recent_matches([profile_id])
+        return await provider.recent_matches([profile_id])
     except Exception:
         # See the docstring above: broader than `ProviderError` on purpose, because this fetch is
         # optional and its failure, however it is shaped, must never turn into a failed read.
-        return
-
-    for raw_match in raw_matches:
-        await discover.upsert_match(db_session, raw_match)
-        for player_profile_id in raw_match.player_profile_ids:
-            await discover.touch_aoe_profile(db_session, player_profile_id)
-            await discover.upsert_match_player(db_session, raw_match, player_profile_id)
+        return []
 
 
-async def _refresh_profile_ratings(db_session: AsyncSession, profile_id: int) -> None:
+async def _fetch_profile_ratings(
+    db_session: AsyncSession, profile_id: int
+) -> list[LeaderboardSnapshot]:
     """T454, FR-018/SC-007: `profile_id`'s ladder standing, fetched from Relic's `getPersonalStat`
     (`RelicProfileProvider.personal_stats`) — the identical call `routers/auth.py`'s sign-in flow
     and the ingester's `DiscoverStage._refresh_ratings` (`apps/ingester/.../discover.py`) already
-    make for a consenting user's own profile — and persisted through the exact same
-    `RatingsRepository.record_snapshot` path those two call sites use. No new persistence shape:
-    `_profile_ratings` below already serves whatever this appends, with no serialiser change.
+    make for a consenting user's own profile. `_persist_on_view_refresh` appends the result through
+    the same `RatingsRepository.record_snapshot` path those two call sites use. No new persistence
+    shape: `_profile_ratings` below already serves whatever this appends, with no serialiser change.
 
-    **Independent of the alias/avatar steps in `_refresh_profile_identity` below, and never
-    gated on their outcome.** `personal_stats` is keyed on `profile_id` itself, a different Relic
-    endpoint from `getRecentMatchHistory`'s identity block, so it needs no alias to have been
-    established — a profile whose identity step yielded nothing this call (a degraded Relic
-    identity fetch, or a subject the source simply names no alias for) must still get its standing
-    fetched. `_refresh_profile_identity` calls this before its own alias early-return specifically
-    so this can never end up behind it (T454's ordering constraint).
+    **Independent of the alias/avatar steps in `_fetch_profile_identity` below, and never gated on
+    their outcome.** `personal_stats` is keyed on `profile_id` itself, a different Relic endpoint
+    from `getRecentMatchHistory`'s identity block, so it needs no alias to have been established —
+    a profile whose identity step yielded nothing this call (a degraded Relic identity fetch, or a
+    subject the source simply names no alias for) must still get its standing fetched.
+    `_fetch_profile_identity` calls this before its own alias early-return specifically so this can
+    never end up behind it (T454's ordering constraint).
 
     Degrades silently, guarded exactly like the identity steps around it (a broad `except
-    Exception`, `_refresh_third_party_history`'s own docstring states why): a source failure
-    persists nothing and never fails the view. An empty result — the source has no standing for
+    Exception`, `_fetch_third_party_history`'s own docstring states why): a source failure yields
+    nothing to persist and never fails the view. An empty result — the source has no standing for
     `profile_id` — is a real, correct outcome too (SC-007's "No ratings yet") and is handled
     identically: nothing is appended either way, and `record_snapshot` only ever appends, so
     neither outcome can erase a snapshot already stored from an earlier, successful view.
     """
     profile_provider = _build_profile_provider(db_session)
     try:
-        snapshots = await profile_provider.personal_stats([profile_id])
+        return list(await profile_provider.personal_stats([profile_id]))
     except Exception:
         # See the docstring above: broader than `ProviderError` on purpose, for the same reason
-        # `_refresh_third_party_history`'s own catch is — this fetch is optional, and a failure of
+        # `_fetch_third_party_history`'s own catch is — this fetch is optional, and a failure of
         # it, however shaped, must never turn into a failed view.
-        return
-
-    ratings_repo = RatingsRepository(db_session)
-    for snapshot in snapshots:
-        await ratings_repo.record_snapshot(
-            profile_id=snapshot.profile_id,
-            leaderboard_id=snapshot.leaderboard_id,
-            rating=snapshot.rating,
-            rank=snapshot.rank,
-            wins=snapshot.wins,
-            losses=snapshot.losses,
-            streak=snapshot.streak,
-            highest_rating=snapshot.highest_rating,
-            # `captured_at` left to `record_snapshot`'s own default ("the moment observed") —
-            # never `snapshot.last_match_at` — exactly as `routers/auth.py`'s sign-in flow and
-            # `discover.py`'s `_refresh_ratings` both already choose, for the identical reason.
-        )
+        return []
 
 
-async def _refresh_profile_identity(db_session: AsyncSession, profile_id: int) -> None:
-    """T453/T454, FR-017/FR-018: the shared on-view identity refresh both `GET /api/players/
+async def _fetch_profile_identity(db_session: AsyncSession, profile_id: int) -> _IdentityFetch:
+    """T453/T454, FR-017/FR-018: the shared on-view identity fetch both `GET /api/players/
     {profile_id}` (the summary route, which makes no other provider call) and `GET /api/players/
-    {profile_id}/matches` now trigger, alongside `_refresh_third_party_history` above.
+    {profile_id}/matches` trigger, alongside `_fetch_third_party_history` above. **Fetch only
+    (T459)**: every network call here happens before anything is written, so the route persists the
+    union of history and identity once, in lock order, in `_persist_on_view_refresh`.
 
     Three independent, separately-degrading steps:
 
     1. **Alias/country**, from Relic's `getRecentMatchHistory` identity block (T451's own
-       `RelicMatchHistoryProvider.recent_profiles`). Persisted through T452's widened
-       `discover.touch_aoe_profile` — every profile the block covers, not only `profile_id` —
-       since an opponent's real name rides the same response for free, without a call of its own
-       (T453's task text).
-    2. **Ladder standing** (T454), via `_refresh_profile_ratings` above — called unconditionally,
+       `RelicMatchHistoryProvider.recent_profiles`). Persisted through
+       `discover.persist_matches_and_profiles` — every profile the block covers, not only
+       `profile_id` — since an opponent's real name rides the same response for free, without a
+       call of its own (T453's task text).
+    2. **Ladder standing** (T454), via `_fetch_profile_ratings` above — called unconditionally,
        before the `subject_alias is None` early return below, precisely so it never ends up
        behind it: see that function's own docstring for why it must not be gated on step 1's
        outcome.
     3. **The avatar hash**, which rides aoe2companion's *search* endpoint — the only place any
        provider in this codebase ever carries it (`search.py`'s own module docstring) — keyed on a
        display name, not a profile id, so there is no by-id lookup to prefer over it. Resolved
-       here via the real alias step 1 *just established* for `profile_id`, in this same call: one
+       here via the real alias step 1 *just read* for `profile_id`, in this same call: one
        companion search by that alias, keeping only the `PlayerSearchResult` whose own
        `profile_id` matches (a name search can answer more than one player), persisted through
-       `search.py`'s existing `persist_avatar_hashes`. When step 1 established no real alias this
-       call — Relic degraded, or the source itself simply has none for `profile_id` — this step is
+       `search.py`'s existing `persist_avatar_hashes`. When step 1 found no real alias this call —
+       Relic degraded, or the source itself simply has none for `profile_id` — this step is
        skipped outright: there is nothing fresh to search companion by, and reaching for a stale,
        previously-stored alias instead would search on a name this call never itself verified.
 
     Degrades silently throughout (FR-017, Clarifications 2026-09-02): each network step is wrapped
-    in a `try`/`except Exception`, deliberately as broad as `_refresh_third_party_history`'s own
+    in a `try`/`except Exception`, deliberately as broad as `_fetch_third_party_history`'s own
     catch above (see that function's docstring for why) — a caller of either route this function
     is triggered from must always be able to answer from storage, whatever either source did.
     Reads public identity and standing only: no `replay_captures` row, no capture enqueue, for any
@@ -296,7 +298,7 @@ async def _refresh_profile_identity(db_session: AsyncSession, profile_id: int) -
     """
     relic_provider = _build_match_history_provider(db_session)
     try:
-        raw_profiles = await relic_provider.recent_profiles([profile_id])
+        raw_profiles = list(await relic_provider.recent_profiles([profile_id]))
     except Exception:
         # See the docstring above: this fetch is optional, and its failure — however it is
         # shaped — must never turn into a failed view.
@@ -306,19 +308,14 @@ async def _refresh_profile_identity(db_session: AsyncSession, profile_id: int) -
     for raw_profile in raw_profiles:
         if raw_profile.profile_id == profile_id and raw_profile.alias is not None:
             subject_alias = raw_profile.alias
-        await discover.touch_aoe_profile(
-            db_session,
-            raw_profile.profile_id,
-            alias=raw_profile.alias,
-            country=raw_profile.country,
-        )
 
-    # T454: always runs, whatever step 1 found — see `_refresh_profile_ratings`'s own docstring
+    # T454: always runs, whatever step 1 found — see `_fetch_profile_ratings`'s own docstring
     # for why this must never sit behind the `subject_alias is None` early return just below.
-    await _refresh_profile_ratings(db_session, profile_id)
+    snapshots = await _fetch_profile_ratings(db_session, profile_id)
+    fetched = _IdentityFetch(raw_profiles=raw_profiles, snapshots=snapshots, avatar_results=[])
 
     if subject_alias is None:
-        return
+        return fetched
 
     companion_provider = _build_search_provider(db_session)
     if companion_provider.is_degraded():
@@ -326,18 +323,70 @@ async def _refresh_profile_identity(db_session: AsyncSession, profile_id: int) -
         # the provider: a known-open breaker answers nothing new, so there is no point spending an
         # outbound request (and this route's own share of `_COMPANION_RATE_LIMITER`) to find that
         # out again.
-        return
+        return fetched
     try:
         page = await companion_provider.search_players(subject_alias, limit=_SEARCH_RESULT_LIMIT)
     except Exception:
         # `CompanionEnrichmentProvider` never raises on its own (its own module docstring), but
         # this call is still optional here — guarded exactly like the Relic fetch above, for the
         # same reason: nothing downstream of this function may ever fail because of it.
+        return fetched
+
+    return _IdentityFetch(
+        raw_profiles=raw_profiles,
+        snapshots=snapshots,
+        avatar_results=[result for result in page.results if result.profile_id == profile_id],
+    )
+
+
+async def _persist_on_view_refresh(
+    db_session: AsyncSession,
+    *,
+    raw_matches: Sequence[RawMatch] = (),
+    identity: _IdentityFetch,
+) -> None:
+    """T459, FR-017: persist everything an on-view refresh fetched, once, in one savepoint.
+
+    Order inside the savepoint is the global lock order (`aoe2stats_ingester.discover`'s module
+    notes): `persist_matches_and_profiles` writes `matches`, then `aoe_profiles` (history's
+    participants and the identity block merged, one row per profile, ascending), then
+    `match_players`, in three statements whatever the batch size. The writes after it take no lock
+    outside what it already took: `rating_snapshots` is insert-only with a foreign key on a profile
+    row this transaction already holds, and `persist_avatar_hashes` updates only the viewed
+    profile's own `aoe_profiles` row — present in the batch, since an avatar is only searched for
+    when the identity block named that profile.
+
+    A deadlock, a serialisation failure or a lock wait past the timeout rolls the savepoint back
+    (`discover.savepoint_tolerating_lock_conflicts`) and the route answers from storage; every
+    other database error propagates. Nothing fetched is persisted in that case, which is correct:
+    the next view fetches it again.
+    """
+    if not raw_matches and not identity.raw_profiles and not identity.snapshots:
+        # Nothing was fetched (an avatar hit implies an identity block, so it cannot be the sole
+        # content): no savepoint, no statement.
         return
 
-    matched = [result for result in page.results if result.profile_id == profile_id]
-    if matched:
-        await persist_avatar_hashes(db_session, matched)
+    async with discover.savepoint_tolerating_lock_conflicts(db_session):
+        await discover.persist_matches_and_profiles(
+            db_session, list(raw_matches), identity.raw_profiles
+        )
+        ratings_repo = RatingsRepository(db_session)
+        for snapshot in identity.snapshots:
+            await ratings_repo.record_snapshot(
+                profile_id=snapshot.profile_id,
+                leaderboard_id=snapshot.leaderboard_id,
+                rating=snapshot.rating,
+                rank=snapshot.rank,
+                wins=snapshot.wins,
+                losses=snapshot.losses,
+                streak=snapshot.streak,
+                highest_rating=snapshot.highest_rating,
+                # `captured_at` left to `record_snapshot`'s own default ("the moment observed") —
+                # never `snapshot.last_match_at` — exactly as `routers/auth.py`'s sign-in flow and
+                # `discover.py`'s `_refresh_ratings` both already choose, for the identical reason.
+            )
+        if identity.avatar_results:
+            await persist_avatar_hashes(db_session, identity.avatar_results)
 
 
 # FR-005's own bucket name (`RateLimitCounter`'s docstring, `ratelimit.py`) and the fixed window
@@ -553,19 +602,20 @@ async def get_player_profile(
     only for a `profile_id` this service has never itself observed (module docstring).
 
     **T453, FR-017: reverses T426's "this route makes no provider call at all" (Clarifications
-    2026-09-02).** This route now triggers `_refresh_profile_identity` — the on-view identity
+    2026-09-02).** This route now triggers the on-view identity refresh (`_fetch_profile_identity`,
+    then `_persist_on_view_refresh`) — the identity
     refresh both this route and `GET /api/players/{profile_id}/matches` share — before answering,
     so a profile viewed here for the first time (never previously discovered through a consenting
     user's own history, or through search) gets its real `alias`/`country`/`avatar_hash` populated
     from the source rather than staying on the numeric-id placeholder. `alias`/`country`/
-    `avatar_hash` below are still read straight off `aoe_profiles` — `_refresh_profile_identity`
+    `avatar_hash` below are still read straight off `aoe_profiles` — `_persist_on_view_refresh`
     persists there, this route never returns a fetched value directly — and `null` is still the
     ordinary case for a hash the source has never carried for this profile, not an error. A
     degraded source (Relic or companion) leaves this route answering from whatever was already
     stored, never a failure (FR-017).
 
     **T454, FR-018/SC-007.** That same refresh now also fetches the viewed profile's ladder
-    standing (`_refresh_profile_ratings`, called from within `_refresh_profile_identity`) and
+    standing (`_fetch_profile_ratings`, called from within `_fetch_profile_identity`) and
     persists it as `rating_snapshots`, so `ratings` below — already fetched the same way for the
     caller's own profiles — carries a freshly-viewed third party's rating, rank, record, streak
     and best the first time this route is ever called for them, with no serialiser change. "No
@@ -579,7 +629,9 @@ async def get_player_profile(
     if profile is None:
         raise _profile_not_found()
 
-    await _refresh_profile_identity(db_session, profile_id)
+    await _persist_on_view_refresh(
+        db_session, identity=await _fetch_profile_identity(db_session, profile_id)
+    )
     await db_session.refresh(profile)
 
     ratings = await _profile_ratings(db_session, profile_id)
@@ -647,7 +699,7 @@ async def get_player_match_history(
     `GET /api/matches` already returns", served here via `match_row_json` (module docstring) so
     the two routes can never present the same facts two different ways (FR-008).
 
-    `_refresh_third_party_history` runs first, on every call: this route reads the source live
+    `_fetch_third_party_history` runs first, on every call: this route reads the source live
     (module docstring's "on demand" note) before answering from storage, so a player this service
     has never discovered through a consenting user's own history still gets a real answer rather
     than a permanently empty one. A player with no matches at all — after that refresh — gets an
@@ -655,7 +707,7 @@ async def get_player_match_history(
     `404` is reserved for a `profile_id` this service has never itself observed at all
     (`_profile_not_found`, the one remaining `404` module-wide).
 
-    **T453, FR-017.** `_refresh_profile_identity` runs alongside `_refresh_third_party_history`
+    **T453, FR-017.** `_fetch_profile_identity` runs alongside `_fetch_third_party_history`
     above — the identity refresh this route already shares with `GET /api/players/{profile_id}`
     (see that function's own docstring) — so a match history read through this route also carries
     a chance to learn the subject's own real alias/country/avatar hash, and every opponent
@@ -678,8 +730,11 @@ async def get_player_match_history(
     if profile is None:
         raise _profile_not_found()
 
-    await _refresh_third_party_history(db_session, profile_id)
-    await _refresh_profile_identity(db_session, profile_id)
+    # T459: every fetch first, then one persist of the union — never history persisted, then
+    # identity, which would write the same `aoe_profiles` rows twice in two different orders.
+    raw_matches = await _fetch_third_party_history(db_session, profile_id)
+    identity = await _fetch_profile_identity(db_session, profile_id)
+    await _persist_on_view_refresh(db_session, raw_matches=raw_matches, identity=identity)
 
     repository = MatchesRepository(db_session)
     try:
