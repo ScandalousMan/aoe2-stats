@@ -22,7 +22,9 @@ function that runs it before the object is written):
 Which contract rule answers each case, as ``aoe2stats_core.truth.validate`` reports it today:
 
 - empty dependency record: rule 9 (SC-011, FR-044);
-- a datum whose ``requires_knowledge`` meets a ``blocking`` gap: rule 8 (FR-037). The injected
+- a datum whose ``requires_knowledge`` meets a gap, whatever its labels (T666k: rule 8 reads the
+  gap's field, ``prevents`` and whole-build shape, not its ``severity``): rule 8 (FR-037). The
+  injected
   register's ``requires_knowledge`` is bare field names (``("cost",)``), as ``register.toml``
   writes them, and a gap's ``prevents`` names data. Since T666a the case is also run **on the
   packaged register** with the gaps the real coverage pass produces (the last section below);
@@ -199,9 +201,21 @@ def test_a_datum_whose_knowledge_meets_a_blocking_gap_is_rejected() -> None:
     assert "participant.army_cost" in str(error)
 
 
-def test_a_datum_whose_knowledge_meets_only_an_informational_gap_is_accepted() -> None:
+def test_a_datum_whose_knowledge_meets_a_gap_labelled_informational_is_still_rejected() -> None:
+    """T666k reversed this case. Rule 8 does not read severity: informational means no published
+    value depends on the field (FR-037), and a present datum is published, so such a label is a
+    builder fault the second lock must not honour."""
     document = _document()
     document["knowledge_gaps"] = [_gap("informational")]
+
+    error = _rejected(document, _register(), 8)
+
+    assert "participant.army_cost" in str(error)
+
+
+def test_an_informational_gap_on_knowledge_no_datum_needs_withholds_nothing() -> None:
+    document = _document()
+    document["knowledge_gaps"] = [_gap("informational", field="production_time")]
 
     _accepted(document, _register())
 
@@ -460,6 +474,72 @@ def test_a_whole_build_gap_blocks_even_when_its_prevents_list_is_empty(
         validate_document(planted, _packaged_with_a_published_knowledge_datum())
 
     assert info.value.rules == frozenset({8})
+
+
+def _relabelled(
+    document: dict[str, Any], *, severity: str | None = None, prevents: list[str] | None = None
+) -> dict[str, Any]:
+    """The real gaps with the two computed fields overwritten, as a builder fault leaves them."""
+    planted = copy.deepcopy(document)
+    for gap in planted["knowledge_gaps"]:
+        if severity is not None:
+            gap["severity"] = severity
+        if prevents is not None:
+            gap["prevents"] = list(prevents)
+    return planted
+
+
+def test_real_gaps_mislabelled_informational_still_refuse_the_datum_they_are_about(
+    cost_gap_document: dict[str, Any],
+) -> None:
+    """The validator does not trust the gap's own labels: ``resources_spent`` requires ``cost``,
+    and a real gap on ``cost`` is on the document, so the datum is refused whatever the gap says."""
+    from aoe2stats_analyzer.extract import validate_document
+    from aoe2stats_core.truth.validate import DocumentInvalid
+
+    assert any(gap["field"] == "cost" for gap in cost_gap_document["knowledge_gaps"])
+    planted = _publishing_the_knowledge_datum(
+        _relabelled(cost_gap_document, severity="informational", prevents=[])
+    )
+
+    with pytest.raises(DocumentInvalid) as info:
+        validate_document(planted, _packaged_with_a_published_knowledge_datum())
+
+    assert info.value.rules == frozenset({8})
+    assert _KNOWLEDGE_DATUM in str(info.value)
+
+
+def test_real_blocking_gaps_with_an_empty_prevents_still_refuse_the_datum_they_are_about(
+    cost_gap_document: dict[str, Any],
+) -> None:
+    from aoe2stats_analyzer.extract import validate_document
+    from aoe2stats_core.truth.validate import DocumentInvalid
+
+    planted = _publishing_the_knowledge_datum(_relabelled(cost_gap_document, prevents=[]))
+    assert _blocking(planted)
+
+    with pytest.raises(DocumentInvalid) as info:
+        validate_document(planted, _packaged_with_a_published_knowledge_datum())
+
+    assert info.value.rules == frozenset({8})
+
+
+def test_gaps_on_other_fields_leave_the_datum_alone_whatever_they_say(
+    cost_gap_document: dict[str, Any],
+) -> None:
+    from aoe2stats_analyzer.extract import validate_document
+
+    planted = copy.deepcopy(cost_gap_document)
+    planted["knowledge_gaps"] = [
+        {**gap, "prevents": []}
+        for gap in planted["knowledge_gaps"]
+        if gap["field"] not in (None, "cost")
+    ]
+    assert _blocking(planted)  # blocking gaps, none of them about cost
+
+    validate_document(
+        _publishing_the_knowledge_datum(planted), _packaged_with_a_published_knowledge_datum()
+    )
 
 
 # FR-011, SC-003: the wildcard data of the real register take one key and one scalar.

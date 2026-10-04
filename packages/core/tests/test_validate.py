@@ -8,9 +8,9 @@ API chosen here, which T619 must implement in ``aoe2stats_core.truth.validate``:
   ``participants[].age_up_commands[]``; ``None`` for a datum that only lives under ``inferred``),
   ``tier`` (``Tier``), ``status`` (``"published"``, ``"planned"`` or ``"blocked"``), ``non_claim``
   (``str | None``) and ``requires_knowledge`` (``tuple[str, ...]``, **bare field names** such as
-  ``"cost"``, exactly as ``register.toml`` writes them; rule 8 never matches them against a gap's
-  field but against the gap's ``prevents`` list of datum ids, which the gap computed from those same
-  names). Injecting the register
+  ``"cost"``, exactly as ``register.toml`` writes them; rule 8 matches them against a gap's bare
+  ``field``, against the gap's ``prevents`` list of datum ids, and, for a whole-build gap, against
+  any knowledge at all, and never reads the gap's ``severity``: T666k). Injecting the register
   keeps the validator testable before the loader (T615) exists; production passes the loaded one.
 - Raises ``DocumentInvalid`` (a ``ValueError``) carrying ``rules``, a ``frozenset[int]`` of the
   contract rule numbers (1 to 10) that were violated, and a message naming each violation. It
@@ -366,15 +366,67 @@ def test_a_datum_depending_on_a_blocking_gap_is_rejected() -> None:
     _rejected(doc, 8)
 
 
-def test_an_informational_or_unrelated_gap_withholds_nothing() -> None:
+def test_a_gap_on_a_field_no_present_datum_requires_withholds_nothing() -> None:
+    """Whatever the gap's severity or ``prevents`` say, rule 8 withholds only the data that need
+    the gap's field (or, for a whole-build gap, any knowledge)."""
     from aoe2stats_core.truth.validate import validate
 
     doc = _with_army_cost()
     doc["knowledge_gaps"] = [
-        _gap("informational"),
+        _gap("informational", "production_time"),
         _gap("blocking", "production_time", ("participant.something_else",)),
+        {**_gap("blocking", "production_time"), "prevents": []},
     ]
     validate(doc, _register())
+
+
+def test_a_gap_mislabelled_informational_on_a_required_field_still_withholds() -> None:
+    """The second lock must not lean on the first: the builder computes severity from ``prevents``,
+    so a gap labelled informational on a field a present datum requires is a builder fault, and the
+    validator refuses the datum from the register's own ``requires_knowledge``. FR-037 defines
+    informational as "no currently published value depends on it"; a present datum is published,
+    so no severity makes it safe."""
+    doc = _with_army_cost()
+    doc["knowledge_gaps"] = [_gap("informational", "cost")]
+    _rejected(doc, 8)
+
+
+def test_a_blocking_gap_with_an_empty_prevents_on_a_required_field_still_withholds() -> None:
+    doc = _with_army_cost()
+    doc["knowledge_gaps"] = [{**_gap("blocking", "cost"), "prevents": []}]
+    _rejected(doc, 8)
+
+
+def test_a_gap_missing_its_prevents_and_severity_on_a_required_field_still_withholds() -> None:
+    doc = _with_army_cost()
+    gap = _gap("blocking", "cost")
+    del gap["prevents"], gap["severity"]
+    doc["knowledge_gaps"] = [gap]
+    _rejected(doc, 8)
+
+
+def test_a_whole_build_gap_mislabelled_informational_still_withholds() -> None:
+    doc = _with_army_cost()
+    doc["knowledge_gaps"] = [_gap("informational", None, ())]
+    _rejected(doc, 8)
+
+
+def test_a_field_gap_withholds_only_the_data_that_need_that_field() -> None:
+    from aoe2stats_core.truth.validate import DocumentInvalid, validate
+
+    register = _register()
+    register["participant.pace"] = Entry(
+        "participants[].pace", Tier.DERIVED, requires_knowledge=("production_time",)
+    )
+    doc = _with_army_cost()  # pace is already in the document
+    doc["knowledge_gaps"] = [_gap("informational", "production_time")]
+
+    with pytest.raises(DocumentInvalid) as info:
+        validate(doc, register)
+
+    assert info.value.rules == frozenset({8})
+    assert "participant.pace" in str(info.value)
+    assert "participant.army_cost" not in str(info.value)
 
 
 def test_rule_8_reads_the_gaps_prevents_not_a_kind_dot_field_key() -> None:

@@ -41,8 +41,9 @@ from __future__ import annotations
 #: no backfill. See that migration's own docstring and `AoeProfile.avatar_hash` in `models.py`.
 #:
 #: `53375d9435fc` (006-replay-analysis-foundations, T663) adds `analysis_knowledge_gaps` and the
-#: nullable `match_analyses.identity_digest` — one additive revision. Apply it **before** the
-#: deploy that carries this constant: a database that lags the build answers `schema_out_of_date`.
+#: nullable `match_analyses.identity_digest` and `match_analyses.recording_build` (T666b) — one
+#: additive revision. Apply it **before** the deploy that carries this constant: a database that
+#: lags the build answers `schema_out_of_date`.
 EXPECTED_SCHEMA_REVISION = "53375d9435fc"
 
 __all__ = ["EXPECTED_SCHEMA_REVISION"]

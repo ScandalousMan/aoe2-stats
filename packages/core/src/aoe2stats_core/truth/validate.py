@@ -253,26 +253,45 @@ def validate(document: Mapping[str, Any], register: Mapping[str, Entry]) -> None
                     f"({source_entry.tier.value})",
                 )
 
-    # Rule 8: nothing present may need knowledge a blocking gap says is missing. A gap's
-    # ``prevents`` is the register data it stops, computed from the register's own
-    # ``requires_knowledge`` (bare field names such as ``cost``) when the gap was made, so the
-    # validator compares datum ids and never re-derives a field key. A whole-build gap names no
-    # entity and no field because nothing about the build is known: it blocks every datum that
-    # needs any knowledge at all, whatever its ``prevents`` lists.
+    # Rule 8: nothing present may need knowledge a gap says is missing. This is the second lock,
+    # so it does not lean on what the first lock wrote: the builder computes a gap's ``severity``
+    # and ``prevents`` (data-model.md section 7), and a builder fault there must not unlock a
+    # datum. The rule therefore reads the gap's own facts, never its labels, and withholds a datum
+    # when any of three things holds, whatever the gap's ``severity``:
+    #
+    # - the gap's ``field`` is one the datum's register ``requires_knowledge`` names. Both are bare
+    #   field names (``cost``), which is exactly how ``prevents`` was computed, so this needs no
+    #   ``kind.field`` key; a datum on another field is untouched (FR-037: independent values are
+    #   left alone);
+    # - the datum's id is in the gap's ``prevents`` (the register data it stops, computed from the
+    #   same ``requires_knowledge``), which keeps a gap whose field spelling differs honest;
+    # - the gap is whole-build, naming no entity and no field because nothing about the build is
+    #   known: it withholds every datum that needs any knowledge at all.
+    #
+    # **Severity is not read.** FR-037 defines informational as "no currently published value
+    # depends on it". A datum present in the document is published, so a gap on a field it
+    # requires cannot be informational: the label is the builder's fault, and FR-037 ends "no
+    # severity may permit a value to be published while an input it depends on is missing". There
+    # is no legitimate informational gap on a field a present datum requires, so nothing is lost by
+    # ignoring the label and the validator stays a lock that holds without it.
     gaps = document.get("knowledge_gaps", [])
+    gap_fields: set[str] = set()
     blocked: set[str] = set()
     whole_build = False
     for gap in gaps if isinstance(gaps, list) else []:
-        if not isinstance(gap, Mapping) or gap.get("severity") != "blocking":
+        if not isinstance(gap, Mapping):
             continue
+        field = gap.get("field")
+        if isinstance(field, str):
+            gap_fields.add(field)
         prevents = gap.get("prevents")
         if isinstance(prevents, list):
             blocked.update(item for item in prevents if isinstance(item, str))
-        if gap.get("entity") is None and gap.get("field") is None:
+        if gap.get("entity") is None and field is None:
             whole_build = True
     for datum in sorted(everything):
         needs = register[datum].requires_knowledge
-        if needs and (whole_build or datum in blocked):
+        if needs and (whole_build or datum in blocked or gap_fields.intersection(needs)):
             fail(8, f"{datum!r} is present but needs {sorted(needs)}, blocked by a knowledge gap")
 
     # Rules 9 and 10.

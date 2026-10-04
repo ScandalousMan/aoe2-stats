@@ -24,8 +24,10 @@ against the code this task replaces (a module-scope `from aoe2stats_ingester.run
 in `routers/cron.py`) and green after it, which is the evidence this task actually changed
 something rather than merely adding a check that starts and stays vacuously true.
 
-003's `apps/analyzer` (T302) widens the boundary the same reasoning covers. `apps/api` declares no
-dependency on it at all — `api/analyze.py` (Phase 7) is a separate Vercel function that calls
+003's `apps/analyzer` (T302) widens the boundary the same reasoning covers. `apps/api` declared no
+dependency on it at all (T666g later declared one, for the lazy staleness import described at the
+end of this docstring; the declaration changes nothing about what loads at import time) —
+`api/analyze.py` (Phase 7) is a separate Vercel function that calls
 `apps/analyzer`'s own `run_once`, never `aoe2stats_api.app` — so nothing on the import path from
 the ASGI app should ever reach `aoe2stats_analyzer`. That absence is not provable from the
 dependency graph either: `apps/analyzer` also depends on `packages/replay-engine`, this time to
@@ -37,6 +39,13 @@ same subprocess as the first three, closes that gap the same way: today it is va
 because nothing in `apps/api/src` imports `aoe2stats_analyzer`, and it stays meaningful for the
 same reason the second assertion does — a regression that reaches for it from a router would turn
 this test red on the next run, in-process or not.
+
+**The one exception, and why it is lazy (T666g).** `routers/matches.py` imports
+`aoe2stats_analyzer.staleness` - the analyzer's staleness verdict, which the match-detail `stale`
+flag shares with `run.py` - inside the function that needs it, never at module scope, so the
+assertion above still holds for importing the app. The second test pins what that import and a
+call into it may and may not load: the analyzer's verdict module and the installed-engine
+description are importable and callable with `aoe2rec_py` (the native extension) never loaded.
 """
 
 from __future__ import annotations
@@ -60,6 +69,33 @@ def test_importing_the_app_never_loads_run_once_or_the_replay_engine() -> None:
         capture_output=True,
         text=True,
         timeout=30,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.strip() == "ok"
+
+
+_STALENESS_CHECK = (
+    "import sys\n"
+    "import aoe2stats_api.routers.matches\n"
+    "from aoe2stats_analyzer.staleness import installed_engine\n"
+    "engine = installed_engine('aoe2rec-py')\n"
+    "assert engine.engine_dependencies, engine\n"
+    "assert 'aoe2rec_py' not in sys.modules, sorted(sys.modules)\n"
+    "assert 'aoe2stats_replay_engine.aoe2rec' not in sys.modules, sorted(sys.modules)\n"
+    "print('ok')\n"
+)
+
+
+def test_the_staleness_verdict_and_the_installed_engine_load_no_native_engine() -> None:
+    """T666g: the API describes the installed engine from distribution metadata and compares
+    identities through `aoe2stats_analyzer.staleness`; neither loads `aoe2rec_py` nor the adapter
+    module that imports it."""
+    result = subprocess.run(
+        [sys.executable, "-c", _STALENESS_CHECK],
+        capture_output=True,
+        text=True,
+        timeout=60,
     )
 
     assert result.returncode == 0, result.stdout + result.stderr

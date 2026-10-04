@@ -102,20 +102,34 @@ profile, whether or not the button underneath it ever works.
 `analysis` summary `contracts/http-api.md`'s "Analysis" section fixes, in each of its seven states
 — `absent` (no `match_analyses` row at all) plus the six `MatchAnalysisState` values — so a caller
 can tell from this one response whether a match can still be analysed and until when, without
-opening `GET /api/matches/{game_id}/analysis` itself. `stale` is computed here, on every read, by
-comparing the stored row's own `parser_version` against `_running_engine_version()` — never a
-stored column (FR-041; `match_analyses` carries no such column, `packages/storage/src/
-aoe2stats_storage/models.py`). `_running_engine_version()` deliberately does **not** import
-`aoe2stats_replay_engine.aoe2rec` to read `ENGINE_NAME`: that module imports `aoe2rec_py`, the
-native PyO3 extension, at its own module scope, and anything reachable from `aoe2stats_api.app`
-doing that is exactly what constitution V and `test_engine_isolation.py`'s subprocess check forbid.
-`importlib.metadata.version` reads the installed distribution's own metadata without importing its
-code at all, so `_ENGINE_NAME` below — a literal duplicate of, never an import of, `aoe2stats_
-replay_engine.aoe2rec.ENGINE_NAME` — is the one way this process can answer "what version of the
-engine is running" without loading it. `routers/analysis.py`'s own `GET /api/matches/{game_id}/
-analysis` needs no such comparison — it only ever serves the published document whole or answers
-`404` — so this function and its query live here, not there (that router's own module docstring:
-"share no response shape to keep in sync").
+opening `GET /api/matches/{game_id}/analysis` itself. `stale` is computed here, on every read, never
+a stored column (FR-041; `match_analyses` carries no such column, `packages/storage/src/aoe2stats_
+storage/models.py`), and it is **the analyzer's own verdict** (T666g, FR-042): `_analysis_json`
+calls `aoe2stats_analyzer.staleness.is_stale`, the function `run.py`'s staleness test delegates
+to, with the published row, its retained-recording row and the installed engine. It compares the
+**identity digest**, not the parser version alone, so a knowledge refresh or an analytics change -
+neither moves the parser version - offers Recompute too, and the button and the recompute cannot
+disagree (`contracts/analysis-document.md`: "a recompute has to be triggered"). An open retry
+window (T666c) and a missing retained recording both read as not stale: a click would do nothing.
+That is one more small row read, no object-store read and no parse.
+
+**The import is lazy and is the API's one analyzer import (FR-049).** `_is_stale` and
+`_installed_engine` import `aoe2stats_analyzer.staleness` inside the function, so importing the
+app still loads neither the analyzer nor `aoe2rec_py` (`test_engine_isolation.py`), and
+`tests/architecture/test_feature_006_boundaries.py` allows exactly that import from this file
+and no other.
+`_installed_engine()` describes the engine from distribution metadata (`importlib.metadata`) and
+never imports `aoe2stats_replay_engine.aoe2rec`: that module imports `aoe2rec_py`, the native PyO3
+extension, at its own module scope, and anything reachable from `aoe2stats_api.app` doing that is
+exactly what constitution V and `test_engine_isolation.py`'s subprocess check forbid. `_ENGINE_NAME`
+below is a literal duplicate of, never an import of, `aoe2stats_replay_engine.aoe2rec.ENGINE_NAME`.
+A deployment fault while computing the digest (a snapshot that fails its digest, a missing engine
+requirement) is logged and reads as not stale: it must not take the match page down for a button,
+and the analyzer refuses the same fault before it recomputes anything (T666b).
+`routers/analysis.py`'s own `GET /api/matches/{game_id}/analysis` needs no such comparison — it
+only ever serves the published document whole or answers `404` — so this function and its query
+live here, not there (that router's own module docstring: "share no response shape to keep in
+sync").
 
 **Widened past `stored` alone (M12, third-round review).** The filter used to read `capture.status
 is not CaptureStatus.STORED or capture.profile_id in owned_profile_ids` — `stored` only.
@@ -216,10 +230,10 @@ already carries a real alias and a real colour costs no second query at all.
 from __future__ import annotations
 
 import functools
+import logging
 from collections.abc import Awaitable, Callable, Sequence
 from datetime import UTC, datetime
-from importlib import metadata
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Query, Request
 from sqlalchemy import select, update
@@ -249,6 +263,7 @@ from aoe2stats_storage.models import (
     ProviderCall,
     ReplayCapture,
     ReplayFetchMiss,
+    RetainedRecording,
 )
 from aoe2stats_storage.models import Session as SessionRow
 from aoe2stats_storage.repositories.matches import (
@@ -643,10 +658,33 @@ def _replay_json(
 _ENGINE_NAME = "aoe2rec-py"
 
 
-def _running_engine_version() -> str:
-    """FR-041's "the engine currently running", read without ever importing it (module docstring).
-    `importlib.metadata.version` answers from the installed distribution's own metadata."""
-    return metadata.version(_ENGINE_NAME)
+logger = logging.getLogger("aoe2stats_api")
+
+if TYPE_CHECKING:
+    from aoe2stats_analyzer.staleness import InstalledEngine
+
+
+@functools.cache
+def _installed_engine() -> InstalledEngine:
+    """The engine this process would analyse with, described from installed distribution metadata
+    (module docstring) and cached for the process's life: installed versions do not change under a
+    running process. A failure is not cached."""
+    from aoe2stats_analyzer.staleness import installed_engine
+
+    return installed_engine(_ENGINE_NAME)
+
+
+def _is_stale(row: MatchAnalysis, retained: RetainedRecording | None) -> bool:
+    """T666g, FR-042: the analyzer's staleness verdict for this row (module docstring)."""
+    if row.state is not MatchAnalysisState.PUBLISHED:
+        return False
+    from aoe2stats_analyzer.staleness import is_stale
+
+    try:
+        return is_stale(row, retained, engine=_installed_engine(), now=datetime.now(UTC))
+    except (ValueError, RuntimeError):
+        logger.exception("stale flag not computed for game_id=%s: deployment fault", row.game_id)
+        return False
 
 
 #: FR-034: `unavailable` is permanent, and the client must never render a retry action for it —
@@ -684,6 +722,22 @@ def _analysis_reason(row: MatchAnalysis) -> str | None:
     return None
 
 
+async def _retained_row(
+    db_session: AsyncSession, *, row: MatchAnalysis | None
+) -> RetainedRecording | None:
+    """The retained-recording row the row's identity was built from, read only for a published row
+    (the one state `stale` can be true for)."""
+    if row is None or row.state is not MatchAnalysisState.PUBLISHED:
+        return None
+    result = await db_session.execute(
+        select(RetainedRecording).where(
+            RetainedRecording.game_id == row.game_id,
+            RetainedRecording.profile_id == row.point_of_view_profile_id,
+        )
+    )
+    return result.scalar_one_or_none()
+
+
 async def _analysis_row(db_session: AsyncSession, *, game_id: int) -> MatchAnalysis | None:
     """`match_analyses`'s own primary key is `game_id` alone (data-model.md) — at most one row per
     match, ever, so this is the whole lookup."""
@@ -691,7 +745,9 @@ async def _analysis_row(db_session: AsyncSession, *, game_id: int) -> MatchAnaly
     return result.scalar_one_or_none()
 
 
-def _analysis_json(*, game_id: int, row: MatchAnalysis | None) -> dict[str, Any]:
+def _analysis_json(
+    *, game_id: int, row: MatchAnalysis | None, retained: RetainedRecording | None = None
+) -> dict[str, Any]:
     """The `analysis` object `contracts/http-api.md`'s "Analysis" section fixes, in each of its
     seven states (module docstring). `row is None` is `absent` — never requested, requestable —
     the one state that is not a stored `MatchAnalysisState` value at all."""
@@ -705,15 +761,10 @@ def _analysis_json(*, game_id: int, row: MatchAnalysis | None) -> dict[str, Any]
             "result_path": result_path,
             "reason": None,
         }
-    stale = (
-        row.state is MatchAnalysisState.PUBLISHED
-        and row.parser_version is not None
-        and row.parser_version != _running_engine_version()
-    )
     return {
         "state": row.state.value,
         "parser_version": row.parser_version,
-        "stale": stale,
+        "stale": _is_stale(row, retained),
         "point_of_view_profile_id": row.point_of_view_profile_id,
         "result_path": result_path,
         "reason": _analysis_reason(row),
@@ -1016,7 +1067,11 @@ async def get_match_detail(
         # T368: the `analysis` summary object, computed from whatever `match_analyses` row (if
         # any) this exact game_id carries — `_analysis_json`'s own docstring for the seven states.
         analysis_row = await _analysis_row(db_session, game_id=game_id)
-        analysis = _analysis_json(game_id=game_id, row=analysis_row)
+        analysis = _analysis_json(
+            game_id=game_id,
+            row=analysis_row,
+            retained=await _retained_row(db_session, row=analysis_row),
+        )
 
         return _match_detail_json(detail, replay_by_profile=replay_by_profile, analysis=analysis)
 

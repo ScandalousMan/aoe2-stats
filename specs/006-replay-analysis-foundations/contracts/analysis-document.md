@@ -74,7 +74,7 @@ analysis fails with the validator's message, through 003's existing failure path
 | 5 | A datum at `inferred` or `predicted` appears **only** under `inferred`, and each instance carries a confidence whose level is in the closed set and whose basis is non-empty. | FR-010, FR-010a, SC-002 |
 | 6 | No datum at `inferred` or `predicted` appears at any path outside `inferred`; no datum at a stronger tier appears inside it. | FR-011, SC-003 |
 | 7 | A datum whose register entry declares a non-claim carries it on every instance. | FR-013 |
-| 8 | No datum is present whose `requires_knowledge` intersects a blocking gap in `knowledge_gaps`. | FR-037 |
+| 8 | No datum is present that a gap in `knowledge_gaps` withholds, **whatever the gap's `severity`**: the gap's field is named in the datum's `requires_knowledge`, or the datum is in the gap's `prevents`, or the gap is whole-build and the datum needs any knowledge. A gap on a field a present datum requires cannot honestly be informational, so the label is not trusted (T666k). | FR-037 |
 | 9 | `identity.parser_dependencies` is non-empty. | FR-044, SC-011 |
 | 10 | `identity.digest` recomputes from the other identity fields. | FR-040 |
 

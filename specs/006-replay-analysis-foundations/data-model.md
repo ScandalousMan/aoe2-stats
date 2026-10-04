@@ -221,3 +221,12 @@ named none, as in section 7). The recording component comes from the retained re
 the recompute path reads anyway. A row with either column NULL is stale and recomputes once. The
 revision was amended in place rather than followed by a second one because it had not been applied
 anywhere but throwaway test databases (T666b).
+
+On a **published** row, 003's `lease_expires_at` column means something else (T666c). After a
+recompute failed and the prior analysis was kept (FR-042), it holds the end of a retry window: no
+recompute of that row is attempted before it, so a refusal that is a function of the retained
+recording and the code is not repeated on every request. It is not a claim, and publishing the next
+analysis clears it. 003's claim selects only `queued` rows and `running` rows whose lease has
+expired, never a published one, so no 003 reader is affected. The window's length is, as it stands,
+a default in `apps/analyzer/src/aoe2stats_analyzer/run.py` (one hour) that a caller may override by
+argument.

@@ -1433,7 +1433,7 @@ arbitration and are decided (2026-10-04); the decision is recorded in the task t
 **These block #109's merge and T665.** T666g, T666k and T666l touch disjoint files and may run as one
 parallel batch; T666h, T666i and T666j follow, in order — all three edit `run.py`.
 
-- [ ] T666g [P] [US6] **Let the product reach the recompute T657a made possible.** The API's `stale`
+- [x] T666g [P] [US6] **Let the product reach the recompute T657a made possible.** The API's `stale`
       flag in `apps/api/src/aoe2stats_api/routers/matches.py` still compares the parser version
       alone, and the web reader offers Recompute only when it is true, so a knowledge refresh or an
       analytics change never triggers anything outside a test (contracts/analysis-document.md: "a
@@ -1475,14 +1475,14 @@ parallel batch; T666h, T666i and T666j follow, in order — all three edit `run.
       like the capture budget. Read it from the API's settings and pass it through the analyze
       entrypoint, with the variable declared wherever this repository declares environment keys
       (constitution XII), or correct the docstring if configuration is rejected — say which
-- [ ] T666k [P] [US3] **Two second locks that still lean on the first.** (a) Rule 8 in
+- [x] T666k [P] [US3] **Two second locks that still lean on the first.** (a) Rule 8 in
       `packages/core/src/aoe2stats_core/truth/validate.py` reads each gap's `severity` and `prevents`
       from the document, so a gap the builder mislabels informational, or emits with an empty
       `prevents`, blocks nothing. Also block any present datum whose register `requires_knowledge`
       names the gap's field, whatever the gap says it prevents. (b)
       `apps/analyzer/src/aoe2stats_analyzer/reproduce.py` maps only `DocumentInvalid` to a refusal; a
       placement error and the canonical serialiser's refusal still escape as a third outcome
-- [ ] T666l [P] **Bring the written record level with the amended revision.** `plan.md`'s Storage and
+- [x] T666l [P] **Bring the written record level with the amended revision.** `plan.md`'s Storage and
       Summary paragraphs still describe one nullable column; name both. Correct the comment in
       `packages/storage/src/aoe2stats_storage/revision.py` and the `match_analyses` docstring in
       `packages/storage/src/aoe2stats_storage/models.py` to name `recording_build`. Record in

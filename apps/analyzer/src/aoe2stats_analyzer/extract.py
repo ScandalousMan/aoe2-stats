@@ -45,13 +45,12 @@ import dataclasses
 import hashlib
 from collections.abc import Iterable, Mapping, Sequence
 from datetime import datetime
-from typing import Any, cast
+from typing import Any, Protocol, cast
 
 from aoe2stats_analyzer.canonical import WALL_CLOCK_FIELDS, canonical_bytes, compared_body
 from aoe2stats_core.replay.analysis import AnalysisExtractor, MatchTimeline, ReplayExtractor
 from aoe2stats_core.replay.events import (
     CanonicalEvent,
-    CanonicalEventSource,
     EventKind,
     MatchStartedPayload,
 )
@@ -117,6 +116,7 @@ __all__ = [
     "SCHEMA_VERSION",
     "WALL_CLOCK_FIELDS",
     "DocumentInvalid",
+    "EngineIdentity",
     "SnapshotError",
     "TierPlacementError",
     "build_document",
@@ -327,8 +327,24 @@ def document_recording_build(document: Mapping[str, Any]) -> int:
     return cast("int", build)
 
 
+class EngineIdentity(Protocol):
+    """The three attributes of the running engine an analysis identity reads (FR-040, FR-044) and
+    nothing else: not `events`, so a caller that only needs to *compare* identities - the API's
+    `stale` flag (T666g) - can describe the installed engine from distribution metadata without
+    constructing, or importing, an extractor. Every `CanonicalEventSource` satisfies it."""
+
+    @property
+    def engine_name(self) -> str: ...
+
+    @property
+    def engine_version(self) -> str: ...
+
+    @property
+    def engine_dependencies(self) -> Mapping[str, str]: ...
+
+
 def current_identity_digest(
-    extractor: CanonicalEventSource, *, recording: Mapping[str, str], build: int
+    extractor: EngineIdentity, *, recording: Mapping[str, str], build: int
 ) -> str:
     """The digest this analysis would carry if it were produced **now**, from what the caller
     already holds and without reading or parsing anything (FR-042, T657a, T666b).

@@ -18,9 +18,12 @@ anything. A baseline difference fails with the offending entry named. The checks
    scheduled units*, never on the steps inside a job: T663 adds one step to `nightly.yml`'s existing
    job set to run the gap-rate report, which is not a new scheduled job and must stay allowed.
 2. No module on the request path (`api/`, `apps/api/src`, the analyzer's request/lease/dedupe/
-   admission/run code, and the ingester's capture code) imports `aoe2stats_knowledge` or
+   admission/run/staleness code, and the ingester's capture code) imports `aoe2stats_knowledge` or
    `aoe2stats_core.truth`. The analyzer's `extract.py` is the parse step itself, off the
-   request/lease path, and is deliberately not in the set.
+   request/lease path, and is deliberately not in the set - with one exception recorded in check
+   2a: `staleness.py` reaches `extract.current_identity_digest` for the API's `stale` flag.
+2a. `apps/api/src` imports from `aoe2stats_analyzer` exactly one module, from exactly one file
+   (`_ALLOWED_API_ANALYZER_IMPORTS`, T666g). See that constant for why it stays inside FR-049.
 3. The new 006 code never names the capture budget: not `CAPTURE_BUDGET_DAYS`/`capture_budget_days`,
    not a capture deadline, not the `replay_captures` or `provider_calls` tables or their models, and
    it imports neither `aoe2stats_ingester` nor `aoe2stats_providers` (the budget's two homes).
@@ -112,9 +115,33 @@ _REQUEST_PATH_CODE: tuple[Path, ...] = (
     _ANALYZER_SRC / "admission.py",
     _ANALYZER_SRC / "run.py",
     _ANALYZER_SRC / "retain.py",
+    # T666g: reached from the API's match-detail through one lazy import; it must reach the
+    # knowledge identity only through `extract.py`, never import `aoe2stats_knowledge` itself.
+    _ANALYZER_SRC / "staleness.py",
     # The capture path: constitution I's other side of the tie-break.
     _REPO_ROOT / "apps" / "ingester" / "src",
 )
+
+# T666g: the API's `stale` flag is the analyzer's own verdict, so the one function both ask
+# (`aoe2stats_analyzer.staleness.is_stale`) is imported by exactly one request-path file, and no
+# other `aoe2stats_analyzer` module is imported by anything under `apps/api/src`. The decision is
+# 2026-10-04 (T666g): the button and the recompute must not be able to disagree, which two copies of
+# the condition could not guarantee.
+#
+# Why this stays inside FR-049 (006 adds nothing to the request path that spends capture's budget or
+# does analysis work on a request): what the import brings is a *comparison*, not an analysis. The
+# knowledge snapshot is resolved by `snapshot_for(build)`, which is `functools.cache`d for the
+# process's life and answers from the installed snapshot tree - cached, and independent of any
+# recording (the build is read from the row). The installed engine is described from distribution
+# metadata. Nothing is fetched, no recording or object-store byte is read, nothing is parsed, no
+# engine is loaded (`apps/api/tests/test_engine_isolation.py` asserts `aoe2rec_py` stays unloaded),
+# and no capture-budget name is touched. The import is lazy, inside the function that needs it, so
+# importing the app loads none of it. Adding any other analyzer import to the API - `run`,
+# `extract`, `reproduce` - is request-path work and fails the check below.
+_ALLOWED_API_ANALYZER_IMPORTS: Mapping[str, frozenset[str]] = {
+    "apps/api/src/aoe2stats_api/routers/matches.py": frozenset({"aoe2stats_analyzer.staleness"}),
+}
+_API_SRC = _REPO_ROOT / "apps" / "api" / "src"
 
 _NEW_PACKAGES = ("aoe2stats_knowledge", "aoe2stats_core.truth")
 _CAPTURE_BUDGET_PACKAGES = ("aoe2stats_ingester", "aoe2stats_providers")
@@ -407,6 +434,62 @@ def test_no_request_path_module_imports_the_new_packages() -> None:
     )
 
 
+def analyzer_imports_outside_allowlist(
+    relative_path: str, source: str, allowed: Mapping[str, frozenset[str]]
+) -> list[str]:
+    """Every `aoe2stats_analyzer` module this file imports that the allowlist does not grant to
+    *this* file. A name under an allowed module (`aoe2stats_analyzer.staleness.is_stale`) is that
+    module's own, so it is covered by the grant; a sibling module is not."""
+    granted = allowed.get(relative_path, frozenset())
+    return [
+        module
+        for module in imports_of(source, ("aoe2stats_analyzer",))
+        if module != "aoe2stats_analyzer" and not _is_under(module, granted)
+    ]
+
+
+def _api_analyzer_violations(
+    allowed: Mapping[str, frozenset[str]],
+) -> dict[str, list[str]]:
+    violations: dict[str, list[str]] = {}
+    for path in _python_files((_API_SRC,)):
+        relative = path.relative_to(_REPO_ROOT).as_posix()
+        found = analyzer_imports_outside_allowlist(relative, path.read_text("utf-8"), allowed)
+        if found:
+            violations[relative] = found
+    return violations
+
+
+def test_the_api_imports_exactly_one_analyzer_module_from_exactly_one_file() -> None:
+    """T666g, FR-049: `apps/api/src` reaches the analyzer only through `staleness`, and only from
+    the match router (`_ALLOWED_API_ANALYZER_IMPORTS`). Anything else is request-path analysis
+    work."""
+    violations = _api_analyzer_violations(_ALLOWED_API_ANALYZER_IMPORTS)
+    assert not violations, (
+        f"the API may import only the staleness verdict from the analyzer (FR-049): {violations}"
+    )
+
+
+def test_the_allowed_api_import_is_really_there() -> None:
+    """A grant nothing uses is an exception waiting to be misused: the allowlist names imports the
+    files really make."""
+    for relative, modules in _ALLOWED_API_ANALYZER_IMPORTS.items():
+        source = (_REPO_ROOT / relative).read_text(encoding="utf-8")
+        found = set(imports_of(source, ("aoe2stats_analyzer",)))
+        for module in modules:
+            assert module in found, f"{relative} no longer imports {module}; drop the grant"
+
+
+def test_the_staleness_module_reaches_knowledge_only_through_the_builder() -> None:
+    """The API's import brings `extract` in transitively; `staleness.py` itself names no knowledge
+    or truth package (it is in `_REQUEST_PATH_CODE`, so check 2 covers it) and no storage
+    repository."""
+    source = (_ANALYZER_SRC / "staleness.py").read_text(encoding="utf-8")
+
+    assert imports_of(source, _NEW_PACKAGES) == []
+    assert imports_of(source, ("aoe2stats_storage.repositories",)) == []
+
+
 def test_the_document_builder_imports_nothing_from_storage() -> None:
     """T666e: `extract.py` turns a recording into a document and knows no table. The conversion of
     the document's gaps into rows is the run side's (`run.py` may import `packages/storage`), so a
@@ -591,6 +674,42 @@ def test_imports_of_flags_a_storage_repository_type_in_the_builder() -> None:
         "aoe2stats_storage.repositories.knowledge_gaps",
         "aoe2stats_storage.repositories.knowledge_gaps.GapToRecord",
     ]
+
+
+def test_the_allowlist_grants_the_staleness_import_to_the_match_router_only() -> None:
+    """Contrast cases for T666g: the grant is for one module in one file, and the guard still
+    refuses every other analyzer import, in that file and in any other."""
+    matches = "apps/api/src/aoe2stats_api/routers/matches.py"
+    other = "apps/api/src/aoe2stats_api/routers/players.py"
+    allowed = _ALLOWED_API_ANALYZER_IMPORTS
+    lazy = "def f():\n    from aoe2stats_analyzer.staleness import is_stale\n"
+    typing_only = "from aoe2stats_analyzer.staleness import InstalledEngine\n"
+
+    # What is allowed: the granted module, by `from` or `import`, in the granted file.
+    assert analyzer_imports_outside_allowlist(matches, lazy, allowed) == []
+    assert analyzer_imports_outside_allowlist(matches, typing_only, allowed) == []
+    assert (
+        analyzer_imports_outside_allowlist(
+            matches, "import aoe2stats_analyzer.staleness\n", allowed
+        )
+        == []
+    )
+    # The same import anywhere else is refused.
+    assert analyzer_imports_outside_allowlist(other, lazy, allowed) != []
+    # Any other analyzer module is refused, even in the granted file: the builder, the run entry,
+    # reproduction, and the package itself reached by attribute.
+    for source in (
+        "from aoe2stats_analyzer.extract import current_identity_digest\n",
+        "from aoe2stats_analyzer.run import run_once\n",
+        "import aoe2stats_analyzer.reproduce\n",
+        "from aoe2stats_analyzer import extract\n",
+        "__import__('aoe2stats_analyzer.extract')\n",
+        "from aoe2stats_analyzer.staleness_other import x\n",
+    ):
+        assert analyzer_imports_outside_allowlist(matches, source, allowed), source
+    # And the knowledge and truth packages stay refused on the request path as before.
+    assert imports_of("from aoe2stats_knowledge.snapshot import snapshot_for\n", _NEW_PACKAGES)
+    assert imports_of("from aoe2stats_core.truth.identity import AnalysisIdentity\n", _NEW_PACKAGES)
 
 
 def test_analysis_key_literals_flags_a_private_layout_but_not_prose() -> None:

@@ -646,7 +646,8 @@ class AnalysisKnowledgeGap(Base):
     (`repositories/knowledge_gaps.py`) groups these rows by `build`, `cause` and `severity` over a
     window; `scripts/checks/knowledge_gap_rate.py` prints what that grouping returns. Both are
     real, tested code. This table is created by T663's single additive migration
-    (`53375d9435fc`), which also adds `match_analyses.identity_digest`; nothing in this feature's
+    (`53375d9435fc`), which also adds `match_analyses.identity_digest` and
+    `match_analyses.recording_build`; nothing in this feature's
     own call graph invokes either before that revision is applied (T652's own task text).
 
     **Deliberately not the ingester's `ingest_runs.quarantined_total` shape.** That is one column

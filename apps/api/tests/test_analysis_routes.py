@@ -105,9 +105,6 @@ _PUBLISHED_GAME_ID = 930_200_001
 
 _SEVEN_STATES_GAME_ID_BASE = 930_300_000
 
-_STALE_MATCHING_GAME_ID = 930_400_001
-_STALE_MISMATCHED_GAME_ID = 930_400_002
-
 _GET_ANALYSIS_404_GAME_ID_BASE = 930_500_000
 
 _DISTINGUISH_ABSENT_GAME_ID = 930_600_001
@@ -476,55 +473,11 @@ async def test_analysis_object_appears_on_match_detail_in_every_state(
 # ================================================================================================
 
 
-async def test_stale_is_computed_on_read_from_the_running_engine_version(
-    client: TestClient, db_session: AsyncSession
-) -> None:
-    """FR-041: `stale` compares a published analysis's `parser_version` against the engine
-    currently running, computed on every read — `MatchAnalysis` carries no `stale` column
-    (`packages/storage/src/aoe2stats_storage/models.py`), so the only way this can ever be `True`
-    is a live comparison at request time, proven here by seeding the identical value the real
-    engine reports (module docstring, "`stale`, computed against the real running engine") and a
-    deliberately different one."""
-    caller = await _seed_user(db_session)
-    await _sign_in(client, db_session, caller)
-
-    matching_game_id = _STALE_MATCHING_GAME_ID
-    await _seed_two_participant_match(db_session, game_id=matching_game_id)
-    await _seed_analysis(
-        db_session,
-        game_id=matching_game_id,
-        state=MatchAnalysisState.PUBLISHED,
-        point_of_view_profile_id=_PARTICIPANT_A,
-        parser_name=_RUNNING_ENGINE_NAME,
-        parser_version=_RUNNING_ENGINE_VERSION,
-        result_key=f"analyses/{matching_game_id}.json",
-    )
-
-    mismatched_game_id = _STALE_MISMATCHED_GAME_ID
-    await _seed_two_participant_match(db_session, game_id=mismatched_game_id)
-    await _seed_analysis(
-        db_session,
-        game_id=mismatched_game_id,
-        state=MatchAnalysisState.PUBLISHED,
-        point_of_view_profile_id=_PARTICIPANT_A,
-        parser_name=_RUNNING_ENGINE_NAME,
-        parser_version=f"{_RUNNING_ENGINE_VERSION}-superseded",
-        result_key=f"analyses/{mismatched_game_id}.json",
-    )
-
-    matching_response = client.get(f"/api/matches/{matching_game_id}")
-    mismatched_response = client.get(f"/api/matches/{mismatched_game_id}")
-
-    assert matching_response.status_code == 200, f"Got {matching_response.text}"
-    assert mismatched_response.status_code == 200, f"Got {mismatched_response.text}"
-    _assert_no_index(matching_response)
-    _assert_no_index(mismatched_response)
-    assert matching_response.json()["analysis"]["stale"] is False, (
-        "a published analysis whose parser_version matches the running engine must not be stale"
-    )
-    assert mismatched_response.json()["analysis"]["stale"] is True, (
-        "a published analysis whose parser_version differs from the running engine must be stale"
-    )
+# `stale` compares the identity digest, not the parser version alone (T666g, FR-042): its tests are
+# in `test_analysis_stale.py`. The test that stood here seeded a published row with a parser version
+# and nothing else, and asserted that the parser version alone decided - the defect T666g closed.
+# A row seeded that way (no digest, no build) now reads stale, which is the intended outcome for a
+# row published before the digest existed.
 
 
 # ================================================================================================

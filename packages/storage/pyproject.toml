@@ -11,7 +11,7 @@ requires-python = ">=3.13,<3.14"
 # `AsyncEngine` fails on macOS arm64 with "the greenlet library is required to use this function",
 # while the same code silently works on CI's `ubuntu-latest`/`x86_64` runners — exactly the kind
 # of platform-shaped gap constitution XII exists to catch before a contributor's machine finds it.
-dependencies = ["sqlalchemy[asyncio]>=2.0.36", "psycopg[binary]>=3.2", "boto3>=1.35"]
+dependencies = ["sqlalchemy[asyncio]>=2.0.36", "psycopg[binary]>=3.2", "boto3>=1.43.75"]
 
 [build-system]
 requires = ["hatchling"]

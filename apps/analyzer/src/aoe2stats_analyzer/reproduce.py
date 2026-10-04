@@ -33,7 +33,10 @@ Then the recording: absent from the store (the store's own `ObjectNotFound`, and
 `KeyError` or any other error is a defect or an outage and propagates), or present with a checksum
 that is not the one the identity records. A caller-supplied match id that disagrees with the one the
 retained key was built from is refused before the store is read, and a rebuilt document the
-validator refuses is reported as a refusal naming the validator's reason (T666e). Last, **the built
+validator refuses is reported as a refusal naming the validator's reason (T666e). The builder's
+own placement refusal (`TierPlacementError`) and the canonical serialiser's refusal (a `ValueError`
+raised by `canonical_bytes` alone, not by anything earlier on the path) are refusals too (T666k);
+any other error raised while building is a defect or an outage and propagates. Last, **the built
 analysis must carry the identity it was asked for**: its identity digest is compared with the
 requested one and a mismatch names the components that differ.
 That check is what makes "identical" a measured outcome rather than a hope — it covers the one case
@@ -56,6 +59,7 @@ from typing import Any
 from aoe2stats_analyzer.extract import (
     ANALYTICS_VERSION,
     DocumentInvalid,
+    TierPlacementError,
     build_document,
     canonical_bytes,
     validate_document,
@@ -139,7 +143,14 @@ async def reproduce(
     built = document["identity"]
     if built["digest"] != identity.digest:
         raise ReproductionRefused(_component_differences(identity, built))
-    return canonical_bytes(document)
+    try:
+        return canonical_bytes(document)
+    except ValueError as exc:
+        # The serialiser refuses what JSON cannot spell (a non-finite float) or two keys that
+        # collide; it is a deliberate refusal of this document, the third place one is made.
+        raise ReproductionRefused(
+            [f"the analysis rebuilt here cannot be serialised canonically ({exc})"]
+        ) from exc
 
 
 def _build(
@@ -156,14 +167,20 @@ def _build(
     # does and the digest comparison in `reproduce` decides whether that is the same analysis.
     # Synchronous, like `run.py`'s own call: the parse is CPU-bound, and the pin is a context var.
     def build() -> dict[str, Any]:
-        document = build_document(
-            extractor,
-            zip_bytes,
-            game_id=game_id,
-            object_key=object_key,
-            zip_sha256=sha256,
-            extracted_at=datetime.now(UTC),
-        )
+        try:
+            document = build_document(
+                extractor,
+                zip_bytes,
+                game_id=game_id,
+                object_key=object_key,
+                zip_sha256=sha256,
+                extracted_at=datetime.now(UTC),
+            )
+        except TierPlacementError as exc:
+            # The builder's own lock: it refused to place a datum where its tier does not belong.
+            raise ReproductionRefused(
+                [f"the analysis cannot be rebuilt here: the builder refused a placement ({exc})"]
+            ) from exc
         try:
             validate_document(document)
         except DocumentInvalid as exc:

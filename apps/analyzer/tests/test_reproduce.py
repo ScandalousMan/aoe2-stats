@@ -551,3 +551,79 @@ async def test_a_document_the_validator_refuses_is_a_refusal_naming_its_reason(
     message = _refusal(exc_info)
     assert "rule 1" in message
     assert "participants[].coaching_note" in message
+
+
+# --- The other two ways a rebuild is refused are refusals too (T666k) --------------------------
+
+
+class _ExtractorWithANonFiniteRate(_ExtractorWritingAStrayField):
+    """The real extractor, whose first participant's rate is NaN: the document builds and
+    validates, and the canonical serialiser is what refuses it (JSON has no spelling for NaN)."""
+
+    def extract(self, zip_bytes: bytes) -> Any:
+        timeline = self._inner.extract(zip_bytes)
+        first, *rest = timeline.participants
+        broken = dataclasses.replace(first, actions_per_minute=float("nan"))
+        return dataclasses.replace(timeline, participants=(broken, *rest))
+
+
+async def test_a_placement_error_while_building_is_a_refusal_naming_its_reason(
+    original: _Original, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`TierPlacementError` is raised inside `build_document`, before the validator runs, and used
+    to escape `reproduce` as a third outcome beside 'identical' and 'cannot reproduce here'."""
+    from aoe2stats_analyzer import extract
+    from aoe2stats_core.truth.placement import TierPlacementError
+
+    def refuse(datum: str, tier: object) -> None:
+        raise TierPlacementError(f"{datum} may not be placed at an ordinary path")
+
+    monkeypatch.setattr(extract, "require_outside_inferred", refuse)
+
+    with pytest.raises(ReproductionRefused) as exc_info:
+        await reproduce(
+            original.identity, object_store=original.store(), extractor=original.extractor
+        )
+
+    message = _refusal(exc_info)
+    assert "may not be placed at an ordinary path" in message
+    assert isinstance(exc_info.value.__cause__, TierPlacementError)
+
+
+async def test_the_serialisers_refusal_is_a_refusal_naming_its_reason(
+    original: _Original,
+) -> None:
+    extractor = _ExtractorWithANonFiniteRate(original.extractor)
+
+    with pytest.raises(ReproductionRefused) as exc_info:
+        await reproduce(original.identity, object_store=original.store(), extractor=extractor)
+
+    message = _refusal(exc_info)
+    assert "no JSON spelling" in message
+    assert "participants" in message
+
+
+async def test_an_outage_while_building_is_not_a_refusal(
+    original: _Original, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The contrast: only the two refusals the builder and the serialiser make on purpose are
+    mapped. Anything else raised on the same path is a defect or an outage and propagates."""
+    from aoe2stats_analyzer import extract
+
+    def outage(datum: str, tier: object) -> None:
+        raise ConnectionError("the knowledge store is unreachable")
+
+    monkeypatch.setattr(extract, "require_outside_inferred", outage)
+    with pytest.raises(ConnectionError):
+        await reproduce(
+            original.identity, object_store=original.store(), extractor=original.extractor
+        )
+
+    def bug(datum: str, tier: object) -> None:
+        raise KeyError(datum)
+
+    monkeypatch.setattr(extract, "require_outside_inferred", bug)
+    with pytest.raises(KeyError):
+        await reproduce(
+            original.identity, object_store=original.store(), extractor=original.extractor
+        )
