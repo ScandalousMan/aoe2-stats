@@ -484,6 +484,19 @@ def test_a_new_step_in_an_existing_scheduled_job_is_allowed() -> None:
     assert scheduling_violations(scheduled_workflows({"nightly.yml": with_step})) == []
 
 
+def test_the_gap_rate_step_cannot_turn_the_capture_audit_red() -> None:
+    """T666f: the gap-rate report shares a job with the capture audit, and constitution I outranks
+    a report - so a report that cannot run (a missing table, a connection blip) must not fail the
+    job. Pinned on the real file: the step carries `continue-on-error: true` and keeps `always()`.
+    """
+    real = (_WORKFLOWS_DIR / "nightly.yml").read_text(encoding="utf-8")
+    start = real.index("      - name: Report the knowledge-gap rate")
+    step = real[start : real.index("\n\n", start)]
+    assert "run: uv run scripts/checks/knowledge_gap_rate.py" in step
+    assert "        continue-on-error: true" in step.splitlines()
+    assert "if: always()" in step
+
+
 def test_an_extra_schedule_on_an_existing_workflow_is_flagged() -> None:
     synthetic = {
         "nightly.yml": WorkflowFacts(

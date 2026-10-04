@@ -51,7 +51,6 @@ assumption above was wrong to make.
 
 from __future__ import annotations
 
-import dataclasses
 import hashlib
 import json
 import logging
@@ -59,15 +58,23 @@ import uuid
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from tests.snapshot_refresh import isolate_snapshot_root, promote_a_refreshed_snapshot
 
 from aoe2stats_analyzer import extract
 from aoe2stats_analyzer import run as run_module
-from aoe2stats_core.replay.events import CanonicalEvent, EventKind, MatchStartedPayload
+from aoe2stats_core.replay.events import (
+    CanonicalEvent,
+    EventKind,
+    MatchStartedPayload,
+    ParticipantEntry,
+    UnitQueuedPayload,
+)
 from aoe2stats_core.replay.validation import EngineParseError
 from aoe2stats_core.truth.placement import TierPlacementError
 from aoe2stats_knowledge import snapshot
@@ -1379,28 +1386,62 @@ _SNAPSHOT_BUILD = 180059
 #: then the absence record, which names the build under `build` instead of `describes_build`.
 _BUILD_WITHOUT_A_SNAPSHOT = 999_999
 
+#: The raw civilisation id the packaged snapshot's `effects.toml` names Franks under, and an unit
+#: its `rules.json` lists (an Archer): a modelled civilisation asking about a known entity, so the
+#: packaged snapshot reports no gap for the pair and a snapshot that dropped the entity reports six.
+_FRANKS_RAW_ID = 2
+_ARCHER_ID = 4
+
 
 class _BuildNamingExtractor(_FakeExtractor):
     """`_FakeExtractor` whose stream names a build: the knowledge component of the identity is a
     function of the recording's build, so a test about the knowledge version needs one. `build=None`
-    is a stream that names none, which the document records as `-1`."""
+    is a stream that names none, which the document records as `-1`.
 
-    def __init__(self, *, build: int | None = _SNAPSHOT_BUILD, **kwargs: Any) -> None:
+    `queued_unit_id` seats one Franks player who queues that unit, so the coverage pass has an
+    entity to ask the snapshot about: which gaps the document carries then depends on the snapshot
+    that answered, not only on the build."""
+
+    def __init__(
+        self,
+        *,
+        build: int | None = _SNAPSHOT_BUILD,
+        queued_unit_id: int | None = None,
+        **kwargs: Any,
+    ) -> None:
         super().__init__(**kwargs)
         self._build = build
+        self._queued_unit_id = queued_unit_id
 
     def events(self, zip_bytes: bytes) -> Iterator[CanonicalEvent]:
         if self._build is None:
             return iter(())
-        return iter(
-            (
-                CanonicalEvent(
-                    clock_ms=0,
-                    kind=EventKind.MATCH_STARTED,
-                    payload=MatchStartedPayload(build=self._build, map_name=None),
+        participants = (
+            (ParticipantEntry(slot=1, civilisation=_FRANKS_RAW_ID, team=None),)
+            if self._queued_unit_id is not None
+            else ()
+        )
+        stream = [
+            CanonicalEvent(
+                clock_ms=0,
+                kind=EventKind.MATCH_STARTED,
+                payload=MatchStartedPayload(
+                    build=self._build, map_name=None, participants=participants
                 ),
             )
-        )
+        ]
+        if self._queued_unit_id is not None:
+            stream.append(
+                CanonicalEvent(
+                    clock_ms=1_000,
+                    kind=EventKind.UNIT_QUEUED,
+                    participant=1,
+                    payload=UnitQueuedPayload(
+                        unit_id=self._queued_unit_id, building_type=87, building_object=1, count=1
+                    ),
+                )
+            )
+        return iter(stream)
 
 
 @dataclass(frozen=True, slots=True)
@@ -1419,6 +1460,7 @@ async def _publish_once(
     *,
     game_id: int,
     build: int | None = _SNAPSHOT_BUILD,
+    queued_unit_id: int | None = None,
 ) -> _Published:
     """One ordinary first analysis under `_ENGINE_VERSION_1`, naming a build that has a snapshot
     unless `build` says otherwise."""
@@ -1443,7 +1485,10 @@ async def _publish_once(
             max_calls=1,
         ),
         extractor=_BuildNamingExtractor(
-            build=build, point_of_view_profile_id=profile_a, max_calls=1
+            build=build,
+            queued_unit_id=queued_unit_id,
+            point_of_view_profile_id=profile_a,
+            max_calls=1,
         ),
         object_store=store,
     )
@@ -1469,6 +1514,7 @@ async def _ask_again(
     engine_version: str = _ENGINE_VERSION_1,
     max_calls: int,
     build: int | None = _SNAPSHOT_BUILD,
+    queued_unit_id: int | None = None,
 ) -> _BuildNamingExtractor:
     """Open the same match again, the source forbidden, and return the extractor to read its calls.
     `max_calls` is the canary: 0 where nothing may be parsed, 1 where exactly one recompute may."""
@@ -1476,6 +1522,7 @@ async def _ask_again(
 
     extractor = _BuildNamingExtractor(
         build=build,
+        queued_unit_id=queued_unit_id,
         point_of_view_profile_id=published.profile_id,
         engine_version=engine_version,
         max_calls=max_calls,
@@ -1516,30 +1563,44 @@ async def test_a_new_knowledge_snapshot_for_the_same_build_triggers_a_recompute_
     session_factory: async_sessionmaker[AsyncSession],
     clean_database: None,
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     """FR-042: the parser is unchanged, the recording is unchanged, the build is unchanged - only
     the snapshot that answers for the build is a different one. The parser-only condition returned
-    early here and the new knowledge never produced a new analysis."""
-    published = await _publish_once(session_factory, game_id=500_657_001)
-    real_snapshot_for = extract.snapshot_for
+    early here and the new knowledge never produced a new analysis.
 
-    def refreshed(build: int) -> object:
-        resolved = real_snapshot_for(build)
-        assert isinstance(resolved, extract.Snapshot)
-        identity = dataclasses.replace(
-            resolved.identity,
-            source_version=f"{resolved.identity.source_version}-refresh",
-            digest="sha256:" + "ab" * 32,
-        )
-        return dataclasses.replace(resolved, identity=identity)
+    The second snapshot is real (`tests/snapshot_refresh.py`, as `test_reproducibility.py` promotes
+    one): promoted, with the first demoted, so the identity and the coverage pass both resolve it.
+    It drops the Archer the stream queues, so the gaps tell which snapshot they were computed from:
+    patching one resolver instead left the coverage pass on the real snapshot, and a document whose
+    identity named the refresh while its gaps described the old knowledge."""
+    root = isolate_snapshot_root(monkeypatch, tmp_path)
+    published = await _publish_once(session_factory, game_id=500_657_001, queued_unit_id=_ARCHER_ID)
+    first_document = json.loads(published.body)
+    assert "entity-absent" not in {gap["cause"] for gap in first_document["knowledge_gaps"]}, (
+        "the first snapshot knows the Archer"
+    )
 
-    monkeypatch.setattr(extract, "snapshot_for", refreshed)
+    refreshed_digest = promote_a_refreshed_snapshot(root, without_entity=("unit", str(_ARCHER_ID)))
 
-    extractor = await _ask_again(session_factory, published, max_calls=1)
+    extractor = await _ask_again(session_factory, published, max_calls=1, queued_unit_id=_ARCHER_ID)
 
     after = await _assert_recomputed_to_a_new_key(session_factory, published, extractor)
-    knowledge = json.loads(published.store.objects[after.result_key or ""])["identity"]["knowledge"]
-    assert knowledge["digest"] == "sha256:" + "ab" * 32
+    document = json.loads(published.store.objects[after.result_key or ""])
+    knowledge = document["identity"]["knowledge"]
+    assert knowledge["digest"] == refreshed_digest
+    assert knowledge["digest"] != first_document["identity"]["knowledge"]["digest"]
+    assert knowledge["source_version"].endswith("-refresh")
+    # The gaps came from the same snapshot the identity names: the refreshed one lacks the Archer,
+    # the first did not.
+    gaps = document["knowledge_gaps"]
+    assert gaps, "the coverage pass must have resolved the refreshed snapshot"
+    assert {gap["cause"] for gap in gaps} == {"entity-absent"}
+    assert {(gap["entity"]["kind"], gap["entity"]["id"]) for gap in gaps} == {
+        ("unit", str(_ARCHER_ID))
+    }
+    assert gaps != first_document["knowledge_gaps"]
+    assert {gap["build"] for gap in gaps} == {_SNAPSHOT_BUILD}
     assert after.parser_version == published.row.parser_version
 
 

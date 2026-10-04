@@ -1416,7 +1416,7 @@ files and may run as one parallel batch; the rest are sequential, in order.
       `apps/analyzer/src/aoe2stats_analyzer/reproduce.py`: cross-check a caller-supplied match id
       against the retained key, report a refused document as a refusal rather than a third outcome,
       and treat only the store's own not-found signal as a missing object
-- [ ] T666f **Small follow-ups from the same review.** Make the knowledge-refresh staleness test in
+- [x] T666f **Small follow-ups from the same review.** Make the knowledge-refresh staleness test in
       `apps/analyzer/tests/test_run_once.py` promote a real second snapshot, as the reproducibility
       test does, instead of patching one resolver so the identity and the gaps disagree. Mark the
       gap-rate step in `.github/workflows/nightly.yml` continue-on-error, so a failing report cannot

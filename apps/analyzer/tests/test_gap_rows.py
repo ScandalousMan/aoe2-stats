@@ -30,10 +30,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 # The SC-005 scenario's own helpers: publish, promote a second snapshot, recompute.
-from test_reproducibility import (  # type: ignore[import-not-found]
-    _clear_snapshot_resolution_caches,
-    _publish_promote_recompute,
-)
+from test_reproducibility import _publish_promote_recompute  # type: ignore[import-not-found]
 
 from aoe2stats_analyzer import run
 from aoe2stats_analyzer.extract import DocumentInvalid
@@ -62,8 +59,6 @@ _RECORDINGS = {
 _MAX_RAW_BYTES = 25_165_824
 _BUDGET_SECONDS = 300
 _UNRESOLVABLE_BUILD = 1
-
-__all__ = ["_clear_snapshot_resolution_caches"]
 
 
 def _zip_of(game_id: int) -> bytes:
@@ -339,7 +334,6 @@ async def test_a_refreshed_snapshot_records_its_own_rows_and_leaves_the_first_id
     clean_database: None,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-    _clear_snapshot_resolution_caches: None,
 ) -> None:
     """FR-042: publish, promote a second snapshot of the same build, recompute. Both identities
     keep every row they recorded; nothing is rewritten, so the first identity's rows keep their

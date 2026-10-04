@@ -259,7 +259,8 @@ async def _log_access(
 ) -> None:
     """FR-029: one `replay_access_log` row, `retained_recording_id` set and `replay_capture_id`
     null (the check constraint `data-model.md` pins down), for one read of a retained recording.
-    Called before `extract_timeline` ever runs — see the module docstring's ordering paragraph.
+    Called before `extract.build_document` ever runs — see the module docstring's ordering
+    paragraph.
     """
     async with session_scope(session_factory) as session:
         session.add(

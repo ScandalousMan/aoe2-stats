@@ -56,13 +56,11 @@ import dataclasses
 import hashlib
 import json
 import os
-import re
-import shutil
 import socket
 import subprocess
 import sys
 import uuid
-from collections.abc import Iterator, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -71,8 +69,8 @@ from typing import Any
 import pytest
 from packaging.utils import canonicalize_name
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from tests.snapshot_refresh import isolate_snapshot_root, promote_a_refreshed_snapshot
 
-from aoe2stats_knowledge import effects, query, snapshot
 from aoe2stats_providers.base import NotFound, ReplayBlob
 from aoe2stats_replay_engine.aoe2rec import Aoe2RecExtractor
 from aoe2stats_storage.models import AoeProfile, Match, MatchAnalysis, MatchPlayer, User
@@ -94,25 +92,6 @@ _RETAINED_KEY = f"retained-recordings/{_GAME_ID}/{_POINT_OF_VIEW_PROFILE_ID}.zip
 
 #: The wall-clock set (T659): everything else in a document is a pure function of the identity.
 _WALL_CLOCK_FIELDS = frozenset({"envelope", "extracted_at"})
-
-#: The packaged snapshot the fixture recording's build (180059) resolves against.
-_REAL_SNAPSHOT_DIRECTORY = "aoe2techtree-180059"
-_REFRESHED_SNAPSHOT_DIRECTORY = "aoe2techtree-180059-refresh"
-
-
-@pytest.fixture(autouse=True)
-def _clear_snapshot_resolution_caches() -> Iterator[None]:
-    """`snapshot_for` and its siblings are `functools.cache`d for a process's lifetime
-    (`packages/knowledge/tests/conftest.py` explains why); this file monkeypatches the snapshot
-    root, so a cached answer must never cross a test boundary in either direction."""
-    snapshot.load_all_snapshots.cache_clear()
-    snapshot.load_resolvable_snapshots.cache_clear()
-    snapshot.snapshot_for.cache_clear()
-    yield
-    snapshot.load_all_snapshots.cache_clear()
-    snapshot.load_resolvable_snapshots.cache_clear()
-    snapshot.snapshot_for.cache_clear()
-
 
 # --- The fresh-process half of SC-004 ---------------------------------------------------------
 
@@ -421,82 +400,6 @@ async def _published(
     )
 
 
-class _ResourcesShim:
-    """Stands in for `importlib.resources` inside `aoe2stats_knowledge`: `files(...)` answers a
-    throwaway package root instead of the installed one."""
-
-    def __init__(self, package_root: Path) -> None:
-        self._package_root = package_root
-
-    def files(self, _package: str) -> Path:
-        return self._package_root
-
-
-def _isolate_snapshot_root(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
-    """A throwaway snapshot root holding a byte-for-byte copy of the one snapshot the fixture
-    recording resolves against, so promoting a second snapshot never touches the committed tree.
-
-    `packages/knowledge` has no root seam that covers all of its readers: `snapshot.py` reads the
-    root through `_snapshots_root()`, but `query.py` and `effects.py` each call
-    `resources.files(...)` themselves, so patching `_snapshots_root` alone would resolve a snapshot
-    that the coverage pass then cannot open. All three modules are pointed at the one root.
-    """
-    package_root = tmp_path / "knowledge-package"
-    root = package_root / "snapshots"
-    shutil.copytree(
-        Path(str(snapshot._snapshots_root())) / _REAL_SNAPSHOT_DIRECTORY,
-        root / _REAL_SNAPSHOT_DIRECTORY,
-    )
-    shim = _ResourcesShim(package_root)
-    for module in (snapshot, query, effects):
-        monkeypatch.setattr(module, "resources", shim)
-    return root
-
-
-def _promote_a_refreshed_snapshot(root: Path) -> str:
-    """Promote a second snapshot of the same build, demoting the first, and return the new
-    snapshot's digest. The new content differs from the old (a comment line appended to
-    `effects.toml`), so the digest - and therefore the identity - genuinely changes."""
-    first = root / _REAL_SNAPSHOT_DIRECTORY
-    refreshed = root / _REFRESHED_SNAPSHOT_DIRECTORY
-    shutil.copytree(first, refreshed)
-
-    effects = refreshed / "effects.toml"
-    effects.write_bytes(effects.read_bytes() + b"\n# a knowledge refresh, for SC-005\n")
-    new_digest = snapshot.compute_digest(
-        (refreshed / "rules.json").read_bytes(), effects.read_bytes()
-    )
-
-    identity_file = refreshed / snapshot.IDENTITY_FILENAME
-    text = identity_file.read_text(encoding="utf-8")
-    text, digest_substitutions = re.subn(
-        r'^digest = "[^"]*"', f'digest = "{new_digest}"', text, flags=re.MULTILINE
-    )
-    text, version_substitutions = re.subn(
-        r'^source_version = "([^"]*)"',
-        r'source_version = "\1-refresh"',
-        text,
-        flags=re.MULTILINE,
-    )
-    assert (digest_substitutions, version_substitutions) == (1, 1)
-    identity_file.write_text(text, encoding="utf-8")
-
-    demoted_file = first / snapshot.IDENTITY_FILENAME
-    demoted, demotions = re.subn(
-        r"^promoted = true",
-        "promoted = false",
-        demoted_file.read_text(encoding="utf-8"),
-        flags=re.MULTILINE,
-    )
-    assert demotions == 1
-    demoted_file.write_text(demoted, encoding="utf-8")
-
-    snapshot.load_all_snapshots.cache_clear()
-    snapshot.load_resolvable_snapshots.cache_clear()
-    snapshot.snapshot_for.cache_clear()
-    return new_digest
-
-
 @dataclass(frozen=True, slots=True)
 class _Flow:
     store: _FakeObjectStore
@@ -513,7 +416,7 @@ async def _publish_promote_recompute(
 ) -> _Flow:
     """SC-005's scenario, in the order the contract words it: publish, record the identity,
     promote a second snapshot, recompute. The recompute reaches the source zero times."""
-    root = _isolate_snapshot_root(monkeypatch, tmp_path)
+    root = isolate_snapshot_root(monkeypatch, tmp_path)
     user_id = await _seed_match_and_user(session_factory)
     store = _FakeObjectStore()
     extractor = Aoe2RecExtractor(max_raw_bytes=_MAX_RAW_BYTES)
@@ -528,7 +431,7 @@ async def _publish_promote_recompute(
     )
     first = await _published(session_factory, store)
 
-    refreshed_digest = _promote_a_refreshed_snapshot(root)
+    refreshed_digest = promote_a_refreshed_snapshot(root)
 
     await _run_once(session_factory, store, extractor, user_id, _RefusingReplayProvider())
     second = await _published(session_factory, store)
@@ -700,7 +603,7 @@ async def test_a_changed_parser_version_writes_a_new_key_and_leaves_the_old_one_
     """The contrast to the knowledge case, through a different identity component: today a parser
     version change already triggers a recompute, and it overwrites the one per-match key - this is
     the case that proves the overwrite is gone."""
-    _isolate_snapshot_root(monkeypatch, tmp_path)
+    isolate_snapshot_root(monkeypatch, tmp_path)
     user_id = await _seed_match_and_user(session_factory)
     store = _FakeObjectStore()
     real_extractor = Aoe2RecExtractor(max_raw_bytes=_MAX_RAW_BYTES)

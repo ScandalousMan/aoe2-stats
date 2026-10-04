@@ -15,9 +15,24 @@ judgment call specific to any one Phase 7 task.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+
+import pytest
 from tests.db import clean_database, database_url, db_session, engine, session_factory
+from tests.snapshot_refresh import clear_snapshot_resolution_caches
 
 # Re-exported so ruff sees these names used: pytest discovers a fixture imported into a conftest
 # module exactly as if it had been defined here, which is the whole point of keeping their one
 # implementation in `tests/db.py` instead of duplicating it per directory.
 __all__ = ["clean_database", "database_url", "db_session", "engine", "session_factory"]
+
+
+@pytest.fixture(autouse=True)
+def _clear_snapshot_resolution_caches() -> Iterator[None]:
+    """`snapshot_for` and its siblings are `functools.cache`d for a process's lifetime
+    (`packages/knowledge/tests/conftest.py` explains why); tests here swap the snapshot root
+    (`tests/snapshot_refresh.py`), so a cached answer must never cross a test boundary in either
+    direction."""
+    clear_snapshot_resolution_caches()
+    yield
+    clear_snapshot_resolution_caches()
