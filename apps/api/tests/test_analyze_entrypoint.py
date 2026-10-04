@@ -192,6 +192,15 @@ class _FakeObjectStore:
         self._objects[key] = body
         self.put_calls.append(key)
 
+    async def put_if_absent(
+        self, key: str, body: bytes, *, content_type: str = "application/octet-stream"
+    ) -> bool:
+        if key in self._objects:
+            return False
+        self._objects[key] = body
+        self.put_calls.append(key)
+        return True
+
     async def get(self, key: str) -> bytes:
         return self._objects[key]
 

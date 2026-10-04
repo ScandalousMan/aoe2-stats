@@ -21,6 +21,7 @@ from typing import Any, Protocol
 
 import boto3
 from botocore.client import Config as BotoConfig
+from botocore.exceptions import ClientError
 
 #: What every archived replay is: a single-member zip (data-model.md, quickstart scenario 3).
 REPLAY_CONTENT_TYPE = "application/zip"
@@ -29,6 +30,13 @@ REPLAY_CONTENT_TYPE = "application/zip"
 #: expiry"). Five minutes is enough for a redirect and a download to start, and short enough
 #: that a leaked URL — logged, forwarded, cached by a proxy — exposes little.
 DEFAULT_SIGNED_URL_EXPIRES_IN_SECONDS = 300
+
+#: What `put_if_absent` reads as "the key already exists": the store's answer to a `PutObject`
+#: carrying `If-None-Match: *` when something is stored there - HTTP 412, `PreconditionFailed`.
+#: The status is accepted as well as the code because botocore only has a code to read when the
+#: error body parses; without one it falls back to the status text.
+_PRECONDITION_FAILED = "PreconditionFailed"
+_PRECONDITION_FAILED_STATUS = 412
 
 
 def replay_object_key(game_id: int, profile_id: int) -> str:
@@ -138,6 +146,43 @@ class ObjectStore:
             Body=body,
             ContentType=content_type,
         )
+
+    async def put_if_absent(
+        self, key: str, body: bytes, *, content_type: str = REPLAY_CONTENT_TYPE
+    ) -> bool:
+        """Create `key` only if nothing is stored there: `True` if written, `False` if it existed.
+
+        One `PutObject` carrying `If-None-Match: *` (supported by AWS S3 and by Cloudflare R2), so
+        the check and the write are a single operation on the store: two writers racing for one key
+        cannot both succeed, which a head-then-put could not promise. It exists for the analysis
+        document, whose key is a function of its identity and, once written, is never written again
+        (specs/006 contracts/analysis-document.md, FR-042); `put` is unchanged and still overwrites.
+
+        Only the store's `PreconditionFailed` (HTTP 412) means "already there". Every other error
+        propagates, including `ConditionalRequestConflict` (HTTP 409, a concurrent write to the same
+        key still in flight): that writer may yet fail, so reading it as "exists" could publish a
+        row naming an object that never lands. The caller's transaction rolls back and the request
+        is retried, by which time the key either exists or does not.
+
+        A store that does not implement conditional writes and ignores the header would overwrite
+        silently; both stores this project targets honour it, and that is the assumption.
+        """
+        try:
+            await asyncio.to_thread(
+                self._client.put_object,
+                Bucket=self._bucket,
+                Key=key,
+                Body=body,
+                ContentType=content_type,
+                IfNoneMatch="*",
+            )
+        except ClientError as exc:
+            code = exc.response.get("Error", {}).get("Code")
+            status = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+            if code == _PRECONDITION_FAILED or status == _PRECONDITION_FAILED_STATUS:
+                return False
+            raise
+        return True
 
     async def get(self, key: str) -> bytes:
         """Download the full body stored under `key`.

@@ -174,14 +174,39 @@ class _RefusingReplayProvider:
 
 
 class _FakeObjectStore:
+    """`put` overwrites, `put_if_absent` creates only a missing key; `put_calls` records every
+    write that actually changed the store, so "written once" is `put_calls.count(key) == 1`.
+
+    `competing_write` is the race: bytes another writer lands on the first `analyses/` key this
+    store is asked to write, *after* the caller decided to write and *before* its write reaches the
+    store - recorded like any other write, so a test can tell who wrote the surviving bytes."""
+
     def __init__(self) -> None:
         self.objects: dict[str, bytes] = {}
         self.put_calls: list[str] = []
         self.get_calls: list[str] = []
+        self.competing_write: bytes | None = None
+
+    def _competitor_lands(self, key: str) -> None:
+        if self.competing_write is not None and key.startswith("analyses/"):
+            self.objects[key] = self.competing_write
+            self.put_calls.append(key)
+            self.competing_write = None
 
     async def put(self, key: str, body: bytes, *, content_type: str = "application/zip") -> None:
+        self._competitor_lands(key)
         self.objects[key] = body
         self.put_calls.append(key)
+
+    async def put_if_absent(
+        self, key: str, body: bytes, *, content_type: str = "application/zip"
+    ) -> bool:
+        self._competitor_lands(key)
+        if key in self.objects:
+            return False
+        self.objects[key] = body
+        self.put_calls.append(key)
+        return True
 
     async def get(self, key: str) -> bytes:
         self.get_calls.append(key)
@@ -1159,10 +1184,10 @@ async def test_recomputing_the_same_identity_writes_the_same_key_and_no_second_o
     session_factory: async_sessionmaker[AsyncSession], clean_database: None
 ) -> None:
     """The contrast: an identical identity addresses the identical key, so a recompute that
-    reproduces an analysis accumulates no duplicate object. (The fake extractor's bytes are a pure
-    function of the identity, so the rewrite is byte-identical outside the wall-clock set.)"""
+    reproduces an analysis accumulates no duplicate object and writes nothing at all (T666d): the
+    key is taken, so the object stays exactly as the first publish wrote it."""
     game_id = 500_546_453
-    store, first, _, second = await _publish_then_recompute_under(
+    store, first, first_bytes, second = await _publish_then_recompute_under(
         session_factory,
         game_id=game_id,
         second_engine_version=_ENGINE_VERSION_1,
@@ -1173,6 +1198,170 @@ async def test_recomputing_the_same_identity_writes_the_same_key_and_no_second_o
     assert second.result_key == first.result_key
     assert second.identity_digest == first.identity_digest
     assert _analysis_keys(store) == [first.result_key]
+    assert store.objects[first.result_key] == first_bytes
+    assert store.put_calls.count(first.result_key) == 1
+
+
+# --- FR-042 / T666d: a key, once written, is never written again --------------------------------
+
+
+async def _analysis_bytes_and_row(
+    session_factory: async_sessionmaker[AsyncSession], store: _FakeObjectStore, game_id: int
+) -> tuple[MatchAnalysis, bytes]:
+    row = await _get_analysis(session_factory, game_id)
+    assert row is not None
+    assert row.result_key is not None
+    return row, store.objects[row.result_key]
+
+
+async def _first_analysis(
+    session_factory: async_sessionmaker[AsyncSession],
+    store: _FakeObjectStore,
+    *,
+    game_id: int,
+    requester: uuid.UUID | None = None,
+) -> uuid.UUID:
+    from aoe2stats_analyzer.run import run_once
+
+    profile_a, profile_b = game_id + 1, game_id + 2
+    if requester is None:
+        await _seed_match(
+            session_factory,
+            game_id=game_id,
+            completed_at=datetime.now(UTC) - timedelta(days=1),
+            profile_ids=[profile_a, profile_b],
+        )
+        requester = await _seed_user(session_factory)
+    await run_once(
+        game_id,
+        _BUDGET_SECONDS,
+        requester,
+        session_factory=session_factory,
+        replay_provider=_FakeReplayProvider(
+            ReplayBlob(content=b"raw bytes", filename="r.zip", content_type="application/zip"),
+            max_calls=1,
+        ),
+        extractor=_BuildNamingExtractor(point_of_view_profile_id=profile_a, max_calls=1),
+        object_store=store,
+    )
+    return requester
+
+
+async def test_a_key_that_appears_between_the_decision_and_the_write_is_not_overwritten(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """The race: two stale requests recompute the same identity (the recompute path holds no
+    lease), and the other one's object lands first. The loser writes nothing - the other writer's
+    bytes survive untouched - and the row still ends published, pointing at the key. Against the
+    unconditional put the loser's bytes (a new wall clock) replaced the winner's."""
+    game_id = 500_666_401
+    store = _FakeObjectStore()
+    competitor = b'{"written": "first"}'
+    store.competing_write = competitor
+
+    await _first_analysis(session_factory, store, game_id=game_id)
+
+    row, body = await _analysis_bytes_and_row(session_factory, store, game_id)
+    assert row.state == MatchAnalysisState.PUBLISHED
+    assert row.result_key == f"analyses/{game_id}/{row.identity_digest}.json"
+    assert body == competitor
+    assert store.put_calls.count(row.result_key) == 1  # the competitor's, not ours
+
+
+async def test_an_object_left_by_a_crash_before_the_commit_is_adopted_not_rewritten(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """A crash after the put and before the commit leaves the object and a row that never became
+    published. The next attempt, whose wall clock differs, finds the key taken: it writes nothing,
+    publishes the row at that key and leaves the bytes exactly as the dead run left them."""
+    game_id = 500_666_402
+    store = _FakeObjectStore()
+    requester = await _first_analysis(session_factory, store, game_id=game_id)
+    row, body = await _analysis_bytes_and_row(session_factory, store, game_id)
+    key = row.result_key
+    assert key is not None
+    puts_before = list(store.put_calls)
+
+    # What the crash left: the row claimed and its lease expired, naming nothing.
+    async with session_scope(session_factory) as session:
+        crashed = await session.get(MatchAnalysis, game_id)
+        assert crashed is not None
+        crashed.state = MatchAnalysisState.RUNNING
+        crashed.lease_expires_at = datetime.now(UTC) - timedelta(minutes=5)
+        crashed.result_key = None
+        crashed.identity_digest = None
+        crashed.finished_at = None
+
+    await _first_analysis(session_factory, store, game_id=game_id, requester=requester)
+
+    after, after_body = await _analysis_bytes_and_row(session_factory, store, game_id)
+    assert after.state == MatchAnalysisState.PUBLISHED
+    assert after.result_key == key
+    assert after.identity_digest == row.identity_digest
+    assert after_body == body
+    assert store.put_calls == puts_before
+
+
+async def test_a_recompute_of_an_identity_already_stored_writes_nothing_and_republishes_the_row(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """The recompute path, same shape: a row marked stale whose recompute lands on the identity
+    that is already stored points at the stored object and leaves its bytes alone."""
+    published = await _publish_once(session_factory, game_id=500_666_403)
+    async with session_scope(session_factory) as session:
+        row = await session.get(MatchAnalysis, published.game_id)
+        assert row is not None
+        row.identity_digest = "0" * 64
+
+    extractor = await _ask_again(session_factory, published, max_calls=1)
+
+    assert len(extractor.calls) == 1
+    after = await _get_analysis(session_factory, published.game_id)
+    assert after is not None
+    assert after.state == MatchAnalysisState.PUBLISHED
+    assert after.result_key == published.key
+    assert after.identity_digest == published.row.identity_digest
+    assert published.store.objects[published.key] == published.body
+    assert published.store.put_calls.count(published.key) == 1
+
+
+async def test_a_new_identity_still_writes_its_own_key_when_the_old_one_exists(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """The contrast: a conditional create must not turn "the key exists" into "nothing to write"
+    for a key that does not. The new identity's object is written once, the old one untouched."""
+    published = await _publish_once(session_factory, game_id=500_666_404)
+
+    await _ask_again(session_factory, published, engine_version=_ENGINE_VERSION_2, max_calls=1)
+
+    after = await _get_analysis(session_factory, published.game_id)
+    assert after is not None
+    assert after.result_key is not None
+    assert after.result_key != published.key
+    assert published.store.put_calls.count(after.result_key) == 1
+    assert published.store.objects[published.key] == published.body
+    assert published.store.put_calls.count(published.key) == 1
+
+
+async def test_a_refused_gap_insert_writes_no_object_even_with_put_if_absent(
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """T666c's ordering survives the conditional create: the rows are flushed first, so a refused
+    insert never reaches the store."""
+    from aoe2stats_analyzer import run as run_module
+
+    async def refuse(*args: Any, **kwargs: Any) -> None:
+        raise ValueError("refused")
+
+    monkeypatch.setattr(run_module.KnowledgeGapsRepository, "record_gaps", refuse)
+    store = _FakeObjectStore()
+
+    await _first_analysis(session_factory, store, game_id=500_666_405)
+
+    assert not [key for key in store.objects if key.startswith("analyses/")]
+    assert store.put_calls.count("analyses/500666405") == 0
 
 
 # --- FR-042 / T657a: staleness compares the identity digest, not the parser alone ----------------
@@ -1426,6 +1615,8 @@ async def test_a_row_published_before_the_digest_existed_recomputes_once_then_is
     assert after.result_key == published.key
     assert published.store.objects[legacy_key] == b"{}"
 
+    assert published.store.objects[published.key] == published.body
+    assert published.store.put_calls.count(published.key) == 1
     puts_after_recompute = list(published.store.put_calls)
     again = await _ask_again(session_factory, published, max_calls=0)
     assert again.calls == []

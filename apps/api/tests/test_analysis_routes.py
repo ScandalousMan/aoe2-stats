@@ -317,6 +317,14 @@ class _FakeAnalysisObjectStore:
             "(FR-042)"
         )
 
+    async def put_if_absent(
+        self, key: str, body: bytes, *, content_type: str = "application/json"
+    ) -> bool:
+        raise AssertionError(
+            "GET /api/matches/{game_id}/analysis must never write — only apps/analyzer writes "
+            "(FR-042)"
+        )
+
     async def delete(self, key: str) -> None:
         raise AssertionError("unexpected object-store delete during a read-only analysis fetch")
 

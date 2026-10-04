@@ -351,6 +351,10 @@ async def _publish(
     written. A put that fails rolls the same transaction back, so no row ever names an object that
     was not written. The cost is one row lock held across the put, taken by the one request that is
     publishing this match.
+
+    **A key is never written twice (T666d).** The put is a conditional create: when the key already
+    exists nothing is written and the row is published at it, so the bytes a reader or a
+    reproduction already saw cannot change under a second request or a retry.
     """
     async with session_scope(session_factory) as session:
         analysis = await session.get(MatchAnalysis, game_id)
@@ -377,7 +381,12 @@ async def _publish(
             await session.flush()
         except (ValueError, IntegrityError, DataError) as exc:
             raise _GapRowsRefused(exc) from exc
-        await object_store.put(result_key, payload, content_type="application/json")
+        # FR-042, T666d: created only if the key is free. A key that is taken already holds the
+        # analysis for this identity - the key is a function of it - written by a concurrent
+        # request (the recompute path holds no lease) or by a run that crashed after this put and
+        # before its commit. Its bytes differ from `payload` only in the wall clock, and a key,
+        # once written, is never written again, so the row is published at the existing object.
+        await object_store.put_if_absent(result_key, payload, content_type="application/json")
 
 
 def _describe(exc: Exception) -> tuple[str, str]:

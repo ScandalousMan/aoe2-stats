@@ -87,6 +87,14 @@ class _Store:
     async def put(self, key: str, body: bytes, *, content_type: str = "application/zip") -> None:
         self.objects[key] = body
 
+    async def put_if_absent(
+        self, key: str, body: bytes, *, content_type: str = "application/zip"
+    ) -> bool:
+        if key in self.objects:
+            return False
+        self.objects[key] = body
+        return True
+
     async def get(self, key: str) -> bytes:
         return self.objects[key]
 

@@ -293,6 +293,15 @@ class _FakeObjectStore:
         self.objects[key] = body
         self.put_calls.append(key)
 
+    async def put_if_absent(
+        self, key: str, body: bytes, *, content_type: str = "application/zip"
+    ) -> bool:
+        if key in self.objects:
+            return False
+        self.objects[key] = body
+        self.put_calls.append(key)
+        return True
+
     async def get(self, key: str) -> bytes:
         return self.objects[key]
 

@@ -77,6 +77,10 @@ class _RecordingStore(_ReadOnlyStore):
     async def put(self, key: str, body: bytes, *, content_type: str = "") -> None:
         self.writes.append(key)
 
+    async def put_if_absent(self, key: str, body: bytes, *, content_type: str = "") -> bool:
+        self.writes.append(key)
+        return True
+
     async def delete(self, key: str) -> None:
         self.writes.append(key)
 

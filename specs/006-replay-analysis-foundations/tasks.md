@@ -1399,7 +1399,7 @@ files and may run as one parallel batch; the rest are sequential, in order.
       refusal, a gap-row insert — through that failure path, so none leaves the row running for the
       lease to expire and the next request to fetch again. Contrast cases: a first analysis that
       fails still ends failed; a recompute that fails leaves the prior document served
-- [ ] T666d [US6] **Never write a published key twice.** contracts/analysis-document.md says a key,
+- [x] T666d [US6] **Never write a published key twice.** contracts/analysis-document.md says a key,
       once written, is never written again; two concurrent stale requests (the recompute path holds
       no lease) or a budget expiring between the write and the publish still re-put the same key with
       a new wall clock. Add a conditional create to `packages/storage` — if-none-match on the object
