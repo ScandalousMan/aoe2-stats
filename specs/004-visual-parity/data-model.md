@@ -49,8 +49,8 @@ participants. It is the **cross-check, not a second source**, and a disagreement
 broken silently. Amended 2026-10-04 (T459f): it is met by **not choosing**, and it never raises. A
 field (`civ_id`, `team_id`, `result`) the two lists disagree on projects to `NULL`; every field they
 agree on is kept; `rating`, `rating_diff` and `color_id` are not cross-checked. The disagreement is
-logged at warning level with game id, profile id, field and both values. A raise failed a whole
-request and a whole discovery batch over one participant (production: one pair of 770).
+logged at warning level with game id, profile id, field and both values. The raise it replaces
+failed a whole request in production (one pair of 770).
 
 **Write paths, and there are exactly two, both idempotent — but they run in different places:**
 

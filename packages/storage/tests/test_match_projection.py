@@ -272,7 +272,13 @@ def test_a_team_id_disagreement_projects_team_none_keeps_the_rest_and_logs(
     assert projected.rating_diff == -14
     assert projected.color_id == 7
     (message,) = _disputed_warnings(caplog)
-    for part in ("500615037", str(_LOSING_PROFILE_ID), "team_id"):
+    for part in (
+        "500615037",
+        str(_LOSING_PROFILE_ID),
+        "team_id",
+        "matchhistorymember=1",
+        "matchhistoryreportresults=2",
+    ):
         assert part in message
 
 
@@ -299,7 +305,13 @@ def test_a_result_disagreement_projects_result_none_keeps_the_rest_and_logs(
     assert projected.rating_diff == -14
     assert projected.color_id == 7
     (message,) = _disputed_warnings(caplog)
-    for part in ("500615037", str(_LOSING_PROFILE_ID), "result"):
+    for part in (
+        "500615037",
+        str(_LOSING_PROFILE_ID),
+        "field=result",
+        "matchhistorymember='loss'",
+        "matchhistoryreportresults='win'",
+    ):
         assert part in message
 
 

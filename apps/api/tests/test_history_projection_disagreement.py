@@ -3,9 +3,7 @@
 **The defect (production, 2026-10-04, `GET /api/players/212721/matches` -> 500,
 an unhandled exception).** In game 331012313 Relic's `matchhistorymember[]` said profile
 18558404 played civilisation 1 and its own `matchhistoryreportresults[]` said 0 — one pair of 770
-in that response. `project_match_player` raised, nothing caught it, and the on-view refresh
-(`_persist_on_view_refresh` -> `persist_matches_and_profiles` -> `upsert_match_players`) took the
-whole request down with it, on every view.
+in that response. `project_match_player` raised and nothing caught it.
 
 The test drives the real route end to end through the `httpx.AsyncClient.send` seam
 (`test_third_party_history.py`'s own convention): a fake Relic answers a match whose subject pair
@@ -149,7 +147,18 @@ async def test_a_player_history_request_survives_a_relic_self_contradiction(
     assert (subject.team_id, subject.result) == (0, "win")
     assert (subject.rating, subject.rating_diff) == (1520, 20)
     assert (rows[_OPPONENT].civ_id, rows[_OPPONENT].result) == (12, "loss")
-    assert any("civ_id" in record.getMessage() for record in caplog.records)
+    disputed = [
+        record.getMessage()
+        for record in caplog.records
+        if record.name == "aoe2stats_storage" and record.levelno == logging.WARNING
+    ]
+    assert disputed, "the disagreement is logged"
+    assert all(
+        f"profile_id={_SUBJECT}" in message
+        and "field=civ_id" in message
+        and "matchhistoryreportresults=0" in message
+        for message in disputed
+    ), disputed
 
 
 async def test_the_same_request_with_agreeing_lists_projects_every_field(

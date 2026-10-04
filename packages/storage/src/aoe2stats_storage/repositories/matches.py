@@ -80,9 +80,7 @@ DEFAULT_PAGE_SIZE = 20
 
 _CURSOR_SEPARATOR = "|"
 
-#: The package's own name, not the module's — `apps/api` and `apps/ingester` do the same
-#: (`aoe2stats_api`, `aoe2stats_ingester`), so a log aggregator groups a package's lines under one
-#: name whichever function wrote them.
+#: The package's own name, as `apps/api` and `apps/ingester` use theirs.
 logger = logging.getLogger("aoe2stats_storage")
 
 
@@ -201,7 +199,8 @@ def _slot_colour_id(raw_match: Mapping[str, Any], profile_id: int) -> int | None
 def _log_disputed(
     game_id: object, profile_id: int, field_name: str, member_value: object, report_value: object
 ) -> None:
-    """One warning per disputed field, so the disagreement stays visible although nothing fails."""
+    """One warning for one disputed field, so the disagreement stays visible although nothing
+    fails."""
     logger.warning(
         "relic cross-check disagreement, field projected to None: game_id=%r profile_id=%d "
         "field=%s matchhistorymember=%r matchhistoryreportresults=%r",
@@ -234,12 +233,9 @@ def project_match_player(raw_match: Mapping[str, Any], profile_id: int) -> Proje
     `civ_id`, `team_id` and `result` are cross-checked against `profile_id`'s own entry in
     `matchhistoryreportresults[]`, when that array carries one (data-model.md, amended 2026-10-04,
     T459f). A field the two lists disagree on projects to `None` — the unknown state — and is
-    logged at warning level; every field they agree on is kept. This never raises: Relic does
-    contradict itself (production, game 331012313: one pair of 770), and a raise here failed a
-    whole player-history request and a whole discovery batch over one participant — a tie broken
-    silently would be wrong, and a refusal that blocks capture is worse (constitution I), so the
-    function does not choose. `rating`, `rating_diff` and `color_id` are not cross-checked and
-    are unaffected.
+    logged at warning level; every field they agree on is kept. A disagreement never raises: Relic
+    does contradict itself (production, game 331012313: one pair of 770). `rating`, `rating_diff`
+    and `color_id` are not cross-checked and are unaffected.
 
     `raw_match` carrying no `matchhistorymember[]` entry for `profile_id` at all — a payload
     shape from before this projection existed, or a caller assembling a synthetic `raw_payload`

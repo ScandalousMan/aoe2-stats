@@ -1,10 +1,10 @@
 """T459f — a Relic self-contradiction must not abort a `DiscoverStage` batch.
 
-Production, 2026-10-04: one `matchhistorymember` / `matchhistoryreportresults` pair of 770 disagreed
-on `civilization_id` and `project_match_player` raised out of
-`upsert_match_players`. In the ingester that raise aborts the discovery transaction before the
-capture enqueue — constitution I — so the batch below carries the contradicting pair next to a
-clean one and asserts the run still writes every `match_players` row and enqueues every capture.
+Against the code before T459f, a pair whose `matchhistorymember` and `matchhistoryreportresults`
+disagree made `project_match_player` raise out of `upsert_match_players`, aborting the discovery
+transaction before the capture enqueue — constitution I. The batch below carries the
+contradicting pair next to a clean one and asserts the run still writes every `match_players` row
+and enqueues every capture.
 """
 
 from __future__ import annotations
