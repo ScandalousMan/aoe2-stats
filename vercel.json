@@ -1,6 +1,12 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "regions": ["cdg1"],
+  "git": {
+    "deploymentEnabled": {
+      "**": false,
+      "main": true
+    }
+  },
   "buildCommand": "node scripts/checks/config-preflight.mjs && pnpm --filter web build",
   "outputDirectory": "apps/web/dist",
   "crons": [
