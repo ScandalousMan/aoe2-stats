@@ -287,8 +287,10 @@ export const KeyboardNavigation: Story = {
 // branch's own policy, so this follows the existing precedent instead of special-casing the branch
 // to one story. `role: 'button'` needs no `name`/`nth`: the trigger is the only `button`-role
 // element `Menu/index.tsx` renders (the footer item takes `role="menuitem"`, `MenuItemRow`'s own
-// items are role `menuitem(radio|checkbox)`), so there is exactly one candidate before the menu
-// even closes. The explicit `.focus()` this parameter drives at capture time lands on the element
+// items are role `menuitem(radio|checkbox)`), so the force matches exactly one element before the
+// menu even closes — the browser records that one match in
+// `packages/design-system/specs/state-coverage-runtime.json` (T694), and the check fails on any
+// other count. The explicit `.focus()` this parameter drives at capture time lands on the element
 // the play function's own final assertion (`toHaveFocus()`) already names — same element, same
 // frame, now provable rather than merely asserted.
 // T675's package-wide sweep found this story's own surviving signal at or under 1% of an unclipped
@@ -413,8 +415,9 @@ export const Active: Story = {
 // carries, but as a local `<button>`, not a `Button` instance, so no `Button` story ever credits
 // it. `Hover`/`Active` above force a state on a `menuitemradio` row, never on the trigger; no other
 // story on this page does either. `role: 'button'` needs no `name`/`nth`: the trigger is the only
-// `button`-role element this component renders (`EscapeReturnsFocusToTrigger`'s own comment makes
-// the same point).
+// `button`-role element this component renders, so the force matches exactly one element, as the
+// browser's own record of it shows (`EscapeReturnsFocusToTrigger`'s own comment makes the same
+// point).
 //
 // This story clips to the trigger itself, the same `PRIMARY_ACTION_CLIP`/`GHOST_LG_CLIP` idiom
 // `Dialog.stories.tsx`/`Button.stories.tsx` use. It used not to: nothing here escapes the trigger's
@@ -487,7 +490,7 @@ export const TriggerFocusVisible: Story = {
 // `Hover`/`Active` above only ever force a state on a `menuitemradio` row, never on this one.
 // `role: 'menuitem'` needs no `name`: for the `selection` variant rendered here, every row item
 // carries `role="menuitemradio"` (`MenuItemRow`'s own `variant === 'selection'` branch) — the
-// footer item is the sole `menuitem`-role candidate. T675 slice 4b: clipping to the whole open
+// footer item is the one element the force matches. T675 slice 4b: clipping to the whole open
 // `[role="menu"]` panel still measured under 1% on every unit (a 2px line under one item's label,
 // diluted by every row above it in the union) — narrowed to the footer item's own button.
 const FOOTER_ITEM_CLIP = { parts: [{ role: 'menuitem' as const }], pad: '1' } as const

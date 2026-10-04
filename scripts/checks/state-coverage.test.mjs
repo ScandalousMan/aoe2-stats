@@ -437,49 +437,126 @@ export const Hover = {
   })
 })
 
-// --- Fixture 6c: a JSX candidate's own static axis and the axis its own force-state resolves to
-// per story disagree (T594's REJECT on #80, item 2). `Widget`'s real button carries a literal
-// `variant="ghost"` but a *dynamic* `size` prop — the same shape `FavouriteToggle`'s own real
-// button and `Dialog`'s own two `Button` instances carry live in this tree. Pre-fix, the JSX
-// candidate's own `rest` entry filed at `ghost|unresolved` (the static axis, size never a literal)
-// while the same source line's own story-resolved match — `size` resolved to `'md'` per story —
-// filed its `hover` cell at `ghost|md` instead: one source line in two rows, the first reading a
-// confirmed `'none'` over a comparison that actually found a match on the second. Built directly
-// against `buildAxisMatrix` (the function item 2 changed) rather than through the full
-// `computeStateCoverage` file-parsing pipeline, the same level fixture 6a
-// ("buildAxisMatrix renders a play-driven focus-visible match…") already uses. --------------------
+// --- Fixture 6c: a call site whose `variant` or `size` the source cannot settle opens no row (T695).
+// `FavouriteToggle` forwards a `size` prop and `Dialog` computes its action's `variant`: both used to
+// file their `Rest` credit at a `ghost|unresolved` / `unresolved|lg` row, a row no story's frame could
+// ever be rendered at, because the manifest places every mounted instance at the row the browser
+// rendered it on (`ghost|md`, `destructive|lg`). Keying a row by an axis the source cannot settle
+// opened four cells nothing could close. A call site whose axis is a literal or a primitive default
+// keeps its row and its `Rest` credit exactly as before. Built against `findPrimitiveInstances`
+// (what reads the source) and `buildAxisMatrix` (what keys the row), the two halves of the rule. -----
 
-function redirectFixtureInstances() {
-  return [
-    {
+const BUTTON_DEFAULTS = { Button: { variant: 'secondary', size: 'md' } }
+const callSites = (source) => findPrimitiveInstances(parse(source), 'fixture.tsx', BUTTON_DEFAULTS)
+const matrixOf = (source) =>
+  buildAxisMatrix(
+    'Button',
+    callSites(source).map((site) => ({ ...site, kind: 'jsx', componentKey: 'composites/Widget' })),
+  )
+const rowKeys = (matrix) => matrix.map((row) => row.variantSize)
+
+test('a call site whose size is a forwarded prop opens no row (T695, size axis)', () => {
+  const matrix = matrixOf(`const el = <Button variant="ghost" size={size}>Go</Button>`)
+  assert.deepEqual(rowKeys(matrix), [])
+})
+
+test('a call site whose variant is a computed expression opens no row (T695, variant axis)', () => {
+  const matrix = matrixOf(
+    `const el = <Button variant={action.variant ?? 'destructive'} size="lg">Go</Button>`,
+  )
+  assert.deepEqual(rowKeys(matrix), [])
+})
+
+test('a call site with a literal variant and a dynamic size opens no row at all, not a half-keyed one (T695, one axis dynamic)', () => {
+  for (const source of [
+    `const el = <Button variant="ghost" size={size}>Go</Button>`,
+    `const el = <Button variant="ghost" size={compact ? 'sm' : 'md'}>Go</Button>`,
+    `const el = <Button variant={variant} size="lg">Go</Button>`,
+    `const el = <Button variant={variant} size={size}>Go</Button>`,
+  ]) {
+    assert.deepEqual(
+      rowKeys(matrixOf(source)),
+      [],
+      `${source} must open no row, not a "...|unresolved" one`,
+    )
+  }
+})
+
+test('a call site that spreads props over an axis it does not pass opens no row (T695, spread)', () => {
+  assert.deepEqual(
+    rowKeys(matrixOf(`const el = <Button variant="ghost" {...rest}>Go</Button>`)),
+    [],
+  )
+})
+
+test('contrast (T695): a literal-axis call site keeps its row and its Rest credit exactly as before', () => {
+  const matrix = matrixOf(`const el = <Button variant="ghost" size="lg">Go</Button>`)
+  assert.deepEqual(rowKeys(matrix), ['ghost|lg'])
+  assert.deepEqual(matrix[0].rest, ['composites/Widget (fixture.tsx:1)'])
+})
+
+test('contrast (T695): an omitted size resolves to the primitive default and still keys its row', () => {
+  const matrix = matrixOf(`const el = <Button variant="ghost">Go</Button>`)
+  assert.deepEqual(rowKeys(matrix), ['ghost|md'])
+  assert.deepEqual(matrix[0].rest, ['composites/Widget (fixture.tsx:1)'])
+})
+
+test('contrast (T695): an omitted variant resolves to the primitive default and still keys its row', () => {
+  const matrix = matrixOf(`const el = <Button size="lg">Go</Button>`)
+  assert.deepEqual(rowKeys(matrix), ['secondary|lg'])
+})
+
+test('contrast (T695): a dynamic call site beside a literal one opens only the row of the literal one', () => {
+  const matrix = matrixOf(`
+const a = <Button variant="ghost" size="md">A</Button>
+const b = <Button variant="ghost" size={size}>B</Button>
+`)
+  assert.deepEqual(rowKeys(matrix), ['ghost|md'])
+  assert.deepEqual(matrix[0].rest, ['composites/Widget (fixture.tsx:2)'])
+})
+
+test('contrast (T695): the instance a dynamic call site mounts is credited at the row the manifest renders it to', () => {
+  const instances = [
+    ...callSites(`const el = <Button variant="ghost" size={size}>Go</Button>`).map((site) => ({
+      ...site,
       kind: 'jsx',
       componentKey: 'composites/Widget',
-      file: 'composites/Widget/index.tsx',
-      line: 6,
-      variant: { value: 'ghost', resolved: 'explicit' },
-      size: { value: null, resolved: 'unresolved' },
-      disabled: false,
-    },
+    })),
     {
       kind: 'composed-story',
       componentKey: 'composites/Widget',
       file: 'composites/Widget/Widget.stories.tsx',
       storyName: 'Hover',
-      variant: { value: 'ghost', resolved: 'explicit' },
-      size: { value: 'md', resolved: 'resolved-from-story' },
+      variant: { value: 'ghost', resolved: 'runtime' },
+      size: { value: 'md', resolved: 'runtime' },
       forced: { state: 'hover', role: 'button', name: 'Toggle', selector: null, nth: null },
       playFocus: null,
-      sourceLine: 6,
-      sourceFile: 'composites/Widget/index.tsx',
+      disabled: false,
     },
   ]
-}
+  const matrix = buildAxisMatrix('Button', instances)
+  assert.deepEqual(rowKeys(matrix), ['ghost|md'])
+  assert.deepEqual(matrix[0].hover, ['Widget:Hover'])
+})
 
-test('contrast: a JSX candidate with no story resolving it anywhere still reads a genuine none, not a manufactured redirect', () => {
-  const [jsxOnly] = redirectFixtureInstances()
-  const matrix = buildAxisMatrix('Button', [jsxOnly])
-  const unresolvedRow = matrix.find((r) => r.variantSize === 'ghost|unresolved')
-  assert.deepEqual(unresolvedRow.hover, ['none'])
+test('a manifest instance with no settled axis fails loudly rather than landing on no row (T695)', () => {
+  assert.throws(
+    () =>
+      buildAxisMatrix('Button', [
+        {
+          kind: 'composed-story',
+          componentKey: 'composites/Widget',
+          file: 'composites/Widget/Widget.stories.tsx',
+          storyName: 'Hover',
+          variant: { value: 'ghost', resolved: 'runtime' },
+          size: { value: null, resolved: 'runtime' },
+          forced: null,
+          playFocus: null,
+          disabled: false,
+        },
+      ]),
+    /only a call site read from the source may land on no row/,
+  )
 })
 
 test('contrast: a story-resolved match whose axis agrees with its own JSX row never needs a redirect (same row throughout)', () => {
@@ -2069,7 +2146,7 @@ test('renderRecord1 emits a row for a component with no local interactive elemen
   assert.match(rendered, /primitives\/Widget/)
 })
 
-// --- T595 (row 8, H5): closing the three `noImpliedRoleReason` shapes — `INTRINSIC_ROLE` widened
+// --- T595 (row 8, H5): closing the three shapes of the "no implied role" reason — `INTRINSIC_ROLE` widened
 // to the heading and table families, a dynamic `role={…}` resolved per story, and `hover`/`active`
 // credited from a confirmed descendant match. Routed through `computeStateCoverage`, not hand-built
 // instances, wherever a fixture needs `attrExprs`/`localConsts`/`guards`/`nodeStart`/`nodeEnd` —

@@ -147,16 +147,18 @@ export const KeyboardFocusOrderAndTrap: Story = {
 }
 
 // README's gap register row 8 (H5), Cause A, closed by T600: `primaryAction.variant ?? 'destructive'`
-// (`index.tsx`) is dynamic, so `state-coverage.mjs`'s own static pass cannot key this call site on
-// a literal row at all — it resolves it only per story, against that story's own args (row 8's own
-// Method section). No story here ever forced hover or press on `primaryAction`'s own button, so
-// neither this component's real `destructive|lg` call site (this file never sets `variant` on
-// `primaryAction`, so it renders the same default `destructive` this row's own args below leave
-// unset) nor `AccountErasurePanel`'s own direct `destructive|lg` instance (`index.tsx:218`, no
-// force-state of its own either) had a hover or press frame anywhere in the tree — F14's own
-// finding. Forced here, on the same button `FocusVisible` above already targets, for the same
-// reason that story does: `Default`'s own resting frame already shows this button unforced, so a
-// second copy without a state change would document nothing (FR-037).
+// (`index.tsx`) is dynamic, so `state-coverage.mjs` opens no record-3 row for this call site (T695:
+// a call site whose `variant` or `size` is not a literal or a default has no row of its own) — the
+// instance it mounts is credited at the row the browser rendered it to, `destructive|lg`, from the
+// runtime manifest (`packages/design-system/specs/state-coverage-runtime.json`, T694). No story here
+// ever forced hover or press on `primaryAction`'s own button, so neither this component's real
+// `destructive|lg` call site (this file never sets `variant` on `primaryAction`, so it renders the
+// same default `destructive` this row's own args below leave unset) nor `AccountErasurePanel`'s own
+// direct `destructive|lg` instance (`index.tsx:218`, no force-state of its own either) had a hover or
+// press frame anywhere in the tree — F14's own finding. Forced here, on the same button
+// `FocusVisible` above already targets, for the same reason that story does: `Default`'s own resting
+// frame already shows this button unforced, so a second copy without a state change would document
+// nothing (FR-037).
 // T675 slice 4b: `PRIMARY_ACTION_CLIP`'s own `pad: '2'` still measured under 1% on one unit —
 // tightened here alone, not for the shared constant, because `FocusVisible`'s own outward ring
 // (`outline-2 outline-offset-2`, 4px total beyond the border box) needs that wider pad to stay

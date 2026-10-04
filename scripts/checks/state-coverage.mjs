@@ -1324,10 +1324,10 @@ export function findPrimitiveInstances(
     // already keeps for a record-1 local element's own attributes, needed here for exactly the
     // same reason (T598): a component composing this primitive (`ProfileSummary`'s own `<Menu
     // variant="selection">`) passes this exact call site's own real prop values, which a
-    // cross-component credit into the primitive's *own* record-1 local elements
-    // (T598's `injectComposedPrimitiveLocalCredits`, retired by T694) needed to resolve a dynamic role
-    // (`MenuItemRow`'s own `role={role}`, `role = variant === 'selection' ? ... : ...`) against —
-    // never guessed from the composing component's own unrelated scope.
+    // cross-component credit into the primitive's *own* record-1 local elements needed to resolve a
+    // dynamic role (`MenuItemRow`'s own `role={role}`, `role = variant === 'selection' ? ... :
+    // ...`) against — never guessed from the composing component's own unrelated scope. That credit
+    // is gone (T694: the browser's manifest places the element), so nothing reads this map now.
     const attrExprs = new Map()
     for (const attr of opening.attributes.properties) {
       if (!ts.isJsxAttribute(attr)) continue
@@ -1389,15 +1389,12 @@ export function findPrimitiveInstances(
       childrenExpr: !literalTextOf(node) && ts.isJsxElement(node) ? node.children : null,
       ariaHidden: isAriaHidden(opening),
       isHelper: context.fnName != null && context.fnName !== mainComponentName,
-      // The same real-call-site enumeration `findLocalElements` already keeps for a record-1
-      // helper candidate (T595's `nth` walk, retired by T694; `PrivacyNotice`'s `InlineLink` was the running
-      // example) — a tracked primitive declared inside a local helper (T674: `InlineLink`
-      // composing `Link` instead of copying its recipe by hand) is exactly as reusable-from-more-
-      // than-one-call-site as a raw local element was, and without this a `nth` force-state against
-      // it can never place anything past "unplaceable" (`helperNthPosition`'s own first line,
-      // `!c.helperCallSites`), permanently, regardless of `nth`'s own value. `null` when this
-      // instance is not inside a helper at all, or the helper is `export`ed and not fully
-      // enumerable from this file alone — identical fallback to record 1's own.
+      // The same real-call-site enumeration `findLocalElements` already keeps for a record-1 helper
+      // candidate: a tracked primitive declared inside a local helper (T674: `PrivacyNotice`'s
+      // `InlineLink` composing `Link`) is as reusable from more than one call site as a raw local
+      // element. Nothing reads it since T694 (the static `nth` walk it fed is deleted; the browser
+      // reports the position). `null` when this instance is not inside a helper at all, or the helper
+      // is `export`ed and not fully enumerable from this file alone.
       helperCallSites:
         context.fnName != null && context.fnName !== mainComponentName
           ? (localHelperCallSites.get(context.fnName) ?? null)
@@ -3197,10 +3194,20 @@ export function describeMissingForceState({ componentKey, exportName, state, ref
 
 // --- Matrix building -------------------------------------------------------------------------
 
+// The row an instance lands on: its `variant|size` pair (an axis the primitive has none of is left
+// out), or `null` when an axis the primitive keys its rows on has no settled value. A call site whose
+// `variant` or `size` the source cannot settle (a forwarded prop, a computed expression, a spread) is
+// the second case: it opens no row of its own (T695), because the instances it mounts are credited at
+// the rows the browser rendered them to, from the manifest, and a row named for an axis nothing
+// resolved is one no story's frame can ever reach.
 function axisKey(inst) {
-  const v = inst.variant?.resolved === 'n/a' ? null : (inst.variant?.value ?? 'unresolved')
-  const s = inst.size?.resolved === 'n/a' ? null : (inst.size?.value ?? 'unresolved')
-  return [v, s].filter((x) => x !== null).join('|') || '(no axis)'
+  const parts = []
+  for (const axis of [inst.variant, inst.size]) {
+    if (axis?.resolved === 'n/a') continue
+    if (axis?.value == null) return null
+    parts.push(axis.value)
+  }
+  return parts.join('|') || '(no axis)'
 }
 
 function cellName(inst) {
@@ -3212,7 +3219,8 @@ function cellName(inst) {
 // Record 3 for one tracked primitive: one row per `variant|size` pair any instance lands on, one
 // column per state. Two kinds of instance feed it:
 //   - `jsx`: a call site in a design-system component file, read statically — its row is its literal
-//     or default axis, `unresolved` when the prop is dynamic. It fills `Rest` and nothing else.
+//     or default axis, and a call site with a dynamic axis opens no row (T695, `axisKey`). It fills
+//     `Rest` and nothing else.
 //   - `own-story` / `composed-story`: an instance the runtime manifest says a story mounted (T694,
 //     `scripts/visual/state-coverage-runtime-model.mjs`), already placed on the row the browser
 //     rendered it at — never resolved here. `forced` names the state the story's frame depicts at
@@ -3241,7 +3249,20 @@ export function buildAxisMatrix(primitiveName, instances) {
     return rows.get(key)
   }
   for (const inst of instances) {
-    const row = rowFor(axisKey(inst))
+    const key = axisKey(inst)
+    if (key === null) {
+      // A manifest instance is placed at the row the browser rendered, `rowAxesOf` having refused
+      // one with no value on a keyed axis before it got here; only a call site read from the source
+      // can arrive unsettled.
+      if (inst.kind !== 'jsx') {
+        throw new Error(
+          `${primitiveName}: a ${inst.kind} instance (${inst.storyName ?? inst.file}) has no settled ` +
+            'variant or size, and only a call site read from the source may land on no row.',
+        )
+      }
+      continue
+    }
+    const row = rowFor(key)
     if (inst.kind === 'jsx') {
       row.rest.push(`${inst.componentKey} (${inst.file}:${inst.line})`)
       continue
