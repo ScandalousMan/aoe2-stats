@@ -18,12 +18,15 @@ whatever comes back the same way discovery would have, and — the one thing tha
 profile carrying `backfill_requested_at` — clears that flag once, and only once, its window has
 actually been swept.
 
-**Reuse, not a second copy.** `discover.py` (T053, widened by 003's T328) already owns the
-upsert logic this stage needs verbatim — the module-level `upsert_match` (FR-012, `ON CONFLICT DO
-UPDATE` on `matches.game_id`), `touch_aoe_profile` and `upsert_match_player`, called directly
-here exactly as `DiscoverStage.__call__` calls them for its own cycle, so a change to how a match
-is upserted is made once, in one module, and both stages (and 003's `GET /api/players/{profile_id}/
-matches`) pick it up. `_enqueue_capture` (FR-014, FR-018, the same `capture_deadline_at =
+**Reuse, not a second copy.** `discover.py` (T053, widened by 003's T328 and T459) already owns the
+upsert logic this stage needs verbatim — `persist_matches_and_profiles` (FR-012, `ON CONFLICT DO
+UPDATE` on `matches.game_id`, the profile touch and the `match_players` upsert, written in one
+global lock order and in a constant number of statements), called directly here exactly as
+`DiscoverStage.__call__` calls it for its own cycle, so a change to how a match is upserted is made
+once, in one module, and both stages (and 003's `GET /api/players/{profile_id}/matches`) pick it
+up. The order matters here as much as the reuse: this stage's transaction and an API request's can
+touch the same `aoe_profiles` rows, and only one shared order keeps them from deadlocking.
+`_enqueue_capture` (FR-014, FR-018, the same `capture_deadline_at =
 completed_at + capture_budget_days` computed once on insert) stays a `DiscoverStage` instance
 method — it is not shared with 003's route, which FR-012 forbids from enqueueing a capture for a
 third party at all — so this stage still holds its own `DiscoverStage` instance (constructed with
@@ -64,9 +67,7 @@ from aoe2stats_ingester.discover import (
     _DISCOVERY_BATCH_SIZE,
     DiscoverStage,
     _chunk,
-    touch_aoe_profile,
-    upsert_match,
-    upsert_match_player,
+    persist_matches_and_profiles,
 )
 from aoe2stats_providers.base import MatchHistoryProvider
 from aoe2stats_storage.models import ProfileLink
@@ -131,18 +132,15 @@ class ReconcileStage:
             raw_matches = await self._match_history_provider.recent_matches(batch)
 
             async with session_scope(self._session_factory) as session:
-                for raw_match in raw_matches:
-                    await upsert_match(session, raw_match)
-                    matches_discovered += 1
-                    for player_profile_id in raw_match.player_profile_ids:
-                        await touch_aoe_profile(session, player_profile_id)
-                        await upsert_match_player(session, raw_match, player_profile_id)
-                        if player_profile_id in archiving_profile_ids:
-                            enqueued = await self._discover._enqueue_capture(
-                                session, raw_match, player_profile_id
-                            )
-                            if enqueued:
-                                captures_enqueued += 1
+                written = await persist_matches_and_profiles(session, raw_matches)
+                matches_discovered += len(raw_matches)
+                for raw_match, player_profile_id in written:
+                    if player_profile_id in archiving_profile_ids:
+                        enqueued = await self._discover._enqueue_capture(
+                            session, raw_match, player_profile_id
+                        )
+                        if enqueued:
+                            captures_enqueued += 1
 
                 # FR-015: cleared in the same commit as this batch's matches and captures, and only
                 # for the profiles this batch actually swept — see the module docstring.
