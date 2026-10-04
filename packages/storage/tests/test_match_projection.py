@@ -32,12 +32,11 @@ that predates its own implementation (`test_relic_matches.py`'s `_provider`) —
     - `result` <- `matchhistorymember[].outcome`: `1` -> `"win"`, `0` -> `"loss"`, any other value
       (including a draw code this feature does not otherwise interpret) -> `None`, FR-004's
       neutral state, never silently coerced into `"loss"`.
-- `MatchProjectionMismatch(ValueError)` — raised, not swallowed and not used to pick a side, the
-  moment `civilization_id` / `teamid` / the mapped result disagrees between `matchhistorymember[]`
-  and that same `profile_id`'s entry in `matchhistoryreportresults[]`. data-model.md is explicit
-  that the second array is "the cross-check, not a second source": a silent tie-break here is
-  exactly how a wrong civ would ship looking confident, and this exception is what stops that at
-  the write, rather than at whichever pixel first looks wrong.
+- Cross-check, amended 2026-10-04 (T459f): `civilization_id` / `teamid` / the mapped result are
+  compared with that same `profile_id`'s entry in `matchhistoryreportresults[]`. Originally a
+  disagreement raised an exception; it now projects the disputed field to `None`,
+  keeps every agreed field, and logs a warning. data-model.md still calls the second array "the
+  cross-check, not a second source", so the function still never picks a side.
 
 Every scenario below is built from
 `packages/providers/fixtures/relic/get_recent_match_history.json` (a deep copy per test, mutated
@@ -50,6 +49,7 @@ from __future__ import annotations
 
 import copy
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -207,38 +207,81 @@ def test_a_third_outcome_value_maps_to_null_not_a_coerced_loss() -> None:
     assert projected.result != "win"
 
 
-# --- matchhistoryreportresults[] is a cross-check: a disagreement raises, never a tie-break ------
+# --- matchhistoryreportresults[] is a cross-check: a disagreement projects None, never a pick ----
+
+_LOGGER_NAME = "aoe2stats_storage"
 
 
-def test_a_civ_id_disagreement_with_report_results_raises() -> None:
-    from aoe2stats_storage.repositories.matches import MatchProjectionMismatch, project_match_player
+@pytest.fixture(autouse=True)
+def _storage_logger_enabled() -> None:
+    """The migrations' `fileConfig` (`infra/migrations/env.py`, run by the first throwaway database
+    of the session) disables every logger that already exists, which would make the warning this
+    file asserts a silent no-op in a full-suite run."""
+    logging.getLogger(_LOGGER_NAME).disabled = False
+
+
+def _disputed_warnings(caplog: pytest.LogCaptureFixture) -> list[str]:
+    return [
+        record.getMessage()
+        for record in caplog.records
+        if record.name == _LOGGER_NAME and record.levelno == logging.WARNING
+    ]
+
+
+def test_a_civ_id_disagreement_projects_civ_none_keeps_the_rest_and_logs(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The production shape (game 331012313): `matchhistorymember` says one civilisation,
+    `matchhistoryreportresults` another."""
+    from aoe2stats_storage.repositories.matches import project_match_player
 
     raw_match = _load_raw_match()
     _report(raw_match, _LOSING_PROFILE_ID)["civilization_id"] = 99
 
-    with pytest.raises(MatchProjectionMismatch):
-        project_match_player(raw_match, _LOSING_PROFILE_ID)
+    with caplog.at_level(logging.WARNING, logger=_LOGGER_NAME):
+        projected = project_match_player(raw_match, _LOSING_PROFILE_ID)
+
+    assert projected.civ_id is None
+    assert projected.team_id == 1
+    assert projected.result == "loss"
+    assert projected.rating == 1498
+    assert projected.rating_diff == -14
+    assert projected.color_id == 7
+    (message,) = _disputed_warnings(caplog)
+    for part in ("500615037", str(_LOSING_PROFILE_ID), "civ_id", "28", "99"):
+        assert part in message
 
 
-def test_a_team_id_disagreement_with_report_results_raises() -> None:
-    from aoe2stats_storage.repositories.matches import MatchProjectionMismatch, project_match_player
+def test_a_team_id_disagreement_projects_team_none_keeps_the_rest_and_logs(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    from aoe2stats_storage.repositories.matches import project_match_player
 
     raw_match = _load_raw_match()
     report = _report(raw_match, _LOSING_PROFILE_ID)
     assert report["teamid"] == 1
     report["teamid"] = 2
 
-    with pytest.raises(MatchProjectionMismatch):
-        project_match_player(raw_match, _LOSING_PROFILE_ID)
+    with caplog.at_level(logging.WARNING, logger=_LOGGER_NAME):
+        projected = project_match_player(raw_match, _LOSING_PROFILE_ID)
+
+    assert projected.team_id is None
+    assert projected.civ_id == 28
+    assert projected.result == "loss"
+    assert projected.rating == 1498
+    assert projected.rating_diff == -14
+    assert projected.color_id == 7
+    (message,) = _disputed_warnings(caplog)
+    for part in ("500615037", str(_LOSING_PROFILE_ID), "team_id"):
+        assert part in message
 
 
-def test_a_result_disagreement_with_report_results_raises() -> None:
+def test_a_result_disagreement_projects_result_none_keeps_the_rest_and_logs(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     """`matchhistorymember[].outcome` says loss (`0`); `matchhistoryreportresults[].resulttype` is
-    flipped to `1` (win) for the same participant here — the two must agree, and a projection that
-    silently trusted one over the other is exactly the "wrong civ ships looking confident" failure
-    mode `data-model.md` calls out this cross-check to prevent.
-    """
-    from aoe2stats_storage.repositories.matches import MatchProjectionMismatch, project_match_player
+    flipped to `1` (win) for the same participant — neither is trusted over the other."""
+    from aoe2stats_storage.repositories.matches import project_match_player
 
     raw_match = _load_raw_match()
     assert _member(raw_match, _LOSING_PROFILE_ID)["outcome"] == 0
@@ -246,15 +289,45 @@ def test_a_result_disagreement_with_report_results_raises() -> None:
     assert report["resulttype"] == 0
     report["resulttype"] = 1
 
-    with pytest.raises(MatchProjectionMismatch):
-        project_match_player(raw_match, _LOSING_PROFILE_ID)
+    with caplog.at_level(logging.WARNING, logger=_LOGGER_NAME):
+        projected = project_match_player(raw_match, _LOSING_PROFILE_ID)
+
+    assert projected.result is None
+    assert projected.civ_id == 28
+    assert projected.team_id == 1
+    assert projected.rating == 1498
+    assert projected.rating_diff == -14
+    assert projected.color_id == 7
+    (message,) = _disputed_warnings(caplog)
+    for part in ("500615037", str(_LOSING_PROFILE_ID), "result"):
+        assert part in message
 
 
-def test_an_unmodified_fixture_entry_never_raises_the_cross_check() -> None:
+def test_two_disagreeing_fields_each_project_none_and_each_log_once(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    from aoe2stats_storage.repositories.matches import project_match_player
+
+    raw_match = _load_raw_match()
+    report = _report(raw_match, _LOSING_PROFILE_ID)
+    report["civilization_id"] = 99
+    report["teamid"] = 2
+
+    with caplog.at_level(logging.WARNING, logger=_LOGGER_NAME):
+        projected = project_match_player(raw_match, _LOSING_PROFILE_ID)
+
+    assert (projected.civ_id, projected.team_id) == (None, None)
+    assert projected.result == "loss"
+    assert len(_disputed_warnings(caplog)) == 2
+
+
+def test_an_unmodified_fixture_entry_projects_every_field_and_logs_nothing(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     """The negative space of the four tests above: `matchHistoryStats[0]` agrees with its own
     `matchhistoryreportresults[]` for every participant, unmodified, so projecting every one of
-    them must succeed — the cross-check is a guard against disagreement, not a blanket rejection
-    of the array's mere presence.
+    them must project every field and log nothing — the cross-check is a guard against
+    disagreement, not a blanket rejection of the array's mere presence.
     """
     from aoe2stats_storage.repositories.matches import project_match_player
 
@@ -262,8 +335,14 @@ def test_an_unmodified_fixture_entry_never_raises_the_cross_check() -> None:
     profile_ids = [member["profile_id"] for member in raw_match["matchhistorymember"]]
     assert len(profile_ids) == 8
 
-    for profile_id in profile_ids:
-        project_match_player(raw_match, profile_id)  # must not raise
+    with caplog.at_level(logging.WARNING, logger=_LOGGER_NAME):
+        for profile_id in profile_ids:
+            member = _member(raw_match, profile_id)
+            projected = project_match_player(raw_match, profile_id)
+            assert projected.civ_id == member["civilization_id"]
+            assert projected.team_id == member["teamid"]
+            assert projected.result == ("win" if member["outcome"] == 1 else "loss")
+    assert _disputed_warnings(caplog) == []
 
 
 # --- color_id: slotinfo[].metaData.ScenarioPlayerIndex + 1 (T411) ---------------------------------

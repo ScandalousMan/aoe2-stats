@@ -58,6 +58,7 @@ from __future__ import annotations
 import base64
 import binascii
 import json
+import logging
 import struct
 import zlib
 from collections.abc import Iterable, Mapping, Sequence
@@ -78,6 +79,11 @@ from .base import Repository
 DEFAULT_PAGE_SIZE = 20
 
 _CURSOR_SEPARATOR = "|"
+
+#: The package's own name, not the module's — `apps/api` and `apps/ingester` do the same
+#: (`aoe2stats_api`, `aoe2stats_ingester`), so a log aggregator groups a package's lines under one
+#: name whichever function wrote them.
+logger = logging.getLogger("aoe2stats_storage")
 
 
 # --- projection: matches.raw_payload -> match_players (T413, research.md D1) ---------------------
@@ -100,15 +106,6 @@ class ProjectedMatchPlayer:
     rating_diff: int | None
     result: str | None
     color_id: int | None
-
-
-class MatchProjectionMismatch(ValueError):
-    """Raised when `matchhistorymember[]` disagrees with the same participant's own entry in
-    `matchhistoryreportresults[]` on `civilization_id`, `teamid` or the mapped result.
-    `matchhistoryreportresults[]` is a cross-check, not a second source (data-model.md's own
-    wording): a disagreement is not resolved by picking a side here, because a silent tie-break is
-    exactly how a wrong civilisation would ship looking confident. The caller decides what to do
-    with a payload that fails its own internal cross-check; this function only refuses to guess."""
 
 
 def _map_outcome(value: Any) -> str | None:
@@ -201,6 +198,21 @@ def _slot_colour_id(raw_match: Mapping[str, Any], profile_id: int) -> int | None
     return None
 
 
+def _log_disputed(
+    game_id: object, profile_id: int, field_name: str, member_value: object, report_value: object
+) -> None:
+    """One warning per disputed field, so the disagreement stays visible although nothing fails."""
+    logger.warning(
+        "relic cross-check disagreement, field projected to None: game_id=%r profile_id=%d "
+        "field=%s matchhistorymember=%r matchhistoryreportresults=%r",
+        game_id,
+        profile_id,
+        field_name,
+        member_value,
+        report_value,
+    )
+
+
 def project_match_player(raw_match: Mapping[str, Any], profile_id: int) -> ProjectedMatchPlayer:
     """Project `profile_id`'s entry out of one `matchHistoryStats[]` item (`raw_match` — the exact
     shape `Match.raw_payload`/`RawMatch.raw_payload` carry verbatim, constitution IV) into the five
@@ -219,10 +231,15 @@ def project_match_player(raw_match: Mapping[str, Any], profile_id: int) -> Proje
       `None` on any layer this function cannot read — a `None` colour is "unknown", and every
       writer treats it so: it never overwrites a stored value.
 
-    Every field above is cross-checked against `profile_id`'s own entry in
-    `matchhistoryreportresults[]`, when that array carries one: `civilization_id`, `teamid` and
-    the mapped result must agree, or this raises `MatchProjectionMismatch` rather than picking a
-    side (see that class's own docstring).
+    `civ_id`, `team_id` and `result` are cross-checked against `profile_id`'s own entry in
+    `matchhistoryreportresults[]`, when that array carries one (data-model.md, amended 2026-10-04,
+    T459f). A field the two lists disagree on projects to `None` — the unknown state — and is
+    logged at warning level; every field they agree on is kept. This never raises: Relic does
+    contradict itself (production, game 331012313: one pair of 770), and a raise here failed a
+    whole player-history request and a whole discovery batch over one participant — a tie broken
+    silently would be wrong, and a refusal that blocks capture is worse (constitution I), so the
+    function does not choose. `rating`, `rating_diff` and `color_id` are not cross-checked and
+    are unaffected.
 
     `raw_match` carrying no `matchhistorymember[]` entry for `profile_id` at all — a payload
     shape from before this projection existed, or a caller assembling a synthetic `raw_payload`
@@ -259,26 +276,17 @@ def project_match_player(raw_match: Mapping[str, Any], profile_id: int) -> Proje
         None,
     )
     if report is not None:
-        report_civ_id = report.get("civilization_id")
-        if report_civ_id != civ_id:
-            raise MatchProjectionMismatch(
-                f"profile {profile_id}: civilization_id disagreement between "
-                f"matchhistorymember ({civ_id!r}) and matchhistoryreportresults "
-                f"({report_civ_id!r})"
-            )
-        report_team_id = report.get("teamid")
-        if report_team_id != team_id:
-            raise MatchProjectionMismatch(
-                f"profile {profile_id}: teamid disagreement between matchhistorymember "
-                f"({team_id!r}) and matchhistoryreportresults ({report_team_id!r})"
-            )
+        game_id = raw_match.get("id")
         report_result = _map_outcome(report.get("resulttype"))
+        if report.get("civilization_id") != civ_id:
+            _log_disputed(game_id, profile_id, "civ_id", civ_id, report.get("civilization_id"))
+            civ_id = None
+        if report.get("teamid") != team_id:
+            _log_disputed(game_id, profile_id, "team_id", team_id, report.get("teamid"))
+            team_id = None
         if report_result != result:
-            raise MatchProjectionMismatch(
-                f"profile {profile_id}: result disagreement between matchhistorymember's "
-                f"outcome ({result!r}) and matchhistoryreportresults' resulttype "
-                f"({report_result!r})"
-            )
+            _log_disputed(game_id, profile_id, "result", result, report_result)
+            result = None
 
     rating_diff = (
         new_rating - old_rating if new_rating is not None and old_rating is not None else None
