@@ -68,6 +68,7 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { listStories } from '../visual/story-index.mjs'
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const designSystemDir = path.join(rootDir, 'packages', 'design-system')
@@ -179,8 +180,9 @@ function main() {
   }
 
   const index = JSON.parse(readFileSync(indexPath, 'utf8'))
-  const entries = Object.values(index.entries ?? index.stories ?? {})
-  const stories = entries.filter((entry) => entry.type === undefined || entry.type === 'story')
+  // T693: a `state-coverage-fixture` story is built into Storybook but is not a published story, so
+  // it has no baseline and is skipped here by tag (`scripts/visual/story-index.mjs`).
+  const stories = listStories(index)
   const storyIds = new Set(stories.map((entry) => entry.id))
 
   if (!existsSync(screenshotsDir)) {

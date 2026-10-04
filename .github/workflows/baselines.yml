@@ -94,7 +94,14 @@ jobs:
           const indexPath = 'packages/design-system/storybook-static/index.json'
           const index = JSON.parse(readFileSync(indexPath, 'utf8'))
           const entries = Object.values(index.entries ?? index.stories ?? {})
-          const stories = entries.filter((entry) => entry.type === undefined || entry.type === 'story')
+          // A `state-coverage-fixture` story (T693) is built into Storybook for the runtime pass and
+          // is not a published story: no capture unit. `scripts/visual/story-index.mjs` is the
+          // module every other reader uses; this inline script cannot import it, so it names the tag.
+          const stories = entries.filter(
+            (entry) =>
+              (entry.type === undefined || entry.type === 'story') &&
+              !(entry.tags ?? []).includes('state-coverage-fixture'),
+          )
           const units = stories.flatMap((entry) =>
             THEMES.flatMap((theme) =>
               WIDTHS.map((width) => ({

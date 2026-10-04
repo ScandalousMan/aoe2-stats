@@ -198,6 +198,32 @@ test("findVariantSizeDefaults reads Button's own defaults from its destructured 
   assert.deepEqual(defaults, { variant: 'secondary', size: 'md' })
 })
 
+// T693: `Button`, `Field` and `Link` read their axis defaults from one exported constant each
+// (`BUTTON_AXIS_DEFAULTS`, ...), which the runtime pass also reads. The static reading must follow
+// that reference, or every row of those primitives' matrices would lose its axis. A member that is
+// not a string literal, or a constant that is not a top-level object, still resolves to `null`.
+test('findVariantSizeDefaults follows a member of a top-level as-const constant, and only that', () => {
+  const read = (source) => findVariantSizeDefaults(parse(source))
+  assert.deepEqual(
+    read(`
+      const DEFAULTS = { variant: 'secondary', size: 'md' } as const satisfies Shape
+      function Button({ variant = DEFAULTS.variant, size = DEFAULTS.size }) { return <button /> }
+    `),
+    { variant: 'secondary', size: 'md' },
+  )
+  assert.deepEqual(
+    read(`
+      const DEFAULTS = { variant: pick(), size: 3 }
+      function Button({ variant = DEFAULTS.variant, size = DEFAULTS.size }) { return <button /> }
+    `),
+    { variant: null, size: null },
+  )
+  assert.deepEqual(
+    read(`function Button({ variant = ELSEWHERE.variant, size = 'lg' }) { return <button /> }`),
+    { variant: null, size: 'lg' },
+  )
+})
+
 test('findPrimitiveInstances resolves an omitted size prop to the primitive default', () => {
   const consumerSource = `const el = <Button variant="primary">Go</Button>`
   const sourceFile = parse(consumerSource)

@@ -48,6 +48,7 @@ import {
   unwrapExpression,
 } from '../checks/state-coverage.mjs'
 import { REVIEW_WIDTHS } from './review-widths.mjs'
+import { fixtureStoryFiles, importFile, listStories } from './story-index.mjs'
 
 export const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 export const dsDir = path.join(rootDir, 'packages', 'design-system')
@@ -674,10 +675,10 @@ export function buildStoryFileWork(filePath, source) {
 
 // Stories (not `docs` entries) of a parsed `index.json`, as `{ id, file }` with `file` relative to
 // the design-system package, the shape `entry.importPath` has once its leading `./` is removed.
+// T693: a `state-coverage-fixture` story is not a published story and is skipped here, by tag
+// (`story-index.mjs`), so it is neither swept nor reported as a state story the parse missed.
 export function indexedStories(index) {
-  return Object.values(index?.entries ?? index?.stories ?? {})
-    .filter((entry) => entry.type === undefined || entry.type === 'story')
-    .map((entry) => ({ id: entry.id, file: (entry.importPath ?? '').replace(/^\.\//, '') }))
+  return listStories(index).map((entry) => ({ id: entry.id, file: importFile(entry) }))
 }
 
 // Index story ids grouped by the story file that declares them, files in a stable order.
@@ -781,7 +782,15 @@ export function buildStateSignalWork({ index, readSource, diskFiles = null, base
     discoveryGaps.push(...reconcileFile({ file, indexedIds, parsed: work }))
   }
   if (diskFiles) {
-    discoveryGaps.push(...findUnindexedStoryFiles({ indexedFiles: byFile.keys(), diskFiles }))
+    // T693: a fixture file is on disk and in the index but holds no story the sweep indexes, so it
+    // is left out of the disk listing rather than reported as an unindexed file.
+    const fixtureFiles = fixtureStoryFiles(index)
+    discoveryGaps.push(
+      ...findUnindexedStoryFiles({
+        indexedFiles: byFile.keys(),
+        diskFiles: [...diskFiles].filter((file) => !fixtureFiles.has(file)),
+      }),
+    )
   }
   return {
     measurable,
@@ -794,10 +803,11 @@ export function buildStateSignalWork({ index, readSource, diskFiles = null, base
 }
 
 // The directories `.storybook/main.ts`'s `stories` globs start from, relative to the package
-// (`../src/**/*.stories.@(ts|tsx)` and `./foundations/**/*.stories.@(ts|tsx)`), and the file
+// (`../src/**/*.stories.@(ts|tsx)`, `./foundations/**/*.stories.@(ts|tsx)` and, T693,
+// `./fixtures/**/*.stories.@(ts|tsx)`), and the file
 // extensions those globs match. A second copy of both, so `state-signal-model.test.mjs` reads the
 // real `stories` array and fails when it and these lists stop agreeing.
-export const STORY_WALK_ROOTS = ['src', '.storybook/foundations']
+export const STORY_WALK_ROOTS = ['src', '.storybook/foundations', '.storybook/fixtures']
 export const STORY_FILE_EXTENSIONS = ['ts', 'tsx']
 
 // The `*.stories.<extension>` files under `STORY_WALK_ROOTS`, as paths relative to the package. The

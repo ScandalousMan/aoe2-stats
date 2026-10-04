@@ -1230,6 +1230,43 @@ export function impliedRoleForPrimitiveInstance(primitive, candidate) {
   return null
 }
 
+// A destructuring default's string value: a string literal, or (T693) a member of a top-level
+// `const X = { ... } as const` object in the same file — `variant = BUTTON_AXIS_DEFAULTS.variant`,
+// where `BUTTON_AXIS_DEFAULTS` is the one constant `Button`'s destructuring and the runtime pass
+// (`tests/visual/state-coverage-runtime.spec.ts`) both read. Anything else is `null`, unchanged.
+function resolveStringDefault(sourceFile, initializer) {
+  if (ts.isStringLiteral(initializer)) return initializer.text
+  if (
+    !ts.isPropertyAccessExpression(initializer) ||
+    !ts.isIdentifier(initializer.expression) ||
+    !ts.isIdentifier(initializer.name)
+  ) {
+    return null
+  }
+  const objectName = initializer.expression.text
+  for (const statement of sourceFile.statements) {
+    if (!ts.isVariableStatement(statement)) continue
+    for (const decl of statement.declarationList.declarations) {
+      if (!ts.isIdentifier(decl.name) || decl.name.text !== objectName || !decl.initializer)
+        continue
+      const object = unwrapExpression(decl.initializer)
+      if (!ts.isObjectLiteralExpression(object)) return null
+      for (const prop of object.properties) {
+        if (
+          ts.isPropertyAssignment(prop) &&
+          ts.isIdentifier(prop.name) &&
+          prop.name.text === initializer.name.text &&
+          ts.isStringLiteral(prop.initializer)
+        ) {
+          return prop.initializer.text
+        }
+      }
+      return null
+    }
+  }
+  return null
+}
+
 export function findVariantSizeDefaults(sourceFile) {
   let variantDefault = null
   let sizeDefault = null
@@ -1239,11 +1276,11 @@ export function findVariantSizeDefaults(sourceFile) {
         if (!ts.isBindingElement(el) || !ts.isIdentifier(el.name)) continue
         const propName = el.propertyName ? el.propertyName.getText() : el.name.text
         if (!el.initializer) continue
-        if (propName === 'variant' && ts.isStringLiteral(el.initializer)) {
-          variantDefault = el.initializer.text
+        if (propName === 'variant') {
+          variantDefault = resolveStringDefault(sourceFile, el.initializer) ?? variantDefault
         }
-        if (propName === 'size' && ts.isStringLiteral(el.initializer)) {
-          sizeDefault = el.initializer.text
+        if (propName === 'size') {
+          sizeDefault = resolveStringDefault(sourceFile, el.initializer) ?? sizeDefault
         }
       }
     }
