@@ -2338,6 +2338,19 @@ def _break_a_snapshot(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Callab
     return lambda: effects_file.write_bytes(original)
 
 
+def _corrupt_a_snapshot_descriptor(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> Callable[[], None]:
+    """T666n (d): the one installed snapshot's `snapshot.toml` is not valid UTF-8. It is a fault of
+    the deployment like any other unreadable snapshot, not a bare decode error. Returns the
+    repair."""
+    root = isolate_snapshot_root(monkeypatch, tmp_path)
+    descriptor = root / REAL_SNAPSHOT_DIRECTORY / "snapshot.toml"
+    original = descriptor.read_bytes()
+    descriptor.write_bytes(original + b"\n# \xff\xfe not utf-8\n")
+    return lambda: descriptor.write_bytes(original)
+
+
 def _promote_two_snapshots_of_one_build(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> Callable[[], None]:
@@ -2374,6 +2387,9 @@ class _DeploymentFaultCase:
 _DEPLOYMENT_FAULTS = (
     _DeploymentFaultCase(
         "snapshot-digest-mismatch", _break_a_snapshot, None, "SnapshotDigestMismatch"
+    ),
+    _DeploymentFaultCase(
+        "snapshot-descriptor-not-utf8", _corrupt_a_snapshot_descriptor, None, "SnapshotError"
     ),
     _DeploymentFaultCase(
         "two-promoted-snapshots", _promote_two_snapshots_of_one_build, None, "SnapshotError"
@@ -2667,6 +2683,207 @@ async def test_marking_failed_never_touches_a_published_row(
 
     _assert_still_served_as_it_was(
         await _get_analysis(session_factory, published.game_id), published
+    )
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        extract.EngineDependencyError("an empty dependency record identifies no engine"),
+        FileNotFoundError("a packaged file is missing"),
+    ],
+    ids=["empty-dependency-record", "missing-file"],
+)
+async def test_a_would_be_digest_that_hits_a_deployment_fault_never_escapes_the_warning(
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    fault: Exception,
+) -> None:
+    """T666n (a): `_keep_prior` commits the retry window and only then logs the would-be digest.
+    A deployment fault computing it must read as "unknown" (`None`), not escape after the commit
+    as a bare 500."""
+    published = await _publish_once(session_factory, game_id=500_666_521)
+
+    def refuse(*args: Any, **kwargs: Any) -> str:
+        raise fault
+
+    monkeypatch.setattr(run_module, "current_identity_digest", refuse)
+    now = datetime.now(UTC)
+
+    with caplog.at_level(logging.WARNING, logger=run_module.logger.name):
+        await run_module._keep_prior(
+            session_factory,
+            extractor=_BuildNamingExtractor(point_of_view_profile_id=published.profile_id),
+            game_id=published.game_id,
+            object_key="retained/key",
+            zip_sha256="0" * 64,
+            error_class="ValueError",
+            error_message="refused",
+            now=now,
+            retry_after=timedelta(hours=1),
+        )
+
+    after = await _get_analysis(session_factory, published.game_id)
+    assert after is not None
+    assert after.state == MatchAnalysisState.PUBLISHED
+    assert after.result_key == published.key
+    assert after.lease_expires_at is not None
+    assert after.lease_expires_at > now + timedelta(minutes=30)
+    messages = [record.getMessage() for record in caplog.records]
+    assert len(messages) == 1, messages
+    assert "would_be_identity_digest=None" in messages[0]
+
+
+async def test_a_publish_between_the_read_and_the_write_is_not_unpublished_by_mark_failed(
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+) -> None:
+    """T666n (b): the refusal of a lost claim reads a `running` row, a publish commits, and the
+    refusal then writes. The guard is in the statement, so the served analysis stays published."""
+    request = await _a_first_request(session_factory, game_id=500_666_522)
+    now = datetime.now(UTC)
+    async with session_scope(session_factory) as session:
+        session.add(
+            MatchAnalysis(
+                game_id=request.game_id,
+                state=MatchAnalysisState.RUNNING,
+                point_of_view_profile_id=request.profile_id,
+                requested_by_user_id=request.requester,
+                requested_at=now,
+                claimed_at=now,
+                lease_expires_at=now + timedelta(seconds=_BUDGET_SECONDS),
+                attempts=1,
+            )
+        )
+    await run_module._mark_failed(
+        _publishing_before_the_first_write(session_factory, request.game_id),
+        game_id=request.game_id,
+        error_class="ValueError",
+        error_message="a second claimant's refusal",
+        now=now,
+    )
+
+    row = await _get_analysis(session_factory, request.game_id)
+    assert row is not None
+    assert row.state == MatchAnalysisState.PUBLISHED
+    assert row.result_key == _INTERLEAVED_KEY
+    assert row.error_class is None
+
+
+async def test_a_publish_between_the_read_and_the_write_is_not_unpublished_by_mark_unavailable(
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+) -> None:
+    """T666n (b), the sibling: the same interleaving against `_mark_unavailable`."""
+    request = await _a_first_request(session_factory, game_id=500_666_523)
+    now = datetime.now(UTC)
+    async with session_scope(session_factory) as session:
+        session.add(
+            MatchAnalysis(
+                game_id=request.game_id,
+                state=MatchAnalysisState.RUNNING,
+                point_of_view_profile_id=request.profile_id,
+                requested_by_user_id=request.requester,
+                requested_at=now,
+                claimed_at=now,
+                lease_expires_at=now + timedelta(seconds=_BUDGET_SECONDS),
+                attempts=1,
+            )
+        )
+    await run_module._mark_unavailable(
+        _publishing_before_the_first_write(session_factory, request.game_id),
+        game_id=request.game_id,
+        point_of_view_profile_id=request.profile_id,
+        requested_by_user_id=request.requester,
+        now=now,
+    )
+
+    row = await _get_analysis(session_factory, request.game_id)
+    assert row is not None
+    assert row.state == MatchAnalysisState.PUBLISHED
+    assert row.result_key == _INTERLEAVED_KEY
+
+
+async def test_marking_unavailable_still_marks_a_running_row_with_every_field(
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+) -> None:
+    """The contrast to the interleaving: a claimed row whose fetch answered `NotFound` is
+    `unavailable`, finished, with no result key."""
+    request = await _a_first_request(session_factory, game_id=500_666_524)
+    now = datetime.now(UTC)
+    async with session_scope(session_factory) as session:
+        session.add(
+            MatchAnalysis(
+                game_id=request.game_id,
+                state=MatchAnalysisState.RUNNING,
+                point_of_view_profile_id=request.profile_id,
+                requested_by_user_id=request.requester,
+                requested_at=now,
+                claimed_at=now,
+                lease_expires_at=now + timedelta(seconds=_BUDGET_SECONDS),
+                attempts=1,
+                result_key="stale/key",
+            )
+        )
+
+    await run_module._mark_unavailable(
+        session_factory,
+        game_id=request.game_id,
+        point_of_view_profile_id=request.profile_id,
+        requested_by_user_id=request.requester,
+        now=now,
+    )
+
+    row = await _get_analysis(session_factory, request.game_id)
+    assert row is not None
+    assert row.state == MatchAnalysisState.UNAVAILABLE
+    assert row.finished_at == now
+    assert row.result_key is None
+
+
+_INTERLEAVED_KEY = "analyses/interleaved.json"
+
+
+def _publishing_before_the_first_write(
+    session_factory: async_sessionmaker[AsyncSession], game_id: int
+) -> async_sessionmaker[AsyncSession]:
+    """A session factory whose sessions let another session publish `game_id`, and commit it,
+    immediately before their own first write reaches the database - after any read the writer made.
+
+    That is the interleaving a lease overrun produces: the writer read the row `running`, a publish
+    then committed, and the writer's UPDATE arrives at a row that is no longer its to change. The
+    hook sits on `flush` (the read-check-write's commit) and on `execute` (a conditional UPDATE),
+    so it fires whichever shape the writer takes, once."""
+    published_by_the_other_session = False
+
+    async def publish() -> None:
+        nonlocal published_by_the_other_session
+        if published_by_the_other_session:
+            return
+        published_by_the_other_session = True
+        async with session_scope(session_factory) as other:
+            row = await other.get(MatchAnalysis, game_id)
+            assert row is not None
+            row.state = MatchAnalysisState.PUBLISHED
+            row.result_key = _INTERLEAVED_KEY
+            row.finished_at = datetime.now(UTC)
+
+    class _Interleaved(AsyncSession):
+        async def flush(self, objects: Sequence[object] | None = None) -> None:
+            if self.new or self.dirty:
+                await publish()
+            await super().flush(objects)
+
+        async def execute(self, statement: Any, *args: Any, **kwargs: Any) -> Any:
+            if getattr(statement, "is_update", False):
+                await publish()
+            return await super().execute(statement, *args, **kwargs)
+
+    return async_sessionmaker(
+        bind=session_factory.kw["bind"], class_=_Interleaved, expire_on_commit=False
     )
 
 

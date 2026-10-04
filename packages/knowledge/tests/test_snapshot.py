@@ -584,6 +584,31 @@ def test_load_snapshot_raises_when_snapshot_toml_records_a_digest_that_never_mat
         load_snapshot("wrong")
 
 
+def test_load_snapshot_raises_a_snapshot_error_for_a_descriptor_that_is_not_utf8(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """T666n (d): `snapshot.toml` is decoded before any check, so invalid UTF-8 must surface as the
+    snapshot fault it is, naming the file, not as a bare `UnicodeDecodeError`."""
+    directory = _write_snapshot_dir(tmp_path, "undecodable")
+    (directory / "snapshot.toml").write_bytes(b'[snapshot]\nsource = "\xff\xfe"\n')
+    monkeypatch.setattr(snapshot_module, "_snapshots_root", lambda: tmp_path)
+    with pytest.raises(SnapshotError, match=r"snapshot\.toml") as raised:
+        load_snapshot("undecodable")
+    assert isinstance(raised.value.__cause__, UnicodeDecodeError)
+
+
+def test_verify_installed_snapshots_raises_a_snapshot_error_for_a_descriptor_that_is_not_utf8(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The deployment check reads every packaged snapshot, so the same fault is a `SnapshotError`
+    there too (the class `aoe2stats_analyzer.extract.DEPLOYMENT_FAULT_ERRORS` names)."""
+    directory = _write_snapshot_dir(tmp_path, "undecodable")
+    (directory / "snapshot.toml").write_bytes(b"\xff\xfe")
+    monkeypatch.setattr(snapshot_module, "_snapshots_root", lambda: tmp_path)
+    with pytest.raises(SnapshotError, match=r"snapshot\.toml"):
+        verify_installed_snapshots()
+
+
 def test_load_snapshot_raises_for_a_directory_that_does_not_exist(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

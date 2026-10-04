@@ -682,13 +682,18 @@ def _is_stale(row: MatchAnalysis, retained: RetainedRecording | None) -> bool:
     """
     if row.state is not MatchAnalysisState.PUBLISHED:
         return False
-    from aoe2stats_analyzer.staleness import DEPLOYMENT_FAULT_ERRORS, is_stale
-
     try:
-        return is_stale(row, retained, engine=_installed_engine(), now=datetime.now(UTC))
-    except DEPLOYMENT_FAULT_ERRORS:
-        logger.exception("stale flag not computed for game_id=%s: deployment fault", row.game_id)
-        return False
+        # Inside the handler (T666n): an import-time failure of the analyzer's staleness module is
+        # part of the computation this function promises never to fail the page on.
+        from aoe2stats_analyzer.staleness import DEPLOYMENT_FAULT_ERRORS, is_stale
+
+        try:
+            return is_stale(row, retained, engine=_installed_engine(), now=datetime.now(UTC))
+        except DEPLOYMENT_FAULT_ERRORS:
+            logger.exception(
+                "stale flag not computed for game_id=%s: deployment fault", row.game_id
+            )
+            return False
     except Exception:
         # The flag only decides whether a button is shown, so nothing in its computation may fail
         # the page (FR-048, constitution V's spirit): a defect in 006's staleness code must not take

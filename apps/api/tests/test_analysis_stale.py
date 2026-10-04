@@ -24,6 +24,7 @@ analyzer no longer marks it unavailable.
 
 from __future__ import annotations
 
+import builtins
 import logging
 import secrets
 from collections.abc import Awaitable, Callable
@@ -516,3 +517,47 @@ async def test_an_unexpected_staleness_error_never_fails_the_match_page(
     assert record.exc_info is not None
     assert record.exc_info[1] is defect
     assert record.exc_info[2] is not None  # the traceback is carried, not just the message
+
+
+async def test_a_staleness_module_that_cannot_be_imported_never_fails_the_match_page(
+    client: TestClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """T666n (c): the router imports the analyzer's staleness module lazily (constitution V keeps
+    the engine out of module scope). That import is part of the computation the page promises
+    never to fail on, so an import-time failure reads as not stale and is logged at ERROR with its
+    traceback, as an unexpected error - not a 500 on every published match."""
+    real_import = builtins.__import__
+
+    def failing_import(name: str, *args: Any, **kwargs: Any) -> Any:
+        if name == "aoe2stats_analyzer.staleness":
+            raise ImportError("the staleness module could not be imported")
+        return real_import(name, *args, **kwargs)
+
+    game_id = _GAME_ID_BASE + 320
+    await _sign_in(client, db_session)
+    await _seed_published(
+        db_session,
+        game_id=game_id,
+        seed=_Seed(digest=_digest(game_id, engine=_installed_engine("-superseded"))),
+    )
+
+    monkeypatch.setattr(builtins, "__import__", failing_import)
+    logging.getLogger("aoe2stats_api").disabled = False
+    with caplog.at_level(logging.ERROR, logger="aoe2stats_api"):
+        stale = _api_stale(client, game_id)
+    monkeypatch.undo()
+
+    assert stale is False
+    records = [
+        record
+        for record in caplog.records
+        if f"stale flag not computed for game_id={game_id}" in record.getMessage()
+    ]
+    assert len(records) == 1
+    assert records[0].levelno == logging.ERROR
+    assert "unexpected staleness error" in records[0].getMessage()
+    assert records[0].exc_info is not None
+    assert records[0].exc_info[0] is ImportError

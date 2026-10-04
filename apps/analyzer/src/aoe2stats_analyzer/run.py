@@ -85,7 +85,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -338,8 +338,22 @@ async def _mark_unavailable(
     `running` row - it is left exactly as it was.
     """
     async with session_scope(session_factory) as session:
-        analysis = await session.get(MatchAnalysis, game_id)
-        if analysis is None:
+        # The guard is in the statement, not in a read before it: a publish that commits between a
+        # read and this write would otherwise be overwritten (T666n).
+        result = await session.execute(
+            update(MatchAnalysis)
+            .where(
+                MatchAnalysis.game_id == game_id,
+                MatchAnalysis.state != MatchAnalysisState.PUBLISHED,
+            )
+            .values(
+                state=MatchAnalysisState.UNAVAILABLE,
+                finished_at=now,
+                result_key=None,
+            )
+            .execution_options(synchronize_session=False)
+        )
+        if result.rowcount == 0 and await session.get(MatchAnalysis, game_id) is None:  # type: ignore[attr-defined]
             session.add(
                 MatchAnalysis(
                     game_id=game_id,
@@ -350,10 +364,6 @@ async def _mark_unavailable(
                     finished_at=now,
                 )
             )
-        elif analysis.state is not MatchAnalysisState.PUBLISHED:
-            analysis.state = MatchAnalysisState.UNAVAILABLE
-            analysis.finished_at = now
-            analysis.result_key = None
 
 
 async def _mark_failed(
@@ -376,16 +386,28 @@ async def _mark_failed(
     then arrives at a row that is no longer B's. The refusal belongs to a claim that was lost.
     """
     async with session_scope(session_factory) as session:
-        analysis = await session.get(MatchAnalysis, game_id)
-        if analysis is None:  # pragma: no cover - defensive: this row was just claimed above
+        # The guard is in the statement, not in a read before it: a publish that commits between a
+        # read and this write would otherwise be overwritten (T666n).
+        result = await session.execute(
+            update(MatchAnalysis)
+            .where(
+                MatchAnalysis.game_id == game_id,
+                MatchAnalysis.state != MatchAnalysisState.PUBLISHED,
+            )
+            .values(
+                state=MatchAnalysisState.FAILED,
+                finished_at=now,
+                error_class=error_class,
+                error_message=error_message,
+                result_key=None,
+            )
+            .execution_options(synchronize_session=False)
+        )
+        if (
+            result.rowcount == 0  # type: ignore[attr-defined]
+            and await session.get(MatchAnalysis, game_id) is None
+        ):  # pragma: no cover - defensive: this row was just claimed above
             raise LookupError(f"no match_analyses row for game_id={game_id} to mark failed")
-        if analysis.state is MatchAnalysisState.PUBLISHED:
-            return
-        analysis.state = MatchAnalysisState.FAILED
-        analysis.finished_at = now
-        analysis.error_class = error_class
-        analysis.error_message = error_message
-        analysis.result_key = None
 
 
 #: The two steps of `_publish` that can be refused for a reason about the document, named in what
@@ -512,12 +534,18 @@ def _describe(exc: Exception) -> tuple[str, str]:
     return type(exc).__name__, str(exc)
 
 
+#: What computing a would-be digest may raise without that being a defect: a value error from the
+#: identity (T666n) and every deployment fault (`current_identity_digest` raises those, T666m).
+_WOULD_BE_DIGEST_ERRORS: tuple[type[Exception], ...] = (ValueError, *DEPLOYMENT_FAULT_ERRORS)
+
+
 def _would_be_digest(
     extractor: AnalysisExtractor, *, object_key: str, zip_sha256: str, build: int | None
 ) -> str | None:
     """The identity digest the refused analysis would have carried, for the log line; `None` where
-    it cannot be computed (no recorded build, or the very fault that refused the analysis - an
-    unloadable snapshot, an empty dependency record - is also what stops this)."""
+    it cannot be computed: no recorded build, or a deployment fault - an unloadable snapshot, a
+    missing packaged file, an empty dependency record - which is often the very fault that refused
+    the analysis. It runs after `_keep_prior` has committed, so it must never raise (T666n)."""
     if build is None:
         return None
     try:
@@ -526,7 +554,7 @@ def _would_be_digest(
             recording={"object_key": object_key, "sha256": zip_sha256},
             build=build,
         )
-    except ValueError:
+    except _WOULD_BE_DIGEST_ERRORS:
         return None
 
 

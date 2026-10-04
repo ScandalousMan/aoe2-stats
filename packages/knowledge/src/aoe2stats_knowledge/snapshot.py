@@ -502,7 +502,15 @@ def load_snapshot(directory: str) -> Snapshot:
     snapshot_dir = _snapshots_root().joinpath(directory)
     if not snapshot_dir.is_dir():
         raise SnapshotError(f"no packaged snapshot directory {directory!r}")
-    identity_text = snapshot_dir.joinpath(IDENTITY_FILENAME).read_text(encoding="utf-8")
+    try:
+        identity_text = snapshot_dir.joinpath(IDENTITY_FILENAME).read_text(encoding="utf-8")
+    except UnicodeDecodeError as exc:
+        # A `ValueError`, but not a `SnapshotError`: left bare it is outside the deployment-fault
+        # set and would surface as a defect (T666n). A TOML syntax error is already wrapped by
+        # `_load_toml`; this is the one failure that precedes it.
+        raise SnapshotError(
+            f"{directory}: {IDENTITY_FILENAME} is not valid UTF-8 text: {exc}"
+        ) from exc
     identity = parse_identity(identity_text)
     rules_json = snapshot_dir.joinpath("rules.json").read_bytes()
     effects_toml = snapshot_dir.joinpath("effects.toml").read_bytes()
