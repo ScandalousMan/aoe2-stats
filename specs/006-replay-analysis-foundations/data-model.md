@@ -227,6 +227,9 @@ recompute failed and the prior analysis was kept (FR-042), it holds the end of a
 recompute of that row is attempted before it, so a refusal that is a function of the retained
 recording and the code is not repeated on every request. It is not a claim, and publishing the next
 analysis clears it. 003's claim selects only `queued` rows and `running` rows whose lease has
-expired, never a published one, so no 003 reader is affected. The window's length is, as it stands,
-a default in `apps/analyzer/src/aoe2stats_analyzer/run.py` (one hour) that a caller may override by
-argument.
+expired, never a published one, so no 003 reader is affected. The window's length is configuration
+(`ANALYSIS_RECOMPUTE_RETRY_SECONDS`, T666j): the API's settings carry it and the analyze entrypoint passes it to the
+analyzer's `run_once`, the only writer. The window's end is stored on the row, so no reader needs
+the duration: the staleness test and the API's `stale` flag compare the stored instant with now.
+The default in `apps/analyzer/src/aoe2stats_analyzer/run.py` serves only a caller that passes
+nothing.

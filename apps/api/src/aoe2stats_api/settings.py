@@ -181,6 +181,17 @@ class Settings(BaseSettings):
     # R3's memory bound: the raw recording size, in bytes, above which a recording is refused
     # before it is parsed.
     analysis_max_raw_bytes: int = Field(alias="ANALYSIS_MAX_RAW_BYTES")
+    # T666j: how long a published analysis is left alone after a recompute of it was refused and
+    # the prior analysis kept (FR-042, T666c), in seconds. `run.py` writes the end of the window
+    # into the row's `lease_expires_at` and every reader (`staleness.retry_window_open`, the API's
+    # `stale` flag) compares that stored instant with now, so this is the one place the duration
+    # is read. Positive: zero would parse the retained recording on every request, the repetition
+    # the window exists to bound. At most a day: a deploy that fixes the cause does not end an open
+    # window, so the product keeps serving the kept analysis, and offers no recompute, until it
+    # lapses - and a longer wait saves one parse per match per day at most.
+    analysis_recompute_retry_seconds: int = Field(
+        alias="ANALYSIS_RECOMPUTE_RETRY_SECONDS", gt=0, le=86_400
+    )
 
 
 class ConfigurationError(Exception):

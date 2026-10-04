@@ -54,7 +54,7 @@ itself (FR-041) exists to catch, not invite.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from starlette.applications import Starlette
@@ -217,6 +217,7 @@ async def _analyze(request: Request) -> JSONResponse:
             extractor=deps.extractor,
             object_store=deps.object_store,
             capture_budget_days=settings.capture_budget_days,
+            recompute_retry_after=timedelta(seconds=settings.analysis_recompute_retry_seconds),
         )
     except LookupError:
         return _not_found()

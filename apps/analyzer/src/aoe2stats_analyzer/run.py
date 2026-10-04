@@ -147,8 +147,12 @@ _RECOMPUTE_PURPOSE = "recompute"
 #: row's digest still differs from the current one, so without a bound every request for the match
 #: would read the retained recording, log an access and parse it in full. Kept in the row's own
 #: `lease_expires_at` (a published row has no other use for it); one parse per window per match.
-#: A caller that wants another figure passes `recompute_retry_after`; like `capture_budget_days`
-#: this is only the default for a caller that threads nothing down.
+#: The deployed figure is configuration (T666j, constitution XII): `Settings.
+#: analysis_recompute_retry_seconds`, which `api/analyze.py` passes as `recompute_retry_after`.
+#: This is only the default for a caller that threads nothing down (the tests), as
+#: `_DEFAULT_CAPTURE_BUDGET_DAYS` is. Only this writer needs the duration: the window's end is
+#: stored on the row, and the readers (`staleness.retry_window_open`, hence the API's `stale` flag)
+#: compare that stored instant with now.
 _DEFAULT_RECOMPUTE_RETRY_AFTER = timedelta(hours=1)
 
 #: States a second call against an existing row must treat as terminal, doing nothing further —
@@ -514,7 +518,7 @@ async def _keep_prior(
     `finished_at` - and writes nothing new. The refusal is logged, naming the match, the identity
     the row still carries, the one the new analysis would have carried and why it was refused.
 
-    The only thing written is the retry window (`_DEFAULT_RECOMPUTE_RETRY_AFTER`): the row's
+    The only thing written is the retry window (`retry_after` long): the row's
     `lease_expires_at`, so the next request inside it is served without reading the retained
     recording or parsing it again. It is cleared by the next publish.
     """

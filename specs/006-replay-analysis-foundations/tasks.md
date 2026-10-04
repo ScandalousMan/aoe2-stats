@@ -1470,11 +1470,13 @@ parallel batch; T666h, T666i and T666j follow, in order — all three edit `run.
       the access-log row for every read of retained bytes before the integrity verdict, as **FR-029**
       requires. (c) `_publish` attributes a failure of the row update's flush to the gap rows; name
       the step that actually failed
-- [ ] T666j [US6] **Source the recompute retry window from configuration.** The window is a code
+- [x] T666j [US6] **Source the recompute retry window from configuration.** The window is a code
       default that the deployed entrypoint never threads, while the docstring says it is configured
       like the capture budget. Read it from the API's settings and pass it through the analyze
       entrypoint, with the variable declared wherever this repository declares environment keys
-      (constitution XII), or correct the docstring if configuration is rejected — say which
+      (constitution XII), or correct the docstring if configuration is rejected — say which. The key
+      is `ANALYSIS_RECOMPUTE_RETRY_SECONDS`, required like `CAPTURE_BUDGET_DAYS`, so the deployment
+      environment must carry it before the merge that introduces it
 - [x] T666k [P] [US3] **Two second locks that still lean on the first.** (a) Rule 8 in
       `packages/core/src/aoe2stats_core/truth/validate.py` reads each gap's `severity` and `prevents`
       from the document, so a gap the builder mislabels informational, or emits with an empty

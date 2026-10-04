@@ -41,6 +41,7 @@ from pathlib import Path
 
 import httpx
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.testclient import TestClient
 
@@ -57,6 +58,7 @@ from aoe2stats_storage.models import (
     MatchAnalysisState,
     MatchPlayer,
     ReplayCapture,
+    RetainedRecording,
     User,
 )
 from aoe2stats_storage.models import Session as UserSession
@@ -502,3 +504,98 @@ async def test_analyze_answers_500_for_a_broken_deployment_before_fetching_or_cl
 
         # The operator still gets the detail, from the log.
         assert any(sentinel in record.getMessage() for record in caplog.records)
+
+
+# ================================================================================================
+# T666j: the recompute retry window is the configured one, read by the deployed entrypoint
+# ================================================================================================
+
+
+async def _publish_then_refuse_a_recompute(
+    client: TestClient, db_session: AsyncSession, fake_store: _FakeObjectStore
+) -> MatchAnalysis:
+    """Publish the fixture match, make it stale (a digest the running engine no longer produces)
+    and corrupt its retained object, so the second request's recompute is refused at the checksum
+    and the prior analysis is kept - the case that writes the retry window."""
+    first = client.post("/api/analyze", json={"game_id": _FIXTURE_GAME_ID})
+    assert first.status_code == 200
+    assert first.json()["state"] == "published"
+
+    row = await db_session.get(MatchAnalysis, _FIXTURE_GAME_ID)
+    assert row is not None
+    row.identity_digest = "sha256:" + "0" * 64
+    retained = (await db_session.execute(select(RetainedRecording))).scalar_one()
+    fake_store._objects[retained.object_key] = b"bit rot"
+    await db_session.commit()
+
+    second = client.post("/api/analyze", json={"game_id": _FIXTURE_GAME_ID})
+    assert second.status_code == 200
+    await db_session.refresh(row)
+    return row
+
+
+@pytest.mark.parametrize("configured_seconds", [90, 7200])
+async def test_the_configured_retry_window_reaches_run_once_through_the_entrypoint(
+    db_session: AsyncSession,
+    database_url: str,
+    clean_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+    configured_seconds: int,
+) -> None:
+    """A refused recompute leaves the prior analysis served and parks the row for exactly the
+    configured number of seconds - 90 s, which the code's one-hour default could never produce, and
+    two hours, which it could not either. Before T666j `api/analyze.py` threaded no such value and
+    both cases got an hour."""
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    monkeypatch.setenv("ANALYSIS_RECOMPUTE_RETRY_SECONDS", str(configured_seconds))
+    _install_fake_aoems_upstream(monkeypatch, _reference_replay_bytes())
+    fake_store = _install_fake_object_store(monkeypatch)
+    await _seed_fixture_match(db_session)
+    user = await _seed_user(db_session)
+
+    with _client() as client:
+        await _sign_in(client, db_session, user)
+        before = datetime.now(UTC)
+        row = await _publish_then_refuse_a_recompute(client, db_session, fake_store)
+        after = datetime.now(UTC)
+
+    assert row.state is MatchAnalysisState.PUBLISHED
+    assert row.lease_expires_at is not None
+    window = timedelta(seconds=configured_seconds)
+    assert before + window <= row.lease_expires_at <= after + window
+
+
+async def test_a_short_configured_window_lets_the_next_request_recompute_once_it_lapses(
+    db_session: AsyncSession,
+    database_url: str,
+    clean_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With the window configured at one second, a third request made after it lapses reads the
+    retained recording again (a second recompute attempt, so a second access-log row); the code's
+    one-hour default would still have been closed and read nothing."""
+    import asyncio
+
+    from aoe2stats_storage.models import ReplayAccessLog
+
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    monkeypatch.setenv("ANALYSIS_RECOMPUTE_RETRY_SECONDS", "1")
+    _install_fake_aoems_upstream(monkeypatch, _reference_replay_bytes())
+    fake_store = _install_fake_object_store(monkeypatch)
+    await _seed_fixture_match(db_session)
+    user = await _seed_user(db_session)
+
+    async def recompute_reads() -> int:
+        rows = (await db_session.execute(select(ReplayAccessLog))).scalars().all()
+        return len([r for r in rows if r.purpose == "recompute"])
+
+    with _client() as client:
+        await _sign_in(client, db_session, user)
+        await _publish_then_refuse_a_recompute(client, db_session, fake_store)
+        assert await recompute_reads() == 1
+
+        await asyncio.sleep(1.2)
+        third = client.post("/api/analyze", json={"game_id": _FIXTURE_GAME_ID})
+
+    assert third.status_code == 200
+    assert await recompute_reads() == 2
