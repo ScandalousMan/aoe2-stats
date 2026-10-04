@@ -63,7 +63,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from tests.snapshot_refresh import (
     REAL_SNAPSHOT_DIRECTORY,
@@ -74,6 +74,7 @@ from tests.snapshot_refresh import (
 
 from aoe2stats_analyzer import extract
 from aoe2stats_analyzer import run as run_module
+from aoe2stats_analyzer.retain import retain_recording
 from aoe2stats_core.replay.events import (
     CanonicalEvent,
     EventKind,
@@ -2537,3 +2538,315 @@ async def test_the_deployment_check_is_cached_and_does_no_io_after_the_first_req
 
     assert checks == 2
     assert loads == loads_after_first, "a second request re-read or re-verified the snapshots"
+
+
+# --- T666i: the recompute path's unpublish and retry holes -----------------------------------
+#
+# (a) A published row whose retained-recording row is gone was read as stale, recomputed and marked
+# unavailable: a served analysis unpublished (FR-042). A recording that cannot be recomputed is not
+# stale. (b) A retained object that failed its integrity check, or was missing, propagated with no
+# backoff - a full read and a 500 per click - and the access-log row, written after the retrieve,
+# was missing for a read that failed its checksum (FR-029). (c) `_publish` named the gap rows for a
+# failure of the row update.
+
+_HEALTHY = _Cause("healthy", None, _BuildNamingExtractor, _no_fault)
+
+
+async def _delete_the_retained_row(
+    session_factory: async_sessionmaker[AsyncSession], published: _Published
+) -> RetainedRecording:
+    retained = await _get_analysis_recording(session_factory, published)
+    async with session_scope(session_factory) as session:
+        await session.execute(delete(RetainedRecording).where(RetainedRecording.id == retained.id))
+    return retained
+
+
+def _assert_still_served_as_it_was(after: MatchAnalysis | None, published: _Published) -> None:
+    assert after is not None
+    assert _snapshot_of(after) == _snapshot_of(published.row)
+    assert after.state == MatchAnalysisState.PUBLISHED
+    assert after.result_key == published.key
+    assert after.error_class is None
+    assert published.store.objects[published.key] == published.body
+
+
+async def test_a_published_row_whose_retained_row_is_gone_is_served_never_unpublished(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """(a) The row is stale by every other measure (a newer parser), but it cannot be recomputed:
+    the prior analysis is served, still `published` at its key, nothing is read from the store and
+    nothing is marked unavailable."""
+    published = await _publish_once(session_factory, game_id=500_666_501)
+    await _delete_the_retained_row(session_factory, published)
+    published.store.get_calls.clear()
+    puts_before = list(published.store.put_calls)
+
+    extractor = await _ask_to_recompute(session_factory, published, _HEALTHY, max_calls=0)
+
+    assert extractor.calls == []
+    assert published.store.get_calls == []
+    assert published.store.put_calls == puts_before
+    assert await _access_log_rows(session_factory) == []
+    _assert_still_served_as_it_was(
+        await _get_analysis(session_factory, published.game_id), published
+    )
+
+
+async def test_a_retained_row_deleted_between_the_verdict_and_the_recompute_is_not_unavailable(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """(a), the race: `_recompute` itself must not unpublish when the row vanished after the
+    staleness verdict was given."""
+    published = await _publish_once(session_factory, game_id=500_666_502)
+    await _delete_the_retained_row(session_factory, published)
+    published.store.get_calls.clear()
+
+    await run_module._recompute(
+        session_factory,
+        object_store=published.store,
+        extractor=_BuildNamingExtractor(
+            point_of_view_profile_id=published.profile_id,
+            engine_version=_ENGINE_VERSION_2,
+            max_calls=0,
+        ),
+        game_id=published.game_id,
+        profile_id=published.profile_id,
+        requested_by_user_id=published.requester,
+        now=datetime.now(UTC),
+        retry_after=timedelta(hours=1),
+    )
+
+    assert published.store.get_calls == []
+    _assert_still_served_as_it_was(
+        await _get_analysis(session_factory, published.game_id), published
+    )
+
+
+async def test_marking_unavailable_never_touches_a_published_row(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """(a), the sibling routes: `_mark_unavailable` is reached from a first analysis only, but it
+    is the one function that can unpublish, so it refuses a published row itself."""
+    published = await _publish_once(session_factory, game_id=500_666_503)
+
+    await run_module._mark_unavailable(
+        session_factory,
+        game_id=published.game_id,
+        point_of_view_profile_id=published.profile_id,
+        requested_by_user_id=published.requester,
+        now=datetime.now(UTC),
+    )
+
+    _assert_still_served_as_it_was(
+        await _get_analysis(session_factory, published.game_id), published
+    )
+
+
+async def test_a_first_analysis_the_source_no_longer_serves_is_still_unavailable(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """The contrast to (a), unchanged: with no analysis to serve and nothing retained, 003's
+    unavailable path applies."""
+    request = await _a_first_request(session_factory, game_id=500_666_504)
+
+    class _Gone:
+        async def fetch_replay(self, game_id: int, profile_id: int) -> NotFound:
+            return NotFound()
+
+    await run_module.run_once(
+        request.game_id,
+        _BUDGET_SECONDS,
+        request.requester,
+        session_factory=session_factory,
+        replay_provider=_Gone(),
+        extractor=_BuildNamingExtractor(point_of_view_profile_id=request.profile_id, max_calls=0),
+        object_store=request.store,
+    )
+
+    row = await _get_analysis(session_factory, request.game_id)
+    assert row is not None
+    assert row.state == MatchAnalysisState.UNAVAILABLE
+    assert row.result_key is None
+
+
+async def _recompute_reads_logged(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> list[ReplayAccessLog]:
+    """The access-log rows a recompute wrote: the first analysis's own row is not one of them."""
+    return [row for row in await _access_log_rows(session_factory) if row.purpose == "recompute"]
+
+
+async def test_a_recompute_whose_retained_object_fails_its_checksum_keeps_the_prior_analysis(
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """(b) The row stays published on its key with the retry window set, the read is in the access
+    log although its verdict was a refusal (FR-029), and a second request inside the window reads
+    nothing and logs nothing."""
+    published = await _publish_once(session_factory, game_id=500_666_511)
+    retained = await _get_analysis_recording(session_factory, published)
+    published.store.objects[retained.object_key] = b"bit rot"
+    published.store.get_calls.clear()
+
+    with caplog.at_level(logging.WARNING, logger=run_module.logger.name):
+        extractor = await _ask_to_recompute(session_factory, published, _HEALTHY, max_calls=0)
+
+    assert extractor.calls == []
+    after = await _get_analysis(session_factory, published.game_id)
+    assert after is not None
+    assert after.lease_expires_at is not None
+    assert after.lease_expires_at > datetime.now(UTC) + timedelta(minutes=30)
+    assert _snapshot_of(after) == _snapshot_of(published.row)
+    assert after.result_key == published.key
+    rows = await _recompute_reads_logged(session_factory)
+    assert [row.retained_recording_id for row in rows] == [retained.id]
+    assert any("RecordingIntegrityError" in record.getMessage() for record in caplog.records)
+
+    published.store.get_calls.clear()
+    again = await _ask_to_recompute(session_factory, published, _HEALTHY, max_calls=0)
+
+    assert again.calls == []
+    assert published.store.get_calls == []
+    assert len(await _recompute_reads_logged(session_factory)) == 1
+    unchanged = await _get_analysis(session_factory, published.game_id)
+    assert unchanged is not None
+    assert unchanged.lease_expires_at == after.lease_expires_at
+
+
+async def test_a_recompute_whose_retained_object_is_missing_keeps_the_prior_analysis_with_backoff(
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """(b) Decided: the store answered that the object is not there, so the recording cannot be
+    recomputed - the same standing as an object that fails its checksum. The prior analysis is
+    kept and the window bounds the store call to one per window. Nothing was read, so there is no
+    read to log."""
+    published = await _publish_once(session_factory, game_id=500_666_512)
+    retained = await _get_analysis_recording(session_factory, published)
+    del published.store.objects[retained.object_key]
+    published.store.get_calls.clear()
+
+    with caplog.at_level(logging.WARNING, logger=run_module.logger.name):
+        extractor = await _ask_to_recompute(session_factory, published, _HEALTHY, max_calls=0)
+
+    assert extractor.calls == []
+    after = await _get_analysis(session_factory, published.game_id)
+    assert after is not None
+    assert after.lease_expires_at is not None
+    assert after.lease_expires_at > datetime.now(UTC) + timedelta(minutes=30)
+    assert _snapshot_of(after) == _snapshot_of(published.row)
+    assert await _recompute_reads_logged(session_factory) == []
+    assert any("ObjectNotFound" in record.getMessage() for record in caplog.records)
+
+    published.store.get_calls.clear()
+    await _ask_to_recompute(session_factory, published, _HEALTHY, max_calls=0)
+    assert published.store.get_calls == []
+
+
+async def test_a_store_outage_during_a_recompute_still_propagates_and_sets_no_window(
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """(b), the contrast: an outage says nothing about this recording, so it is not backed off. The
+    request errors, the row is as it was with no window, and the next request after the outage
+    recomputes."""
+    published = await _publish_once(session_factory, game_id=500_666_513)
+
+    async def outage(key: str) -> bytes:
+        raise ConnectionError("the object store is unreachable")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(published.store, "get", outage)
+        with pytest.raises(ConnectionError):
+            await _ask_to_recompute(session_factory, published, _HEALTHY, max_calls=0)
+
+    after = await _get_analysis(session_factory, published.game_id)
+    assert after is not None
+    assert after.lease_expires_at is None
+    assert _snapshot_of(after) == _snapshot_of(published.row)
+    assert await _recompute_reads_logged(session_factory) == []
+
+    extractor = await _ask_to_recompute(session_factory, published, _HEALTHY)
+    await _assert_recomputed_to_a_new_key(session_factory, published, extractor)
+
+
+async def test_a_first_analysis_never_reads_retained_bytes_so_a_bad_object_cannot_fail_it(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """(b), the first-analysis path: it parses the bytes it has just fetched and reads nothing back
+    from the store, so there is no integrity verdict to precede - 003's behaviour is unchanged.
+    The access-log row for the analysis is written whatever state the retained object is in."""
+    request = await _a_first_request(session_factory, game_id=500_666_514)
+    async with session_factory() as session:
+        retained = await retain_recording(
+            session,
+            request.store,
+            game_id=request.game_id,
+            profile_id=request.profile_id,
+            zip_bytes=b"raw bytes",
+        )
+    request.store.objects[retained.object_key] = b"bit rot"
+    request.store.get_calls.clear()
+
+    await request.ask()
+
+    row = await _get_analysis(session_factory, request.game_id)
+    assert row is not None
+    assert row.state == MatchAnalysisState.PUBLISHED
+    assert request.store.get_calls == []
+    logged = await _access_log_rows(session_factory)
+    assert [entry.purpose for entry in logged] == ["analysis"]
+    assert logged[0].retained_recording_id == retained.id
+
+
+# --- T666i (c): a publish failure names the step that failed ---------------------------------
+
+
+async def _first_analysis_failing_publish(
+    session_factory: async_sessionmaker[AsyncSession], *, game_id: int
+) -> MatchAnalysis:
+    request = await _a_first_request(session_factory, game_id=game_id)
+    await request.ask()
+    row = await _get_analysis(session_factory, game_id)
+    assert row is not None
+    assert row.state == MatchAnalysisState.FAILED
+    assert request.store.objects.keys().isdisjoint(_analysis_keys(request.store))
+    return row
+
+
+async def test_a_refused_row_update_is_reported_as_the_row_update_not_the_gap_rows(
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The `match_analyses` UPDATE is flushed before the gap insert, so a value the row refuses
+    surfaced inside the gap step and was reported as the gap rows."""
+    monkeypatch.setattr(
+        run_module, "document_recording_build", lambda document: _GAP_BUILD_OUT_OF_RANGE
+    )
+
+    row = await _first_analysis_failing_publish(session_factory, game_id=500_666_521)
+
+    assert row.error_message is not None
+    assert "row" in row.error_message
+    assert "gap" not in row.error_message
+    assert await _gap_row_count(session_factory) == 0
+
+
+async def test_a_refused_gap_insert_is_still_reported_as_the_gap_rows(
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The contrast: the row update goes through and the gap insert is what the table refuses."""
+    _a_gap_insert_fault(monkeypatch, 0)
+
+    row = await _first_analysis_failing_publish(session_factory, game_id=500_666_522)
+
+    assert row.error_message is not None
+    assert "gap" in row.error_message
+    assert "row update" not in row.error_message
+    assert await _gap_row_count(session_factory) == 0

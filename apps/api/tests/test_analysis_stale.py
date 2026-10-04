@@ -17,11 +17,9 @@ engine; the seeded rows below call it, and the API under test reaches it through
 test pins the property that matters: for every case the API's answer equals what `run_once` would
 decide for the same row, so the button and the recompute cannot disagree.
 
-**What is deliberately different between the two.** A published row whose retained-recording row is
-gone is *not stale* to the API (a recording that cannot be recomputed is not stale). The analyzer
-still reads it as stale today and marks the match unavailable, which unpublishes a served analysis -
-T666i's defect (a). The equality test carries that one case as `xfail(strict=True)`, so T666i
-removes the marker or fails loudly.
+**The missing-retained case agrees too (T666i).** A published row whose retained-recording row is
+gone is not stale to either side: a recording that cannot be recomputed is served as it is, and the
+analyzer no longer marks it unavailable.
 """
 
 from __future__ import annotations
@@ -345,19 +343,7 @@ async def test_stale_compares_the_identity_digest_not_the_parser_version(
 @pytest.mark.parametrize(
     ("index", "prepare"),
     [
-        pytest.param(
-            index,
-            prepare,
-            id=case_id,
-            marks=(
-                pytest.mark.xfail(
-                    strict=True,
-                    reason="T666i (a): the analyzer still reads a missing retained row as stale",
-                )
-                if case_id == "no-retained-row"
-                else ()
-            ),
-        )
+        pytest.param(index, prepare, id=case_id)
         for index, (case_id, _, prepare) in enumerate(_CASES)
     ],
 )

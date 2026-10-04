@@ -1460,7 +1460,7 @@ parallel batch; T666h, T666i and T666j follow, in order — all three edit `run.
       the check — one only a particular build can reach — keeps T666c's routing. The remaining shape
       the review named — a refused document caused by a code defect, which cannot be checked in
       advance — stays on 003's failure path, and this task says so in the code
-- [ ] T666i [US6] **Close the recompute path's two remaining unpublish and retry holes.** (a) A
+- [x] T666i [US6] **Close the recompute path's two remaining unpublish and retry holes.** (a) A
       published row whose retained-recording row is gone reads as stale, recomputes and is marked
       unavailable, which unpublishes a served analysis (**FR-042**) — latent until 003's retention half
       lands. A recording that cannot be recomputed is not stale: serve the prior analysis and never

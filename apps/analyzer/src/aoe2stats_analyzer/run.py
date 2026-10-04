@@ -61,6 +61,20 @@ before `claim_for_analysis`, so nothing is fetched from the source, retained, lo
 the match is not `failed`: the next request after the fix is a first analysis like any other.
 Reaching the failure routing above for a snapshot fault now means only one a particular build can
 reach.
+
+**A recording that cannot be recomputed is served, never unpublished (T666i, FR-042).** A published
+row with no retained-recording row is not stale (`staleness.is_stale`), and `_recompute` meeting the
+same absence - a row deleted between the verdict and the read - leaves the row alone. Nothing
+unpublishes a served analysis: `_mark_unavailable` refuses a `published` row, and `_mark_failed` is
+reached from a first analysis only. On the recompute path a retained object that fails its checksum
+(`RecordingIntegrityError`) or that the store reports missing (`ObjectNotFound`) is a fact about the
+retained recording, so repeating it only costs a store read per click: both take `_keep_prior` and
+its retry window. A transient store error (an outage) says nothing about the recording and still
+propagates with no window. Every read of retained bytes is logged (`_log_access`) before its
+checksum is judged (FR-029) - `retrieve_recording`'s `on_read` - so a read that fails the check
+leaves its row; a read the store could not serve leaves none, because nothing was read. The first
+analysis never reads retained bytes back (it parses the bytes it has just fetched), so it has no
+checksum to precede.
 """
 
 from __future__ import annotations
@@ -86,8 +100,12 @@ from aoe2stats_analyzer.extract import (
     validate_document,
     verify_deployment,
 )
-from aoe2stats_analyzer.retain import retain_recording, retrieve_recording
-from aoe2stats_analyzer.staleness import is_stale, retry_window_open
+from aoe2stats_analyzer.retain import (
+    RecordingIntegrityError,
+    retain_recording,
+    retrieve_recording,
+)
+from aoe2stats_analyzer.staleness import is_stale
 from aoe2stats_core.replay.analysis import AnalysisExtractor
 from aoe2stats_core.replay.validation import ReplayValidationError
 from aoe2stats_providers.base import NotFound, ReplayProvider
@@ -99,7 +117,7 @@ from aoe2stats_storage.models import (
     ReplayAccessLog,
     RetainedRecording,
 )
-from aoe2stats_storage.objects import ObjectStore, analysis_object_key
+from aoe2stats_storage.objects import ObjectNotFound, ObjectStore, analysis_object_key
 from aoe2stats_storage.repositories.base import session_scope
 from aoe2stats_storage.repositories.knowledge_gaps import (
     WHOLE_BUILD_ENTITY_ID,
@@ -200,10 +218,8 @@ async def _is_stale(
     a 500 (SC-006).
 
     A row with no stored digest or no recorded build was published before this feature and reads as
-    stale: it recomputes once. A published row with nothing retained is likewise handed to
-    `_recompute`, which marks it unavailable - the API already reports it as not stale, and T666i
-    makes this side agree (serve the prior analysis, never unpublish it); until then the one
-    divergence is this branch.
+    stale: it recomputes once. A published row with nothing retained is not stale (T666i): a
+    recording that cannot be recomputed is served as it is and never unpublished.
 
     **Nothing is caught.** An error computing the current digest - a snapshot that cannot be loaded
     (`SnapshotError`, a `ValueError`), one that fails its digest, an empty dependency record - is a
@@ -218,8 +234,6 @@ async def _is_stale(
         retained = await _retained_recording_row(
             session, game_id=analysis.game_id, profile_id=analysis.point_of_view_profile_id
         )
-    if retained is None:
-        return not retry_window_open(analysis, now=now)
     return is_stale(analysis, retained, engine=extractor, now=now)
 
 
@@ -294,6 +308,10 @@ async def _mark_unavailable(
     """FR-034: permanently `unavailable`, never presented as an action that then fails. Handles
     both the never-attempted case (no row yet — R8's expired-and-never-analysed match) and a row
     already claimed whose fetch just answered `NotFound`.
+
+    **Never unpublishes (T666i, FR-042).** A `published` row is a served analysis; whatever route
+    reached here - none does today, the first-analysis path claims only a `queued` or expired
+    `running` row - it is left exactly as it was.
     """
     async with session_scope(session_factory) as session:
         analysis = await session.get(MatchAnalysis, game_id)
@@ -308,7 +326,7 @@ async def _mark_unavailable(
                     finished_at=now,
                 )
             )
-        else:
+        elif analysis.state is not MatchAnalysisState.PUBLISHED:
             analysis.state = MatchAnalysisState.UNAVAILABLE
             analysis.finished_at = now
             analysis.result_key = None
@@ -337,15 +355,23 @@ async def _mark_failed(
         analysis.result_key = None
 
 
-class _GapRowsRefused(Exception):
-    """The gap rows a document implies could not be recorded: a value the table refuses (a data or
-    integrity error from the insert itself, or a value outside the closed cause and severity sets).
-    Raised by `_publish` before anything is written to the object store. A connection-level error
-    is deliberately *not* wrapped: it is transient, says nothing about this document, and must not
-    turn into a terminal `failed`."""
+#: The two steps of `_publish` that can be refused for a reason about the document, named in what
+#: the person who asked is shown (T666i): a refused row update is not a refused gap insert.
+_STEP_ROW_UPDATE = "the analysis row for this match could not be updated"
+_STEP_GAP_ROWS = "the knowledge gaps of this analysis could not be recorded"
 
-    def __init__(self, cause: Exception) -> None:
-        super().__init__(type(cause).__name__)
+
+class _PublishRefused(Exception):
+    """A step of `_publish` the database refused for a reason about this document: the
+    `match_analyses` update (a value its columns refuse) or the gap insert (a data or integrity
+    error from the insert itself, or a value outside the closed cause and severity sets). `step` is
+    the sentence naming which one. Raised by `_publish` before anything is written to the object
+    store. A connection-level error is deliberately *not* wrapped: it is transient, says nothing
+    about this document, and must not turn into a terminal `failed`."""
+
+    def __init__(self, step: str, cause: Exception) -> None:
+        super().__init__(f"{step}: {type(cause).__name__}")
+        self.step = step
         self.cause = cause
 
 
@@ -374,6 +400,10 @@ async def _publish(
     Everything is read back from `document`, the object just written, so the row cannot name a
     parser the object does not. `engine_deps` is the same record the document carries (FR-044,
     T655) - the column has existed through two migrations and nothing wrote it before.
+
+    **Two steps, named separately (T666i).** The row update is flushed, then the gap rows are
+    inserted; a refusal of either raises `_PublishRefused` carrying the sentence for the step that
+    failed, so the error recorded for the person who asked never blames the gap rows for the row.
 
     **The gap rows are written here, in this transaction (T662).** One `analysis_knowledge_gaps`
     row per entry of the document's `knowledge_gaps`, keyed by the identity digest and inserted
@@ -409,6 +439,12 @@ async def _publish(
         analysis.lease_expires_at = None
         analysis.error_class = None
         analysis.error_message = None
+        # The row update is flushed on its own, first: left to the insert's autoflush it surfaced
+        # inside the gap step, and a value `match_analyses` refused was reported as the gap rows.
+        try:
+            await session.flush()
+        except (IntegrityError, DataError) as exc:
+            raise _PublishRefused(_STEP_ROW_UPDATE, exc) from exc
         try:
             await KnowledgeGapsRepository(session).record_gaps(
                 game_id=game_id,
@@ -417,7 +453,7 @@ async def _publish(
             )
             await session.flush()
         except (ValueError, IntegrityError, DataError) as exc:
-            raise _GapRowsRefused(exc) from exc
+            raise _PublishRefused(_STEP_GAP_ROWS, exc) from exc
         # FR-042, T666d: created only if the key is free. A key that is taken already holds the
         # analysis for this identity - the key is a function of it - written by a concurrent
         # request (the recompute path holds no lease) or by a run that crashed after this put and
@@ -436,11 +472,8 @@ def _describe(exc: Exception) -> tuple[str, str]:
     else - a parse failure, a refused document, a placement or serialisation error - is this
     package's own text about the document, and is kept as 003's failure path always kept it.
     """
-    if isinstance(exc, _GapRowsRefused):
-        return (
-            type(exc.cause).__name__,
-            "the knowledge gaps of this analysis could not be recorded",
-        )
+    if isinstance(exc, _PublishRefused):
+        return type(exc.cause).__name__, exc.step
     if isinstance(exc, SnapshotError):
         return type(exc).__name__, "the knowledge snapshot for this recording could not be loaded"
     return type(exc).__name__, str(exc)
@@ -574,11 +607,11 @@ async def _extract_and_publish(
     **Every source this feature added is caught here, on both paths.** `ValueError` covers the
     refused document, the placement error, the unloadable snapshot (`SnapshotError`), the empty
     dependency record (FR-044) and the canonical serialiser's refusal (all `ValueError`s);
-    `_GapRowsRefused` the gap insert. Left to propagate, a first analysis stays `running`, its
-    lease expires, and the next request claims it again and fetches the recording from the source a
-    second time - spending the source budget capture depends on (constitution I). A transient
-    error (the object store, a lost connection) is still left to propagate: it says nothing about
-    this recording.
+    `_PublishRefused` the row update or the gap insert. Left to propagate, a first analysis stays
+    `running`, its lease expires, and the next request claims it again and fetches the recording
+    from the source a second time - spending the source budget capture depends on (constitution I).
+    A transient error (the object store, a lost connection) is still left to propagate: it says
+    nothing about this recording.
     """
     try:
         document = build_document(
@@ -625,7 +658,7 @@ async def _extract_and_publish(
             result_key=result_key,
             now=now,
         )
-    except _GapRowsRefused as exc:
+    except _PublishRefused as exc:
         await _refuse(
             session_factory,
             extractor=extractor,
@@ -658,29 +691,48 @@ async def _recompute(
     async with session_factory() as session:
         retained = await _retained_recording_row(session, game_id=game_id, profile_id=profile_id)
         if retained is None:
-            # FR-033 retains for every publish, so a published row with nothing retained should
-            # never happen. Nothing in this codebase reaches this branch; treat it the same as a
-            # source that no longer serves this match, rather than raise into a caller that
-            # promised never to see this function fail.
-            await _mark_unavailable(
-                session_factory,
-                game_id=game_id,
-                point_of_view_profile_id=profile_id,
-                requested_by_user_id=requested_by_user_id,
-                now=now,
+            # The verdict (`_is_stale`) already treats a published row with nothing retained as not
+            # stale; this is the same answer for a row that vanished between that verdict and this
+            # read. A recording that cannot be recomputed is served as it is: nothing is
+            # unpublished (T666i, FR-042) and nothing is written.
+            logger.warning(
+                "recompute skipped, prior analysis kept: game_id=%s reason=no retained recording",
+                game_id,
             )
             return
-        zip_bytes = await retrieve_recording(
-            session, object_store, game_id=game_id, profile_id=profile_id
-        )
+        object_key, zip_sha256 = retained.object_key, retained.zip_sha256
 
-    # FR-029: logged before `build_document` ever loads an engine (module docstring).
-    await _log_access(
-        session_factory,
-        retained_recording_id=retained.id,
-        user_id=requested_by_user_id,
-        purpose=_RECOMPUTE_PURPOSE,
-    )
+        async def log_read(row: RetainedRecording) -> None:
+            # FR-029: written when the bytes arrive, before their checksum is judged, and before
+            # `build_document` ever loads an engine (module docstring).
+            await _log_access(
+                session_factory,
+                retained_recording_id=row.id,
+                user_id=requested_by_user_id,
+                purpose=_RECOMPUTE_PURPOSE,
+            )
+
+        try:
+            zip_bytes = await retrieve_recording(
+                session, object_store, game_id=game_id, profile_id=profile_id, on_read=log_read
+            )
+        except (RecordingIntegrityError, ObjectNotFound) as exc:
+            # A fact about the retained recording, not about this request: asking again at once
+            # repeats it at the price of a read per click, so it takes the keep-prior path and its
+            # retry window (T666c). Any other store error - an outage - is transient, says nothing
+            # about the recording, and propagates with no window.
+            await _refuse(
+                session_factory,
+                extractor=extractor,
+                game_id=game_id,
+                object_key=object_key,
+                zip_sha256=zip_sha256,
+                exc=exc,
+                now=now,
+                keep_prior=True,
+                retry_after=retry_after,
+            )
+            return
 
     await _extract_and_publish(
         session_factory,
@@ -688,8 +740,8 @@ async def _recompute(
         extractor=extractor,
         game_id=game_id,
         zip_bytes=zip_bytes,
-        object_key=retained.object_key,
-        zip_sha256=retained.zip_sha256,
+        object_key=object_key,
+        zip_sha256=zip_sha256,
         now=now,
         keep_prior=True,
         retry_after=retry_after,
