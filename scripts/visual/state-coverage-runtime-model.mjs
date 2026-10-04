@@ -11,6 +11,11 @@
 // target, the tracked primitive instance that placed it, what holds focus after `play()`, and every
 // tracked primitive instance the story mounts. See that module for what each field means.
 //
+// An entry also carries `files`: the sorted unique repository-rooted paths of every stamped source file
+// that rendered an element in the story's document (portals included — a story renders alone in its
+// page), unioned across widths. It is what `selectRuntimeStories` reads, and the whole of what it
+// reads: a diff selects the entries that recorded a file it touches.
+//
 // An instance is an object, `{ component, variant, size, disabledAt }` in that key order, so a reader
 // (T694) decodes it in Node without reading `preview.tsx`: `variant` and `size` are `null` when the
 // primitive has no such axis or no value was passed and there is no default; `disabledAt` is the
@@ -20,7 +25,7 @@ import { spawnSync } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { BUILD_STORYBOOK_COMMAND } from './missing-index.mjs'
-import { importFile, listStories } from './story-index.mjs'
+import { importFile, isFixtureEntry, listStories } from './story-index.mjs'
 import { selectChangedStories } from './story-selection.mjs'
 
 export const MANIFEST_PATH = 'packages/design-system/specs/state-coverage-runtime.json'
@@ -28,28 +33,26 @@ export const PASS_COMMAND = 'pnpm test:visual:state-coverage-runtime'
 // The command that rewrites entries, named by every failure so the fix is never a guess.
 export const REWRITE_COMMAND = `${PASS_COMMAND} --write`
 
-// The directory each tracked primitive's own source lives in — what `.storybook/preview.tsx`
-// registers as `directory`, repeated here because this module runs in Node and cannot import a
-// browser module. `state-coverage-runtime-model.test.mjs` fails when the two disagree.
-export const TRACKED_DIRECTORIES = {
-  Button: 'packages/design-system/src/primitives/Button/',
-  Link: 'packages/design-system/src/primitives/Link/',
-  Field: 'packages/design-system/src/primitives/Field/',
-  Menu: 'packages/design-system/src/primitives/Menu/',
-}
-
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 
-// One manifest entry for one index story, from what the browser recorded at each width.
+// One manifest entry for one index story, from what the browser recorded at each width. Each width's
+// record may carry `files` (the stamped files that width rendered); they are unioned into the entry's
+// own sorted `files` and kept out of the per-width records.
 export function buildEntry(story, widthRecords) {
+  const files = new Set()
+  const widths = {}
+  for (const [width, record] of Object.entries(widthRecords).sort(
+    ([a], [b]) => Number(a) - Number(b),
+  )) {
+    const { files: rendered = [], ...rest } = record
+    for (const file of rendered) files.add(file)
+    widths[String(width)] = rest
+  }
   return {
     importPath: story.importPath,
     exportName: story.exportName,
-    widths: Object.fromEntries(
-      Object.entries(widthRecords)
-        .sort(([a], [b]) => Number(a) - Number(b))
-        .map(([width, record]) => [String(width), record]),
-    ),
+    files: [...files].sort(),
+    widths,
   }
 }
 
@@ -105,56 +108,102 @@ export function findIndexProblem(index) {
   return `Storybook build has no stories — nothing to record, and a rewrite would empty the manifest. Rebuild: \`${BUILD_STORYBOOK_COMMAND}\`.`
 }
 
+// ---- The driver's refusals: arguments, a malformed manifest, a build without its plants -----------
+
+export const FLAGS = ['--keys', '--write', '--changed', '--plants']
+
+// The driver's arguments, each one a flag it knows. An unknown token — a typo, a positional word, two
+// flags joined in one argument (`"--write --plants"`, which a shell quoting slip makes) — is a problem
+// naming that exact token: ignoring it would run a different mode than the one asked for, and a
+// `--write` that silently became a check (or the reverse) is the failure this exists to end.
+export function parseArgs(argv) {
+  const flags = new Set()
+  const problems = []
+  for (const token of argv) {
+    if (FLAGS.includes(token)) flags.add(token)
+    else {
+      problems.push(
+        `unknown argument ${JSON.stringify(token)} — the flags are ${FLAGS.join(', ')}, one per argument.`,
+      )
+    }
+  }
+  if (flags.has('--keys') && flags.size > 1) {
+    problems.push(
+      '--keys is the browserless key check and stands alone; it writes and selects nothing.',
+    )
+  }
+  if (flags.has('--changed') && flags.has('--plants')) {
+    problems.push('--changed and --plants are two selections; name one.')
+  }
+  return { flags, problems }
+}
+
+// The manifest from its text: `{ manifest }`, or `{ problem }` naming `label` (the file, or the file
+// at the diff base) and the command that rewrites it — never a raw `SyntaxError`. A conflicted file, an
+// empty one and any JSON that is not an object are all problems.
+export function parseManifest(text, { label }) {
+  let value
+  try {
+    value = JSON.parse(text)
+  } catch (error) {
+    return {
+      problem:
+        `${label} is not valid JSON (${error.message.split('\n')[0]}) — a merge conflict or a hand ` +
+        `edit. \`${REWRITE_COMMAND}\` (no other flag) rebuilds it from the built Storybook.`,
+    }
+  }
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return {
+      problem:
+        `${label} is not a JSON object of story entries. \`${REWRITE_COMMAND}\` (no other flag) ` +
+        'rebuilds it from the built Storybook.',
+    }
+  }
+  return { manifest: value }
+}
+
+// A build that lists published stories but not one plant has lost the fixtures glob (or its tag): a
+// pass over it checks nothing a plant asserts, and `--write --plants` would drop every plant entry.
+// Returns the refusal, or `null`. An index with no published story at all is `findIndexProblem`'s.
+export function findFixtureProblem(index) {
+  const all = listStories(index, { includeFixtures: true })
+  if (all.length === 0 || all.some(isFixtureEntry)) return null
+  return (
+    'the built Storybook lists no fixture story (tag `state-coverage-fixture`) — the plants are not ' +
+    'in this build, so a pass would assert none of them and a rewrite would drop every plant entry. ' +
+    `Check the \`./fixtures/**\` glob in packages/design-system/.storybook/main.ts, then rebuild: \`${BUILD_STORYBOOK_COMMAND}\`.`
+  )
+}
+
 // ---- Which entries a --changed run re-checks ------------------------------------------------------
-
-// Every tracked primitive instance an entry records, across widths: what it mounts, what placed its
-// forced element, what placed its focused one.
-export function entryInstances(entry) {
-  const found = []
-  for (const record of Object.values(entry?.widths ?? {})) {
-    found.push(...(record.mounts ?? []))
-    if (record.force?.placedBy) found.push(record.force.placedBy)
-    if (record.focus?.placedBy) found.push(record.focus.placedBy)
-  }
-  return found
-}
-
-// Every stamp an entry cites, across widths: the forced element's, the focused element's, and each
-// instance's `disabledAt`.
-export function entryStamps(entry) {
-  const stamps = new Set()
-  for (const record of Object.values(entry?.widths ?? {})) {
-    if (record.force?.stamp) stamps.add(record.force.stamp)
-    if (record.focus?.stamp) stamps.add(record.focus.stamp)
-  }
-  for (const instance of entryInstances(entry)) {
-    for (const stamp of instance.disabledAt ?? []) stamps.add(stamp)
-  }
-  return stamps
-}
-
-const stampFile = (stamp) => stamp.slice(0, stamp.lastIndexOf(':'))
 
 // The stories a diff leaves the runtime pass to re-check under `--changed`: the union of
 //   (a) what `pnpm test:visual --changed` selects (`selectChangedStories`, from the story's own
 //       directory or a global-reach path) — a story's own file, or its component's;
-//   (b) every story whose committed entry cites, anywhere, a stamp whose file is in the diff — the
-//       entry is a record of that file's line numbers and a line shift changes it;
-//   (c) every story whose committed entry mounts or is placed by a tracked primitive whose directory
-//       has a file in the diff — what a primitive renders changes what the story mounts;
+//   (b) every story whose committed entry RECORDED, in `files`, a source file the diff touches — the
+//       stamped files that rendered an element in that story. Nothing else is read from the entry:
+//       a stamp the entry cites and a primitive it mounts are both in `files`, because the element
+//       carrying the stamp, and the primitive's own elements, are what put a file there. A test file,
+//       a story file and a docs file are never stamped, so a diff on one of them alone selects
+//       nothing through (b);
 //   (d) every story whose committed entry differs from the one in the diff base's manifest
 //       (`baseManifest`; `null` when the manifest does not exist there, so every entry differs) — a
 //       pull request that edits the manifest alone has those entries checked in the browser.
-// Returns `{ stories, rules }`: the stories in input order, and for each id the rules that selected it.
+// Returns `{ stories, rules }`: the stories in input order, and for each id the rules that selected it
+// (`story-files`, `files`, `manifest-entry`).
 //
-// What this cannot see, and nightly (which checks every entry) does: a composite B changes an axis it
-// passes to a primitive and a screen A renders B. A's mounts change, but nothing in A's committed
-// entry names B's file, so unless (a) reaches A the change waits for nightly.
+// What this cannot see, and nightly (which checks every entry) does — stated exactly, no wider and no
+// narrower than the code:
+//   - a change to a file that rendered NO stamped element in the story: a hook, a `lib` helper (a
+//     global-reach path, so (a) selects everything for `src/lib/`, but not for a hook that lives in a
+//     component directory elsewhere), a story's own file (that is (a)'s job), and tokens or CSS, which
+//     change paint and never which element exists, who wrote it or who placed it;
+//   - a component that STARTS being rendered by a story because of a change in a file that story did
+//     not previously render — a composite B begins to render a `Button`; a screen A that renders B
+//     records B's file but not `Button`'s, so a diff touching only `Button` does not select A until
+//     the entry is rewritten — when (a) does not reach A either.
 export function selectRuntimeStories({ stories, manifest, baseManifest, diff }) {
   const diffFiles = new Set(diff)
-  const touchedDirectories = Object.entries(TRACKED_DIRECTORIES)
-    .filter(([, dir]) => diff.some((file) => file.startsWith(dir)))
-    .map(([name]) => name)
   const byDiff = new Set(selectChangedStories(stories, diff).stories.map((s) => s.id))
 
   const rules = new Map()
@@ -163,12 +212,7 @@ export function selectRuntimeStories({ stories, manifest, baseManifest, diff }) 
     const entry = manifest[story.id]
     const why = []
     if (byDiff.has(story.id)) why.push('story-files')
-    if ([...entryStamps(entry)].some((stamp) => diffFiles.has(stampFile(stamp)))) {
-      why.push('cited-stamp')
-    }
-    if (entryInstances(entry).some((i) => touchedDirectories.includes(i.component))) {
-      why.push('tracked-primitive')
-    }
+    if ((entry?.files ?? []).some((file) => diffFiles.has(file))) why.push('files')
     const before = baseManifest === null ? undefined : baseManifest[story.id]
     if (entry !== undefined || before !== undefined) {
       if (baseManifest === null || !sameJson(entry, before)) why.push('manifest-entry')
@@ -240,6 +284,7 @@ export function serializeManifest(manifest) {
     lines.push(`${JSON.stringify(id)}: {`)
     lines.push(`"importPath": ${JSON.stringify(entry.importPath)},`)
     lines.push(`"exportName": ${JSON.stringify(entry.exportName)},`)
+    lines.push(`"files": ${JSON.stringify(entry.files ?? [])},`)
     lines.push('"widths": {')
     const widths = Object.keys(entry.widths)
     widths.forEach((width, j) => {

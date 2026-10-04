@@ -272,3 +272,51 @@ export const ButtonHrefViaSpreadConstant: Story = {
   parameters: { visualForceState: { state: 'hover', role: 'button' } },
   render: () => <Button {...LINK_PROPS}>Go</Button>,
 }
+
+// ---- a heading a primitive writes through a tag variable (T693, third remediation) ---------------
+
+// `Callout` writes its heading as `const Heading = `h${level}`` then `<Heading>`: an intrinsic element
+// behind a capitalised local, which the source stamp must still stamp. Forced by role, the heading is
+// found once and carries `Callout`'s stamp; `Callout` is not a tracked primitive, so nothing placed it.
+export const ForcedCalloutHeading: Story = {
+  parameters: { visualForceState: { state: 'hover', role: 'heading' } },
+  render: () => <Callout tone="info" heading="Saved" />,
+}
+
+// The same heading, found as what holds focus after `play()` — the case the committed manifest got
+// wrong while dynamic tags went unstamped (`focus: { stamp: null }` for a focused `Callout` heading).
+export const PlayFocusCalloutHeading: Story = {
+  play: ({ canvasElement }) => {
+    canvasElement.querySelector<HTMLElement>('h2')?.focus()
+  },
+  render: () => <Callout tone="success" heading="Done" />,
+}
+
+// ---- a story's own element, beside and inside a primitive (T687, T689) ---------------------------
+
+// A `<span role="slider">` the story writes as a `Button`'s child, forced by role: one match, and the
+// element is the story's — no stamp, and no instance placed it, though a `Button` is all around it.
+export const SliderInsideButton: Story = {
+  parameters: { visualForceState: { state: 'hover', role: 'slider' } },
+  render: () => (
+    <Button variant="primary" size="md">
+      <span role="slider" aria-valuenow={1} aria-valuemin={0} aria-valuemax={2} tabIndex={0}>
+        Level
+      </span>
+    </Button>
+  ),
+}
+
+// A raw `<button>` beside a `<Button>`, picked by `name`: one match, written by the story, placed by
+// no instance — the contrast to `TwoMatches`, where the same two elements are forced by role alone.
+export const RawButtonPickedByName: Story = {
+  parameters: { visualForceState: { state: 'hover', role: 'button', name: 'Raw' } },
+  render: () => (
+    <div>
+      <button type="button">Raw</button>
+      <Button variant="primary" size="lg">
+        Composed
+      </Button>
+    </div>
+  ),
+}

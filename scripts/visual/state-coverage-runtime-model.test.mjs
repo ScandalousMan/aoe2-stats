@@ -4,7 +4,7 @@
 // `findKeyProblems` whatever a diff selected; that is the claim the PR job's browserless step makes.
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { test } from 'node:test'
@@ -12,15 +12,17 @@ import { fileURLToPath } from 'node:url'
 import {
   MANIFEST_PATH,
   REWRITE_COMMAND,
-  TRACKED_DIRECTORIES,
   buildEntry,
   describeEntryDifferences,
   describeKeyProblems,
   findEntryDifferences,
+  findFixtureProblem,
   findIndexProblem,
   findKeyProblems,
   manifestNeedsWrite,
   mergeManifest,
+  parseArgs,
+  parseManifest,
   selectRuntimeStories,
   serializeManifest,
 } from './state-coverage-runtime-model.mjs'
@@ -122,7 +124,12 @@ test('findEntryDifferences compares only the ids the pass ran, ignoring key orde
     diffs.map((d) => d.id),
     [A.id],
   )
-  const reordered = { widths: entryOf(A).widths, exportName: 'One', importPath: A.importPath }
+  const reordered = {
+    widths: entryOf(A).widths,
+    files: [],
+    exportName: 'One',
+    importPath: A.importPath,
+  }
   assert.deepEqual(findEntryDifferences({ manifest, fresh: { [A.id]: reordered } }), [])
 })
 
@@ -155,58 +162,64 @@ test('serializeManifest reads back as the same value', () => {
   assert.deepEqual(JSON.parse(serializeManifest({})), {})
 })
 
-// ---- B1: `--changed` must see what an entry depends on -------------------------------------------
+// ---- B1: `--changed` selects by what an entry RECORDED it rendered ---------------------------------
+//
+// Each entry carries `files`: the sorted unique repository-rooted paths of every stamped file that
+// rendered an element under the story (portals included), unioned across widths. A diff selects an
+// entry when it names one of those files — one rule, which subsumes "the entry cites a stamp in the
+// file" and "the entry mounts a primitive whose directory changed".
 
 const BUTTON_FILE = 'packages/design-system/src/primitives/Button/index.tsx'
 const BUTTON_DIFF = [BUTTON_FILE]
 const MANIFEST_DIFF = [MANIFEST_PATH]
 const ROW_FILE = 'packages/design-system/src/composites/Row/index.tsx'
 const ROW_DIFF = [ROW_FILE]
+const MENU_FILE = 'packages/design-system/src/primitives/Menu/index.tsx'
 
 // Stories whose own directory no diff below touches, so selection (a) — what `selectChangedStories`
-// picks — never reaches them: whatever is selected is selected by an entry's own citations.
+// picks — never reaches them: whatever is selected is selected by an entry's own `files`.
 const here = (id, name) => story(id, `./src/screens/${name}/${name}.stories.tsx`, name, [])
-const S_FORCE = here('screens-force--one', 'Force')
-const S_FOCUS = here('screens-focus--one', 'Focus')
-const S_DISABLED = here('screens-disabled--one', 'Disabled')
-const S_MOUNT = here('screens-mount--one', 'Mount')
-const S_PLACED = here('screens-placed--one', 'Placed')
-const S_PLAIN = here('screens-plain--one', 'Plain')
-const ALL = [S_FORCE, S_FOCUS, S_DISABLED, S_MOUNT, S_PLACED, S_PLAIN]
+const S_ROW = here('screens-row--one', 'RowScreen')
+const S_MENU = here('screens-menu--one', 'MenuScreen')
+const S_BOTH = here('screens-both--one', 'BothScreen')
+const S_NONE = here('screens-none--one', 'NoneScreen')
+const ALL = [S_ROW, S_MENU, S_BOTH, S_NONE]
 
 const widthsOf = (rec) => ({ 375: rec, 768: rec, 1280: rec })
-const entryWith = (s, rec) => ({
+const entryWith = (s, files, rec = { mounts: [] }) => ({
   importPath: s.importPath,
   exportName: s.exportName,
+  files,
   widths: widthsOf(rec),
 })
-// Entries that each cite one thing, and nothing a Button, Link, Field or Menu directory could select.
 const base = () => ({
-  [S_FORCE.id]: entryWith(S_FORCE, {
-    mounts: [],
-    force: { count: 1, stamp: `${ROW_FILE}:10`, placedBy: null },
-  }),
-  [S_FOCUS.id]: entryWith(S_FOCUS, {
-    mounts: [],
-    focus: { stamp: `${ROW_FILE}:20`, placedBy: null },
-  }),
-  [S_DISABLED.id]: entryWith(S_DISABLED, {
-    mounts: [inst('Menu', 'actions', null, [`${ROW_FILE}:30`])],
-  }),
-  [S_MOUNT.id]: entryWith(S_MOUNT, { mounts: [inst('Menu', 'actions')] }),
-  [S_PLACED.id]: entryWith(S_PLACED, {
-    mounts: [],
-    force: { count: 1, stamp: null, placedBy: inst('Field', null, 'md') },
-  }),
-  [S_PLAIN.id]: entryWith(S_PLAIN, { mounts: [] }),
+  [S_ROW.id]: entryWith(S_ROW, [ROW_FILE]),
+  [S_MENU.id]: entryWith(S_MENU, [MENU_FILE]),
+  [S_BOTH.id]: entryWith(S_BOTH, [MENU_FILE, ROW_FILE]),
+  [S_NONE.id]: entryWith(S_NONE, []),
 })
-const selectIds = (diff, manifest = base(), baseManifest = manifest, stories = ALL) =>
-  selectRuntimeStories({ stories, manifest, baseManifest, diff }).stories.map((s) => s.id)
+const select = (diff, manifest = base(), baseManifest = manifest, stories = ALL) =>
+  selectRuntimeStories({ stories, manifest, baseManifest, diff })
+const selectIds = (...args) => select(...args).stories.map((s) => s.id)
+
+test('buildEntry records `files` as the sorted union across widths, and keeps it out of the per-width records', () => {
+  const rec = (files) => ({ mounts: [], files })
+  const entry = buildEntry(A, {
+    375: rec(['b.tsx', 'a.tsx']),
+    768: rec(['a.tsx']),
+    1280: rec(['c.tsx', 'a.tsx']),
+  })
+  assert.deepEqual(entry.files, ['a.tsx', 'b.tsx', 'c.tsx'])
+  assert.deepEqual(Object.keys(entry), ['importPath', 'exportName', 'files', 'widths'])
+  assert.deepEqual(entry.widths['375'], { mounts: [] })
+  assert.deepEqual(buildEntry(A, { 375: { mounts: [] } }).files, [])
+})
 
 test('selection (a): what selectChangedStories selects today is still selected', () => {
   const own = story('own--one', './src/composites/Row/Row.stories.tsx', 'One')
-  const manifest = { ...base(), [own.id]: entryWith(own, { mounts: [] }) }
-  assert.deepEqual(selectIds(ROW_DIFF, manifest, manifest, [...ALL, own]).includes(own.id), true)
+  const manifest = { ...base(), [own.id]: entryWith(own, []) }
+  const picked = select(ROW_DIFF, manifest, manifest, [...ALL, own])
+  assert.deepEqual(picked.rules.get(own.id), ['story-files'])
   const global = selectRuntimeStories({
     stories: ALL,
     manifest: base(),
@@ -216,69 +229,46 @@ test('selection (a): what selectChangedStories selects today is still selected',
   assert.equal(global.stories.length, ALL.length)
 })
 
-test('selection (b): an entry citing a stamp whose file is in the diff is selected — a force stamp, a focus stamp and a disabledAt stamp, each on its own', () => {
-  assert.deepEqual(selectIds(ROW_DIFF).sort(), [S_DISABLED.id, S_FOCUS.id, S_FORCE.id].sort())
-  for (const [id, label] of [
-    [S_FORCE.id, 'force stamp'],
-    [S_FOCUS.id, 'focus stamp'],
-    [S_DISABLED.id, 'disabledAt stamp'],
-  ]) {
-    const only = { [id]: base()[id] }
-    const stories = ALL.filter((s) => s.id === id)
-    assert.deepEqual(selectIds(ROW_DIFF, only, only, stories), [id], label)
-  }
+test('selection (b): an entry whose recorded files name a file in the diff is selected, and no other', () => {
+  assert.deepEqual(selectIds(ROW_DIFF).sort(), [S_BOTH.id, S_ROW.id].sort())
+  assert.deepEqual(selectIds([MENU_FILE]).sort(), [S_BOTH.id, S_MENU.id].sort())
+  assert.deepEqual(select(ROW_DIFF).rules.get(S_ROW.id), ['files'])
 })
 
-test('selection (b): the stamp is matched by its file, never by a prefix of another path', () => {
+test('selection (b): the file is matched whole, never by a prefix, a suffix or a directory of another path', () => {
   assert.deepEqual(selectIds([`${ROW_FILE}x`]), [])
   assert.deepEqual(selectIds(['packages/design-system/src/composites/Row/index.ts']), [])
+  assert.deepEqual(selectIds(['packages/design-system/src/composites/Row/Row.test.tsx']), [])
+  assert.deepEqual(selectIds(['packages/design-system/src/composites/Row/']), [])
 })
 
-test('selection (c): an entry that mounts or is placed by a tracked primitive is selected when its directory has a file in the diff', () => {
-  assert.deepEqual(
-    selectIds(['packages/design-system/src/primitives/Menu/index.tsx']).sort(),
-    [S_DISABLED.id, S_MOUNT.id].sort(),
-    'mounts only (Menu), no stamp cited',
-  )
-  assert.deepEqual(
-    selectIds(['packages/design-system/src/primitives/Field/Field.css']),
-    [S_PLACED.id],
-    'placed by only (Field), mounts empty',
-  )
-  assert.deepEqual(
-    selectIds(['packages/design-system/src/primitives/Link/index.tsx']),
-    [],
-    'no entry mounts a Link',
-  )
+test('selection (b): an entry with no recorded files — an old manifest, a docs-only story — is selected by nothing here', () => {
+  const manifest = base()
+  delete manifest[S_ROW.id].files
+  assert.deepEqual(selectIds(ROW_DIFF, manifest), [S_BOTH.id])
 })
 
-test('selection (c): the table of tracked directories is the preview registry', () => {
-  const preview = readFileSync(
-    path.join(rootDir, 'packages/design-system/.storybook/preview.tsx'),
-    'utf8',
-  )
-  const registered = Object.fromEntries(
-    [...preview.matchAll(/(\w+): \{\s*component: \w+,\s*directory: '([^']+)'/g)].map((m) => [
-      m[1],
-      m[2],
-    ]),
-  )
-  assert.deepEqual(TRACKED_DIRECTORIES, registered)
-})
-
-test('selection (d): an entry that differs from the diff base is selected — a changed stamp, a changed placedBy, a removed entry', () => {
+test('selection (d): an entry that differs from the diff base is selected — a changed stamp, a changed placedBy, a changed file list, a removed entry', () => {
   const before = base()
   const stamp = base()
-  stamp[S_FORCE.id].widths[768].force.stamp = `${ROW_FILE}:11`
-  assert.deepEqual(selectIds(MANIFEST_DIFF, stamp, before), [S_FORCE.id], 'changed stamp')
+  stamp[S_ROW.id].widths[768].force = { count: 1, stamp: `${ROW_FILE}:11`, placedBy: null }
+  assert.deepEqual(selectIds(MANIFEST_DIFF, stamp, before), [S_ROW.id], 'changed stamp')
 
   const placed = base()
-  placed[S_PLACED.id].widths[1280].force.placedBy = inst('Field', null, 'lg')
-  assert.deepEqual(selectIds(MANIFEST_DIFF, placed, before), [S_PLACED.id], 'changed placedBy')
+  placed[S_MENU.id].widths[1280].force = {
+    count: 1,
+    stamp: null,
+    placedBy: inst('Field', null, 'lg'),
+  }
+  assert.deepEqual(selectIds(MANIFEST_DIFF, placed, before), [S_MENU.id], 'changed placedBy')
+
+  const files = base()
+  files[S_NONE.id].files = [ROW_FILE]
+  assert.deepEqual(selectIds(MANIFEST_DIFF, files, before), [S_NONE.id], 'changed files')
 
   const removed = base()
-  delete removed[S_PLAIN.id]
-  assert.deepEqual(selectIds(MANIFEST_DIFF, removed, before), [S_PLAIN.id], 'removed entry')
+  delete removed[S_NONE.id]
+  assert.deepEqual(selectIds(MANIFEST_DIFF, removed, before), [S_NONE.id], 'removed entry')
 })
 
 test('selection (d): a manifest absent at the base makes every entry differ; an identical one makes none', () => {
@@ -286,48 +276,141 @@ test('selection (d): a manifest absent at the base makes every entry differ; an 
   assert.deepEqual(selectIds(MANIFEST_DIFF, base(), base()), [])
 })
 
-test('selection contrast: an unrelated composite and a docs file select nothing a Button stamp or mount cites', () => {
-  const manifest = {
-    [S_MOUNT.id]: entryWith(S_MOUNT, {
-      mounts: [inst('Button', 'primary', 'md')],
-      force: { count: 1, stamp: `${BUTTON_FILE}:213`, placedBy: inst('Button', 'primary', 'md') },
-    }),
+test('selection contrast: an unrelated composite, a docs file and a test file select nothing', () => {
+  for (const file of [
+    'packages/design-system/src/composites/Unrelated/index.tsx',
+    'docs/data-sources.md',
+    'packages/design-system/src/composites/Row/Row.test.tsx',
+  ]) {
+    assert.deepEqual(selectIds([file]), [], file)
   }
-  const stories = [S_MOUNT]
-  assert.deepEqual(
-    selectIds(
-      ['packages/design-system/src/composites/Unrelated/index.tsx'],
-      manifest,
-      manifest,
-      stories,
-    ),
-    [],
-  )
-  assert.deepEqual(selectIds(['docs/data-sources.md'], manifest, manifest, stories), [])
-  assert.deepEqual(selectIds(BUTTON_DIFF, manifest, manifest, stories), [S_MOUNT.id])
 })
 
-test('selection, against the committed manifest: a diff in Button selects every entry that cites a Button stamp or mounts a Button', () => {
+// The throwaway-repository tests need real git: a rename must list both of its sides.
+function gitRepo() {
+  const dir = mkdtempSync(path.join(tmpdir(), 'runtime-selection-'))
+  const git = (...args) => {
+    const r = spawnSync('git', args, { cwd: dir, encoding: 'utf8' })
+    assert.equal(r.status, 0, `git ${args.join(' ')}: ${r.stderr}`)
+    return r.stdout
+  }
+  git('init', '-q', '-b', 'main')
+  git('config', 'user.email', 'test@example.com')
+  git('config', 'user.name', 'test')
+  git('config', 'commit.gpgsign', 'false')
+  return { dir, git }
+}
+
+test('a renamed file selects the entries that recorded its OLD path: changedFiles lists both sides of a rename', async () => {
+  const { dir, git } = gitRepo()
+  try {
+    const old = 'packages/design-system/src/primitives/Tooltip/index.tsx'
+    mkdirSync(path.dirname(path.join(dir, old)), { recursive: true })
+    writeFileSync(path.join(dir, old), 'export const Tooltip = () => null\n'.repeat(20))
+    git('add', '-A')
+    git('commit', '-q', '-m', 'base')
+    git('checkout', '-q', '-b', 'feature')
+    const renamed = 'packages/design-system/src/primitives/Hint/index.tsx'
+    mkdirSync(path.dirname(path.join(dir, renamed)), { recursive: true })
+    git('mv', old, renamed)
+    git('commit', '-q', '-m', 'rename')
+
+    const { changedFiles } = await import('./story-selection.mjs')
+    const previous = process.env.VISUAL_BASE_REF
+    process.env.VISUAL_BASE_REF = 'main'
+    let files
+    try {
+      files = changedFiles({ cwd: dir, prefix: 'test', unscopedCommand: 'x' })
+    } finally {
+      if (previous === undefined) delete process.env.VISUAL_BASE_REF
+      else process.env.VISUAL_BASE_REF = previous
+    }
+    assert.deepEqual([...files].sort(), [old, renamed].sort())
+
+    const consumer = here('screens-consumer--one', 'ConsumerScreen')
+    const bystander = here('screens-bystander--one', 'BystanderScreen')
+    const manifest = {
+      [consumer.id]: entryWith(consumer, [old]),
+      [bystander.id]: entryWith(bystander, [ROW_FILE]),
+    }
+    assert.deepEqual(
+      selectIds(files, manifest, manifest, [consumer, bystander]),
+      [consumer.id],
+      'the entry that recorded the old path is selected',
+    )
+    // The reproduction: with a rename-detecting diff only the new path is listed, and nothing selects.
+    assert.deepEqual(selectIds([renamed], manifest, manifest, [consumer, bystander]), [])
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('selection, against the committed manifest: every entry records files; a diff on a file selects exactly the entries that recorded it', () => {
   const manifest = JSON.parse(readFileSync(path.join(rootDir, MANIFEST_PATH), 'utf8'))
   const stories = Object.entries(manifest).map(([id, e]) => ({
     id,
     importPath: e.importPath,
     exportName: e.exportName,
   }))
-  const citing = Object.keys(manifest).filter((id) =>
-    JSON.stringify(manifest[id]).includes('primitives/Button/index.tsx'),
+  const missing = Object.keys(manifest).filter((id) => !Array.isArray(manifest[id].files))
+  assert.deepEqual(missing, [], 'entries with no `files`')
+  for (const id of Object.keys(manifest)) {
+    const files = manifest[id].files
+    assert.deepEqual(files, [...new Set(files)].sort(), `${id}: files are sorted and unique`)
+    for (const file of files) assert.match(file, /^packages\/design-system\/src\/.+\.tsx?$/, id)
+  }
+
+  const recorded = Object.keys(manifest).filter((id) => manifest[id].files.includes(BUTTON_FILE))
+  assert.ok(
+    recorded.length >= 35,
+    `expected at least 35 entries to record Button, saw ${recorded.length}`,
   )
-  assert.ok(citing.length >= 35, `expected at least 35 Button-citing entries, saw ${citing.length}`)
-  const picked = new Set(selectIds(BUTTON_DIFF, manifest, manifest, stories))
-  const missed = citing.filter((id) => !picked.has(id))
-  assert.deepEqual(missed, [], 'entries that cite a Button stamp but the selection missed')
-  const mounting = Object.keys(manifest).filter((id) =>
-    JSON.stringify(manifest[id]).includes('"component":"Button"'),
+  const picked = select(BUTTON_DIFF, manifest, manifest, stories)
+  const byFiles = [...picked.rules].filter(([, why]) => why.includes('files')).map(([id]) => id)
+  assert.deepEqual(byFiles.sort(), recorded.sort())
+})
+
+test('selection, against the committed manifest: a diff on FavouriteToggle selects the FavouritesList stories that render it', () => {
+  const manifest = JSON.parse(readFileSync(path.join(rootDir, MANIFEST_PATH), 'utf8'))
+  const stories = Object.entries(manifest).map(([id, e]) => ({
+    id,
+    importPath: e.importPath,
+    exportName: e.exportName,
+  }))
+  const picked = select(
+    ['packages/design-system/src/composites/FavouriteToggle/index.tsx'],
+    manifest,
+    manifest,
+    stories,
   )
-  assert.deepEqual(
-    mounting.filter((id) => !picked.has(id)),
-    [],
+  for (const id of [
+    'composite-favouriteslist--default',
+    'composite-favouriteslist--realistic-list',
+  ]) {
+    assert.ok(picked.rules.get(id)?.includes('files'), `${id} selected by recorded files`)
+  }
+})
+
+test('selection, against the committed manifest: a change to a test file alone selects nothing through recorded files, where it used to select 200 stories', () => {
+  const manifest = JSON.parse(readFileSync(path.join(rootDir, MANIFEST_PATH), 'utf8'))
+  const stories = Object.entries(manifest).map(([id, e]) => ({
+    id,
+    importPath: e.importPath,
+    exportName: e.exportName,
+  }))
+  const picked = select(
+    ['packages/design-system/src/primitives/Button/Button.test.tsx'],
+    manifest,
+    manifest,
+    stories,
   )
+  const byFiles = [...picked.rules].filter(([, why]) => why.includes('files'))
+  assert.deepEqual(byFiles, [])
+  // What it does select is (a)'s: the stories of that directory — nothing else.
+  assert.ok(picked.stories.every((s) => picked.rules.get(s.id).join() === 'story-files'))
+  assert.ok(picked.stories.length < 40, `selected ${picked.stories.length}`)
+  // A docs-only diff selects nothing at all.
+  assert.deepEqual(select(['docs/data-sources.md'], manifest, manifest, stories).stories, [])
 })
 
 test('selection, against the committed manifest: the instances are structured objects, never strings', () => {
@@ -455,4 +538,221 @@ test('the driver refuses a zero-story index in every mode before selecting, and 
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
+})
+
+// ---- fail closed: the arguments, a malformed manifest, an index with no plants ---------------------
+
+test('parseArgs: every known flag is accepted alone; an unknown token, a typo and a joined "--write --plants" are refused naming the token', () => {
+  for (const flag of ['--keys', '--write', '--changed', '--plants']) {
+    assert.deepEqual(parseArgs([flag]).problems, [], flag)
+  }
+  assert.deepEqual([...parseArgs(['--write', '--changed']).flags].sort(), ['--changed', '--write'])
+  assert.deepEqual(parseArgs([]).problems, [])
+  for (const token of ['--write --plants', '--wrtie', '--change', 'plants', '-w', '--write=1']) {
+    const { problems } = parseArgs([token])
+    assert.equal(problems.length, 1, token)
+    assert.ok(problems[0].includes(JSON.stringify(token)), `${token}: ${problems[0]}`)
+  }
+  assert.equal(parseArgs(['--write', '--oops', '--plants']).problems.length, 1)
+})
+
+test('parseArgs: --keys stands alone, and two selections are refused', () => {
+  assert.match(parseArgs(['--keys', '--write']).problems.join('\n'), /--keys/)
+  assert.match(parseArgs(['--keys', '--plants']).problems.join('\n'), /--keys/)
+  assert.match(parseArgs(['--changed', '--plants']).problems.join('\n'), /--changed.*--plants/)
+})
+
+test('parseManifest: a conflicted or non-object file is a problem naming the file and the rewrite command, never a raw SyntaxError', () => {
+  const ok = parseManifest(JSON.stringify(manifestOf(A)), { label: 'the manifest' })
+  assert.deepEqual(Object.keys(ok.manifest), [A.id])
+  for (const text of [
+    '<<<<<<< HEAD\n{}\n=======\n{}\n>>>>>>> main\n',
+    '',
+    '[]',
+    'null',
+    '"x"',
+    '{"a":',
+  ]) {
+    const result = parseManifest(text, { label: MANIFEST_PATH })
+    assert.equal(result.manifest, undefined, JSON.stringify(text))
+    assert.ok(result.problem.includes(MANIFEST_PATH), result.problem)
+    assert.ok(result.problem.includes(REWRITE_COMMAND), result.problem)
+    assert.doesNotMatch(result.problem, /^SyntaxError/)
+  }
+})
+
+test('findFixtureProblem: an index with published stories and no plant is refused; one with a plant, or with nothing at all, is not this check’s business', () => {
+  assert.match(findFixtureProblem(indexOf(A, B)), /fixture/)
+  assert.match(findFixtureProblem(indexOf(A, B, DOCS)), /state-coverage-fixture/)
+  assert.equal(findFixtureProblem(indexOf(A, PLANT)), null)
+  assert.equal(findFixtureProblem(indexOf()), null)
+})
+
+// A stand-in for `pnpm` that does what the real one is asked for here: `exec prettier` is the
+// identity, `exec playwright test …` writes one record per story of the work file, the way the spec
+// does. It lets the driver's own logic — what it selects, refuses and writes — run without a browser.
+function withFakePnpm(body) {
+  const dir = mkdtempSync(path.join(tmpdir(), 'state-coverage-runtime-driver-'))
+  try {
+    const bin = path.join(dir, 'bin')
+    mkdirSync(bin)
+    const script = `#!${process.execPath}
+const fs = require('node:fs')
+const path = require('node:path')
+const args = process.argv.slice(2)
+if (args[1] === 'prettier') { process.stdout.write(fs.readFileSync(0, 'utf8')); process.exit(0) }
+const work = JSON.parse(fs.readFileSync(process.env.VISUAL_RUNTIME_FILE, 'utf8'))
+fs.writeFileSync(path.join(process.env.FAKE_PNPM_LOG), JSON.stringify(work))
+for (const { id, widths } of work.stories) {
+  const record = { mounts: [], files: ['packages/design-system/src/primitives/Button/index.tsx'] }
+  fs.writeFileSync(
+    path.join(process.env.VISUAL_RUNTIME_OUT_DIR, id + '.json'),
+    JSON.stringify({ id, widths: Object.fromEntries(widths.map((w) => [String(w), record])) }),
+  )
+}
+`
+    writeFileSync(path.join(bin, 'pnpm'), script, { mode: 0o755 })
+    const run = (args, { index, manifestText }) => {
+      const indexFile = path.join(dir, 'index.json')
+      const manifestFile = path.join(dir, 'manifest.json')
+      writeFileSync(indexFile, JSON.stringify(index))
+      if (manifestText !== undefined) writeFileSync(manifestFile, manifestText)
+      const result = spawnSync(
+        process.execPath,
+        [path.join(rootDir, 'scripts/visual/state-coverage-runtime.mjs'), ...args],
+        {
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            PATH: `${bin}${path.delimiter}${process.env.PATH}`,
+            STATE_COVERAGE_RUNTIME_INDEX: indexFile,
+            STATE_COVERAGE_RUNTIME_MANIFEST: manifestFile,
+            STATE_COVERAGE_RUNTIME_OUT_DIR: path.join(dir, 'raw'),
+            FAKE_PNPM_LOG: path.join(dir, 'work.log.json'),
+          },
+        },
+      )
+      const read = (file) => (existsSync(file) ? readFileSync(file, 'utf8') : null)
+      return {
+        ...result,
+        manifestText: read(manifestFile),
+        work: read(path.join(dir, 'work.log.json')),
+      }
+    }
+    return body(run)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+}
+
+const FAKE_FILE = 'packages/design-system/src/primitives/Button/index.tsx'
+// What the fake `pnpm` records for every story at every width.
+const fakeEntry = (s) =>
+  buildEntry(
+    s,
+    Object.fromEntries([375, 768, 1280].map((w) => [w, { mounts: [], files: [FAKE_FILE] }])),
+  )
+const REAL_INDEX = indexOf(A, B, PLANT)
+const NO_PLANT_INDEX = indexOf(A, B)
+
+test('the driver refuses an unknown flag, naming it, in every mode, and writes nothing', () => {
+  withFakePnpm((run) => {
+    const manifestText = JSON.stringify(manifestOf(A, B, PLANT))
+    for (const args of [
+      ['--write --plants'],
+      ['--wrtie'],
+      ['--write', '--plnts'],
+      ['plants'],
+      ['--keys', '--write'],
+    ]) {
+      const result = run(args, { index: REAL_INDEX, manifestText })
+      assert.equal(result.status, 1, `${args.join(' ')}: ${result.stdout}`)
+      assert.ok(
+        args.some((token) => result.stdout.includes(JSON.stringify(token))) ||
+          /--keys/.test(result.stdout),
+        result.stdout,
+      )
+      assert.equal(result.manifestText, manifestText, 'the manifest is untouched')
+      assert.equal(result.work, null, 'no pass ran')
+    }
+  })
+})
+
+test('the driver refuses an index with published stories and no plant in every non-keys mode, and --write --plants no longer drops the plants', () => {
+  withFakePnpm((run) => {
+    const manifestText = JSON.stringify(manifestOf(A, B, PLANT))
+    for (const args of [['--plants'], ['--write', '--plants'], [], ['--write'], ['--changed']]) {
+      const result = run(args, { index: NO_PLANT_INDEX, manifestText })
+      assert.equal(result.status, 1, `${args.join(' ') || '(no flag)'}: ${result.stdout}`)
+      assert.match(result.stdout, /fixture/)
+      assert.equal(result.manifestText, manifestText, 'the plant entries are still there')
+      assert.equal(result.work, null)
+    }
+    // Contrast: the keys check is the browserless one and has its own verdict (the plant entry is extra).
+    const keys = run(['--keys'], { index: NO_PLANT_INDEX, manifestText })
+    assert.equal(keys.status, 1)
+    assert.match(keys.stdout, /extra-entry|no such story/)
+  })
+})
+
+test('contrast: an index with its plants is unaffected — --keys is green and --write --plants writes the plant entries only', () => {
+  withFakePnpm((run) => {
+    const manifestText = JSON.stringify(manifestOf(A, B, PLANT))
+    assert.equal(run(['--keys'], { index: REAL_INDEX, manifestText }).status, 0)
+    const result = run(['--write', '--plants'], { index: REAL_INDEX, manifestText })
+    assert.equal(result.status, 0, result.stdout)
+    assert.deepEqual(
+      JSON.parse(result.work).stories.map((s) => s.id),
+      [PLANT.id],
+    )
+    const written = JSON.parse(result.manifestText)
+    assert.deepEqual(Object.keys(written), [A.id, B.id, PLANT.id])
+    assert.deepEqual(written[PLANT.id].files, [FAKE_FILE])
+    assert.equal(
+      written[PLANT.id].widths['375'].files,
+      undefined,
+      'files is the entry’s, not each width’s',
+    )
+  })
+})
+
+test('a malformed manifest: a clear message naming the file and the command, never a SyntaxError; a full --write rebuilds it', () => {
+  withFakePnpm((run) => {
+    const conflicted = '<<<<<<< HEAD\n{}\n=======\n{}\n>>>>>>> main\n'
+    for (const args of [
+      ['--keys'],
+      [],
+      ['--plants'],
+      ['--write', '--plants'],
+      ['--write', '--changed'],
+    ]) {
+      const result = run(args, { index: REAL_INDEX, manifestText: conflicted })
+      assert.equal(
+        result.status,
+        1,
+        `${args.join(' ') || '(no flag)'}: ${result.stdout}${result.stderr}`,
+      )
+      assert.match(result.stdout, /manifest\.json/)
+      assert.match(result.stdout, /--write/)
+      assert.doesNotMatch(result.stdout + result.stderr, /SyntaxError/)
+      assert.equal(result.manifestText, conflicted, 'nothing was overwritten by a partial run')
+    }
+    const rebuilt = run(['--write'], { index: REAL_INDEX, manifestText: conflicted })
+    assert.equal(rebuilt.status, 0, rebuilt.stdout + rebuilt.stderr)
+    assert.deepEqual(Object.keys(JSON.parse(rebuilt.manifestText)), [A.id, B.id, PLANT.id])
+  })
+})
+
+test('the work file lists every fixture id whatever the selection, so the spec’s plant-coverage check always has the full set', () => {
+  withFakePnpm((run) => {
+    const fake = fakeEntry(PLANT)
+    const manifestText = JSON.stringify({ ...manifestOf(A, B), [PLANT.id]: fake })
+    const plants = run(['--plants'], { index: REAL_INDEX, manifestText })
+    assert.equal(plants.status, 0, plants.stdout)
+    assert.deepEqual(JSON.parse(plants.work).fixtureIds, [PLANT.id])
+    assert.deepEqual(
+      JSON.parse(plants.work).stories.map((s) => s.id),
+      [PLANT.id],
+    )
+  })
 })

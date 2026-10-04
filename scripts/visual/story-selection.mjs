@@ -77,14 +77,23 @@ function diffBase() {
 
 // Every file that differs from the diff base, plus anything uncommitted or untracked, so a run
 // before *and* after `git add` behaves the same way for a developer working locally.
+//
+// `--no-renames` on every diff: with rename detection (git's default for `diff` is configurable and a
+// user's `diff.renames` is honoured) `--name-only` prints only a rename's NEW path, so renaming
+// `Tooltip/index.tsx` away would select nothing that recorded the old one. Without it a rename is a
+// deletion plus an addition and both paths are listed. For `scripts/visual/run.mjs`'s capture
+// selection that can only GROW the set: it now also sees the old path's directory, which it never saw
+// before, and every path it saw before is still listed.
 export function changedFiles(options = {}) {
   const voice = { ...RUN_MJS_VOICE, cwd: rootDir, ...options }
   const base = diffBase()
   const files = new Set()
-  for (const f of lines(gitOrFail(['diff', '--name-only', `${base}...HEAD`], `"${base}"`, voice))) {
+  for (const f of lines(
+    gitOrFail(['diff', '--name-only', '--no-renames', `${base}...HEAD`], `"${base}"`, voice),
+  )) {
     files.add(f)
   }
-  for (const f of runGit(['diff', '--name-only', 'HEAD'], voice.cwd)) files.add(f)
+  for (const f of runGit(['diff', '--name-only', '--no-renames', 'HEAD'], voice.cwd)) files.add(f)
   for (const f of runGit(['ls-files', '--others', '--exclude-standard'], voice.cwd)) files.add(f)
   return [...files]
 }

@@ -17,25 +17,34 @@
 // `--plants` (the fixture stories alone), or `--changed`: the union, for check and for write alike, of
 //   (a) what `pnpm test:visual --changed` selects (`scripts/visual/story-selection.mjs`): a story's own
 //       directory, or a global-reach path;
-//   (b) every story whose committed entry cites, anywhere, a stamp whose file is in the diff;
-//   (c) every story whose committed entry mounts or is placed by a tracked primitive whose directory
-//       has a file in the diff;
+//   (b) every story whose committed entry RECORDED, in its `files`, a source file the diff touches —
+//       the stamped files that rendered an element in that story, portals included (a rename lists both
+//       its paths, `--no-renames`);
 //   (d) every story whose committed entry differs from the manifest at the diff base (a manifest absent
 //       there means every entry differs), so a pull request that edits the manifest by hand has
 //       those entries re-checked in the browser.
-// The rules live in `selectRuntimeStories` (`state-coverage-runtime-model.mjs`). What they cannot see
-// and nightly can: a composite B changes an axis it passes to a primitive, and a screen A renders B.
-// A's mounts change, but nothing in A's committed entry names B's file, so unless (a) reaches A that
-// change waits for the nightly run over every entry.
+// The rules live in `selectRuntimeStories` (`state-coverage-runtime-model.mjs`). What they cannot see,
+// and nightly (every entry) does:
+//   - a change to a file that rendered no stamped element in the story: a hook, a lib helper outside
+//     a global-reach path, a story's own file (that is (a)'s job), and tokens or CSS, which change
+//     paint and never which element exists, who wrote it or who placed it;
+//   - a component that STARTS being rendered by a story because of a change in a file that story did
+//     not previously render, when (a) does not reach that story either.
 //
-// Refused in every mode, before any selection: a built index with no published story (a rewrite over
-// it would empty the manifest).
+// Fails closed, before any browser starts: an unknown argument (a typo, or two flags joined in one
+// token) names itself and exits; a built index with no published story, and one with published stories
+// but no plant, are refused in every mode but `--keys` (a rewrite over either would drop entries); a
+// malformed manifest is reported with the file and the rewrite command, and only a full `--write`
+// rebuilds it. The spec also runs when the selection is empty, so the plants-against-fixtures set
+// equality is checked on every run, not only on one that selects a fixture.
 //
 // The pass itself is `tests/visual/state-coverage-runtime.spec.ts`, which this spawns. It needs a built
 // Storybook; the stories to run and their widths travel to it as a file, the way
 // `scripts/visual/run.mjs` hands `stories.spec.ts` its units. `STATE_COVERAGE_RUNTIME_INDEX` and
-// `STATE_COVERAGE_RUNTIME_MANIFEST` name another index and manifest file (the tests use them);
-// unset, they are the built Storybook's and the committed manifest.
+// `STATE_COVERAGE_RUNTIME_MANIFEST` name another index and manifest file, and
+// `STATE_COVERAGE_RUNTIME_OUT_DIR` another directory for the raw records (the tests use all three, so a
+// test run never touches a real pass's records); unset, they are the built Storybook's, the committed
+// manifest and `test-results/state-coverage-runtime/raw`.
 //
 // Exit: 0 when everything checked agrees (or the rewrite succeeded), 1 otherwise.
 import { spawnSync } from 'node:child_process'
@@ -59,11 +68,14 @@ import {
   describeEntryDifferences,
   describeKeyProblems,
   findEntryDifferences,
+  findFixtureProblem,
   findIndexProblem,
   findKeyProblems,
   formatManifest,
   manifestNeedsWrite,
   mergeManifest,
+  parseArgs,
+  parseManifest,
   selectRuntimeStories,
   serializeManifest,
 } from './state-coverage-runtime-model.mjs'
@@ -84,20 +96,32 @@ function log(message) {
   console.log(`state-coverage-runtime: ${message}`)
 }
 
-function readManifest() {
-  return existsSync(manifestPath) ? JSON.parse(readFileSync(manifestPath, 'utf8')) : {}
+// The committed manifest, or `{}` when the file does not exist. A malformed one is the caller's to
+// handle: `rebuild` (a full `--write`) starts over from nothing; every other mode names the file and
+// the command that rewrites it and exits.
+function readManifest({ rebuild }) {
+  if (!existsSync(manifestPath)) return {}
+  const label = path.relative(rootDir, manifestPath)
+  const parsed = parseManifest(readFileSync(manifestPath, 'utf8'), { label })
+  if (parsed.manifest) return parsed.manifest
+  if (rebuild) {
+    log(`${parsed.problem.split(' — ')[0]}; rebuilding it from the pass.`)
+    return {}
+  }
+  log(parsed.problem)
+  process.exit(1)
 }
 
 function main() {
-  const args = new Set(process.argv.slice(2))
-  const keysOnly = args.has('--keys')
-  const write = args.has('--write')
-  const changedOnly = args.has('--changed')
-  const plantsOnly = args.has('--plants')
-  if (changedOnly && plantsOnly) {
-    log('--changed and --plants are two selections; name one.')
+  const { flags, problems } = parseArgs(process.argv.slice(2))
+  if (problems.length > 0) {
+    for (const problem of problems) log(problem)
     process.exit(1)
   }
+  const keysOnly = flags.has('--keys')
+  const write = flags.has('--write')
+  const changedOnly = flags.has('--changed')
+  const plantsOnly = flags.has('--plants')
 
   if (!existsSync(indexPath)) {
     log(
@@ -111,7 +135,15 @@ function main() {
     log(indexProblem)
     process.exit(1)
   }
-  const manifest = readManifest()
+  if (!keysOnly) {
+    const fixtureProblem = findFixtureProblem(index)
+    if (fixtureProblem) {
+      log(fixtureProblem)
+      process.exit(1)
+    }
+  }
+  const fullRewrite = write && !changedOnly && !plantsOnly
+  const manifest = readManifest({ rebuild: fullRewrite })
 
   if (keysOnly) {
     const problems = findKeyProblems({ manifest, index })
@@ -135,10 +167,24 @@ function main() {
   if (plantsOnly) selected = all.filter(isFixtureEntry)
   if (changedOnly) {
     const baseText = fileAtBase(MANIFEST_PATH, VOICE)
+    let baseManifest = null
+    if (baseText !== null) {
+      const parsedBase = parseManifest(baseText, {
+        label: `${MANIFEST_PATH} at the diff base (VISUAL_BASE_REF, default origin/main)`,
+      })
+      if (!parsedBase.manifest) {
+        log(
+          `${parsedBase.problem.split(' — ')[0]}. Fix it on the base branch first; this run cannot ` +
+            'tell which entries a pull request changed against a base it cannot read.',
+        )
+        process.exit(1)
+      }
+      baseManifest = parsedBase.manifest
+    }
     const picked = selectRuntimeStories({
       stories: all,
       manifest,
-      baseManifest: baseText === null ? null : JSON.parse(baseText),
+      baseManifest,
       diff: changedFiles(VOICE),
     })
     selected = picked.stories
@@ -148,18 +194,19 @@ function main() {
     }
     log(`--changed selects ${selected.length} of ${all.length} (${JSON.stringify(byRule)}).`)
   }
-  if (selected.length === 0) {
-    log('nothing selected — nothing to run.')
-    if (write) writeManifest(mergeManifest({ manifest, fresh: {}, index }), manifest)
-    return
-  }
+  // An empty selection still runs the spec: with no story to record it declares only the
+  // plants-against-fixtures set-equality test, which must hold on every run.
   log(
-    `running ${selected.length} stor${selected.length === 1 ? 'y' : 'ies'} x ${REVIEW_WIDTHS.length} widths (light theme).`,
+    selected.length === 0
+      ? 'nothing selected — running only the plant-coverage check.'
+      : `running ${selected.length} stor${selected.length === 1 ? 'y' : 'ies'} x ${REVIEW_WIDTHS.length} widths (light theme).`,
   )
 
   const tmpDir = mkdtempSync(path.join(tmpdir(), 'aoe2-state-coverage-runtime-'))
   const workPath = path.join(tmpDir, 'work.json')
-  const outDir = path.join(rootDir, 'test-results', 'state-coverage-runtime', 'raw')
+  const outDir =
+    process.env.STATE_COVERAGE_RUNTIME_OUT_DIR ??
+    path.join(rootDir, 'test-results', 'state-coverage-runtime', 'raw')
   rmSync(outDir, { recursive: true, force: true })
   mkdirSync(outDir, { recursive: true })
   writeFileSync(

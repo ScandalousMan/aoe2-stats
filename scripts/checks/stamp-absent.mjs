@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// T693 piece 1: the source stamp (`packages/design-system/.storybook/source-stamp.mjs`) is a
+// T693 piece 1: the source stamp (`packages/design-system/.storybook/source-stamp.mjs`, whose attribute name is
+// defined in `source-stamp-attribute.cjs`) is a
 // Storybook-only transform — nothing of it may reach the markup `apps/web` builds. This scans the
 // built output (`apps/web/dist`, or the directory named by the first argument) for the attribute
 // name and fails if any file carries it. It needs the built app, so CI runs it right after
@@ -15,7 +16,7 @@
 import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { STAMP_ATTRIBUTE } from '../../packages/design-system/.storybook/source-stamp.mjs'
+import { STAMP_ATTRIBUTE } from '../../packages/design-system/.storybook/source-stamp-attribute.cjs'
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 

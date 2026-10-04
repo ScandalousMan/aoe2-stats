@@ -40,8 +40,9 @@ const VIEWPORT_OPTIONS = {
 // inside it. `axes` is the primitive's own exported axis-defaults constant — the one its destructuring
 // reads; the fiber carries only the props a caller passed, so the pass merges those over it. An axis
 // with no default is `null` (`Menu`'s `variant` is required). Only `variant` and `size` are recorded,
-// and only for a primitive that lists them. Adding a primitive here is how it becomes tracked — and
-// `scripts/visual/state-coverage-runtime-model.mjs` carries its directory beside this one.
+// and only for a primitive that lists them. Adding a primitive here is how it becomes tracked, and
+// `scripts/visual/tracked-axes.test.mjs` fails when a primitive's destructured defaults, its exported
+// constant and this registry stop agreeing on its axes.
 interface TrackedPrimitive {
   component: unknown
   directory: string

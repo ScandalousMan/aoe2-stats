@@ -346,8 +346,10 @@ jobs:
       # never reaches `apps/web` (`source-stamp.test.mjs`), the manifest's key, comparison and merge
       # rules (`state-coverage-runtime-model.test.mjs`), the fixture-tag skip every index reader
       # carries (`story-index.test.mjs`) and the story selection `run.mjs` and the pass share
-      # (`story-selection.test.mjs`). No build and no browser, same as the suites above.
-      - run: node --test scripts/visual/source-stamp.test.mjs scripts/visual/state-coverage-runtime-model.test.mjs scripts/visual/story-index.test.mjs scripts/visual/story-selection.test.mjs
+      # (`story-selection.test.mjs`), and the axis-defaults drift check between the tracked primitives'
+      # sources and the preview's registry (`tracked-axes.test.mjs`). No build and no browser, same as
+      # the suites above.
+      - run: node --test scripts/visual/source-stamp.test.mjs scripts/visual/state-coverage-runtime-model.test.mjs scripts/visual/story-index.test.mjs scripts/visual/story-selection.test.mjs scripts/visual/tracked-axes.test.mjs
       # T109: none of the checks above ever resolves a route through vercel.json's rewrites, so
       # none of them could have caught the production defect this step exists for — a reload, a
       # bookmark or a shared link to any client-side route other than `/` hit the platform's own
@@ -390,7 +392,16 @@ jobs:
       # (the same thing that made this import valid evidence before) without launching a browser or
       # needing a Storybook build, so this step catches that regression on every pull request that
       # reaches this job — do not remove it as redundant with `visual`'s own run of the spec.
-      - run: pnpm exec playwright test --list tests/visual/focus-ring.spec.ts
+      # T693 (third remediation of #114): the same `--list` now also loads the runtime pass's two specs
+      # and the module they share, `tests/visual/state-coverage-runtime.ts`. They read the stamp's
+      # attribute name from `packages/design-system/.storybook/source-stamp-attribute.cjs` — a `.cjs`
+      # for exactly the reason above: the first version imported it from `source-stamp.mjs`, which
+      # uses `import.meta`, and the `visual` job died at load with `exports is not defined in ES
+      # module scope` on Node 20.20 (it passes on 20.19.0 and fails on 20.13 and 24, so a laptop did
+      # not show it). Loaded here, without a browser, a regression of that shape fails this job
+      # whatever `--changed` selects. `state-coverage-runtime.spec.ts` declares no test without its work
+      # file, which is fine beside the others in one invocation.
+      - run: pnpm exec playwright test --list tests/visual/focus-ring.spec.ts tests/visual/state-coverage-runtime.spec.ts tests/visual/state-coverage-runtime-probe.spec.ts
 
   visual:
     name: Visual regression — affected stories and the built application
@@ -466,13 +477,17 @@ jobs:
       # same reason as the line above (a browser pass over every story on each pull request is the
       # factory constitution VII and FR-061 keep for nightly), but not by the same rule: the
       # selection is the union of what `--changed` above selects (a story's own directory, or a
-      # global-reach path), every story whose committed entry cites a stamp in a changed file, every
-      # story whose entry mounts or is placed by a tracked primitive whose directory changed, and
-      # every story whose entry differs from the manifest at the diff base (so a hand-edited manifest
-      # is re-checked in the browser). Its rewrite command takes the same selection.
-      # What it cannot see, and nightly (every entry) does: a composite B changes an axis it passes to
-      # a primitive and a screen A renders B — A's mounts change, but nothing in A's committed entry
-      # names B's file, so unless the first rule reaches A the change waits for nightly.
+      # global-reach path), every story whose committed entry RECORDED a source file the diff touches
+      # (`files`: the stamped files that rendered an element in that story, portals included; a
+      # rename lists both its paths), and every story whose entry differs from the manifest at the
+      # diff base (so a hand-edited manifest is re-checked in the browser). Its rewrite command takes
+      # the same selection.
+      # What it cannot see, and nightly (every entry) does — exactly this and no more: a change in a
+      # file that rendered no stamped element in the story (a hook, a lib helper outside a global-reach
+      # path, a story's own file — that one is the first rule's job — and tokens or CSS, which change
+      # paint, never which element exists or who placed it); and a component that STARTS being
+      # rendered by a story because of a change in a file that story did not previously render, when
+      # the first rule does not reach that story either.
       - run: node scripts/visual/state-coverage-runtime.mjs --changed
       # The plants (`packages/design-system/.storybook/fixtures/`) on every run, whatever the diff
       # selects: each asserts what the browser does with a shape the static check guessed wrong,

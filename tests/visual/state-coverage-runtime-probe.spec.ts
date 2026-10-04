@@ -4,8 +4,13 @@
 // pages answer is `state-coverage-runtime.spec.ts`'s job (the plants); this proves the reading rules
 // themselves, with a contrast case beside each.
 import { expect, test } from '@playwright/test'
-import { STAMP_ATTRIBUTE } from '../../packages/design-system/.storybook/source-stamp.mjs'
-import { checkPlantCoverage, describeElement, describeMounts } from './state-coverage-runtime'
+import { STAMP_ATTRIBUTE } from '../../packages/design-system/.storybook/source-stamp-attribute.cjs'
+import {
+  checkPlantCoverage,
+  describeElement,
+  describeFiles,
+  describeMounts,
+} from './state-coverage-runtime'
 import type { Instance, TrackedRegistry } from './state-coverage-runtime'
 
 function Button() {}
@@ -333,4 +338,38 @@ test('checkPlantCoverage: a fixture story with no assertion fails, an assertion 
   expect(checkPlantCoverage(['a', 'gone'], ['a'])[0]).toMatch(/assertion .*no fixture story/)
   expect(checkPlantCoverage(['a', 'gone'], ['a'])).toHaveLength(1)
   expect(checkPlantCoverage([], [])).toEqual([])
+})
+
+// ---- files: every stamped source file that rendered an element ------------------------------------
+
+// A document-like object whose `querySelectorAll` answers `[attr]` with elements carrying the stamps.
+function fakeDocumentRoot(stamps: (string | null)[]): Element {
+  const found = stamps.map((stamp) => ({ getAttribute: () => stamp }))
+  const ownerDocument = {
+    querySelectorAll: (selector: string) => (selector === `[${STAMP_ATTRIBUTE}]` ? found : []),
+  }
+  return { ownerDocument } as unknown as Element
+}
+
+test('describeFiles: the file part of every stamp in the document, sorted and unique', () => {
+  const root = fakeDocumentRoot([
+    BUTTON_FILE,
+    BUTTON_ANCHOR,
+    ROW_BUTTON,
+    FIELD_CLONE,
+    'packages/design-system/src/lib/Spinner.tsx:5',
+  ])
+  expect(describeFiles(root, opts)).toEqual([
+    'packages/design-system/src/composites/Row/index.tsx',
+    'packages/design-system/src/lib/Spinner.tsx',
+    'packages/design-system/src/primitives/Button/index.tsx',
+    'packages/design-system/src/primitives/Field/index.tsx',
+  ])
+})
+
+test('describeFiles: no stamped element is no file, and the attribute named is the one passed in', () => {
+  expect(describeFiles(fakeDocumentRoot([]), opts)).toEqual([])
+  expect(
+    describeFiles(fakeDocumentRoot([BUTTON_FILE]), { ...opts, stampAttribute: 'data-x' }),
+  ).toEqual([])
 })

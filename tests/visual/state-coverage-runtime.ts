@@ -25,8 +25,8 @@
 //     `.storybook/preview.tsx`) and whose own directory the stamp falls under. The fiber carries only
 //     the props the caller passed, so each axis is that prop merged over the primitive's own exported
 //     defaults.
-//   - the page's stamp attribute is `STAMP_ATTRIBUTE`, imported from the transform that writes it and
-//     handed to the page as an argument — the one definition.
+//   - the page's stamp attribute is `STAMP_ATTRIBUTE`, imported from `source-stamp-attribute.cjs`, the one definition the
+//     transform that writes it re-exports, and handed to the page as an argument.
 //
 // An instance is an object, `{ component, variant, size, disabledAt }` in that key order, so the
 // manifest's reader (`scripts/checks/state-coverage.mjs`, T694) decodes it in Node without reading
@@ -38,7 +38,7 @@
 // `aria-disabled="true"`). Empty means nothing disabled renders; a `<Button href disabled>` renders an
 // enabled `<a>`, so it is empty, which is the point of reading the DOM.
 import type { Locator, Page } from '@playwright/test'
-import { STAMP_ATTRIBUTE } from '../../packages/design-system/.storybook/source-stamp.mjs'
+import { STAMP_ATTRIBUTE } from '../../packages/design-system/.storybook/source-stamp-attribute.cjs'
 import { gotoAndWaitForStorySettled, locateTarget, readForceState } from './story-render'
 import type { VisualForceState } from './story-render'
 
@@ -80,10 +80,14 @@ export interface WidthRecord {
   force?: ForceRecord
   focus?: ElementRecord | null
   mounts: Instance[]
+  // The sorted unique repository-rooted source files that rendered a stamped element in the story's
+  // document at this width. `buildEntry` (`scripts/visual/state-coverage-runtime-model.mjs`) unions it
+  // across widths into the entry's own `files` and keeps it out of the per-width record.
+  files: string[]
 }
 
 export interface InspectOptions {
-  mode: 'element' | 'mounts'
+  mode: 'element' | 'mounts' | 'files'
   stampAttribute: string
   // Defaults to the page's own (`window.__DS_TRACKED_PRIMITIVES__`); tests pass a synthetic one.
   registry?: TrackedRegistry
@@ -96,9 +100,21 @@ export interface InspectOptions {
 //
 // Which element an instance placed: a host element whose stamp falls under the directory of the
 // nearest enclosing tracked instance of that directory's primitive. It is found walking DOWN the
-// fiber tree with the enclosing instances carried along, never by identity across a walk up — React
-// leaves `return` pointing at an alternate fiber on occasion, so two walks need not agree on a fiber.
-export function inspect(start: Element, options: InspectOptions): ElementRecord | Instance[] {
+// fiber tree with the enclosing instances carried along.
+//
+// Which tree: the COMMITTED one. React writes `__reactFiber$` on a DOM node once, when it creates it;
+// after updates that fiber may be either of the node's current/alternate pair, and a `return` pointer
+// may lead to the alternate parent as well (a subtree an update never reached keeps the `return` it
+// had). Climbing `return` from a node can therefore end at the alternate HostRoot, whose children are
+// the PREVIOUS render's — stale variants, sizes, mounts and disabled elements. So `return` is used
+// for one thing only, reaching the HostRoot (every chain ends at the same FiberRoot, whichever of the
+// pair it passes through); from there everything is read in `root.stateNode.current`, and an
+// element's ancestors are the path found DESCENDING to it, never a climb. `tests/…` of the fiber
+// reader against real React are `packages/design-system/src/test/state-coverage-fiber.test.tsx`.
+export function inspect(
+  start: Element,
+  options: InspectOptions,
+): ElementRecord | Instance[] | string[] {
   const registry: TrackedRegistry =
     options.registry ??
     (window as unknown as { __DS_TRACKED_PRIMITIVES__?: TrackedRegistry })
@@ -183,30 +199,70 @@ export function inspect(start: Element, options: InspectOptions): ElementRecord 
     return entries
   }
 
+  // The committed tree's root fiber, reached from any fiber of the tree. A fiber with no `return` is a
+  // HostRoot, whose `stateNode` is the FiberRoot and whose `current` is the committed HostRoot. The
+  // synthetic fibers of `state-coverage-runtime-probe.spec.ts` have no FiberRoot: their top is the root.
+  const committedRoot = (from: Fiber): Fiber => {
+    let top = from
+    while (top.return) top = top.return
+    const fiberRoot = top.stateNode as { current?: Fiber } | null | undefined
+    return fiberRoot && typeof fiberRoot === 'object' && fiberRoot.current ? fiberRoot.current : top
+  }
+
+  if (options.mode === 'files') {
+    // Every stamped element of the document, not only of the story root: a menu or a dialog renders
+    // in a portal on `document.body`, and the preview shows one story per page, so whatever carries
+    // a stamp there belongs to this story. Only the file part is kept — a line shift is not a change
+    // of what a story depends on.
+    const files = new Set<string>()
+    for (const el of Array.from(start.ownerDocument.querySelectorAll(`[${attribute}]`))) {
+      const stamp = el.getAttribute(attribute)
+      if (stamp) files.add(stampFile(stamp))
+    }
+    return [...files].sort()
+  }
+
   if (options.mode === 'mounts') {
     // The story root is the container React was mounted into, not an element React rendered, so it
-    // has no fiber of its own: start from its first rendered child and climb to the top of the tree
-    // (the preview mounts decorators and the story in one root; no tracked primitive sits outside the
+    // has no fiber of its own: start from its first rendered child, reach the committed root (the
+    // preview mounts decorators and the story in one root; no tracked primitive sits outside the
     // story), then walk down.
     const first = start.firstElementChild
     if (!first) return []
-    let top = fiberOf(first)
-    if (!top) return []
-    while (top.return) top = top.return
-    return walk(top).map(record)
+    const seed = fiberOf(first)
+    if (!seed) return []
+    return walk(committedRoot(seed)).map(record)
   }
 
   const stamp = start.getAttribute(attribute)
   if (!stamp) return { stamp: null, placedBy: null }
   const file = stampFile(stamp)
-  let fiber = fiberOf(start)
-  while (fiber) {
+  const seed = fiberOf(start)
+  if (!seed) return { stamp, placedBy: null }
+
+  // The path from the committed root to the fiber whose `stateNode` is the element, found by
+  // descending (`child`, `sibling`), so every ancestor on it is in the committed tree.
+  const path: Fiber[] = []
+  const descend = (fiber: Fiber | null | undefined): boolean => {
+    for (let node = fiber; node; node = node.sibling) {
+      path.push(node)
+      if (node.stateNode === start) return true
+      if (descend(node.child)) return true
+      path.pop()
+    }
+    return false
+  }
+  const root = committedRoot(seed)
+  // An element that is not in the committed tree (unmounted since) was placed by nobody.
+  if (root.stateNode !== start && !descend(root.child)) return { stamp, placedBy: null }
+  path.unshift(root)
+  for (let i = path.length - 1; i >= 0; i -= 1) {
+    const fiber = path[i]
     const name = nameOf(fiber)
     if (name !== undefined && file.startsWith(registry[name].directory)) {
       // The placing instance is the first entry of its own subtree walk.
       return { stamp, placedBy: record(walk(fiber)[0]) }
     }
-    fiber = fiber.return ?? null
   }
   return { stamp, placedBy: null }
 }
@@ -224,6 +280,12 @@ export function describeMounts(
   options: { stampAttribute: string; registry?: TrackedRegistry },
 ): Instance[] {
   return inspect(root, { ...options, mode: 'mounts' }) as Instance[]
+}
+export function describeFiles(
+  root: Element,
+  options: { stampAttribute: string; registry?: TrackedRegistry },
+): string[] {
+  return inspect(root, { ...options, mode: 'files' }) as string[]
 }
 
 // Set equality between the plants' assertions (`state-coverage-runtime.spec.ts`) and the fixture
@@ -289,12 +351,13 @@ export async function probeSettledStory(
   forceState: VisualForceState | null,
 ): Promise<WidthRecord> {
   await assertRegistryPresent(page)
-  const inspectOptions = (mode: 'element' | 'mounts'): InspectOptions => ({
+  const inspectOptions = (mode: 'element' | 'mounts' | 'files'): InspectOptions => ({
     mode,
     stampAttribute: STAMP_ATTRIBUTE,
   })
   const record: WidthRecord = {
     mounts: (await root.evaluate(inspect, inspectOptions('mounts'))) as Instance[],
+    files: (await root.evaluate(inspect, inspectOptions('files'))) as string[],
   }
 
   if (forceState) {

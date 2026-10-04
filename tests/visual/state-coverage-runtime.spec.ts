@@ -88,6 +88,7 @@ const PLANTS: Record<string, (record: WidthRecord) => void> = {
     expect(r.mounts).toEqual([button('secondary', 'md')])
   },
   [`${PLANT}cloned-control`]: (r) => {
+    expect(r.files).toEqual(['packages/design-system/src/primitives/Field/index.tsx'])
     expect(r.force?.count).toBe(1)
     expect(r.force?.stamp).toMatch(stampIn('Field'))
     expect(r.force?.placedBy).toEqual(inst('Field', null, 'md'))
@@ -170,6 +171,32 @@ const PLANTS: Record<string, (record: WidthRecord) => void> = {
     expect(r.force?.count).toBe(1)
     expect(r.force?.placedBy).toEqual(inst('Menu', 'selection', null))
     expect(r.mounts).toEqual([inst('Menu', 'selection', null)])
+  },
+
+  // A heading written through a tag variable: stamped, and placed by no tracked primitive.
+  [`${PLANT}forced-callout-heading`]: (r) => {
+    expect(r.files).toEqual(['packages/design-system/src/primitives/Callout/index.tsx'])
+    expect(r.force?.count).toBe(1)
+    expect(r.force?.stamp).toMatch(stampIn('Callout'))
+    expect(r.force?.placedBy).toBeNull()
+    expect(r.mounts).toEqual([])
+  },
+  [`${PLANT}play-focus-callout-heading`]: (r) => {
+    expect(r.force).toBeUndefined()
+    expect(r.focus?.stamp).toMatch(stampIn('Callout'))
+    expect(r.focus?.placedBy).toBeNull()
+  },
+
+  // T687, T689: a story's own element inside a primitive; a raw button picked by name.
+  [`${PLANT}slider-inside-button`]: (r) => {
+    // Recorded as the browser answered: the story's `<span role="slider">` is one match, carries no
+    // stamp (a story is never stamped), and the `Button` around it did not place it.
+    expect(r.force).toEqual({ count: 1, stamp: null, placedBy: null })
+    expect(r.mounts).toEqual([button('primary', 'md')])
+  },
+  [`${PLANT}raw-button-picked-by-name`]: (r) => {
+    expect(r.force).toEqual({ count: 1, stamp: null, placedBy: null })
+    expect(r.mounts).toEqual([button('primary', 'lg')])
   },
 
   // T691: a guard that reads a spread.
