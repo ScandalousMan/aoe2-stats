@@ -1344,7 +1344,9 @@ after everything underneath it moves.
       checks: the health endpoint answers **200** — read the status, not the revision field, which
       is the build's own compiled constant and is no evidence about the database — and one analysis
       requested by hand shows a populated dependency record, an identity digest and a gap list that
-      is empty or explains itself
+      is empty or explains itself. Also confirm against the live object store that a second
+      conditional put to an existing analysis key is refused (T666d relies on the store honouring
+      if-none-match; it is tested only against a stub)
 - [x] T666 [P] [US3] Add the boundary guard test asserting this feature added no scheduled job, no
       request-path work and no code path that consumes the capture budget (**FR-049**), and that
       nothing here re-specifies 003's request, fetch, parse-once, retention, recompute, isolation,
@@ -1492,6 +1494,25 @@ parallel batch; T666h, T666i and T666j follow, in order — all three edit `run.
       — a retry window, not a claim — which the re-review made the condition of accepting it. Raise
       `packages/storage`'s boto3 floor to the first release whose object put accepts the if-none-match
       condition, which `put_if_absent` needs
+
+- [ ] T666m [US6] **Third review round (2026-10-04): one deployment-fault classification, and the
+      last twins.** (a) The API's staleness read in
+      `apps/api/src/aoe2stats_api/routers/matches.py` treats a deployment fault as not stale but
+      catches only two exception classes, while the snapshot loader also raises an `OSError` for a
+      missing packaged file — which `verify_deployment` already names — so a snapshot shipped
+      without its rules file makes the match-detail page answer 500 for every analysed match
+      (**FR-048**). Define the deployment-fault exception set once, beside `verify_deployment`, and
+      use it in both places; test the match page with a snapshot file removed (200, not stale) and
+      with a digest mismatch. (b) The same faults on the analyze endpoint's published path escape as
+      a bare 500 the web client cannot parse: map them to the deployment fault inside the analyzer's
+      staleness call. (c) The analyze endpoint builds its response without the retained-recording row,
+      so its stale flag is false by construction; make that argument required and pass it. (d) Give
+      003's failure writer the same refusal to touch a published row that T666i gave the unavailable
+      writer — a lease overrun lets a second claimant refuse after the first published. (e) Record in
+      `apps/analyzer/src/aoe2stats_analyzer/reproduce.py` that it reads retained bytes without logging
+      and that any production caller must write the access-log row (003's **FR-029**); it has no
+      caller today. The analysis rate-limit charge on a deployment-fault 500 stays as 003 charges
+      every other early refusal
 
 **Checkpoint**: every value carries its tier, every analysis carries its identity, and no version
 destroys its predecessor.
