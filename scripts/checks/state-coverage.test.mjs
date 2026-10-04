@@ -85,6 +85,7 @@ import {
 } from './state-coverage.mjs'
 import { deriveVocabulary } from './spec-completeness.mjs'
 import { REWRITE_COMMAND } from '../visual/state-coverage-runtime-model.mjs'
+import { REVIEW_WIDTHS } from '../visual/review-widths.mjs'
 import { BUILD_STORYBOOK_COMMAND } from '../visual/missing-index.mjs'
 
 function parse(code, fileName = 'fixture.tsx') {
@@ -4433,7 +4434,8 @@ test('checkCellGate: a covered cell and an impossible cell need no entry at all'
 
 const DS_DIR = path.resolve(REPO_SRC_DIR, '..')
 const STAMP_ROOT = 'packages/design-system/src/'
-const WIDTHS = ['375', '768', '1280']
+// The widths every story is captured and recorded at: one source, `scripts/visual/review-widths.mjs`.
+const WIDTHS = REVIEW_WIDTHS.map(String)
 const atEveryWidth = (record) => Object.fromEntries(WIDTHS.map((w) => [w, record]))
 const placedInstance = (component, variant, size, disabledAt = []) => ({
   component,
@@ -4559,16 +4561,13 @@ test('resolveRuntimeForce: an element no design-system file wrote (a raw element
   )
 })
 
-test('resolveRuntimeForce: an entry recording no force at a width, or no width at all, is refused and names the rewrite command', () => {
-  const noForce = resolveRuntimeForce(
-    { widths: { 375: { mounts: [] }, 768: { mounts: [] } } },
-    { recordOneKeys },
-  )
-  assert.match(noForce.refusal, /records no force target at 375px, 768px/)
+test('resolveRuntimeForce: an entry recording no force at a width is refused and names the rewrite command; no width at all is a malformed entry', () => {
+  const noForce = resolveRuntimeForce({ widths: atEveryWidth({ mounts: [] }) }, { recordOneKeys })
+  assert.match(noForce.refusal, /records no force target at 375px, 768px, 1280px/)
   assert.ok(noForce.refusal.includes(REWRITE_COMMAND))
   assert.match(
-    resolveRuntimeForce({ widths: {} }, { recordOneKeys }).refusal,
-    /records no captured width/,
+    resolveRuntimeForce({ widths: {} }, { recordOneKeys }).malformed,
+    /^it records no captured width/,
   )
 })
 
@@ -4679,7 +4678,14 @@ function plantedRun() {
     'utf8',
   )
   const plantedFile = srcFile('primitives/Button/ZzPlants.stories.tsx')
-  filesByPath.set(plantedFile, plants)
+  // The plants are tagged `state-coverage-fixture`, which makes a story a fixture wherever it sits (the
+  // region never reads one). Re-keyed into `Button`'s directory to be read, they are planted untagged.
+  const untagged = plants.replace(
+    "tags: ['state-coverage-fixture', '!dev', '!autodocs']",
+    'tags: []',
+  )
+  assert.notEqual(untagged, plants, 'the plants file carries the fixture tag the plant strips')
+  filesByPath.set(plantedFile, untagged)
   const entries = {}
   for (const [id, entry] of Object.entries(manifest)) {
     if (entry.importPath !== './.storybook/fixtures/Plants.stories.tsx') continue
@@ -4718,6 +4724,9 @@ test('T693 plants: a force with no match, two matches, a raw element or an unsta
     ArgsHrefIgnored: /^no element matched the force at 375px/,
     ButtonHrefViaSpreadConstant: /^no element matched the force at 375px/,
     NthPastTheLast: /^no element matched the force at 375px/,
+    ArgsDisabledSpread:
+      /^the located element's stamp .*Button\/index\.tsx:213 is in its placing Button's disabledAt/,
+    DisabledControlInField: /is in its placing Field's disabledAt/,
     StampOutsideThePrimitive:
       /^the located element's stamp .*Callout\/index\.tsx:59 is in no record-1 element and no tracked primitive placed it$/,
     ForcedCalloutHeading:
@@ -4782,15 +4791,20 @@ test('T693 plants (Disabled column): a story whose args say disabled but whose r
     'Button|destructive|md|hover',
     `record1|${BUTTON_FILE}:213|hover`,
   ])
+  // A hover forced on a disabled Button paints disabled, not hover: the Disabled column is credited
+  // from the mount, the forced state is refused (T694 review, B3).
   assert.deepEqual(creditsOf(computed, 'ZzPlants:ArgsDisabledSpread'), [
     'Button|secondary|md|disabled',
-    'Button|secondary|md|hover',
-    `record1|${BUTTON_FILE}:213|hover`,
   ])
-  assert.deepEqual(creditsOf(computed, 'ZzPlants:DisabledControlInField'), [
-    'Field|md|disabled',
-    'Field|md|focusVisible',
-  ])
+  assert.match(
+    refusalOf(computed, 'primitives/Button', 'ArgsDisabledSpread').refusal,
+    /^the located element's stamp .*Button\/index\.tsx:213 is in its placing Button's disabledAt/,
+  )
+  assert.deepEqual(creditsOf(computed, 'ZzPlants:DisabledControlInField'), ['Field|md|disabled'])
+  assert.match(
+    refusalOf(computed, 'primitives/Button', 'DisabledControlInField').refusal,
+    /is in its placing Field's disabledAt/,
+  )
   assert.deepEqual(
     creditsOf(computed, 'ZzPlants:HrefAndDisabled').filter((c) => c.endsWith('|disabled')),
     [],
@@ -5529,4 +5543,588 @@ test('findUnaccountedForceStates (via computeStateCoverage, record 1): an uncred
     describeMissingForceState(computed.unaccountedForceStates.missing[0]),
     /no element matched the force at 375px, 768px, 1280px/,
   )
+})
+
+// ---- T694 review remediation: what a story file, a clip, a disabled target and a manifest shape credit ----
+//
+// Every plant below is red against the pre-remediation check (the commit's hand-back lists each one's
+// failing output) and each has a contrast that is still credited after.
+
+const BUTTON_STORIES_HEADER = `import { Button } from './index'\nconst meta = { component: Button }\nexport default meta\n`
+const CARD_STORIES = 'composites/Card/Card.stories.tsx'
+const CARD_INDEX = 'composites/Card/index.tsx'
+const CARD_INDEX_FILE = `${STAMP_ROOT}${CARD_INDEX}`
+const CARD_DIRS = [
+  { segment: 'primitives', name: 'Button' },
+  { segment: 'composites', name: 'Card' },
+]
+const cardStoriesSource = (stories, meta = `{ component: Card }`) =>
+  `import { Card } from './index'\nimport { Button } from '../../primitives/Button'\nconst meta = ${meta}\nexport default meta\n${stories}`
+
+// A tree of the `Button` primitive and a `Card` composite, each story of `Card` read as the manifest
+// entries say it rendered.
+function cardRun({
+  cardIndex = 'export function Card() { return <div /> }\n',
+  stories,
+  meta,
+  manifest,
+}) {
+  const filesByPath = new Map([
+    [srcFile('primitives/Button/index.tsx'), MINI_BUTTON],
+    [srcFile(MINI_STORIES), BUTTON_STORIES_HEADER],
+    [srcFile(CARD_INDEX), cardIndex],
+    [srcFile(CARD_STORIES), cardStoriesSource(stories, meta)],
+  ])
+  return computeStateCoverage({ componentDirs: CARD_DIRS, filesByPath, manifest })
+}
+const cardEntry = (exportName, record, files = [CARD_INDEX_FILE]) =>
+  manifestEntry(`src/${CARD_STORIES}`, exportName, record, files)
+const mentionsCard = (computed) => JSON.stringify(computed.matrices.Button).includes('Card')
+
+// ---- B1: a tracked primitive written in a story file credits nothing; only the manifest's mounts do ----
+
+for (const [name, story, mounts] of [
+  [
+    'JSX under an args key the render never passes',
+    `export const ZzArgsKey = { args: { action: <Button variant="ghost" size="lg" href="/x" disabled>Go</Button> }, render: () => <div>nothing</div> }\n`,
+    [],
+  ],
+  [
+    'href with disabled (the browser renders an enabled link, so the instance has no disabled element)',
+    `export const ZzHrefDisabled = { render: () => <Button variant="ghost" size="lg" href="/x" disabled>Go</Button> }\n`,
+    [placedInstance('Button', 'ghost', 'lg', [])],
+  ],
+  [
+    'a tag in a branch that is never reached',
+    `export const ZzUnreached = { render: () => <div>{false && <Button variant="ghost" size="lg" disabled>Go</Button>}</div> }\n`,
+    [],
+  ],
+  [
+    'a literal loading',
+    `export const ZzLoading = { args: { action: <Button variant="ghost" size="lg" loading>Go</Button> }, render: () => <div>nothing</div> }\n`,
+    [],
+  ],
+  [
+    'the Rest column of the same call site',
+    `export const ZzRest = { render: () => <div>{false && <Button variant="primary" size="lg">Go</Button>}</div> }\n`,
+    [],
+  ],
+]) {
+  test(`B1 plant: ${name} credits no cell of Button's matrix`, () => {
+    const exportName = story.match(/export const (\w+)/)[1]
+    const computed = cardRun({
+      stories: story,
+      manifest: { 'zz-b1': cardEntry(exportName, { mounts }) },
+    })
+    assert.equal(mentionsCard(computed), false, JSON.stringify(computed.matrices.Button))
+    assert.deepEqual(computed.manifestProblems, [])
+  })
+}
+
+test('B1 contrast: a design-system component call site keeps its Rest and Disabled credit, literal disabled and literal loading both', () => {
+  const cardIndex = `export function Card() {
+  return (
+    <div>
+      <Button variant="ghost" size="lg" disabled>A</Button>
+      <Button variant="primary" size="lg" loading>B</Button>
+      <Button variant="secondary" size="md">C</Button>
+    </div>
+  )
+}
+`
+  const computed = cardRun({ cardIndex, stories: '', manifest: {} })
+  const row = (key) => computed.matrices.Button.find((r) => r.variantSize === key)
+  assert.deepEqual(row('ghost|lg').rest, [`composites/Card (${CARD_INDEX_FILE}:4)`])
+  assert.deepEqual(row('ghost|lg').disabled, [`composites/Card (${CARD_INDEX_FILE}:4)`])
+  assert.deepEqual(row('primary|lg').disabled, [`composites/Card (${CARD_INDEX_FILE}:5)`])
+  assert.deepEqual(row('secondary|md').rest, [`composites/Card (${CARD_INDEX_FILE}:6)`])
+  assert.deepEqual(row('secondary|md').disabled, ['none'])
+})
+
+test('B1 contrast: the same primitive mounted disabled in a story is credited through the manifest mount', () => {
+  const computed = cardRun({
+    stories: `export const ZzMounted = { render: () => <Button variant="ghost" size="lg" disabled>Go</Button> }\n`,
+    manifest: {
+      'zz-mounted': cardEntry('ZzMounted', {
+        mounts: [placedInstance('Button', 'ghost', 'lg', [MINI_BUTTON_STAMP])],
+      }),
+    },
+  })
+  assert.deepEqual(creditsOf(computed, 'ZzMounted'), ['Button|ghost|lg|disabled'])
+})
+
+test('B1 contrast (real tree): ErrorState:RetryInProgress credits Button secondary|md Disabled through its mounts, and its story-file call site no longer does', () => {
+  const { componentDirs, filesByPath, storyFilesByPath } = readAllSourceFiles()
+  const computed = computeStateCoverage({
+    componentDirs,
+    filesByPath,
+    storyFilesByPath,
+    manifest: readManifest().manifest,
+  })
+  const row = computed.matrices.Button.find((r) => r.variantSize === 'secondary|md')
+  assert.deepEqual(row.disabled, ['ErrorState:RetryInProgress'])
+  assert.equal(JSON.stringify(computed.matrices).includes('.stories.tsx:'), false)
+})
+
+// ---- B2: a story that declares a visualCaptureClip gives no mount credit ----------------------------
+
+const CLIP = `{ parts: [{ role: 'checkbox' }] }`
+const disabledMount = placedInstance('Button', 'secondary', 'md', [MINI_BUTTON_STAMP])
+
+test('B2 plant: a clipped own-story mounting a disabled Button credits neither Disabled nor Rest; contrast: the same story unclipped credits both', () => {
+  const run = (parameters) =>
+    miniRun(`export const ZzClip = { args: { disabled: true }${parameters} }\n`, {
+      'zz-clip': miniEntry('ZzClip', miniRecord([disabledMount])),
+    })
+  assert.deepEqual(creditsOf(run(`, parameters: { visualCaptureClip: ${CLIP} }`), 'ZzClip'), [])
+  assert.deepEqual(creditsOf(run(''), 'ZzClip'), [
+    'Button|secondary|md|disabled',
+    'Button|secondary|md|rest',
+  ])
+})
+
+test('B2 plant: a clipped story composing a disabled Button (AccountErasurePanel:AcknowledgementCheckboxFocusVisible’s shape) credits no Disabled cell; contrast: unclipped credits it', () => {
+  const story = (parameters) =>
+    `export const ZzComposed = { render: () => <Button disabled>Go</Button>${parameters} }\n`
+  const run = (parameters) =>
+    cardRun({
+      stories: story(parameters),
+      manifest: { 'zz-composed': cardEntry('ZzComposed', { mounts: [disabledMount] }) },
+    })
+  assert.deepEqual(creditsOf(run(`, parameters: { visualCaptureClip: ${CLIP} }`), 'ZzComposed'), [])
+  assert.deepEqual(creditsOf(run(''), 'ZzComposed'), ['Button|secondary|md|disabled'])
+})
+
+test('B2 siblings: a clip on the default export, and a parameters object this pass cannot read in full, are clips too', () => {
+  const run = (meta, story) =>
+    cardRun({
+      meta,
+      stories: story,
+      manifest: { 'zz-sib': cardEntry('ZzSib', { mounts: [disabledMount] }) },
+    })
+  const plain = `export const ZzSib = { render: () => <Button disabled>Go</Button> }\n`
+  assert.deepEqual(
+    creditsOf(
+      run(`{ component: Card, parameters: { visualCaptureClip: ${CLIP} } }`, plain),
+      'ZzSib',
+    ),
+    [],
+  )
+  assert.deepEqual(
+    creditsOf(
+      run(
+        `{ component: Card }`,
+        `const shared = {}\nexport const ZzSib = { parameters: { ...shared }, render: () => <Button disabled>Go</Button> }\n`,
+      ),
+      'ZzSib',
+    ),
+    [],
+  )
+  assert.deepEqual(creditsOf(run(`{ component: Card, parameters: {} }`, plain), 'ZzSib'), [
+    'Button|secondary|md|disabled',
+  ])
+})
+
+test('B2: a clipped forced story keeps its forced credit and gives no Disabled or Rest from its mounts', () => {
+  const placed = placedInstance('Button', 'ghost', 'md')
+  const run = (parameters) =>
+    cardRun({
+      stories: `export const ZzForced = { render: () => <Button>Go</Button>, parameters: { visualForceState: { state: 'hover', role: 'button' }${parameters} } }\n`,
+      manifest: {
+        'zz-forced': cardEntry('ZzForced', {
+          mounts: [placed, disabledMount],
+          force: { count: 1, stamp: MINI_BUTTON_STAMP, placedBy: placed },
+        }),
+      },
+    })
+  const forcedOnly = ['Button|ghost|md|hover', `record1|${MINI_BUTTON_STAMP}|hover`]
+  assert.deepEqual(creditsOf(run(`, visualCaptureClip: ${CLIP}`), 'ZzForced'), forcedOnly)
+  assert.deepEqual(creditsOf(run(''), 'ZzForced'), [
+    'Button|ghost|md|hover',
+    'Button|secondary|md|disabled',
+    `record1|${MINI_BUTTON_STAMP}|hover`,
+  ])
+})
+
+const TABS_DIRS = [{ segment: 'primitives', name: 'Tabs' }]
+const TABS_INDEX = `export function Tabs({ disabled }) {
+  return <button type="button" disabled={disabled} className="hover:bg-surface-sunken" />
+}
+`
+function tabsRun(storyBody, meta = '{ component: Tabs }') {
+  return computeStateCoverage({
+    componentDirs: TABS_DIRS,
+    filesByPath: new Map([
+      [srcFile('primitives/Tabs/index.tsx'), TABS_INDEX],
+      [
+        srcFile('primitives/Tabs/Tabs.stories.tsx'),
+        `import { Tabs } from './index'\nconst meta = ${meta}\nexport default meta\n${storyBody}`,
+      ],
+    ]),
+    manifest: {
+      'zz-tabs': manifestEntry(
+        'src/primitives/Tabs/Tabs.stories.tsx',
+        'ZzDisabledArgs',
+        {
+          mounts: [],
+        },
+        [`${STAMP_ROOT}primitives/Tabs/index.tsx`],
+      ),
+    },
+  })
+}
+
+test('B2 (record 1): the element matrix’s args-driven Disabled credit follows the same rule — a clipped story credits none, an unclipped one does', () => {
+  const unclipped = tabsRun(`export const ZzDisabledArgs = { args: { disabled: true } }\n`)
+  assert.deepEqual(unclipped.matrices.Tabs[0].disabled, ['ZzDisabledArgs'])
+  const clipped = tabsRun(
+    `export const ZzDisabledArgs = { args: { disabled: true }, parameters: { visualCaptureClip: ${CLIP} } }\n`,
+  )
+  assert.deepEqual(clipped.matrices.Tabs[0].disabled, ['none'])
+})
+
+// A file that places an element in `position: fixed`, rendered by a story captured as its root box.
+const PANEL_INDEX = 'composites/Panel/index.tsx'
+const PANEL_FILE = `${STAMP_ROOT}${PANEL_INDEX}`
+function overlayRun({ panel, tags = '' }) {
+  const filesByPath = new Map([
+    [srcFile('primitives/Button/index.tsx'), MINI_BUTTON],
+    [srcFile(MINI_STORIES), BUTTON_STORIES_HEADER],
+    [srcFile(CARD_INDEX), 'export function Card() { return <div /> }\n'],
+    [srcFile(PANEL_INDEX), panel],
+    [
+      srcFile(CARD_STORIES),
+      cardStoriesSource(
+        `export const ZzOverlay = { ${tags} render: () => <Button disabled>Go</Button> }\n`,
+      ),
+    ],
+  ])
+  return computeStateCoverage({
+    componentDirs: [...CARD_DIRS, { segment: 'composites', name: 'Panel' }],
+    filesByPath,
+    manifest: {
+      'zz-overlay': cardEntry('ZzOverlay', { mounts: [disabledMount] }, [
+        CARD_INDEX_FILE,
+        PANEL_FILE,
+      ]),
+    },
+  })
+}
+
+test('B2 sibling: a root-box story that rendered a position: fixed file gives no mount credit; tagged visual-full-page, or with only a prefixed fixed, it does', () => {
+  const fixedPanel = `export function Panel() { return <div className="fixed inset-0" /> }\n`
+  assert.deepEqual(creditsOf(overlayRun({ panel: fixedPanel }), 'ZzOverlay'), [])
+  assert.deepEqual(
+    creditsOf(overlayRun({ panel: fixedPanel, tags: `tags: ['visual-full-page'],` }), 'ZzOverlay'),
+    ['Button|secondary|md|disabled'],
+  )
+  const prefixed = `export function Panel() { return <div className="focus:fixed top-0" /> }\n`
+  assert.deepEqual(creditsOf(overlayRun({ panel: prefixed }), 'ZzOverlay'), [
+    'Button|secondary|md|disabled',
+  ])
+})
+
+// ---- B3: a forced state on a disabled target is refused, whatever the state ---------------------------
+
+for (const state of ['hover', 'focus-visible', 'active']) {
+  test(`B3 plant: a forced ${state} on a Button the browser reports disabled is refused at record 1 and record 3, its Disabled credit kept`, () => {
+    const name = `ZzDisabled${state.replace(/-/g, '')}`
+    const computed = miniRun(
+      `export const ${name} = { args: { disabled: true }, parameters: { visualForceState: { state: '${state}', role: 'button' } } }\n`,
+      {
+        'zz-disabled': miniEntry(
+          name,
+          miniRecord([disabledMount], {
+            count: 1,
+            stamp: MINI_BUTTON_STAMP,
+            placedBy: disabledMount,
+          }),
+        ),
+      },
+    )
+    assert.deepEqual(stateCreditsOf(computed, name), [])
+    assert.deepEqual(creditsOf(computed, name), ['Button|secondary|md|disabled'])
+    assert.match(
+      refusalOf(computed, 'primitives/Button', name).refusal,
+      /^the located element's stamp .*:3 is in its placing Button's disabledAt \(the browser reports it disabled, native or aria-disabled\)/,
+    )
+  })
+}
+
+test('B3 contrast: a forced hover on an enabled Button next to a disabled sibling credits the enabled one', () => {
+  const enabled = placedInstance('Button', 'ghost', 'md', [])
+  const computed = miniRun(
+    `export const ZzBeside = { parameters: { visualForceState: { state: 'hover', role: 'button', name: 'Ghost' } } }\n`,
+    {
+      'zz-beside': miniEntry(
+        'ZzBeside',
+        miniRecord([enabled, disabledMount], {
+          count: 1,
+          stamp: MINI_BUTTON_STAMP,
+          placedBy: enabled,
+        }),
+      ),
+    },
+  )
+  assert.deepEqual(creditsOf(computed, 'ZzBeside'), [
+    'Button|ghost|md|hover',
+    'Button|secondary|md|disabled',
+    `record1|${MINI_BUTTON_STAMP}|hover`,
+  ])
+})
+
+test('B3: a stamp disabled at one width only is refused too, and disabledAt is read from the DOM as :disabled or aria-disabled="true"', () => {
+  const at = (disabledAt) => ({
+    mounts: [],
+    force: {
+      count: 1,
+      stamp: MINI_BUTTON_STAMP,
+      placedBy: placedInstance('Button', 'ghost', 'md', disabledAt),
+    },
+  })
+  const verdict = resolveRuntimeForce(
+    { widths: { 375: at([]), 768: at([MINI_BUTTON_STAMP]), 1280: at([]) } },
+    { recordOneKeys: new Set([MINI_BUTTON_STAMP]) },
+  )
+  assert.ok(verdict.refusal, 'refused')
+  assert.equal(verdict.stamp, undefined)
+  const reader = readFileSync(
+    path.resolve(REPO_SRC_DIR, '..', '..', '..', 'tests', 'visual', 'state-coverage-runtime.ts'),
+    'utf8',
+  )
+  assert.match(
+    reader,
+    /el\.matches\(':disabled'\) \|\| el\.getAttribute\('aria-disabled'\) === 'true'/,
+  )
+})
+
+test('B3 residual: an element no tracked primitive placed is credited without knowing whether it renders disabled — the manifest records disabled elements only among a tracked primitive’s own', () => {
+  const cardIndex = `export function Card({ disabled }) {
+  return (
+    <button type="button" disabled={disabled} className="hover:bg-surface-sunken">
+      Go
+    </button>
+  )
+}
+`
+  const stamp = `${CARD_INDEX_FILE}:3`
+  const computed = cardRun({
+    cardIndex,
+    stories: `export const ZzRawHover = { args: { disabled: true }, parameters: { visualForceState: { state: 'hover', role: 'button' } } }\n`,
+    manifest: {
+      'zz-raw': cardEntry('ZzRawHover', {
+        mounts: [],
+        force: { count: 1, stamp, placedBy: null },
+      }),
+    },
+  })
+  assert.deepEqual(creditsOf(computed, 'ZzRawHover'), [`record1|${stamp}|hover`])
+  assert.match(
+    REGION_LEGEND,
+    /no tracked primitive placed \(a record-1 element of\nanother component\) is credited without knowing whether it renders disabled/,
+  )
+})
+
+// ---- M1: a manifest entry's shape is checked, and a malformed one fails the check -----------------------
+
+const wellFormedForce = {
+  count: 1,
+  stamp: MINI_BUTTON_STAMP,
+  placedBy: placedInstance('Button', 'secondary', 'md'),
+}
+const withForce = (force) => ({ widths: atEveryWidth({ mounts: [], force }) })
+const MALFORMED_ENTRIES = {
+  'a count that is missing': withForce({
+    stamp: MINI_BUTTON_STAMP,
+    placedBy: wellFormedForce.placedBy,
+  }),
+  'a null count': withForce({ ...wellFormedForce, count: null }),
+  'a string count': withForce({ ...wellFormedForce, count: '1' }),
+  'a fractional count': withForce({ ...wellFormedForce, count: 1.5 }),
+  'a width missing': {
+    widths: Object.fromEntries(
+      WIDTHS.slice(1).map((w) => [w, { mounts: [], force: wellFormedForce }]),
+    ),
+  },
+  'an extra width': {
+    widths: { ...withForce(wellFormedForce).widths, 1920: { mounts: [], force: wellFormedForce } },
+  },
+  'empty widths': { widths: {} },
+}
+
+for (const [name, entry] of Object.entries(MALFORMED_ENTRIES)) {
+  test(`M1 plant: ${name} is a malformed entry, not a credit and not a silent refusal`, () => {
+    const verdict = resolveRuntimeForce(entry, { recordOneKeys: new Set([MINI_BUTTON_STAMP]) })
+    assert.equal(typeof verdict.malformed, 'string', JSON.stringify(verdict))
+    assert.equal(verdict.stamp, undefined)
+    assert.equal(verdict.refusal, undefined)
+    const computed = miniRun(
+      `export const ZzShape = { parameters: { visualForceState: { state: 'hover', role: 'button' } } }\n`,
+      {
+        'zz-shape': {
+          ...entry,
+          importPath: `./src/${MINI_STORIES}`,
+          exportName: 'ZzShape',
+          files: [BUTTON_FILE],
+        },
+      },
+    )
+    assert.deepEqual(
+      computed.manifestProblems.map((p) => [p.kind, p.location]),
+      [['malformed-entry', 'src/primitives/Button/Button.stories.tsx:ZzShape']],
+    )
+    assert.match(computed.manifestProblems[0].detail, /story ZzShape of /)
+    assert.ok(computed.manifestProblems[0].detail.includes(REWRITE_COMMAND))
+    assert.deepEqual(creditsOf(computed, 'ZzShape'), [])
+  })
+}
+
+test('M1: the widths an entry must record are the capture’s own, from review-widths, never a copy', () => {
+  assert.deepEqual(WIDTHS, REVIEW_WIDTHS.map(String))
+  const source = readFileSync(
+    path.join(REPO_SRC_DIR, '..', '..', '..', 'scripts', 'checks', 'state-coverage.mjs'),
+    'utf8',
+  )
+  assert.match(source, /from '\.\.\/visual\/review-widths\.mjs'/)
+  assert.doesNotMatch(source, /\b375\b/)
+})
+
+test('M1: a width missing from a story that forces nothing is malformed too', () => {
+  const computed = miniRun(`export const ZzMounts = {}\n`, {
+    'zz-mounts': {
+      importPath: `./src/${MINI_STORIES}`,
+      exportName: 'ZzMounts',
+      files: [BUTTON_FILE],
+      widths: { 375: { mounts: [placedInstance('Button', 'primary', 'lg')] } },
+    },
+  })
+  assert.deepEqual(
+    computed.manifestProblems.map((p) => p.kind),
+    ['malformed-entry'],
+  )
+  assert.deepEqual(creditsOf(computed, 'ZzMounts'), [])
+})
+
+test('M1 contrast: a well-formed entry credits', () => {
+  const verdict = resolveRuntimeForce(withForce(wellFormedForce), {
+    recordOneKeys: new Set([MINI_BUTTON_STAMP]),
+  })
+  assert.equal(verdict.malformed, undefined)
+  assert.equal(verdict.refusal, undefined)
+  assert.equal(verdict.stamp, MINI_BUTTON_STAMP)
+})
+
+// ---- M4: a fixture is a story with the fixture tag, wherever it sits -----------------------------------
+
+const FIXTURE_FORCE = `parameters: { visualForceState: { state: 'hover', role: 'button' } }`
+const fixtureRun = ({ meta, story }) =>
+  cardRun({
+    meta,
+    stories: story,
+    manifest: {
+      'zz-fixture': cardEntry('ZzTagged', {
+        mounts: [placedInstance('Button', 'ghost', 'md')],
+        force: {
+          count: 1,
+          stamp: MINI_BUTTON_STAMP,
+          placedBy: placedInstance('Button', 'ghost', 'md'),
+        },
+      }),
+    },
+  })
+
+test('M4 plant: a tagged story under packages/design-system/src credits nothing, whether the tag is on the default export or on the story', () => {
+  for (const [meta, story] of [
+    [
+      `{ component: Card, tags: ['state-coverage-fixture', '!dev'] }`,
+      `export const ZzTagged = { ${FIXTURE_FORCE} }\n`,
+    ],
+    [
+      `{ component: Card }`,
+      `export const ZzTagged = { tags: ['state-coverage-fixture'], ${FIXTURE_FORCE} }\n`,
+    ],
+    [
+      `{ title: 'Zz' , tags: ['state-coverage-fixture'] }`,
+      `export const ZzTagged = { ${FIXTURE_FORCE} }\n`,
+    ],
+  ]) {
+    const computed = fixtureRun({ meta, story })
+    assert.deepEqual(creditsOf(computed, 'ZzTagged'), [], meta)
+    assert.deepEqual(computed.unaccountedForceStates.missing, [], meta)
+    assert.deepEqual(computed.manifestProblems, [], meta)
+  }
+})
+
+test('M4 contrast: the same story untagged, or with the tag removed by !, is credited', () => {
+  const credited = ['Button|ghost|md|hover', `record1|${MINI_BUTTON_STAMP}|hover`]
+  const story = `export const ZzTagged = { ${FIXTURE_FORCE} }\n`
+  assert.deepEqual(
+    creditsOf(fixtureRun({ meta: `{ component: Card }`, story }), 'ZzTagged'),
+    credited,
+  )
+  assert.deepEqual(
+    creditsOf(
+      fixtureRun({
+        meta: `{ component: Card, tags: ['state-coverage-fixture'] }`,
+        story: `export const ZzTagged = { tags: ['!state-coverage-fixture'], ${FIXTURE_FORCE} }\n`,
+      }),
+      'ZzTagged',
+    ),
+    credited,
+  )
+})
+
+test('M4: a tags this pass cannot read as string literals fails the check, naming the story', () => {
+  const computed = fixtureRun({
+    meta: `{ component: Card }`,
+    story: `const tags = ['x']\nexport const ZzTagged = { tags, ${FIXTURE_FORCE} }\n`,
+  })
+  assert.deepEqual(
+    computed.manifestProblems.map((p) => [p.kind, p.location]),
+    [['unreadable-tags', 'src/composites/Card/Card.stories.tsx:ZzTagged']],
+  )
+})
+
+// ---- M2: the legend names exactly the credits that stay static ----------------------------------------
+
+test('M2: the region legend names each static credit, builds its list from them and lists no other', async () => {
+  const { STATIC_CREDITS } = await import('./state-coverage.mjs')
+  assert.deepEqual(
+    STATIC_CREDITS.map((c) => c.id),
+    [
+      'call-site-rest',
+      'call-site-disabled',
+      'args-disabled',
+      'play-click',
+      'play-focus',
+      'ancestor-inheritance',
+    ],
+  )
+  const listed = REGION_LEGEND.split('**Still static, and read from source:**')[1]
+    .split('**Residual gaps')[0]
+    .split('\n')
+    .filter((line) => line.startsWith('- '))
+  assert.deepEqual(
+    listed,
+    STATIC_CREDITS.map((c) => `- ${c.legend}`),
+  )
+  assert.match(REGION_LEGEND, /literal `loading` at a `Button` or `Field` one/)
+  assert.match(
+    REGION_LEGEND,
+    /`disabled` or `aria-disabled` attribute, credited to every story whose `args` hold a literal `disabled: true`/,
+  )
+})
+
+test('M2: each static credit is still given — call sites, loading, and the args-driven Disabled cell (the contrasts above and below pin the others)', () => {
+  const tabs = tabsRun(`export const ZzDisabledArgs = { args: { disabled: true } }\n`)
+  assert.deepEqual(tabs.matrices.Tabs[0].disabled, ['ZzDisabledArgs'])
+  const { componentDirs, filesByPath, storyFilesByPath } = readAllSourceFiles()
+  const computed = computeStateCoverage({
+    componentDirs,
+    filesByPath,
+    storyFilesByPath,
+    manifest: readManifest().manifest,
+  })
+  const row = computed.matrices.Button.find((r) => r.variantSize === 'primary|lg')
+  assert.ok(row.rest.some((entry) => /\/index\.tsx:\d+\)$/.test(entry)))
 })

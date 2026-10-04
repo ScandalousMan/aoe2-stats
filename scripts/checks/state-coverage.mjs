@@ -58,6 +58,8 @@ import { createRequire } from 'node:module'
 import { execFileSync } from 'node:child_process'
 import { listComponentDirs } from './story-docs.mjs'
 import { BUILD_STORYBOOK_COMMAND } from '../visual/missing-index.mjs'
+import { REVIEW_WIDTHS } from '../visual/review-widths.mjs'
+import { FIXTURE_TAG } from '../visual/story-index.mjs'
 import {
   MANIFEST_PATH,
   REWRITE_COMMAND,
@@ -2333,21 +2335,28 @@ function asPrinted(storyObjectsWithMeta) {
 //   - a record-3 cell when the entry's placing instance is a tracked primitive at the variant and size
 //     the browser rendered it at;
 //   - the Disabled column and a primitive's own stories' Rest column from the instances the manifest
-//     says the story mounts, as rendered;
-//   - every other forced story credits no cell and is reported with the reason (`resolveRuntimeForce`).
+//     says the story mounts, as rendered, unless the story declares a `visualCaptureClip` or may paint
+//     outside its root box (`computeStateCoverage`); a tracked primitive written in a story file
+//     credits nothing;
+//   - every other forced story credits no cell and is reported with the reason (`resolveRuntimeForce`),
+//     among them a force on an element the browser reports disabled.
 // The stories considered are the manifest's entries, each joined to its parsed story object by the
 // entry's `importPath` and `exportName`, never the story files found under a component directory, so
 // where a story file lives decides nothing. A story with no entry fails the check, naming the command
 // that refreshes the manifest.
 //
-// What stays static, and the region's legend says so: the `play()`-click credit of an element that
-// paints its `active` state through a conditional class (`resolveClickMatch`), which the manifest
-// does not record; the hover and active credit an ancestor inherits from a credited descendant; and
-// which stories carry `play()` at all, read from the script.
+// What stays static, and the region's legend says so (`STATIC_CREDITS` lists it and the legend is built
+// from that list): call sites in component files, the Disabled cell of a local element from a story's
+// `args`, the `play()`-click credit of an element that paints its `active` state through a conditional
+// class (`resolveClickMatch`), which stories carry `play()` at all, and the hover and active credit an
+// ancestor inherits from a credited descendant.
 
 // The directory, relative to the design-system package, whose stories are the runtime pass's own
 // plants (`packages/design-system/.storybook/fixtures/`). Their manifest entries record what the
 // browser rendered for each plant; they are not published stories and the region never reads them.
+// This path only removes entries from consideration. What makes a story a fixture is its tag
+// (`FIXTURE_TAG`, `scripts/visual/story-index.mjs`), as for every other reader of the stories, so a
+// tagged story anywhere credits nothing too.
 export const FIXTURE_STORY_DIRECTORY = '.storybook/fixtures/'
 
 // The axes each tracked primitive keys its matrix rows on: `variant`, `size`, both, or one. The
@@ -2452,24 +2461,59 @@ export function rowAxesOf(instance) {
   return { variant: field('variant'), size: field('size') }
 }
 
+// The widths every story is captured and recorded at, as the manifest's keys.
+const CAPTURED_WIDTHS = REVIEW_WIDTHS.map(String)
+
+// What is wrong with the SHAPE of a manifest entry, or `null`. A malformed entry is not a refusal of
+// one story's credit; it is a manifest the pass did not write, so the check fails naming the story:
+//   - the entry's widths are not exactly the widths the capture takes (`REVIEW_WIDTHS`: the runtime
+//     pass records every story at every one of them, `scripts/visual/state-coverage-runtime.mjs`) — a
+//     missing width would let the credit rest on fewer frames than the story is captured at, an extra
+//     one on a frame no capture takes, and none at all records nothing;
+//   - for a forced story, a force record whose `count` is not a non-negative integer.
+export function entryShapeProblem(entry, { forced }) {
+  const recorded = Object.keys(entry?.widths ?? {})
+  const missing = CAPTURED_WIDTHS.filter((w) => !recorded.includes(w))
+  const extra = recorded.filter((w) => !CAPTURED_WIDTHS.includes(w))
+  if (recorded.length === 0) {
+    return `it records no captured width (the capture takes ${CAPTURED_WIDTHS.map((w) => `${w}px`).join(', ')})`
+  }
+  if (missing.length > 0 || extra.length > 0) {
+    return (
+      `its widths (${recorded.map((w) => `${w}px`).join(', ')}) are not the widths the capture takes ` +
+      `(${CAPTURED_WIDTHS.map((w) => `${w}px`).join(', ')})` +
+      (missing.length > 0 ? `: missing ${missing.map((w) => `${w}px`).join(', ')}` : '') +
+      (extra.length > 0 ? `: extra ${extra.map((w) => `${w}px`).join(', ')}` : '')
+    )
+  }
+  if (forced) {
+    for (const w of CAPTURED_WIDTHS) {
+      const force = entry.widths[w]?.force
+      if (force && !(Number.isInteger(force.count) && force.count >= 0)) {
+        return `its force record at ${w}px has a count that is not a non-negative integer (${JSON.stringify(force.count)})`
+      }
+    }
+  }
+  return null
+}
+
 // What a forced story's manifest entry credits, or why it credits nothing. `recordOneKeys` is the
-// set of `file:line` keys of record 1's elements. Returns `{ refusal }`, or `{ stamp, placedBy,
-// notes }`: `stamp` is the record-1 element credited (null when the located element is none), `placedBy`
-// the tracked instance (with its `row`) whose matrix cell is credited (null when none), `notes` the
-// reasons a half was refused while the other was credited.
+// set of `file:line` keys of record 1's elements. Returns `{ malformed }` for an entry whose
+// shape is wrong (`entryShapeProblem`), `{ refusal }`, or `{ stamp, placedBy, notes }`: `stamp` is
+// the record-1 element credited (null when the located element is none), `placedBy` the tracked
+// instance (with its `row`) whose matrix cell is credited (null when none), `notes` the reasons a
+// half was refused while the other was credited.
 //
 // A force is credited only when it is the same answer at every captured width: one element
 // (Playwright's strict mode refuses two, so no frame of a two-match force can be captured, and none
-// of zero), one stamp, one placing instance. The refusal names the true reason — never the one a
-// refusal prints for every cause (`credited on no cell`).
+// of zero), one stamp, one placing instance, and an element the browser does not report disabled. The
+// refusal names the true reason — never the one a refusal prints for every cause (`credited on no
+// cell`).
 export function resolveRuntimeForce(entry, { recordOneKeys }) {
-  const widths = Object.entries(entry?.widths ?? {}).sort(([a], [b]) => Number(a) - Number(b))
+  const malformed = entryShapeProblem(entry, { forced: true })
+  if (malformed) return { malformed }
+  const widths = Object.entries(entry.widths).sort(([a], [b]) => Number(a) - Number(b))
   const label = (list) => list.map(([w]) => `${w}px`).join(', ')
-  if (widths.length === 0) {
-    return {
-      refusal: `the manifest entry records no captured width — rewrite it with \`${REWRITE_COMMAND}\``,
-    }
-  }
   const unrecorded = widths.filter(([, record]) => !record.force)
   if (unrecorded.length > 0) {
     return {
@@ -2502,6 +2546,21 @@ export function resolveRuntimeForce(entry, { recordOneKeys }) {
   }
   const stamp = widths[0][1].force.stamp ?? null
   const placedBy = widths[0][1].force.placedBy ?? null
+  // A disabled element paints disabled, whatever state the harness forces on it: `hover()` and `press`
+  // reach it as a disabled control, and `focus()` does nothing on one. `disabledAt` is the sorted unique
+  // stamps of the host elements the placing instance's own file placed that the browser reports
+  // `:disabled` or `aria-disabled="true"` (`tests/visual/state-coverage-runtime.ts`) — stamps, not
+  // elements, so a sibling written at the same line shares one. Refused when the located element's
+  // stamp is in the placing instance's `disabledAt` at any width, for hover, focus-visible and press
+  // alike, at record 1 and record 3 both.
+  if (
+    stamp !== null &&
+    widths.some(([, r]) => (r.force.placedBy?.disabledAt ?? []).includes(stamp))
+  ) {
+    return {
+      refusal: `the located element's stamp ${stamp} is in its placing ${placedBy?.component ?? 'instance'}'s disabledAt (the browser reports it disabled, native or aria-disabled), so the forced state never paints on it`,
+    }
+  }
   const notes = []
   const elementStamp = stamp !== null && recordOneKeys.has(stamp) ? stamp : null
   let placing = null
@@ -2555,6 +2614,124 @@ function walkStoryFiles() {
   return files
 }
 
+// The object literal a story file's default export names (`export default meta`, `export default {...}`,
+// `export { meta as default }`), or `null` when it is not an object literal in this file. Unlike
+// `findMeta` it does not require a `component`: a meta with only a `title` still carries `tags` and
+// `parameters`.
+function findDefaultMetaObject(sourceFile, constNodeMap) {
+  const resolve = (expr) => {
+    const unwrapped = unwrapExpression(expr)
+    const target =
+      unwrapped && ts.isIdentifier(unwrapped) ? constNodeMap.get(unwrapped.text) : unwrapped
+    return target && ts.isObjectLiteralExpression(target) ? target : null
+  }
+  for (const statement of sourceFile.statements) {
+    if (ts.isExportAssignment(statement) && !statement.isExportEquals) {
+      return resolve(statement.expression)
+    }
+    if (
+      ts.isExportDeclaration(statement) &&
+      !statement.moduleSpecifier &&
+      statement.exportClause &&
+      ts.isNamedExports(statement.exportClause)
+    ) {
+      for (const specifier of statement.exportClause.elements) {
+        if (specifier.name.text === 'default')
+          return resolve(specifier.propertyName ?? specifier.name)
+      }
+    }
+  }
+  return null
+}
+
+// A story's tags as Storybook merges them: the default export's, then the story's own, a `!tag`
+// removing one. `unreadable` is true when either side carries a `tags` that is not an array of string
+// literals, which this pass cannot read.
+export function readStoryTags(metaObject, storyObject) {
+  const tags = new Set()
+  let unreadable = false
+  for (const owner of [metaObject, storyObject]) {
+    const expr = getProp(owner, 'tags')
+    if (expr === undefined) continue
+    const array = unwrapExpression(expr)
+    if (
+      !array ||
+      !ts.isArrayLiteralExpression(array) ||
+      !array.elements.every(
+        (el) => ts.isStringLiteral(el) || ts.isNoSubstitutionTemplateLiteral(el),
+      )
+    ) {
+      unreadable = true
+      continue
+    }
+    for (const el of array.elements) {
+      if (el.text.startsWith('!')) tags.delete(el.text.slice(1))
+      else tags.add(el.text)
+    }
+  }
+  return { tags, unreadable }
+}
+
+// The `parameters` object literals of a story file's meta and of one story. A `parameters` that is not
+// an object literal, or that spreads another object, may carry a `visualCaptureClip` this pass cannot
+// see: `unreadable`.
+function readParameterObjects(metaObject, storyObject) {
+  const objects = []
+  let unreadable = false
+  for (const owner of [metaObject, storyObject]) {
+    const expr = getProp(owner, 'parameters')
+    if (expr === undefined) continue
+    const object = unwrapExpression(expr)
+    if (!object || !ts.isObjectLiteralExpression(object)) {
+      unreadable = true
+      continue
+    }
+    if (object.properties.some((prop) => ts.isSpreadAssignment(prop))) unreadable = true
+    objects.push(object)
+  }
+  return { objects, unreadable }
+}
+
+// Whether a story declares a `visualCaptureClip`: a `visualCaptureClip` key on the story's or the
+// meta's `parameters`, or a `parameters` this pass cannot read in full (not an object literal, or one
+// that spreads another object) that may carry one.
+export function storyDeclaresClip(metaObject, storyObject) {
+  const { objects, unreadable } = readParameterObjects(metaObject, storyObject)
+  return unreadable || objects.some((object) => getProp(object, 'visualCaptureClip') !== undefined)
+}
+
+// The design-system source files with a string literal holding the unprefixed class token `fixed`
+// (`position: fixed`). A story captured as its root element's box (neither clipped nor tagged
+// `visual-full-page`, `tests/visual/stories.spec.ts`) that renders one may paint what that file
+// placed outside the box, which the screenshot then does not show. Only this shape is identified: an
+// absolutely positioned popover, a prefixed `fixed` (`focus:fixed`) and an element the story's own
+// file positions are not.
+function findOverlayFiles(filesByPath, sourceFiles) {
+  const overlay = new Set()
+  for (const [file, sourceFile] of sourceFiles) {
+    if (isStoryPath(file) || file.endsWith('.test.tsx')) continue
+    let found = false
+    const visit = (node) => {
+      if (found) return
+      if (
+        (ts.isStringLiteral(node) ||
+          ts.isNoSubstitutionTemplateLiteral(node) ||
+          ts.isTemplateHead(node) ||
+          ts.isTemplateMiddle(node) ||
+          ts.isTemplateTail(node)) &&
+        node.text.split(/\s+/).includes('fixed')
+      ) {
+        found = true
+        return
+      }
+      ts.forEachChild(node, visit)
+    }
+    visit(sourceFile)
+    if (found) overlay.add(relPath(file))
+  }
+  return overlay
+}
+
 export function computeStateCoverage({
   componentDirs,
   filesByPath,
@@ -2594,43 +2771,40 @@ export function computeStateCoverage({
   // Pass 1, static, source only: every local interactive element (record 1's rows) and every call site
   // of a tracked primitive (record 3's `Rest` column). Nothing about a story is read here.
   for (const filePath of allFiles) {
-    const isStory = isStoryPath(filePath)
     if (filePath.endsWith('.test.tsx')) continue
+    // A tracked primitive written in a STORY file credits nothing here, neither `Rest` nor `Disabled`:
+    // a story's JSX may sit under an `args` key its render never passes, behind a branch that never
+    // runs, or carry a `disabled` the primitive does not render (`<Button href disabled>` is an
+    // enabled `<a>`). What a story mounts is what the manifest recorded, read in pass 2.
+    if (isStoryPath(filePath)) continue
     const sourceFile = sourceFiles.get(filePath)
     const constMap = buildConstStringMap(sourceFile)
     const componentKey = componentKeyForFile(srcDir, filePath)
     const componentDirName = componentKey.split('/')[1]
 
-    let localHelperCallSites = new Map()
-    if (!isStory) {
-      const helperIterationContext = findHelperInvocationIterationContext(sourceFile)
-      localHelperCallSites = findHelperCallSites(sourceFile)
-      const locals = findLocalElements(
-        sourceFile,
-        relPath(filePath),
-        constMap,
-        componentDirName,
-        helperIterationContext,
-        localHelperCallSites,
-      )
-      if (locals.length > 0) {
-        localElementsByComponent.set(componentKey, [
-          ...(localElementsByComponent.get(componentKey) ?? []),
-          ...locals,
-        ])
-      }
+    const helperIterationContext = findHelperInvocationIterationContext(sourceFile)
+    const localHelperCallSites = findHelperCallSites(sourceFile)
+    const locals = findLocalElements(
+      sourceFile,
+      relPath(filePath),
+      constMap,
+      componentDirName,
+      helperIterationContext,
+      localHelperCallSites,
+    )
+    if (locals.length > 0) {
+      localElementsByComponent.set(componentKey, [
+        ...(localElementsByComponent.get(componentKey) ?? []),
+        ...locals,
+      ])
     }
 
-    const metaObj = isStory ? findMeta(sourceFile) : null
-    const ownPrimitive = metaObj ? metaComponentName(metaObj) : null
-    const skip = ownPrimitive && PRIMITIVE_NAMES.includes(ownPrimitive) ? [ownPrimitive] : []
-    const helperGuards = !isStory ? findHelperInvocationGuards(sourceFile) : new Map()
     const jsxInstances = findPrimitiveInstances(
       sourceFile,
       relPath(filePath),
       defaultsByPrimitive,
-      skip,
-      helperGuards,
+      [],
+      findHelperInvocationGuards(sourceFile),
       componentDirName,
       localHelperCallSites,
     )
@@ -2648,6 +2822,7 @@ export function computeStateCoverage({
       elementOwner.set(`${el.file}:${el.line}`, componentKey)
     }
   }
+  const overlayFiles = findOverlayFiles(filesByPath, sourceFiles)
   const entriesByLocation = new Map()
   for (const [id, entry] of Object.entries(manifest)) {
     if (isFixtureImportPath(entry.importPath)) continue
@@ -2674,9 +2849,28 @@ export function computeStateCoverage({
     const ownPrimitive = metaObj ? metaComponentName(metaObj) : null
     const ownTracked = ownPrimitive && PRIMITIVE_NAMES.includes(ownPrimitive) ? ownPrimitive : null
     const constNodeMap = buildTopLevelConstNodeMap(sourceFile)
+    const defaultMeta = findDefaultMetaObject(sourceFile, constNodeMap) ?? metaObj
 
     for (const { exportName, node } of findExportedStoryObjects(sourceFile)) {
       const location = `${packageRelative}#${exportName}`
+      // A fixture story is a plant, not a published story, whichever directory it sits in: every other
+      // reader of the stories (`scripts/visual/story-index.mjs`) identifies one by its tag, so this does
+      // too. It credits nothing and its manifest entry is not stale.
+      const { tags, unreadable: tagsUnreadable } = readStoryTags(defaultMeta, node)
+      if (tags.has(FIXTURE_TAG)) {
+        seenLocations.add(location)
+        continue
+      }
+      if (tagsUnreadable) {
+        manifestProblems.push({
+          kind: 'unreadable-tags',
+          location: `${packageRelative}:${exportName}`,
+          detail:
+            `story ${exportName} of ${packageRelative} carries a \`tags\` that is not an array of ` +
+            `string literals, so this pass cannot tell whether it is a ${FIXTURE_TAG} story. Write ` +
+            'the tags as string literals.',
+        })
+      }
       const found = entriesByLocation.get(location)
       if (!found) {
         manifestProblems.push({
@@ -2706,8 +2900,42 @@ export function computeStateCoverage({
       const playBody = resolvePlayBody(node, sourceFile)
       const playFocusStatic = forced ? null : findPlayFocusTarget(playBody)
       const playClick = forced ? null : findPlayClickTarget(playBody)
-      const focus = !forced && playFocusStatic ? stableFocus(entry) : null
-      const verdict = forced ? resolveRuntimeForce(entry, { recordOneKeys }) : null
+      // The shape of the entry, before anything is read from it: a malformed one fails the check
+      // naming the story, and credits nothing.
+      const shapeProblem = entryShapeProblem(entry, { forced: Boolean(forced || recordsAForce) })
+      if (shapeProblem) {
+        manifestProblems.push({
+          kind: 'malformed-entry',
+          location: `${packageRelative}:${exportName}`,
+          detail:
+            `${MANIFEST_PATH}'s entry (${found.id}) for story ${exportName} of ${packageRelative} is ` +
+            `malformed: ${shapeProblem}. Run \`${REWRITE_COMMAND}\` to rewrite it.`,
+        })
+      }
+      // What the capture shows of this story, for the credit its mounts give (Disabled, and Rest of a
+      // primitive's own story). The manifest records which instances a story mounts, not where they
+      // paint. A story that declares a `visualCaptureClip` is screenshotted through that clip alone, so
+      // it gives no mount credit. A story with neither a clip nor the `visual-full-page` tag is a
+      // screenshot of its root element's box (`tests/visual/stories.spec.ts`), and an element in
+      // `position: fixed` need not intersect that box: it gives none either when a design-system file
+      // it rendered carries one (`findOverlayFiles`). The force's own credit is not narrowed by a
+      // clip: `applyForceState` and `resolveCaptureClip` (`tests/visual/story-render.ts`) share only
+      // `locateTarget`, so nothing in the capture ties the located element to the clip, but the nightly
+      // state-signal sweep fails a forced story whose state frame does not differ from its rest frame
+      // inside that same clip.
+      const clipped = storyDeclaresClip(defaultMeta, node)
+      const mayRenderOutsideRoot =
+        !clipped &&
+        !tags.has('visual-full-page') &&
+        (entry.files ?? []).some((file) => overlayFiles.has(file))
+      const mountCredit = !shapeProblem && !clipped && !mayRenderOutsideRoot
+      let verdict = null
+      if (shapeProblem) {
+        verdict = { refusal: `the manifest entry is malformed (${shapeProblem})` }
+      } else if (forced) {
+        verdict = resolveRuntimeForce(entry, { recordOneKeys })
+      }
+      const focus = !forced && playFocusStatic && !shapeProblem ? stableFocus(entry) : null
       const label = storyLabel(filePath, exportName)
 
       // Record 1 and the element matrices: one entry in the story's own component's list (accounting
@@ -2717,10 +2945,8 @@ export function computeStateCoverage({
       const focusStamp = focus?.stamp && recordOneKeys.has(focus.stamp) ? focus.stamp : null
       const common = {
         argsLiterals: new Set(storyArgsStringLiterals(metaObj, node, constNodeMap)),
-        argsHasDisabledTrue: argsObjectHasDisabledTrue(
-          getProp(metaObj, 'args'),
-          getProp(node, 'args'),
-        ),
+        argsHasDisabledTrue:
+          mountCredit && argsObjectHasDisabledTrue(getProp(metaObj, 'args'), getProp(node, 'args')),
         playClick,
         files: entry.files ?? [],
       }
@@ -2765,10 +2991,10 @@ export function computeStateCoverage({
           storyName: exportName,
           variant: row.variant,
           size: row.size,
-          disabled: (mount.disabledAt ?? []).length > 0,
+          disabled: mountCredit && (mount.disabledAt ?? []).length > 0,
           forced: role === 'force' ? forced : null,
           playFocus: role === 'focus',
-          rest: role === null && mount.component === ownTracked && !forced,
+          rest: mountCredit && role === null && mount.component === ownTracked && !forced,
         })
       }
       for (const mount of stableMounts(entry)) {
@@ -2786,8 +3012,10 @@ export function computeStateCoverage({
           role = 'focus'
           focusUsed = true
         }
-        const credited = role !== null || (mount.disabledAt ?? []).length > 0
-        if (credited || (mount.component === ownTracked && !forced)) pushInstance(mount, row, role)
+        const credited = role !== null || (mountCredit && (mount.disabledAt ?? []).length > 0)
+        if (credited || (mountCredit && mount.component === ownTracked && !forced)) {
+          pushInstance(mount, row, role)
+        }
       }
       // The placing instance is always among a story's mounts; a manifest that disagrees still
       // credits the instance the force located, which is what the browser reported.
@@ -3289,21 +3517,73 @@ export function renderMatrices(computed) {
   return sections.join('\n\n')
 }
 
+// The credits that still rest on a static reading of source rather than on what a browser rendered,
+// each with the words the region's legend uses to name it. The legend is built from this list and
+// `state-coverage.test.mjs` pins both its ids and its phrases, so adding or deleting a static path
+// without touching the legend fails a test.
+export const STATIC_CREDITS = [
+  {
+    id: 'call-site-rest',
+    legend:
+      '`N real call sites` (Rest): a tracked primitive written in a design-system component file, never a story file, at the row its literal or default `variant` and `size` name',
+  },
+  {
+    id: 'call-site-disabled',
+    legend:
+      'a literal `disabled` at such a call site, and a literal `loading` at a `Button` or `Field` one (both render disabled), as its Disabled credit',
+  },
+  {
+    id: 'args-disabled',
+    legend:
+      "the Disabled cell of a local element of a component with no matrix (record 1) that carries a `disabled` or `aria-disabled` attribute, credited to every story whose `args` hold a literal `disabled: true` at any depth and whose rendered files, as the manifest records them, include the element's file",
+  },
+  {
+    id: 'play-click',
+    legend:
+      'the `play()`-click credit of an element that paints `active` through a conditional class (the manifest records no click)',
+  },
+  {
+    id: 'play-focus',
+    legend:
+      'which stories carry a `play()` that asserts focus (an `unresolved: ... (play-driven)` note, never a cover)',
+  },
+  {
+    id: 'ancestor-inheritance',
+    legend: 'the hover or active an ancestor inherits from a credited descendant',
+  },
+]
+
 // What a reader needs to know about where each credit in the region comes from (T694): which are read
-// from what a real browser rendered, and which still rest on a static reading. Rendered inside the
-// region, so it is regenerated, and checked, with the tables it describes.
+// from what a real browser rendered, which still rest on a static reading, which a story gives up, and
+// the gaps that remain. Rendered inside the region, so it is regenerated, and checked, with the tables
+// it describes.
 export const REGION_LEGEND = [
   '**Where a credit comes from.** A forced story (`parameters.visualForceState`) credits a cell only',
   `by what a real browser rendered for it, recorded in \`${MANIFEST_PATH}\`: a record-1 cell when the`,
   'forced element is the one element found at every captured width and its source stamp is that',
   "element's `file:line`; a record-3 cell when the tracked primitive instance that placed it is at that",
-  "row's variant and size; the Disabled column, and a primitive's own stories' Rest column, from the",
-  'primitive instances a story mounts, as rendered. Every other forced story credits no cell and the',
-  'check names why. **Still static, and read from source:** `N real call sites` (Rest) and a literal',
-  '`disabled` at a call site; the `play()`-click credit of an element that paints `active` through a',
-  'conditional class (the manifest records no click); which stories carry a `play()` that asserts focus',
-  '(an `unresolved: ... (play-driven)` note, never a cover); and the hover or active an ancestor',
-  'inherits from a credited descendant.',
+  "row's variant and size. A force on an element whose stamp is in the placing instance's `disabledAt`",
+  '(the host elements it placed that the browser reports `:disabled` or `aria-disabled="true"`) is',
+  "refused. The Disabled column, and a primitive's own stories' Rest column, come from the primitive",
+  'instances a story mounts, as rendered, except that a story gives no mount credit when it declares a',
+  '`visualCaptureClip` (the manifest does not record whether a mount lies inside the clipped rect), or',
+  'when it has neither a clip nor the `visual-full-page` tag and rendered a design-system file with an',
+  'unprefixed `fixed` class (that element need not intersect the root box it is screenshotted as). A',
+  'tracked primitive written in a story file credits nothing. Every other forced story credits no cell',
+  'and the check names why.',
+  '',
+  '**Still static, and read from source:**',
+  '',
+  ...STATIC_CREDITS.map((credit) => `- ${credit.legend}`),
+  '',
+  '**Residual gaps, not refused:** a forced element no tracked primitive placed (a record-1 element of',
+  'another component) is credited without knowing whether it renders disabled, because the manifest',
+  "records disabled elements only among a tracked primitive's own; a story tagged `visual-full-page` is",
+  'screenshotted as the viewport, so an instance below it is still credited; an absolutely positioned',
+  'or `focus:fixed` element outside the root box of an untagged, unclipped story is still credited; and',
+  "a clipped story's forced credit rests on the nightly state-signal sweep, which fails a forced story",
+  'whose state frame does not differ from its rest frame inside the clip, not on this check, because the',
+  'force target and the clip are located independently.',
 ].join('\n')
 
 export function renderGeneratedRegion(computed) {
