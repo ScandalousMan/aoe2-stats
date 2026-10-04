@@ -1495,7 +1495,7 @@ parallel batch; T666h, T666i and T666j follow, in order — all three edit `run.
       `packages/storage`'s boto3 floor to the first release whose object put accepts the if-none-match
       condition, which `put_if_absent` needs
 
-- [ ] T666m [US6] **Third review round (2026-10-04): one deployment-fault classification, and the
+- [x] T666m [US6] **Third review round (2026-10-04): one deployment-fault classification, and the
       last twins.** (a) The API's staleness read in
       `apps/api/src/aoe2stats_api/routers/matches.py` treats a deployment fault as not stale but
       catches only two exception classes, while the snapshot loader also raises an `OSError` for a

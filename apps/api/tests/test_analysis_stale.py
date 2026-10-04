@@ -24,6 +24,7 @@ analyzer no longer marks it unavailable.
 
 from __future__ import annotations
 
+import logging
 import secrets
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -372,3 +373,146 @@ async def test_the_apis_answer_is_the_analyzers_verdict_for_the_same_row(
     )
 
     assert _api_stale(client, game_id) is analyzer_verdict
+
+
+# --- A deployment fault is not staleness, whichever way it surfaces (T666m, FR-048) ---------------
+# `routers/matches.py` answers "not stale" for a deployment fault and logs it. The snapshot loader
+# raises a `SnapshotError` for a digest mismatch but a plain `OSError` (`FileNotFoundError`) for a
+# packaged file that is missing, and the match page caught only `ValueError`/`RuntimeError`: a
+# snapshot shipped without its rules file made every analysed match's page answer 500. The set of
+# exceptions is now defined once, beside `verify_deployment`, and both callers use it.
+
+
+async def _seed_a_stale_looking_row_then_break_the_snapshot(
+    db_session: AsyncSession,
+    game_id: int,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    *,
+    break_it: Callable[[Path], None],
+) -> None:
+    """A row whose stored digest differs from the current identity (it would read stale on a
+    healthy deployment), over a throwaway snapshot root that `break_it` then damages."""
+    root = isolate_snapshot_root(monkeypatch, tmp_path)
+    stored = _digest(game_id, engine=_installed_engine("-superseded"))
+    await _seed_published(db_session, game_id=game_id, seed=_Seed(digest=stored))
+    break_it(root / "aoe2techtree-180059")
+    clear_snapshot_resolution_caches()
+
+
+def _remove_the_rules_file(snapshot_directory: Path) -> None:
+    (snapshot_directory / "rules.json").unlink()
+
+
+def _alter_the_effects_file(snapshot_directory: Path) -> None:
+    effects_file = snapshot_directory / "effects.toml"
+    effects_file.write_bytes(effects_file.read_bytes() + b"\n# altered after promotion\n")
+
+
+@pytest.mark.parametrize(
+    ("index", "break_it", "fault"),
+    [
+        pytest.param(0, _remove_the_rules_file, "FileNotFoundError", id="packaged-file-missing"),
+        pytest.param(1, _alter_the_effects_file, "SnapshotDigestMismatch", id="digest-mismatch"),
+    ],
+)
+async def test_a_deployment_fault_reads_not_stale_and_is_logged_not_a_500(
+    client: TestClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+    index: int,
+    break_it: Callable[[Path], None],
+    fault: str,
+) -> None:
+    game_id = _GAME_ID_BASE + 200 + index
+    await _sign_in(client, db_session)
+    await _seed_a_stale_looking_row_then_break_the_snapshot(
+        db_session, game_id, monkeypatch, tmp_path, break_it=break_it
+    )
+
+    # The migrations' `fileConfig` disables loggers that already exist, which would hide the line.
+    logging.getLogger("aoe2stats_api").disabled = False
+    with caplog.at_level(logging.ERROR, logger="aoe2stats_api"):
+        assert _api_stale(client, game_id) is False
+
+    assert any(
+        f"stale flag not computed for game_id={game_id}: deployment fault" in record.getMessage()
+        and record.exc_info is not None
+        and record.exc_info[0] is not None
+        and record.exc_info[0].__name__ == fault
+        for record in caplog.records
+    )
+
+
+async def test_a_healthy_deployment_over_the_same_isolated_root_still_reads_stale(
+    client: TestClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The contrast: nothing broken, the same row - the verdict is the ordinary one, so the two
+    tests above are not passing because the flag is stuck at false."""
+    game_id = _GAME_ID_BASE + 210
+    await _sign_in(client, db_session)
+    await _seed_a_stale_looking_row_then_break_the_snapshot(
+        db_session, game_id, monkeypatch, tmp_path, break_it=lambda _directory: None
+    )
+
+    assert _api_stale(client, game_id) is True
+
+
+# --- The staleness read never fails the match page (T666m) ---------------------------------------
+# The flag only decides whether a button is shown. A defect in 006's staleness code that raised
+# anything outside `DEPLOYMENT_FAULT_ERRORS` must not take down a 003 page (FR-048): it is logged
+# at ERROR with its traceback, as a distinct line from a deployment fault, and the row reads as not
+# stale. The analyzer's own `_is_stale` (the POST path, an explicit action) still lets it propagate.
+
+
+@pytest.mark.parametrize(
+    ("index", "defect"),
+    [
+        pytest.param(0, ValueError("a stand-in for a code defect"), id="value-error"),
+        pytest.param(1, KeyError("a_missing_key"), id="key-error"),
+    ],
+)
+async def test_an_unexpected_staleness_error_never_fails_the_match_page(
+    client: TestClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    index: int,
+    defect: Exception,
+) -> None:
+    from aoe2stats_analyzer import staleness
+
+    game_id = _GAME_ID_BASE + 300 + index
+    await _sign_in(client, db_session)
+    await _seed_published(
+        db_session,
+        game_id=game_id,
+        seed=_Seed(digest=_digest(game_id, engine=_installed_engine("-superseded"))),
+    )
+
+    def defective(*args: object, **kwargs: object) -> bool:
+        raise defect
+
+    monkeypatch.setattr(staleness, "is_stale", defective)
+    logging.getLogger("aoe2stats_api").disabled = False
+    with caplog.at_level(logging.ERROR, logger="aoe2stats_api"):
+        assert _api_stale(client, game_id) is False
+
+    records = [
+        record
+        for record in caplog.records
+        if f"stale flag not computed for game_id={game_id}" in record.getMessage()
+    ]
+    assert len(records) == 1
+    record = records[0]
+    assert record.levelno == logging.ERROR
+    assert "unexpected staleness error" in record.getMessage()
+    assert "deployment fault" not in record.getMessage()
+    assert record.exc_info is not None
+    assert record.exc_info[1] is defect
+    assert record.exc_info[2] is not None  # the traceback is carried, not just the message

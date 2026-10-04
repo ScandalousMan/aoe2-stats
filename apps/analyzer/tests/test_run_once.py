@@ -74,6 +74,7 @@ from tests.snapshot_refresh import (
 
 from aoe2stats_analyzer import extract
 from aoe2stats_analyzer import run as run_module
+from aoe2stats_analyzer.extract import DeploymentFault
 from aoe2stats_analyzer.retain import retain_recording
 from aoe2stats_core.replay.events import (
     CanonicalEvent,
@@ -1843,7 +1844,7 @@ async def _assert_a_deployment_fault_stops_the_request_before_any_recompute(
     if extractor_dependencies is not None:
         extractor.engine_dependencies = extractor_dependencies
 
-    with pytest.raises(ValueError):
+    with pytest.raises(DeploymentFault):
         await run_once(
             published.game_id,
             _BUDGET_SECONDS,
@@ -1863,16 +1864,21 @@ async def _assert_a_deployment_fault_stops_the_request_before_any_recompute(
 
 
 @pytest.mark.parametrize(
-    "fault", [snapshot.SnapshotError, snapshot.SnapshotDigestMismatch], ids=lambda c: c.__name__
+    "fault",
+    [snapshot.SnapshotError, snapshot.SnapshotDigestMismatch, FileNotFoundError],
+    ids=lambda c: c.__name__,
 )
 async def test_a_broken_snapshot_during_the_staleness_check_raises_instead_of_reading_as_stale(
     session_factory: async_sessionmaker[AsyncSession],
     clean_database: None,
     monkeypatch: pytest.MonkeyPatch,
-    fault: type[snapshot.SnapshotError],
+    fault: type[Exception],
 ) -> None:
     """Reviewer H2: `SnapshotError` is a `ValueError`, and the old `except` read it as "stale" - so
-    every click cost a retained-recording read, an access-log row and a full parse, then a 500."""
+    every click cost a retained-recording read, an access-log row and a full parse, then a 500.
+    T666m: every class in `DEPLOYMENT_FAULT_ERRORS` is raised as `DeploymentFault` - including the
+    `OSError` the loader lets through for a packaged file that is missing - so the entrypoint has
+    one class to answer."""
     published = await _publish_once(session_factory, game_id=500_666_061)
 
     def broken(build: int) -> object:
@@ -2640,6 +2646,65 @@ async def test_marking_unavailable_never_touches_a_published_row(
     _assert_still_served_as_it_was(
         await _get_analysis(session_factory, published.game_id), published
     )
+
+
+async def test_marking_failed_never_touches_a_published_row(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """T666m (d), the lease overrun: run A outlives its lease, run B claims, A publishes, and B's
+    refusal then reaches `_mark_failed` for a row that is now served. The writer refuses a
+    `published` row itself, as `_mark_unavailable` does (T666i), so the served analysis stays
+    `published` at its key."""
+    published = await _publish_once(session_factory, game_id=500_666_505)
+
+    await run_module._mark_failed(
+        session_factory,
+        game_id=published.game_id,
+        error_class="ValueError",
+        error_message="a second claimant's refusal",
+        now=datetime.now(UTC),
+    )
+
+    _assert_still_served_as_it_was(
+        await _get_analysis(session_factory, published.game_id), published
+    )
+
+
+async def test_marking_failed_still_fails_a_running_row(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """The contrast to the guard above: a claimed first analysis that is refused is `failed`, with
+    the error recorded and no result key."""
+    request = await _a_first_request(session_factory, game_id=500_666_506)
+    now = datetime.now(UTC)
+    async with session_scope(session_factory) as session:
+        session.add(
+            MatchAnalysis(
+                game_id=request.game_id,
+                state=MatchAnalysisState.RUNNING,
+                point_of_view_profile_id=request.profile_id,
+                requested_by_user_id=request.requester,
+                requested_at=now,
+                claimed_at=now,
+                lease_expires_at=now + timedelta(seconds=_BUDGET_SECONDS),
+                attempts=1,
+            )
+        )
+
+    await run_module._mark_failed(
+        session_factory,
+        game_id=request.game_id,
+        error_class="ValueError",
+        error_message="the document was refused",
+        now=now,
+    )
+
+    row = await _get_analysis(session_factory, request.game_id)
+    assert row is not None
+    assert row.state == MatchAnalysisState.FAILED
+    assert row.error_class == "ValueError"
+    assert row.error_message == "the document was refused"
+    assert row.result_key is None
 
 
 async def test_a_first_analysis_the_source_no_longer_serves_is_still_unavailable(

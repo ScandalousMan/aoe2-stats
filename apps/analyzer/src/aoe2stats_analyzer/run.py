@@ -91,6 +91,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from aoe2stats_analyzer.claim import claim_for_analysis
 from aoe2stats_analyzer.extract import (
+    DEPLOYMENT_FAULT_ERRORS,
     DeploymentFault,
     SnapshotError,
     build_document,
@@ -199,6 +200,17 @@ def gap_rows(document: Mapping[str, Any]) -> tuple[GapToRecord, ...]:
     return tuple(rows)
 
 
+def _log_deployment_fault(game_id: int, fault_class: str, detail: str) -> None:
+    """The operator's line for a refused request: the class and the detail, which a response never
+    carries (`extract.DeploymentFault`)."""
+    logger.error(
+        "deployment fault, request refused before any claim or fetch: game_id=%s %s: %s",
+        game_id,
+        fault_class,
+        detail,
+    )
+
+
 async def _is_stale(
     session_factory: async_sessionmaker[AsyncSession],
     analysis: MatchAnalysis,
@@ -225,11 +237,15 @@ async def _is_stale(
     stale: it recomputes once. A published row with nothing retained is not stale (T666i): a
     recording that cannot be recomputed is served as it is and never unpublished.
 
-    **Nothing is caught.** An error computing the current digest - a snapshot that cannot be loaded
-    (`SnapshotError`, a `ValueError`), one that fails its digest, an empty dependency record - is a
-    deployment fault, not staleness. Reading it as "stale" cost a retained-recording read, an
-    access-log row and a full parse on every click, then failed anyway; it propagates before any of
-    that.
+    **A deployment fault is never read as staleness; it is raised as `DeploymentFault` (T666m).**
+    An error computing the current digest that is in `DEPLOYMENT_FAULT_ERRORS` - a snapshot that
+    cannot be loaded or fails its digest, a packaged file that is missing, an empty dependency
+    record - is a fault of the deployment. Reading it as "stale" cost a retained-recording read, an
+    access-log row and a full parse on every click, then failed anyway; it is raised before any of
+    that. It is `DeploymentFault` and not the raw exception so that the one caller that answers a
+    person (`api/analyze.py`) has one class to map to its `analysis_deployment_fault` envelope, the
+    same answer a first analysis gets from `verify_deployment`. Anything else propagates unchanged:
+    a defect is not a deployment fault.
 
     Equal digests mean fresh, so an unchanged identity never reaches `_recompute` and a key, once
     written, is never written again.
@@ -238,7 +254,11 @@ async def _is_stale(
         retained = await _retained_recording_row(
             session, game_id=analysis.game_id, profile_id=analysis.point_of_view_profile_id
         )
-    return is_stale(analysis, retained, engine=extractor, now=now)
+    try:
+        return is_stale(analysis, retained, engine=extractor, now=now)
+    except DEPLOYMENT_FAULT_ERRORS as exc:
+        _log_deployment_fault(analysis.game_id, type(exc).__name__, str(exc))
+        raise DeploymentFault(type(exc).__name__, str(exc)) from exc
 
 
 def _now() -> datetime:
@@ -344,14 +364,23 @@ async def _mark_failed(
     error_message: str,
     now: datetime,
 ) -> None:
-    """FR-036: `failed`, with the full error class and message recorded, on the first attempt —
-    the caller (`run_once` below) never calls this a second time for the same row, because a
-    `failed` row is one of `_TERMINAL_STATES` and short-circuits before any fetch or parse.
+    """FR-036: `failed`, with the full error class and message recorded, for a claimed first
+    analysis — the caller (`run_once` below) never calls this a second time for the same row,
+    because a `failed` row is one of `_TERMINAL_STATES` and short-circuits before any fetch or
+    parse.
+
+    **Never unpublishes (T666m, FR-042).** A `published` row is a served analysis and is left
+    exactly as it was, as `_mark_unavailable` leaves it (T666i). The recompute path never reaches
+    here, but a lease overrun can: the lease (240 s) is shorter than the invocation's `maxDuration`
+    (300 s), so run A can outlive its lease, run B can claim the row, A can publish, and B's refusal
+    then arrives at a row that is no longer B's. The refusal belongs to a claim that was lost.
     """
     async with session_scope(session_factory) as session:
         analysis = await session.get(MatchAnalysis, game_id)
         if analysis is None:  # pragma: no cover - defensive: this row was just claimed above
             raise LookupError(f"no match_analyses row for game_id={game_id} to mark failed")
+        if analysis.state is MatchAnalysisState.PUBLISHED:
+            return
         analysis.state = MatchAnalysisState.FAILED
         analysis.finished_at = now
         analysis.error_class = error_class
@@ -829,12 +858,7 @@ async def run_once(
     try:
         verify_deployment(extractor)
     except DeploymentFault as fault:
-        logger.error(
-            "deployment fault, request refused before any claim or fetch: game_id=%s %s: %s",
-            game_id,
-            fault.fault_class,
-            fault.detail,
-        )
+        _log_deployment_fault(game_id, fault.fault_class, fault.detail)
         raise
 
     # Reaches here for a brand-new, not-yet-expired match, or an existing row that is `queued` or

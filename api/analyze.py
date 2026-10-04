@@ -68,7 +68,7 @@ from aoe2stats_analyzer.run import run_once
 from aoe2stats_api import ratelimit, security
 from aoe2stats_api.analyze_stages import build_analyze_dependencies
 from aoe2stats_api.errors import error_response
-from aoe2stats_api.routers.matches import _analysis_json, _analysis_row
+from aoe2stats_api.routers.matches import _analysis_json, _analysis_row, _retained_row
 from aoe2stats_api.settings import get_settings
 from aoe2stats_storage.repositories.base import session_scope
 
@@ -226,8 +226,11 @@ async def _analyze(request: Request) -> JSONResponse:
 
     async with deps.session_factory() as session:
         row = await _analysis_row(session, game_id=game_id)
+        # T666m: the retained-recording row is what `stale` is computed from; without it the flag
+        # is false by construction and this response would disagree with the match page.
+        retained = await _retained_row(session, row=row)
 
-    return JSONResponse(_analysis_json(game_id=game_id, row=row))
+    return JSONResponse(_analysis_json(game_id=game_id, row=row, retained=retained))
 
 
 app = Starlette(routes=[Route("/api/analyze", _analyze, methods=["POST"])])

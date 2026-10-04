@@ -675,15 +675,30 @@ def _installed_engine() -> InstalledEngine:
 
 
 def _is_stale(row: MatchAnalysis, retained: RetainedRecording | None) -> bool:
-    """T666g, FR-042: the analyzer's staleness verdict for this row (module docstring)."""
+    """T666g, FR-042: the analyzer's staleness verdict for this row (module docstring).
+
+    **Never raises (T666m).** A deployment fault (`DEPLOYMENT_FAULT_ERRORS`) and any other error
+    both read as not stale and are logged at ERROR with their traceback, under different messages.
+    """
     if row.state is not MatchAnalysisState.PUBLISHED:
         return False
-    from aoe2stats_analyzer.staleness import is_stale
+    from aoe2stats_analyzer.staleness import DEPLOYMENT_FAULT_ERRORS, is_stale
 
     try:
         return is_stale(row, retained, engine=_installed_engine(), now=datetime.now(UTC))
-    except (ValueError, RuntimeError):
+    except DEPLOYMENT_FAULT_ERRORS:
         logger.exception("stale flag not computed for game_id=%s: deployment fault", row.game_id)
+        return False
+    except Exception:
+        # The flag only decides whether a button is shown, so nothing in its computation may fail
+        # the page (FR-048, constitution V's spirit): a defect in 006's staleness code must not take
+        # down a 003 page. It is a distinct line from a deployment fault - an operator reads the
+        # first as "fix the deployment" and this one as "fix the code" - and carries the traceback.
+        # The analyzer's own `_is_stale` does not do this: `POST /api/analyze` is an explicit
+        # action, and surfacing a defect there is right.
+        logger.exception(
+            "stale flag not computed for game_id=%s: unexpected staleness error", row.game_id
+        )
         return False
 
 
@@ -746,11 +761,15 @@ async def _analysis_row(db_session: AsyncSession, *, game_id: int) -> MatchAnaly
 
 
 def _analysis_json(
-    *, game_id: int, row: MatchAnalysis | None, retained: RetainedRecording | None = None
+    *, game_id: int, row: MatchAnalysis | None, retained: RetainedRecording | None
 ) -> dict[str, Any]:
     """The `analysis` object `contracts/http-api.md`'s "Analysis" section fixes, in each of its
     seven states (module docstring). `row is None` is `absent` — never requested, requestable —
-    the one state that is not a stored `MatchAnalysisState` value at all."""
+    the one state that is not a stored `MatchAnalysisState` value at all.
+
+    **`retained` is required, with no default (T666m).** `stale` is false whenever it is `None`, so
+    a caller that forgot it - as `api/analyze.py` once did - got a flag false by construction. Pass
+    `_retained_row(...)`'s answer, or `None` knowingly when the row is `None`."""
     result_path = f"/api/matches/{game_id}/analysis"
     if row is None:
         return {

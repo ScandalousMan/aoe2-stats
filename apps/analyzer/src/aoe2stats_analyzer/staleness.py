@@ -24,10 +24,11 @@ request-path analysis work: nothing is fetched, nothing is parsed, no engine is 
 it spends none of the capture budget. `tests/architecture/test_feature_006_boundaries.py` allows
 that one import from that one file and refuses any other.
 
-**It raises, and the caller decides what that means.** A snapshot that cannot be loaded, fails its
-digest, or an empty dependency record is a deployment fault, not staleness (T666b). The analyzer
-lets it propagate before any recompute; the API logs it and reports not stale rather than failing
-the match page for a button.
+**It raises, and the caller decides what that means.** Every exception class in
+`DEPLOYMENT_FAULT_ERRORS` (re-exported here from `extract.py`, which defines the set once) is a
+deployment fault, not staleness (T666b, T666m). The analyzer turns it into `DeploymentFault` before
+any recompute; the API logs it and reports not stale rather than failing the match page for a
+button.
 """
 
 from __future__ import annotations
@@ -35,11 +36,21 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
-from aoe2stats_analyzer.extract import EngineIdentity, current_identity_digest
+from aoe2stats_analyzer.extract import (
+    DEPLOYMENT_FAULT_ERRORS,
+    EngineIdentity,
+    current_identity_digest,
+)
 from aoe2stats_replay_engine.dependencies import read_engine_dependencies
 from aoe2stats_storage.models import MatchAnalysis, MatchAnalysisState, RetainedRecording
 
-__all__ = ["InstalledEngine", "installed_engine", "is_stale", "retry_window_open"]
+__all__ = [
+    "DEPLOYMENT_FAULT_ERRORS",
+    "InstalledEngine",
+    "installed_engine",
+    "is_stale",
+    "retry_window_open",
+]
 
 
 @dataclass(frozen=True)

@@ -15,6 +15,13 @@ installed parser and analytics code. It reaches no external source (FR-043, cons
 has no provider, no client and no URL, and it **writes nothing** — the object store it is handed is
 typed to the one read it makes, so a write is a type error before it is a bug.
 
+**It reads retained bytes without writing the access-log row (T666m).** 003's FR-029 requires one
+`replay_access_log` row for every read of a retained recording, written before the read's result is
+used (`run.py`'s `_log_access`). This module has no session and writes nothing, so it writes none.
+**Any production caller must write that row itself, before calling `reproduce`.** No caller exists
+today: it is exercised by tests only. The first one that is not a test owns the log row, and a
+caller that omits it reads retained bytes off the record.
+
 **Refusals, each naming what differs.** Before the recording is touched, the installed code is
 compared with the identity, and every difference is collected into one `ReproductionRefused`:
 
@@ -107,6 +114,9 @@ async def reproduce(
     writes keys (`retained_recording_object_key`) and the identity is refused if that round trip
     does not hold — never defaulted, which would make the document differ in a field no digest
     covers.
+
+    **Reads retained bytes and writes no access-log row** (module docstring, FR-029): a production
+    caller must write the `replay_access_log` row before calling this. No caller exists today.
 
     Raises `ReproductionRefused` for every case the module docstring lists; a recording that
     verifies but cannot be parsed raises what the extractor raises, and an object-store failure

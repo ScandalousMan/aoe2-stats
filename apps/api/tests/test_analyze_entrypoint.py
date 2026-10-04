@@ -507,6 +507,120 @@ async def test_analyze_answers_500_for_a_broken_deployment_before_fetching_or_cl
 
 
 # ================================================================================================
+# T666m: a deployment fault on a published row is the same 500, and the flag is the match page's
+# ================================================================================================
+
+
+async def _publish_the_fixture_match(client: TestClient, db_session: AsyncSession) -> MatchAnalysis:
+    first = client.post("/api/analyze", json={"game_id": _FIXTURE_GAME_ID})
+    assert first.status_code == 200
+    assert first.json()["state"] == "published"
+    row = await db_session.get(MatchAnalysis, _FIXTURE_GAME_ID)
+    assert row is not None
+    return row
+
+
+async def test_analyze_answers_the_deployment_fault_envelope_for_a_published_row(
+    db_session: AsyncSession,
+    database_url: str,
+    clean_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A published row goes `run_once` -> `_is_stale`, which computes the identity an analysis
+    would carry now and so loads the knowledge snapshot. A snapshot shipped without its rules file
+    raised a bare `FileNotFoundError` there, which the entrypoint maps to nothing: a plain-text 500
+    the web client cannot parse. It is now the same `analysis_deployment_fault` envelope a first
+    analysis gets, and the request spends nothing: the source is not called, nothing is written to
+    the store, no access-log row is added, and the served analysis stays as it was."""
+    from tests.snapshot_refresh import clear_snapshot_resolution_caches, isolate_snapshot_root
+
+    from aoe2stats_storage.models import ReplayAccessLog
+
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    root = isolate_snapshot_root(monkeypatch, tmp_path)
+    clear_snapshot_resolution_caches()
+    _install_fake_aoems_upstream(monkeypatch, _reference_replay_bytes())
+    fake_store = _install_fake_object_store(monkeypatch)
+    await _seed_fixture_match(db_session)
+    user = await _seed_user(db_session)
+
+    with _client() as client:
+        await _sign_in(client, db_session, user)
+        published = await _publish_the_fixture_match(client, db_session)
+        before = (published.state, published.result_key, published.identity_digest)
+        puts_before = list(fake_store.put_calls)
+        access_log_before = len((await db_session.execute(select(ReplayAccessLog))).scalars().all())
+
+        (root / "aoe2techtree-180059" / "rules.json").unlink()
+        clear_snapshot_resolution_caches()
+        _install_no_calls_allowed_upstream(monkeypatch)
+        logging.getLogger("aoe2stats_analyzer").disabled = False
+        with caplog.at_level(logging.ERROR, logger="aoe2stats_analyzer"):
+            response = client.post("/api/analyze", json={"game_id": _FIXTURE_GAME_ID})
+
+        assert response.status_code == 500
+        body = response.json()
+        assert body["error"]["code"] == "analysis_deployment_fault"
+        assert body["error"]["detail"] == {"fault": "FileNotFoundError"}
+        assert any("deployment fault" in record.getMessage() for record in caplog.records)
+
+    await db_session.refresh(published)
+    assert (published.state, published.result_key, published.identity_digest) == before
+    assert fake_store.put_calls == puts_before
+    access_log_after = len((await db_session.execute(select(ReplayAccessLog))).scalars().all())
+    assert access_log_after == access_log_before
+
+
+async def test_analyze_reports_the_same_stale_flag_as_the_match_page_for_the_same_row(
+    db_session: AsyncSession,
+    database_url: str,
+    clean_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The response is the match page's `analysis` object, so its `stale` is the match page's.
+    The row is published and stale (an identity the running engine no longer produces), and
+    `run_once` returns without recomputing - the shape in which the endpoint's missing
+    retained-recording argument made the flag false by construction."""
+    import api.analyze as analyze_module
+
+    from aoe2stats_api.routers import matches
+
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    _install_fake_aoems_upstream(monkeypatch, _reference_replay_bytes())
+    _install_fake_object_store(monkeypatch)
+    await _seed_fixture_match(db_session)
+    user = await _seed_user(db_session)
+
+    with _client() as client:
+        await _sign_in(client, db_session, user)
+        row = await _publish_the_fixture_match(client, db_session)
+        row.identity_digest = "sha256:" + "0" * 64
+        await db_session.commit()
+
+        async def returns_without_recomputing(*args: object, **kwargs: object) -> None:
+            return None
+
+        monkeypatch.setattr(analyze_module, "run_once", returns_without_recomputing)
+        response = client.post("/api/analyze", json={"game_id": _FIXTURE_GAME_ID})
+
+    assert response.status_code == 200
+    retained = await matches._retained_row(db_session, row=row)
+    assert retained is not None
+    assert matches._is_stale(row, retained) is True
+    assert response.json()["stale"] is True
+
+
+def test_the_analysis_summary_cannot_be_built_without_the_retained_row() -> None:
+    """`retained` is required: a caller that forgets it gets an error, not a quietly false flag."""
+    from aoe2stats_api.routers.matches import _analysis_json
+
+    with pytest.raises(TypeError):
+        _analysis_json(game_id=1, row=None)  # type: ignore[call-arg]
+
+
+# ================================================================================================
 # T666j: the recompute retry window is the configured one, read by the deployed entrypoint
 # ================================================================================================
 

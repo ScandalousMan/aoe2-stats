@@ -74,6 +74,7 @@ from aoe2stats_knowledge.snapshot import (
     snapshot_for,
     verify_installed_snapshots,
 )
+from aoe2stats_replay_engine.dependencies import EngineDependencyError
 from aoe2stats_replay_engine.silence import GroupSilenceEpisode, compute_group_silence_episodes
 
 #: `contracts/analysis-document.md`: "`schema_version` increments". Bumped only when the shape of
@@ -118,6 +119,7 @@ _METHODS: tuple[tuple[str, Method], ...] = (
 # 006 boundaries architecture test), and reaches those types only through this module.
 __all__ = [
     "ANALYTICS_VERSION",
+    "DEPLOYMENT_FAULT_ERRORS",
     "SCHEMA_VERSION",
     "WALL_CLOCK_FIELDS",
     "DeploymentFault",
@@ -366,11 +368,15 @@ def current_identity_digest(
     change - and which is resolved against the snapshots installed now. A knowledge refresh of that
     build therefore changes the digest; a build gaining its first snapshot does too.
 
-    **It raises, and the caller must let it.** A snapshot that cannot be loaded or fails its digest
-    (`SnapshotError`, a `ValueError`) and an empty dependency record (`ValueError`, FR-044) are
-    deployment faults, not staleness: recomputing would meet the same fault after a retained-
-    recording read and a parse.
+    **It raises, and the caller must let it.** Every class in `DEPLOYMENT_FAULT_ERRORS` - a snapshot
+    that cannot be loaded or fails its digest, a packaged file that is missing, an empty dependency
+    record (FR-044) - is a deployment fault, not staleness: recomputing would meet the same fault
+    after a retained-recording read and a parse.
     """
+    if not extractor.engine_dependencies:
+        # The refusal `AnalysisIdentity` makes, raised as the class the set names so a caller
+        # classifying faults by `DEPLOYMENT_FAULT_ERRORS` does not have to catch every `ValueError`.
+        raise EngineDependencyError("an empty dependency record identifies no engine (FR-044)")
     return AnalysisIdentity(
         recording=recording,
         parser_name=extractor.engine_name,
@@ -379,6 +385,28 @@ def current_identity_digest(
         knowledge=_knowledge_record(snapshot_for(build)),
         analytics=ANALYTICS_VERSION,
     ).digest
+
+
+#: The exceptions that mean "this deployment cannot analyse any recording" - found while computing
+#: an identity or loading the knowledge snapshots, never a fact about one recording. Defined once,
+#: here beside `verify_deployment`, and used by every caller that must tell a deployment fault from
+#: staleness: `verify_deployment` itself, `run.py`'s staleness call and the API's `stale` flag
+#: (T666m, FR-048). Enumerated from what the code raises:
+#:
+#: - `SnapshotError` (a `ValueError`): a snapshot that is malformed, fails its digest, is promoted
+#:   twice for one build, or is absent for a directory that is listed.
+#: - `OSError`: a packaged snapshot file (`rules.json`, `effects.toml`, `snapshot.toml`) that is
+#:   missing or unreadable - `snapshot.load_snapshot` lets the filesystem's error through.
+#: - `EngineDependencyError` (a `RuntimeError`): the engine's dependency record cannot be built, or
+#:   is empty (FR-044) - `current_identity_digest` raises it for an empty record.
+#:
+#: A bare `ValueError` or `RuntimeError` is deliberately not here: either could be a defect in the
+#: code, and a defect must stay a 500 with its traceback rather than be filed as a deployment fault.
+DEPLOYMENT_FAULT_ERRORS: tuple[type[Exception], ...] = (
+    SnapshotError,
+    OSError,
+    EngineDependencyError,
+)
 
 
 class DeploymentFault(Exception):
@@ -414,7 +442,7 @@ def verify_deployment(extractor: EngineIdentity) -> None:
     """
     try:
         verify_installed_snapshots()
-    except (SnapshotError, OSError) as exc:
+    except DEPLOYMENT_FAULT_ERRORS as exc:
         raise DeploymentFault(type(exc).__name__, str(exc)) from exc
     if not extractor.engine_dependencies:
         raise DeploymentFault(
