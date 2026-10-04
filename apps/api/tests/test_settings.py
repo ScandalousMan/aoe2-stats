@@ -15,7 +15,7 @@ from collections.abc import Iterator
 import pytest
 from pydantic import ValidationError
 
-from aoe2stats_api.settings import Settings, get_settings
+from aoe2stats_api.settings import ConfigurationError, Settings, get_settings
 
 REQUIRED_ENV: dict[str, str] = {
     "DATABASE_URL": "postgresql+psycopg://user:password@host/dbname?sslmode=require",
@@ -46,6 +46,7 @@ REQUIRED_ENV: dict[str, str] = {
     "ANALYSIS_RUN_BUDGET_SECONDS": "240",
     "ANALYSIS_LEASE_SECONDS": "300",
     "ANALYSIS_MAX_RAW_BYTES": "25165824",
+    "ANALYSIS_RECOMPUTE_RETRY_SECONDS": "3600",
 }
 
 
@@ -129,6 +130,8 @@ def test_numeric_fields_are_typed_correctly(monkeypatch: pytest.MonkeyPatch) -> 
     assert settings.analysis_lease_seconds == 300
     assert isinstance(settings.analysis_max_raw_bytes, int)
     assert settings.analysis_max_raw_bytes == 25165824
+    assert isinstance(settings.analysis_recompute_retry_seconds, int)
+    assert settings.analysis_recompute_retry_seconds == 3600
 
 
 def test_beta_allowlist_deduplicates_and_strips_whitespace(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -284,3 +287,49 @@ def test_public_base_url_with_trailing_slash_is_rejected(monkeypatch: pytest.Mon
         Settings()  # type: ignore[call-arg]
 
     assert "PUBLIC_BASE_URL" in str(exc_info.value)
+
+
+# --- T666j: the recompute retry window is configuration, validated at startup ---------------------
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "-3600", "86401", "one hour", "1.5", ""])
+def test_recompute_retry_window_outside_its_bounds_is_rejected_naming_the_key(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    """Zero (or less) would parse the retained recording on every request, which is what the window
+    bounds; past a day a deploy that fixes the cause would not reach the match for as long. A
+    non-number is not a duration at all. Each is a startup error that names the key and no value
+    (`get_settings` wraps it in `ConfigurationError`, which carries key names only)."""
+    _set_all(monkeypatch, {"ANALYSIS_RECOMPUTE_RETRY_SECONDS": value})
+
+    with pytest.raises(ConfigurationError) as raised:
+        get_settings()
+
+    assert raised.value.keys == ["ANALYSIS_RECOMPUTE_RETRY_SECONDS"]
+    assert not value or value not in str(raised.value)
+
+
+@pytest.mark.parametrize("value", [1, 60, 86_400])
+def test_recompute_retry_window_accepts_its_whole_range(
+    monkeypatch: pytest.MonkeyPatch, value: int
+) -> None:
+    _set_all(monkeypatch, {"ANALYSIS_RECOMPUTE_RETRY_SECONDS": str(value)})
+
+    assert get_settings().analysis_recompute_retry_seconds == value
+
+
+def test_an_unset_recompute_retry_window_is_a_startup_error_like_every_other_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The precedent is `CAPTURE_BUDGET_DAYS`: no Python-side default (module docstring of
+    `settings.py`), so a deployment target that does not set it fails loudly at startup and the
+    build's `config-preflight` check fails first. The 3600 lives in `.env.example` alone."""
+    values = dict(REQUIRED_ENV)
+    del values["ANALYSIS_RECOMPUTE_RETRY_SECONDS"]
+    for key, value in values.items():
+        monkeypatch.setenv(key, value)
+
+    with pytest.raises(ConfigurationError) as raised:
+        get_settings()
+
+    assert raised.value.keys == ["ANALYSIS_RECOMPUTE_RETRY_SECONDS"]

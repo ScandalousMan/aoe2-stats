@@ -37,8 +37,9 @@ never a lookup falling back at query time.
 
 **Today's storage destroys what FR-042 protects.** One row and one object per match, overwritten on
 recompute. The published object's key gains the identity digest; 003's row keeps its primary key and
-points at the current document, and gains one nullable column holding the digest so that a change
-of knowledge or analytics version is actually noticed — today only a parser change is.
+points at the current document, and gains two nullable columns, the digest and the recording's
+build, so that a change of knowledge or analytics version is actually noticed from the row alone —
+today only a parser change is.
 
 The two datasets that look like a primary and a cross-check are one pipeline run twice, so the
 second source is the publisher's patch notes, transcribed by hand. And the second reference
@@ -65,8 +66,9 @@ the module-scope imports of files under `api/`, and this edge is one hop below t
 
 **Storage**: Object store only, through `packages/storage`. The published analysis document gains
 an identity-addressed key. One additive table, `analysis_knowledge_gaps`, for the aggregate gap
-report, and one nullable column, `match_analyses.identity_digest`, for the staleness test — a single
-additive revision with nothing to contract. Knowledge packs and the register are
+report, and two nullable columns, `match_analyses.identity_digest` and
+`match_analyses.recording_build`, for the staleness test (the build is why the test needs no
+object-store read; data-model.md section 8) — a single additive revision with nothing to contract. Knowledge packs and the register are
 files in the repository, shipped inside their packages.
 
 **Testing**: `uv run pytest` across the workspace under `PYTEST_DISABLE_NETWORK=1`, which
@@ -198,14 +200,16 @@ apps/analyzer/
 ├── pyproject.toml                     # + aoe2stats-knowledge, declared not inherited (phase 5)
 └── src/aoe2stats_analyzer/
     ├── extract.py                     # additive document version; identity; provenance; gaps
-    └── run.py                         # identity-addressed result key; gap rows
+    └── run.py                         # publishes at the storage package's key; gap rows
 apps/analyzer/tests/
 
 apps/web/
 └── src/features/analysis/             # a test pinning that the next version parses; no code, no UI
 
 packages/storage/
-└── src/aoe2stats_storage/models.py    # + analysis_knowledge_gaps
+└── src/aoe2stats_storage/
+    ├── models.py                      # + analysis_knowledge_gaps
+    └── objects.py                     # + the analysis key layout and the read by identity
 
 infra/migrations/versions/             # one expand-only revision
 

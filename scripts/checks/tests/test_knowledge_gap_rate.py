@@ -71,3 +71,62 @@ async def test_run_fails_when_database_url_is_not_set(monkeypatch: pytest.Monkey
     exit_code = await _run(window_days=30)
 
     assert exit_code == 1
+
+
+# --- T662: the no-build sentinel must not read as a game build -----------------------------------
+
+
+def _row(build: int, count: int = 1) -> GapRateRow:
+    return GapRateRow(
+        build=build,
+        cause=AnalysisGapCause.NO_SNAPSHOT_FOR_BUILD,
+        severity=AnalysisGapSeverity.BLOCKING,
+        count=count,
+    )
+
+
+def test_a_gap_whose_stream_named_no_build_is_labelled_not_printed_as_minus_one() -> None:
+    """T652b's sentinel is `-1`. An operator reading `build=-1` would take it for a build."""
+    from scripts.checks.knowledge_gap_rate import render_report
+
+    report = render_report(
+        [_row(-1, count=3)],
+        window_start=datetime(2026, 9, 1, tzinfo=UTC),
+        window_end=datetime(2026, 10, 1, tzinfo=UTC),
+    )
+
+    assert "build unknown (stream named none)" in report
+    assert "=-1" not in report
+    assert "build=" not in report
+    assert "total gaps: 3" in report  # still counted: it is a gap, only its build is unknown
+
+
+def test_a_real_build_prints_as_its_number_and_the_sentinel_beside_it_does_not() -> None:
+    from scripts.checks.knowledge_gap_rate import render_report
+
+    report = render_report(
+        [_row(-1), _row(180059, count=2)],
+        window_start=datetime(2026, 9, 1, tzinfo=UTC),
+        window_end=datetime(2026, 10, 1, tzinfo=UTC),
+    )
+
+    lines = report.splitlines()
+    assert any(
+        "build=180059 cause=no-snapshot-for-build severity=blocking count=2" in x for x in lines
+    )
+    assert sum("build unknown (stream named none)" in line for line in lines) == 1
+    assert "build=-1" not in report
+
+
+def test_the_stub_build_zero_is_a_real_build_and_prints_as_one() -> None:
+    """`describes_build = 0` belongs to the test stub; only `-1` is the sentinel."""
+    from scripts.checks.knowledge_gap_rate import render_report
+
+    report = render_report(
+        [_row(0)],
+        window_start=datetime(2026, 9, 1, tzinfo=UTC),
+        window_end=datetime(2026, 10, 1, tzinfo=UTC),
+    )
+
+    assert "build=0 " in report
+    assert "unknown" not in report

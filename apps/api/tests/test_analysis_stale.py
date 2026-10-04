@@ -1,0 +1,563 @@
+"""T666g: the `stale` flag on match-detail's `analysis` summary compares the **identity digest**,
+not the parser version alone.
+
+**The defect this pins.** `routers/matches.py` computed `stale` as "published and the row's
+`parser_version` differs from the installed engine's". The web reader offers Recompute only when
+`stale` is true, so a knowledge refresh or an analytics change - both of which change the identity
+digest `run.py`'s staleness test (T657a) compares, and neither of which changes the parser version -
+never reached a recompute outside the analyzer's own tests (`contracts/analysis-document.md`: "a
+recompute has to be triggered"). Each test here seeds a published row whose stored digest was
+computed under one identity, changes exactly one thing about the *current* identity, and reads what
+the API tells the browser.
+
+**The digest is computed the way the analyzer computes it.** `extract.current_identity_digest` is
+the one function that builds a digest from a recording's key and checksum, a build and the installed
+engine; the seeded rows below call it, and the API under test reaches it through
+`aoe2stats_analyzer.staleness`, the function the analyzer's `_is_stale` also delegates to. The last
+test pins the property that matters: for every case the API's answer equals what `run_once` would
+decide for the same row, so the button and the recompute cannot disagree.
+
+**The missing-retained case agrees too (T666i).** A published row whose retained-recording row is
+gone is not stale to either side: a recording that cannot be recomputed is served as it is, and the
+analyzer no longer marks it unavailable.
+"""
+
+from __future__ import annotations
+
+import builtins
+import logging
+import secrets
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from typing import Any
+
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from tests.snapshot_refresh import (
+    clear_snapshot_resolution_caches,
+    isolate_snapshot_root,
+    promote_a_refreshed_snapshot,
+)
+
+from aoe2stats_analyzer import extract
+from aoe2stats_analyzer.extract import current_identity_digest
+from aoe2stats_analyzer.run import _is_stale as analyzer_is_stale
+from aoe2stats_api import security
+from aoe2stats_api.settings import get_settings
+from aoe2stats_replay_engine.dependencies import read_engine_dependencies
+from aoe2stats_storage.models import (
+    AoeProfile,
+    Match,
+    MatchAnalysis,
+    MatchAnalysisState,
+    MatchPlayer,
+    RetainedRecording,
+    User,
+)
+from aoe2stats_storage.models import Session as UserSession
+
+pytestmark = [pytest.mark.usefixtures("environment")]
+
+SESSION_COOKIE_NAME = "session_id"
+
+#: A build the packaged knowledge base holds a promoted snapshot for, so the identity's `knowledge`
+#: component names a snapshot a refresh can then replace.
+_SNAPSHOT_BUILD = 180059
+
+_ENGINE_NAME = "aoe2rec-py"
+_PROFILE_A = 940_100_001
+_PROFILE_B = 940_100_002
+_RECORDING_SHA = "b" * 64
+
+_GAME_ID_BASE = 940_200_000
+
+
+@dataclass(frozen=True)
+class _Engine:
+    """The three attributes the identity reads from the running engine, built from installed
+    distribution metadata exactly as `Aoe2RecExtractor.__init__` builds them - never a constant."""
+
+    engine_name: str
+    engine_version: str
+    engine_dependencies: dict[str, str]
+
+
+def _installed_engine(version_suffix: str = "") -> _Engine:
+    record = read_engine_dependencies(_ENGINE_NAME)
+    return _Engine(
+        engine_name=_ENGINE_NAME,
+        engine_version=record.engine_version + version_suffix,
+        engine_dependencies=record.as_mapping(),
+    )
+
+
+def _object_key(game_id: int) -> str:
+    return f"retained-recordings/{game_id}/{_PROFILE_A}.zip"
+
+
+def _digest(game_id: int, *, engine: _Engine, build: int = _SNAPSHOT_BUILD) -> str:
+    return current_identity_digest(
+        engine,
+        recording={"object_key": _object_key(game_id), "sha256": _RECORDING_SHA},
+        build=build,
+    )
+
+
+# --- Seeding, self-contained per this directory's convention -------------------------------------
+
+
+async def _sign_in(client: TestClient, db_session: AsyncSession) -> None:
+    user = User(allowlisted_at=datetime.now(UTC))
+    db_session.add(user)
+    await db_session.flush()
+    session_id = secrets.token_urlsafe(32)
+    now = datetime.now(UTC)
+    db_session.add(
+        UserSession(
+            id=session_id, user_id=user.id, created_at=now, expires_at=now + timedelta(days=30)
+        )
+    )
+    await db_session.commit()
+    secret = get_settings().app_secret_key.get_secret_value()
+    client.cookies.set(SESSION_COOKIE_NAME, security._sign(session_id, secret))
+
+
+async def _seed_match(db_session: AsyncSession, *, game_id: int) -> None:
+    db_session.add(
+        Match(
+            game_id=game_id,
+            leaderboard_id=3,
+            completed_at=datetime.now(UTC) - timedelta(days=2),
+            source="relic",
+            raw_payload={"matchHistoryId": game_id},
+        )
+    )
+    for profile_id in (_PROFILE_A, _PROFILE_B):
+        await db_session.execute(
+            pg_insert(AoeProfile)
+            .values(profile_id=profile_id, alias=f"P{profile_id}", country="FR")
+            .on_conflict_do_nothing(index_elements=[AoeProfile.profile_id])
+        )
+        db_session.add(MatchPlayer(game_id=game_id, profile_id=profile_id))
+    await db_session.commit()
+
+
+@dataclass(frozen=True)
+class _Seed:
+    """What one case stored. `digest` and `build` are what the published row carries; `retained`
+    says whether the retained-recording row exists; `lease` is the open retry window, if any."""
+
+    digest: str | None
+    build: int | None = _SNAPSHOT_BUILD
+    retained: bool = True
+    lease: datetime | None = None
+
+
+async def _seed_published(db_session: AsyncSession, *, game_id: int, seed: _Seed) -> None:
+    await _seed_match(db_session, game_id=game_id)
+    engine = _installed_engine()
+    now = datetime.now(UTC)
+    if seed.retained:
+        db_session.add(
+            RetainedRecording(
+                game_id=game_id,
+                profile_id=_PROFILE_A,
+                object_key=_object_key(game_id),
+                zip_bytes=1,
+                zip_sha256=_RECORDING_SHA,
+            )
+        )
+    db_session.add(
+        MatchAnalysis(
+            game_id=game_id,
+            state=MatchAnalysisState.PUBLISHED,
+            point_of_view_profile_id=_PROFILE_A,
+            parser_name=engine.engine_name,
+            # The parser version is the *same* in every case, deliberately: the old comparison saw
+            # a published row on the running engine and answered "not stale" whatever else changed.
+            parser_version=engine.engine_version,
+            identity_digest=seed.digest,
+            recording_build=seed.build,
+            result_key=f"analyses/{game_id}/{seed.digest}.json",
+            requested_at=now,
+            finished_at=now,
+            lease_expires_at=seed.lease,
+        )
+    )
+    await db_session.commit()
+
+
+def _api_stale(client: TestClient, game_id: int) -> bool:
+    response = client.get(f"/api/matches/{game_id}")
+    assert response.status_code == 200, f"Got {response.status_code}: {response.text}"
+    analysis = response.json()["analysis"]
+    assert analysis["state"] == "published"
+    stale = analysis["stale"]
+    assert isinstance(stale, bool)
+    return stale
+
+
+# --- Each case: how the stored identity differs from the current one ------------------------------
+# A case is `(expected, prepare)`. `prepare` runs with the game id and a `MonkeyPatch`, seeds the
+# row under the identity that was current *then*, then changes what is current *now* (or does not).
+
+_Prepare = Callable[[AsyncSession, int, pytest.MonkeyPatch, Path], Awaitable[None]]
+
+
+async def _parser_change(
+    db_session: AsyncSession, game_id: int, _mp: pytest.MonkeyPatch, _tmp: Path
+) -> None:
+    """Stored under another parser version; the installed one is what the API sees."""
+    stored = _digest(game_id, engine=_installed_engine("-superseded"))
+    await _seed_published(db_session, game_id=game_id, seed=_Seed(digest=stored))
+
+
+async def _knowledge_refresh(
+    db_session: AsyncSession, game_id: int, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Same parser, same recording, same build; a real second snapshot is promoted afterwards."""
+    root = isolate_snapshot_root(monkeypatch, tmp_path)
+    stored = _digest(game_id, engine=_installed_engine())
+    await _seed_published(db_session, game_id=game_id, seed=_Seed(digest=stored))
+    promote_a_refreshed_snapshot(root, without_entity=("unit", "4"))
+
+
+async def _analytics_change(
+    db_session: AsyncSession, game_id: int, monkeypatch: pytest.MonkeyPatch, _tmp: Path
+) -> None:
+    """Same parser and knowledge; the analytics version moves on after the row was published."""
+    stored = _digest(game_id, engine=_installed_engine())
+    await _seed_published(db_session, game_id=game_id, seed=_Seed(digest=stored))
+    monkeypatch.setattr(extract, "ANALYTICS_VERSION", f"{extract.ANALYTICS_VERSION}+next")
+
+
+async def _identical(
+    db_session: AsyncSession, game_id: int, _mp: pytest.MonkeyPatch, _tmp: Path
+) -> None:
+    stored = _digest(game_id, engine=_installed_engine())
+    await _seed_published(db_session, game_id=game_id, seed=_Seed(digest=stored))
+
+
+async def _open_retry_window(
+    db_session: AsyncSession, game_id: int, _mp: pytest.MonkeyPatch, _tmp: Path
+) -> None:
+    """A stale identity whose last recompute was refused a moment ago (T666c): the lease column
+    carries the retry window on a published row. Clicking would do nothing, so the button must not
+    be offered."""
+    stored = _digest(game_id, engine=_installed_engine("-superseded"))
+    await _seed_published(
+        db_session,
+        game_id=game_id,
+        seed=_Seed(digest=stored, lease=datetime.now(UTC) + timedelta(hours=1)),
+    )
+
+
+async def _expired_retry_window(
+    db_session: AsyncSession, game_id: int, _mp: pytest.MonkeyPatch, _tmp: Path
+) -> None:
+    """The contrast: the same stale identity with the window already closed is stale again."""
+    stored = _digest(game_id, engine=_installed_engine("-superseded"))
+    await _seed_published(
+        db_session,
+        game_id=game_id,
+        seed=_Seed(digest=stored, lease=datetime.now(UTC) - timedelta(minutes=1)),
+    )
+
+
+async def _no_stored_digest(
+    db_session: AsyncSession, game_id: int, _mp: pytest.MonkeyPatch, _tmp: Path
+) -> None:
+    await _seed_published(db_session, game_id=game_id, seed=_Seed(digest=None))
+
+
+async def _no_recorded_build(
+    db_session: AsyncSession, game_id: int, _mp: pytest.MonkeyPatch, _tmp: Path
+) -> None:
+    stored = _digest(game_id, engine=_installed_engine())
+    await _seed_published(db_session, game_id=game_id, seed=_Seed(digest=stored, build=None))
+
+
+async def _no_retained_row(
+    db_session: AsyncSession, game_id: int, _mp: pytest.MonkeyPatch, _tmp: Path
+) -> None:
+    """A stale identity, but nothing retained to recompute it from: not stale (T666i makes the
+    analyzer serve the prior analysis here too)."""
+    stored = _digest(game_id, engine=_installed_engine("-superseded"))
+    await _seed_published(db_session, game_id=game_id, seed=_Seed(digest=stored, retained=False))
+
+
+_CASES: tuple[tuple[str, bool, _Prepare], ...] = (
+    ("parser-change", True, _parser_change),
+    ("knowledge-refresh", True, _knowledge_refresh),
+    ("analytics-change", True, _analytics_change),
+    ("identical-identity", False, _identical),
+    ("open-retry-window", False, _open_retry_window),
+    ("expired-retry-window", True, _expired_retry_window),
+    ("no-stored-digest", True, _no_stored_digest),
+    ("no-recorded-build", True, _no_recorded_build),
+    ("no-retained-row", False, _no_retained_row),
+)
+
+
+@pytest.fixture(autouse=True)
+def _isolated_snapshot_caches() -> Any:
+    """`snapshot_for` is `functools.cache`d for a process's lifetime; the knowledge-refresh case
+    swaps the snapshot root, so a cached answer must never cross a test boundary."""
+    clear_snapshot_resolution_caches()
+    yield
+    clear_snapshot_resolution_caches()
+
+
+@pytest.mark.parametrize(
+    ("index", "expected", "prepare"),
+    [
+        pytest.param(index, expected, prepare, id=case_id)
+        for index, (case_id, expected, prepare) in enumerate(_CASES)
+    ],
+)
+async def test_stale_compares_the_identity_digest_not_the_parser_version(
+    client: TestClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    index: int,
+    expected: bool,
+    prepare: _Prepare,
+) -> None:
+    """The row's parser version equals the installed engine's in every case, so a flag that reads
+    only the parser version answers `False` everywhere. Only the identity digest tells these
+    apart, and only the cases whose identity moved (or whose digest or build is unknown) are
+    stale."""
+    game_id = _GAME_ID_BASE + index
+    await _sign_in(client, db_session)
+    await prepare(db_session, game_id, monkeypatch, tmp_path)
+
+    assert _api_stale(client, game_id) is expected
+
+
+# --- The one-function property -------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("index", "prepare"),
+    [
+        pytest.param(index, prepare, id=case_id)
+        for index, (case_id, _, prepare) in enumerate(_CASES)
+    ],
+)
+async def test_the_apis_answer_is_the_analyzers_verdict_for_the_same_row(
+    client: TestClient,
+    db_session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    index: int,
+    prepare: _Prepare,
+) -> None:
+    """The button and the recompute cannot disagree: the flag the browser is given is exactly
+    whether `run_once` would recompute this row on the next request. Both go through the one
+    function in `aoe2stats_analyzer.staleness`, and this is what keeps it that way if either caller
+    grows a condition of its own."""
+    game_id = _GAME_ID_BASE + 100 + index
+    await _sign_in(client, db_session)
+    await prepare(db_session, game_id, monkeypatch, tmp_path)
+
+    async with session_factory() as session:
+        row = await session.get(MatchAnalysis, game_id)
+    assert row is not None
+    analyzer_verdict = await analyzer_is_stale(
+        session_factory, row, extractor=_installed_engine(), now=datetime.now(UTC)
+    )
+
+    assert _api_stale(client, game_id) is analyzer_verdict
+
+
+# --- A deployment fault is not staleness, whichever way it surfaces (T666m, FR-048) ---------------
+# `routers/matches.py` answers "not stale" for a deployment fault and logs it. The snapshot loader
+# raises a `SnapshotError` for a digest mismatch but a plain `OSError` (`FileNotFoundError`) for a
+# packaged file that is missing, and the match page caught only `ValueError`/`RuntimeError`: a
+# snapshot shipped without its rules file made every analysed match's page answer 500. The set of
+# exceptions is now defined once, beside `verify_deployment`, and both callers use it.
+
+
+async def _seed_a_stale_looking_row_then_break_the_snapshot(
+    db_session: AsyncSession,
+    game_id: int,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    *,
+    break_it: Callable[[Path], None],
+) -> None:
+    """A row whose stored digest differs from the current identity (it would read stale on a
+    healthy deployment), over a throwaway snapshot root that `break_it` then damages."""
+    root = isolate_snapshot_root(monkeypatch, tmp_path)
+    stored = _digest(game_id, engine=_installed_engine("-superseded"))
+    await _seed_published(db_session, game_id=game_id, seed=_Seed(digest=stored))
+    break_it(root / "aoe2techtree-180059")
+    clear_snapshot_resolution_caches()
+
+
+def _remove_the_rules_file(snapshot_directory: Path) -> None:
+    (snapshot_directory / "rules.json").unlink()
+
+
+def _alter_the_effects_file(snapshot_directory: Path) -> None:
+    effects_file = snapshot_directory / "effects.toml"
+    effects_file.write_bytes(effects_file.read_bytes() + b"\n# altered after promotion\n")
+
+
+@pytest.mark.parametrize(
+    ("index", "break_it", "fault"),
+    [
+        pytest.param(0, _remove_the_rules_file, "FileNotFoundError", id="packaged-file-missing"),
+        pytest.param(1, _alter_the_effects_file, "SnapshotDigestMismatch", id="digest-mismatch"),
+    ],
+)
+async def test_a_deployment_fault_reads_not_stale_and_is_logged_not_a_500(
+    client: TestClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+    index: int,
+    break_it: Callable[[Path], None],
+    fault: str,
+) -> None:
+    game_id = _GAME_ID_BASE + 200 + index
+    await _sign_in(client, db_session)
+    await _seed_a_stale_looking_row_then_break_the_snapshot(
+        db_session, game_id, monkeypatch, tmp_path, break_it=break_it
+    )
+
+    # The migrations' `fileConfig` disables loggers that already exist, which would hide the line.
+    logging.getLogger("aoe2stats_api").disabled = False
+    with caplog.at_level(logging.ERROR, logger="aoe2stats_api"):
+        assert _api_stale(client, game_id) is False
+
+    assert any(
+        f"stale flag not computed for game_id={game_id}: deployment fault" in record.getMessage()
+        and record.exc_info is not None
+        and record.exc_info[0] is not None
+        and record.exc_info[0].__name__ == fault
+        for record in caplog.records
+    )
+
+
+async def test_a_healthy_deployment_over_the_same_isolated_root_still_reads_stale(
+    client: TestClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The contrast: nothing broken, the same row - the verdict is the ordinary one, so the two
+    tests above are not passing because the flag is stuck at false."""
+    game_id = _GAME_ID_BASE + 210
+    await _sign_in(client, db_session)
+    await _seed_a_stale_looking_row_then_break_the_snapshot(
+        db_session, game_id, monkeypatch, tmp_path, break_it=lambda _directory: None
+    )
+
+    assert _api_stale(client, game_id) is True
+
+
+# --- The staleness read never fails the match page (T666m) ---------------------------------------
+# The flag only decides whether a button is shown. A defect in 006's staleness code that raised
+# anything outside `DEPLOYMENT_FAULT_ERRORS` must not take down a 003 page (FR-048): it is logged
+# at ERROR with its traceback, as a distinct line from a deployment fault, and the row reads as not
+# stale. The analyzer's own `_is_stale` (the POST path, an explicit action) still lets it propagate.
+
+
+@pytest.mark.parametrize(
+    ("index", "defect"),
+    [
+        pytest.param(0, ValueError("a stand-in for a code defect"), id="value-error"),
+        pytest.param(1, KeyError("a_missing_key"), id="key-error"),
+    ],
+)
+async def test_an_unexpected_staleness_error_never_fails_the_match_page(
+    client: TestClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    index: int,
+    defect: Exception,
+) -> None:
+    from aoe2stats_analyzer import staleness
+
+    game_id = _GAME_ID_BASE + 300 + index
+    await _sign_in(client, db_session)
+    await _seed_published(
+        db_session,
+        game_id=game_id,
+        seed=_Seed(digest=_digest(game_id, engine=_installed_engine("-superseded"))),
+    )
+
+    def defective(*args: object, **kwargs: object) -> bool:
+        raise defect
+
+    monkeypatch.setattr(staleness, "is_stale", defective)
+    logging.getLogger("aoe2stats_api").disabled = False
+    with caplog.at_level(logging.ERROR, logger="aoe2stats_api"):
+        assert _api_stale(client, game_id) is False
+
+    records = [
+        record
+        for record in caplog.records
+        if f"stale flag not computed for game_id={game_id}" in record.getMessage()
+    ]
+    assert len(records) == 1
+    record = records[0]
+    assert record.levelno == logging.ERROR
+    assert "unexpected staleness error" in record.getMessage()
+    assert "deployment fault" not in record.getMessage()
+    assert record.exc_info is not None
+    assert record.exc_info[1] is defect
+    assert record.exc_info[2] is not None  # the traceback is carried, not just the message
+
+
+async def test_a_staleness_module_that_cannot_be_imported_never_fails_the_match_page(
+    client: TestClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """T666n (c): the router imports the analyzer's staleness module lazily (constitution V keeps
+    the engine out of module scope). That import is part of the computation the page promises
+    never to fail on, so an import-time failure reads as not stale and is logged at ERROR with its
+    traceback, as an unexpected error - not a 500 on every published match."""
+    real_import = builtins.__import__
+
+    def failing_import(name: str, *args: Any, **kwargs: Any) -> Any:
+        if name == "aoe2stats_analyzer.staleness":
+            raise ImportError("the staleness module could not be imported")
+        return real_import(name, *args, **kwargs)
+
+    game_id = _GAME_ID_BASE + 320
+    await _sign_in(client, db_session)
+    await _seed_published(
+        db_session,
+        game_id=game_id,
+        seed=_Seed(digest=_digest(game_id, engine=_installed_engine("-superseded"))),
+    )
+
+    monkeypatch.setattr(builtins, "__import__", failing_import)
+    logging.getLogger("aoe2stats_api").disabled = False
+    with caplog.at_level(logging.ERROR, logger="aoe2stats_api"):
+        stale = _api_stale(client, game_id)
+    monkeypatch.undo()
+
+    assert stale is False
+    records = [
+        record
+        for record in caplog.records
+        if f"stale flag not computed for game_id={game_id}" in record.getMessage()
+    ]
+    assert len(records) == 1
+    assert records[0].levelno == logging.ERROR
+    assert "unexpected staleness error" in records[0].getMessage()
+    assert records[0].exc_info is not None
+    assert records[0].exc_info[0] is ImportError

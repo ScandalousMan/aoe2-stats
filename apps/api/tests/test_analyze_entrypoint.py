@@ -33,6 +33,7 @@ module docstring on why `REQUIRED_ENV`'s own placeholder is deliberately unreach
 from __future__ import annotations
 
 import dataclasses
+import logging
 import secrets
 from datetime import UTC, datetime, timedelta
 from importlib import metadata
@@ -40,6 +41,7 @@ from pathlib import Path
 
 import httpx
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.testclient import TestClient
 
@@ -56,6 +58,7 @@ from aoe2stats_storage.models import (
     MatchAnalysisState,
     MatchPlayer,
     ReplayCapture,
+    RetainedRecording,
     User,
 )
 from aoe2stats_storage.models import Session as UserSession
@@ -191,6 +194,15 @@ class _FakeObjectStore:
     ) -> None:
         self._objects[key] = body
         self.put_calls.append(key)
+
+    async def put_if_absent(
+        self, key: str, body: bytes, *, content_type: str = "application/octet-stream"
+    ) -> bool:
+        if key in self._objects:
+            return False
+        self._objects[key] = body
+        self.put_calls.append(key)
+        return True
 
     async def get(self, key: str) -> bytes:
         return self._objects[key]
@@ -440,3 +452,264 @@ async def test_analyze_refuses_when_the_retention_cap_is_reached(
     assert response.status_code == 409
     assert response.json()["error"]["code"] == "analysis_cap_reached"
     assert await db_session.get(MatchAnalysis, _FIXTURE_GAME_ID) is None
+
+
+# ================================================================================================
+# T666h: a deployment that cannot analyse any recording answers 500, before anything is spent
+# ================================================================================================
+
+
+async def test_analyze_answers_500_for_a_broken_deployment_before_fetching_or_claiming_anything(
+    db_session: AsyncSession,
+    database_url: str,
+    clean_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The refusal is a 5xx the person asking can read, naming the fault class and nothing else:
+    the snapshot loader's own message (a packaged path and digests here, with a sentinel standing
+    for anything that must never leak) stays in the log. The source is never called, no row is
+    written (that the next request after a fix analyses normally is `apps/analyzer`'s own test)."""
+    from aoe2stats_knowledge import snapshot
+
+    sentinel = "SENTINEL-must-not-reach-the-response"
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    _install_no_calls_allowed_upstream(monkeypatch)
+    fake_store = _install_fake_object_store(monkeypatch)
+    await _seed_fixture_match(db_session)
+    user = await _seed_user(db_session)
+
+    def broken() -> object:
+        raise snapshot.SnapshotDigestMismatch(f"{sentinel}: digest does not match")
+
+    # The migrations' `fileConfig` disables loggers that already exist (`apps/analyzer/tests/
+    # test_run_once.py`'s identical fixture), which would hide the line asserted below.
+    logging.getLogger("aoe2stats_analyzer").disabled = False
+    snapshot.load_all_snapshots.cache_clear()
+    monkeypatch.setattr(snapshot, "load_all_snapshots", broken)
+    monkeypatch.setattr(snapshot, "load_resolvable_snapshots", broken)
+
+    with _client() as client:
+        await _sign_in(client, db_session, user)
+        with caplog.at_level(logging.ERROR, logger="aoe2stats_analyzer"):
+            response = client.post("/api/analyze", json={"game_id": _FIXTURE_GAME_ID})
+
+        assert response.status_code == 500
+        body = response.json()
+        assert body["error"]["code"] == "analysis_deployment_fault"
+        assert body["error"]["detail"] == {"fault": "SnapshotDigestMismatch"}
+        assert sentinel not in response.text
+        assert await db_session.get(MatchAnalysis, _FIXTURE_GAME_ID) is None
+        assert fake_store.put_calls == []
+
+        # The operator still gets the detail, from the log.
+        assert any(sentinel in record.getMessage() for record in caplog.records)
+
+
+# ================================================================================================
+# T666m: a deployment fault on a published row is the same 500, and the flag is the match page's
+# ================================================================================================
+
+
+async def _publish_the_fixture_match(client: TestClient, db_session: AsyncSession) -> MatchAnalysis:
+    first = client.post("/api/analyze", json={"game_id": _FIXTURE_GAME_ID})
+    assert first.status_code == 200
+    assert first.json()["state"] == "published"
+    row = await db_session.get(MatchAnalysis, _FIXTURE_GAME_ID)
+    assert row is not None
+    return row
+
+
+async def test_analyze_answers_the_deployment_fault_envelope_for_a_published_row(
+    db_session: AsyncSession,
+    database_url: str,
+    clean_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A published row goes `run_once` -> `_is_stale`, which computes the identity an analysis
+    would carry now and so loads the knowledge snapshot. A snapshot shipped without its rules file
+    raised a bare `FileNotFoundError` there, which the entrypoint maps to nothing: a plain-text 500
+    the web client cannot parse. It is now the same `analysis_deployment_fault` envelope a first
+    analysis gets, and the request spends nothing: the source is not called, nothing is written to
+    the store, no access-log row is added, and the served analysis stays as it was."""
+    from tests.snapshot_refresh import clear_snapshot_resolution_caches, isolate_snapshot_root
+
+    from aoe2stats_storage.models import ReplayAccessLog
+
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    root = isolate_snapshot_root(monkeypatch, tmp_path)
+    clear_snapshot_resolution_caches()
+    _install_fake_aoems_upstream(monkeypatch, _reference_replay_bytes())
+    fake_store = _install_fake_object_store(monkeypatch)
+    await _seed_fixture_match(db_session)
+    user = await _seed_user(db_session)
+
+    with _client() as client:
+        await _sign_in(client, db_session, user)
+        published = await _publish_the_fixture_match(client, db_session)
+        before = (published.state, published.result_key, published.identity_digest)
+        puts_before = list(fake_store.put_calls)
+        access_log_before = len((await db_session.execute(select(ReplayAccessLog))).scalars().all())
+
+        (root / "aoe2techtree-180059" / "rules.json").unlink()
+        clear_snapshot_resolution_caches()
+        _install_no_calls_allowed_upstream(monkeypatch)
+        logging.getLogger("aoe2stats_analyzer").disabled = False
+        with caplog.at_level(logging.ERROR, logger="aoe2stats_analyzer"):
+            response = client.post("/api/analyze", json={"game_id": _FIXTURE_GAME_ID})
+
+        assert response.status_code == 500
+        body = response.json()
+        assert body["error"]["code"] == "analysis_deployment_fault"
+        assert body["error"]["detail"] == {"fault": "FileNotFoundError"}
+        assert any("deployment fault" in record.getMessage() for record in caplog.records)
+
+    await db_session.refresh(published)
+    assert (published.state, published.result_key, published.identity_digest) == before
+    assert fake_store.put_calls == puts_before
+    access_log_after = len((await db_session.execute(select(ReplayAccessLog))).scalars().all())
+    assert access_log_after == access_log_before
+
+
+async def test_analyze_reports_the_same_stale_flag_as_the_match_page_for_the_same_row(
+    db_session: AsyncSession,
+    database_url: str,
+    clean_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The response is the match page's `analysis` object, so its `stale` is the match page's.
+    The row is published and stale (an identity the running engine no longer produces), and
+    `run_once` returns without recomputing - the shape in which the endpoint's missing
+    retained-recording argument made the flag false by construction."""
+    import api.analyze as analyze_module
+
+    from aoe2stats_api.routers import matches
+
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    _install_fake_aoems_upstream(monkeypatch, _reference_replay_bytes())
+    _install_fake_object_store(monkeypatch)
+    await _seed_fixture_match(db_session)
+    user = await _seed_user(db_session)
+
+    with _client() as client:
+        await _sign_in(client, db_session, user)
+        row = await _publish_the_fixture_match(client, db_session)
+        row.identity_digest = "sha256:" + "0" * 64
+        await db_session.commit()
+
+        async def returns_without_recomputing(*args: object, **kwargs: object) -> None:
+            return None
+
+        monkeypatch.setattr(analyze_module, "run_once", returns_without_recomputing)
+        response = client.post("/api/analyze", json={"game_id": _FIXTURE_GAME_ID})
+
+    assert response.status_code == 200
+    retained = await matches._retained_row(db_session, row=row)
+    assert retained is not None
+    assert matches._is_stale(row, retained) is True
+    assert response.json()["stale"] is True
+
+
+def test_the_analysis_summary_cannot_be_built_without_the_retained_row() -> None:
+    """`retained` is required: a caller that forgets it gets an error, not a quietly false flag."""
+    from aoe2stats_api.routers.matches import _analysis_json
+
+    with pytest.raises(TypeError):
+        _analysis_json(game_id=1, row=None)  # type: ignore[call-arg]
+
+
+# ================================================================================================
+# T666j: the recompute retry window is the configured one, read by the deployed entrypoint
+# ================================================================================================
+
+
+async def _publish_then_refuse_a_recompute(
+    client: TestClient, db_session: AsyncSession, fake_store: _FakeObjectStore
+) -> MatchAnalysis:
+    """Publish the fixture match, make it stale (a digest the running engine no longer produces)
+    and corrupt its retained object, so the second request's recompute is refused at the checksum
+    and the prior analysis is kept - the case that writes the retry window."""
+    first = client.post("/api/analyze", json={"game_id": _FIXTURE_GAME_ID})
+    assert first.status_code == 200
+    assert first.json()["state"] == "published"
+
+    row = await db_session.get(MatchAnalysis, _FIXTURE_GAME_ID)
+    assert row is not None
+    row.identity_digest = "sha256:" + "0" * 64
+    retained = (await db_session.execute(select(RetainedRecording))).scalar_one()
+    fake_store._objects[retained.object_key] = b"bit rot"
+    await db_session.commit()
+
+    second = client.post("/api/analyze", json={"game_id": _FIXTURE_GAME_ID})
+    assert second.status_code == 200
+    await db_session.refresh(row)
+    return row
+
+
+@pytest.mark.parametrize("configured_seconds", [90, 7200])
+async def test_the_configured_retry_window_reaches_run_once_through_the_entrypoint(
+    db_session: AsyncSession,
+    database_url: str,
+    clean_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+    configured_seconds: int,
+) -> None:
+    """A refused recompute leaves the prior analysis served and parks the row for exactly the
+    configured number of seconds - 90 s, which the code's one-hour default could never produce, and
+    two hours, which it could not either. Before T666j `api/analyze.py` threaded no such value and
+    both cases got an hour."""
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    monkeypatch.setenv("ANALYSIS_RECOMPUTE_RETRY_SECONDS", str(configured_seconds))
+    _install_fake_aoems_upstream(monkeypatch, _reference_replay_bytes())
+    fake_store = _install_fake_object_store(monkeypatch)
+    await _seed_fixture_match(db_session)
+    user = await _seed_user(db_session)
+
+    with _client() as client:
+        await _sign_in(client, db_session, user)
+        before = datetime.now(UTC)
+        row = await _publish_then_refuse_a_recompute(client, db_session, fake_store)
+        after = datetime.now(UTC)
+
+    assert row.state is MatchAnalysisState.PUBLISHED
+    assert row.lease_expires_at is not None
+    window = timedelta(seconds=configured_seconds)
+    assert before + window <= row.lease_expires_at <= after + window
+
+
+async def test_a_short_configured_window_lets_the_next_request_recompute_once_it_lapses(
+    db_session: AsyncSession,
+    database_url: str,
+    clean_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With the window configured at one second, a third request made after it lapses reads the
+    retained recording again (a second recompute attempt, so a second access-log row); the code's
+    one-hour default would still have been closed and read nothing."""
+    import asyncio
+
+    from aoe2stats_storage.models import ReplayAccessLog
+
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    monkeypatch.setenv("ANALYSIS_RECOMPUTE_RETRY_SECONDS", "1")
+    _install_fake_aoems_upstream(monkeypatch, _reference_replay_bytes())
+    fake_store = _install_fake_object_store(monkeypatch)
+    await _seed_fixture_match(db_session)
+    user = await _seed_user(db_session)
+
+    async def recompute_reads() -> int:
+        rows = (await db_session.execute(select(ReplayAccessLog))).scalars().all()
+        return len([r for r in rows if r.purpose == "recompute"])
+
+    with _client() as client:
+        await _sign_in(client, db_session, user)
+        await _publish_then_refuse_a_recompute(client, db_session, fake_store)
+        assert await recompute_reads() == 1
+
+        await asyncio.sleep(1.2)
+        third = client.post("/api/analyze", json={"game_id": _FIXTURE_GAME_ID})
+
+    assert third.status_code == 200
+    assert await recompute_reads() == 2

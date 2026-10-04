@@ -33,6 +33,13 @@ dependencies = [
   # a module-scope import anywhere reachable from `aoe2stats_api.app` would drag `aoe2rec_py`
   # into every cold start (T018c, constitution V; `apps/api/tests/test_engine_isolation.py`).
   "aoe2stats-replay-engine",
+  # `routers/matches.py`'s `stale` flag (T666g, FR-042) is the analyzer's own verdict:
+  # `aoe2stats_analyzer.staleness` is imported lazily, inside the functions that need it, so the
+  # module-scope import of the app loads neither the analyzer nor `aoe2rec_py`
+  # (`tests/test_engine_isolation.py`). Declared here, not borrowed from the workspace or the root
+  # manifest, because a dependency this package's own code imports belongs on this package's own
+  # manifest - the 2026-09-04 fault shape (`apps/analyzer/pyproject.toml` records it).
+  "aoe2stats-analyzer",
 ]
 
 [tool.uv.sources]
@@ -40,6 +47,7 @@ aoe2stats-storage = { workspace = true }
 aoe2stats-providers = { workspace = true }
 aoe2stats-ingester = { workspace = true }
 aoe2stats-replay-engine = { workspace = true }
+aoe2stats-analyzer = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

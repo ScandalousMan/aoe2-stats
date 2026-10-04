@@ -19,9 +19,11 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
+from aoe2stats_core.replay.events import CanonicalEventSource
 from aoe2stats_core.replay.validation import EngineParseError, MalformedArchiveError
 
 __all__ = [
+    "AnalysisExtractor",
     "BuildEvent",
     "MatchTimeline",
     "ParticipantTimeline",
@@ -138,6 +140,18 @@ class ReplayExtractor(Protocol):
         Any `BaseException` that is not an `Exception` is not this Protocol's to catch.
         """
         ...
+
+
+@runtime_checkable
+class AnalysisExtractor(ReplayExtractor, CanonicalEventSource, Protocol):
+    """What the analyzer hands the published document's builder (feature 006, T655): everything a
+    `ReplayExtractor` does, plus the canonical event stream and the engine's dependency record.
+
+    Two Protocols joined, nothing added: `extract` still produces the timeline the existing
+    document fields come from, `events` is what the coverage pass and the group-silence method
+    read, and `engine_dependencies` is the T627 record the document and the `engine_deps` column
+    both carry (FR-044). `Aoe2RecExtractor` satisfies it without change.
+    """
 
 
 # Re-exported so a caller of this module does not also need to import `validation` to catch what

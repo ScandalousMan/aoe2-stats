@@ -112,6 +112,7 @@ REQUIRED_ENV: dict[str, str] = {
     "ANALYSIS_RUN_BUDGET_SECONDS": "240",
     "ANALYSIS_LEASE_SECONDS": "300",
     "ANALYSIS_MAX_RAW_BYTES": "25165824",
+    "ANALYSIS_RECOMPUTE_RETRY_SECONDS": "3600",
 }
 
 
@@ -318,6 +319,16 @@ class _FakeObjectStore:
         if self._fails:
             raise RuntimeError("simulated object store outage")
         self.put_calls.append((key, body))
+
+    async def put_if_absent(
+        self, key: str, body: bytes, *, content_type: str = "application/zip"
+    ) -> bool:
+        if self._fails:
+            raise RuntimeError("simulated object store outage")
+        if any(existing == key for existing, _ in self.put_calls):
+            return False
+        self.put_calls.append((key, body))
+        return True
 
     async def signed_get_url(
         self, key: str, *, expires_in: int = 300, filename: str | None = None

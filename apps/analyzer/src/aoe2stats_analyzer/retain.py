@@ -40,6 +40,7 @@ act can reach this table at all.
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Awaitable, Callable
 from uuid import UUID
 
 from sqlalchemy import select
@@ -131,10 +132,17 @@ async def retrieve_recording(
     *,
     game_id: int,
     profile_id: int,
+    on_read: Callable[[RetainedRecording], Awaitable[None]] | None = None,
 ) -> bytes:
     """Return the bytes retained for `(game_id, profile_id)`, verified against the sha256 recorded
     at retention. Raises `RecordingIntegrityError` on a mismatch rather than handing back bytes
     nothing has checked.
+
+    `on_read` is awaited with the row once the store has handed the bytes over and **before** the
+    checksum verdict (FR-029, T666i): a read of a retained recording is an access whether or not the
+    bytes then pass, so a caller that logs accesses does it here, and a read that fails its checksum
+    leaves its row. It is not called when the store holds no bytes to hand over (`ObjectNotFound`,
+    an outage): nothing was read.
     """
     row = await _existing_row(session, game_id=game_id, profile_id=profile_id)
     if row is None:
@@ -143,6 +151,8 @@ async def retrieve_recording(
         )
 
     data = await object_store.get(row.object_key)
+    if on_read is not None:
+        await on_read(row)
     actual_sha256 = hashlib.sha256(data).hexdigest()
     if actual_sha256 != row.zip_sha256:
         raise RecordingIntegrityError(

@@ -1224,7 +1224,7 @@ older analysis reproduces exactly after a knowledge refresh.
 **Story goal (US3)**: every number says where it came from. **(US6)**: an analysis stays reproducible
 after everything underneath it moves.
 
-- [ ] T653 [US6] Implement `packages/core/src/aoe2stats_core/truth/identity.py`: the tuple of
+- [x] T653 [US6] Implement `packages/core/src/aoe2stats_core/truth/identity.py`: the tuple of
       recording, parser name and version, parser dependencies, knowledge version, reconstruction
       engine version and analytics version (**FR-040**), with a digest over its canonical
       serialisation. The reconstruction engine carries an explicit not-applicable marker until 007
@@ -1234,11 +1234,11 @@ after everything underneath it moves.
       (**FR-042**). Both components exist from the start, so the tuple's **shape never changes** —
       retrofitting identity onto published artifacts is far harder than designing it in, which is
       why US6 is specified now
-- [ ] T654 [P] [US6] Write `packages/core/tests/test_identity.py` before T653, `xfail(strict=True)`:
+- [x] T654 [P] [US6] Write `packages/core/tests/test_identity.py` before T653, `xfail(strict=True)`:
       the digest is stable across processes and insensitive to field ordering; two identities
       differing in any one component produce different digests; an empty dependency record is
       refused (**FR-044**)
-- [ ] T655 [US3] Extend `apps/analyzer/src/aoe2stats_analyzer/extract.py` to publish the next
+- [x] T655 [US3] Extend `apps/analyzer/src/aoe2stats_analyzer/extract.py` to publish the next
       document version per
       [contracts/analysis-document.md](./contracts/analysis-document.md): **additive only**, every
       existing field at its existing path, four blocks added. Populate the dependency map from
@@ -1256,7 +1256,7 @@ after everything underneath it moves.
       cannot catch this one: it parses only the module-scope imports of files under `api/` and this
       import is one hop further down, inside `aoe2stats_analyzer`. Declaring it on the analyzer is
       what makes the root manifest's existing `aoe2stats-analyzer` entry pull it transitively
-- [ ] T656 [US3] Place inferred and predicted data **structurally** under the inferred block alone,
+- [x] T656 [US3] Place inferred and predicted data **structurally** under the inferred block alone,
       so a coaching conclusion cannot occupy a field typed observed, decoded or reconstructed
       (**FR-011**) by construction, with T619's validator as the second lock. Run the validator
       **before** the object is written: a failing document is not published and the analysis fails
@@ -1267,13 +1267,13 @@ after everything underneath it moves.
       inferred datum can pass. The move belongs here and not in T633 — a status is earned by the
       change that publishes, and until this task nothing does. The `event.*` entries stay planned:
       the stream is never persisted
-- [ ] T657 [US6] Make the published object's key carry the identity digest, and keep
+- [x] T657 [US6] Make the published object's key carry the identity digest, and keep
       `match_analyses.result_key` pointing at the current document (**FR-042**). Today one object
       per match is overwritten on recompute, which destroys an existing analysis — a new parser,
       patch, knowledge version or analytics version must produce a **new** analysis and rewrite
       nothing. `match_analyses` keeps its primary key: that key is 003's double-click dedupe and is
       not this feature's to change (**FR-048** — where this feature and 003 meet, 003 stands)
-- [ ] T657a [US6] Extend the staleness test in `apps/analyzer/src/aoe2stats_analyzer/run.py` so a
+- [x] T657a [US6] Extend the staleness test in `apps/analyzer/src/aoe2stats_analyzer/run.py` so a
       recompute is actually triggered (**FR-042**). Today a published row is stale only when the
       parser's name or version differs, so a new knowledge or analytics version returns early and
       never recomputes — the identity-addressed key in T657 would then preserve analyses that are
@@ -1284,19 +1284,19 @@ after everything underneath it moves.
       ([data-model.md](./data-model.md) §8). A row published before this feature has none, which
       reads as stale and recomputes once — the intended outcome. The object key already carries the
       digest, and parsing it back out of a key was rejected: a storage layout is not a record
-- [ ] T658 [US6] Implement reproduction from a recorded identity (**FR-043**): read the retained
+- [x] T658 [US6] Implement reproduction from a recorded identity (**FR-043**): read the retained
       recording through `packages/storage`, verify its checksum, resolve the named snapshot from
       package data, reach **no external source**, and refuse — naming what is missing — when the
       installed parser version or dependencies differ from the identity. The refusal is deliberate:
       reproducing under a different parser and calling the result the same analysis is the silent
       rewrite **FR-042** forbids, so the honest outcomes are identical, or cannot reproduce here
       because
-- [ ] T659 [US6] Make the compared body a pure function of the identity (**FR-041**): canonical
+- [x] T659 [US6] Make the compared body a pure function of the identity (**FR-041**): canonical
       serialisation with sorted keys where order carries no meaning, stream order where it does, one
       fixed float format, and the wall-clock field excluded from both the identity and the
       comparison. The legacy top-level extraction time stays at its current path for one version
       because the web reader requires it there, and it joins the excluded set
-- [ ] T660 [P] [US6] Write `apps/analyzer/tests/test_reproducibility.py` before T657–T659,
+- [x] T660 [P] [US6] Write `apps/analyzer/tests/test_reproducibility.py` before T657–T659,
       `xfail(strict=True)`. **SC-004**: the same recording analysed twice with identical versions
       yields a byte-identical result **outside the wall-clock set** — the envelope and the legacy
       top-level extraction time, which T659 excludes; a whole-document comparison fails on every
@@ -1305,11 +1305,11 @@ after everything underneath it moves.
       promote a second snapshot, recompute, then fetch by the first identity and confirm it
       reproduces exactly and the newer snapshot was not substituted — and that the previous version
       remains available
-- [ ] T661 [P] [US3] Write `apps/analyzer/tests/test_document_validation.py`, `xfail(strict=True)`:
+- [x] T661 [P] [US3] Write `apps/analyzer/tests/test_document_validation.py`, `xfail(strict=True)`:
       a document whose dependency record is empty is rejected (**SC-011**); a document carrying a
       datum whose required knowledge intersects a blocking gap is rejected (**FR-037**); a document
       with no tier on a value is rejected (**SC-002**)
-- [ ] T662 [US5] Write the gap rows from the coverage pass in
+- [x] T662 [US5] Write the gap rows from the coverage pass in
       `apps/analyzer/src/aoe2stats_analyzer/run.py`, keyed so a reproduced analysis records nothing
       twice, and publish the gap list in the document. When no snapshot matches the recording's
       build, the knowledge block records the absence explicitly and one blocking gap says so
@@ -1317,7 +1317,7 @@ after everything underneath it moves.
       recorded in [data-model.md](./data-model.md) §7, forced by a non-nullable column and a closed
       cause set. FR-039's rate query groups by build, so decide here how that row reads to an
       operator and do not let `-1` appear in the report as though it were a game build
-- [ ] T663 [US6] Add the single additive migration — the `analysis_knowledge_gaps` table and the
+- [x] T663 [US6] Add the single additive migration — the `analysis_knowledge_gaps` table and the
       nullable `match_analyses.identity_digest` column T657a reads — under
       `infra/migrations/versions/`, following that directory's naming convention and chaining from
       its current head, and bump the expected schema revision in `packages/storage` in the same
@@ -1334,7 +1334,7 @@ after everything underneath it moves.
       and a script nobody schedules is a rate nobody sees. There is no threshold yet — the first
       patch that moves the rate is what sets one, and a job that fails on an unmeasured number
       would cry wolf from its first run
-- [ ] T664 [P] [US3] Add a test in `apps/web/src/features/analysis/` pinning that the reader parses a
+- [x] T664 [P] [US3] Add a test in `apps/web/src/features/analysis/` pinning that the reader parses a
       next-version document fixture with **no source change**. The reader already requires only the
       existing fields, accepts any numeric schema version and ignores unknown keys — this test is
       what stops a later edit quietly breaking that, and it is why the extraction time is duplicated
@@ -1344,13 +1344,187 @@ after everything underneath it moves.
       checks: the health endpoint answers **200** — read the status, not the revision field, which
       is the build's own compiled constant and is no evidence about the database — and one analysis
       requested by hand shows a populated dependency record, an identity digest and a gap list that
-      is empty or explains itself
-- [ ] T666 [P] [US3] Add the boundary guard test asserting this feature added no scheduled job, no
+      is empty or explains itself. Also confirm against the live object store that a second
+      conditional put to an existing analysis key is refused (T666d relies on the store honouring
+      if-none-match; it is tested only against a stub)
+- [x] T666 [P] [US3] Add the boundary guard test asserting this feature added no scheduled job, no
       request-path work and no code path that consumes the capture budget (**FR-049**), and that
       nothing here re-specifies 003's request, fetch, parse-once, retention, recompute, isolation,
       rate-limiting or legal-basis behaviour (**FR-048**). Constitution I is the reason: an analysis
       feature may not degrade capture, and the cheapest time to assert that is while the diff is
       still in hand
+
+### Review remediation (pull request #109, `reviewer` REJECT 2026-10-03)
+
+The pre-merge review rejected phase 5. Both HIGH findings were re-verified against the code before
+being written down. **These block #109's merge and T665.** Two were arbitration and are decided
+(2026-10-03); the decision is recorded in the task that carries it. T666a and T666b touch disjoint
+files and may run as one parallel batch; the rest are sequential, in order.
+
+- [x] T666a [P] [US3] **Make the validator's two locks hold against the real register.** (a) Rule 8
+      in `packages/core/src/aoe2stats_core/truth/validate.py` builds its blocked set as
+      `kind.field`, but `packages/core/src/aoe2stats_core/truth/register.toml` writes
+      `requires_knowledge` as bare field names (`["cost"]`) and a whole-build gap adds `None.None`,
+      so the sets never intersect and **FR-037** is unenforced the day a knowledge-dependent datum
+      is published. Intersect the present data with the union of each blocking gap's `prevents`
+      instead, which is already computed from the real register; a whole-build gap blocks every
+      datum with a non-empty `requires_knowledge`. T661's test passes only because it injects a
+      synthetic register in a format the real one never uses — rewrite it on the packaged register
+      with a real gap from the coverage pass, and correct the format `packages/core/tests/test_validate.py`
+      documents. (b) A wildcard register path accepts any key at any depth with any value, so a
+      prose verdict nested under `engine.deps` or `participants[].age_up_commands` passes as
+      observed data (**FR-011**, **SC-003**). Walk the structure so a wildcard covers exactly one
+      key whose value is a scalar; dependency names contain dots, so not a string-prefix rule.
+      Contrast cases: a real dependency name with dots is accepted; a nested mapping or a string
+      verdict under either wildcard is refused
+- [x] T666b [P] [US6] **Put the recording's build on the row and take the store off the staleness
+      path.** Decided 2026-10-03: amend the unapplied revision `53375d9435fc` (T663) to add a
+      nullable `match_analyses.recording_build` integer beside `identity_digest`, written on publish
+      from the document's knowledge record (`-1` where the stream named none, as in
+      [data-model.md](./data-model.md) §7), and amend §8 to say so. The staleness test in
+      `apps/analyzer/src/aoe2stats_analyzer/run.py` then computes the current digest from the row
+      alone — no object-store read, so a request on a fresh published match does the row read it
+      did before this feature, and a store outage cannot turn it into a 500. A row with either column
+      NULL reads as stale and recomputes once. **Errors computing the current digest propagate before
+      any recompute** — a broken snapshot, a digest mismatch or an empty dependency record is a
+      deployment fault, not staleness, and today `SnapshotError` (a `ValueError`) is swallowed as
+      "stale" and costs a retained-recording read and a full parse on every click. Test it at that
+      shape: a raising knowledge resolution leaves the extractor uncalled, no access-log row and the
+      row unchanged. Bump nothing: the revision id stays
+- [x] T666c [US6] **A failed recompute keeps the analysis it was replacing.** Decided 2026-10-03:
+      **FR-042** wins over the literal reading of **FR-048** here, because 003's failure path was
+      written for a first analysis and recomputes of this kind did not exist. On the recompute path
+      only, a refused document, a placement error or a parse failure is logged and the row stays
+      published on its previous key, digest and build; nothing is unpublished. A first analysis
+      still fails through 003's path unchanged. In the same change, route the exception sources
+      this phase added to the first-analysis path — knowledge loading, the canonical serialiser's
+      refusal, a gap-row insert — through that failure path, so none leaves the row running for the
+      lease to expire and the next request to fetch again. Contrast cases: a first analysis that
+      fails still ends failed; a recompute that fails leaves the prior document served
+- [x] T666d [US6] **Never write a published key twice.** contracts/analysis-document.md says a key,
+      once written, is never written again; two concurrent stale requests (the recompute path holds
+      no lease) or a budget expiring between the write and the publish still re-put the same key with
+      a new wall clock. Add a conditional create to `packages/storage` — if-none-match on the object
+      stores that support it, in both the production store and the test fakes — and when the key
+      already exists, point the row at it without writing. Correct the two tests in
+      `apps/analyzer/tests/test_run_once.py` that assert the overwrite as the desired outcome
+- [x] T666e [US6] **Put the key layout where the contract says it lives, and close reproduction's
+      gaps.** contracts/analysis-document.md names `packages/storage` as the owner of the key layout
+      and a read-by-identity function; [plan.md](./plan.md) says `run.py` — the contract stands, and
+      plan.md is amended to match. Move the layout out of `run.py`'s private helper and add the read.
+      Stop the document builder importing storage repository types: the conversion to rows belongs
+      on the run side. Replace `extract.py`'s re-implementation of the validator's leaf walk and
+      exemption set with the validator's own, so the two cannot drift. In
+      `apps/analyzer/src/aoe2stats_analyzer/reproduce.py`: cross-check a caller-supplied match id
+      against the retained key, report a refused document as a refusal rather than a third outcome,
+      and treat only the store's own not-found signal as a missing object
+- [x] T666f **Small follow-ups from the same review.** Make the knowledge-refresh staleness test in
+      `apps/analyzer/tests/test_run_once.py` promote a real second snapshot, as the reproducibility
+      test does, instead of patching one resolver so the identity and the gaps disagree. Mark the
+      gap-rate step in `.github/workflows/nightly.yml` continue-on-error, so a failing report cannot
+      turn the capture audit red — constitution I outranks a report. Correct the stale docstring in
+      `run.py` that still names the timeline extractor. The T664 fixture stays hand-written: it pins
+      the reader against the contract, and generating it from the builder would pin the reader
+      against whatever the builder happens to emit
+
+### Review remediation, second round (pull request #109, `reviewer` REJECT 2026-10-04)
+
+The re-review confirmed T666a–T666f hold against the defects they targeted and rejected on their
+siblings. H-1 and M-1 were re-verified against the code before being written down. Two were
+arbitration and are decided (2026-10-04); the decision is recorded in the task that carries it.
+**These block #109's merge and T665.** T666g, T666k and T666l touch disjoint files and may run as one
+parallel batch; T666h, T666i and T666j follow, in order — all three edit `run.py`.
+
+- [x] T666g [P] [US6] **Let the product reach the recompute T657a made possible.** The API's `stale`
+      flag in `apps/api/src/aoe2stats_api/routers/matches.py` still compares the parser version
+      alone, and the web reader offers Recompute only when it is true, so a knowledge refresh or an
+      analytics change never triggers anything outside a test (contracts/analysis-document.md: "a
+      recompute has to be triggered"). Decided 2026-10-04: the API compares the identity digest,
+      computed by **the same function** the analyzer's staleness test uses — one function, so the
+      button and the recompute cannot disagree — from the row, the retained-recording row and the
+      installed versions, with no object-store read and no parse. This needs the knowledge identity
+      on the API's request path: amend `tests/architecture/test_feature_006_boundaries.py` to allow
+      exactly that import and no other, and record in the test why it stays inside **FR-049** — a
+      cached, build-independent resolution, not request-path work. While a kept-prior failure's
+      retry window (T666c) is open the flag is false, so the button is not offered for a click that
+      would do nothing. Contrast cases: parser change, knowledge refresh and analytics change each
+      read stale; an identical identity does not; a row in its retry window does not; a row with no
+      digest or no build does
+- [x] T666h [US6] **Refuse a broken deployment before claiming anything.** Decided 2026-10-04,
+      replacing T666c's handling of the case: a first analysis whose snapshot load fails today
+      fetches from the source, retains, parses and then ends terminally failed, so a broken knowledge
+      deploy spends capture's budget (constitution I) and leaves every match requested meanwhile
+      permanently failed. Before `claim_for_analysis` in `apps/analyzer/src/aoe2stats_analyzer/run.py`,
+      check what is independent of any recording and already cached: every installed snapshot loads
+      and passes its digest check, no two promoted snapshots describe one build, and the extractor's
+      dependency record is non-empty. A failure raises before any row is written or any byte fetched,
+      and the next request after the fix proceeds normally. A snapshot fault that still surfaces after
+      the check — one only a particular build can reach — keeps T666c's routing. The remaining shape
+      the review named — a refused document caused by a code defect, which cannot be checked in
+      advance — stays on 003's failure path, and this task says so in the code
+- [x] T666i [US6] **Close the recompute path's two remaining unpublish and retry holes.** (a) A
+      published row whose retained-recording row is gone reads as stale, recomputes and is marked
+      unavailable, which unpublishes a served analysis (**FR-042**) — latent until 003's retention half
+      lands. A recording that cannot be recomputed is not stale: serve the prior analysis and never
+      unpublish it. (b) A retained object that fails its integrity check, or is missing from the
+      store, on the recompute path propagates with no backoff, costing a full read and a 500 on every
+      click; route the integrity failure through the keep-prior path with its retry window, and write
+      the access-log row for every read of retained bytes before the integrity verdict, as **FR-029**
+      requires. (c) `_publish` attributes a failure of the row update's flush to the gap rows; name
+      the step that actually failed
+- [x] T666j [US6] **Source the recompute retry window from configuration.** The window is a code
+      default that the deployed entrypoint never threads, while the docstring says it is configured
+      like the capture budget. Read it from the API's settings and pass it through the analyze
+      entrypoint, with the variable declared wherever this repository declares environment keys
+      (constitution XII), or correct the docstring if configuration is rejected — say which. The key
+      is `ANALYSIS_RECOMPUTE_RETRY_SECONDS`, required like `CAPTURE_BUDGET_DAYS`, so the deployment
+      environment must carry it before the merge that introduces it
+- [x] T666k [P] [US3] **Two second locks that still lean on the first.** (a) Rule 8 in
+      `packages/core/src/aoe2stats_core/truth/validate.py` reads each gap's `severity` and `prevents`
+      from the document, so a gap the builder mislabels informational, or emits with an empty
+      `prevents`, blocks nothing. Also block any present datum whose register `requires_knowledge`
+      names the gap's field, whatever the gap says it prevents. (b)
+      `apps/analyzer/src/aoe2stats_analyzer/reproduce.py` maps only `DocumentInvalid` to a refusal; a
+      placement error and the canonical serialiser's refusal still escape as a third outcome
+- [x] T666l [P] **Bring the written record level with the amended revision.** `plan.md`'s Storage and
+      Summary paragraphs still describe one nullable column; name both. Correct the comment in
+      `packages/storage/src/aoe2stats_storage/revision.py` and the `match_analyses` docstring in
+      `packages/storage/src/aoe2stats_storage/models.py` to name `recording_build`. Record in
+      [data-model.md](./data-model.md) §8 the meaning T666c gave the lease column on a published row
+      — a retry window, not a claim — which the re-review made the condition of accepting it. Raise
+      `packages/storage`'s boto3 floor to the first release whose object put accepts the if-none-match
+      condition, which `put_if_absent` needs
+
+- [x] T666m [US6] **Third review round (2026-10-04): one deployment-fault classification, and the
+      last twins.** (a) The API's staleness read in
+      `apps/api/src/aoe2stats_api/routers/matches.py` treats a deployment fault as not stale but
+      catches only two exception classes, while the snapshot loader also raises an `OSError` for a
+      missing packaged file — which `verify_deployment` already names — so a snapshot shipped
+      without its rules file makes the match-detail page answer 500 for every analysed match
+      (**FR-048**). Define the deployment-fault exception set once, beside `verify_deployment`, and
+      use it in both places; test the match page with a snapshot file removed (200, not stale) and
+      with a digest mismatch. (b) The same faults on the analyze endpoint's published path escape as
+      a bare 500 the web client cannot parse: map them to the deployment fault inside the analyzer's
+      staleness call. (c) The analyze endpoint builds its response without the retained-recording row,
+      so its stale flag is false by construction; make that argument required and pass it. (d) Give
+      003's failure writer the same refusal to touch a published row that T666i gave the unavailable
+      writer — a lease overrun lets a second claimant refuse after the first published. (e) Record in
+      `apps/analyzer/src/aoe2stats_analyzer/reproduce.py` that it reads retained bytes without logging
+      and that any production caller must write the access-log row (003's **FR-029**); it has no
+      caller today. The analysis rate-limit charge on a deployment-fault 500 stays as 003 charges
+      every other early refusal
+
+- [x] T666n [US6] **The closing review's four follow-ups (PASS on T666m, 2026-10-04).** (a) The
+      keep-prior path's would-be digest in `apps/analyzer/src/aoe2stats_analyzer/run.py` still catches
+      only a value error, so the empty-dependency and missing-file faults T666m reclassified would
+      escape its warning after the row has committed; catch the deployment-fault set too. (b) 003's
+      failure and unavailable writers read the row, check it is not published, then write, with no
+      lock: a publish between the read and the commit is still unpublished. Make each write
+      conditional on the row not being published, in the statement itself. (c) The match page's lazy
+      import of the staleness module sits outside the handler that promises never to fail the page;
+      move it inside. (d) The snapshot loader in
+      `packages/knowledge/src/aoe2stats_knowledge/snapshot.py` decodes its descriptor before any
+      check, so invalid UTF-8 surfaces as a bare decode error rather than a snapshot fault; wrap it
 
 **Checkpoint**: every value carries its tier, every analysis carries its identity, and no version
 destroys its predecessor.

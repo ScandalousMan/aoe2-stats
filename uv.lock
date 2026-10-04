@@ -137,6 +137,7 @@ version = "0.1.0"
 source = { editable = "apps/analyzer" }
 dependencies = [
     { name = "aoe2stats-core" },
+    { name = "aoe2stats-knowledge" },
     { name = "aoe2stats-providers" },
     { name = "aoe2stats-replay-engine" },
     { name = "aoe2stats-storage" },
@@ -145,6 +146,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "aoe2stats-core", editable = "packages/core" },
+    { name = "aoe2stats-knowledge", editable = "packages/knowledge" },
     { name = "aoe2stats-providers", editable = "packages/providers" },
     { name = "aoe2stats-replay-engine", editable = "packages/replay-engine" },
     { name = "aoe2stats-storage", editable = "packages/storage" },
@@ -155,6 +157,7 @@ name = "aoe2stats-api"
 version = "0.1.0"
 source = { editable = "apps/api" }
 dependencies = [
+    { name = "aoe2stats-analyzer" },
     { name = "aoe2stats-ingester" },
     { name = "aoe2stats-providers" },
     { name = "aoe2stats-replay-engine" },
@@ -166,6 +169,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "aoe2stats-analyzer", editable = "apps/analyzer" },
     { name = "aoe2stats-ingester", editable = "apps/ingester" },
     { name = "aoe2stats-providers", editable = "packages/providers" },
     { name = "aoe2stats-replay-engine", editable = "packages/replay-engine" },
@@ -248,7 +252,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "boto3", specifier = ">=1.35" },
+    { name = "boto3", specifier = ">=1.43.75" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.36" },
 ]

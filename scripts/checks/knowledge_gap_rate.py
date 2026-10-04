@@ -14,11 +14,10 @@ fact about the game (`docs/data-sources.md`'s own coverage measurements), not an
 exits `1` only when it cannot even ask the question (`DATABASE_URL` unset), the same convention
 `alert_audit.py`/`capture_audit.py` both use for that one case.
 
-**Dead code until T663.** `analysis_knowledge_gaps` is not created by any applied migration yet —
-T663 adds it. Running this script against a database at any revision before T663's would fail with
-`UndefinedTable`, which is exactly why nothing calls this script yet: it is wired into
-`.github/workflows/nightly.yml` by T663, not by this task (see `KnowledgeGapsRepository`'s own
-module docstring for the fuller reasoning).
+**Wired by T663.** `analysis_knowledge_gaps` is created by T663's revision (`53375d9435fc`), and
+`.github/workflows/nightly.yml` runs this script as a step of its `capture-audit` job, reporting and
+never failing on a rate. Against a database that revision has not reached it fails with
+`UndefinedTable`, which is why the revision is applied before the nightly that carries the step.
 
 Usage:  uv run scripts/checks/knowledge_gap_rate.py [--window-days N]
 Exit:   0 once the report has been printed (or nothing was ever reachable to ask); 1 only when
@@ -33,7 +32,11 @@ import os
 from datetime import UTC, datetime, timedelta
 
 from aoe2stats_storage.repositories.base import build_engine, build_session_factory
-from aoe2stats_storage.repositories.knowledge_gaps import GapRateRow, KnowledgeGapsRepository
+from aoe2stats_storage.repositories.knowledge_gaps import (
+    NO_BUILD,
+    GapRateRow,
+    KnowledgeGapsRepository,
+)
 
 _DATABASE_URL_ENV = "DATABASE_URL"
 
@@ -41,6 +44,17 @@ _DATABASE_URL_ENV = "DATABASE_URL"
 #: the report growing unbounded the way a lifetime sum would — the same reasoning `capture_audit.py`
 #: gives for windowing `expired_total` rather than summing forever.
 _DEFAULT_WINDOW_DAYS = 30
+
+
+#: How a row whose stream named no build reads. The table's `build` column is not nullable, so such
+#: a gap is stored under `NO_BUILD` (-1, T652b); printing that as `build=-1` would look like a game
+#: build in a report whose whole point is to be read per build (T662). It is also not a number a
+#: patch could have introduced, so it is labelled as what it is.
+_NO_BUILD_LABEL = "build unknown (stream named none)"
+
+
+def _build_label(build: int) -> str:
+    return _NO_BUILD_LABEL if build == NO_BUILD else f"build={build}"
 
 
 def render_report(rows: list[GapRateRow], *, window_start: datetime, window_end: datetime) -> str:
@@ -58,8 +72,8 @@ def render_report(rows: list[GapRateRow], *, window_start: datetime, window_end:
     lines = [header, f"  total gaps: {total}"]
     for row in rows:
         lines.append(
-            f"  build={row.build} cause={row.cause.value} severity={row.severity.value} "
-            f"count={row.count}"
+            f"  {_build_label(row.build)} cause={row.cause.value} "
+            f"severity={row.severity.value} count={row.count}"
         )
     return "\n".join(lines)
 

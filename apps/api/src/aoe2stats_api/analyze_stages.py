@@ -33,7 +33,7 @@ from dataclasses import dataclass
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from aoe2stats_api.settings import Settings
-from aoe2stats_core.replay.analysis import ReplayExtractor
+from aoe2stats_core.replay.analysis import AnalysisExtractor
 from aoe2stats_ingester.ratelimit import build_aoems_rate_limiter, build_aoems_retry_policy
 from aoe2stats_providers.aoems.provider import AoemsReplayProvider
 from aoe2stats_providers.base import AsyncProviderCallSink, ProviderCallRecord, TokenBucket
@@ -62,7 +62,7 @@ class AnalyzeDependencies:
 
     session_factory: async_sessionmaker[AsyncSession]
     replay_provider: AoemsReplayProvider
-    extractor: ReplayExtractor
+    extractor: AnalysisExtractor
     object_store: ObjectStore
 
 
