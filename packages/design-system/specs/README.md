@@ -1738,9 +1738,22 @@ hover:underline-offset-2` beside `active:underline-offset-4`, `src/screens/DataE
      variant and size, so the axis a spread or a default really produced is the row credited, and an
      instance rendered with no value for an axis its matrix keys on (`Menu` with no `variant`) has no
      row to land on and is named in a note instead of opening a `(no axis)` row nothing could close.
-   - **The Disabled column, and a primitive's own stories' Rest column,** come from the instances a story
-     mounts as the DOM rendered them: a `disabled` the render never passed, or an `href` `Button`
-     whose `<a>` cannot be disabled, credits no Disabled cell whatever the story's `args` say.
+   - **The Disabled column of every matrix, and a primitive's own stories' Rest column,** come from
+     the instances a story mounts as the DOM rendered them, and the Disabled column from nothing else:
+     a `disabled` the render never passed, or an `href` `Button` whose `<a>` cannot be disabled,
+     credits no Disabled cell whatever the story's `args` say, and neither does a literal `disabled` or
+     `loading` at a call site in a component file, nor a `disabled: true` in a story's `args` (the
+     record-1 elements' Disabled cells are all `none`). A story gives no mount credit when it declares
+     a `visualCaptureClip`, or when its story object, default export or `parameters` spreads another
+     object or is not an object literal; a story or default export that spreads another object also
+     fails the run, because its `tags` cannot be read.
+   - **A manifest entry's shape is checked** before anything is read from it: every width's record is
+     an object whose `mounts` is an array; every mount, `placedBy` and `focus.placedBy` is an object
+     with a `disabledAt` that is an array of strings and, on each axis its primitive keys rows on, a
+     string among the values its own type exports (`ButtonVariant`, `ButtonSize`, `LinkVariant`,
+     `FieldSize`, `MenuVariant`) or `null`; and a force that matched one element carries a `stamp`
+     that is a string, or the explicit `null` of an element no design-system file wrote. Anything else
+     fails the run naming the story.
    - **Every other forced story credits no cell and is reported with the true reason** — no element
      matched, more than one (Playwright's strict mode refuses it, so no frame can be captured), stamps
      or placing instances that differ across widths, a stamp in no record-1 element and no placing
@@ -1753,8 +1766,9 @@ hover:underline-offset-2` beside `active:underline-offset-4`, `src/screens/DataE
      directory, in `packages/design-system/src/lib/` or in a `*.stories.ts` file is accounted for like
      any other (T683's outcome 1).
 
-   **What stays static**, and the generated region's own legend says so: `Rest`'s `N real call sites`
-   and a literal `disabled` at a call site; the `play()`-click credit of an element that paints `active`
+   **What stays static**, and the generated region's own legend says so: `Rest`'s call sites in a
+   component file (a Rest cell of more than three entries prints as `N credits`, which counts those
+   call sites and a primitive's own stories together); the `play()`-click credit of an element that paints `active`
    through a conditional class (`Tooltip`'s `Pinned`; the manifest records no click); which stories
    carry a `play()` that asserts focus (`findPlayFocusTarget` — the browser then says which element held
    it, and the cell reads `unresolved: <story> (play-driven; frame not provable statically)`, never a
@@ -2354,31 +2368,39 @@ forced element is the one element found at every captured width and its source s
 element's `file:line`; a record-3 cell when the tracked primitive instance that placed it is at that
 row's variant and size. A force on an element whose stamp is in the placing instance's `disabledAt`
 (the host elements it placed that the browser reports `:disabled` or `aria-disabled="true"`) is
-refused. The Disabled column, and a primitive's own stories' Rest column, come from the primitive
-instances a story mounts, as rendered, except that a story gives no mount credit when it declares a
-`visualCaptureClip` (the manifest does not record whether a mount lies inside the clipped rect), or
-when it has neither a clip nor the `visual-full-page` tag and rendered a design-system file with an
-unprefixed `fixed` class (that element need not intersect the root box it is screenshotted as). A
-tracked primitive written in a story file credits nothing. Every other forced story credits no cell
-and the check names why.
+refused. The Disabled column of every matrix, and a primitive's own stories' Rest column, come from
+the primitive instances a story mounts, as rendered, and from nothing else: a `disabled` or `loading`
+written at a call site, and a `disabled: true` in a story's `args`, credit no Disabled cell. A story
+gives no mount credit when it declares a `visualCaptureClip` (the manifest does not record whether a
+mount lies inside the clipped rect), when its story object, its default export or its `parameters`
+spreads another object or is not an object literal (a clip may come in with it), or when it has
+neither a clip nor the `visual-full-page` tag and rendered a design-system file with an unprefixed
+`fixed` class (that element need not intersect the root box it is screenshotted as). A tracked
+primitive written in a story file credits nothing. Every other forced story credits no cell and the
+check names why. A manifest entry of the wrong shape fails the check, naming the story, and so does a
+story object or default export that spreads another object (its `tags` cannot be read).
 
 **Still static, and read from source:**
 
-- `N real call sites` (Rest): a tracked primitive written in a design-system component file, never a story file, at the row its literal or default `variant` and `size` name
-- a literal `disabled` at such a call site, and a literal `loading` at a `Button` or `Field` one (both render disabled), as its Disabled credit
-- the Disabled cell of a local element of a component with no matrix (record 1) that carries a `disabled` or `aria-disabled` attribute, credited to every story whose `args` hold a literal `disabled: true` at any depth and whose rendered files, as the manifest records them, include the element's file
+- `Rest`: a tracked primitive written in a design-system component file, never a story file, at the row its literal or default `variant` and `size` name (a Rest cell of more than three entries prints as `N credits`, which counts those call sites and the primitive's own stories together)
 - the `play()`-click credit of an element that paints `active` through a conditional class (the manifest records no click)
 - which stories carry a `play()` that asserts focus (an `unresolved: ... (play-driven)` note, never a cover)
 - the hover or active an ancestor inherits from a credited descendant
 
 **Residual gaps, not refused:** a forced element no tracked primitive placed (a record-1 element of
 another component) is credited without knowing whether it renders disabled, because the manifest
-records disabled elements only among a tracked primitive's own; a story tagged `visual-full-page` is
-screenshotted as the viewport, so an instance below it is still credited; an absolutely positioned
-or `focus:fixed` element outside the root box of an untagged, unclipped story is still credited; and
-a clipped story's forced credit rests on the nightly state-signal sweep, which fails a forced story
-whose state frame does not differ from its rest frame inside the clip, not on this check, because the
-force target and the clip are located independently.
+records disabled elements only among a tracked primitive's own; a mounted instance the page does not
+show (`hidden`, `sr-only`, `opacity-0`, a closed `details`) is credited as mounted, because the
+manifest records what mounts, not what paints; a story tagged `visual-full-page` is screenshotted as
+the viewport, so a disabled instance behind its scrim is credited though the scrim covers it; the
+unprefixed-`fixed` refusal reads only a string literal of a non-story, non-test design-system file
+whose whitespace-separated tokens include exactly `fixed`, so a `fixed` behind a variant prefix
+(`focus:fixed`, `md:fixed`, `max-md:fixed`), a `[position:fixed]` property, an absolutely
+positioned element, and a `fixed` element the story file itself positions are all still credited;
+and a clipped story's forced credit is not narrowed by the clip: the nightly state-signal sweep
+fails a forced story whose state frame differs from its rest frame by no more than its comparison
+threshold inside the captured frame, and it does not check that the forced target lies inside the
+clip, because the force target and the clip are located independently.
 
 **Record 1 — every local interactive element (41 component directories scanned).**
 
@@ -2453,9 +2475,9 @@ force target and the clip are located independently.
 | ghost\|lg         | Button:RealisticPageActions                                                                                                                                                                                                                                                                          | Button:GhostHoverLg                       | Button:GhostFocusVisibleLg                                      | Button:GhostActiveLg                        | FavouritesList:RealisticList                                                                                                                                                                                                                                                    |
 | ghost\|md         | Button:Ghost; Button:AllVariants                                                                                                                                                                                                                                                                     | Button:GhostHover; FavouriteToggle:Hover  | Button:GhostFocusVisible; FavouriteToggle:FocusVisible          | Button:GhostActive; FavouriteToggle:Active  | FavouriteToggle:Bounded; FavouriteToggle:AddingInFlight; FavouriteToggle:RemovingInFlight; FavouriteToggle:AllStates                                                                                                                                                            |
 | ghost\|unresolved | composites/FavouriteToggle (packages/design-system/src/composites/FavouriteToggle/index.tsx:115); composites/FavouriteToggle (packages/design-system/src/composites/FavouriteToggle/index.tsx:126); composites/FavouriteToggle (packages/design-system/src/composites/FavouriteToggle/index.tsx:171) | none                                      | none                                                            | none                                        | none                                                                                                                                                                                                                                                                            |
-| primary\|lg       | 22 real call sites                                                                                                                                                                                                                                                                                   | Button:Hover                              | Button:FocusVisible                                             | Button:Active                               | Button:Loading; Button:Disabled; UploadControl:Uploading; UploadControl:UploadingValidating; SignInScreen:Leaving; SignInScreen:Unavailable; ThirdPartyObjectionForm:Submitting                                                                                                 |
+| primary\|lg       | 22 credits                                                                                                                                                                                                                                                                                           | Button:Hover                              | Button:FocusVisible                                             | Button:Active                               | Button:Loading; Button:Disabled; UploadControl:Uploading; UploadControl:UploadingValidating; SignInScreen:Leaving; SignInScreen:Unavailable; ThirdPartyObjectionForm:Submitting                                                                                                 |
 | primary\|md       | Button:AllVariants                                                                                                                                                                                                                                                                                   | Button:PrimaryHoverMd                     | Callout:FocusVisible                                            | Button:PrimaryActiveMd                      | none                                                                                                                                                                                                                                                                            |
-| secondary\|lg     | 17 real call sites                                                                                                                                                                                                                                                                                   | ReplayAvailabilityList:Hover              | ReplayAvailabilityList:FocusVisible; UploadControl:FocusVisible | ReplayAvailabilityList:Active               | MatchDetailPanel:DownloadPreparing; ReplayAvailabilityList:DownloadPreparing; UploadControl:Uploading; UploadControl:UploadingValidating; Dialog:PrimaryPending; ArchivalControl:Submitting; ArchivalControl:Unavailable; DataExportPanel:Requesting; DataExportPanel:Preparing |
+| secondary\|lg     | 17 credits                                                                                                                                                                                                                                                                                           | ReplayAvailabilityList:Hover              | ReplayAvailabilityList:FocusVisible; UploadControl:FocusVisible | ReplayAvailabilityList:Active               | MatchDetailPanel:DownloadPreparing; ReplayAvailabilityList:DownloadPreparing; UploadControl:Uploading; UploadControl:UploadingValidating; Dialog:PrimaryPending; ArchivalControl:Submitting; ArchivalControl:Unavailable; DataExportPanel:Requesting; DataExportPanel:Preparing |
 | secondary\|md     | Button:Secondary; Button:AllVariants; Button:AsLink                                                                                                                                                                                                                                                  | Button:SecondaryHover; Button:AsLinkHover | Button:SecondaryFocusVisible; Button:AsLinkFocusVisible         | Button:SecondaryActive; Button:AsLinkActive | ErrorState:RetryInProgress                                                                                                                                                                                                                                                      |
 | unresolved\|lg    | primitives/Dialog (packages/design-system/src/primitives/Dialog/index.tsx:127); primitives/Dialog (packages/design-system/src/primitives/Dialog/index.tsx:138)                                                                                                                                       | none                                      | none                                                            | none                                        | none                                                                                                                                                                                                                                                                            |
 
@@ -2485,24 +2507,24 @@ force target and the clip are located independently.
 
 #### `Field`
 
-| Row | Rest               | Hover       | Focus-visible      | Press (active) | Disabled                      |
-| --- | ------------------ | ----------- | ------------------ | -------------- | ----------------------------- |
-| lg  | Field:SizeLg       | none        | none               | none           | none                          |
-| md  | 10 real call sites | Field:Hover | Field:FocusVisible | none           | Field:Disabled; Field:Loading |
+| Row | Rest         | Hover       | Focus-visible      | Press (active) | Disabled                      |
+| --- | ------------ | ----------- | ------------------ | -------------- | ----------------------------- |
+| lg  | Field:SizeLg | none        | none               | none           | none                          |
+| md  | 10 credits   | Field:Hover | Field:FocusVisible | none           | Field:Disabled; Field:Loading |
 
 #### `Link`
 
-| Row        | Rest              | Hover                                                                                                   | Focus-visible                                                                                                                       | Press (active)                                                                                                          | Disabled |
-| ---------- | ----------------- | ------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | -------- |
-| inline     | 8 real call sites | PrivacyNotice:InlineLinkHover; PrivacyNotice:ContactRouteLinkHover; ThirdPartyObjectionForm:Hover       | PrivacyNotice:InlineLinkFocusVisible; PrivacyNotice:ContactRouteLinkFocusVisible; ThirdPartyObjectionForm:FocusVisible              | Link:ActiveInline; PrivacyNotice:InlineLinkActive; PrivacyNotice:ContactRouteLinkActive; ThirdPartyObjectionForm:Active | none     |
-| standalone | 7 real call sites | Link:Hover; Footer:Hover; AccountErasurePanel:ErasedScreenHover; ArchivalControl:PrivacyNoticeLinkHover | Link:FocusVisible; Footer:FocusVisible; AccountErasurePanel:ErasedScreenFocusVisible; ArchivalControl:PrivacyNoticeLinkFocusVisible | Link:ActiveStandalone; Footer:Active; AccountErasurePanel:ErasedScreenActive; ArchivalControl:PrivacyNoticeLinkActive   | none     |
+| Row        | Rest      | Hover                                                                                                   | Focus-visible                                                                                                                       | Press (active)                                                                                                          | Disabled |
+| ---------- | --------- | ------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | -------- |
+| inline     | 8 credits | PrivacyNotice:InlineLinkHover; PrivacyNotice:ContactRouteLinkHover; ThirdPartyObjectionForm:Hover       | PrivacyNotice:InlineLinkFocusVisible; PrivacyNotice:ContactRouteLinkFocusVisible; ThirdPartyObjectionForm:FocusVisible              | Link:ActiveInline; PrivacyNotice:InlineLinkActive; PrivacyNotice:ContactRouteLinkActive; ThirdPartyObjectionForm:Active | none     |
+| standalone | 7 credits | Link:Hover; Footer:Hover; AccountErasurePanel:ErasedScreenHover; ArchivalControl:PrivacyNoticeLinkHover | Link:FocusVisible; Footer:FocusVisible; AccountErasurePanel:ErasedScreenFocusVisible; ArchivalControl:PrivacyNoticeLinkFocusVisible | Link:ActiveStandalone; Footer:Active; AccountErasurePanel:ErasedScreenActive; ArchivalControl:PrivacyNoticeLinkActive   | none     |
 
 #### `Menu`
 
-| Row       | Rest              | Hover                            | Focus-visible                                                                                                            | Press (active)                     | Disabled                     |
-| --------- | ----------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ---------------------------------- | ---------------------------- |
-| actions   | 4 real call sites | Menu:TriggerHover                | Menu:TriggerFocusVisible                                                                                                 | Menu:TriggerActive                 | Menu:ActionsWithDisabledItem |
-| selection | 7 real call sites | Menu:Hover; Menu:FooterItemHover | Menu:FocusVisible; Menu:KeyboardNavigation; Menu:EscapeReturnsFocusToTrigger; ProfileSummary:SwitcherFocusVisibleAndOpen | Menu:Active; Menu:FooterItemActive | Menu:LoadingItem             |
+| Row       | Rest      | Hover                            | Focus-visible                                                                                                            | Press (active)                     | Disabled                     |
+| --------- | --------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ---------------------------------- | ---------------------------- |
+| actions   | 4 credits | Menu:TriggerHover                | Menu:TriggerFocusVisible                                                                                                 | Menu:TriggerActive                 | Menu:ActionsWithDisabledItem |
+| selection | 7 credits | Menu:Hover; Menu:FooterItemHover | Menu:FocusVisible; Menu:KeyboardNavigation; Menu:EscapeReturnsFocusToTrigger; ProfileSummary:SwitcherFocusVisibleAndOpen | Menu:Active; Menu:FooterItemActive | Menu:LoadingItem             |
 
 #### `Page`
 
