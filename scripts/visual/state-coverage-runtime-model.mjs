@@ -192,16 +192,18 @@ export function findFixtureProblem(index) {
 // Returns `{ stories, rules }`: the stories in input order, and for each id the rules that selected it
 // (`story-files`, `files`, `manifest-entry`).
 //
-// What this cannot see, and nightly (which checks every entry) does — stated exactly, no wider and no
-// narrower than the code:
-//   - a change to a file that rendered NO stamped element in the story: a hook, a `lib` helper (a
-//     global-reach path, so (a) selects everything for `src/lib/`, but not for a hook that lives in a
-//     component directory elsewhere), a story's own file (that is (a)'s job), and tokens or CSS, which
-//     change paint and never which element exists, who wrote it or who placed it;
-//   - a component that STARTS being rendered by a story because of a change in a file that story did
-//     not previously render — a composite B begins to render a `Button`; a screen A that renders B
-//     records B's file but not `Button`'s, so a diff touching only `Button` does not select A until
-//     the entry is rewritten — when (a) does not reach A either.
+// What this cannot see, and nightly (which checks every entry) does — one gap, stated exactly: a
+// change in a file that renders no stamped element in the story's SETTLED state (`files` is recorded
+// once the story has settled, after `play()`). That is:
+//   - a hook, or a `lib` helper outside a global-reach path (`src/lib/` is one, so (a) selects every
+//     story for it);
+//   - tokens or CSS, which change paint and never which element exists, who wrote it or who placed it;
+//   - a file whose elements a `play()` removes before the story settles — the idle state of
+//     `composite-uploadcontrol--real-selection-then-success` renders `Button` and the play clicks it
+//     away, so the entry records UploadControl and Callout only, and a `Button` change that alters how
+//     that play ends selects nothing;
+//   - a file the entry did not record yet — a component a story starts rendering after a change — is
+//     the same gap: the entry lists no `Button` until it is rewritten.
 export function selectRuntimeStories({ stories, manifest, baseManifest, diff }) {
   const diffFiles = new Set(diff)
   const byDiff = new Set(selectChangedStories(stories, diff).stories.map((s) => s.id))

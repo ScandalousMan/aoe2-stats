@@ -483,11 +483,9 @@ jobs:
       # diff base (so a hand-edited manifest is re-checked in the browser). Its rewrite command takes
       # the same selection.
       # What it cannot see, and nightly (every entry) does — exactly this and no more: a change in a
-      # file that rendered no stamped element in the story (a hook, a lib helper outside a global-reach
-      # path, a story's own file — that one is the first rule's job — and tokens or CSS, which change
-      # paint, never which element exists or who placed it); and a component that STARTS being
-      # rendered by a story because of a change in a file that story did not previously render, when
-      # the first rule does not reach that story either.
+      # file that renders no stamped element in the story's settled state (after `play()`): a hook, a
+      # lib helper outside a global-reach path, tokens or CSS (paint, never which element exists), and
+      # a file whose elements a `play()` removes before the story settles.
       - run: node scripts/visual/state-coverage-runtime.mjs --changed
       # The plants (`packages/design-system/.storybook/fixtures/`) on every run, whatever the diff
       # selects: each asserts what the browser does with a shape the static check guessed wrong,

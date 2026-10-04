@@ -24,12 +24,9 @@
 //       there means every entry differs), so a pull request that edits the manifest by hand has
 //       those entries re-checked in the browser.
 // The rules live in `selectRuntimeStories` (`state-coverage-runtime-model.mjs`). What they cannot see,
-// and nightly (every entry) does:
-//   - a change to a file that rendered no stamped element in the story: a hook, a lib helper outside
-//     a global-reach path, a story's own file (that is (a)'s job), and tokens or CSS, which change
-//     paint and never which element exists, who wrote it or who placed it;
-//   - a component that STARTS being rendered by a story because of a change in a file that story did
-//     not previously render, when (a) does not reach that story either.
+// and nightly (every entry) does: a change in a file that renders no stamped element in the story's
+// settled state (after `play()`) — a hook, a lib helper outside a global-reach path, tokens or CSS
+// (paint, never which element exists), and a file whose elements a `play()` removes before settle.
 //
 // Fails closed, before any browser starts: an unknown argument (a typo, or two flags joined in one
 // token) names itself and exits; a built index with no published story, and one with published stories
