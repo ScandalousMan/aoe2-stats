@@ -11,14 +11,31 @@
 //   node scripts/visual/state-coverage-runtime.mjs --write [--changed|--plants]
 //       the same pass, then rewrites the selected entries (and drops entries for stories the index no
 //       longer lists). A line shift in one component rewrites only the entries of the stories that
-//       component affects — `--changed` selects them the way `pnpm test:visual --changed` does
-//       (`scripts/visual/story-selection.mjs`).
+//       component affects.
 //
 // Selection: every story of the built index (fixtures included — a plant's entry is the point), or
-// `--changed` (the stories the diff affects), or `--plants` (the fixture stories alone). The pass
-// itself is `tests/visual/state-coverage-runtime.spec.ts`, which this spawns. It needs a built
+// `--plants` (the fixture stories alone), or `--changed`: the union, for check and for write alike, of
+//   (a) what `pnpm test:visual --changed` selects (`scripts/visual/story-selection.mjs`): a story's own
+//       directory, or a global-reach path;
+//   (b) every story whose committed entry cites, anywhere, a stamp whose file is in the diff;
+//   (c) every story whose committed entry mounts or is placed by a tracked primitive whose directory
+//       has a file in the diff;
+//   (d) every story whose committed entry differs from the manifest at the diff base (a manifest absent
+//       there means every entry differs), so a pull request that edits the manifest by hand has
+//       those entries re-checked in the browser.
+// The rules live in `selectRuntimeStories` (`state-coverage-runtime-model.mjs`). What they cannot see
+// and nightly can: a composite B changes an axis it passes to a primitive, and a screen A renders B.
+// A's mounts change, but nothing in A's committed entry names B's file, so unless (a) reaches A that
+// change waits for the nightly run over every entry.
+//
+// Refused in every mode, before any selection: a built index with no published story (a rewrite over
+// it would empty the manifest).
+//
+// The pass itself is `tests/visual/state-coverage-runtime.spec.ts`, which this spawns. It needs a built
 // Storybook; the stories to run and their widths travel to it as a file, the way
-// `scripts/visual/run.mjs` hands `stories.spec.ts` its units.
+// `scripts/visual/run.mjs` hands `stories.spec.ts` its units. `STATE_COVERAGE_RUNTIME_INDEX` and
+// `STATE_COVERAGE_RUNTIME_MANIFEST` name another index and manifest file (the tests use them);
+// unset, they are the built Storybook's and the committed manifest.
 //
 // Exit: 0 when everything checked agrees (or the rewrite succeeded), 1 otherwise.
 import { spawnSync } from 'node:child_process'
@@ -42,17 +59,25 @@ import {
   describeEntryDifferences,
   describeKeyProblems,
   findEntryDifferences,
+  findIndexProblem,
   findKeyProblems,
   formatManifest,
+  manifestNeedsWrite,
   mergeManifest,
+  selectRuntimeStories,
   serializeManifest,
 } from './state-coverage-runtime-model.mjs'
 import { isFixtureEntry, listStories } from './story-index.mjs'
-import { changedFiles, selectChangedStories } from './story-selection.mjs'
+import { changedFiles, fileAtBase } from './story-selection.mjs'
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
-const indexPath = path.join(rootDir, 'packages', 'design-system', 'storybook-static', 'index.json')
-const manifestPath = path.join(rootDir, MANIFEST_PATH)
+const indexPath =
+  process.env.STATE_COVERAGE_RUNTIME_INDEX ??
+  path.join(rootDir, 'packages', 'design-system', 'storybook-static', 'index.json')
+const manifestPath =
+  process.env.STATE_COVERAGE_RUNTIME_MANIFEST ?? path.join(rootDir, MANIFEST_PATH)
+// How a `--changed` refusal speaks: this tool's own prefix and way out, never `run.mjs`'s.
+const VOICE = { prefix: 'state-coverage-runtime', unscopedCommand: 'the pass without `--changed`' }
 const SPEC = 'tests/visual/state-coverage-runtime.spec.ts'
 
 function log(message) {
@@ -81,6 +106,11 @@ function main() {
     process.exit(1)
   }
   const index = JSON.parse(readFileSync(indexPath, 'utf8'))
+  const indexProblem = findIndexProblem(index)
+  if (indexProblem) {
+    log(indexProblem)
+    process.exit(1)
+  }
   const manifest = readManifest()
 
   if (keysOnly) {
@@ -98,9 +128,26 @@ function main() {
     return
   }
 
-  let selected = listStories(index, { includeFixtures: true })
-  if (plantsOnly) selected = selected.filter(isFixtureEntry)
-  if (changedOnly) selected = selectChangedStories(selected, changedFiles()).stories
+  const all = listStories(index, { includeFixtures: true })
+  const fixtureIds = all.filter(isFixtureEntry).map((s) => s.id)
+  const selection = plantsOnly ? 'plants' : changedOnly ? 'changed' : 'all'
+  let selected = all
+  if (plantsOnly) selected = all.filter(isFixtureEntry)
+  if (changedOnly) {
+    const baseText = fileAtBase(MANIFEST_PATH, VOICE)
+    const picked = selectRuntimeStories({
+      stories: all,
+      manifest,
+      baseManifest: baseText === null ? null : JSON.parse(baseText),
+      diff: changedFiles(VOICE),
+    })
+    selected = picked.stories
+    const byRule = {}
+    for (const why of picked.rules.values()) {
+      for (const rule of why) byRule[rule] = (byRule[rule] ?? 0) + 1
+    }
+    log(`--changed selects ${selected.length} of ${all.length} (${JSON.stringify(byRule)}).`)
+  }
   if (selected.length === 0) {
     log('nothing selected — nothing to run.')
     if (write) writeManifest(mergeManifest({ manifest, fresh: {}, index }), manifest)
@@ -117,7 +164,10 @@ function main() {
   mkdirSync(outDir, { recursive: true })
   writeFileSync(
     workPath,
-    JSON.stringify(selected.map((s) => ({ id: s.id, widths: REVIEW_WIDTHS }))),
+    JSON.stringify({
+      stories: selected.map((s) => ({ id: s.id, widths: REVIEW_WIDTHS })),
+      fixtureIds,
+    }),
   )
 
   let result
@@ -172,7 +222,7 @@ function main() {
     log(
       `${differences.length} of ${Object.keys(fresh).length} entr${differences.length === 1 ? 'y differs' : 'ies differ'} from ${MANIFEST_PATH}:`,
     )
-    for (const line of describeEntryDifferences(differences)) console.log(line)
+    for (const line of describeEntryDifferences(differences, selection)) console.log(line)
     process.exit(1)
   }
   log(
@@ -181,8 +231,9 @@ function main() {
 }
 
 function writeManifest(merged, previous) {
-  // Whatever this writes, the rewrite must leave `--keys` green for the stories it knows about.
-  if (JSON.stringify(merged) === JSON.stringify(previous) && existsSync(manifestPath)) return
+  // Whatever this writes, the rewrite must leave `--keys` green for the stories it knows about. An
+  // empty selection over a non-empty index leaves the file byte-identical.
+  if (!manifestNeedsWrite(merged, previous, existsSync(manifestPath))) return
   writeFileSync(manifestPath, formatManifest(serializeManifest(merged)))
 }
 

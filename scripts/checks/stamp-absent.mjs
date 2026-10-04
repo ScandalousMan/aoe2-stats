@@ -6,27 +6,40 @@
 // `pnpm --filter web build`; `scripts/visual/source-stamp.test.mjs` plants a directory to prove the
 // scan fires and stays silent.
 //
+// A scan that found nothing to scan proves nothing: an empty or missing directory (a build that
+// wrote its output elsewhere) fails as surely as a stamped one.
+//
 // Usage:  node scripts/checks/stamp-absent.mjs [dir]
-// Exit:   0 when no file carries the attribute, 1 when one does or the directory is missing.
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
+// Exit:   0 when at least one file was scanned and none carries the attribute; 1 when one does, the
+//         directory is missing, or it holds no file at all.
+import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { STAMP_ATTRIBUTE } from '../../packages/design-system/.storybook/source-stamp.mjs'
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 
-// Every file under `dir` (relative to it) whose text names the stamp attribute.
-export function findStampedFiles(dir) {
+// How many files under `dir` were scanned, and which of them (relative to it) name the stamp attribute.
+export function scanDirectory(dir) {
   const found = []
+  let scanned = 0
   const walk = (rel) => {
     for (const entry of readdirSync(path.join(dir, rel), { withFileTypes: true })) {
       const next = path.join(rel, entry.name)
       if (entry.isDirectory()) walk(next)
-      else if (readFileSync(path.join(dir, next)).includes(STAMP_ATTRIBUTE)) found.push(next)
+      else {
+        scanned += 1
+        if (readFileSync(path.join(dir, next)).includes(STAMP_ATTRIBUTE)) found.push(next)
+      }
     }
   }
   walk('')
-  return found.sort()
+  return { scanned, found: found.sort() }
+}
+
+// Every file under `dir` (relative to it) whose text names the stamp attribute.
+export function findStampedFiles(dir) {
+  return scanDirectory(dir).found
 }
 
 function main() {
@@ -37,15 +50,25 @@ function main() {
     )
     process.exit(1)
   }
-  const found = findStampedFiles(dir)
+  const { scanned, found } = scanDirectory(dir)
+  if (scanned === 0) {
+    console.log(
+      `stamp-absent: ${dir} holds no file to scan — the build wrote its output elsewhere, or not at all.`,
+    )
+    process.exit(1)
+  }
   if (found.length > 0) {
     console.log(`stamp-absent: ${found.length} built file(s) carry "${STAMP_ATTRIBUTE}":`)
     for (const f of found) console.log(`  - ${f}`)
     process.exit(1)
   }
   console.log(
-    `stamp-absent: no built file under ${path.relative(rootDir, dir)} carries "${STAMP_ATTRIBUTE}".`,
+    `stamp-absent: none of the ${scanned} file(s) under ${path.relative(rootDir, dir)} carries "${STAMP_ATTRIBUTE}".`,
   )
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) main()
+// `pathToFileURL` encodes what a path may contain (a space, a non-ASCII letter) the way `import.meta.url`
+// is, which a hand-built `file://` prefix does not — and a script that silently does not run exits 0.
+// `realpathSync` because Node reports the real path in `import.meta.url` while `argv[1]` keeps a
+// symlink (macOS's `/var` is one) as typed.
+if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) main()

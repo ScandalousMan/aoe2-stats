@@ -17,7 +17,10 @@
 //   - an element a design-system file hands to `cloneElement`: the call's own props gain the stamp,
 //     keyed to the *call's* location. `Field` places its control that way (it clones its child
 //     rather than rendering it), so without this the control would carry no stamp, or the caller's,
-//     and could not be attributed to `Field`.
+//     and could not be attributed to `Field`. The plain name and an aliased import
+//     (`cloneElement as ce`) are both stamped; a call with a spread argument
+//     (`cloneElement(...args)`) throws at transform time naming its file:line, since the stamp could
+//     not be told from a child there.
 // A story file is never stamped: an element a story writes carries no stamp, which is exactly how the
 // pass tells a forced element a primitive placed from one a story wrote beside it.
 //
@@ -45,10 +48,27 @@ export function isStampedFile(repoRelativePath) {
   return !/\.(stories|test)\.[jt]sx?$/.test(repoRelativePath)
 }
 
-function isCloneElementCall(node) {
+// The local names `cloneElement` is imported under — `cloneElement` itself, and `ce` for
+// `import { cloneElement as ce }` — so an alias is stamped like the plain name.
+function cloneElementNames(sourceFile) {
+  const names = new Set(['cloneElement'])
+  for (const statement of sourceFile.statements) {
+    if (!ts.isImportDeclaration(statement)) continue
+    const bindings = statement.importClause?.namedBindings
+    if (!bindings || !ts.isNamedImports(bindings)) continue
+    for (const element of bindings.elements) {
+      if ((element.propertyName ?? element.name).text === 'cloneElement') {
+        names.add(element.name.text)
+      }
+    }
+  }
+  return names
+}
+
+function isCloneElementCall(node, names) {
   if (!ts.isCallExpression(node)) return false
   const callee = node.expression
-  if (ts.isIdentifier(callee)) return callee.text === 'cloneElement'
+  if (ts.isIdentifier(callee)) return names.has(callee.text)
   return ts.isPropertyAccessExpression(callee) && callee.name.text === 'cloneElement'
 }
 
@@ -64,6 +84,7 @@ export function stampSource(code, repoRelativePath) {
     scriptKind,
   )
   const insertions = []
+  const cloneNames = cloneElementNames(sourceFile)
   const keyOf = (node) =>
     `${repoRelativePath}:${sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1}`
 
@@ -77,7 +98,15 @@ export function stampSource(code, repoRelativePath) {
         pos: node.tagName.getEnd(),
         text: ` ${STAMP_ATTRIBUTE}="${keyOf(node)}"`,
       })
-    } else if (isCloneElementCall(node)) {
+    } else if (isCloneElementCall(node, cloneNames)) {
+      // A spread argument hides which argument is the props, so the stamp could land as a child
+      // (`cloneElement(...args)` takes its props from the spread). Refuse rather than guess.
+      if (node.arguments.some(ts.isSpreadElement)) {
+        throw new Error(
+          `${keyOf(node)}: cloneElement is called with a spread argument, so the source stamp ` +
+            'cannot tell which argument is the props. Pass the element and props explicitly.',
+        )
+      }
       const stamp = `'${STAMP_ATTRIBUTE}': '${keyOf(node)}'`
       const [element, props] = node.arguments
       if (!props) {

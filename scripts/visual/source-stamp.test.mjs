@@ -6,7 +6,16 @@
 // directory (built-output level; the scan is exercised here on planted directories, the real build is
 // the CI step's).
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
+import {
+  cpSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { test } from 'node:test'
@@ -129,6 +138,110 @@ test('stamp-absent: a built directory carrying the attribute is reported, a clea
       `createElement("div",{"${STAMP_ATTRIBUTE}":"a:1"})`,
     )
     assert.deepEqual(findStampedFiles(dir), [path.join('assets', 'leaked.js')])
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('an aliased cloneElement import is stamped like the plain name; an unrelated local of the same shape is not', () => {
+  const file = 'packages/design-system/src/primitives/Widget/alias.ts'
+  const aliased = stampSource(
+    [
+      "import { cloneElement as ce } from 'react'",
+      'export const a = (c) => ce(c, { id: 1 })',
+      'export const b = (c) => ce(c)',
+    ].join('\n'),
+    file,
+  )
+  assert.ok(aliased)
+  assert.ok(aliased.includes(`ce(c, { '${STAMP_ATTRIBUTE}': '${file}:2', id: 1 })`), aliased)
+  assert.ok(aliased.includes(`ce(c, { '${STAMP_ATTRIBUTE}': '${file}:3' })`), aliased)
+  // `ce` here is the author's own function, not an alias of React's: nothing to stamp.
+  assert.equal(
+    stampSource('const ce = (c, p) => c\nexport const a = (c) => ce(c, { id: 1 })', file),
+    null,
+  )
+})
+
+test('a cloneElement call with a spread argument throws at transform time naming file:line, instead of stamping a child', () => {
+  const file = 'packages/design-system/src/primitives/Widget/spread.ts'
+  for (const call of [
+    'cloneElement(...args)',
+    'cloneElement(c, ...rest)',
+    'cloneElement(c, {}, ...kids)',
+  ]) {
+    assert.throws(
+      () => stampSource(`export const a = (c, args, rest, kids) =>\n  ${call}`, file),
+      (error) => error.message.includes(`${file}:2`) && /spread/.test(error.message),
+      call,
+    )
+  }
+  // The three shapes handled today still pass: an object literal, a props variable, no props.
+  assert.ok(stampSource('export const a = (c) => cloneElement(c, { id: 1 })', file))
+  assert.ok(stampSource('export const a = (c, p) => cloneElement(c, p)', file))
+  assert.ok(stampSource('export const a = (c) => cloneElement(c)', file))
+})
+
+// ---- stamp-absent: a scan that found nothing to scan is a failure ---------------------------------
+
+const stampAbsent = path.join(rootDir, 'scripts/checks/stamp-absent.mjs')
+const runStampAbsent = (dir, script = stampAbsent) =>
+  spawnSync(process.execPath, [script, dir], { encoding: 'utf8' })
+
+test('stamp-absent: an empty directory, a missing one and one holding only empty directories fail; a clean one passes; a stamped one fails', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'stamp-absent-cli-'))
+  try {
+    const empty = path.join(dir, 'empty')
+    mkdirSync(empty)
+    const emptyResult = runStampAbsent(empty)
+    assert.equal(emptyResult.status, 1, emptyResult.stdout)
+    assert.match(emptyResult.stdout, /no file|nothing to scan|empty/i)
+
+    const nested = path.join(dir, 'nested')
+    mkdirSync(path.join(nested, 'assets'), { recursive: true })
+    assert.equal(runStampAbsent(nested).status, 1, 'only empty directories: zero files scanned')
+
+    const missingResult = runStampAbsent(path.join(dir, 'missing'))
+    assert.equal(missingResult.status, 1)
+    assert.match(missingResult.stdout, /does not exist/)
+
+    const clean = path.join(dir, 'clean')
+    mkdirSync(clean)
+    writeFileSync(path.join(clean, 'index.html'), '<div id="root"></div>')
+    const cleanResult = runStampAbsent(clean)
+    assert.equal(cleanResult.status, 0, cleanResult.stdout)
+    assert.match(cleanResult.stdout, /1 file/)
+
+    const stamped = path.join(dir, 'stamped')
+    mkdirSync(stamped)
+    writeFileSync(path.join(stamped, 'app.js'), `x("${STAMP_ATTRIBUTE}")`)
+    assert.equal(runStampAbsent(stamped).status, 1)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('stamp-absent: the script runs as the main module from a path that needs URL-encoding', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'stamp absent é-'))
+  try {
+    // The script and what it imports, copied beside a `node_modules` that resolves `typescript`.
+    mkdirSync(path.join(dir, 'scripts', 'checks'), { recursive: true })
+    cpSync(stampAbsent, path.join(dir, 'scripts', 'checks', 'stamp-absent.mjs'))
+    mkdirSync(path.join(dir, 'packages', 'design-system', '.storybook'), { recursive: true })
+    cpSync(
+      path.join(rootDir, 'packages/design-system/.storybook/source-stamp.mjs'),
+      path.join(dir, 'packages', 'design-system', '.storybook', 'source-stamp.mjs'),
+    )
+    symlinkSync(
+      path.join(rootDir, 'packages/design-system/node_modules'),
+      path.join(dir, 'packages', 'design-system', 'node_modules'),
+    )
+    const built = path.join(dir, 'built')
+    mkdirSync(built)
+    writeFileSync(path.join(built, 'app.js'), `x("${STAMP_ATTRIBUTE}")`)
+    const result = runStampAbsent(built, path.join(dir, 'scripts', 'checks', 'stamp-absent.mjs'))
+    assert.equal(result.status, 1, `main did not run: ${result.stdout}${result.stderr}`)
+    assert.match(result.stdout, /carry/)
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

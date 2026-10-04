@@ -9,9 +9,9 @@
 // `listStories` below, which skips that tag by name. Only the runtime pass itself asks for them
 // (`listStories(index, { includeFixtures: true })`), because a plant's recorded entry is the point.
 //
-// `scripts/visual/story-index.test.mjs` plants a tagged entry and proves each reader skips it, so
-// a reader added later that re-derives "is a story" on its own and forgets the tag is the shape a
-// test exists to catch.
+// `scripts/visual/story-index.test.mjs` plants a tagged entry and proves each reader on its own fixed
+// list skips it. It does not discover readers: a reader added later that re-derives "is a story" on its
+// own and forgets the tag is caught only once someone adds it to that list.
 
 export const FIXTURE_TAG = 'state-coverage-fixture'
 

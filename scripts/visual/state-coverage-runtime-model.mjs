@@ -10,15 +10,33 @@
 // `tests/visual/state-coverage-runtime.ts` recorded: the match count and stamp of a forced story's
 // target, the tracked primitive instance that placed it, what holds focus after `play()`, and every
 // tracked primitive instance the story mounts. See that module for what each field means.
+//
+// An instance is an object, `{ component, variant, size, disabledAt }` in that key order, so a reader
+// (T694) decodes it in Node without reading `preview.tsx`: `variant` and `size` are `null` when the
+// primitive has no such axis or no value was passed and there is no default; `disabledAt` is the
+// sorted unique stamps of the host elements that instance's own file (or its `cloneElement` call)
+// placed and the DOM reports disabled — empty when nothing disabled renders.
 import { spawnSync } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { BUILD_STORYBOOK_COMMAND } from './missing-index.mjs'
 import { importFile, listStories } from './story-index.mjs'
+import { selectChangedStories } from './story-selection.mjs'
 
 export const MANIFEST_PATH = 'packages/design-system/specs/state-coverage-runtime.json'
 export const PASS_COMMAND = 'pnpm test:visual:state-coverage-runtime'
 // The command that rewrites entries, named by every failure so the fix is never a guess.
 export const REWRITE_COMMAND = `${PASS_COMMAND} --write`
+
+// The directory each tracked primitive's own source lives in — what `.storybook/preview.tsx`
+// registers as `directory`, repeated here because this module runs in Node and cannot import a
+// browser module. `state-coverage-runtime-model.test.mjs` fails when the two disagree.
+export const TRACKED_DIRECTORIES = {
+  Button: 'packages/design-system/src/primitives/Button/',
+  Link: 'packages/design-system/src/primitives/Link/',
+  Field: 'packages/design-system/src/primitives/Field/',
+  Menu: 'packages/design-system/src/primitives/Menu/',
+}
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 
@@ -78,6 +96,96 @@ export function findKeyProblems({ manifest, index }) {
     }
   }
   return problems
+}
+
+// A build with no published story cannot be recorded: merging a pass over it would drop every entry
+// of the manifest. Returns the refusal, or `null` when the index lists at least one story.
+export function findIndexProblem(index) {
+  if (listStories(index).length > 0) return null
+  return `Storybook build has no stories — nothing to record, and a rewrite would empty the manifest. Rebuild: \`${BUILD_STORYBOOK_COMMAND}\`.`
+}
+
+// ---- Which entries a --changed run re-checks ------------------------------------------------------
+
+// Every tracked primitive instance an entry records, across widths: what it mounts, what placed its
+// forced element, what placed its focused one.
+export function entryInstances(entry) {
+  const found = []
+  for (const record of Object.values(entry?.widths ?? {})) {
+    found.push(...(record.mounts ?? []))
+    if (record.force?.placedBy) found.push(record.force.placedBy)
+    if (record.focus?.placedBy) found.push(record.focus.placedBy)
+  }
+  return found
+}
+
+// Every stamp an entry cites, across widths: the forced element's, the focused element's, and each
+// instance's `disabledAt`.
+export function entryStamps(entry) {
+  const stamps = new Set()
+  for (const record of Object.values(entry?.widths ?? {})) {
+    if (record.force?.stamp) stamps.add(record.force.stamp)
+    if (record.focus?.stamp) stamps.add(record.focus.stamp)
+  }
+  for (const instance of entryInstances(entry)) {
+    for (const stamp of instance.disabledAt ?? []) stamps.add(stamp)
+  }
+  return stamps
+}
+
+const stampFile = (stamp) => stamp.slice(0, stamp.lastIndexOf(':'))
+
+// The stories a diff leaves the runtime pass to re-check under `--changed`: the union of
+//   (a) what `pnpm test:visual --changed` selects (`selectChangedStories`, from the story's own
+//       directory or a global-reach path) — a story's own file, or its component's;
+//   (b) every story whose committed entry cites, anywhere, a stamp whose file is in the diff — the
+//       entry is a record of that file's line numbers and a line shift changes it;
+//   (c) every story whose committed entry mounts or is placed by a tracked primitive whose directory
+//       has a file in the diff — what a primitive renders changes what the story mounts;
+//   (d) every story whose committed entry differs from the one in the diff base's manifest
+//       (`baseManifest`; `null` when the manifest does not exist there, so every entry differs) — a
+//       pull request that edits the manifest alone has those entries checked in the browser.
+// Returns `{ stories, rules }`: the stories in input order, and for each id the rules that selected it.
+//
+// What this cannot see, and nightly (which checks every entry) does: a composite B changes an axis it
+// passes to a primitive and a screen A renders B. A's mounts change, but nothing in A's committed
+// entry names B's file, so unless (a) reaches A the change waits for nightly.
+export function selectRuntimeStories({ stories, manifest, baseManifest, diff }) {
+  const diffFiles = new Set(diff)
+  const touchedDirectories = Object.entries(TRACKED_DIRECTORIES)
+    .filter(([, dir]) => diff.some((file) => file.startsWith(dir)))
+    .map(([name]) => name)
+  const byDiff = new Set(selectChangedStories(stories, diff).stories.map((s) => s.id))
+
+  const rules = new Map()
+  const picked = []
+  for (const story of stories) {
+    const entry = manifest[story.id]
+    const why = []
+    if (byDiff.has(story.id)) why.push('story-files')
+    if ([...entryStamps(entry)].some((stamp) => diffFiles.has(stampFile(stamp)))) {
+      why.push('cited-stamp')
+    }
+    if (entryInstances(entry).some((i) => touchedDirectories.includes(i.component))) {
+      why.push('tracked-primitive')
+    }
+    const before = baseManifest === null ? undefined : baseManifest[story.id]
+    if (entry !== undefined || before !== undefined) {
+      if (baseManifest === null || !sameJson(entry, before)) why.push('manifest-entry')
+    }
+    if (why.length > 0) {
+      rules.set(story.id, why)
+      picked.push(story)
+    }
+  }
+  return { stories: picked, rules }
+}
+
+// Whether a pass's merged manifest must be written: always when the file is missing, otherwise only
+// when it is not the committed one — so an empty selection over a non-empty index leaves the file
+// byte-identical.
+export function manifestNeedsWrite(merged, previous, fileExists) {
+  return !fileExists || JSON.stringify(merged) !== JSON.stringify(previous)
 }
 
 // Structural equality of two JSON values (key order irrelevant).
@@ -161,21 +269,30 @@ export function formatManifest(text) {
   return result.stdout
 }
 
-// A human line per problem or difference, ending with the command that fixes it.
-export function describeKeyProblems(problems) {
-  return [
-    ...problems.map((p) => `  - ${p.id}: ${p.detail}`),
-    `rewrite with \`${REWRITE_COMMAND}\` (add \`--changed\` to rewrite only the stories the diff selects).`,
-  ]
+// The command that rewrites exactly the entries a failing run covered, so the fix is never a guess.
+function rewriteHint(selection) {
+  if (selection === 'plants') {
+    return `rewrite with \`${REWRITE_COMMAND} --plants\` (the plants alone).`
+  }
+  if (selection === 'changed') {
+    return `rewrite with \`${REWRITE_COMMAND} --changed\` (the stories the diff selects).`
+  }
+  return `rewrite with \`${REWRITE_COMMAND}\` (add \`--changed\` to rewrite only the stories the diff selects, or \`--plants\` for the plants alone).`
 }
 
-export function describeEntryDifferences(differences) {
+// A human line per problem or difference, ending with the command that fixes it. `selection` is the
+// run that found them: `'plants'`, `'changed'`, or anything else for the whole index.
+export function describeKeyProblems(problems) {
+  return [...problems.map((p) => `  - ${p.id}: ${p.detail}`), rewriteHint('all')]
+}
+
+export function describeEntryDifferences(differences, selection = 'all') {
   return [
     ...differences.map((d) =>
       d.committed === undefined
         ? `  - ${d.id}: no committed entry; the browser rendered ${JSON.stringify(d.fresh.widths)}`
         : `  - ${d.id}: committed ${JSON.stringify(d.committed.widths)}\n      browser   ${JSON.stringify(d.fresh.widths)}`,
     ),
-    `rewrite with \`${REWRITE_COMMAND}\` (add \`--changed\` to rewrite only the stories the diff selects).`,
+    rewriteHint(selection),
   ]
 }

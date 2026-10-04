@@ -23,12 +23,16 @@ export const GLOBAL_REACH_PREFIXES = [
 
 export const storyGlob = /\.stories\.[jt]sx?$/
 
-function log(message) {
-  console.log(`test:visual: ${message}`)
+// How a refusal talks: the caller's own log prefix, and the command it names as the way out. The
+// defaults are `scripts/visual/run.mjs`'s own; the runtime pass (`state-coverage-runtime.mjs`) passes
+// its own, so its refusal never tells a reader to run a different tool.
+const RUN_MJS_VOICE = {
+  prefix: 'test:visual',
+  unscopedCommand: 'the full, unscoped `pnpm test:visual`',
 }
 
-function runGit(args) {
-  const result = spawnSync('git', args, { cwd: rootDir, encoding: 'utf8' })
+function runGit(args, cwd = rootDir) {
+  const result = spawnSync('git', args, { cwd, encoding: 'utf8' })
   if (result.status !== 0) return []
   return result.stdout
     .split('\n')
@@ -36,42 +40,66 @@ function runGit(args) {
     .filter(Boolean)
 }
 
-// Same shape as runGit(), except a failed invocation is fatal rather than swallowed into `[]`.
-// Reserved for the one diff whose base is a name that might not resolve in this checkout at all
-// (`${base}...HEAD` below) — as opposed to a diff against `HEAD` or a listing of untracked files,
-// neither of which names anything that can fail to exist. Conflating "the command failed" with
-// "the command found nothing" is the defect this exists to end: a shallow CI checkout with no
-// `origin/main` locally available used to make every pull-request run silently select zero
+// A git invocation whose failure is fatal rather than swallowed into `[]`. Reserved for the diff
+// whose base is a name that might not resolve in this checkout at all (`${base}...HEAD` below, and
+// the merge base `fileAtBase` reads from) — as opposed to a diff against `HEAD` or a listing of
+// untracked files, neither of which names anything that can fail to exist. Conflating "the command
+// failed" with "the command found nothing" is the defect this exists to end: a shallow CI checkout
+// with no `origin/main` locally available used to make every pull-request run silently select zero
 // stories and exit 0, looking identical to a docs-only change that genuinely touches none.
-function runGitOrFail(args, baseDescription) {
-  const result = spawnSync('git', args, { cwd: rootDir, encoding: 'utf8' })
+function gitOrFail(args, baseDescription, { prefix, unscopedCommand, cwd }) {
+  const result = spawnSync('git', args, { cwd, encoding: 'utf8' })
   if (result.status !== 0) {
     const stderr = (result.stderr ?? '').trim()
-    log(
-      `--changed could not resolve its diff base, ${baseDescription} (\`git ${args.join(' ')}\`)` +
+    console.log(
+      `${prefix}: --changed could not resolve its diff base, ${baseDescription} (\`git ${args.join(' ')}\`)` +
         (stderr ? ` — ${stderr}` : '') +
         '. This is not "nothing changed" — it is "the changed set is unknown" — so refusing to ' +
         'report zero affected stories. Set VISUAL_BASE_REF to a ref this checkout can resolve ' +
         '(a commit SHA already fetched, or a branch after `git fetch` has brought it in), or run ' +
-        'the full, unscoped `pnpm test:visual` instead.',
+        `${unscopedCommand} instead.`,
     )
     process.exit(1)
   }
   return result.stdout
+}
+
+function lines(text) {
+  return text
     .split('\n')
     .map((line) => line.trim())
     .filter(Boolean)
 }
 
+function diffBase() {
+  return process.env.VISUAL_BASE_REF ?? 'origin/main'
+}
+
 // Every file that differs from the diff base, plus anything uncommitted or untracked, so a run
 // before *and* after `git add` behaves the same way for a developer working locally.
-export function changedFiles() {
-  const base = process.env.VISUAL_BASE_REF ?? 'origin/main'
+export function changedFiles(options = {}) {
+  const voice = { ...RUN_MJS_VOICE, cwd: rootDir, ...options }
+  const base = diffBase()
   const files = new Set()
-  for (const f of runGitOrFail(['diff', '--name-only', `${base}...HEAD`], `"${base}"`)) files.add(f)
-  for (const f of runGit(['diff', '--name-only', 'HEAD'])) files.add(f)
-  for (const f of runGit(['ls-files', '--others', '--exclude-standard'])) files.add(f)
+  for (const f of lines(gitOrFail(['diff', '--name-only', `${base}...HEAD`], `"${base}"`, voice))) {
+    files.add(f)
+  }
+  for (const f of runGit(['diff', '--name-only', 'HEAD'], voice.cwd)) files.add(f)
+  for (const f of runGit(['ls-files', '--others', '--exclude-standard'], voice.cwd)) files.add(f)
   return [...files]
+}
+
+// A repository-rooted file's text as it was at the diff base — the commit `${base}...HEAD` diffs
+// from, i.e. the merge base, so a base branch that moved on since this one forked does not read as a
+// change this branch made. `null` when the file does not exist there; an unresolvable base is the
+// same refusal `changedFiles` makes, never "no such file".
+export function fileAtBase(repoPath, options = {}) {
+  const voice = { ...RUN_MJS_VOICE, cwd: rootDir, ...options }
+  const base = diffBase()
+  const [mergeBase] = lines(gitOrFail(['merge-base', base, 'HEAD'], `"${base}"`, voice))
+  const listed = lines(gitOrFail(['ls-tree', mergeBase, '--', repoPath], `"${base}"`, voice))
+  if (listed.length === 0) return null
+  return gitOrFail(['show', `${mergeBase}:${repoPath}`], `"${base}"`, voice)
 }
 
 // The stories a diff affects. A change under any `GLOBAL_REACH_PREFIXES` path repaints (or can

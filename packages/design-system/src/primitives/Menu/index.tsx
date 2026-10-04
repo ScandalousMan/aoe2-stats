@@ -69,7 +69,7 @@ export function Menu({
   footerItem,
   errorItemId,
   errorMessage,
-  align = MENU_AXIS_DEFAULTS.align,
+  align = 'start',
   className,
 }: MenuProps) {
   const [open, setOpen] = useState(false)
@@ -440,8 +440,3 @@ function MenuItemRow({
     </div>
   )
 }
-
-// The axis a caller that names none gets (`variant` is required, so `align` is the one `Menu`
-// defaults). Read by `Menu`'s own destructuring above and by the runtime pass
-// (`tests/visual/state-coverage-runtime.spec.ts`, T693) — see `BUTTON_AXIS_DEFAULTS`.
-export const MENU_AXIS_DEFAULTS = { align: 'start' } as const satisfies { align: MenuAlign }

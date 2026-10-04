@@ -3,7 +3,9 @@ import { Button } from '../../src/primitives/Button'
 import type { ButtonVariant } from '../../src/primitives/Button'
 import { Callout } from '../../src/primitives/Callout'
 import { Field } from '../../src/primitives/Field'
+import { Link } from '../../src/primitives/Link'
 import { Menu } from '../../src/primitives/Menu'
+import type { MenuProps } from '../../src/primitives/Menu'
 
 // The plants of T693 (feature 005, `specs/005-design-system-foundations/tasks.md`): one story per
 // shape the static reading of `scripts/checks/state-coverage.mjs` guessed wrong in T687–T692, built
@@ -126,4 +128,147 @@ export const PlayFocus: Story = {
       Go
     </Button>
   ),
+}
+
+// ---- args a `render:` never passes (T689) --------------------------------------------------------
+
+// `args: { disabled: true }` on a story whose `render:` ignores its args: the mounted `Button` is not
+// disabled, and nothing in the DOM is.
+export const ArgsDisabledIgnored: Story = {
+  args: { disabled: true },
+  parameters: { visualForceState: { state: 'hover', role: 'button' } },
+  render: () => (
+    <Button variant="destructive" size="md">
+      Go
+    </Button>
+  ),
+}
+
+// Contrast: the same args, spread into the `Button`. The element it places is disabled in the DOM.
+export const ArgsDisabledSpread: Story = {
+  args: { disabled: true },
+  parameters: { visualForceState: { state: 'hover', role: 'button' } },
+  render: (args) => <Button {...(args as { disabled?: boolean })}>Go</Button>,
+}
+
+// `args: { href: '/x' }` on a story whose `render:` ignores it: a `<button>` renders, so a force on
+// role `link` finds nothing.
+export const ArgsHrefIgnored: Story = {
+  args: { href: '/x' },
+  parameters: { visualForceState: { state: 'hover', role: 'link' } },
+  render: () => <Button>Go</Button>,
+}
+
+// `href` and `disabled` together: what renders is an `<a>`, which is never `:disabled`, so the record
+// of what the browser reports disabled is empty — the reason it is read from the DOM, not from props.
+export const HrefAndDisabled: Story = {
+  parameters: { visualForceState: { state: 'hover', role: 'link' } },
+  render: () => <Button {...({ href: '/x', disabled: true } as { href: string })}>Go</Button>,
+}
+
+// `Field` clones its control and forwards `disabled` to it: the control carries the stamp of that
+// call in `Field`'s own file, and is disabled in the DOM.
+export const DisabledControlInField: Story = {
+  parameters: { visualForceState: { state: 'focus-visible', role: 'textbox', name: 'Name' } },
+  render: () => (
+    <Field label="Name">
+      <input type="text" disabled />
+    </Field>
+  ),
+}
+
+// ---- which element a force names, and who placed it (T688) ---------------------------------------
+
+// A raw `<a>` beside a `<Link>`, forced by role alone: two elements match.
+export const RawAnchorBesideLink: Story = {
+  parameters: { visualForceState: { state: 'hover', role: 'link' } },
+  render: () => (
+    <div>
+      <a href="#raw">Raw</a>
+      <Link href="#linked">Linked</Link>
+    </div>
+  ),
+}
+
+// The same page, forced by a `name` that picks the raw `<a>`: one match, written by the story, placed
+// by no instance. The `Link` beside it, with no variant passed, is recorded at its default.
+export const RawAnchorPickedByName: Story = {
+  parameters: { visualForceState: { state: 'hover', role: 'link', name: 'Raw' } },
+  render: () => (
+    <div>
+      <a href="#raw">Raw</a>
+      <Link href="#linked">Linked</Link>
+    </div>
+  ),
+}
+
+// A `name` that selects one of two `Button`s of different variants: one match, placed by exactly the
+// instance it names.
+export const NameSelectsOneOfTwo: Story = {
+  parameters: { visualForceState: { state: 'hover', role: 'button', name: 'Cancel' } },
+  render: () => (
+    <div>
+      <Button variant="primary">Save</Button>
+      <Button variant="ghost" size="lg">
+        Cancel
+      </Button>
+    </div>
+  ),
+}
+
+// An `nth` past the last instance: nothing to select.
+export const NthPastTheLast: Story = {
+  parameters: { visualForceState: { state: 'hover', role: 'button', nth: 2 } },
+  render: () => (
+    <div>
+      <Button variant="primary">Save</Button>
+      <Button variant="ghost" size="lg">
+        Cancel
+      </Button>
+    </div>
+  ),
+}
+
+// ---- a tag that never renders, and an axis the story never passes (T690) -------------------------
+
+// A `Menu` behind a literal `false`: it never mounts, so the forced item is the raw one beside it and
+// the story mounts no `Menu` at all.
+export const GuardedMenuBesideRaw: Story = {
+  parameters: { visualForceState: { state: 'hover', role: 'menuitemradio', name: 'aoe2alt' } },
+  render: () => (
+    <div>
+      {false && <Menu variant="selection" triggerLabel="Profile" items={[]} />}
+      <div role="menuitemradio" aria-checked="false" tabIndex={0}>
+        aoe2alt
+      </div>
+    </div>
+  ),
+}
+
+const MENU_ARGS = { triggerLabel: 'Profile', items: [{ id: 'one', label: 'One' }] }
+
+// `<Menu {...args} />` with no `variant` among the args: the `Menu` renders with none, so the record
+// has no variant to name (`Menu`'s `variant` has no default).
+export const MenuWithoutVariant: Story = {
+  args: MENU_ARGS,
+  parameters: { visualForceState: { state: 'hover', role: 'button', name: 'Profile' } },
+  render: (args) => <Menu {...(args as MenuProps)} />,
+}
+
+// Contrast: the same spread with `variant="selection"` written after it.
+export const MenuSpreadWithVariant: Story = {
+  args: MENU_ARGS,
+  parameters: { visualForceState: { state: 'hover', role: 'button', name: 'Profile' } },
+  render: (args) => <Menu {...(args as MenuProps)} variant="selection" />,
+}
+
+// ---- a guard that reads a spread (T691) ----------------------------------------------------------
+
+const LINK_PROPS = { href: '/x' }
+
+// `href` arrives through a spread constant: `Button` renders an `<a>`, so a force on role `button`
+// finds nothing.
+export const ButtonHrefViaSpreadConstant: Story = {
+  parameters: { visualForceState: { state: 'hover', role: 'button' } },
+  render: () => <Button {...LINK_PROPS}>Go</Button>,
 }

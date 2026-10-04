@@ -461,16 +461,23 @@ jobs:
       - run: node scripts/checks/stamp-absent.mjs
       # Scoped on purpose: CI is a court, not a factory. Full coverage runs nightly.
       - run: pnpm test:visual --changed
-      # T693: the runtime pass in check mode over the stories `--changed` selects — what a real
-      # browser says each forced story's target is, against the committed manifest. Scoped by story
-      # for the same reason as the line above (a browser pass over every story on each pull request
-      # is the factory constitution VII and FR-061 keep for nightly); its rewrite command takes the
-      # same selection, so a line shift in one component rewrites only the entries of the stories
-      # that component affects.
+      # T693: the runtime pass in check mode over the stories the diff reaches — what a real browser
+      # says each forced story's target is, against the committed manifest. Scoped by story for the
+      # same reason as the line above (a browser pass over every story on each pull request is the
+      # factory constitution VII and FR-061 keep for nightly), but not by the same rule: the
+      # selection is the union of what `--changed` above selects (a story's own directory, or a
+      # global-reach path), every story whose committed entry cites a stamp in a changed file, every
+      # story whose entry mounts or is placed by a tracked primitive whose directory changed, and
+      # every story whose entry differs from the manifest at the diff base (so a hand-edited manifest
+      # is re-checked in the browser). Its rewrite command takes the same selection.
+      # What it cannot see, and nightly (every entry) does: a composite B changes an axis it passes to
+      # a primitive and a screen A renders B — A's mounts change, but nothing in A's committed entry
+      # names B's file, so unless the first rule reaches A the change waits for nightly.
       - run: node scripts/visual/state-coverage-runtime.mjs --changed
       # The plants (`packages/design-system/.storybook/fixtures/`) on every run, whatever the diff
       # selects: each asserts what the browser does with a shape the static check guessed wrong,
-      # and nine stories cost seconds.
+      # and the plants cost seconds. The pass also fails when a fixture story has no assertion or an
+      # assertion no fixture story.
       - run: node scripts/visual/state-coverage-runtime.mjs --plants
       # `--changed` only diff-scopes Storybook stories (scripts/visual/run.mjs) — app-routes.spec.ts
       # is not a story and always runs, screenshotting the routes a signed-in and a signed-out

@@ -5,7 +5,7 @@ import { REVIEW_WIDTHS } from '../../../scripts/visual/review-widths.mjs'
 import { BUTTON_AXIS_DEFAULTS, Button } from '../src/primitives/Button'
 import { FIELD_AXIS_DEFAULTS, Field } from '../src/primitives/Field'
 import { LINK_AXIS_DEFAULTS, Link } from '../src/primitives/Link'
-import { MENU_AXIS_DEFAULTS, Menu } from '../src/primitives/Menu'
+import { Menu } from '../src/primitives/Menu'
 // The one stylesheet every consumer imports (see tokens/tailwind.css) — Storybook renders
 // components exactly the way apps/web does, tokens included, never a second copy of Tailwind.
 import '../tokens/tailwind.css'
@@ -38,12 +38,14 @@ const VIEWPORT_OPTIONS = {
 // source stamp (`./source-stamp.mjs`) falls under it was placed by the primitive's own code (or, for
 // `Field`, by its `cloneElement` call), as opposed to by a story or by another component rendered
 // inside it. `axes` is the primitive's own exported axis-defaults constant — the one its destructuring
-// reads — in the order the pass records them; the fiber carries only the props a caller passed, so the
-// pass merges those over it. Adding a primitive here is how it becomes tracked.
+// reads; the fiber carries only the props a caller passed, so the pass merges those over it. An axis
+// with no default is `null` (`Menu`'s `variant` is required). Only `variant` and `size` are recorded,
+// and only for a primitive that lists them. Adding a primitive here is how it becomes tracked — and
+// `scripts/visual/state-coverage-runtime-model.mjs` carries its directory beside this one.
 interface TrackedPrimitive {
   component: unknown
   directory: string
-  axes: Record<string, string>
+  axes: Record<string, string | null>
 }
 declare global {
   interface Window {
@@ -66,13 +68,12 @@ window.__DS_TRACKED_PRIMITIVES__ = {
     directory: 'packages/design-system/src/primitives/Field/',
     axes: FIELD_AXIS_DEFAULTS,
   },
-  // `Menu`'s `variant` is required, so it has no default to merge; `align` is the one it defaults.
-  // `variant` is listed with no default (the empty string never renders: a `Menu` without `variant`
-  // does not type-check) so the pass records it in the order a reader expects.
+  // `Menu`'s `variant` is required, so it has no default to merge: `null` records it as passed, or
+  // as `null` for a story that renders a `Menu` without one. `align` is not a matrix axis.
   Menu: {
     component: Menu,
     directory: 'packages/design-system/src/primitives/Menu/',
-    axes: { variant: '', ...MENU_AXIS_DEFAULTS },
+    axes: { variant: null },
   },
 }
 
