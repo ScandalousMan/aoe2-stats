@@ -1861,11 +1861,16 @@ hover:underline-offset-2` beside `active:underline-offset-4`, `src/screens/DataE
    to that question, whatever it might someday hold.
 
    **A call site whose `variant` or `size` the source cannot settle opens no record-3 row (T695).**
-   A `Button` call site is keyed on its `variant|size` pair only when each axis is a literal or the
-   primitive's own default; a forwarded prop (`FavouriteToggle`'s `size={size}`), a computed
-   expression (`Dialog`'s `variant={primaryAction.variant ?? 'destructive'}`) or a spread over an
-   axis the call site omits leaves the axis unsettled, and the call site files no `Rest` credit and
-   opens no row (`axisKey`, `scripts/checks/state-coverage.mjs`; one unsettled axis is enough, a literal
+   A `Button` call site is keyed on its `variant|size` pair only when each axis is settled: a literal
+   (a string, a template literal without substitutions, or either under `as const`, `as <T>`,
+   `satisfies <T>` or parentheses) or the primitive's own default. A forwarded prop
+   (`FavouriteToggle`'s `size={size}`), a computed expression (`Dialog`'s
+   `variant={primaryAction.variant ?? 'destructive'}`), an axis attribute followed by a spread, and
+   an axis the call site omits beside a spread anywhere leave the axis unsettled, and the call site
+   files no `Rest` credit and opens no row (T700: JSX applies the last attribute, so a spread before an
+   axis attribute is overridden by it and `<Button {...rest} variant="ghost" size="lg" />` keeps its
+   `ghost|lg` row, while `<Button variant="ghost" size="lg" {...rest} />` opens none; `axisKey`,
+   `scripts/checks/state-coverage.mjs`; one unsettled axis is enough, a literal
    `variant` beside a dynamic `size` opens neither a `ghost|unresolved` row nor a half-keyed one). The
    instances such a call site mounts are not lost: the runtime manifest places every instance a
    story mounts at the row the browser rendered it to (`ghost|md` for `FavouriteToggle`, `destructive|lg`

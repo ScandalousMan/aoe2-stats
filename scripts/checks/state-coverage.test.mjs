@@ -488,6 +488,79 @@ test('a call site that spreads props over an axis it does not pass opens no row 
   )
 })
 
+// --- Fixture 6d: a call site's axis is settled the way JSX settles it (T700). The last attribute
+// naming a prop wins, and a spread is an attribute too: an axis attribute is settled only when no
+// spread follows it, a spread before it is overridden. A string literal under a template without
+// substitutions, `as const`, `as <T>`, `satisfies <T>` or parentheses (any nesting) is the literal. ---
+
+test('a literal axis followed by a spread is not settled, whichever axis it is (T700, spread after)', () => {
+  for (const source of [
+    `const el = <Button variant="ghost" size="lg" {...rest}>Go</Button>`,
+    `const el = <Button variant="ghost" {...rest} size="lg">Go</Button>`,
+    `const el = <Button size="lg" {...rest} variant="ghost">Go</Button>`,
+    `const el = <Button variant={'ghost'} size={\`lg\`} {...rest}>Go</Button>`,
+  ]) {
+    assert.deepEqual(rowKeys(matrixOf(source)), [], `${source} must open no row`)
+  }
+})
+
+test('a spread before a literal axis is overridden by it: the row and its Rest credit stay (T700, contrast)', () => {
+  const matrix = matrixOf(`const el = <Button {...rest} variant="ghost" size="lg">Go</Button>`)
+  assert.deepEqual(rowKeys(matrix), ['ghost|lg'])
+  assert.deepEqual(matrix[0].rest, ['composites/Widget (fixture.tsx:1)'])
+})
+
+test('a spread between the two axes leaves only the later one settled, so the call site opens no row (T700)', () => {
+  assert.deepEqual(
+    rowKeys(matrixOf(`const el = <Button variant="ghost" {...rest} size="lg">Go</Button>`)),
+    [],
+  )
+  assert.deepEqual(
+    rowKeys(matrixOf(`const el = <Button size="lg" {...rest} variant="ghost">Go</Button>`)),
+    [],
+  )
+})
+
+test('an axis omitted beside a spread anywhere stays unsettled exactly as T695 made it (T700, contrast)', () => {
+  for (const source of [
+    `const el = <Button {...rest} variant="ghost">Go</Button>`,
+    `const el = <Button variant="ghost" {...rest}>Go</Button>`,
+  ]) {
+    assert.deepEqual(rowKeys(matrixOf(source)), [], `${source} must open no row`)
+  }
+})
+
+test('a template literal without substitutions settles the axis as the string literal does (T700)', () => {
+  const matrix = matrixOf('const el = <Button variant={`ghost`} size="lg">Go</Button>')
+  assert.deepEqual(rowKeys(matrix), ['ghost|lg'])
+  assert.deepEqual(matrix[0].rest, ['composites/Widget (fixture.tsx:1)'])
+})
+
+test('a string literal under as const, as, satisfies or parentheses settles the axis (T700)', () => {
+  for (const [source, row] of [
+    [`const el = <Button variant={'ghost' as const}>Go</Button>`, 'ghost|md'],
+    [`const el = <Button variant={'ghost' as ButtonVariant}>Go</Button>`, 'ghost|md'],
+    [`const el = <Button variant={('ghost' satisfies ButtonVariant)}>Go</Button>`, 'ghost|md'],
+    [
+      `const el = <Button variant={(('ghost' as const) satisfies V)} size={('lg')}>Go</Button>`,
+      'ghost|lg',
+    ],
+    ['const el = <Button size={`lg` as const}>Go</Button>', 'secondary|lg'],
+  ]) {
+    assert.deepEqual(rowKeys(matrixOf(source)), [row], source)
+  }
+})
+
+test('a template literal with substitutions, or a wrapped non-literal, stays unsettled (T700, contrast)', () => {
+  for (const source of [
+    'const el = <Button variant={`gh${x}`}>Go</Button>',
+    `const el = <Button variant={variant as ButtonVariant}>Go</Button>`,
+    `const el = <Button variant={(cond ? 'ghost' : 'primary') as const}>Go</Button>`,
+  ]) {
+    assert.deepEqual(rowKeys(matrixOf(source)), [], `${source} must open no row`)
+  }
+})
+
 test('contrast (T695): a literal-axis call site keeps its row and its Rest credit exactly as before', () => {
   const matrix = matrixOf(`const el = <Button variant="ghost" size="lg">Go</Button>`)
   assert.deepEqual(rowKeys(matrix), ['ghost|lg'])

@@ -995,6 +995,34 @@ export function findVariantSizeDefaults(sourceFile) {
   return { variant: variantDefault, size: sizeDefault }
 }
 
+// What a call site's `variant` or `size` attribute settles to, the way JSX settles it (T700): the last
+// attribute naming the prop is the one that applies, and an axis attribute is settled only when no
+// spread attribute follows it in the attribute list (a spread before it is overridden by it). The value
+// is a string literal, a no-substitution template literal, or either under `as const`, `as <T>`,
+// `satisfies <T>` or parentheses in any nesting (`unwrapExpression`); any other expression, a
+// template literal with substitutions included, is not settled by the source. `attributePresent` is
+// whether the call site names the prop at all, which decides whether a default may fill an omitted axis.
+function settleAxisAttr(openingElement, name) {
+  const properties = openingElement.attributes.properties
+  let index = -1
+  properties.forEach((attr, i) => {
+    if (ts.isJsxAttribute(attr) && attr.name.getText() === name) index = i
+  })
+  if (index === -1) return { attributePresent: false, settled: false }
+  const spreadFollows = properties.some((attr, i) => i > index && ts.isJsxSpreadAttribute(attr))
+  if (spreadFollows) return { attributePresent: true, settled: false }
+  const attr = properties[index]
+  let expr = attr.initializer
+  if (expr && ts.isJsxExpression(expr)) expr = expr.expression
+  const inner = unwrapExpression(expr)
+  if (inner && (ts.isStringLiteral(inner) || ts.isNoSubstitutionTemplateLiteral(inner))) {
+    return { attributePresent: true, settled: true, value: inner.text }
+  }
+  const lit = attrLiteral(attr)
+  if (lit.present && lit.literal) return { attributePresent: true, settled: true, value: lit.value }
+  return { attributePresent: true, settled: false }
+}
+
 // A call site of a tracked primitive in a design-system component file, read statically: its source
 // position and the `variant`/`size` it settles to (a literal, or the primitive's own default; a prop
 // the source cannot settle is `unresolved` and opens no row, `axisKey`). It fills `Rest` and nothing
@@ -1013,9 +1041,9 @@ export function findPrimitiveInstances(
     const defaults = defaultsByPrimitive[tagName] ?? {}
     const spread = hasSpreadAttr(opening)
     const resolveProp = (propName) => {
-      const lit = attrLiteral(getAttr(opening, propName))
-      if (lit.present && lit.literal) return { value: lit.value, resolved: 'explicit' }
-      if (lit.present && !lit.literal) return { value: null, resolved: 'unresolved' }
+      const settled = settleAxisAttr(opening, propName)
+      if (settled.settled) return { value: settled.value, resolved: 'explicit' }
+      if (settled.attributePresent) return { value: null, resolved: 'unresolved' }
       if (spread) return { value: null, resolved: 'unresolved' }
       if (Object.prototype.hasOwnProperty.call(defaults, propName) && defaults[propName] != null) {
         return { value: defaults[propName], resolved: 'default' }
@@ -3406,10 +3434,11 @@ export function describeMissingForceState({ componentKey, exportName, state, ref
 
 // The row an instance lands on: its `variant|size` pair (an axis the primitive has none of is left
 // out), or `null` when an axis the primitive keys its rows on has no settled value. A call site whose
-// `variant` or `size` the source cannot settle (a forwarded prop, a computed expression, a spread) is
-// the second case: it opens no row of its own (T695), because the instances it mounts are credited at
-// the rows the browser rendered them to, from the manifest, and a row named for an axis nothing
-// resolved is one no story's frame can ever reach.
+// `variant` or `size` the source cannot settle (a forwarded prop, a computed expression, an axis
+// attribute followed by a spread, or an axis it omits beside a spread anywhere) is the second case: it
+// opens no row of its own (T695, T700), because the instances it mounts are credited at the rows the
+// browser rendered them to, from the manifest, and a row named for an axis nothing resolved is one no
+// story's frame can ever reach.
 function axisKey(inst) {
   const parts = []
   for (const axis of [inst.variant, inst.size]) {
