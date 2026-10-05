@@ -5814,7 +5814,7 @@ test('B2 (record 1) plant: a `disabled: true` in a story’s args — top-level 
 // A file that places an element in `position: fixed`, rendered by a story captured as its root box.
 const PANEL_INDEX = 'composites/Panel/index.tsx'
 const PANEL_FILE = `${STAMP_ROOT}${PANEL_INDEX}`
-function overlayRun({ panel, tags = '' }) {
+function overlayRun({ panel, tags = '', meta }) {
   const filesByPath = new Map([
     [srcFile('primitives/Button/index.tsx'), MINI_BUTTON],
     [srcFile(MINI_STORIES), BUTTON_STORIES_HEADER],
@@ -5824,6 +5824,7 @@ function overlayRun({ panel, tags = '' }) {
       srcFile(CARD_STORIES),
       cardStoriesSource(
         `export const ZzOverlay = { ${tags} render: () => <Button disabled>Go</Button> }\n`,
+        meta,
       ),
     ],
   ])
@@ -7200,4 +7201,206 @@ test('T698 contrast: entries for different stories of one file are not duplicate
   })
   assert.deepEqual(computed.manifestProblems, [])
   assert.deepEqual(creditsOf(computed, 'ZzB'), ['Button|secondary|md|disabled'])
+})
+
+// ---- T699: a `parameters` or `tags` property this pass cannot read by name is refused, not skipped ------
+//
+// The property reader matched identifier names and took the first match. A quoted key, a computed key, an
+// accessor, a method and a property written twice (JavaScript keeps the last) each left a clip or a tag
+// Storybook applies unseen, and the mounts were credited. Each plant below is red against the check before
+// T699 (the hand-back lists each one's failing output).
+
+const T699_LOCATION = `${CARD_STORIES_LOCATION}:ZzS`
+const T699_CLIP = `{ visualCaptureClip: ${CLIP} }`
+// An owner is the story object or the default export; the story is `ZzS` either way.
+const T699_OWNERS = {
+  story: (props, tail = '') => ({
+    stories: `${tail}export const ZzS = { ${props}, render: () => <Button disabled>Go</Button> }\n`,
+  }),
+  'default export': (props, tail = '') => ({
+    meta: `{ component: Card, ${props} }`,
+    stories: `${tail}${DISABLED_BUTTON_STORY('ZzS')}`,
+  }),
+}
+const t699Run = (owner, props, tail) =>
+  cardRun({
+    ...T699_OWNERS[owner](props, tail),
+    manifest: { 'zz-s': cardEntry('ZzS', { mounts: [disabledMount] }) },
+  })
+
+const T699_PARAMETER_SHAPES = [
+  ['a quoted key', `'parameters': ${T699_CLIP}`],
+  ['a double-quoted key', `"parameters": ${T699_CLIP}`],
+  ['a computed string-literal key', `['parameters']: ${T699_CLIP}`],
+  ['a getter', `get parameters() { return ${T699_CLIP} }`],
+  ['a setter', `set parameters(value) {}`],
+  ['a method', `parameters() {}`],
+  ['a no-substitution template computed key', `[\`parameters\`]: ${T699_CLIP}`],
+  ['written twice, the clip in the second', `parameters: {}, parameters: ${T699_CLIP}`],
+  ['a shorthand and an assignment', `parameters, parameters: ${T699_CLIP}`],
+  ['an assignment and a shorthand', `parameters: ${T699_CLIP}, parameters`],
+  ['inside a literal, a quoted visualCaptureClip', `parameters: { 'visualCaptureClip': ${CLIP} }`],
+  [
+    'inside a literal, visualCaptureClip written twice',
+    `parameters: { visualCaptureClip: undefined, visualCaptureClip: ${CLIP} }`,
+  ],
+  [
+    'inside a literal, a getter visualCaptureClip',
+    `parameters: { get visualCaptureClip() { return ${CLIP} } }`,
+  ],
+  ['a non-literal computed key', `[key]: 1`],
+]
+for (const owner of Object.keys(T699_OWNERS)) {
+  for (const [name, props] of T699_PARAMETER_SHAPES) {
+    test(`T699 plant: the ${owner} with parameters as ${name} fails naming the story and credits no mount`, () => {
+      const computed = t699Run(owner, props, `const key = 'parameters'\nconst parameters = {}\n`)
+      const kinds = computed.manifestProblems.map((p) => p.kind)
+      assert.ok(kinds.includes('unreadable-parameters'), JSON.stringify(problemsOf(computed)))
+      assert.ok(
+        computed.manifestProblems.every((p) => p.location === T699_LOCATION),
+        JSON.stringify(problemsOf(computed)),
+      )
+      assert.deepEqual(creditsOf(computed, 'ZzS'), [])
+    })
+  }
+}
+
+// A force this pass cannot read is named and credits no state; it is not a clip, so the mounts of a story
+// that is otherwise unclipped keep their credit.
+const T699_FORCE_SHAPES = [
+  [
+    'visualForceState written twice',
+    `parameters: { visualForceState: { state: 'hover', role: 'button' }, visualForceState: { state: 'focus-visible', role: 'button' } }`,
+  ],
+  [
+    'a quoted visualForceState',
+    `parameters: { 'visualForceState': { state: 'hover', role: 'button' } }`,
+  ],
+]
+for (const owner of Object.keys(T699_OWNERS)) {
+  for (const [name, props] of T699_FORCE_SHAPES) {
+    test(`T699 plant: the ${owner} with parameters inside which ${name} fails naming the story and credits no forced state`, () => {
+      const computed = t699Run(owner, props)
+      assert.deepEqual(problemsOf(computed), [['unreadable-parameters', T699_LOCATION]])
+      assert.ok(
+        creditsOf(computed, 'ZzS').every((credit) => !credit.endsWith('|hover')),
+        JSON.stringify(creditsOf(computed, 'ZzS')),
+      )
+    })
+  }
+}
+
+const T699_TAG_SHAPES = [
+  ['a quoted key', `'tags': ['!visual-full-page']`],
+  ['a double-quoted key', `"tags": ['!visual-full-page']`],
+  ['a computed string-literal key', `['tags']: ['!visual-full-page']`],
+  ['a getter', `get tags() { return ['!visual-full-page'] }`],
+  ['a method', `tags() {}`],
+  ['written twice', `tags: ['!visual-full-page'], tags: ['x']`],
+  ['a shorthand and an assignment', `tags, tags: ['!visual-full-page']`],
+  ['an assignment and a shorthand', `tags: ['!visual-full-page'], tags`],
+  ['a non-literal computed key', `[key]: ['!visual-full-page']`],
+]
+for (const owner of Object.keys(T699_OWNERS)) {
+  for (const [name, props] of T699_TAG_SHAPES) {
+    test(`T699 plant: the ${owner} with tags as ${name} fails naming the story`, () => {
+      const computed = t699Run(owner, props, `const key = 'tags'\nconst tags = []\n`)
+      assert.ok(
+        computed.manifestProblems.some((p) => p.kind === 'unreadable-tags'),
+        JSON.stringify(problemsOf(computed)),
+      )
+      assert.ok(computed.manifestProblems.every((p) => p.location === T699_LOCATION))
+    })
+  }
+}
+
+test('T699 plant: a quoted `tags` that removes visual-full-page on a story rendering a position: fixed file credits no mount, and names the story', () => {
+  const fixedPanel = `export function Panel() { return <div className="fixed inset-0" /> }\n`
+  const computed = overlayRun({
+    panel: fixedPanel,
+    meta: `{ component: Card, tags: ['visual-full-page'] }`,
+    tags: `'tags': ['!visual-full-page'],`,
+  })
+  assert.deepEqual(creditsOf(computed, 'ZzOverlay'), [])
+  assert.deepEqual(problemsOf(computed), [
+    ['unreadable-tags', `${CARD_STORIES_LOCATION}:ZzOverlay`],
+  ])
+})
+
+test('T699 plant: a non-literal computed key makes both parameters and tags unreadable on its object, named once each', () => {
+  for (const owner of Object.keys(T699_OWNERS)) {
+    const computed = t699Run(owner, `[key]: 1`, `const key = 'parameters'\n`)
+    assert.deepEqual(
+      problemsOf(computed),
+      [
+        ['unreadable-tags', T699_LOCATION],
+        ['unreadable-parameters', T699_LOCATION],
+      ],
+      owner,
+    )
+  }
+})
+
+test('T699 plant: the problem names the object and the reason, and the force of a doubled visualForceState is not read', () => {
+  const doubled = t699Run(
+    'story',
+    `parameters: { visualForceState: { state: 'hover', role: 'button' }, visualForceState: {} }`,
+  )
+  assert.match(
+    doubled.manifestProblems[0].detail,
+    /story ZzS of src\/composites\/Card\/Card\.stories\.tsx carries a `parameters` that is not an object literal .* or one this pass cannot read by name/,
+  )
+  const meta = t699Run('default export', `'parameters': {}`)
+  assert.match(
+    meta.manifestProblems[0].detail,
+    /the default export of src\/composites\/Card\/Card\.stories\.tsx carries a `parameters` this pass cannot read by name/,
+  )
+  assert.ok(
+    extractVisualForceState(
+      findExportedStoryObjects(
+        parse(
+          `export const Z = { parameters: { visualForceState: { state: 'hover' }, visualForceState: { state: 'active' } } }\n`,
+        ),
+      )[0].node,
+    ) === null,
+  )
+  assert.equal(
+    extractVisualForceState(
+      findExportedStoryObjects(
+        parse(`export const Z = { 'parameters': { visualForceState: { state: 'hover' } } }\n`),
+      )[0].node,
+    ),
+    null,
+  )
+})
+
+for (const owner of Object.keys(T699_OWNERS)) {
+  test(`T699 contrast: the ${owner} with an identifier-keyed parameters and tags, each read once, behaves as before`, () => {
+    const clipped = t699Run(owner, `parameters: ${T699_CLIP}, tags: ['autodocs']`)
+    assert.deepEqual(clipped.manifestProblems, [])
+    assert.deepEqual(creditsOf(clipped, 'ZzS'), [])
+    const plain = t699Run(owner, `parameters: { layout: 'padded' }, tags: ['autodocs']`)
+    assert.deepEqual(plain.manifestProblems, [])
+    assert.deepEqual(creditsOf(plain, 'ZzS'), ['Button|secondary|md|disabled'])
+  })
+
+  test(`T699 contrast: the ${owner} with a quoted key that is neither parameters nor tags, and a quoted key inside parameters that is not a clip or a force, is not refused`, () => {
+    const computed = t699Run(
+      owner,
+      `'args': {}, parameters: { 'layout': 'padded', 'docs': {} }, tags: ['autodocs']`,
+    )
+    assert.deepEqual(computed.manifestProblems, [])
+    assert.deepEqual(creditsOf(computed, 'ZzS'), ['Button|secondary|md|disabled'])
+  })
+}
+
+test('T699 contrast: tagged visual-full-page by an identifier-keyed tags, an overlay story still credits', () => {
+  const fixedPanel = `export function Panel() { return <div className="fixed inset-0" /> }\n`
+  const computed = overlayRun({
+    panel: fixedPanel,
+    meta: `{ component: Card, tags: ['visual-full-page'] }`,
+    tags: `tags: ['autodocs'],`,
+  })
+  assert.deepEqual(creditsOf(computed, 'ZzOverlay'), ['Button|secondary|md|disabled'])
+  assert.deepEqual(computed.manifestProblems, [])
 })

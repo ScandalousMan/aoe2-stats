@@ -1236,6 +1236,72 @@ function getProp(objLiteral, name) {
   return undefined
 }
 
+// T699: the name a property key spells, for the keys whose name is known without evaluating anything:
+// an identifier, a string or numeric literal, a no-substitution template, or a computed key holding one
+// of those. `null` for a computed key this pass cannot evaluate (`[k]`, a template with a substitution).
+function spelledPropertyName(nameNode) {
+  const computed = ts.isComputedPropertyName(nameNode)
+  const key = computed ? unwrapExpression(nameNode.expression) : nameNode
+  if (!key) return null
+  if (
+    ts.isStringLiteral(key) ||
+    ts.isNoSubstitutionTemplateLiteral(key) ||
+    ts.isNumericLiteral(key)
+  )
+    return key.text
+  // `[k]` is a variable's value, not a name; only a bare key is an identifier's text.
+  if (!computed && ts.isIdentifier(key)) return key.text
+  return null
+}
+
+// T699: what an object literal says about a property, read the way JavaScript reads it. `getProp` takes
+// the first identifier-named match, which is not what the engine keeps: a quoted or computed key, an
+// accessor or a method is invisible to it, and a property written twice resolves to the LAST one. So
+// each property is classified once per object, by the NAME TEXT of its key, and a name is `readable`
+// only when exactly one property spells it and that property is a plain `name: value` or a shorthand
+// `name` with an identifier key. Anything else that spells it, or a second property that does, is
+// `unreadable`. A computed key whose name cannot be evaluated could be any name: `opaque`, and every
+// name the caller asks about is then unreadable on this object (over-refusal, the safe direction).
+// Spreads are not classified here; they are `hasSpreadElement`'s.
+const propertyClassCache = new WeakMap()
+function classifyProperties(objLiteral) {
+  let classified = propertyClassCache.get(objLiteral)
+  if (classified) return classified
+  const byName = new Map()
+  let opaque = false
+  for (const prop of objLiteral.properties) {
+    if (ts.isSpreadAssignment(prop) || !prop.name) continue
+    const name = spelledPropertyName(prop.name)
+    if (name === null) {
+      opaque = true
+      continue
+    }
+    const plain =
+      (ts.isPropertyAssignment(prop) || ts.isShorthandPropertyAssignment(prop)) &&
+      ts.isIdentifier(prop.name)
+    if (byName.has(name) || !plain) {
+      byName.set(name, 'unreadable')
+    } else {
+      byName.set(name, { node: ts.isPropertyAssignment(prop) ? prop.initializer : prop.name })
+    }
+  }
+  classified = { byName, opaque }
+  propertyClassCache.set(objLiteral, classified)
+  return classified
+}
+
+// `{ present: false }`, `{ present: true, node }`, or `{ unreadable: true }` for the property `name` of
+// an object literal (see `classifyProperties`). `null` or `undefined` object: absent.
+function readProp(objLiteral, name) {
+  if (!objLiteral) return { present: false }
+  const { byName, opaque } = classifyProperties(objLiteral)
+  if (opaque) return { unreadable: true }
+  const found = byName.get(name)
+  if (found === undefined) return { present: false }
+  if (found === 'unreadable') return { unreadable: true }
+  return { present: true, node: found.node }
+}
+
 function literalOf(expr) {
   if (!expr) return { present: false }
   if (ts.isStringLiteral(expr) || ts.isNoSubstitutionTemplateLiteral(expr)) {
@@ -1258,9 +1324,15 @@ export function extractVisualForceState(storyObj) {
   // A `parameters` that is not an object literal (an identifier, a call) carries no force this pass can
   // read: `null`, never a throw (T696). `computeStateCoverage` names such a story
   // (`hasUnreadableParameters`).
-  const params = unwrapExpression(getProp(storyObj, 'parameters'))
+  // A `parameters` or a `visualForceState` this pass cannot read by name (T699) carries no force it can
+  // read either, and `hasUnreadableParameters` names the story.
+  const parameters = readProp(storyObj, 'parameters')
+  if (!parameters.present) return null
+  const params = unwrapExpression(parameters.node)
   if (!params || !ts.isObjectLiteralExpression(params)) return null
-  const forced = getProp(params, 'visualForceState')
+  const force = readProp(params, 'visualForceState')
+  if (!force.present) return null
+  const forced = unwrapExpression(force.node)
   if (!forced || !ts.isObjectLiteralExpression(forced)) return null
   const state = literalOf(getProp(forced, 'state'))
   if (!state.present || !state.literal) return null
@@ -1282,10 +1354,33 @@ export function extractVisualForceState(storyObj) {
 // not readable from this object. A literal that spreads another object is not this case: the spread's
 // clip is `storyDeclaresClip`'s, and a force it hides is named when the manifest records one.
 function hasUnreadableParameters(storyObj) {
-  const expr = getProp(storyObj, 'parameters')
-  if (expr === undefined) return false
-  const object = unwrapExpression(expr)
-  return !object || !ts.isObjectLiteralExpression(object)
+  const parameters = readProp(storyObj, 'parameters')
+  if (parameters.unreadable) return true
+  if (!parameters.present) return false
+  const object = unwrapExpression(parameters.node)
+  return !object || !ts.isObjectLiteralExpression(object) || hasUnreadableAnnotation(object)
+}
+
+// T699: the `parameters` of an owner (a story object or the default export) this pass cannot read by name:
+// the property itself is quoted, computed, an accessor, a method or written more than once, or the object
+// has a computed key whose name cannot be evaluated; or, in a `parameters` object literal, the same holds
+// of `visualCaptureClip` or `visualForceState`. A `parameters` that is not an object literal is the
+// story's own reason (`hasUnreadableParameters`) and, on the default export, the clip's
+// (`readParameterObjects`).
+function hasUnreadableNamedParameters(owner) {
+  if (!owner) return false
+  const parameters = readProp(owner, 'parameters')
+  if (parameters.unreadable) return true
+  if (!parameters.present) return false
+  const object = unwrapExpression(parameters.node)
+  return Boolean(object) && ts.isObjectLiteralExpression(object) && hasUnreadableAnnotation(object)
+}
+
+function hasUnreadableAnnotation(parametersObject) {
+  return (
+    readProp(parametersObject, 'visualCaptureClip').unreadable === true ||
+    readProp(parametersObject, 'visualForceState').unreadable === true
+  )
 }
 
 // T697: the rule that replaced T696 (a)'s list of mutation shapes. A story's binding, and the binding
@@ -2693,9 +2788,13 @@ export function readStoryTags(metaObject, storyObject) {
   let unreadable = false
   for (const owner of [metaObject, storyObject]) {
     if (hasSpreadElement(owner)) unreadable = true
-    const expr = getProp(owner, 'tags')
-    if (expr === undefined) continue
-    const array = unwrapExpression(expr)
+    const property = readProp(owner, 'tags')
+    if (property.unreadable) {
+      unreadable = true
+      continue
+    }
+    if (!property.present) continue
+    const array = unwrapExpression(property.node)
     if (
       !array ||
       !ts.isArrayLiteralExpression(array) ||
@@ -2723,9 +2822,13 @@ function readParameterObjects(metaObject, storyObject) {
   let unreadable = false
   for (const owner of [metaObject, storyObject]) {
     if (hasSpreadElement(owner)) unreadable = true
-    const expr = getProp(owner, 'parameters')
-    if (expr === undefined) continue
-    const object = unwrapExpression(expr)
+    const property = readProp(owner, 'parameters')
+    if (property.unreadable) {
+      unreadable = true
+      continue
+    }
+    if (!property.present) continue
+    const object = unwrapExpression(property.node)
     if (!object || !ts.isObjectLiteralExpression(object)) {
       unreadable = true
       continue
@@ -2741,7 +2844,13 @@ function readParameterObjects(metaObject, storyObject) {
 // object literal, or one that spreads another object) that may carry one.
 export function storyDeclaresClip(metaObject, storyObject) {
   const { objects, unreadable } = readParameterObjects(metaObject, storyObject)
-  return unreadable || objects.some((object) => getProp(object, 'visualCaptureClip') !== undefined)
+  return (
+    unreadable ||
+    objects.some((object) => {
+      const clip = readProp(object, 'visualCaptureClip')
+      return clip.present || clip.unreadable === true
+    })
+  )
 }
 
 // The design-system source files with a string literal holding the unprefixed class token `fixed`
@@ -2963,8 +3072,11 @@ export function computeStateCoverage({
           detail:
             `story ${exportName} of ${packageRelative} carries a \`tags\` that is not an array of ` +
             'string literals, or its story object or default export spreads another object (which may ' +
-            `bring one), so this pass cannot tell whether it is a ${FIXTURE_TAG} story. Write the ` +
-            'tags as string literals and spread nothing into the story or the default export.',
+            'bring one), or either object has a `tags` this pass cannot read by name (a quoted or ' +
+            'computed key, an accessor, a method, a property written twice) or a computed key it ' +
+            `cannot evaluate, so this pass cannot tell whether it is a ${FIXTURE_TAG} story. Write ` +
+            'the tags as one identifier-keyed array of string literals and spread nothing into the ' +
+            'story or the default export.',
         })
       }
       const reference = referenceTo(exportName)
@@ -3006,8 +3118,24 @@ export function computeStateCoverage({
           location: `${packageRelative}:${exportName}`,
           detail:
             `story ${exportName} of ${packageRelative} carries a \`parameters\` that is not an object ` +
-            'literal (an identifier, a call), so this pass cannot read its `visualForceState` or tell ' +
-            'whether it declares a clip. Write the parameters as an object literal in the story.',
+            'literal (an identifier, a call), or one this pass cannot read by name (a quoted or computed ' +
+            'key, an accessor, a method, a property written twice, a computed key it cannot evaluate, ' +
+            'or such a `visualCaptureClip` or `visualForceState` inside it), so this pass cannot read ' +
+            'its `visualForceState` or tell whether it declares a clip. Write the parameters as an ' +
+            'object literal in the story, every key an identifier written once.',
+        })
+      } else if (hasUnreadableNamedParameters(defaultMeta)) {
+        // The default export's `parameters` is named for the same shapes, on every story of the file
+        // (a non-literal `parameters` on it is only ever refused as a clip, as before).
+        manifestProblems.push({
+          kind: 'unreadable-parameters',
+          location: `${packageRelative}:${exportName}`,
+          detail:
+            `the default export of ${packageRelative} carries a \`parameters\` this pass cannot read by ` +
+            'name (a quoted or computed key, an accessor, a method, a property written twice, a ' +
+            'computed key it cannot evaluate, or such a `visualCaptureClip` or `visualForceState` ' +
+            `inside it), so it cannot tell whether story ${exportName} declares a clip. Write the ` +
+            'parameters as an object literal, every key an identifier written once.',
         })
       }
       // A forced state outside the three the harness drives (`hover`, `focus-visible`, `active`) is
@@ -3082,7 +3210,7 @@ export function computeStateCoverage({
       const entryFiles = filesProblem(entry) ? [] : entry.files
       const mayRenderOutsideRoot =
         !clipped &&
-        !tags.has('visual-full-page') &&
+        !(!tagsUnreadable && tags.has('visual-full-page')) &&
         entryFiles.some((file) => overlayFiles.has(file))
       const mountCredit = !shapeProblem && !clipped && !mayRenderOutsideRoot
       let verdict = null
