@@ -2373,6 +2373,36 @@ function instanceShapeProblem(instance, where, knownAxisValues) {
   return null
 }
 
+// The one form of a non-null stamp: `<repository-rooted path>:<line>`, a positive line. It is what
+// `packages/design-system/.storybook/source-stamp.mjs` writes (`keyOf`: the path, a colon, the 1-based
+// line of the opening tag) and what `tests/visual/state-coverage-runtime.ts` reads back (`stampFile`
+// cuts at the last colon). That capture maps every falsy stamp to `{ stamp: null, placedBy: null }`,
+// so an empty string is a stamp it never writes (T698). The check reads only the shape, not whether
+// the path names a file: a stamp that names none credits no record-1 element.
+const STAMP_FORM = /^.+:[1-9][0-9]*$/s
+
+// What is wrong with an element record's `stamp` (a force's or a focus's), or `null`: it is `null`
+// (an element no source file stamped) or a non-empty string of the `file:line` form (T698).
+function stampProblem(stamp, where) {
+  if (stamp === null) return null
+  if (typeof stamp !== 'string') {
+    return `${where} has a stamp that is neither a string nor null (${show(stamp)})`
+  }
+  if (!STAMP_FORM.test(stamp)) {
+    return `${where} has a stamp that is not of the \`file:line\` form the capture writes (${show(stamp)})`
+  }
+  return null
+}
+
+// What is wrong with an entry's `files`, or `null`: an array of strings, present (T698). It is read
+// for the overlay verdict, which credits mounts, so an entry that carries none cannot be told from
+// one that renders nothing fixed, and a value that is not an array would throw where it is read.
+export function filesProblem(entry) {
+  const files = entry?.files
+  if (Array.isArray(files) && files.every((file) => typeof file === 'string')) return null
+  return `its \`files\` is not an array of strings (${show(files)})`
+}
+
 // An element record (a force's or a focus's) with a null stamp and a placing instance: the capture
 // finds the placing instance by walking up from the element's stamp, so an element no source file
 // stamped has none (`tests/visual/state-coverage-runtime.ts` writes `{ stamp: null, placedBy: null }`
@@ -2394,12 +2424,16 @@ function unstampedPlacedProblem(record, where) {
 //     one on a frame no capture takes, and none at all records nothing;
 //   - a width's record that is not an object, whose `mounts` is not an array, or one of whose mounts
 //     (`instanceShapeProblem`) is malformed, or whose `focus` is neither null nor an object with a
-//     string-or-null `stamp` and a null or well-formed `placedBy`, a null `stamp` never with a `placedBy`
-//     (`unstampedPlacedProblem`);
+//     `stamp` that is `null` or a `file:line` string (`stampProblem`) and a null or well-formed
+//     `placedBy`, a null `stamp` never with a `placedBy` (`unstampedPlacedProblem`);
 //   - for a forced story, a force record whose `count` is not a non-negative integer, and, at count 1,
-//     whose `stamp` is neither a string nor the explicit `null` of an element no source file stamped
-//     (a missing key is neither), or whose `placedBy` is neither null nor a well-formed instance, or
-//     whose `stamp` is null while its `placedBy` is not.
+//     whose `stamp` is neither the explicit `null` of an element no source file stamped (a missing key
+//     is not one) nor a `file:line` string (`stampProblem`: an empty string is neither), or whose
+//     `placedBy` is neither null nor a well-formed instance, or whose `stamp` is null while its
+//     `placedBy` is not;
+//     (An entry's `files` is checked by `filesProblem`, which the story path runs first: it is the one
+//     field read outside this function's widths, so a value that is not an array of strings must be
+//     named before any of it is read.)
 // `knownAxisValues` is `readAxisValues` per primitive; absent, an axis value is not checked against it.
 export function entryShapeProblem(entry, { forced, knownAxisValues } = {}) {
   const recorded = Object.keys(entry?.widths ?? {})
@@ -2430,9 +2464,8 @@ export function entryShapeProblem(entry, { forced, knownAxisValues } = {}) {
     const focus = record.focus ?? null
     if (focus !== null) {
       if (!isPlainObject(focus)) return `${at} has a focus that is not an object (${show(focus)})`
-      if (!(focus.stamp === null || typeof focus.stamp === 'string')) {
-        return `${at}'s focus has a stamp that is neither a string nor null (${show(focus.stamp)})`
-      }
+      const focusStamp = stampProblem(focus.stamp, `${at}'s focus`)
+      if (focusStamp) return focusStamp
       if ((focus.placedBy ?? null) !== null) {
         const problem = instanceShapeProblem(
           focus.placedBy,
@@ -2454,9 +2487,8 @@ export function entryShapeProblem(entry, { forced, knownAxisValues } = {}) {
         return `${at} has a count that is not a non-negative integer (${show(force.count)})`
       }
       if (force.count !== 1) continue
-      if (!(force.stamp === null || typeof force.stamp === 'string')) {
-        return `${at} has a stamp that is neither a string nor null (${show(force.stamp)})`
-      }
+      const forceStamp = stampProblem(force.stamp, at)
+      if (forceStamp) return forceStamp
       if ((force.placedBy ?? null) !== null) {
         const problem = instanceShapeProblem(force.placedBy, `${at}'s placedBy`, knownAxisValues)
         if (problem) return problem
@@ -2836,10 +2868,28 @@ export function computeStateCoverage({
       continue
     }
     if (isFixtureImportPath(entry.importPath)) continue
-    entriesByLocation.set(`${normaliseImportPath(entry.importPath)}#${entry.exportName}`, {
-      id,
-      entry,
-    })
+    const key = `${normaliseImportPath(entry.importPath)}#${entry.exportName}`
+    const group = entriesByLocation.get(key)
+    if (group) group.duplicateIds.push(id)
+    else entriesByLocation.set(key, { id, entry, duplicateIds: [id] })
+  }
+  // Two entries naming one story are a manifest the pass did not write (the capture keys an entry by
+  // its story id, one per story): each is named by its key, and the story they name credits nothing
+  // from either, since a map that kept the last one would credit what the first records otherwise
+  // (T698). The safe direction is no credit: the check fails and the story reads as malformed.
+  for (const [key, { duplicateIds }] of entriesByLocation) {
+    if (duplicateIds.length < 2) continue
+    const [file, exportName] = key.split('#')
+    for (const id of duplicateIds) {
+      manifestProblems.push({
+        kind: 'malformed-entry',
+        location: `${MANIFEST_PATH}:${id}`,
+        detail:
+          `${MANIFEST_PATH}'s entries ${duplicateIds.join(', ')} all name story ${exportName} of ${file}: ` +
+          `the capture writes one entry per story, so none of them is credited. ` +
+          `Run \`${REWRITE_COMMAND}\` to rewrite the manifest.`,
+      })
+    }
   }
   const partialRefusals = []
   const unkeyedMounts = []
@@ -2994,11 +3044,17 @@ export function computeStateCoverage({
       const playClick = forced ? null : findPlayClickTarget(playBody)
       // The shape of the entry, before anything is read from it: a malformed one fails the check
       // naming the story, and credits nothing.
-      const shapeProblem = entryShapeProblem(entry, {
-        forced: Boolean(forced || recordsAForce),
-        knownAxisValues,
-      })
-      if (shapeProblem) {
+      // An entry another entry shares its story with is reported once, by key, above; the story reads
+      // as malformed without a second report.
+      const duplicated = found.duplicateIds.length > 1
+      const shapeProblem = duplicated
+        ? `${found.duplicateIds.length} entries (${found.duplicateIds.join(', ')}) name this story`
+        : (filesProblem(entry) ??
+          entryShapeProblem(entry, {
+            forced: Boolean(forced || recordsAForce),
+            knownAxisValues,
+          }))
+      if (shapeProblem && !duplicated) {
         manifestProblems.push({
           kind: 'malformed-entry',
           location: `${packageRelative}:${exportName}`,
@@ -3022,10 +3078,12 @@ export function computeStateCoverage({
       // A story, or the default export, referenced outside its declaration and an export may have had a
       // clip set through that reference: clipped.
       const clipped = reference !== null || storyDeclaresClip(defaultMeta, node)
+      // `files` is read only once it is known to be an array of strings (`filesProblem`).
+      const entryFiles = filesProblem(entry) ? [] : entry.files
       const mayRenderOutsideRoot =
         !clipped &&
         !tags.has('visual-full-page') &&
-        (entry.files ?? []).some((file) => overlayFiles.has(file))
+        entryFiles.some((file) => overlayFiles.has(file))
       const mountCredit = !shapeProblem && !clipped && !mayRenderOutsideRoot
       let verdict = null
       if (shapeProblem) {
@@ -3044,7 +3102,7 @@ export function computeStateCoverage({
       const common = {
         argsLiterals: new Set(storyArgsStringLiterals(metaObj, node, constNodeMap)),
         playClick,
-        files: entry.files ?? [],
+        files: entryFiles,
       }
       pushStateEntry(homeKey, {
         ...common,
@@ -3124,8 +3182,8 @@ export function computeStateCoverage({
       }
     }
   }
-  for (const [location, { id }] of entriesByLocation) {
-    if (seenLocations.has(location)) continue
+  for (const [location, { id, duplicateIds }] of entriesByLocation) {
+    if (seenLocations.has(location) || duplicateIds.length > 1) continue
     const [file, exportName] = location.split('#')
     manifestProblems.push({
       kind: 'stale-entry',

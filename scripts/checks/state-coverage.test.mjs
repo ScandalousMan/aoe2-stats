@@ -65,6 +65,7 @@ import {
   readManifest,
   resolveRuntimeForce,
   entryShapeProblem,
+  filesProblem,
   readAxisValues,
   stableMounts,
   rowAxesOf,
@@ -7004,4 +7005,199 @@ test('T696 (e) contrast: a focus record with a string or null stamp is well-form
     const entry = { widths: atEveryWidth({ mounts: [], focus: { stamp, placedBy: null } }) }
     assert.equal(entryShapeProblem(entry, { forced: false }), null)
   }
+})
+
+// ---- T698: the manifest shapes the capture never writes, twins of T696 (b), (d) and (e). -------------
+// A stamp is `null` or a non-empty `file:line` string (`tests/visual/state-coverage-runtime.ts` writes
+// nothing else: `if (!stamp)` maps every falsy stamp to `{ stamp: null, placedBy: null }`). `files` is
+// an array of strings. Two entries naming one story are a manifest the pass did not write.
+
+const MANIFEST_FILE = 'packages/design-system/specs/state-coverage-runtime.json'
+const BAD_STAMPS = [
+  ['an empty string', ''],
+  ['a string that is not file:line', 'x'],
+  ['a string with no line number', `${BUTTON_FILE}:`],
+  ['a string with a non-numeric line', `${BUTTON_FILE}:three`],
+  ['a string with line zero', `${BUTTON_FILE}:0`],
+  ['a number', 42],
+]
+for (const [name, stamp] of BAD_STAMPS) {
+  test(`T698 plant: a force record whose stamp is ${name}, with a placing instance, is a malformed entry at every captured width`, () => {
+    const entry = forceAtWidths(
+      Object.fromEntries(WIDTHS.map((w) => [w, pairForce(stamp, PAIR_GHOST)])),
+    )
+    const verdict = resolveRuntimeForce(entry, { recordOneKeys: new Set() })
+    assert.equal(typeof verdict.malformed, 'string', JSON.stringify(verdict))
+    assert.equal(verdict.refusal, undefined)
+    const computed = pairRun(entry)
+    assert.deepEqual(problemsOf(computed), [
+      ['malformed-entry', 'src/primitives/Button/Button.stories.tsx:ZzPair'],
+    ])
+    assert.deepEqual(creditsOf(computed, 'ZzPair'), [])
+  })
+
+  test(`T698 plant: a force record whose stamp is ${name} is malformed at one captured width only`, () => {
+    const entry = forceAtWidths({ 768: pairForce(stamp, PAIR_GHOST) })
+    assert.equal(typeof entryShapeProblem(entry, { forced: true }), 'string')
+    assert.deepEqual(problemsOf(pairRun(entry)), [
+      ['malformed-entry', 'src/primitives/Button/Button.stories.tsx:ZzPair'],
+    ])
+  })
+
+  test(`T698 plant: a force record whose stamp is ${name}, with no placing instance, is malformed too`, () => {
+    assert.equal(
+      typeof entryShapeProblem(forceAtWidths({ 768: pairForce(stamp, null) }), { forced: true }),
+      'string',
+    )
+  })
+
+  test(`T698 plant: a focus record whose stamp is ${name}, with a placing instance, is a malformed entry naming the story`, () => {
+    const focus = { stamp, placedBy: PAIR_GHOST }
+    const entry = { files: [], widths: atEveryWidth({ mounts: [], focus }) }
+    assert.equal(typeof entryShapeProblem(entry, { forced: false }), 'string')
+    const computed = miniRun(`export const ZzFocusStamp = {}\n`, {
+      'zz-focus-stamp': miniEntry('ZzFocusStamp', entry.widths[WIDTHS[0]]),
+    })
+    assert.deepEqual(problemsOf(computed), [
+      ['malformed-entry', 'src/primitives/Button/Button.stories.tsx:ZzFocusStamp'],
+    ])
+  })
+}
+
+test('T698 contrast: null stamps with null placing instances, and well-formed stamps, stay legal', () => {
+  assert.equal(entryShapeProblem(forceAtWidths({}), { forced: true }), null)
+  for (const stamp of [MINI_BUTTON_STAMP, `${BUTTON_FILE}:213`, 'a/b c.tsx:7']) {
+    assert.equal(
+      entryShapeProblem(forceAtWidths({ 768: pairForce(stamp, PAIR_GHOST) }), { forced: true }),
+      null,
+      stamp,
+    )
+    const focus = { stamp, placedBy: PAIR_GHOST }
+    assert.equal(
+      entryShapeProblem(
+        { files: [], widths: atEveryWidth({ mounts: [], focus }) },
+        { forced: false },
+      ),
+      null,
+      stamp,
+    )
+  }
+  const nullFocus = {
+    files: [],
+    widths: atEveryWidth({ mounts: [], focus: { stamp: null, placedBy: null } }),
+  }
+  assert.equal(entryShapeProblem(nullFocus, { forced: false }), null)
+})
+
+// `files` is read for the overlay verdict before anything else of the entry; a value that is not an
+// array of strings fails the check naming the story, and the story's disabled mount is credited nowhere.
+for (const [name, files] of [
+  ['a string', 'x'],
+  ['an object', {}],
+  ['an array holding a number', [1]],
+  ['an array holding null', [null]],
+  ['null', null],
+  ['a number', 7],
+]) {
+  test(`T698 plant: a manifest entry whose files is ${name} fails the check naming the story instead of throwing`, () => {
+    const entry = cardEntry('ZzB', { mounts: [disabledMount] }, files)
+    assert.match(filesProblem(entry), /files/)
+    const computed = cardRun({
+      stories: DISABLED_BUTTON_STORY('ZzB'),
+      manifest: { 'zz-b': entry },
+    })
+    assert.deepEqual(problemsOf(computed), [['malformed-entry', `${CARD_STORIES_LOCATION}:ZzB`]])
+    assert.deepEqual(creditsOf(computed, 'ZzB'), [])
+  })
+}
+
+test('T698 plant: a manifest entry with no files key is malformed, since the overlay verdict reads nothing from it', () => {
+  const entry = cardEntry('ZzB', { mounts: [disabledMount] })
+  delete entry.files
+  assert.match(filesProblem(entry), /files/)
+  const computed = cardRun({ stories: DISABLED_BUTTON_STORY('ZzB'), manifest: { 'zz-b': entry } })
+  assert.deepEqual(problemsOf(computed), [['malformed-entry', `${CARD_STORIES_LOCATION}:ZzB`]])
+  assert.deepEqual(creditsOf(computed, 'ZzB'), [])
+})
+
+test('T698 contrast: an array of strings, empty or not, is a legal files', () => {
+  for (const files of [[], [CARD_INDEX_FILE], [BUTTON_FILE, CARD_INDEX_FILE]]) {
+    const entry = cardEntry('ZzB', { mounts: [disabledMount] }, files)
+    assert.equal(filesProblem(entry), null)
+  }
+})
+
+// Two entries naming the same normalised `importPath#exportName` resolve last-wins in a map: the later
+// entry's disabled mount would credit a story the earlier one records with none. Neither is credited.
+const duplicatePairs = {
+  'the later entry carries the disabled mount': {
+    'zz-b': cardEntry('ZzB', { mounts: [] }),
+    'zz-b2': cardEntry('ZzB', { mounts: [disabledMount] }),
+  },
+  'the earlier entry carries the disabled mount': {
+    'zz-b': cardEntry('ZzB', { mounts: [disabledMount] }),
+    'zz-b2': cardEntry('ZzB', { mounts: [] }),
+  },
+  'the import paths differ only by the leading ./': {
+    'zz-b': {
+      ...cardEntry('ZzB', { mounts: [] }),
+      importPath: `src/${'composites/Card/Card.stories.tsx'}`,
+    },
+    'zz-b2': cardEntry('ZzB', { mounts: [disabledMount] }),
+  },
+}
+for (const [name, manifest] of Object.entries(duplicatePairs)) {
+  test(`T698 plant: two entries for one story (${name}) are malformed naming both ids, credited nowhere`, () => {
+    const computed = cardRun({ stories: DISABLED_BUTTON_STORY('ZzB'), manifest })
+    const malformed = computed.manifestProblems.filter((p) => p.kind === 'malformed-entry')
+    assert.deepEqual(problemsOf(computed).sort(), [
+      ['malformed-entry', `${MANIFEST_FILE}:zz-b`],
+      ['malformed-entry', `${MANIFEST_FILE}:zz-b2`],
+    ])
+    for (const problem of malformed) {
+      assert.match(problem.detail, /zz-b\b/)
+      assert.match(problem.detail, /zz-b2\b/)
+      assert.ok(problem.detail.includes(REWRITE_COMMAND))
+    }
+    assert.deepEqual(creditsOf(computed, 'ZzB'), [])
+  })
+}
+
+test('T698 plant: three entries for one story name all three ids, and a duplicate with no story is reported', () => {
+  const computed = cardRun({
+    stories: DISABLED_BUTTON_STORY('ZzB'),
+    manifest: {
+      'zz-b': cardEntry('ZzB', { mounts: [] }),
+      'zz-b2': cardEntry('ZzB', { mounts: [] }),
+      'zz-b3': cardEntry('ZzB', { mounts: [disabledMount] }),
+    },
+  })
+  assert.equal(computed.manifestProblems.length, 3)
+  for (const problem of computed.manifestProblems) {
+    assert.equal(problem.kind, 'malformed-entry')
+    for (const id of ['zz-b', 'zz-b2', 'zz-b3']) assert.ok(problem.detail.includes(id), id)
+  }
+  assert.deepEqual(creditsOf(computed, 'ZzB'), [])
+  const stale = cardRun({
+    stories: DISABLED_BUTTON_STORY('ZzB'),
+    manifest: {
+      'zz-b': cardEntry('ZzB', { mounts: [disabledMount] }),
+      'zz-gone': cardEntry('ZzGone', { mounts: [] }),
+      'zz-gone2': cardEntry('ZzGone', { mounts: [] }),
+    },
+  })
+  assert.deepEqual(problemsOf(stale).sort(), [
+    ['malformed-entry', `${MANIFEST_FILE}:zz-gone`],
+    ['malformed-entry', `${MANIFEST_FILE}:zz-gone2`],
+  ])
+  assert.deepEqual(creditsOf(stale, 'ZzB'), ['Button|secondary|md|disabled'])
+})
+
+test('T698 contrast: entries for different stories of one file are not duplicates', () => {
+  const computed = cardRun({
+    stories: `${DISABLED_BUTTON_STORY('ZzA')}${DISABLED_BUTTON_STORY('ZzB')}`,
+    manifest: bothDisabledMounts,
+  })
+  assert.deepEqual(computed.manifestProblems, [])
+  assert.deepEqual(creditsOf(computed, 'ZzB'), ['Button|secondary|md|disabled'])
 })
