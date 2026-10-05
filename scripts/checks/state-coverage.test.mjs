@@ -8263,13 +8263,13 @@ for (const [name, metaBlock] of Object.entries(ACCESSOR_METAS)) {
   })
 }
 
-test('T704 (M1) contrast: a function expression without this, an arrow, a property that holds a function, and a this inside a nested class stay readable and credited', () => {
+test('T704 (M1) contrast: a function expression without this, an arrow and a property that holds a function stay readable and credited', () => {
   const story = `export const ZzG = {
   render: function () { return <Button disabled>Go</Button> },
   play: async () => {},
   loaders: [() => Promise.resolve({})],
   args: { items: [{ label: 'a' }] },
-  decorators: [(Story) => { class Local { read() { return this } } void Local; return <Story /> }],
+  decorators: [(Story) => { class Local { read() { return 1 } } void Local; return <Story /> }],
 }\n`
   const computed = accessorStoryRun(story)
   assert.deepEqual(computed.manifestProblems, [])
@@ -8474,7 +8474,7 @@ test('T704 (L2): the legend names the refusals as among the reasons and says a c
     /Crediting a story\nis not a proof that no clip applied to it/,
     /without claiming the list is exhaustive, under row 8's \*\*What\nthe static reading cannot see\*\*/,
     /only the runtime record of the clip the browser applied \(T703\)/,
-    /credits the half it can and names the other in a note/,
+    /names the record-3 half in a note; any other is refused like the rest\./,
   ]) {
     assert.match(REGION_LEGEND, phrase)
   }
@@ -8483,4 +8483,167 @@ test('T704 (L2): the legend names the refusals as among the reasons and says a c
     REGION_LEGEND,
     /Every other forced story credits no cell and the\ncheck names why/,
   )
+})
+
+// ---- T705: what the fourth adversarial review of #121 found, by refusing more and never reading more ---
+//
+// (H1) The preview module's only export is its default export: any other export fails as `project-clip`,
+// whatever it is called. (M1) Every `this` anywhere inside a story object, a default export or the
+// preview's default export makes it unreadable, with no class exception. (L1) In a non-test module the
+// identifier `require` is a binding's declared name or the direct callee of a call; any other reference
+// fails as `imports-story-module` naming the file. (L2) The legend sentence says what the force
+// resolution does.
+
+// (H1) Storybook composes the preview's annotations as `default?.[field] ?? namespace[field]`.
+const PREVIEW_EXPORT_PLANTS = {
+  'a named parameters export beside a default without parameters': `const preview = { tags: ['autodocs'] }\nexport const parameters = { visualCaptureClip: ${CLIP} }\nexport default preview\n`,
+  'a local parameters const exported with export { parameters }': `const parameters = { visualCaptureClip: ${CLIP} }\nconst preview = { tags: ['autodocs'] }\nexport { parameters }\nexport default preview\n`,
+  'an inline default export beside export const parameters': `export default { tags: ['autodocs'] }\nexport const parameters = { visualCaptureClip: ${CLIP} }\n`,
+  'export { x as parameters }': `const x = { visualCaptureClip: ${CLIP} }\nconst preview = { tags: ['autodocs'] }\nexport { x as parameters }\nexport default preview\n`,
+  'export * from a shared module': `const preview = { tags: ['autodocs'] }\nexport * from './shared'\nexport default preview\n`,
+  'a named export that is not called parameters, export const decorators': `const preview = { tags: ['autodocs'] }\nexport const decorators = []\nexport default preview\n`,
+  'an exported function': `const preview = { tags: ['autodocs'] }\nexport function loaders() { return [] }\nexport default preview\n`,
+  'an exported class': `const preview = { tags: ['autodocs'] }\nexport class K {}\nexport default preview\n`,
+  'export { x } from another module': `const preview = { tags: ['autodocs'] }\nexport { parameters } from './shared'\nexport default preview\n`,
+  'export = ': `const preview = { tags: ['autodocs'] }\nexport = preview\n`,
+  'a type-only export, export type': `const preview = { tags: ['autodocs'] }\nexport type P = typeof preview\nexport default preview\n`,
+  'a type-only export, export interface': `const preview = { tags: ['autodocs'] }\nexport interface P { a: 1 }\nexport default preview\n`,
+}
+for (const [name, source] of Object.entries(PREVIEW_EXPORT_PLANTS)) {
+  test(`T705 (H1) plant: ${name} fails the check as project-clip naming the preview once and credits no story a mount`, () => {
+    const computed = previewRun(source)
+    assertPreviewRefused(computed)
+    assert.match(
+      computed.manifestProblems[0].detail,
+      /Storybook reads a named export of the preview as a project annotation/,
+    )
+  })
+}
+
+test('T705 (H1) contrast: a preview whose only export is its default export stays credited, in both spellings', () => {
+  for (const source of [
+    `const preview = { tags: ['autodocs'], parameters: { layout: 'padded' } }\nexport default preview\n`,
+    `const preview = { tags: ['autodocs'], parameters: { layout: 'padded' } }\nexport { preview as default }\n`,
+    `export default { tags: ['autodocs'] }\n`,
+  ]) {
+    const computed = previewRun(source)
+    assert.deepEqual(computed.manifestProblems, [], source)
+    assert.deepEqual(creditsOf(computed, 'ZzA'), CREDITED)
+    assert.deepEqual(creditsOf(computed, 'ZzB'), CREDITED)
+  }
+})
+
+// (M1) A `this` anywhere inside the owner, nested classes included.
+const THIS_IN_HERITAGE = `class K extends (this.parameters = { visualCaptureClip: ${CLIP} }, Object) {}`
+const THIS_STORIES = {
+  'a this in the heritage clause of a class inside a render': `export const ZzG = { render: function () { ${THIS_IN_HERITAGE}\n return <Button disabled>Go</Button> } }\n`,
+  'a this in a computed member name of a class inside a function property': `export const ZzG = { render: function () { class K { [this.k] = 1 }\n return <Button disabled>Go</Button> } }\n`,
+  'a this in a function expression in a class field': `export const ZzG = { play: new (class { f = function () { this.parameters = { visualCaptureClip: ${CLIP} } } })().f, ${ACCESSOR_RENDER} }\n`,
+  'a plain this inside an ordinary nested class method (the intended over-refusal)': `export const ZzG = { render: () => { class Local { read() { return this } } void Local; return <Button disabled>Go</Button> } }\n`,
+}
+for (const [name, story] of Object.entries(THIS_STORIES)) {
+  test(`T705 (M1) plant: ${name} makes the story's parameters and tags unreadable and credits it nothing`, () => {
+    const computed = accessorStoryRun(story)
+    const at = `${CARD_STORIES_LOCATION}:ZzG`
+    assert.deepEqual(ofKind(computed, UNREADABLE_PARAMETERS), [[UNREADABLE_PARAMETERS, at]])
+    assert.deepEqual(ofKind(computed, UNREADABLE_TAGS), [[UNREADABLE_TAGS, at]])
+    assert.deepEqual(creditsOf(computed, 'ZzG'), [])
+    assert.deepEqual(creditsOf(computed, 'ZzSib'), CREDITED)
+  })
+}
+
+test('T705 (M1) plant: the heritage shape on the meta makes every story of the file unreadable', () => {
+  const computed = metaRun(
+    `const meta = { component: Card, decorators: [function (Story) { ${THIS_IN_HERITAGE}\n return <Story /> }] }\nexport default meta\n`,
+  )
+  assert.deepEqual(ofKind(computed, UNREADABLE_PARAMETERS), BOTH_STORIES(UNREADABLE_PARAMETERS))
+  assert.deepEqual(ofKind(computed, UNREADABLE_TAGS), BOTH_STORIES(UNREADABLE_TAGS))
+  assert.deepEqual(creditsOf(computed, 'ZzA'), [])
+  assert.deepEqual(creditsOf(computed, 'ZzB'), [])
+})
+
+test('T705 (M1) plant: the heritage shape in a preview decorator fails as project-clip', () => {
+  assertPreviewRefused(
+    previewRun(
+      `const preview = { decorators: [(Story) => { ${THIS_IN_HERITAGE}\n return <Story /> }] }\nexport default preview\n`,
+    ),
+  )
+})
+
+test('T705 (M1) contrast: a nested class with no this stays readable and credited', () => {
+  const computed = accessorStoryRun(
+    `export const ZzG = { render: () => { class Local { read() { return 1 } } void Local; return <Button disabled>Go</Button> } }\n`,
+  )
+  assert.deepEqual(computed.manifestProblems, [])
+  assert.deepEqual(creditsOf(computed, 'ZzG'), CREDITED)
+})
+
+// (L1) The identifier `require`.
+const REQUIRE_FILE = '.storybook/helper.cjs'
+const REQUIRE_PLANTS = {
+  '(require)(n)': `const s = (require)(n)\n`,
+  '(0, require)(n)': `const s = (0, require)(n)\n`,
+  '(require as any)(n)': `const s = (require as any)(n)\n`,
+  "(require)('../composites/Card/Card.stories')": `const s = (require)('../composites/Card/Card.stories')\n`,
+  'const r = require; r(n)': `const r = require\nconst s = r(n)\n`,
+  'require.resolve(n)': `const s = require.resolve(n)\n`,
+  'require passed as an argument': `register(require)\n`,
+  'a shorthand property { require }': `const o = { require }\n`,
+  'a literal call through an optional parenthesised callee, (require)?.("x")': `const s = (require)?.('./x')\n`,
+}
+for (const [name, text] of Object.entries(REQUIRE_PLANTS)) {
+  test(`T705 (L1) plant: ${name} fails the check as imports-story-module naming the file`, () => {
+    const computed = importerRun(new Map([[path.join(DS_DIR, REQUIRE_FILE), text]]))
+    assert.deepEqual(ofKind(computed, IMPORTS_STORY), [[IMPORTS_STORY, REQUIRE_FILE]], text)
+    const problem = computed.manifestProblems.find((p) => p.kind === IMPORTS_STORY)
+    assert.match(problem.detail, /\.storybook\/helper\.cjs /)
+  })
+}
+
+test('T705 (L1) plant: the same shapes fail in a src module and in a story file, and a test module may use them', () => {
+  for (const file of ['src/lib/helper.ts', 'src/composites/Other/Other.stories.tsx']) {
+    const computed = importerRun(
+      new Map([[path.join(DS_DIR, file), `const s = (0, require)(n)\n`]]),
+    )
+    assert.deepEqual(ofKind(computed, IMPORTS_STORY), [[IMPORTS_STORY, file]], file)
+  }
+  const inTest = importerRun(
+    new Map([[path.join(DS_DIR, 'src/lib/helper.test.ts'), `const s = (0, require)(n)\n`]]),
+  )
+  assert.deepEqual(inTest.manifestProblems, [])
+})
+
+test('T705 (L1) contrast: a declared require, its literal call, and a property or key named require are not references', () => {
+  const computed = importerRun(
+    new Map([
+      [
+        path.join(DS_DIR, '.storybook/source-stamp.mjs'),
+        `import { createRequire } from 'node:module'\nconst require = createRequire(import.meta.url)\nconst ts = require('typescript')\nexport default ts\n`,
+      ],
+      [
+        path.join(DS_DIR, '.storybook/helper.cjs'),
+        `const o = { require: 1 }\nconst a = obj.require(n)\nconst b = module.require(name)\nconst c = o.require\nfunction f(require) { return require('./x') }\nconst { require: renamed } = o\nexport { f as require }\n`,
+      ],
+    ]),
+  )
+  assert.deepEqual(computed.manifestProblems, [])
+})
+
+test('T705 (L1) end to end: the check exits 1 on the real tree with a parenthesised require in a helper, naming it', () => {
+  const run = runCheckOnPlantedTree('\nexport const planted = (n: string) => (0, require)(n)\n', [
+    'lib',
+    'cx.ts',
+  ])
+  assert.equal(run.status, 1, run.stdout + run.stderr)
+  assert.match(run.stderr, /src\/lib\/cx\.ts references the identifier `require`/)
+})
+
+// (L2) The legend sentence is the one the force resolution implements.
+test('T705 (L2): the legend credits only a record-1 located force with no matrix row, and refuses any other like the rest', () => {
+  assert.ok(
+    REGION_LEGEND.replace(/\s+/g, ' ').includes(
+      'except that a force whose located element is a record-1 element and whose placing instance has no matrix row credits that record-1 cell and names the record-3 half in a note; any other is refused like the rest.',
+    ),
+  )
+  assert.doesNotMatch(REGION_LEGEND, /credits the half it can/)
 })

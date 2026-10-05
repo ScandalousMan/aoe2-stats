@@ -1785,12 +1785,16 @@ hover:underline-offset-2` beside `active:underline-offset-4`, `src/screens/DataE
      specifier, a call, a variable), whatever it ends with (`imports-story-module`, naming the file and
      its "non-literal specifier"), because Vite compiles a templated `import()` into a glob over every
      file its static parts can match and the last part says nothing of what the first ones build; when
-     it uses `import.meta.glob` or `import.meta.globEager` (`imports-story-module`), whatever the
-     pattern, written as a call, aliased (`const g = import.meta.glob`) or reached as
-     `import.meta['glob']` or by indexing `import.meta` with a key that is not a string literal
-     (`import.meta.env` stays legal); and when it imports a `*.test.*` module
-     (`imports-test-module`), by any of the literal specifier forms above, since a test module is not
-     read here. A `*.test.*` file may do all four. A story path is never a test module (T704): a file
+     the identifier `require` appears other than as the declared name of a binding or as the direct,
+     unparenthesised callee of a call (T705: a parenthesised, cast or comma-expression callee, an alias
+     such as `const r = require`, `require.resolve`, `require` passed as a value) it fails as
+     `imports-story-module` naming the file (a property or key spelled `require` is not that
+     identifier); when it uses `import.meta.glob` or `import.meta.globEager`
+     (`imports-story-module`), whatever the pattern, written as a call, aliased
+     (`const g = import.meta.glob`) or reached as `import.meta['glob']` or by indexing `import.meta`
+     with a key that is not a string literal (`import.meta.env` stays legal); and when it imports a
+     `*.test.*` module (`imports-test-module`), by any of the literal specifier forms above, since a
+     test module is not read here. A `*.test.*` file may do each of these. A story path is never a test module (T704): a file
      named `Evil.test.stories.tsx` is a story to Storybook, so it is read as one and held to every rule
      in this list, and one predicate decides what a test module is for every reader that asks (the
      module walk, the first pass, the overlay reader and the specifier test). Known shapes this rule
@@ -1834,20 +1838,24 @@ hover:underline-offset-2` beside `active:underline-offset-4`, `src/screens/DataE
      unreadable** (T704). A getter or setter runs when Storybook reads the object and can write
      `this.parameters`; a method is called with the object as its `this`; a `this` in a function
      expression binds to the object it is called on. On a story object, or on the default export, any
-     getter, setter or method, and any `this` anywhere inside the object other than inside a nested
-     class body (which is the class's own), fails the run as `unreadable-parameters` and as
-     `unreadable-tags`, naming the story (every story of the file, for the default export), and the
+     getter, setter or method, and any `this` anywhere inside the object (T705: a nested class's
+     heritage clause, computed member names, methods and field initialisers included), fails the run
+     as `unreadable-parameters` and as `unreadable-tags`, naming the story (every story of the file,
+     for the default export), and the
      story is credited no mount and no forced state. An arrow function's `this` is refused too: it
      inherits the module's, not the object's, and over-refusing is the safe direction. Only the owner's
      own shape is read this way: an accessor inside a nested `parameters` object is not this rule's.
    - **The Storybook preview's project-level `parameters` are a third owner** (T704). Storybook merges
      them into every story's prepared parameters, which the capture reads for its clip.
-     `packages/design-system/.storybook/preview.tsx`'s default export is read under the same rules as a
-     story file's default export (one readable shape, its binding not referenced outside its
-     declaration and its export, no accessor, method, `this` or spread in it, a `parameters` that is an
-     identifier-keyed object literal written once). When it carries a `visualCaptureClip` or cannot be
-     read, the run fails once, as `project-clip`, naming the preview and not each story, and every story
-     is credited no mount. A project-level `visualForceState` is not read.
+     `packages/design-system/.storybook/preview.tsx` is held to its own rules: one readable default
+     export shape; its binding not referenced outside its declaration and its export in the preview
+     file; no accessor, method, `this` or spread in it; a `parameters` that is an identifier-keyed
+     object literal written once; and no export other than the default export (T705: Storybook reads a
+     named export of the preview as a project annotation when the default export lacks that field, so
+     `export const`, `export function`, `export { … }` other than `as default`, `export *`, `export =`
+     and a type-only export all fail). When it carries a `visualCaptureClip` or breaks one of those
+     rules, the run fails once, as `project-clip`, naming the preview and not each story, and every
+     story is credited no mount. A project-level `visualForceState` is not read.
    - **What the static reading cannot see: the known shapes, not an exhaustive list.** A static reading
      cannot prove that no clip applies to a story. Storybook merges project, component and story
      parameters, passes the story's `parameters` to `play`, loaders, `beforeEach` and decorators, and
@@ -2469,8 +2477,9 @@ is not a proof that no clip applied to it: the source readers refuse the shapes 
 they are known not to see are listed, without claiming the list is exhaustive, under row 8's **What
 the static reading cannot see**, and only the runtime record of the clip the browser applied (T703)
 would prove a frame's clip. Every other forced story credits no cell and the check fails naming why
-(a filed, dated exception is the one way to tolerate it), except that a force whose placing instance
-has no matrix row credits the half it can and names the other in a note. A manifest entry of the
+(a filed, dated exception is the one way to tolerate it), except that a force whose located element
+is a record-1 element and whose placing instance has no matrix row credits that record-1 cell and
+names the record-3 half in a note; any other is refused like the rest. A manifest entry of the
 wrong shape fails the check, naming the story, and so does a story object or default export that
 spreads another object (its `tags` cannot be read).
 

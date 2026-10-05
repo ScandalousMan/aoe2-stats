@@ -1307,10 +1307,11 @@ function readProp(objLiteral, name) {
 // method (`play() {}`) is called with the object as its `this`; a `this` in a function expression binds
 // to the object the function is called on, and one in an arrow function inherits the module's, which is
 // not this object's either way. None of that is in an object literal this pass reads, so the owner's
-// `parameters` and `tags` are unreadable and the story gets no mount credit. A `this` inside a nested
-// class body is the class's own and is not looked at; every other `this` is refused, over-refusing being
-// the safe direction. The owner's own shape only: an accessor or method of a nested `parameters` object
-// is not this rule's (T703's runtime record is what proves what the browser applied).
+// `parameters` and `tags` are unreadable and the story gets no mount credit. T705: every `this` anywhere
+// inside the owner is refused, a nested class's heritage clause, computed member names, methods and
+// field initialisers included, over-refusing being the safe direction. The owner's own shape only: an
+// accessor or method of a nested `parameters` object is not this rule's (T703's runtime record is what
+// proves what the browser applied).
 const ownerHazardCache = new WeakMap()
 function findOwnerHazard(owner) {
   if (!owner) return null
@@ -1328,7 +1329,7 @@ function findOwnerHazard(owner) {
   }
   if (hazard === null) {
     const visit = (node) => {
-      if (hazard !== null || ts.isClassLike(node)) return
+      if (hazard !== null) return
       if (node.kind === ts.SyntaxKind.ThisKeyword) {
         hazard = 'a `this`'
         return
@@ -1831,6 +1832,79 @@ export function findNonLiteralSpecifiers(sourceFile) {
       !isPlainStringLiteral(node.moduleReference.expression)
     ) {
       describe(node)
+    }
+    ts.forEachChild(node, visit)
+  }
+  visit(sourceFile)
+  return found
+}
+
+// T705: every identifier `require` in a file that is neither the declared name of a binding nor the
+// direct, unparenthesised callee of a call, as `{ line, text }`. A direct callee with any arguments is
+// not listed: its specifier is `findNonLiteralSpecifiers`'s when it is not a plain string literal and
+// `findStoryModuleImports`'s when it is. Anything else (a parenthesised or cast callee, a comma
+// expression, an alias, a member access on it, a value passed along, a shorthand property) can call or
+// hand on a `require` whose specifier this pass does not read, so it is listed. A property or key that
+// is merely spelled `require` (`x.require`, `{ require: 1 }`, `export { f as require }`) is not a
+// reference to the identifier and is not listed.
+function isRequireDeclaredOrNamed(node) {
+  const parent = node.parent
+  if (!parent) return false
+  if (
+    (ts.isPropertyAccessExpression(parent) ||
+      ts.isQualifiedName(parent) ||
+      ts.isPropertyAssignment(parent) ||
+      ts.isPropertySignature(parent) ||
+      ts.isPropertyDeclaration(parent) ||
+      ts.isMethodDeclaration(parent) ||
+      ts.isMethodSignature(parent) ||
+      ts.isGetAccessorDeclaration(parent) ||
+      ts.isSetAccessorDeclaration(parent) ||
+      ts.isEnumMember(parent) ||
+      ts.isJsxAttribute(parent)) &&
+    (parent.name === node || parent.right === node)
+  ) {
+    return true
+  }
+  if (ts.isBindingElement(parent) && (parent.name === node || parent.propertyName === node)) {
+    return true
+  }
+  if (
+    (ts.isVariableDeclaration(parent) ||
+      ts.isParameter(parent) ||
+      ts.isFunctionDeclaration(parent) ||
+      ts.isFunctionExpression(parent) ||
+      ts.isClassDeclaration(parent) ||
+      ts.isClassExpression(parent) ||
+      ts.isImportClause(parent) ||
+      ts.isNamespaceImport(parent) ||
+      ts.isImportEqualsDeclaration(parent)) &&
+    parent.name === node
+  ) {
+    return true
+  }
+  if (ts.isImportSpecifier(parent)) return true
+  // `export { f as require }` names an export; `export { require }` references the binding.
+  if (ts.isExportSpecifier(parent) && parent.name === node && parent.propertyName) return true
+  if (
+    (ts.isLabeledStatement(parent) || ts.isBreakOrContinueStatement(parent)) &&
+    parent.label === node
+  ) {
+    return true
+  }
+  return ts.isCallExpression(parent) && parent.expression === node
+}
+
+export function findRequireReferences(sourceFile) {
+  const found = []
+  const visit = (node) => {
+    if (ts.isIdentifier(node) && node.text === 'require' && !isRequireDeclaredOrNamed(node)) {
+      const { line } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile))
+      const context = (node.parent ?? node).getText(sourceFile).replace(/\s+/g, ' ')
+      found.push({
+        line: line + 1,
+        text: context.length > 80 ? `${context.slice(0, 77)}...` : context,
+      })
     }
     ts.forEachChild(node, visit)
   }
@@ -3133,10 +3207,11 @@ function findOverlayFiles(filesByPath, sourceFiles) {
 // T704: the project-level `parameters` of the Storybook preview (`.storybook/preview.<ext>`, its default
 // export), read as a third owner beside a story's and its meta's. Storybook merges them into every
 // story's prepared parameters, which `tests/visual/story-render.ts` reads for the capture clip, so a
-// `visualCaptureClip` there clips every story. Read under the same rules as the default export of a story
-// file: readable only as `export default <identifier>` or an inline object literal (`readDefaultExport`),
-// the binding not referenced outside its declaration and its export (`findBindingReferences`), no
-// accessor, method or `this` in it (`findOwnerHazard`), no spread, and a `parameters` that is an
+// `visualCaptureClip` there clips every story. The preview's own rules, none of them borrowed from the
+// story-file rules: no export other than the default export (`findNonDefaultExport`), a default export
+// readable only as `export default <identifier>` or an inline object literal (`readDefaultExport`), the
+// binding not referenced outside its declaration and its export in this file (`findBindingReferences`),
+// no accessor, method or `this` in it (`findOwnerHazard`), no spread, and a `parameters` that is an
 // identifier-keyed object literal written once with no `visualCaptureClip` (and no `visualForceState`)
 // this pass cannot read by name. One problem per preview file naming the first reason, not one per
 // story. A preview that is not in `moduleFilesByPath` (a fixture with none) has no project parameters.
@@ -3162,15 +3237,52 @@ function findProjectParametersProblems(moduleFilesByPath) {
         `the Storybook preview ${packageRelative} ${reason}. Its project-level parameters reach every ` +
         "story's prepared parameters, which the capture reads for its clip, so this pass cannot tell " +
         'that no story is clipped and credits none of them a mount. Write the preview as `const preview ' +
-        '= { … }; export default preview` (or an inline `export default { … }`), its `parameters` an ' +
-        'identifier-keyed object literal with no `visualCaptureClip`, and no accessor, method, `this` ' +
-        'or spread in the object.',
+        '= { … }; export default preview` (or an inline `export default { … }`) with no other export, ' +
+        'its `parameters` an identifier-keyed object literal with no `visualCaptureClip`, and no ' +
+        'accessor, method, `this` or spread in the object.',
     })
   }
   return problems
 }
 
+// T705: what the preview module exports besides its default export, or `null`. Storybook composes the
+// preview's annotations as `default?.[field] ?? namespace[field]`, so a named export reaches every story
+// when the default export lacks that field, whatever the export is called. The only legal exports are
+// `export default <…>` and `export { <identifier> as default }`; type-only exports are refused too.
+function findNonDefaultExport(sourceFile) {
+  for (const statement of sourceFile.statements) {
+    const text = () => statement.getText(sourceFile).replace(/\s+/g, ' ').slice(0, 60)
+    if (ts.isExportAssignment(statement)) {
+      if (statement.isExportEquals) return text()
+    } else if (ts.isExportDeclaration(statement)) {
+      const clause = statement.exportClause
+      if (statement.isTypeOnly || !clause) return text()
+      if (ts.isNamespaceExport(clause)) {
+        if (clause.name.text !== 'default') return text()
+      } else if (clause.elements.some((element) => element.name.text !== 'default')) {
+        return text()
+      }
+    } else if (ts.isNamespaceExportDeclaration(statement)) {
+      return text()
+    } else if (
+      ts.canHaveModifiers(statement) &&
+      ts.getModifiers(statement)?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword) &&
+      !ts.getModifiers(statement).some((m) => m.kind === ts.SyntaxKind.DefaultKeyword)
+    ) {
+      return text()
+    }
+  }
+  return null
+}
+
 function projectParametersReason(sourceFile) {
+  const otherExport = findNonDefaultExport(sourceFile)
+  if (otherExport !== null) {
+    return (
+      `has an export other than its default export (\`${otherExport}\`): Storybook reads a named export ` +
+      'of the preview as a project annotation when the default export lacks that field'
+    )
+  }
   const { object, binding, problem } = readDefaultExport(sourceFile)
   if (problem) return `has a default export this pass cannot read: ${problem.reason}`
   if (binding !== null && findBindingReferences(sourceFile, new Set([binding])).has(binding)) {
@@ -3370,6 +3482,19 @@ export function computeStateCoverage({
           'can match, which can include a *.stories module, and this pass does not read what such a ' +
           'specifier loads, whatever it ends with. Write every specifier of a module that is not a test ' +
           'as a plain string literal, or move the dynamic load into a *.test.* file.',
+      })
+    }
+    const requireRefs = findRequireReferences(moduleSource)
+    if (requireRefs.length > 0) {
+      manifestProblems.push({
+        kind: 'imports-story-module',
+        location: packageRelative,
+        detail:
+          `${packageRelative} references the identifier \`require\` other than as a declared name or as the ` +
+          `direct callee of a call (${quoted(requireRefs.map((ref) => `line ${ref.line}: ${ref.text}`))}): ` +
+          'a parenthesised, cast, aliased or passed `require` loads a specifier this pass does not read, ' +
+          "which can be a *.stories module. In a module that is not a test, write `require('…')` " +
+          'directly with a plain string literal, or move the load into a *.test.* file.',
       })
     }
     const globs = findImportMetaGlobs(moduleSource)
@@ -4274,8 +4399,9 @@ export const REGION_LEGEND = [
   "they are known not to see are listed, without claiming the list is exhaustive, under row 8's **What",
   'the static reading cannot see**, and only the runtime record of the clip the browser applied (T703)',
   "would prove a frame's clip. Every other forced story credits no cell and the check fails naming why",
-  '(a filed, dated exception is the one way to tolerate it), except that a force whose placing instance',
-  'has no matrix row credits the half it can and names the other in a note. A manifest entry of the',
+  '(a filed, dated exception is the one way to tolerate it), except that a force whose located element',
+  'is a record-1 element and whose placing instance has no matrix row credits that record-1 cell and',
+  'names the record-3 half in a note; any other is refused like the rest. A manifest entry of the',
   'wrong shape fails the check, naming the story, and so does a story object or default export that',
   'spreads another object (its `tags` cannot be read).',
   '',
