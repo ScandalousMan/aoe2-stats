@@ -97,7 +97,7 @@ it: this call writes one row, `kind = third_party_objection`, `subject_profile_i
 profile named, `subject_user_id` null (the objector is not a user, `requested_at` set,
 `completed_at` null), and pseudonymises nothing itself. FR-039's "MUST pseudonymise their
 identifiers on request" is carried out later, by a person, through `resolve_third_party_objection`
-below — the deferred second caller data-model.md already named for `_pseudonymise_profile_id`
+below — the deferred second caller data-model.md already named for `_pseudonymise_profile_ids`
 ("the same mechanism FR-039 gives third parties"), T091's `POST /api/privacy/erase` being the
 first. `resolve_third_party_objection` is deliberately not wired to any route: an endpoint that
 pseudonymised a named profile on an unauthenticated call would be the identical denial-of-service
@@ -109,6 +109,7 @@ within what delay.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -554,14 +555,38 @@ async def start_erasure(
     return {"confirmation_token": token}
 
 
-async def _pseudonymise_profile_id(db_session: AsyncSession, profile_id: int) -> None:
+async def _pseudonymise_profile_ids(db_session: AsyncSession, profile_ids: Sequence[int]) -> None:
     """The I/O half of `aoe2stats_core.privacy.erasure.pseudonymise_profile`, which computes only
-    the plan (that module's own docstring): insert the placeholder `aoe_profiles` row this
-    `profile_id`'s `match_players` rows are about to be retargeted onto (idempotent — a second call
-    over the same `profile_id` finds it already there), retarget them, and mask the original row's
-    own `alias`/`country` in place, since it usually survives this untouched otherwise (a
-    `favourites` row someone else holds naming it, a `rating_snapshots` row) and leaving its
-    identifying columns as they were would leave exactly the trace this exists to close.
+    the plan (that module's own docstring), run over every id in `profile_ids` in one transaction:
+    insert the placeholder `aoe_profiles` row each `profile_id`'s `match_players` rows are about
+    to be retargeted onto (idempotent — a second call over the same `profile_id` finds it already
+    there), retarget them, and mask the original row's own `alias`/`country` in place, since it
+    usually survives this untouched otherwise (a `favourites` row someone else holds naming it, a
+    `rating_snapshots` row) and leaving its identifying columns as they were would leave exactly
+    the trace this exists to close.
+
+    **T459e: row locks are taken in the global order, all of them before any write.** The order
+    is `matches`, `aoe_profiles` ascending by `profile_id`, `match_players` ascending by
+    `(game_id, profile_id)` (`discover.persist_matches_and_profiles`'s module notes); a row lock is
+    held to commit, so a writer that reaches an earlier table or a lower key after a later one can
+    wait on a discovery batch that waits on it. This function writes no `matches` row. It takes:
+
+    1. every `aoe_profiles` key it will write — each original and each placeholder — one key at a
+       time in ascending order across **all** of `profile_ids`, not per profile: a placeholder is
+       `-abs(profile_id)`, lower than its own original and, for positive ids, than every other
+       original, so a loop that finished one profile before starting the next would step back. An
+       existing row is locked `FOR NO KEY UPDATE` (the strength of the `UPDATE` that follows); a
+       missing placeholder is inserted at that point in the sequence, which is its lock.
+    2. every `match_players` row of the originals, in one ascending pass through
+       `discover.lock_match_players`. The keys come from a plain read taken after step 1.
+       `persist_matches_and_profiles` upserts a participant's `aoe_profiles` row before it writes
+       that participant's `match_players` row, and that upsert waits on the lock step 1 holds, so a
+       batch using it cannot add a row for an original between the read and the writes below.
+
+    The writes that follow touch only rows already held. `UPDATE match_players SET profile_id`
+    moves each held `(game_id, original)` to `(game_id, placeholder)`;
+    `persist_matches_and_profiles` would reach that new key only after upserting the
+    placeholder's `aoe_profiles` row, which step 1 holds.
 
     **T426: `avatar_hash` needs no pseudonym.** Unlike `alias`/`country`, which must survive as
     plausible values (`pseudonymise_profile`'s own plan computes a masked pair for exactly that
@@ -569,27 +594,53 @@ async def _pseudonymise_profile_id(db_session: AsyncSession, profile_id: int) ->
     Steam account, not a display name, so the only closing move is to null it, on both the
     placeholder row and the original one, directly here rather than growing
     `packages/core`'s `PseudonymisationPlan` for a field that needs no computation at all."""
-    plan = pseudonymise_profile(profile_id)
+    plans = {profile_id: pseudonymise_profile(profile_id) for profile_id in profile_ids}
+    if not plans:
+        return
+    placeholders = {plan.pseudonymous_profile_id: plan for plan in plans.values()}
 
-    if await db_session.get(AoeProfile, plan.pseudonymous_profile_id) is None:
-        db_session.add(
-            AoeProfile(
-                profile_id=plan.pseudonymous_profile_id,
-                alias=plan.alias,
-                country=plan.country,
-                avatar_hash=None,
+    originals: list[AoeProfile] = []
+    for key in sorted({*plans, *placeholders}):
+        row = (
+            await db_session.execute(
+                select(AoeProfile)
+                .where(AoeProfile.profile_id == key)
+                .with_for_update(key_share=True)
+            )
+        ).scalar_one_or_none()
+        if row is not None:
+            if key in plans:
+                originals.append(row)
+        elif key in placeholders:
+            placeholder = placeholders[key]
+            db_session.add(
+                AoeProfile(
+                    profile_id=key,
+                    alias=placeholder.alias,
+                    country=placeholder.country,
+                    avatar_hash=None,
+                )
+            )
+            await db_session.flush()
+
+    held = (
+        await db_session.execute(
+            select(MatchPlayer.game_id, MatchPlayer.profile_id).where(
+                MatchPlayer.profile_id.in_(list(plans))
             )
         )
-        await db_session.flush()
+    ).all()
+    await discover.lock_match_players(db_session, [(game_id, owner) for game_id, owner in held])
 
-    await db_session.execute(
-        update(MatchPlayer)
-        .where(MatchPlayer.profile_id == profile_id)
-        .values(profile_id=plan.pseudonymous_profile_id)
-    )
+    for profile_id, plan in plans.items():
+        await db_session.execute(
+            update(MatchPlayer)
+            .where(MatchPlayer.profile_id == profile_id)
+            .values(profile_id=plan.pseudonymous_profile_id)
+        )
 
-    original_profile = await db_session.get(AoeProfile, profile_id)
-    if original_profile is not None:
+    for original_profile in originals:
+        plan = plans[original_profile.profile_id]
         original_profile.alias = plan.alias
         original_profile.country = plan.country
         original_profile.avatar_hash = None
@@ -628,7 +679,7 @@ async def erase_account(
     asked for it.
 
     **Pseudonymised in place, row and match retained**: every `match_players` row naming one of
-    this user's own profiles, via `_pseudonymise_profile_id` — `matches` itself carries no
+    this user's own profiles, via `_pseudonymise_profile_ids` — `matches` itself carries no
     `profile_id` column to touch (`packages/storage/.../models.py`'s `Match`), so nothing about it
     changes at all; it describes a game other people also played.
 
@@ -675,8 +726,7 @@ async def erase_account(
             delete(ReplayCapture).where(ReplayCapture.profile_id.in_(profile_ids))
         )
 
-        for profile_id in profile_ids:
-            await _pseudonymise_profile_id(db_session, profile_id)
+        await _pseudonymise_profile_ids(db_session, profile_ids)
 
     data_request.completed_at = datetime.now(UTC)
     data_request.outcome = "account erased"
@@ -782,7 +832,7 @@ async def resolve_third_party_objection(
     test both exist to keep this route from being. `docs/privacy/processing-register.md`'s
     handling-procedure section names who runs it and within what delay.
 
-    Pseudonymises the objection's own `subject_profile_id` through `_pseudonymise_profile_id` —
+    Pseudonymises the objection's own `subject_profile_id` through `_pseudonymise_profile_ids` —
     the identical instrument `POST /api/privacy/erase` (T091) already calls over a departing
     user's own linked profiles (`data-model.md`: "the same mechanism FR-039 gives third
     parties") — then marks this row resolved, which is this procedure's own trace.
@@ -799,7 +849,7 @@ async def resolve_third_party_objection(
     if data_request.completed_at is not None:
         raise ValueError(f"Data request {data_request_id} was already resolved.")
 
-    await _pseudonymise_profile_id(db_session, data_request.subject_profile_id)
+    await _pseudonymise_profile_ids(db_session, [data_request.subject_profile_id])
 
     data_request.completed_at = datetime.now(UTC)
     data_request.outcome = f"pseudonymised profile {data_request.subject_profile_id}"

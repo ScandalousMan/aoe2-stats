@@ -50,6 +50,15 @@ of the defect, not the two instances found:
 - `test_match_detail_racing_a_discovery_batch_completes` races the match-detail route against a
   `DiscoverStage` batch over the very same match, interleaved on conditions, never durations.
 - `test_a_stored_colour_is_never_replaced_by_companions` is the precedence contrast.
+
+**T459e — pseudonymisation is a writer too.** `routers/privacy.py::_pseudonymise_profile_ids`
+(erasure, and the deferred third-party objection) inserts a placeholder `aoe_profiles` row,
+rewrites `match_players` keys, and updates the original `aoe_profiles` row.
+`test_pseudonymisation_takes_every_row_lock_in_the_global_order` drives `POST /api/privacy/erase`
+(two linked profiles, stored in an order that is not ascending) and
+`resolve_third_party_objection` under the recorder, and
+`test_pseudonymisation_racing_a_discovery_batch_completes` races the erasure against a
+`DiscoverStage` batch over a row both write.
 """
 
 from __future__ import annotations
@@ -66,7 +75,7 @@ from typing import Any, ClassVar
 
 import httpx
 import pytest
-from sqlalchemy import event, select, text
+from sqlalchemy import event, select, text, update
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
@@ -76,7 +85,9 @@ from aoe2stats_api.app import create_app
 from aoe2stats_api.deps import get_session
 from aoe2stats_api.routers import matches as matches_router
 from aoe2stats_api.routers import players as players_router
+from aoe2stats_api.routers import privacy as privacy_router
 from aoe2stats_api.settings import get_settings
+from aoe2stats_core.privacy.erasure import PSEUDONYMISED_ALIAS
 from aoe2stats_ingester import discover
 from aoe2stats_ingester.budget import Budget
 from aoe2stats_ingester.discover import DiscoverStage
@@ -89,6 +100,8 @@ from aoe2stats_providers.base import (
 from aoe2stats_providers.relic.matches import RecentHistory
 from aoe2stats_storage.models import (
     AoeProfile,
+    DataRequest,
+    DataRequestKind,
     Match,
     MatchPlayer,
     ProfileLink,
@@ -791,6 +804,13 @@ class _LockRecorder:
             width = len(_KEY_COLUMNS[table])
             members = re.findall(rf"\(((?:<<\w+>>(?:::\w+)?(?:, )?){{{width}}})\)", sql)
             if not members:
+                equalities = dict(re.findall(rf"{table}\.(\w+) = <<(\w+)>>", sql))
+                if all(column in equalities for column in _KEY_COLUMNS[table]):
+                    return (
+                        table,
+                        [tuple(int(parameters[equalities[c]]) for c in _KEY_COLUMNS[table])],
+                        False,
+                    )
                 raise AssertionError(f"cannot read the keys of a locking select: {sql}")
             keys = [
                 tuple(int(parameters[name]) for name in _PLACEHOLDER.findall(member))
@@ -799,6 +819,22 @@ class _LockRecorder:
             ordered = " ORDER BY " + ", ".join(f"{table}.{c}" for c in _KEY_COLUMNS[table])
             return table, sorted(keys) if ordered in sql else keys, ordered not in sql
         return None
+
+    @staticmethod
+    def _predicate(sql: str, parameters: dict[str, Any]) -> tuple[str, int, int] | None:
+        """`(table, position in the key, value)` for an `UPDATE` or `DELETE` against a ranked table
+        whose `WHERE` names **one** of its key columns by equality and not the rest — a statement
+        that locks every row matching that column, in a scan order Postgres chooses, and whose
+        keys the SQL does not carry. `None` for any other statement."""
+        found = re.match(r"(?:UPDATE|DELETE FROM) (\w+)\b", sql)
+        if found is None or found.group(1) not in _RANK or "FROM (VALUES" in sql:
+            return None
+        table = found.group(1)
+        equalities = dict(re.findall(rf"{table}\.(\w+) = <<(\w+)>>", sql))
+        named = [column for column in _KEY_COLUMNS[table] if column in equalities]
+        if len(named) != 1 or len(_KEY_COLUMNS[table]) == 1:
+            return None
+        return table, _KEY_COLUMNS[table].index(named[0]), int(parameters[equalities[named[0]]])
 
     def _record(
         self, conn: Any, cursor: Any, statement: str, parameters: Any, context: Any, many: bool
@@ -814,21 +850,48 @@ class _LockRecorder:
             parameter_sets = list(parameters or [])
             self.executemany_statements += bool(parameter_sets)
         for parameter_set in parameter_sets:
-            found = self._keys(sql, parameter_set if isinstance(parameter_set, dict) else {})
-            if found is None:
+            parameter_dict = parameter_set if isinstance(parameter_set, dict) else {}
+            predicate = self._predicate(sql, parameter_dict)
+            found = None if predicate is not None else self._keys(sql, parameter_dict)
+            if predicate is None and found is None:
                 return
-            table, keys, unordered = found
-            if not keys:
-                raise AssertionError(f"a locking statement with no readable key: {sql}")
             driver = conn.connection.driver_connection
             if not hasattr(driver, "_lock_recorder_id"):
                 driver._lock_recorder_id = next(self._ids)  # type: ignore[arg-type]
-            self.by_connection.setdefault(driver._lock_recorder_id, []).extend(
-                _RowLock(table, key, sql, unordered) for key in keys
-            )
+            locks = self.by_connection.setdefault(driver._lock_recorder_id, [])
+            if predicate is not None:
+                # The rows are whichever match; the SQL cannot say which. Credit exactly the rows
+                # this connection had already locked for that value, and, when it had locked none,
+                # record the statement as unordered so it is a violation. That every matching row
+                # was among the held ones is the caller's to assert (`locked`).
+                table, position, value = predicate
+                held = [
+                    lock.key
+                    for lock in locks
+                    if lock.table == table and lock.key and lock.key[position] == value
+                ]
+                locks.extend(
+                    [_RowLock(table, key, sql) for key in held]
+                    or [_RowLock(table, (), sql, unordered=True)]
+                )
+                continue
+            assert found is not None
+            table, keys, unordered = found
+            if not keys:
+                raise AssertionError(f"a locking statement with no readable key: {sql}")
+            locks.extend(_RowLock(table, key, sql, unordered) for key in keys)
 
     def count(self) -> int:
         return sum(len(locks) for locks in self.by_connection.values())
+
+    def locked(self, table: str) -> set[tuple[int, ...]]:
+        """Every key of `table` any connection locked or re-touched, by whatever statement."""
+        return {
+            lock.key
+            for locks in self.by_connection.values()
+            for lock in locks
+            if lock.table == table and lock.key
+        }
 
     def violations(self) -> list[str]:
         """Every row first locked at a lower `(rank, key)` than one this connection had already
@@ -1311,3 +1374,262 @@ async def test_an_uncoloured_match_outside_the_served_page_costs_no_companion_ca
     assert bool(companion.game_ids_asked) is companion_asked, companion.game_ids_asked
     served = [row["game_id"] for row in response.json()["matches"]]
     assert (_FETCHED_GAMES[0] in served) is companion_asked, served
+
+
+# --- T459e: pseudonymisation --------------------------------------------------------------------
+
+
+async def _seed_owner_of(
+    http: httpx.AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+    linked: Sequence[int],
+) -> None:
+    """A signed-in user whose profile links are inserted **in the order given** (the order
+    `erase_account` reads them back in is the database's, not sorted), over profiles that already
+    exist (`_seed_stored_matches`)."""
+    session_id = secrets.token_urlsafe(32)
+    now = datetime.now(UTC)
+    async with session_factory() as session:
+        user = User(allowlisted_at=now)
+        session.add(user)
+        await session.flush()
+        steam = SteamIdentity(
+            steam_id64="76500000000000460", user_id=user.id, verified_at=now, last_sign_in_at=now
+        )
+        session.add_all(
+            [
+                steam,
+                UserSession(
+                    id=session_id,
+                    user_id=user.id,
+                    created_at=now,
+                    expires_at=now + timedelta(days=30),
+                ),
+            ]
+        )
+        await session.flush()
+        for index, profile_id in enumerate(linked):
+            session.add(
+                ProfileLink(
+                    id=uuid.uuid4(),
+                    user_id=user.id,
+                    profile_id=profile_id,
+                    steam_id64=steam.steam_id64,
+                    is_primary=index == 0,
+                    linked_at=now,
+                )
+            )
+            await session.flush()
+        await session.commit()
+    secret = get_settings().app_secret_key.get_secret_value()
+    http.cookies.set(SESSION_COOKIE_NAME, security._sign(session_id, secret))
+
+
+async def _erase(http: httpx.AsyncClient) -> httpx.Response:
+    token = (await http.get("/api/privacy/erase")).json()["confirmation_token"]
+    return await http.post("/api/privacy/erase", json={"confirmation_token": token})
+
+
+async def _assert_pseudonymised(
+    session_factory: async_sessionmaker[AsyncSession], profile_ids: Sequence[int]
+) -> None:
+    """The same rows end up with the same values whatever the lock order: every
+    `(game, original)` key of `match_players` is now `(game, -original)` with its other columns
+    intact, the original `aoe_profiles` row is masked, and the placeholder row exists."""
+    async with session_factory() as session:
+        players = {
+            (row.game_id, row.profile_id): row.civ_id
+            for row in (await session.execute(select(MatchPlayer))).scalars()
+        }
+        profiles = {
+            row.profile_id: row for row in (await session.execute(select(AoeProfile))).scalars()
+        }
+    for profile_id in profile_ids:
+        for game_id in _STORED_OLD_GAMES:
+            assert (game_id, profile_id) not in players
+            assert players[(game_id, -profile_id)] == 7
+        for row in (profiles[profile_id], profiles[-profile_id]):
+            assert (row.alias, row.country, row.avatar_hash) == (PSEUDONYMISED_ALIAS, None, None)
+    for untouched in set(_PROFILES) - set(profile_ids):
+        assert all((game_id, untouched) in players for game_id in _STORED_OLD_GAMES)
+        assert profiles[untouched].alias == str(untouched)
+        assert -untouched not in profiles
+
+
+@pytest.mark.parametrize("entry", ["erase", "objection"])
+async def test_pseudonymisation_takes_every_row_lock_in_the_global_order(
+    entry: str,
+    http: httpx.AsyncClient,
+    engine: AsyncEngine,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """T459e: whatever the pseudonymisation writes, each connection acquires row locks in one
+    ascending `(table rank, key)` sequence — through the real `POST /api/privacy/erase`
+    (`erase`), and through `resolve_third_party_objection` (`objection`, the function FR-039's
+    resolution runs).
+
+    `erase` links BRAVO before SUBJECT, so reading the links back is not ascending: a loop that
+    pseudonymises one profile at a time takes `aoe_profiles(-SUBJECT)` after
+    `match_players(.., BRAVO)`. Every `match_players` row of the pseudonymised profiles must be
+    among the locked ones (`locked`), because a `UPDATE ... WHERE profile_id = ...` names no key
+    the recorder could read."""
+    await _seed_stored_matches(session_factory, _STORED_OLD_GAMES, completed_at=_MATCH_COMPLETED_AT)
+    if entry == "erase":
+        pseudonymised: tuple[int, ...] = (_BRAVO, _SUBJECT)
+        await _seed_owner_of(http, session_factory, pseudonymised)
+        with _LockRecorder(engine) as recorder:
+            response = await _erase(http)
+        assert response.status_code == 200, response.text
+    else:
+        pseudonymised = (_ALPHA,)
+        async with session_factory() as session:
+            data_request = DataRequest(
+                kind=DataRequestKind.THIRD_PARTY_OBJECTION, subject_profile_id=_ALPHA
+            )
+            session.add(data_request)
+            await session.commit()
+        with _LockRecorder(engine) as recorder:
+            async with session_scope(session_factory) as session:
+                await privacy_router.resolve_third_party_objection(session, data_request.id)
+
+    assert recorder.count() > 0, "the pseudonymisation wrote nothing: the recorder proved nothing"
+    assert not recorder.violations(), (
+        "row locks taken against the global order:\n  "
+        + "\n  ".join(recorder.violations())
+        + "\nfull sequence per connection:\n"
+        + recorder.sequence()
+    )
+    assert recorder.locked("match_players") >= {
+        (game_id, profile_id) for game_id in _STORED_OLD_GAMES for profile_id in pseudonymised
+    }
+    assert recorder.locked("aoe_profiles") >= {
+        (key,) for profile_id in pseudonymised for key in (profile_id, -profile_id)
+    }
+    await _assert_pseudonymised(session_factory, pseudonymised)
+
+
+async def test_recorder_reports_a_key_rewrite_with_no_lock_pass_before_it(
+    engine: AsyncEngine,
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+) -> None:
+    """The recorder cannot read the keys of `UPDATE match_players SET profile_id = .. WHERE
+    profile_id = ..`; it must not credit one it never saw locked. With no lock pass first it is a
+    violation — the shape the pre-T459e pseudonymisation had."""
+    await _seed_stored_matches(session_factory, _STORED_OLD_GAMES, completed_at=_MATCH_COMPLETED_AT)
+    async with session_factory() as session:
+        session.add(AoeProfile(profile_id=-_SUBJECT, alias=PSEUDONYMISED_ALIAS))
+        await session.commit()
+    with _LockRecorder(engine) as recorder:
+        async with session_scope(session_factory) as session:
+            await session.execute(
+                update(MatchPlayer)
+                .where(MatchPlayer.profile_id == _SUBJECT)
+                .values(profile_id=-_SUBJECT)
+            )
+    assert recorder.violations()
+
+
+class _PseudonymisationRace:
+    """The interleave that deadlocks the pre-T459e code, formed from conditions and never from
+    durations. Two parks, each released by the *other* side's progress or by Postgres reporting a
+    backend that waits on a lock (how code that locks in one global order gets through: its second
+    transaction is blocked on the first's row, so the awaited progress can never happen):
+
+    - the pseudonymiser, after it has executed an `UPDATE match_players` (the key rewrite), waits
+      until the discovery batch has upserted `aoe_profiles`;
+    - the discovery batch, before it executes its `INSERT INTO match_players`, waits until the
+      pseudonymiser has executed that `UPDATE`.
+
+    Against the old order that leaves the pseudonymiser holding `match_players(game, profile)` and
+    asking for `aoe_profiles(profile)`, and the batch holding the second and asking for the first.
+    """
+
+    def __init__(self, engine: AsyncEngine) -> None:
+        self._engine = engine
+        self.rewrote_keys = asyncio.Event()
+        self.touched_profiles = asyncio.Event()
+
+    def install(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        real_execute = AsyncSession.execute
+
+        async def spy(self_session: AsyncSession, statement: Any, *args: Any, **kwargs: Any) -> Any:
+            name = getattr(getattr(statement, "table", None), "name", None)
+            is_key_rewrite = name == "match_players" and getattr(statement, "is_update", False)
+            is_batch_insert = name == "match_players" and getattr(statement, "is_insert", False)
+            is_profile_touch = name == "aoe_profiles" and getattr(statement, "is_insert", False)
+            if is_batch_insert:
+                await self._park_until(self.rewrote_keys)
+            result = await real_execute(self_session, statement, *args, **kwargs)
+            if is_profile_touch:
+                self.touched_profiles.set()
+            if is_key_rewrite:
+                self.rewrote_keys.set()
+                await self._park_until(self.touched_profiles)
+            return result
+
+        monkeypatch.setattr(AsyncSession, "execute", spy)
+
+    async def _park_until(self, reached: asyncio.Event) -> None:
+        deadline = asyncio.get_running_loop().time() + _RENDEZVOUS_GUARD_SECONDS
+        while not reached.is_set():
+            if await self._someone_is_waiting_on_a_lock():
+                return
+            if asyncio.get_running_loop().time() > deadline:
+                raise AssertionError("the peer never arrived and nothing is lock-blocked")
+            await asyncio.sleep(0.01)
+
+    async def _someone_is_waiting_on_a_lock(self) -> bool:
+        async with self._engine.connect() as connection:
+            waiting = await connection.execute(
+                text(
+                    "SELECT count(*) FROM pg_stat_activity "
+                    "WHERE datname = current_database() AND wait_event_type = 'Lock'"
+                )
+            )
+            return bool(waiting.scalar_one())
+
+
+async def test_pseudonymisation_racing_a_discovery_batch_completes(
+    http: httpx.AsyncClient,
+    engine: AsyncEngine,
+    session_factory: async_sessionmaker[AsyncSession],
+    fast_deadlock_detection: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """T459e: an erasure and a `DiscoverStage` batch over a `match_players` row both write. The
+    batch's match lists the erased profile (SUBJECT) and ALPHA; SUBJECT's stored row for that game
+    is the one the erasure rewrites. Before the fix the erasure took the `match_players` row and
+    then asked for `aoe_profiles(SUBJECT)`, which the batch held while asking for the row: a
+    deadlock that aborts whichever transaction Postgres picks, discovery's included. After it both
+    complete, and the capture the batch enqueues survives."""
+    await _seed_stored_matches(session_factory, _STORED_OLD_GAMES, completed_at=_MATCH_COMPLETED_AT)
+    await _seed_owner_of(http, session_factory, (_SUBJECT,))
+    race = _PseudonymisationRace(engine)
+    race.install(monkeypatch)
+
+    stage = DiscoverStage(
+        session_factory=session_factory,
+        match_history_provider=_IngesterRelic(_raw_match(_STORED_OLD_GAMES[0], (_SUBJECT, _ALPHA))),
+        capture_budget_days=21,
+    )
+    outcomes = await asyncio.gather(stage(Budget(seconds=30)), _erase(http), return_exceptions=True)
+
+    assert not [o for o in outcomes if isinstance(o, BaseException)], outcomes
+    report, response = outcomes
+    assert isinstance(response, httpx.Response) and response.status_code == 200, response
+    assert isinstance(report, dict) and report["captures_enqueued"] == 1, report
+    assert race.rewrote_keys.is_set() and race.touched_profiles.is_set()
+
+    async with session_factory() as session:
+        captures = (await session.execute(select(ReplayCapture.profile_id))).scalars().all()
+        alias = (await session.get(AoeProfile, _SUBJECT)).alias  # type: ignore[union-attr]
+        rewritten = (
+            await session.execute(
+                select(MatchPlayer.profile_id).where(MatchPlayer.game_id == _STORED_OLD_GAMES[1])
+            )
+        ).scalars()
+        others = set(rewritten)
+    assert list(captures) == [_SUBJECT], "the capture the batch enqueues must survive the erasure"
+    assert alias == PSEUDONYMISED_ALIAS
+    assert -_SUBJECT in others and _SUBJECT not in others
