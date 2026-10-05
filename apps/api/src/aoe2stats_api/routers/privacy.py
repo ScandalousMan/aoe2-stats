@@ -714,7 +714,8 @@ async def erase_account(
         await _pseudonymise_profile_ids(db_session, profile_ids)
 
         # After the pseudonymisation, never before: `replay_captures` is the fourth table in the
-        # global lock order (`_pseudonymise_profile_ids`), and `DiscoverStage` writes
+        # global lock order (the notes above `touch_aoe_profiles` in
+        # `apps/ingester/src/aoe2stats_ingester/discover.py`), and `DiscoverStage` writes
         # `aoe_profiles`, `match_players`, then `replay_captures`. A delete that ran first held a
         # capture row while waiting on `aoe_profiles`, and a discovery batch inserting that same
         # `(game_id, profile_id)` waited on the delete: a deadlock that aborts discovery. The

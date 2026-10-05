@@ -75,7 +75,7 @@ from typing import Any, ClassVar
 
 import httpx
 import pytest
-from sqlalchemy import delete, event, select, text, update
+from sqlalchemy import Select, delete, event, select, text, update
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
@@ -706,6 +706,9 @@ class _RowLock:
     statement: str
     #: Postgres, not the statement's text, decides the order this lock was taken in.
     unordered: bool = False
+    #: Set only on a partial `IN` lock (`_LockRecorder._identity`): the rows it takes are not in
+    #: the SQL, so what it is — its `WHERE` and every value bound into it — stands in for a key.
+    identity: tuple[Any, ...] | None = None
 
 
 @dataclass
@@ -728,11 +731,15 @@ class _LockRecorder:
     scan order Postgres chooses: it is recorded as **unordered**, and is a violation unless every
     key it touches is already held earlier in the transaction.
 
-    A statement that names only `profile_id` of a two-column key by `IN (...)` carries no key the
-    SQL can show. A `SELECT ... FOR UPDATE` of that shape with `ORDER BY <both key columns>` is
-    recorded as one ordered lock at its table's rank with an empty key (the rows are whichever
-    match, in key order); an `UPDATE` or `DELETE` of that shape is credited only after such a lock
-    on the same connection and is otherwise **unordered**. Tables outside the four
+    A statement that names only one column of a two-column key by `IN (...)` carries no key the
+    SQL can show; it is recorded with an empty key and an identity (its `WHERE`, with every value
+    bound into it, an `IN` list read as a set). A `SELECT ... FOR UPDATE` of that shape with
+    `ORDER BY <both key columns>` is one ordered lock at its table's rank. An `UPDATE` or `DELETE`
+    of that shape is credited only when such a select earlier in the same transaction on the same
+    connection had the **same identity**, and is otherwise **unordered**. An ordered partial lock
+    whose identity differs from one this connection already holds on the table is a violation:
+    the recorder cannot tell that its rows come after the earlier ones. A statement with the
+    same identity as one already recorded is a re-touch. Tables outside the four
     (`provider_calls`, `rating_snapshots`) are never ranked.
     """
 
@@ -743,10 +750,20 @@ class _LockRecorder:
 
     def __enter__(self) -> _LockRecorder:
         event.listen(self.engine.sync_engine, "before_cursor_execute", self._record)
+        event.listen(self.engine.sync_engine, "commit", self._transaction_ended)
+        event.listen(self.engine.sync_engine, "rollback", self._transaction_ended)
         return self
 
     def __exit__(self, *exc: object) -> None:
         event.remove(self.engine.sync_engine, "before_cursor_execute", self._record)
+        event.remove(self.engine.sync_engine, "commit", self._transaction_ended)
+        event.remove(self.engine.sync_engine, "rollback", self._transaction_ended)
+
+    @staticmethod
+    def _transaction_ended(conn: Any) -> None:
+        """The row locks of a transaction end with it, and so does any credit they gave."""
+        driver = conn.connection.driver_connection
+        driver._lock_recorder_ordered = set()
 
     @staticmethod
     def _tuples(section: str) -> list[list[str]]:
@@ -873,6 +890,24 @@ class _LockRecorder:
         ordered = " ORDER BY " + ", ".join(f"{table}.{c}" for c in key) + " FOR "
         return table, sql.startswith("SELECT") and ordered in sql
 
+    @staticmethod
+    def _identity(sql: str, parameters: dict[str, Any]) -> tuple[Any, ...]:
+        """The `WHERE` of a statement with each bound name replaced by `?`, and the values bound
+        into it: an `IN (...)` list as the sorted tuple of its values, every other parameter in
+        the order it appears."""
+        found = re.search(r" WHERE (.*?)(?: ORDER BY | FOR (?:NO KEY )?UPDATE|RETURNING |$)", sql)
+        assert found is not None, f"a partial IN statement with no WHERE: {sql}"
+        values: list[Any] = []
+
+        def in_list(match: re.Match[str]) -> str:
+            names = _PLACEHOLDER.findall(match.group(0))
+            values.append(tuple(sorted(str(parameters[name]) for name in names)))
+            return "IN (...)"
+
+        where = re.sub(r"IN \((?:<<\w+>>(?:::\w+)?(?:, )?)+\)", in_list, found.group(1))
+        where = _PLACEHOLDER.sub(lambda m: values.append(parameters[m.group(1)]) or "?", where)
+        return (where, *values)
+
     def _record(
         self, conn: Any, cursor: Any, statement: str, parameters: Any, context: Any, many: bool
     ) -> None:
@@ -895,16 +930,18 @@ class _LockRecorder:
                 if not hasattr(driver, "_lock_recorder_id"):
                     driver._lock_recorder_id = next(self._ids)  # type: ignore[arg-type]
                 locks = self.by_connection.setdefault(driver._lock_recorder_id, [])
-                is_select = sql.startswith("SELECT")
-                held = any(
-                    lock.table == table and lock.key == () and not lock.unordered for lock in locks
-                )
+                if not hasattr(driver, "_lock_recorder_ordered"):
+                    driver._lock_recorder_ordered = set()
+                identity = (table, *self._identity(sql, parameter_dict))
+                if takes_ordered_lock:
+                    driver._lock_recorder_ordered.add(identity)
                 locks.append(
                     _RowLock(
                         table,
                         (),
                         sql,
-                        unordered=not (takes_ordered_lock or (not is_select and held)),
+                        unordered=identity not in driver._lock_recorder_ordered,
+                        identity=identity,
                     )
                 )
                 continue
@@ -952,17 +989,33 @@ class _LockRecorder:
 
     def violations(self) -> list[str]:
         """Every row first locked at a lower `(rank, key)` than one this connection had already
-        locked, and every row first locked by an unordered statement. A row locked earlier on the
-        same connection is a re-touch, not an acquisition."""
+        locked, every row first locked by an unordered statement, and every partial `IN` lock over
+        a table this connection already holds a partial lock on with a different identity. A row
+        locked earlier on the same connection is a re-touch, not an acquisition; so is a partial
+        `IN` statement with an identity already recorded."""
         problems: list[str] = []
         for connection, locks in self.by_connection.items():
-            held: set[tuple[str, tuple[int, ...]]] = set()
+            held: set[Any] = set()
             highest: tuple[int, tuple[int, ...]] = (0, ())
             highest_lock: _RowLock | None = None
+            partial_held: dict[str, _RowLock] = {}
             for lock in locks:
-                if (lock.table, lock.key) in held:
+                if lock.identity is not None:
+                    if not lock.unordered and (lock.table, lock.key, lock.identity) in held:
+                        continue
+                    held.add((lock.table, lock.key, lock.identity))
+                    earlier = partial_held.setdefault(lock.table, lock)
+                    if earlier is not lock and not lock.unordered:
+                        problems.append(
+                            f"connection {connection}: {lock.table} was locked by a statement "
+                            f"over a different set than the one locked before it, so its rows "
+                            f"cannot be shown to come after that one's -- `{lock.statement[:160]}`"
+                        )
+                        continue
+                elif (lock.table, lock.key) in held:
                     continue
-                held.add((lock.table, lock.key))
+                else:
+                    held.add((lock.table, lock.key))
                 if lock.unordered:
                     problems.append(
                         f"connection {connection}: {lock.table}{lock.key} was first locked by a "
@@ -1623,7 +1676,10 @@ class _PseudonymisationRace(_Rendezvous):
     - the pseudonymiser, after it has executed an `UPDATE match_players` (the key rewrite), waits
       until the discovery batch has upserted `aoe_profiles`;
     - the discovery batch, before it executes its `INSERT INTO match_players`, waits until the
-      pseudonymiser has executed that `UPDATE`.
+      pseudonymiser has executed that `UPDATE`;
+    - the pseudonymiser, before it locks its first `aoe_profiles` row, waits until the batch has
+      upserted `aoe_profiles`, so the batch always holds those rows first and enqueues its
+      capture before the erasure commits (T459i; without this park either side could be first).
 
     Against the old order that leaves the pseudonymiser holding `match_players(game, profile)` and
     asking for `aoe_profiles(profile)`, and the batch holding the second and asking for the first.
@@ -1642,6 +1698,12 @@ class _PseudonymisationRace(_Rendezvous):
             is_key_rewrite = name == "match_players" and getattr(statement, "is_update", False)
             is_batch_insert = name == "match_players" and getattr(statement, "is_insert", False)
             is_profile_touch = name == "aoe_profiles" and getattr(statement, "is_insert", False)
+            is_profile_lock = getattr(statement, "_for_update_arg", None) is not None and any(
+                getattr(table, "name", None) == "aoe_profiles"
+                for table in statement.get_final_froms()
+            )
+            if is_profile_lock:
+                await self._park_until(self.touched_profiles)
             if is_batch_insert:
                 await self._park_until(self.rewrote_keys)
             result = await real_execute(self_session, statement, *args, **kwargs)
@@ -1691,6 +1753,7 @@ async def test_pseudonymisation_racing_a_discovery_batch_completes(
     report, response = outcomes
     assert isinstance(response, httpx.Response) and response.status_code == 200, response
     assert isinstance(report, dict) and report["matches_discovered"] == 1, report
+    assert report["captures_enqueued"] == 1, report
     assert race.rewrote_keys.is_set() and race.touched_profiles.is_set()
 
     async with session_factory() as session:
@@ -1842,6 +1905,44 @@ async def test_a_batch_that_read_the_archiving_set_before_an_erasure_enqueues_no
     assert captures == [], f"a capture was enqueued for an erased profile: {captures}"
 
 
+async def test_discovery_writes_its_capture_last_and_the_recorder_reads_that_insert(
+    http: httpx.AsyncClient,
+    engine: AsyncEngine,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """T459i: the capture enqueue is an `INSERT ... SELECT`, the one statement shape that reaches
+    the recorder's `INSERT ... SELECT` branch. A `DiscoverStage` run under the recorder takes
+    `matches`, `aoe_profiles`, `match_players`, then `replay_captures`, and the capture's key is
+    read off that statement."""
+    await _seed_stored_matches(session_factory, _STORED_OLD_GAMES, completed_at=_MATCH_COMPLETED_AT)
+    await _seed_owner_of(http, session_factory, (_SUBJECT,))
+    game_id = _STORED_OLD_GAMES[0]
+    stage = DiscoverStage(
+        session_factory=session_factory,
+        match_history_provider=_IngesterRelic(_raw_match(game_id, (_SUBJECT, _ALPHA))),
+        capture_budget_days=21,
+    )
+    with _LockRecorder(engine) as recorder:
+        report = await stage(Budget(seconds=30))
+
+    assert report["captures_enqueued"] == 1, report
+    assert not recorder.violations(), recorder.violations()
+    captures = [
+        (connection_locks, lock)
+        for connection_locks in recorder.by_connection.values()
+        for lock in connection_locks
+        if lock.table == "replay_captures"
+    ]
+    ((connection_locks, capture),) = captures
+    assert capture.key == (game_id, _SUBJECT)
+    assert capture.statement.startswith("INSERT INTO replay_captures")
+    assert " SELECT " in capture.statement
+    tables = [lock.table for lock in connection_locks]
+    assert tables[-1] == "replay_captures"
+    assert [_RANK[table] for table in tables] == sorted(_RANK[table] for table in tables), tables
+    assert {"matches", "aoe_profiles", "match_players"} <= set(tables), tables
+
+
 async def test_erasure_locks_the_captures_it_deletes_after_the_pseudonymisation(
     http: httpx.AsyncClient,
     engine: AsyncEngine,
@@ -1911,3 +2012,74 @@ async def test_recorder_reports_a_capture_delete_that_precedes_the_pseudonymisat
             async with session_scope(session_factory) as session:
                 await erase_in(session, lock_first=lock_first)
         assert recorder.violations(), f"lock_first={lock_first}\n{recorder.sequence()}"
+
+
+def _lock_captures_in(profile_ids: Sequence[int]) -> Select[tuple[ReplayCapture]]:
+    return (
+        select(ReplayCapture)
+        .where(ReplayCapture.profile_id.in_(profile_ids))
+        .order_by(ReplayCapture.game_id, ReplayCapture.profile_id)
+        .with_for_update()
+    )
+
+
+async def test_recorder_reports_a_per_profile_loop_that_steps_back(
+    engine: AsyncEngine,
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+) -> None:
+    """One ordered `SELECT ... IN (<one profile>) ... FOR UPDATE` per profile, highest profile
+    first, takes `replay_captures` rows in descending `profile_id` order across the loop. Every
+    one of those locks is a partial `IN` lock with the same table; none of them may be credited
+    as a re-touch of the first."""
+    with _LockRecorder(engine) as recorder:
+        async with session_scope(session_factory) as session:
+            for profile_id in sorted((_SUBJECT, _ALPHA, _BRAVO), reverse=True):
+                await session.execute(_lock_captures_in([profile_id]))
+    assert recorder.violations(), recorder.sequence()
+
+
+@pytest.mark.parametrize(
+    ("locked", "deleted", "credited"),
+    [
+        ((_SUBJECT, _ALPHA), (_SUBJECT, _ALPHA), True),
+        ((_SUBJECT, _ALPHA), (_ALPHA, _SUBJECT), True),
+        ((_SUBJECT,), (_SUBJECT, _ALPHA), False),
+    ],
+)
+async def test_recorder_credits_a_delete_only_for_the_set_it_locked(
+    locked: tuple[int, ...],
+    deleted: tuple[int, ...],
+    credited: bool,
+    engine: AsyncEngine,
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+) -> None:
+    """A `DELETE ... IN (...)` takes its rows in a scan order Postgres chooses, so it is safe only
+    when an ordered lock in the same transaction carried the same set. A superset locks rows the
+    earlier select never held."""
+    with _LockRecorder(engine) as recorder:
+        async with session_scope(session_factory) as session:
+            await session.execute(_lock_captures_in(locked))
+            await session.execute(
+                delete(ReplayCapture).where(ReplayCapture.profile_id.in_(deleted))
+            )
+    assert bool(recorder.violations()) is not credited, recorder.sequence()
+
+
+async def test_recorder_does_not_credit_a_delete_for_a_lock_of_an_earlier_transaction(
+    engine: AsyncEngine,
+    clean_database: None,
+) -> None:
+    """The select's row locks ended with its transaction; a `DELETE` in the next one on the same
+    connection, over the same set, holds nothing the recorder saw. (The test engine is `NullPool`,
+    so only a connection held open across a commit can show it.)"""
+    with _LockRecorder(engine) as recorder:
+        async with engine.connect() as connection:
+            await connection.execute(_lock_captures_in([_SUBJECT]))
+            await connection.commit()
+            await connection.execute(
+                delete(ReplayCapture).where(ReplayCapture.profile_id.in_([_SUBJECT]))
+            )
+            await connection.commit()
+    assert recorder.violations(), recorder.sequence()

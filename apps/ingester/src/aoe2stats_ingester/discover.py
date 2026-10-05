@@ -19,9 +19,10 @@ archival included. `_linked_profile_ids()` is the *only* place this module decid
 exist for a cycle's discovery and rating refresh — every profile with `profile_links.unlinked_at
 IS NULL`, no other condition. `_archiving_profile_ids()` narrows that same set by one more
 condition, `users.archival_objected_at IS NOT NULL` excluded (`archiving_links()` is that one
-definition). `_archiving_profile_ids()` is consulted nowhere but the capture-enqueue membership
-test in `__call__`'s participant loop, and `_enqueue_capture`'s own `INSERT` asks
-`archiving_links()` again for its one profile: a linked user's Art. 21 objection stops further
+definition). The capture-enqueue membership test in `__call__`'s participant loop reads
+`_archiving_profile_ids()` once per cycle (`ReconcileStage.__call__` reads it the same way), and
+`_enqueue_capture`'s own `INSERT` asks `archiving_links()` again for its one profile: a linked
+user's Art. 21 objection stops further
 capture of their own recordings and nothing upstream of it — their matches are still discovered and
 their ratings are still refreshed on every cycle, exactly as an unobjected user's
 are. Collapsing "objected" into "unlinked" — dropping discovery or the rating refresh for an
@@ -162,6 +163,11 @@ def _chunk(items: Sequence[int], size: int) -> Iterator[Sequence[int]]:
 # wait on each other forever (production, 2026-10-04: `DeadlockDetected` in `touch_aoe_profile`
 # between the two player-page requests, and between an API request and a discovery cycle). A single
 # global order makes a cycle impossible.
+#
+# **`replay_captures` is the fourth table.** A transaction that writes it after the three above
+# takes its rows after theirs, ascending by `(game_id, profile_id)`: `DiscoverStage` and
+# `ReconcileStage` enqueue captures once the batch is written, and `erase_account` deletes them
+# once the pseudonymisation has taken its locks. Neither goes back to an earlier one of the four.
 #
 # Each table is written with **one multi-row `INSERT ... ON CONFLICT` statement** (split only past
 # `_BULK_ROW_LIMIT` rows, to stay under the driver's bind-parameter ceiling), its rows sorted per
@@ -622,12 +628,13 @@ class DiscoverStage:
 
     async def _archiving_profile_ids(self) -> list[int]:
         """The narrower set `_linked_profile_ids()` selects, minus any profile whose user has
-        exercised the Art. 21 right to object (`users.archival_objected_at IS NOT NULL`) —
-        consulted nowhere but the capture-enqueue membership test in `__call__`'s participant
-        loop. An objecting user is still a linked user in every other respect: their matches are
-        still discovered and their ratings are still refreshed by `_linked_profile_ids()` above,
-        only their own further capture stops. "Objected" and "unlinked" are deliberately two
-        different conditions on two different queries here, never one collapsed into the other.
+        exercised the Art. 21 right to object (`users.archival_objected_at IS NOT NULL`) — the set
+        the capture-enqueue membership test reads, in `__call__`'s participant loop and in
+        `ReconcileStage.__call__`'s. An objecting user is still a linked user in every other
+        respect: their matches are still discovered and their ratings are still refreshed by
+        `_linked_profile_ids()` above, only their own further capture stops. "Objected" and
+        "unlinked" are deliberately two different conditions on two different queries here, never
+        one collapsed into the other.
         """
         async with self._session_factory() as session:
             result = await session.execute(archiving_links().distinct())
@@ -680,7 +687,9 @@ class DiscoverStage:
         **The `INSERT` re-checks the link (T459g, FR-037).** It is `INSERT ... SELECT ... WHERE
         EXISTS (archiving_links() for this profile)`, so a profile whose link was deleted by an
         erasure, unlinked, or objected after `__call__` read the archiving set enqueues nothing
-        and this returns `False`. The set `__call__` read is not what decides.
+        and this returns `False` — provided that change had **committed before the `INSERT`
+        runs**: the `EXISTS` reads the rows as of the statement's start, and a change still
+        uncommitted then is not seen. The set `__call__` read is not what decides.
         """
         deadline = raw_match.completed_at + timedelta(days=self._capture_budget_days)
         still_archiving = archiving_links().where(ProfileLink.profile_id == profile_id).exists()

@@ -6,7 +6,8 @@ waited on an erasure's row locks, or whose user objected after that read, would 
 capture for someone who no longer archives: constitution IX outranks capture for a profile that is
 no longer linked or has objected (FR-035, FR-037). The statement itself therefore asks the question
 again; the test below that drives `__call__` hands it a stale set to show that the statement, and
-not the set, is what stops the capture.
+not the set, is what stops the capture. The statement sees only what had committed before it
+started: a change still uncommitted when the `INSERT` runs is not seen.
 """
 
 from __future__ import annotations
