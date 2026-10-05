@@ -29,7 +29,7 @@ import {
   findLocalElements,
   findVariantSizeDefaults,
   findPrimitiveInstances,
-  findMeta,
+  readDefaultExport,
   findExportedStoryObjects,
   extractVisualForceState,
   findPlayFocusTarget,
@@ -933,7 +933,7 @@ export const FocusVisible = {
 }
 `
   const sourceFile = parse(source)
-  const metaObj = findMeta(sourceFile)
+  const { object: metaObj } = readDefaultExport(sourceFile)
   const [{ node }] = findExportedStoryObjects(sourceFile)
   const literals = storyArgsStringLiterals(metaObj, node)
   assert.ok(literals.has('Turn it off'))
@@ -6657,13 +6657,23 @@ test('T697 (a) plant: a default export named through `export { meta as default }
   assert.deepEqual(problemsOf(computed), ZZA_AND_ZZB)
 })
 
-test('T697 (a) plant: a default export reached through an alias (`const m2 = meta; export default m2`) is named at the alias and at the original', () => {
+test('T697 (a) plant, T701: a default export reached through an alias (`const m2 = meta; export default m2`) is unreadable, naming every story, whichever binding is written to', () => {
   for (const tail of [`meta.tags = []\n`, `m2.tags = []\n`]) {
     const computed = cardRun({
       source: `import { Card } from './index'\nimport { Button } from '../../primitives/Button'\nconst meta = { component: Card }\nconst m2 = meta\nexport default m2\n${DISABLED_BUTTON_STORY('ZzA')}${DISABLED_BUTTON_STORY('ZzB')}${tail}`,
       manifest: bothDisabledMounts,
     })
-    assert.deepEqual(problemsOf(computed), ZZA_AND_ZZB, tail)
+    const unreadable = 'unreadable-default-export'
+    assert.deepEqual(
+      problemsOf(computed).filter(([kind]) => kind === unreadable),
+      [
+        [unreadable, `${CARD_STORIES_LOCATION}:ZzA`],
+        [unreadable, `${CARD_STORIES_LOCATION}:ZzB`],
+      ],
+      tail,
+    )
+    assert.deepEqual(creditsOf(computed, 'ZzA'), [], tail)
+    assert.deepEqual(creditsOf(computed, 'ZzB'), [], tail)
   }
 })
 
@@ -6788,10 +6798,11 @@ for (const [name, [file, text]] of Object.entries(IMPORT_PLANTS)) {
     const named = problemsOf(computed).filter(([kind]) => kind === IMPORTS_STORY)
     assert.deepEqual(named, [[IMPORTS_STORY, file]])
     const problem = computed.manifestProblems.find((p) => p.kind === IMPORTS_STORY)
-    assert.match(
-      problem.detail,
-      new RegExp(`${file.replace(/[.]/g, '\\.')} imports a \\*\\.stories module`),
-    )
+    // A glob is named for the call (T701: whatever its pattern), the others for the import.
+    const verb = text.includes('import.meta.glob')
+      ? 'calls import\\.meta\\.glob'
+      : 'imports a \\*\\.stories module'
+    assert.match(problem.detail, new RegExp(`${file.replace(/[.]/g, '\\.')} ${verb}`))
   })
 }
 
@@ -6818,6 +6829,381 @@ test('T697 (a) end to end: the check exits 1 on the real tree with a helper impo
   ])
   assert.equal(run.status, 1, run.stdout + run.stderr)
   assert.match(run.stderr, /src\/lib\/cx\.ts imports a \*\.stories module/)
+})
+
+// ---- T701: what T697's export-only rule left open ------------------------------------------------
+//
+// The default export is readable only as `export default <identifier>` or `export { <identifier> as
+// default }` (with `!`, `as`, `satisfies` and parentheses unwrapped) naming a top-level `const` initialised
+// with an object literal, or as an inline object literal; anything else fails naming every story of the
+// file and gives each no mount credit. A story or meta binding declared more than once, or with `var` or
+// `let`, fails naming the story. Any `import.meta.glob` and any import of a `*.test.*` module in a
+// non-test module fails naming the file. An instantiation expression in a value position is a reference.
+const UNREADABLE_DEFAULT = 'unreadable-default-export'
+const REDECLARED = 'redeclared-binding'
+const MUTABLE = 'mutable-binding'
+const IMPORTS_TEST = 'imports-test-module'
+const T701_HEADER = `import { Card } from './index'\nimport { Button } from '../../primitives/Button'\n`
+const TWO_STORIES = `${DISABLED_BUTTON_STORY('ZzA')}${DISABLED_BUTTON_STORY('ZzB')}`
+const metaRun = (metaBlock, stories = TWO_STORIES) =>
+  cardRun({ source: `${T701_HEADER}${metaBlock}${stories}`, manifest: bothDisabledMounts })
+const ofKind = (computed, kind) => problemsOf(computed).filter(([k]) => k === kind)
+const BOTH_STORIES = (kind) => [
+  [kind, `${CARD_STORIES_LOCATION}:ZzA`],
+  [kind, `${CARD_STORIES_LOCATION}:ZzB`],
+]
+const CLIP_PARAMETERS = `{ component: Card, parameters: { visualCaptureClip: ${CLIP} } }`
+
+const UNREADABLE_DEFAULTS = {
+  'export default (0, meta)': `const meta = ${CLIP_PARAMETERS}\nexport default (0, meta)\n`,
+  'export default withClip(meta)': `const withClip = (m) => m\nconst meta = ${CLIP_PARAMETERS}\nexport default withClip(meta)\n`,
+  'export default Object.assign(meta, …)': `const meta = { component: Card }\nexport default Object.assign(meta, { parameters: { visualCaptureClip: ${CLIP} } })\n`,
+  'a meta built by Object.assign({}, base, …)': `const base = { component: Card }\nconst meta = Object.assign({}, base, { parameters: { visualCaptureClip: ${CLIP} } })\nexport default meta\n`,
+  'a meta built by a call, make(base)': `const make = (b) => b\nconst base = { component: Card }\nconst meta = make(base)\nexport default meta\n`,
+  'a meta built by a conditional': `const a = { component: Card }\nconst b = { component: Card, parameters: { visualCaptureClip: ${CLIP} } }\nconst meta = globalThis.x ? a : b\nexport default meta\n`,
+  'export { meta as default } over a meta built by a call': `const make = (b) => b\nconst meta = make({ component: Card })\nexport { meta as default }\n`,
+  'a meta that aliases another binding': `const base = { component: Card }\nconst meta = base\nexport default meta\n`,
+  'an instantiation expression, export default meta<0>': `const meta = { component: Card }\nexport default meta<0>\n`,
+  'a default export that is a function': `export default function meta() {\n  return { component: Card }\n}\n`,
+  'a default export that is a class': `export default class Meta {}\n`,
+  'a re-exported default, export { default } from': `export { default } from './other'\n`,
+  'a default export re-exported under another name, export { x as default } from': `export { meta as default } from './other'\n`,
+  'export * as default from': `export * as default from './other'\n`,
+  'a default export that is an imported binding': `import meta from './other'\nexport default meta\n`,
+  'a meta destructured from another object': `const { meta } = { meta: { component: Card } }\nexport default meta\n`,
+  'a meta declared by a function': `function meta() {}\nexport default meta\n`,
+  'a file with no default export at all': `const meta = { component: Card }\n`,
+  'an object literal wrapped in a call, export default withClip({ … })': `const withClip = (m) => m\nexport default withClip({ component: Card })\n`,
+}
+for (const [name, metaBlock] of Object.entries(UNREADABLE_DEFAULTS)) {
+  test(`T701 (H1) plant: ${name} fails the check naming every story of the file and credits no mount`, () => {
+    const computed = metaRun(metaBlock)
+    assert.deepEqual(ofKind(computed, UNREADABLE_DEFAULT), BOTH_STORIES(UNREADABLE_DEFAULT))
+    const detail = computed.manifestProblems.find((p) => p.kind === UNREADABLE_DEFAULT).detail
+    assert.match(detail, /default export of src\/composites\/Card\/Card\.stories\.tsx/)
+    assert.deepEqual(creditsOf(computed, 'ZzA'), [])
+    assert.deepEqual(creditsOf(computed, 'ZzB'), [])
+  })
+}
+
+test('T701 (H1) plant: `export default meta!` followed by `meta.parameters = { visualCaptureClip }` is a reference to the default export, naming every story', () => {
+  const computed = metaRun(
+    `const meta = { component: Card }\nexport default meta!\nmeta.parameters = { visualCaptureClip: ${CLIP} }\n`,
+  )
+  assert.deepEqual(ofKind(computed, REFERENCED), BOTH_STORIES(REFERENCED))
+  assert.deepEqual(creditsOf(computed, 'ZzA'), [])
+  assert.deepEqual(creditsOf(computed, 'ZzB'), [])
+})
+
+test('T701 (H1) plant: the default export is named through every wrapper, in any nesting, when it is mutated', () => {
+  for (const wrapped of ['meta!', '(meta)', 'meta as Meta', '((meta as Meta)!) satisfies Meta']) {
+    const computed = metaRun(
+      `const meta = { component: Card }\nexport default ${wrapped}\nmeta.tags = []\n`,
+    )
+    assert.deepEqual(ofKind(computed, REFERENCED), BOTH_STORIES(REFERENCED), wrapped)
+    assert.deepEqual(ofKind(computed, UNREADABLE_DEFAULT), [], wrapped)
+  }
+})
+
+test('T701 (H1) plant: no annotation is read from a guessed object, so a default export the pass cannot read leaves the first object with a `component` unread', () => {
+  // The first object with a `component` key carries no clip; the default export, built by a call, does.
+  // The old fallback read the first and credited the mount.
+  const computed = metaRun(
+    `const decoy = { component: Card }\nconst make = () => ({ component: Card, parameters: { visualCaptureClip: ${CLIP} } })\nexport default make()\n`,
+  )
+  assert.deepEqual(ofKind(computed, UNREADABLE_DEFAULT), BOTH_STORIES(UNREADABLE_DEFAULT))
+  assert.deepEqual(creditsOf(computed, 'ZzA'), [])
+})
+
+test('T701 (H1) contrast: `export default meta`, a satisfies, an as, parentheses, a `!`, `export { meta as default }` and an inline object literal are read and credited', () => {
+  const readable = [
+    `const meta = { component: Card }\nexport default meta\n`,
+    `const meta = { component: Card } satisfies Meta\nexport default meta satisfies Meta\n`,
+    `const meta: Meta<typeof Card> = { component: Card } as const\nexport default meta\n`,
+    `const meta = ({ component: Card } as Meta)!\nexport default ((meta as Meta)!) satisfies Meta\n`,
+    `const meta = { component: Card }\nexport { meta as default }\n`,
+    `export default { title: 'x', component: Card }\n`,
+    `export default ({ title: 'x', component: Card } satisfies Meta)\n`,
+  ]
+  for (const metaBlock of readable) {
+    const computed = metaRun(metaBlock)
+    assert.deepEqual(computed.manifestProblems, [], metaBlock)
+    assert.deepEqual(creditsOf(computed, 'ZzA'), ['Button|secondary|md|disabled'], metaBlock)
+    assert.deepEqual(creditsOf(computed, 'ZzB'), ['Button|secondary|md|disabled'], metaBlock)
+  }
+})
+
+test('T701 (H1) contrast: an inline default export that carries a clip is still read as clipped', () => {
+  const computed = metaRun(`export default ${CLIP_PARAMETERS}\n`)
+  assert.deepEqual(computed.manifestProblems, [])
+  assert.deepEqual(creditsOf(computed, 'ZzA'), [])
+})
+
+test('T701 (H1): the guessed fallback `findDefaultMetaObject(...) ?? metaObj` is gone, not kept beside the reader', () => {
+  const source = readFileSync(
+    path.join(path.dirname(fileURLToPath(import.meta.url)), 'state-coverage.mjs'),
+    'utf8',
+  )
+  for (const gone of ['findDefaultMetaObject', 'findMeta(', '?? metaObj']) {
+    assert.equal(source.includes(gone), false, `${gone} is still in state-coverage.mjs`)
+  }
+})
+
+// (H2) A binding declared more than once, or with `var` or `let`.
+const REDECLARED_METAS = {
+  'var meta = { clip }; export default meta; var meta = { no clip }': `var meta = ${CLIP_PARAMETERS}\nexport default meta\nvar meta = { component: Card }\n`,
+  'a meta declared twice with const and var': `const meta = { component: Card }\nexport default meta\nvar meta = { component: Card }\n`,
+  'a meta declared as a const and as a function': `const meta = { component: Card }\nexport default meta\nfunction meta() {}\n`,
+  'a meta declared as a const and as a class': `const meta = { component: Card }\nexport default meta\nclass meta {}\n`,
+  'export { meta as default } over a meta declared twice': `var meta = { component: Card }\nvar meta = ${CLIP_PARAMETERS}\nexport { meta as default }\n`,
+}
+for (const [name, metaBlock] of Object.entries(REDECLARED_METAS)) {
+  test(`T701 (H2) plant: ${name} fails the check naming every story and credits no mount`, () => {
+    const computed = metaRun(metaBlock)
+    assert.deepEqual(ofKind(computed, REDECLARED), BOTH_STORIES(REDECLARED))
+    assert.match(
+      computed.manifestProblems.find((p) => p.kind === REDECLARED).detail,
+      /binding `meta` of src\/composites\/Card\/Card\.stories\.tsx is declared 2 times/,
+    )
+    assert.deepEqual(creditsOf(computed, 'ZzA'), [])
+    assert.deepEqual(creditsOf(computed, 'ZzB'), [])
+  })
+}
+
+for (const keyword of ['let', 'var']) {
+  test(`T701 (H2) plant: a meta declared with \`${keyword}\` fails the check naming every story and credits no mount`, () => {
+    const computed = metaRun(`${keyword} meta = { component: Card }\nexport default meta\n`)
+    assert.deepEqual(ofKind(computed, MUTABLE), BOTH_STORIES(MUTABLE))
+    assert.match(
+      computed.manifestProblems.find((p) => p.kind === MUTABLE).detail,
+      new RegExp(
+        `binding \`meta\` of src/composites/Card/Card\\.stories\\.tsx is declared with ${keyword}`,
+      ),
+    )
+    assert.deepEqual(creditsOf(computed, 'ZzA'), [])
+    assert.deepEqual(creditsOf(computed, 'ZzB'), [])
+  })
+}
+
+const REDECLARED_STORIES = {
+  'a story declared twice, export var A … var A': `export var ZzA = { render: () => <Button disabled>Go</Button> }\nvar ZzA = { parameters: { visualCaptureClip: ${CLIP} } }\n`,
+  'a story declared twice, export const A … const A in a later statement': `export const ZzA = { render: () => <Button disabled>Go</Button> }\nexport const ZzA = { parameters: {} }\n`,
+  'a story and a function of the same name': `export const ZzA = { render: () => <Button disabled>Go</Button> }\nfunction ZzA() {}\n`,
+  'a story and a class of the same name': `export const ZzA = { render: () => <Button disabled>Go</Button> }\nclass ZzA {}\n`,
+}
+for (const [name, aStory] of Object.entries(REDECLARED_STORIES)) {
+  test(`T701 (H2) plant: ${name} fails the check naming the story and credits its mounts nothing`, () => {
+    const computed = metaRun(
+      `const meta = { component: Card }\nexport default meta\n`,
+      `${aStory}${DISABLED_BUTTON_STORY('ZzB')}`,
+    )
+    assert.deepEqual(
+      [...new Set(ofKind(computed, REDECLARED).map(String))],
+      [`${REDECLARED},${CARD_STORIES_LOCATION}:ZzA`],
+    )
+    assert.deepEqual(ofKind(computed, MUTABLE), [])
+    assert.deepEqual(creditsOf(computed, 'ZzA'), [])
+    assert.deepEqual(creditsOf(computed, 'ZzB'), ['Button|secondary|md|disabled'])
+  })
+}
+
+test('T701 (H2) plant: a story declared with `let` or `var` fails the check naming it and credits its mounts nothing', () => {
+  for (const keyword of ['let', 'var']) {
+    const computed = metaRun(
+      `const meta = { component: Card }\nexport default meta\n`,
+      `export ${keyword} ZzA = { render: () => <Button disabled>Go</Button> }\n${DISABLED_BUTTON_STORY('ZzB')}`,
+    )
+    assert.deepEqual(
+      ofKind(computed, MUTABLE),
+      [[MUTABLE, `${CARD_STORIES_LOCATION}:ZzA`]],
+      keyword,
+    )
+    assert.match(
+      computed.manifestProblems.find((p) => p.kind === MUTABLE).detail,
+      new RegExp(
+        `binding \`ZzA\` of src/composites/Card/Card\\.stories\\.tsx is declared with ${keyword}`,
+      ),
+    )
+    assert.deepEqual(creditsOf(computed, 'ZzA'), [], keyword)
+    assert.deepEqual(creditsOf(computed, 'ZzB'), ['Button|secondary|md|disabled'], keyword)
+  }
+})
+
+test('T701 (H2) contrast: a name declared once as a const, and a type or interface of the same name, are legal', () => {
+  const computed = metaRun(
+    `const meta = { component: Card }\nexport default meta\ntype ZzA = { x: 1 }\ninterface ZzB { y: 2 }\n`,
+  )
+  assert.deepEqual(computed.manifestProblems, [])
+  assert.deepEqual(creditsOf(computed, 'ZzA'), ['Button|secondary|md|disabled'])
+})
+
+test('T701 (H2) end to end: the check exits 1 on the real tree with the default export declared a second time, naming a story of the file', () => {
+  const run = runCheckOnPlantedTree(`\nvar meta = {}\n`)
+  assert.equal(run.status, 1, run.stdout + run.stderr)
+  assert.match(
+    run.stderr,
+    /binding `meta` of src\/composites\/MatchRow\/MatchRow\.stories\.tsx is declared 2 times/,
+  )
+})
+
+test('T701 (H1) end to end: the check exits 1 on the real tree with a second, call-wrapped default export, naming a story of the file', () => {
+  const run = runCheckOnPlantedTree(`\nexport default Object.assign(meta, {})\n`)
+  assert.equal(run.status, 1, run.stdout + run.stderr)
+  assert.match(
+    run.stderr,
+    /the default export of src\/composites\/MatchRow\/MatchRow\.stories\.tsx is not one this pass can read/,
+  )
+})
+
+// (M1) A glob, whatever its pattern, and an import of a test module, from a non-test module.
+const GLOB_PLANTS = {
+  'the repository idiom, a glob of ../src/**/*.stories.@(ts|tsx) with eager': [
+    '.storybook/preview.tsx',
+    `export const all = import.meta.glob('../src/**/*.stories.@(ts|tsx)', { eager: true })\n`,
+  ],
+  'a brace pattern, ./*.stories.{ts,tsx}': [
+    'src/lib/helper.ts',
+    `export const all = import.meta.glob('./*.stories.{ts,tsx}')\n`,
+  ],
+  'a pattern that names nothing story-like, ./*': [
+    'src/lib/helper.ts',
+    `export const all = import.meta.glob('./*')\n`,
+  ],
+  'an array of patterns': [
+    'src/lib/helper.ts',
+    `export const all = import.meta.glob(['./a/*', '!./b/*'])\n`,
+  ],
+  'a pattern built at run time': [
+    'src/lib/helper.ts',
+    `export const all = (p) => import.meta.glob(p)\n`,
+  ],
+  'import.meta.globEager': [
+    'src/lib/helper.ts',
+    `export const all = import.meta.globEager('./*')\n`,
+  ],
+  "import.meta['glob']": ['src/lib/helper.ts', `export const all = import.meta['glob']('./*')\n`],
+  'import.meta indexed by a key that is not a string literal': [
+    'src/lib/helper.ts',
+    `export const all = (k) => import.meta[k]('./*')\n`,
+  ],
+  'an alias of the function, const g = import.meta.glob': [
+    'src/lib/helper.ts',
+    `const g = import.meta.glob\nexport const all = g('./*')\n`,
+  ],
+}
+for (const [name, [file, text]] of Object.entries(GLOB_PLANTS)) {
+  test(`T701 (M1) plant: ${name} fails the check naming the file`, () => {
+    const computed = importerRun(new Map([[path.join(DS_DIR, file), text]]))
+    assert.deepEqual(ofKind(computed, IMPORTS_STORY), [[IMPORTS_STORY, file]])
+    assert.match(
+      computed.manifestProblems.find((p) => p.kind === IMPORTS_STORY).detail,
+      new RegExp(`${file.replace(/[.]/g, '\\.')} calls import\\.meta\\.glob`),
+    )
+  })
+}
+
+const TEST_IMPORT_PLANTS = {
+  'a static import of ./x.test.tsx': [
+    'src/lib/helper.ts',
+    `import './x.test.tsx'\nexport const x = 1\n`,
+  ],
+  'a named import of a test module without its extension': [
+    'src/lib/helper.ts',
+    `import { x } from './x.test'\n`,
+  ],
+  'a re-export from a test module': [
+    'src/lib/helper.ts',
+    `export { x } from '../composites/Card/Card.test.tsx'\n`,
+  ],
+  'a dynamic import() of a test module': [
+    'src/lib/helper.ts',
+    `export const load = () => import('./x.test.ts')\n`,
+  ],
+  'a require() of a test module': [
+    '.storybook/helper.cjs',
+    `const t = require('../src/x.test.tsx')\n`,
+  ],
+  'a story file importing a test module': [
+    'src/composites/Other/Other.stories.tsx',
+    `import { x } from './Other.test'\n`,
+  ],
+}
+for (const [name, [file, text]] of Object.entries(TEST_IMPORT_PLANTS)) {
+  test(`T701 (M1) plant: ${name} fails the check naming the importer`, () => {
+    const computed = importerRun(new Map([[path.join(DS_DIR, file), text]]))
+    assert.deepEqual(ofKind(computed, IMPORTS_TEST), [[IMPORTS_TEST, file]])
+    assert.match(
+      computed.manifestProblems.find((p) => p.kind === IMPORTS_TEST).detail,
+      new RegExp(`${file.replace(/[.]/g, '\\.')} imports a \\*\\.test\\.\\* module`),
+    )
+  })
+}
+
+test('T701 (M1) contrast: a test file may glob and import test modules, and modules that merely look alike stay legal', () => {
+  const computed = importerRun(
+    new Map([
+      [
+        path.join(DS_DIR, 'src/lib/helper.test.ts'),
+        `import './other.test'\nexport const all = import.meta.glob('./*')\n`,
+      ],
+      [
+        path.join(DS_DIR, 'src/lib/helper.ts'),
+        `import { a } from './test'\nimport { b } from './testing'\nimport { c } from './latest.config'\nimport { d } from './x.test-utils'\nconst g = { glob: 1 }\nexport const e = g.glob\nexport const env = [import.meta.env, import.meta['env'], import.meta.hot]\n`,
+      ],
+    ]),
+  )
+  assert.deepEqual(computed.manifestProblems, [])
+})
+
+test('T701 (M1) end to end: the check exits 1 on the real tree with a glob in the Storybook preview, naming it', () => {
+  const run = runCheckOnPlantedTree(
+    `\nexport const planted = import.meta.glob('../src/**/*.stories.@(ts|tsx)', { eager: true })\n`,
+    ['..', '.storybook', 'preview.tsx'],
+  )
+  assert.equal(run.status, 1, run.stdout + run.stderr)
+  assert.match(run.stderr, /\.storybook\/preview\.tsx calls import\.meta\.glob/)
+})
+
+// (M2) An instantiation expression in a value position is a reference; a type query stays a type.
+test('T701 (M2) plant: `ZzA<0>` and `Object.assign(ZzA<0>, …)` are references to the story, naming it and crediting it nothing', () => {
+  for (const tail of [
+    `ZzA<0>\n`,
+    `// @ts-expect-error\nObject.assign(ZzA<0>, { parameters: {} })\n`,
+    `const alias = ZzA<0>\n`,
+  ]) {
+    const computed = afterDeclaration(tail)
+    assert.deepEqual(problemsOf(computed), ZZA_ONLY, tail)
+    assert.deepEqual(creditsOf(computed, 'ZzA'), [], tail)
+    assert.deepEqual(creditsOf(computed, 'ZzB'), ['Button|secondary|md|disabled'], tail)
+  }
+})
+
+test('T701 (M2) plant: `Object.assign(meta<0>, …)` names every story of the file and credits none', () => {
+  const computed = afterDeclaration(
+    `// @ts-expect-error\nObject.assign(meta<0>, { parameters: { visualCaptureClip: ${CLIP} } })\n`,
+  )
+  assert.deepEqual(problemsOf(computed), ZZA_AND_ZZB)
+  assert.deepEqual(creditsOf(computed, 'ZzA'), [])
+  assert.deepEqual(creditsOf(computed, 'ZzB'), [])
+})
+
+test('T701 (M2) contrast: a type query with type arguments, a heritage clause that names nothing story-related and an implements clause are not references', () => {
+  const stories = TWO_STORIES
+  const quiet =
+    `type Rows = Array<{ id: string }>\ntype Q = typeof ZzA<0>\ntype M = typeof meta<0>\n` +
+    `class Base<T> {}\nclass X extends Base<Rows> {}\ninterface Shape<T> {}\nclass Y implements Shape<Rows> {}\n` +
+    `interface Z extends Shape<Rows> {}\n`
+  const computed = cardRun({
+    source: `${T701_HEADER}const meta: Meta<typeof Card<Row>> = { component: Card }\nexport default meta\n${stories}${quiet}`,
+    manifest: bothDisabledMounts,
+  })
+  assert.deepEqual(computed.manifestProblems, [])
+  assert.deepEqual(creditsOf(computed, 'ZzA'), ['Button|secondary|md|disabled'])
+})
+
+test('T701 (M2) plant: a class that extends the story with type arguments is still a reference', () => {
+  const computed = afterDeclaration(`class Derived extends ZzA<0> {}\n`)
+  assert.deepEqual(problemsOf(computed), ZZA_ONLY)
 })
 
 // (b) A forced or focused element no source file stamped is placed by no tracked primitive: the

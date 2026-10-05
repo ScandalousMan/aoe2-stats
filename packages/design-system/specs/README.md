@@ -1752,16 +1752,37 @@ hover:underline-offset-2` beside `active:underline-offset-4`, `src/screens/DataE
      `export { X }`). Any other identifier reference to either, anywhere in the file, fails the run
      naming the story and gives it no mount credit: a read or a write, at any depth, inside a function
      or the story's own initializer, as an argument, an alias, a destructuring or `for…of` target, a
-     spread, a shorthand property or a JSX tag. A reference to the default export's binding names every
-     story of the file, and a default export reached through an alias (`const m2 = meta`) fails at the
-     alias. A reference is found by identifier, not by text: a property name (`obj.X`, `{ X: … }`, a
-     JSX attribute name, a destructuring key), an import's own name and anything inside a type
-     (`typeof meta`) are not references; a local of the same name in a nested scope is read as one,
-     which over-refuses and never over-credits. A module under `src` or `.storybook` other than a
-     `*.test.*` file that imports a `*.stories` module fails the run naming the importing file: a static
-     `import` (type-only included), `export … from`, `import x = require()`, a dynamic `import()` or an
-     `import()` type, a `require()` and an `import.meta.glob()` pattern, each with a literal, a
-     templated or a `+`-joined specifier. Not covered: a specifier built wholly at run time
+     spread, a shorthand property, a JSX tag or an instantiation expression in a value position
+     (`meta<0>`, which evaluates `meta`). A reference to the default export's binding names every story
+     of the file. A reference is found by identifier, not by text: a property name (`obj.X`,
+     `{ X: … }`, a JSX attribute name, a destructuring key), an import's own name and anything inside a
+     type (`typeof meta`, `typeof Table<MatchRow>`, an `implements` clause) are not references; a
+     local of the same name in a nested scope is read as one, which over-refuses and never
+     over-credits.
+   - **The default export is read in one shape only** (T701): `export default <identifier>` or
+     `export { <identifier> as default }`, with `!`, `as`, `satisfies` and parentheses stripped in any
+     nesting, naming a top-level binding that is declared once, with `const`, and initialised with an
+     object literal (stripped the same way); or an inline `export default { … }`. Any other default
+     export (a call, a conditional, a comma expression, an instantiation expression, an alias of
+     another binding, a function or class, an imported binding, a re-export, a file with none or with
+     two) fails the run with `unreadable-default-export`, naming every story of the file, and gives
+     each no mount credit. No tag, parameter, clip, `component` or `args` is read from any other
+     object: there is no fallback to the first object in the file that carries a `component`.
+   - **A story's binding, and the binding the default export names, is declared once, with `const`**
+     (T701). A name declared more than once at the top level, in any mix of `var`, `let`, `const`, a
+     function, a class, an enum, a namespace or an import, fails the run with `redeclared-binding`; one
+     declared with `var` or `let` fails it with `mutable-binding`. Each names the story, and names every
+     story of the file when the binding is the default export's, which gives it no mount credit.
+   - **A module under `src` or `.storybook` other than a `*.test.*` file** fails the run naming the
+     importing file when it imports a `*.stories` module (`imports-story-module`): a static `import`
+     (type-only included), `export … from`, `import x = require()`, a dynamic `import()` or an
+     `import()` type and a `require()`, each with a literal, a templated or a `+`-joined specifier;
+     when it uses `import.meta.glob` or `import.meta.globEager` (`imports-story-module`), whatever the
+     pattern, written as a call, aliased (`const g = import.meta.glob`) or reached as
+     `import.meta['glob']` or by indexing `import.meta` with a key that is not a string literal
+     (`import.meta.env` stays legal); and when it imports a `*.test.*` module
+     (`imports-test-module`), by any of the specifier forms above, since a test module is not read
+     here. A `*.test.*` file may do all three. Not covered: a specifier built wholly at run time
      (`import(name)`), code in a string (`eval`, `new Function`), and an importer outside `src` and
      `.storybook`.
    - **A manifest entry's shape is checked** before anything is read from it: every width's record is
