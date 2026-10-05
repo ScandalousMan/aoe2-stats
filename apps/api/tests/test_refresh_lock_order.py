@@ -86,6 +86,7 @@ from aoe2stats_providers.base import (
     RawMatch,
     RawProfile,
 )
+from aoe2stats_providers.relic.matches import RecentHistory
 from aoe2stats_storage.models import (
     AoeProfile,
     Match,
@@ -250,6 +251,9 @@ class _FakeRelic:
 
     async def recent_profiles(self, profile_ids: Sequence[int]) -> list[RawProfile]:
         return list(self._block)
+
+    async def recent_matches_and_profiles(self, profile_ids: Sequence[int]) -> RecentHistory:
+        return RecentHistory(matches=list(self._matches), profiles=list(self._block))
 
 
 class _NoStandings:
@@ -911,6 +915,10 @@ class _RecordingRelic(_FakeRelic):
     async def recent_profiles(self, profile_ids: Sequence[int]) -> list[RawProfile]:
         self.calls_after_writes.append(self._recorder.count())
         return await super().recent_profiles(profile_ids)
+
+    async def recent_matches_and_profiles(self, profile_ids: Sequence[int]) -> RecentHistory:
+        self.calls_after_writes.append(self._recorder.count())
+        return await super().recent_matches_and_profiles(profile_ids)
 
 
 _STORED_OLD_GAMES = (860_000_011, 860_000_012)

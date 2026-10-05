@@ -59,7 +59,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from aoe2stats_api import security
 from aoe2stats_api.settings import get_settings
-from aoe2stats_storage.models import AoeProfile, Match, RatingSnapshot, User
+from aoe2stats_storage.models import AoeProfile, Match, MatchPlayer, RatingSnapshot, User
 from aoe2stats_storage.models import Session as UserSession
 
 pytestmark = [pytest.mark.usefixtures("environment")]
@@ -1198,3 +1198,156 @@ async def test_ratings_persist_even_when_no_alias_is_established_this_call(
     assert stored is not None, (
         "ratings must persist independent of the alias/avatar steps' own outcome this call"
     )
+
+
+# --- T459c: one `getRecentMatchHistory` request per matches view ----------------------------------
+
+_ONE_CALL_SUBJECT_PROFILE_ID = 901_302_100
+_ONE_CALL_OPPONENT_PROFILE_ID = 901_302_200
+_ONE_CALL_GAME_ID = 850_302_111
+_STORED_GAME_ID = 850_302_222
+
+
+def _relic_only_upstream(monkeypatch: pytest.MonkeyPatch, handler: Any) -> list[httpx.Request]:
+    """Intercepts `httpx.AsyncClient.send` and returns the list every Relic request is appended
+    to. Companion is degraded (`403`) the way every other test in this file degrades it; any other
+    host fails the test."""
+    seen: list[httpx.Request] = []
+
+    async def fake_send(
+        self: httpx.AsyncClient, request: httpx.Request, **kwargs: object
+    ) -> httpx.Response:
+        if request.url.host == _COMPANION_HOST:
+            return httpx.Response(403, request=request)
+        if request.url.host != _RELIC_HOST:
+            raise AssertionError(f"unexpected outbound request to {request.url}")
+        seen.append(request)
+        return handler(request)
+
+    monkeypatch.setattr(httpx.AsyncClient, "send", fake_send)
+    return seen
+
+
+async def test_a_matches_view_issues_one_recent_match_history_request(
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """T459c: `GET /api/players/{profile_id}/matches` reads the matches and the identity block off
+    one `getRecentMatchHistory` response. Counted at the `httpx.AsyncClient.send` seam, so the
+    count is what reaches Relic whichever provider method asked. The persisted outcome is asserted
+    too: both halves of that one response were used, the match and the identity block.
+    """
+    caller = await _seed_user(db_session)
+    await _sign_in(client, db_session, caller)
+    await _seed_profile(
+        db_session,
+        profile_id=_ONE_CALL_SUBJECT_PROFILE_ID,
+        alias=str(_ONE_CALL_SUBJECT_PROFILE_ID),
+    )
+
+    entry = _target_match_history_entry()
+    entry["id"] = _ONE_CALL_GAME_ID
+    for member, profile_id in zip(
+        entry["matchhistorymember"],
+        (_ONE_CALL_SUBJECT_PROFILE_ID, _ONE_CALL_OPPONENT_PROFILE_ID),
+        strict=True,
+    ):
+        member["profile_id"] = profile_id
+    body = {
+        "matchHistoryStats": [entry],
+        "profiles": [
+            _identity_entry(
+                profile_id=_ONE_CALL_SUBJECT_PROFILE_ID, alias="OneCallSubject", country="FR"
+            ),
+            _identity_entry(
+                profile_id=_ONE_CALL_OPPONENT_PROFILE_ID, alias="OneCallOpponent", country="DE"
+            ),
+        ],
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if _PERSONAL_STAT_PATH in request.url.path:
+            return httpx.Response(200, json=_RELIC_PERSONAL_STAT_UNREGISTERED, request=request)
+        return httpx.Response(200, json=body, request=request)
+
+    relic_requests = _relic_only_upstream(monkeypatch, handler)
+
+    response = client.get(f"/api/players/{_ONE_CALL_SUBJECT_PROFILE_ID}/matches")
+    assert response.status_code == 200, f"Got {response.status_code}: {response.text}"
+
+    history_requests = [
+        request for request in relic_requests if _RECENT_MATCH_HISTORY_PATH in request.url.path
+    ]
+    assert len(history_requests) == 1, (
+        "the matches route must issue exactly one getRecentMatchHistory request per view. "
+        f"Got {len(history_requests)}"
+    )
+
+    assert [row["game_id"] for row in response.json()["matches"]] == [_ONE_CALL_GAME_ID]
+    subject = await db_session.get(AoeProfile, _ONE_CALL_SUBJECT_PROFILE_ID)
+    opponent = await db_session.get(AoeProfile, _ONE_CALL_OPPONENT_PROFILE_ID)
+    assert subject is not None and subject.alias == "OneCallSubject"
+    assert opponent is not None and opponent.alias == "OneCallOpponent"
+
+
+async def test_a_failing_history_request_leaves_the_matches_view_answering_from_storage(
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """T459c, FR-017: with one request carrying both the matches and the identity block, a failing
+    request makes both unavailable, and the route answers `200` from what is stored — the stored
+    match is served and the stored alias is left as it was."""
+    caller = await _seed_user(db_session)
+    await _sign_in(client, db_session, caller)
+    await _seed_profile(
+        db_session,
+        profile_id=_ONE_CALL_SUBJECT_PROFILE_ID,
+        alias="StoredSubjectAlias",
+        country="ES",
+    )
+    await _seed_profile(
+        db_session, profile_id=_ONE_CALL_OPPONENT_PROFILE_ID, alias="StoredOpponentAlias"
+    )
+    db_session.add(
+        Match(
+            game_id=_STORED_GAME_ID,
+            leaderboard_id=3,
+            map_name="Arabia",
+            started_at=_MATCH_STARTED_AT,
+            completed_at=_MATCH_COMPLETED_AT,
+            duration_seconds=1800,
+            source="relic",
+            raw_payload={"id": _STORED_GAME_ID},
+        )
+    )
+    await db_session.flush()
+    for profile_id, team_id, result in (
+        (_ONE_CALL_SUBJECT_PROFILE_ID, 1, "win"),
+        (_ONE_CALL_OPPONENT_PROFILE_ID, 2, "loss"),
+    ):
+        db_session.add(
+            MatchPlayer(
+                game_id=_STORED_GAME_ID,
+                profile_id=profile_id,
+                team_id=team_id,
+                civ_id=5,
+                result=result,
+            )
+        )
+    await db_session.commit()
+
+    relic_requests = _relic_only_upstream(
+        monkeypatch, lambda request: httpx.Response(503, request=request)
+    )
+
+    response = client.get(f"/api/players/{_ONE_CALL_SUBJECT_PROFILE_ID}/matches")
+    assert response.status_code == 200, (
+        f"a failing Relic source must never fail the view (FR-017). Got {response.status_code}: "
+        f"{response.text}"
+    )
+    assert [row["game_id"] for row in response.json()["matches"]] == [_STORED_GAME_ID]
+    assert any(_RECENT_MATCH_HISTORY_PATH in request.url.path for request in relic_requests)
+
+    subject = await db_session.get(AoeProfile, _ONE_CALL_SUBJECT_PROFILE_ID)
+    assert subject is not None
+    await db_session.refresh(subject)
+    assert subject.alias == "StoredSubjectAlias"
+    assert subject.country == "ES"

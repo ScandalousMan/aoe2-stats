@@ -58,6 +58,7 @@ from __future__ import annotations
 import json
 import time
 from collections.abc import Iterator, Mapping, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
@@ -84,6 +85,15 @@ MATCH_HISTORY_BATCH_SIZE = 10
 # for why a suffixed endpoint, rather than a new field, is what makes a skip countable here.
 _SKIPPED_UNFINISHED_MATCH_ENDPOINT = "getRecentMatchHistory#skipped_unfinished_match"
 _SKIPPED_MALFORMED_ENTRY_ENDPOINT = "getRecentMatchHistory#skipped_malformed_entry"
+
+
+@dataclass(frozen=True)
+class RecentHistory:
+    """What one `getRecentMatchHistory` response carries for a set of profiles: the finished,
+    well-formed matches and the `profiles[]` identity block (`recent_matches_and_profiles`)."""
+
+    matches: list[RawMatch]
+    profiles: list[RawProfile]
 
 
 def _chunk(items: Sequence[int], size: int) -> Iterator[Sequence[int]]:
@@ -155,70 +165,14 @@ class RelicMatchHistoryProvider(AsyncBaseProvider):
         matches: list[RawMatch] = []
         for batch in _chunk(profile_ids, MATCH_HISTORY_BATCH_SIZE):
             body = await self._get_recent_match_history({"profile_ids": json.dumps(list(batch))})
-
-            for entry in body.get("matchHistoryStats", []):
-                completed_at = _completed_at(entry)
-                if completed_at is None:
-                    # T050a: an unfinished match (module docstring) — expected traffic, not
-                    # malformed data. Checked ahead of `parse_strict` so it never reaches, and is
-                    # never counted as, a contract violation.
-                    await self._record(
-                        _SKIPPED_UNFINISHED_MATCH_ENDPOINT,
-                        None,
-                        time.monotonic(),
-                        rate_limited=False,
-                    )
-                    continue
-
-                player_profile_ids = tuple(
-                    member.get("profile_id") for member in entry.get("matchhistorymember", [])
-                )
-                started_at = _epoch_seconds_to_datetime(entry.get("startgametime"))
-                duration_seconds = (
-                    entry.get("completiontime") - entry.get("startgametime")
-                    if entry.get("startgametime") is not None
-                    else None
-                )
-                fields = {
-                    "game_id": entry.get("id"),
-                    "leaderboard_id": entry.get("matchtype_id"),
-                    "map_name": entry.get("mapname"),
-                    "patch": entry.get("patch"),
-                    "started_at": started_at,
-                    "completed_at": completed_at,
-                    "duration_seconds": duration_seconds,
-                    "player_profile_ids": player_profile_ids,
-                    "raw_payload": entry,
-                }
-                try:
-                    matches.append(
-                        parse_strict(
-                            RawMatch,
-                            fields,
-                            provider=self._provider,
-                            endpoint="getRecentMatchHistory",
-                        )
-                    )
-                except ProviderContractViolation:
-                    # T050a: one malformed entry does not throw away the rest of the batch — the
-                    # same shape as `CompanionEnrichmentProvider._parse_matches`, applied to the
-                    # provider that can least afford a bare loop (module docstring).
-                    await self._record(
-                        _SKIPPED_MALFORMED_ENTRY_ENDPOINT,
-                        None,
-                        time.monotonic(),
-                        rate_limited=False,
-                    )
-                    continue
+            matches.extend(await self._matches_from_body(body))
         return matches
 
     async def recent_profiles(self, profile_ids: Sequence[int]) -> list[RawProfile]:
         """T451: the `profiles[]` identity block riding alongside `getRecentMatchHistory`'s
         `matchHistoryStats`, which `recent_matches` never reads. An additive sibling method rather
-        than a widened `recent_matches` return — `recent_matches` already has callers outside this
-        module's reach (`discover.py`, `reconcile.py`, `players.py`), so its `list[RawMatch]`
-        return stays exactly as it is; a caller after both this profile's matches and its identity
-        makes the two calls it now takes.
+        than a widened `recent_matches` return, so `recent_matches` keeps its `list[RawMatch]`
+        return; `recent_matches_and_profiles` returns both from one request.
 
         Splits more than `MATCH_HISTORY_BATCH_SIZE` profiles across multiple calls, matching
         `recent_matches`. A response with no `profiles[]` key — an older or degraded shape, not a
@@ -230,26 +184,107 @@ class RelicMatchHistoryProvider(AsyncBaseProvider):
         profiles: list[RawProfile] = []
         for batch in _chunk(profile_ids, MATCH_HISTORY_BATCH_SIZE):
             body = await self._get_recent_match_history({"profile_ids": json.dumps(list(batch))})
+            profiles.extend(self._profiles_from_body(body))
+        return profiles
 
-            for entry in body.get("profiles", []):
-                fields = {
-                    "profile_id": entry.get("profile_id"),
-                    "alias": entry.get("alias"),
-                    "country": entry.get("country"),
-                }
-                try:
-                    profiles.append(
-                        parse_strict(
-                            RawProfile,
-                            fields,
-                            provider=self._provider,
-                            endpoint="getRecentMatchHistory",
-                        )
+    async def recent_matches_and_profiles(self, profile_ids: Sequence[int]) -> RecentHistory:
+        """T459c: `recent_matches` and `recent_profiles` from one `getRecentMatchHistory` request
+        per batch of at most `MATCH_HISTORY_BATCH_SIZE` profiles. The matches and the identity
+        block are read off the same response body with the same parsing and the same entry-level
+        skips as the two methods above, so for one response the two lists equal what each of them
+        returns. One request means one rate-limiter token and one `provider_calls` row for it;
+        a failure of that request raises, and neither list is available.
+        """
+        matches: list[RawMatch] = []
+        profiles: list[RawProfile] = []
+        for batch in _chunk(profile_ids, MATCH_HISTORY_BATCH_SIZE):
+            body = await self._get_recent_match_history({"profile_ids": json.dumps(list(batch))})
+            matches.extend(await self._matches_from_body(body))
+            profiles.extend(self._profiles_from_body(body))
+        return RecentHistory(matches=matches, profiles=profiles)
+
+    async def _matches_from_body(self, body: Mapping[str, Any]) -> list[RawMatch]:
+        """The `RawMatch` entries of one `getRecentMatchHistory` response body, with the T050a
+        skips (an unfinished or malformed entry is recorded and left out)."""
+        matches: list[RawMatch] = []
+        for entry in body.get("matchHistoryStats", []):
+            completed_at = _completed_at(entry)
+            if completed_at is None:
+                # T050a: an unfinished match (module docstring) — expected traffic, not
+                # malformed data. Checked ahead of `parse_strict` so it never reaches, and is
+                # never counted as, a contract violation.
+                await self._record(
+                    _SKIPPED_UNFINISHED_MATCH_ENDPOINT,
+                    None,
+                    time.monotonic(),
+                    rate_limited=False,
+                )
+                continue
+
+            player_profile_ids = tuple(
+                member.get("profile_id") for member in entry.get("matchhistorymember", [])
+            )
+            started_at = _epoch_seconds_to_datetime(entry.get("startgametime"))
+            duration_seconds = (
+                entry.get("completiontime") - entry.get("startgametime")
+                if entry.get("startgametime") is not None
+                else None
+            )
+            fields = {
+                "game_id": entry.get("id"),
+                "leaderboard_id": entry.get("matchtype_id"),
+                "map_name": entry.get("mapname"),
+                "patch": entry.get("patch"),
+                "started_at": started_at,
+                "completed_at": completed_at,
+                "duration_seconds": duration_seconds,
+                "player_profile_ids": player_profile_ids,
+                "raw_payload": entry,
+            }
+            try:
+                matches.append(
+                    parse_strict(
+                        RawMatch,
+                        fields,
+                        provider=self._provider,
+                        endpoint="getRecentMatchHistory",
                     )
-                except ProviderContractViolation:
-                    # Same shape as `recent_matches`'s malformed-entry skip (T050a): one
-                    # unreadable identity entry does not cost the rest of the batch.
-                    continue
+                )
+            except ProviderContractViolation:
+                # T050a: one malformed entry does not throw away the rest of the batch — the
+                # same shape as `CompanionEnrichmentProvider._parse_matches`, applied to the
+                # provider that can least afford a bare loop (module docstring).
+                await self._record(
+                    _SKIPPED_MALFORMED_ENTRY_ENDPOINT,
+                    None,
+                    time.monotonic(),
+                    rate_limited=False,
+                )
+                continue
+        return matches
+
+    def _profiles_from_body(self, body: Mapping[str, Any]) -> list[RawProfile]:
+        """The `RawProfile` entries of one `getRecentMatchHistory` response body's `profiles[]`."""
+        profiles: list[RawProfile] = []
+        for entry in body.get("profiles", []):
+            fields = {
+                "profile_id": entry.get("profile_id"),
+                "alias": entry.get("alias"),
+                "country": entry.get("country"),
+            }
+            try:
+                profiles.append(
+                    parse_strict(
+                        RawProfile,
+                        fields,
+                        provider=self._provider,
+                        endpoint="getRecentMatchHistory",
+                    )
+                )
+            except ProviderContractViolation:
+                # Same shape as the malformed-entry skip in `_matches_from_body` (T050a): one
+                # unreadable identity entry does not cost the rest of the batch.
+                continue
         return profiles
 
     async def _get_recent_match_history(self, extra_params: Mapping[str, Any]) -> dict[str, Any]:
