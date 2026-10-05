@@ -18,10 +18,12 @@ not consent: a linked profile whose user has not answered any question is ingest
 archival included. `_linked_profile_ids()` is the *only* place this module decides whose profiles
 exist for a cycle's discovery and rating refresh — every profile with `profile_links.unlinked_at
 IS NULL`, no other condition. `_archiving_profile_ids()` narrows that same set by one more
-condition, `users.archival_objected_at IS NOT NULL` excluded, and it is consulted nowhere but the
-capture-enqueue membership test in `__call__`'s participant loop: a linked user's Art. 21 objection
-stops further capture of their own recordings and nothing upstream of it — their matches are still
-discovered and their ratings are still refreshed on every cycle, exactly as an unobjected user's
+condition, `users.archival_objected_at IS NOT NULL` excluded (`archiving_links()` is that one
+definition). `_archiving_profile_ids()` is consulted nowhere but the capture-enqueue membership
+test in `__call__`'s participant loop, and `_enqueue_capture`'s own `INSERT` asks
+`archiving_links()` again for its one profile: a linked user's Art. 21 objection stops further
+capture of their own recordings and nothing upstream of it — their matches are still discovered and
+their ratings are still refreshed on every cycle, exactly as an unobjected user's
 are. Collapsing "objected" into "unlinked" — dropping discovery or the rating refresh for an
 objecting user — reinstates the retired opt-in gate under `archival_objected_at`'s name; that is
 the fault this split exists to prevent, not merely a stricter query. `unlinked_at IS NOT NULL`
@@ -84,12 +86,14 @@ from typing import Any
 
 from sqlalchemy import (
     BigInteger,
+    Select,
     SmallInteger,
     Text,
     case,
     cast,
     column,
     func,
+    literal,
     select,
     text,
     tuple_,
@@ -518,6 +522,20 @@ async def savepoint_tolerating_lock_conflicts(session: AsyncSession) -> AsyncIte
             raise
 
 
+def archiving_links() -> Select[tuple[int]]:
+    """The `profile_id` of every link whose recordings may be captured: active
+    (`profile_links.unlinked_at IS NULL`) and held by a user who has not objected
+    (`users.archival_objected_at IS NULL`). The one definition of "archiving" in this module:
+    `DiscoverStage._archiving_profile_ids` reads the set from it, and `_enqueue_capture` asks the
+    same question about one profile inside its own `INSERT`."""
+    return (
+        select(ProfileLink.profile_id)
+        .join(User, User.id == ProfileLink.user_id)
+        .where(ProfileLink.unlinked_at.is_(None))
+        .where(User.archival_objected_at.is_(None))
+    )
+
+
 class DiscoverStage:
     """A `Stage` (`aoe2stats_ingester.run.Stage`): ratings refresh, match discovery, upsert and
     capture enqueue, over every linked user's every linked profile.
@@ -612,14 +630,7 @@ class DiscoverStage:
         different conditions on two different queries here, never one collapsed into the other.
         """
         async with self._session_factory() as session:
-            statement = (
-                select(ProfileLink.profile_id)
-                .join(User, User.id == ProfileLink.user_id)
-                .where(ProfileLink.unlinked_at.is_(None))
-                .where(User.archival_objected_at.is_(None))
-                .distinct()
-            )
-            result = await session.execute(statement)
+            result = await session.execute(archiving_links().distinct())
             return [row[0] for row in result.all()]
 
     async def _refresh_ratings(self, profile_ids: Sequence[int]) -> int:
@@ -665,16 +676,25 @@ class DiscoverStage:
         or simply the same match rediscovered — reports no row and this returns `False`, leaving
         whatever the row already carries (its `status`, its already-computed `capture_deadline_at`)
         untouched.
+
+        **The `INSERT` re-checks the link (T459g, FR-037).** It is `INSERT ... SELECT ... WHERE
+        EXISTS (archiving_links() for this profile)`, so a profile whose link was deleted by an
+        erasure, unlinked, or objected after `__call__` read the archiving set enqueues nothing
+        and this returns `False`. The set `__call__` read is not what decides.
         """
         deadline = raw_match.completed_at + timedelta(days=self._capture_budget_days)
+        still_archiving = archiving_links().where(ProfileLink.profile_id == profile_id).exists()
         statement = (
             pg_insert(ReplayCapture)
-            .values(
-                game_id=raw_match.game_id,
-                profile_id=profile_id,
-                status=CaptureStatus.PENDING,
-                capture_deadline_at=deadline,
-                source=CaptureSource.AUTOMATIC,
+            .from_select(
+                ["game_id", "profile_id", "status", "capture_deadline_at", "source"],
+                select(
+                    literal(raw_match.game_id, ReplayCapture.game_id.type),
+                    literal(profile_id, ReplayCapture.profile_id.type),
+                    literal(CaptureStatus.PENDING, ReplayCapture.status.type),
+                    literal(deadline, ReplayCapture.capture_deadline_at.type),
+                    literal(CaptureSource.AUTOMATIC, ReplayCapture.source.type),
+                ).where(still_archiving),
             )
             .on_conflict_do_nothing(
                 index_elements=[ReplayCapture.game_id, ReplayCapture.profile_id]

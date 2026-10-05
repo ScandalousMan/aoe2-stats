@@ -75,7 +75,7 @@ from typing import Any, ClassVar
 
 import httpx
 import pytest
-from sqlalchemy import event, select, text, update
+from sqlalchemy import delete, event, select, text, update
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
@@ -100,6 +100,8 @@ from aoe2stats_providers.base import (
 from aoe2stats_providers.relic.matches import RecentHistory
 from aoe2stats_storage.models import (
     AoeProfile,
+    CaptureSource,
+    CaptureStatus,
     DataRequest,
     DataRequestKind,
     Match,
@@ -684,11 +686,12 @@ async def test_match_detail_identity_refresh_touches_in_profile_id_order(
 
 # --- T459a: the companion colour write ----------------------------------------------------------
 
-_RANK = {"matches": 1, "aoe_profiles": 2, "match_players": 3}
+_RANK = {"matches": 1, "aoe_profiles": 2, "match_players": 3, "replay_captures": 4}
 _KEY_COLUMNS = {
     "matches": ("game_id",),
     "aoe_profiles": ("profile_id",),
     "match_players": ("game_id", "profile_id"),
+    "replay_captures": ("game_id", "profile_id"),
 }
 _BOUND = re.compile(r"%\((\w+)\)s")
 #: Bound parameters are rewritten to `<<name>>` before parsing so their own parentheses never read
@@ -710,8 +713,9 @@ class _LockRecorder:
     """Every row-locking statement each database connection sends while it is installed, read off
     the SQL that reaches the driver (`before_cursor_execute`), so a writer cannot hide behind the
     ORM or behind a helper: `INSERT`, `UPDATE`, `DELETE` and `SELECT ... FOR UPDATE` against the
-    three ranked tables, with the key of every row each one carries — multi-row `VALUES` lists and
-    `IN (...)` lists included. An `executemany` is recorded once per parameter set, in order.
+    four ranked tables (`_RANK`), with the key of every row each one carries — multi-row `VALUES`
+    lists, `INSERT ... SELECT` and `IN (...)` lists included. An `executemany` is recorded once per
+    parameter set, in order.
 
     An `INSERT ... VALUES`, `UPDATE` or `DELETE` against a ranked table whose keys this class
     cannot read **fails the test** instead of being skipped. Other statement shapes may go
@@ -722,10 +726,14 @@ class _LockRecorder:
     ascending key order. Any other statement that locks several rows (`UPDATE ...
     FROM (VALUES ...)`, a `SELECT ... FOR UPDATE` without that `ORDER BY`) locks them in a join or
     scan order Postgres chooses: it is recorded as **unordered**, and is a violation unless every
-    key it touches is already held earlier in the transaction. Tables outside the three
-    (`provider_calls`, `rating_snapshots`, `replay_captures`) are recorded but never ranked: they
-    hold only rows this transaction inserts, or reference the ranked rows by a foreign key that
-    takes a non-conflicting lock.
+    key it touches is already held earlier in the transaction.
+
+    A statement that names only `profile_id` of a two-column key by `IN (...)` carries no key the
+    SQL can show. A `SELECT ... FOR UPDATE` of that shape with `ORDER BY <both key columns>` is
+    recorded as one ordered lock at its table's rank with an empty key (the rows are whichever
+    match, in key order); an `UPDATE` or `DELETE` of that shape is credited only after such a lock
+    on the same connection and is otherwise **unordered**. Tables outside the four
+    (`provider_calls`, `rating_snapshots`) are never ranked.
     """
 
     engine: AsyncEngine
@@ -761,8 +769,19 @@ class _LockRecorder:
         insert = re.match(
             r"INSERT INTO (\w+) \(([^)]*)\) VALUES (.*?)(?: ON CONFLICT| RETURNING|$)", sql
         )
+        insert_select = re.match(
+            r"INSERT INTO (\w+) \(([^)]*)\) SELECT (.*?) (?:WHERE|ON CONFLICT|RETURNING|$)", sql
+        )
         update = re.match(r"(?:UPDATE|DELETE FROM) (\w+)\b", sql)
         select = re.match(r"SELECT .* FROM (\w+)\b.* FOR (?:NO KEY )?UPDATE", sql)
+        if insert_select:
+            table = insert_select.group(1)
+            if table not in _RANK:
+                return None
+            columns = [column.strip() for column in insert_select.group(2).split(",")]
+            positions = [columns.index(column) for column in _KEY_COLUMNS[table]]
+            row = re.split(r", (?=<<)", insert_select.group(3))
+            return table, [tuple(self._value(row[i], parameters) for i in positions)], False
         if insert:
             table = insert.group(1)
             if table not in _RANK:
@@ -836,6 +855,24 @@ class _LockRecorder:
             return None
         return table, _KEY_COLUMNS[table].index(named[0]), int(parameters[equalities[named[0]]])
 
+    @staticmethod
+    def _partial_in(sql: str) -> tuple[str, bool] | None:
+        """`(table, locks)` for a statement against a two-column-key ranked table whose `WHERE`
+        names one key column by `IN (...)`, else `None`. `locks` is true for a `SELECT ... FOR
+        UPDATE` whose `ORDER BY` is the whole key, the only shape that takes its rows in key
+        order."""
+        found = re.match(r"(?:UPDATE|DELETE FROM) (\w+)\b", sql) or re.match(
+            r"SELECT .*? FROM (\w+)\b.* FOR (?:NO KEY )?UPDATE", sql
+        )
+        if found is None or found.group(1) not in _RANK or "FROM (VALUES" in sql:
+            return None
+        table = found.group(1)
+        key = _KEY_COLUMNS[table]
+        if len(key) == 1 or not any(re.search(rf"{table}\.{c} IN \(<<", sql) for c in key):
+            return None
+        ordered = " ORDER BY " + ", ".join(f"{table}.{c}" for c in key) + " FOR "
+        return table, sql.startswith("SELECT") and ordered in sql
+
     def _record(
         self, conn: Any, cursor: Any, statement: str, parameters: Any, context: Any, many: bool
     ) -> None:
@@ -851,6 +888,26 @@ class _LockRecorder:
             self.executemany_statements += bool(parameter_sets)
         for parameter_set in parameter_sets:
             parameter_dict = parameter_set if isinstance(parameter_set, dict) else {}
+            partial = self._partial_in(sql)
+            if partial is not None:
+                table, takes_ordered_lock = partial
+                driver = conn.connection.driver_connection
+                if not hasattr(driver, "_lock_recorder_id"):
+                    driver._lock_recorder_id = next(self._ids)  # type: ignore[arg-type]
+                locks = self.by_connection.setdefault(driver._lock_recorder_id, [])
+                is_select = sql.startswith("SELECT")
+                held = any(
+                    lock.table == table and lock.key == () and not lock.unordered for lock in locks
+                )
+                locks.append(
+                    _RowLock(
+                        table,
+                        (),
+                        sql,
+                        unordered=not (takes_ordered_lock or (not is_select and held)),
+                    )
+                )
+                continue
             predicate = self._predicate(sql, parameter_dict)
             found = None if predicate is not None else self._keys(sql, parameter_dict)
             if predicate is None and found is None:
@@ -1530,7 +1587,34 @@ async def test_recorder_reports_a_key_rewrite_with_no_lock_pass_before_it(
     assert recorder.violations()
 
 
-class _PseudonymisationRace:
+class _Rendezvous:
+    """Parks a session until a peer reaches a point or Postgres reports a lock wait, so a race is
+    formed from conditions and never from durations."""
+
+    def __init__(self, engine: AsyncEngine) -> None:
+        self._engine = engine
+
+    async def _park_until(self, reached: asyncio.Event) -> None:
+        deadline = asyncio.get_running_loop().time() + _RENDEZVOUS_GUARD_SECONDS
+        while not reached.is_set():
+            if await self._someone_is_waiting_on_a_lock():
+                return
+            if asyncio.get_running_loop().time() > deadline:
+                raise AssertionError("the peer never arrived and nothing is lock-blocked")
+            await asyncio.sleep(0.01)
+
+    async def _someone_is_waiting_on_a_lock(self) -> bool:
+        async with self._engine.connect() as connection:
+            waiting = await connection.execute(
+                text(
+                    "SELECT count(*) FROM pg_stat_activity "
+                    "WHERE datname = current_database() AND wait_event_type = 'Lock'"
+                )
+            )
+            return bool(waiting.scalar_one())
+
+
+class _PseudonymisationRace(_Rendezvous):
     """The interleave that deadlocks the pre-T459e code, formed from conditions and never from
     durations. Two parks, each released by the *other* side's progress or by Postgres reporting a
     backend that waits on a lock (how code that locks in one global order gets through: its second
@@ -1546,7 +1630,7 @@ class _PseudonymisationRace:
     """
 
     def __init__(self, engine: AsyncEngine) -> None:
-        self._engine = engine
+        super().__init__(engine)
         self.rewrote_keys = asyncio.Event()
         self.touched_profiles = asyncio.Event()
 
@@ -1570,25 +1654,6 @@ class _PseudonymisationRace:
 
         monkeypatch.setattr(AsyncSession, "execute", spy)
 
-    async def _park_until(self, reached: asyncio.Event) -> None:
-        deadline = asyncio.get_running_loop().time() + _RENDEZVOUS_GUARD_SECONDS
-        while not reached.is_set():
-            if await self._someone_is_waiting_on_a_lock():
-                return
-            if asyncio.get_running_loop().time() > deadline:
-                raise AssertionError("the peer never arrived and nothing is lock-blocked")
-            await asyncio.sleep(0.01)
-
-    async def _someone_is_waiting_on_a_lock(self) -> bool:
-        async with self._engine.connect() as connection:
-            waiting = await connection.execute(
-                text(
-                    "SELECT count(*) FROM pg_stat_activity "
-                    "WHERE datname = current_database() AND wait_event_type = 'Lock'"
-                )
-            )
-            return bool(waiting.scalar_one())
-
 
 async def test_pseudonymisation_racing_a_discovery_batch_completes(
     http: httpx.AsyncClient,
@@ -1602,7 +1667,14 @@ async def test_pseudonymisation_racing_a_discovery_batch_completes(
     is the one the erasure rewrites. Before the fix the erasure took the `match_players` row and
     then asked for `aoe_profiles(SUBJECT)`, which the batch held while asking for the row: a
     deadlock that aborts whichever transaction Postgres picks, discovery's included. After it both
-    complete, and the capture the batch enqueues survives."""
+    complete.
+
+    **T459g: and no capture survives.** The batch holds `aoe_profiles(SUBJECT)` first in this
+    interleave, so it enqueues SUBJECT's capture before the erasure commits; the erasure then
+    locks and deletes that row, and `replay_captures` is empty for every game the race touches.
+    The opposite order - the erasure committing first - is
+    `test_a_batch_that_read_the_archiving_set_before_an_erasure_enqueues_no_capture`.
+    """
     await _seed_stored_matches(session_factory, _STORED_OLD_GAMES, completed_at=_MATCH_COMPLETED_AT)
     await _seed_owner_of(http, session_factory, (_SUBJECT,))
     race = _PseudonymisationRace(engine)
@@ -1618,11 +1690,13 @@ async def test_pseudonymisation_racing_a_discovery_batch_completes(
     assert not [o for o in outcomes if isinstance(o, BaseException)], outcomes
     report, response = outcomes
     assert isinstance(response, httpx.Response) and response.status_code == 200, response
-    assert isinstance(report, dict) and report["captures_enqueued"] == 1, report
+    assert isinstance(report, dict) and report["matches_discovered"] == 1, report
     assert race.rewrote_keys.is_set() and race.touched_profiles.is_set()
 
     async with session_factory() as session:
-        captures = (await session.execute(select(ReplayCapture.profile_id))).scalars().all()
+        captures = (
+            await session.execute(select(ReplayCapture.game_id, ReplayCapture.profile_id))
+        ).all()
         alias = (await session.get(AoeProfile, _SUBJECT)).alias  # type: ignore[union-attr]
         rewritten = (
             await session.execute(
@@ -1630,6 +1704,210 @@ async def test_pseudonymisation_racing_a_discovery_batch_completes(
             )
         ).scalars()
         others = set(rewritten)
-    assert list(captures) == [_SUBJECT], "the capture the batch enqueues must survive the erasure"
+    assert captures == [], f"a capture survived the erasure: {captures}"
     assert alias == PSEUDONYMISED_ALIAS
     assert -_SUBJECT in others and _SUBJECT not in others
+
+
+class _CaptureDeleteRace(_Rendezvous):
+    """The interleave of reviewer finding 1 on #123, formed from conditions:
+
+    - the erasure, after it has executed `DELETE FROM replay_captures`, waits until the discovery
+      batch has upserted `aoe_profiles`;
+    - the batch, before it executes its `INSERT INTO replay_captures`, waits until the erasure has
+      executed that `DELETE`.
+
+    With the delete before the pseudonymisation that leaves the erasure holding the capture row
+    and asking for `aoe_profiles(profile)`, and the batch holding the second and inserting the
+    capture row the erasure has deleted but not committed: the insert waits on the erasure.
+    """
+
+    def __init__(self, engine: AsyncEngine) -> None:
+        super().__init__(engine)
+        self.deleted_captures = asyncio.Event()
+        self.touched_profiles = asyncio.Event()
+
+    def install(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        real_execute = AsyncSession.execute
+
+        async def spy(self_session: AsyncSession, statement: Any, *args: Any, **kwargs: Any) -> Any:
+            name = getattr(getattr(statement, "table", None), "name", None)
+            is_insert = getattr(statement, "is_insert", False)
+            is_capture_delete = name == "replay_captures" and getattr(statement, "is_delete", False)
+            is_capture_insert = name == "replay_captures" and is_insert
+            is_profile_touch = name == "aoe_profiles" and is_insert
+            if is_capture_insert:
+                await self._park_until(self.deleted_captures)
+            result = await real_execute(self_session, statement, *args, **kwargs)
+            if is_profile_touch:
+                self.touched_profiles.set()
+            if is_capture_delete:
+                self.deleted_captures.set()
+                await self._park_until(self.touched_profiles)
+            return result
+
+        monkeypatch.setattr(AsyncSession, "execute", spy)
+
+
+async def test_erasure_deleting_a_stored_capture_racing_a_discovery_batch_completes(
+    http: httpx.AsyncClient,
+    engine: AsyncEngine,
+    session_factory: async_sessionmaker[AsyncSession],
+    fast_deadlock_detection: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """T459g: SUBJECT already has a capture row for the game the batch rediscovers. The erasure
+    deletes it; the batch's `INSERT ... ON CONFLICT DO NOTHING` meets that row. Before the fix the
+    erasure deleted the row first and then waited on `aoe_profiles(SUBJECT)`, which the batch held:
+    `DeadlockDetected`, and discovery the victim. After it both complete and no capture is left."""
+    await _seed_stored_matches(session_factory, _STORED_OLD_GAMES, completed_at=_MATCH_COMPLETED_AT)
+    await _seed_owner_of(http, session_factory, (_SUBJECT,))
+    async with session_factory() as session:
+        session.add_all(
+            ReplayCapture(
+                game_id=game_id,
+                profile_id=_SUBJECT,
+                status=CaptureStatus.PENDING,
+                capture_deadline_at=_MATCH_COMPLETED_AT + timedelta(days=21),
+                source=CaptureSource.AUTOMATIC,
+            )
+            for game_id in _STORED_OLD_GAMES
+        )
+        await session.commit()
+    race = _CaptureDeleteRace(engine)
+    race.install(monkeypatch)
+
+    stage = DiscoverStage(
+        session_factory=session_factory,
+        match_history_provider=_IngesterRelic(_raw_match(_STORED_OLD_GAMES[0], (_SUBJECT, _ALPHA))),
+        capture_budget_days=21,
+    )
+    outcomes = await asyncio.gather(stage(Budget(seconds=30)), _erase(http), return_exceptions=True)
+
+    assert not [o for o in outcomes if isinstance(o, BaseException)], outcomes
+    report, response = outcomes
+    assert isinstance(response, httpx.Response) and response.status_code == 200, response
+    assert isinstance(report, dict) and report["matches_discovered"] == 1, report
+    assert race.deleted_captures.is_set() and race.touched_profiles.is_set()
+    async with session_factory() as session:
+        captures = (
+            await session.execute(select(ReplayCapture.game_id, ReplayCapture.profile_id))
+        ).all()
+    assert captures == [], f"a capture survived the erasure: {captures}"
+
+
+class _GatedRelic(_IngesterRelic):
+    """Answers only once `released` is set, which happens after the erasure has committed:
+    `DiscoverStage` reads its archiving set before it calls the provider, so the set it persists
+    with is the one from before the erasure."""
+
+    def __init__(self, match: RawMatch, released: asyncio.Event) -> None:
+        super().__init__(match)
+        self._released = released
+
+    async def recent_matches(self, profile_ids: Sequence[int]) -> list[RawMatch]:
+        await asyncio.wait_for(self._released.wait(), _RENDEZVOUS_GUARD_SECONDS)
+        return await super().recent_matches(profile_ids)
+
+
+async def test_a_batch_that_read_the_archiving_set_before_an_erasure_enqueues_no_capture(
+    http: httpx.AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """T459g, FR-037: the erasure commits between the batch's read of the archiving set and its
+    capture enqueue. SUBJECT is still in the set, so only the `INSERT`'s own check of
+    `profile_links` stops the capture. `matches_discovered` shows the batch ran."""
+    await _seed_stored_matches(session_factory, _STORED_OLD_GAMES, completed_at=_MATCH_COMPLETED_AT)
+    await _seed_owner_of(http, session_factory, (_SUBJECT,))
+    erased = asyncio.Event()
+    stage = DiscoverStage(
+        session_factory=session_factory,
+        match_history_provider=_GatedRelic(
+            _raw_match(_STORED_OLD_GAMES[0], (_SUBJECT, _ALPHA)), erased
+        ),
+        capture_budget_days=21,
+    )
+    batch = asyncio.ensure_future(stage(Budget(seconds=30)))
+    response = await _erase(http)
+    erased.set()
+    report = await batch
+
+    assert response.status_code == 200, response.text
+    assert report["matches_discovered"] == 1, report
+    assert report["captures_enqueued"] == 0, report
+    async with session_factory() as session:
+        captures = (
+            await session.execute(select(ReplayCapture.game_id, ReplayCapture.profile_id))
+        ).all()
+    assert captures == [], f"a capture was enqueued for an erased profile: {captures}"
+
+
+async def test_erasure_locks_the_captures_it_deletes_after_the_pseudonymisation(
+    http: httpx.AsyncClient,
+    engine: AsyncEngine,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """T459g: with stored captures for both erased profiles, `POST /api/privacy/erase` still takes
+    every lock in the global order, `replay_captures` last, and the rows are gone."""
+    await _seed_stored_matches(session_factory, _STORED_OLD_GAMES, completed_at=_MATCH_COMPLETED_AT)
+    await _seed_owner_of(http, session_factory, (_BRAVO, _SUBJECT))
+    async with session_factory() as session:
+        session.add_all(
+            ReplayCapture(
+                game_id=game_id,
+                profile_id=profile_id,
+                status=CaptureStatus.PENDING,
+                capture_deadline_at=_MATCH_COMPLETED_AT + timedelta(days=21),
+                source=CaptureSource.AUTOMATIC,
+            )
+            for game_id in _STORED_OLD_GAMES
+            for profile_id in (_BRAVO, _SUBJECT, _ALPHA)
+        )
+        await session.commit()
+    with _LockRecorder(engine) as recorder:
+        response = await _erase(http)
+    assert response.status_code == 200, response.text
+
+    assert not recorder.violations(), (
+        "row locks taken against the global order:\n  "
+        + "\n  ".join(recorder.violations())
+        + "\nfull sequence per connection:\n"
+        + recorder.sequence()
+    )
+    assert "replay_captures" in recorder.sequence()
+    async with session_factory() as session:
+        remaining = (
+            await session.execute(select(ReplayCapture.game_id, ReplayCapture.profile_id))
+        ).all()
+    assert sorted(remaining) == [(game_id, _ALPHA) for game_id in _STORED_OLD_GAMES]
+
+
+async def test_recorder_reports_a_capture_delete_that_precedes_the_pseudonymisation(
+    engine: AsyncEngine,
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+) -> None:
+    """The order `erase_account` had before T459g: captures deleted, then an `aoe_profiles` row
+    locked. The recorder must flag it whether or not the delete was preceded by a locking select."""
+    await _seed_stored_matches(session_factory, _STORED_OLD_GAMES, completed_at=_MATCH_COMPLETED_AT)
+
+    async def erase_in(session: AsyncSession, *, lock_first: bool) -> None:
+        if lock_first:
+            await session.execute(
+                select(ReplayCapture)
+                .where(ReplayCapture.profile_id.in_([_SUBJECT]))
+                .order_by(ReplayCapture.game_id, ReplayCapture.profile_id)
+                .with_for_update()
+            )
+        await session.execute(delete(ReplayCapture).where(ReplayCapture.profile_id.in_([_SUBJECT])))
+        await session.execute(
+            select(AoeProfile)
+            .where(AoeProfile.profile_id == _SUBJECT)
+            .with_for_update(key_share=True)
+        )
+
+    for lock_first in (False, True):
+        with _LockRecorder(engine) as recorder:
+            async with session_scope(session_factory) as session:
+                await erase_in(session, lock_first=lock_first)
+        assert recorder.violations(), f"lock_first={lock_first}\n{recorder.sequence()}"

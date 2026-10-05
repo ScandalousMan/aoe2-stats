@@ -571,12 +571,13 @@ async def _pseudonymise_profile_ids(db_session: AsyncSession, profile_ids: Seque
     held to commit, so a writer that reaches an earlier table or a lower key after a later one can
     wait on a discovery batch that waits on it. This function writes no `matches` row. It takes:
 
-    1. every `aoe_profiles` key it will write — each original and each placeholder — one key at a
-       time in ascending order across **all** of `profile_ids`, not per profile: a placeholder is
-       `-abs(profile_id)`, lower than its own original and, for positive ids, than every other
-       original, so a loop that finished one profile before starting the next would step back. An
-       existing row is locked `FOR NO KEY UPDATE` (the strength of the `UPDATE` that follows); a
-       missing placeholder is inserted at that point in the sequence, which is its lock.
+    1. every `aoe_profiles` key it writes or references — each original and each placeholder —
+       one key at a time in ascending order across **all** of `profile_ids`, not per profile: a
+       placeholder is `-abs(profile_id)`, lower than its own original and, for positive ids, than
+       every other original, so a loop that finished one profile before starting the next would
+       step back. An existing row is locked `FOR NO KEY UPDATE` (the strength of the `UPDATE` that
+       follows); a missing placeholder is inserted at that point in the sequence, which is its
+       lock.
     2. every `match_players` row of the originals, in one ascending pass through
        `discover.lock_match_players`. The keys come from a plain read taken after step 1.
        `persist_matches_and_profiles` upserts a participant's `aoe_profiles` row before it writes
@@ -710,10 +711,21 @@ async def erase_account(
     await db_session.flush()
 
     if profile_ids:
+        await _pseudonymise_profile_ids(db_session, profile_ids)
+
+        # After the pseudonymisation, never before: `replay_captures` is the fourth table in the
+        # global lock order (`_pseudonymise_profile_ids`), and `DiscoverStage` writes
+        # `aoe_profiles`, `match_players`, then `replay_captures`. A delete that ran first held a
+        # capture row while waiting on `aoe_profiles`, and a discovery batch inserting that same
+        # `(game_id, profile_id)` waited on the delete: a deadlock that aborts discovery. The
+        # rows are locked in ascending `(game_id, profile_id)` order, then the blobs and rows go.
         captures = list(
             (
                 await db_session.execute(
-                    select(ReplayCapture).where(ReplayCapture.profile_id.in_(profile_ids))
+                    select(ReplayCapture)
+                    .where(ReplayCapture.profile_id.in_(profile_ids))
+                    .order_by(ReplayCapture.game_id, ReplayCapture.profile_id)
+                    .with_for_update()
                 )
             )
             .scalars()
@@ -725,8 +737,6 @@ async def erase_account(
         await db_session.execute(
             delete(ReplayCapture).where(ReplayCapture.profile_id.in_(profile_ids))
         )
-
-        await _pseudonymise_profile_ids(db_session, profile_ids)
 
     data_request.completed_at = datetime.now(UTC)
     data_request.outcome = "account erased"

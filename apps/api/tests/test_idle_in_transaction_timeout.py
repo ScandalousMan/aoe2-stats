@@ -16,16 +16,20 @@ server then terminates a transaction left idle past that value and releases its 
 
 - `test_a_transaction_left_idle_is_terminated_and_its_lock_released` drives the real
   `deps.get_session` against real Postgres with the value set to one second: a request transaction
-  takes a row lock and goes idle (the stand-in for a killed function: its connection is alive and
-  silent, exactly what the server sees), a second connection waits on that row and is granted it
-  once the server terminates the first. Pre-fix the second connection waits out its own
-  `lock_timeout` instead.
+  takes a row lock and goes idle for five seconds (the stand-in for a killed function: its
+  connection is alive and silent, exactly what the server sees), and a second connection, whose
+  own `lock_timeout` is three seconds, must be granted that row after about one second - before
+  its own timeout and long before the holder's sleep ends. Without the timeout the holder keeps
+  the lock for the whole sleep, so the second connection fails with `LockNotAvailable` at three
+  seconds, and the holder's `SELECT 1` after the sleep succeeds instead of reporting `25P03`.
 - `test_a_request_transaction_carries_the_configured_timeout` reads the setting from inside a
   request served by the real app.
 - `test_the_setting_does_not_outlive_its_transaction` shows it is transaction-local: a later
   transaction on the same session sees it applied afresh and a connection outside any request does
   not see it (the Neon pooler hands a different backend to each transaction, so a session-level
   value would leak to another client).
+- `test_a_savepoint_does_not_set_the_timeout_again` counts the statements that set it: one for the
+  transaction, none for a savepoint opened inside it.
 - `test_a_unit_of_work_without_a_timeout_is_left_alone` pins that the ingester's long cron
   transactions, which open `session_scope` with no timeout, keep the server's own default.
 """
@@ -41,9 +45,9 @@ from datetime import timedelta
 import pytest
 from fastapi import APIRouter
 from fastapi.testclient import TestClient
-from sqlalchemy import text
+from sqlalchemy import event, text
 from sqlalchemy.exc import DBAPIError
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from aoe2stats_api import deps
 from aoe2stats_api.app import create_app
@@ -52,6 +56,10 @@ from aoe2stats_api.settings import get_settings
 from aoe2stats_storage.repositories.base import session_scope
 
 _KEY = "REQUEST_IDLE_IN_TRANSACTION_TIMEOUT_SECONDS"
+
+#: Seconds. Server timeout (the test sets 1) < waiter's `lock_timeout` < holder's idle sleep.
+_WAITER_LOCK_TIMEOUT = 3
+_HOLDER_IDLE_SECONDS = 5
 
 pytestmark = [pytest.mark.usefixtures("environment")]
 
@@ -93,9 +101,10 @@ async def test_a_transaction_left_idle_is_terminated_and_its_lock_released(
             async with asynccontextmanager(deps.get_session)() as session:
                 await session.execute(text(f"SELECT id FROM {table} WHERE id = 1 FOR UPDATE"))
                 holder_has_the_lock.set()
-                # Idle: the connection is open and silent, as a killed function's is. Long
-                # enough for a one-second timeout, short enough to keep the test fast.
-                await asyncio.sleep(2.5)
+                # Idle: the connection is open and silent, as a killed function's is. Longer
+                # than the waiter's `lock_timeout`, so only the server ending this transaction
+                # can let the waiter through in time.
+                await asyncio.sleep(_HOLDER_IDLE_SECONDS)
                 with pytest.raises(DBAPIError) as terminated:
                     await session.execute(text("SELECT 1"))
                 assert getattr(terminated.value.orig, "sqlstate", None) == "25P03"
@@ -105,9 +114,9 @@ async def test_a_transaction_left_idle_is_terminated_and_its_lock_released(
             await holder_has_the_lock.wait()
             started = time.monotonic()
             async with session_scope(session_factory) as session:
-                # A bound well above the timeout and well below the holder's sleep, so an
-                # unbounded holder shows up as `LockNotAvailable` rather than a hung test.
-                await session.execute(text("SET LOCAL lock_timeout = '4s'"))
+                # Between the server's timeout and the holder's sleep: a holder nothing
+                # terminates shows up as `LockNotAvailable` here rather than as a hung test.
+                await session.execute(text(f"SET LOCAL lock_timeout = '{_WAITER_LOCK_TIMEOUT}s'"))
                 try:
                     await session.execute(text(f"SELECT id FROM {table} WHERE id = 1 FOR UPDATE"))
                 except BaseException as exc:
@@ -119,7 +128,7 @@ async def test_a_transaction_left_idle_is_terminated_and_its_lock_released(
         assert "error" not in waiter_outcome
         waited = waiter_outcome["waited"]
         assert isinstance(waited, float)
-        assert waited < 3.0
+        assert waited < _WAITER_LOCK_TIMEOUT - 0.5, waited
     finally:
         async with session_factory() as cleanup:
             await cleanup.execute(text(f"DROP TABLE IF EXISTS {table}"))
@@ -187,3 +196,35 @@ async def test_a_unit_of_work_without_a_timeout_is_left_alone(
         session_factory, idle_in_transaction_timeout=timedelta(seconds=4)
     ) as s:
         assert (await s.execute(query)).scalar_one() == "4s"
+
+
+async def test_a_savepoint_does_not_set_the_timeout_again(
+    engine: AsyncEngine,
+    clean_database: None,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    sent: list[str] = []
+
+    def record(_conn: object, _cursor: object, statement: str, *_rest: object) -> None:
+        if "set_config('idle_in_transaction_session_timeout'" in statement:
+            sent.append(statement)
+
+    event.listen(engine.sync_engine, "before_cursor_execute", record)
+    try:
+        async with session_scope(
+            session_factory, idle_in_transaction_timeout=timedelta(seconds=4)
+        ) as session:
+            await session.execute(text("SELECT 1"))
+            async with session.begin_nested():
+                await session.execute(text("SELECT 1"))
+            async with session.begin_nested():
+                await session.execute(text("SELECT 1"))
+            value = (
+                await session.execute(
+                    text("SELECT current_setting('idle_in_transaction_session_timeout')")
+                )
+            ).scalar_one()
+    finally:
+        event.remove(engine.sync_engine, "before_cursor_execute", record)
+    assert value == "4s"
+    assert len(sent) == 1, sent

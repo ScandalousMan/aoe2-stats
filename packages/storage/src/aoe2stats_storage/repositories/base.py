@@ -37,7 +37,7 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, SessionTransaction
 from sqlalchemy.pool import NullPool
 
 # `psycopg` 3's own escape hatch for pgbouncer-style transaction pooling (research §4): `None`
@@ -86,12 +86,16 @@ def _bound_idle_transactions(session: AsyncSession, timeout: timedelta) -> None:
     to each transaction and does not carry session state between them) and what keeps it out of
     the connection string, where a pooler would reject an unknown startup parameter. It is set from
     `after_begin`, which runs at the start of *every* transaction the session opens - a unit of
-    work that commits and carries on is bounded again - and before any savepoint, so rolling a
-    savepoint back never reverts it.
+    work that commits and carries on is bounded again. The hook also fires when the session opens
+    a savepoint (`begin_nested`); it returns without setting anything then, because the savepoint
+    belongs to a transaction that already carries the value, and a savepoint's rollback does not
+    revert a `SET LOCAL` made before it.
     """
     milliseconds = str(int(timeout.total_seconds() * 1000))
 
-    def _apply(_session: Session, _transaction: object, connection: Connection) -> None:
+    def _apply(_session: Session, transaction: SessionTransaction, connection: Connection) -> None:
+        if transaction.nested:
+            return
         connection.exec_driver_sql(_SET_IDLE_TIMEOUT, (milliseconds,))
 
     event.listen(session.sync_session, "after_begin", _apply)
