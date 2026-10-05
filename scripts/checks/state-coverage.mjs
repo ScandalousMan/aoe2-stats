@@ -1288,56 +1288,252 @@ function hasUnreadableParameters(storyObj) {
   return !object || !ts.isObjectLiteralExpression(object)
 }
 
-// The names, among `storyNames`, of the exported stories a file assigns to after their declaration: an
-// assignment to the story or to any member path of it (`X.parameters = …`, `X.tags ??= …`,
-// `X.parameters.foo = …`, `X['parameters'] = …`), or an `Object.assign`, `defineProperty` or
-// `defineProperties` call whose target is rooted at it. Storybook reads `parameters` and `tags` from
-// the module's exports after those run; this pass reads the object literal, so a clip or a tag set
-// that way is one it cannot see (T696). The whole file is walked, not only its top-level statements:
-// `if (…) { X.tags = [] }` mutates the story as much as a bare statement does.
-const ASSIGNMENT_MUTATORS = new Set(['assign', 'defineProperty', 'defineProperties'])
-
-function memberRootName(node) {
-  while (
-    node &&
-    (ts.isPropertyAccessExpression(node) ||
-      ts.isElementAccessExpression(node) ||
-      ts.isNonNullExpression(node) ||
-      ts.isParenthesizedExpression(node) ||
-      ts.isAsExpression(node) ||
-      ts.isSatisfiesExpression(node))
-  ) {
-    node = node.expression
-  }
-  return node && ts.isIdentifier(node) ? node.text : null
+// T697: the rule that replaced T696 (a)'s list of mutation shapes. A story's binding, and the binding
+// the default export names, may appear in a story file only in their own top-level declaration and in
+// an export (`export default meta`, `export { meta as default }`, `export { X }`). Every other
+// identifier reference to either, anywhere in the file, fails the check naming the story: a read or a
+// write, at any depth, inside a function, inside the story's own initializer, as an argument, an alias,
+// a destructuring or `for…of` target, a spread, a shorthand property, a JSX tag. Storybook reads
+// `parameters` and `tags` from the module's exports after such code has run, and this pass reads the
+// object literal; no list of the ways code can reach an object converges, so none is kept here.
+//
+// References are found by identifier, not by text: an identifier in a property-name position
+// (`obj.X`, `{ X: … }`, a JSX attribute name, a destructuring key, a label) is not one, nor is one
+// inside a type (`typeof meta` is erased and cannot mutate anything). A local of the same name in a
+// nested scope (a parameter `meta`, an inner `const ZzA`) is NOT told apart from the binding: it is
+// read as a reference, because over-refusing is the safe direction here (the story is named and gets
+// no mount credit; nothing is credited that should not be) and resolving scope is not worth the
+// risk of crediting a mutation it resolved wrongly.
+//
+// Not covered, by construction: a reference this pass cannot see because it is in another file is the
+// import rule's (`findStoryModuleImports`); a story whose initializer is not an object literal is not
+// a story this pass reads at all (`findExportedStoryObjects`).
+function isTopLevelDeclarationName(node) {
+  const declaration = node.parent
+  return (
+    ts.isVariableDeclaration(declaration) &&
+    declaration.name === node &&
+    ts.isVariableDeclarationList(declaration.parent) &&
+    ts.isVariableStatement(declaration.parent.parent) &&
+    ts.isSourceFile(declaration.parent.parent.parent)
+  )
 }
 
-export function findStoriesAssignedAfterDeclaration(sourceFile, storyNames) {
-  const assigned = new Set()
-  const note = (target) => {
-    const name = memberRootName(target)
-    if (name !== null && storyNames.has(name)) assigned.add(name)
+function isExportedAsDefaultExpression(node) {
+  let current = node
+  while (
+    current.parent &&
+    (ts.isAsExpression(current.parent) ||
+      ts.isSatisfiesExpression(current.parent) ||
+      ts.isParenthesizedExpression(current.parent) ||
+      ts.isNonNullExpression(current.parent))
+  ) {
+    current = current.parent
   }
-  const visit = (node) => {
-    if (
-      ts.isBinaryExpression(node) &&
-      node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
-      node.operatorToken.kind <= ts.SyntaxKind.LastAssignment
-    ) {
-      note(node.left)
+  return (
+    ts.isExportAssignment(current.parent) &&
+    !current.parent.isExportEquals &&
+    current.parent.expression === current
+  )
+}
+
+// Whether an identifier is a reference to a binding at all, rather than a name that merely spells it.
+function isBindingReference(node) {
+  const parent = node.parent
+  if (!parent) return false
+  if (ts.isPropertyAccessExpression(parent) && parent.name === node) return false
+  if (ts.isQualifiedName(parent) && parent.right === node) return false
+  if (
+    (ts.isPropertyAssignment(parent) ||
+      ts.isPropertySignature(parent) ||
+      ts.isPropertyDeclaration(parent) ||
+      ts.isMethodDeclaration(parent) ||
+      ts.isMethodSignature(parent) ||
+      ts.isGetAccessorDeclaration(parent) ||
+      ts.isSetAccessorDeclaration(parent) ||
+      ts.isEnumMember(parent) ||
+      ts.isJsxAttribute(parent)) &&
+    parent.name === node
+  ) {
+    return false
+  }
+  if (ts.isBindingElement(parent) && parent.propertyName === node) return false
+  if (
+    (ts.isLabeledStatement(parent) || ts.isBreakOrContinueStatement(parent)) &&
+    parent.label === node
+  ) {
+    return false
+  }
+  // An import's own local name cannot coexist with the top-level declaration it would spell.
+  if (ts.isImportSpecifier(parent) || ts.isImportClause(parent) || ts.isNamespaceImport(parent))
+    return false
+  // `export { X }`, `export { X as Y }`, `export { X as default }`: exports.
+  if (ts.isExportSpecifier(parent)) return false
+  if (isExportedAsDefaultExpression(node)) return false
+  if (isTopLevelDeclarationName(node)) return false
+  // `<meta />`: a lowercase JSX tag is an intrinsic element, not a reference to a binding.
+  if (
+    (ts.isJsxOpeningElement(parent) ||
+      ts.isJsxClosingElement(parent) ||
+      ts.isJsxSelfClosingElement(parent)) &&
+    parent.tagName === node &&
+    /^[a-z]/.test(node.text)
+  ) {
+    return false
+  }
+  return true
+}
+
+// Whether the walk may enter a node: not a type (a `typeof X` there is erased), except the `extends`
+// clause of a class, whose expression runs.
+function isRuntimeNode(node) {
+  if (ts.isInterfaceDeclaration(node) || ts.isTypeAliasDeclaration(node)) return false
+  if (!ts.isTypeNode(node)) return true
+  return (
+    ts.isExpressionWithTypeArguments(node) &&
+    ts.isHeritageClause(node.parent) &&
+    node.parent.token === ts.SyntaxKind.ExtendsKeyword &&
+    ts.isClassLike(node.parent.parent)
+  )
+}
+
+// The names the default export reaches: the identifier it names (`export default meta`,
+// `export { meta as default }`) and, when that is declared as another identifier at the top level
+// (`const meta = base`), the one it aliases, and so on. An alias is itself a reference to what it
+// names, so it fails the rule at the alias: the default export has to name the object's own
+// declaration.
+export function findDefaultExportBindings(sourceFile) {
+  let named = null
+  for (const statement of sourceFile.statements) {
+    if (ts.isExportAssignment(statement) && !statement.isExportEquals) {
+      const expression = unwrapExpression(statement.expression)
+      if (expression && ts.isIdentifier(expression)) named = expression.text
     } else if (
-      ts.isCallExpression(node) &&
-      ts.isPropertyAccessExpression(node.expression) &&
-      ts.isIdentifier(node.expression.expression) &&
-      node.expression.expression.text === 'Object' &&
-      ASSIGNMENT_MUTATORS.has(node.expression.name.text)
+      ts.isExportDeclaration(statement) &&
+      !statement.moduleSpecifier &&
+      statement.exportClause &&
+      ts.isNamedExports(statement.exportClause)
     ) {
-      note(node.arguments[0])
+      for (const specifier of statement.exportClause.elements) {
+        if (specifier.name.text === 'default')
+          named = (specifier.propertyName ?? specifier.name).text
+      }
+    }
+  }
+  const initializers = new Map()
+  for (const statement of sourceFile.statements) {
+    if (!ts.isVariableStatement(statement)) continue
+    for (const decl of statement.declarationList.declarations) {
+      const init = unwrapExpression(decl.initializer)
+      if (ts.isIdentifier(decl.name) && init && ts.isIdentifier(init)) {
+        initializers.set(decl.name.text, init.text)
+      }
+    }
+  }
+  const bindings = new Set()
+  for (let name = named; name !== null && name !== undefined && !bindings.has(name);) {
+    bindings.add(name)
+    name = initializers.get(name)
+  }
+  return bindings
+}
+
+// The first line (1-based) of each of `bindingNames` that the file references outside its declaration
+// and its exports.
+export function findBindingReferences(sourceFile, bindingNames) {
+  const referencedAt = new Map()
+  const visit = (node) => {
+    if (!isRuntimeNode(node)) return
+    if (ts.isIdentifier(node) && bindingNames.has(node.text) && isBindingReference(node)) {
+      if (!referencedAt.has(node.text)) {
+        referencedAt.set(
+          node.text,
+          sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1,
+        )
+      }
+      return
     }
     ts.forEachChild(node, visit)
   }
   visit(sourceFile)
-  return assigned
+  return referencedAt
+}
+
+// ---- T697: a story module imported from a non-test module --------------------------------------
+
+// A module specifier that names a story module: `….stories`, `….stories.ts`, `….stories.tsx` (and the
+// other script extensions a bundler would resolve the same file through; a superset is the safe
+// direction). A query or fragment is not part of the module's name.
+const STORY_MODULE_SPECIFIER = /\.stories(\.(tsx?|jsx?|mjs|cjs|mts|cts))?$/
+
+export function isStoryModuleSpecifier(specifier) {
+  return STORY_MODULE_SPECIFIER.test(specifier.replace(/[?#].*$/, ''))
+}
+
+// The text a module-specifier expression ends in, or `null` when it cannot be told: a string, a
+// template (its last literal part: `./${name}.stories`) or a `+` concatenation (its right side). What
+// a wholly computed argument (`import(name)`) holds is not readable.
+function specifierTail(expression) {
+  const node = unwrapExpression(expression)
+  if (!node) return null
+  if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) return node.text
+  if (ts.isTemplateExpression(node)) return node.templateSpans.at(-1)?.literal.text ?? null
+  if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.PlusToken) {
+    return specifierTail(node.right)
+  }
+  return null
+}
+
+// The story-module specifiers a file imports: a static `import` (type-only included), an
+// `export … from`, an `import x = require()`, a dynamic `import()` or an `import()` type, a
+// `require()`, and an `import.meta.glob()` pattern. A module under `src` or `.storybook` other than a
+// test may not: a reference from another file to a story's binding is one the per-file reference
+// rule cannot see.
+export function findStoryModuleImports(sourceFile) {
+  const found = []
+  const consider = (specifier) => {
+    if (specifier !== null && isStoryModuleSpecifier(specifier)) found.push(specifier)
+  }
+  const visit = (node) => {
+    if (
+      (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
+      node.moduleSpecifier &&
+      ts.isStringLiteral(node.moduleSpecifier)
+    ) {
+      consider(node.moduleSpecifier.text)
+    } else if (
+      ts.isImportEqualsDeclaration(node) &&
+      ts.isExternalModuleReference(node.moduleReference)
+    ) {
+      consider(specifierTail(node.moduleReference.expression))
+    } else if (
+      ts.isImportTypeNode(node) &&
+      ts.isLiteralTypeNode(node.argument) &&
+      ts.isStringLiteral(node.argument.literal)
+    ) {
+      consider(node.argument.literal.text)
+    } else if (ts.isCallExpression(node)) {
+      const callee = node.expression
+      if (
+        callee.kind === ts.SyntaxKind.ImportKeyword ||
+        (ts.isIdentifier(callee) && callee.text === 'require')
+      ) {
+        consider(specifierTail(node.arguments[0]))
+      } else if (
+        ts.isPropertyAccessExpression(callee) &&
+        ts.isMetaProperty(callee.expression) &&
+        (callee.name.text === 'glob' || callee.name.text === 'globEager')
+      ) {
+        const pattern = unwrapExpression(node.arguments[0])
+        const patterns =
+          pattern && ts.isArrayLiteralExpression(pattern) ? pattern.elements : [pattern]
+        for (const element of patterns) consider(specifierTail(element))
+      }
+    }
+    ts.forEachChild(node, visit)
+  }
+  visit(sourceFile)
+  return found
 }
 
 // Every string literal reachable at any depth inside an object/array literal — a story's own `args`
@@ -2389,6 +2585,37 @@ function walkStoryFiles() {
   return files
 }
 
+const TEST_MODULE = /\.test\.[^/\\]+$/
+
+function isTestModulePath(filePath) {
+  return TEST_MODULE.test(filePath)
+}
+
+// Every script module under `src` and `.storybook` that is not a test: what the import rule reads.
+// A story file is one too (another story file importing a story is refused).
+function walkModuleFiles() {
+  const files = new Map()
+  function walk(dir) {
+    let names
+    try {
+      names = readdirSync(dir)
+    } catch {
+      return
+    }
+    for (const name of names) {
+      if (name === 'node_modules') continue
+      const full = path.join(dir, name)
+      if (statSync(full).isDirectory()) walk(full)
+      else if (/\.([cm]?[jt]sx?)$/.test(name) && !isTestModulePath(name)) {
+        files.set(full, readFileSync(full, 'utf8'))
+      }
+    }
+  }
+  walk(srcDir)
+  walk(path.join(dsDir, '.storybook'))
+  return files
+}
+
 // The object literal a story file's default export names (`export default meta`, `export default {...}`,
 // `export { meta as default }`), or `null` when it is not an object literal in this file. Unlike
 // `findMeta` it does not require a `component`: a meta with only a `title` still carries `tags` and
@@ -2521,6 +2748,7 @@ export function computeStateCoverage({
   componentDirs,
   filesByPath,
   storyFilesByPath = new Map(),
+  moduleFilesByPath = new Map(),
   manifest = {},
 }) {
   const allFiles = [...filesByPath.keys()].sort()
@@ -2621,6 +2849,26 @@ export function computeStateCoverage({
     storyStatesByComponent.get(componentKey).push(stateEntry)
   }
 
+  // T697: a module other than a test that imports a story module may reference a story's binding from
+  // where the per-file reference rule below cannot see it.
+  for (const filePath of [...moduleFilesByPath.keys()].sort()) {
+    if (isTestModulePath(filePath)) continue
+    const specifiers = findStoryModuleImports(
+      ts.createSourceFile(filePath, moduleFilesByPath.get(filePath), ts.ScriptTarget.Latest, true),
+    )
+    if (specifiers.length === 0) continue
+    const packageRelative = path.relative(dsDir, filePath).split(path.sep).join('/')
+    manifestProblems.push({
+      kind: 'imports-story-module',
+      location: packageRelative,
+      detail:
+        `${packageRelative} imports a *.stories module (${specifiers.map((s) => `\`${s}\``).join(', ')}): ` +
+        "a story file is Storybook's, and a reference to its bindings from another file is one this " +
+        'pass cannot see, so a clip or a tag set that way is invisible here. Only a *.test.* file may ' +
+        'import one; share what both need from a module that is not a story file.',
+    })
+  }
+
   for (const filePath of [...storySources.keys()].sort()) {
     const sourceFile = sourceFiles.get(filePath) ?? parseTsx(filePath, storySources.get(filePath))
     const packageRelative = path.relative(dsDir, filePath).split(path.sep).join('/')
@@ -2633,10 +2881,21 @@ export function computeStateCoverage({
     const defaultMeta = findDefaultMetaObject(sourceFile, constNodeMap) ?? metaObj
 
     const exportedStories = findExportedStoryObjects(sourceFile)
-    const assignedAfterDeclaration = findStoriesAssignedAfterDeclaration(
+    // T697: what the file references outside its declarations and exports, among the stories and the
+    // bindings the default export names. A reference to a default-export binding names every story.
+    const defaultBindings = findDefaultExportBindings(sourceFile)
+    const referencedAt = findBindingReferences(
       sourceFile,
-      new Set(exportedStories.map((story) => story.exportName)),
+      new Set([...exportedStories.map((story) => story.exportName), ...defaultBindings]),
     )
+    const defaultReference = [...defaultBindings].find((name) => referencedAt.has(name))
+    const referenceTo = (exportName) => {
+      if (referencedAt.has(exportName)) {
+        return { name: exportName, line: referencedAt.get(exportName), viaDefault: false }
+      }
+      if (defaultReference === undefined) return null
+      return { name: defaultReference, line: referencedAt.get(defaultReference), viaDefault: true }
+    }
     for (const { exportName, node } of exportedStories) {
       const location = `${packageRelative}#${exportName}`
       // A fixture story is a plant, not a published story, whichever directory it sits in: every other
@@ -2658,15 +2917,20 @@ export function computeStateCoverage({
             'tags as string literals and spread nothing into the story or the default export.',
         })
       }
-      if (assignedAfterDeclaration.has(exportName)) {
+      const reference = referenceTo(exportName)
+      if (reference) {
         manifestProblems.push({
-          kind: 'assigned-after-declaration',
+          kind: 'referenced-after-declaration',
           location: `${packageRelative}:${exportName}`,
           detail:
-            `story ${exportName} of ${packageRelative} is assigned to after its declaration ` +
-            '(`export const X = {...}` then `X.parameters = …`, `X.tags = …`, `Object.assign(X, …)`): ' +
-            'Storybook reads the result, and this pass reads the object literal, so a clip or a tag it ' +
-            'sets is invisible here. Write every annotation inside the story object literal.',
+            `story ${exportName} of ${packageRelative} is referenced outside its declaration and an ` +
+            `export: \`${reference.name}\` at line ${reference.line}` +
+            (reference.viaDefault
+              ? ', the binding the default export names, whose tags and parameters every story of the file reads'
+              : '') +
+            '. Storybook reads what such a reference does to the object, and this pass reads the ' +
+            'object literal, so a clip or a tag it sets is invisible here. Write every annotation inside ' +
+            'the object literal, and name the binding only in its declaration and in `export default`.',
         })
       }
       const found = entriesByLocation.get(location)
@@ -2755,9 +3019,9 @@ export function computeStateCoverage({
       // state-signal sweep fails a forced story whose state frame differs from its rest frame by no more
       // than the threshold inside the captured frame; it does not check that the target lies in the clip.
       // A story object or default export that spreads another object may bring a clip in: clipped.
-      // A story assigned to after its declaration may have had a clip set by that assignment: clipped.
-      const clipped =
-        assignedAfterDeclaration.has(exportName) || storyDeclaresClip(defaultMeta, node)
+      // A story, or the default export, referenced outside its declaration and an export may have had a
+      // clip set through that reference: clipped.
+      const clipped = reference !== null || storyDeclaresClip(defaultMeta, node)
       const mayRenderOutsideRoot =
         !clipped &&
         !tags.has('visual-full-page') &&
@@ -5203,7 +5467,12 @@ export function readAllSourceFiles() {
   for (const filePath of walkAllTsxFiles(srcDir)) {
     filesByPath.set(filePath, readFileSync(filePath, 'utf8'))
   }
-  return { componentDirs, filesByPath, storyFilesByPath: walkStoryFiles() }
+  return {
+    componentDirs,
+    filesByPath,
+    storyFilesByPath: walkStoryFiles(),
+    moduleFilesByPath: walkModuleFiles(),
+  }
 }
 
 // The committed runtime manifest (T693), parsed, or `{ problem }` naming the file and the command that
@@ -5223,7 +5492,7 @@ export function readManifest() {
 
 function main() {
   const write = process.argv.includes('--write')
-  const { componentDirs, filesByPath, storyFilesByPath } = readAllSourceFiles()
+  const { componentDirs, filesByPath, storyFilesByPath, moduleFilesByPath } = readAllSourceFiles()
   const loaded = readManifest()
   if (loaded.problem) {
     fail(loaded.problem)
@@ -5233,6 +5502,7 @@ function main() {
     componentDirs,
     filesByPath,
     storyFilesByPath,
+    moduleFilesByPath,
     manifest: loaded.manifest,
   })
   const freshRegion = renderGeneratedRegion(computed)

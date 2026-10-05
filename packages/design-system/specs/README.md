@@ -1747,6 +1747,23 @@ hover:underline-offset-2` beside `active:underline-offset-4`, `src/screens/DataE
      a `visualCaptureClip`, or when its story object, default export or `parameters` spreads another
      object or is not an object literal; a story or default export that spreads another object also
      fails the run, because its `tags` cannot be read.
+   - **A story's binding, and the binding its default export names, may appear only in their own
+     declaration and in an export** (`export default meta`, `export { meta as default }`,
+     `export { X }`). Any other identifier reference to either, anywhere in the file, fails the run
+     naming the story and gives it no mount credit: a read or a write, at any depth, inside a function
+     or the story's own initializer, as an argument, an alias, a destructuring or `for…of` target, a
+     spread, a shorthand property or a JSX tag. A reference to the default export's binding names every
+     story of the file, and a default export reached through an alias (`const m2 = meta`) fails at the
+     alias. A reference is found by identifier, not by text: a property name (`obj.X`, `{ X: … }`, a
+     JSX attribute name, a destructuring key), an import's own name and anything inside a type
+     (`typeof meta`) are not references; a local of the same name in a nested scope is read as one,
+     which over-refuses and never over-credits. A module under `src` or `.storybook` other than a
+     `*.test.*` file that imports a `*.stories` module fails the run naming the importing file: a static
+     `import` (type-only included), `export … from`, `import x = require()`, a dynamic `import()` or an
+     `import()` type, a `require()` and an `import.meta.glob()` pattern, each with a literal, a
+     templated or a `+`-joined specifier. Not covered: a specifier built wholly at run time
+     (`import(name)`), code in a string (`eval`, `new Function`), and an importer outside `src` and
+     `.storybook`.
    - **A manifest entry's shape is checked** before anything is read from it: every width's record is
      an object whose `mounts` is an array; every mount, `placedBy` and `focus.placedBy` is an object
      with a `disabledAt` that is an array of strings and, on each axis its primitive keys rows on, a
@@ -1796,7 +1813,8 @@ hover:underline-offset-2` beside `active:underline-offset-4`, `src/screens/DataE
    (and `PRIMITIVE_INSTANCE_ROLES`, derived from it), `componentHasOwnCandidateForRole`,
    `noImpliedRoleReason`'s ancestor and dynamic-role wording, and T686's own-story verification;
    T696 then removed, as dead, the helper call-site, guard and iteration machinery that fed only them
-   (`findHelperCallSites`, `findHelperInvocationGuards`, `findHelperInvocationIterationContext`).
+   (`findHelperCallSites`, `findHelperInvocationGuards`, `findHelperInvocationIterationContext`) and
+   the fields that carried it (`isHelper`, `mainComponentName`).
    Each passage below that cites one describes the reading that was in force when that task closed, kept
    as the record of why the rule existed; the generated region above is read from the manifest and
    is the only current statement of what any cell credits. The same holds for the per-story redirect
