@@ -1307,9 +1307,9 @@ function readProp(objLiteral, name) {
 // method (`play() {}`) is called with the object as its `this`; a `this` in a function expression binds
 // to the object the function is called on, and one in an arrow function inherits the module's, which is
 // not this object's either way. None of that is in an object literal this pass reads, so the owner's
-// `parameters` and `tags` are unreadable and the story gets no mount credit. T705: every `this` anywhere
-// inside the owner is refused, a nested class's heritage clause, computed member names, methods and
-// field initialisers included, over-refusing being the safe direction. The owner's own shape only: an
+// `parameters` and `tags` are unreadable and the story gets no mount credit. T705: every `this`
+// expression inside the owner is refused, a nested class's included (a `this` type or a `this` parameter
+// is not an expression and is not refused), over-refusing being the safe direction. The owner's own shape only: an
 // accessor or method of a nested `parameters` object is not this rule's (T703's runtime record is what
 // proves what the browser applied).
 const ownerHazardCache = new WeakMap()
@@ -1845,8 +1845,8 @@ export function findNonLiteralSpecifiers(sourceFile) {
 // `findStoryModuleImports`'s when it is. Anything else (a parenthesised or cast callee, a comma
 // expression, an alias, a member access on it, a value passed along, a shorthand property) can call or
 // hand on a `require` whose specifier this pass does not read, so it is listed. A property or key that
-// is merely spelled `require` (`x.require`, `{ require: 1 }`, `export { f as require }`) is not a
-// reference to the identifier and is not listed.
+// is merely spelled `require` (`x.require`, `{ require: 1 }`, `export { f as require }`), and a
+// statement label, are not references to the identifier and are not listed.
 function isRequireDeclaredOrNamed(node) {
   const parent = node.parent
   if (!parent) return false
@@ -3211,7 +3211,8 @@ function findOverlayFiles(filesByPath, sourceFiles) {
 // story-file rules: no export other than the default export (`findNonDefaultExport`), a default export
 // readable only as `export default <identifier>` or an inline object literal (`readDefaultExport`), the
 // binding not referenced outside its declaration and its export in this file (`findBindingReferences`),
-// no accessor, method or `this` in it (`findOwnerHazard`), no spread, and a `parameters` that is an
+// no accessor or method among its own properties and no `this` expression in it (`findOwnerHazard`), no
+// spread among its own properties or in its `parameters`, and a `parameters` that is an
 // identifier-keyed object literal written once with no `visualCaptureClip` (and no `visualForceState`)
 // this pass cannot read by name. One problem per preview file naming the first reason, not one per
 // story. A preview that is not in `moduleFilesByPath` (a fixture with none) has no project parameters.
@@ -3248,7 +3249,8 @@ function findProjectParametersProblems(moduleFilesByPath) {
 // T705: what the preview module exports besides its default export, or `null`. Storybook composes the
 // preview's annotations as `default?.[field] ?? namespace[field]`, so a named export reaches every story
 // when the default export lacks that field, whatever the export is called. The only legal exports are
-// `export default <…>` and `export { <identifier> as default }`; type-only exports are refused too.
+// `export default <…>` and `export { <identifier> as default }`; a statement carrying `default` is not
+// looked at here.
 function findNonDefaultExport(sourceFile) {
   for (const statement of sourceFile.statements) {
     const text = () => statement.getText(sourceFile).replace(/\s+/g, ' ').slice(0, 60)

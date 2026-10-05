@@ -1788,8 +1788,8 @@ hover:underline-offset-2` beside `active:underline-offset-4`, `src/screens/DataE
      the identifier `require` appears other than as the declared name of a binding or as the direct,
      unparenthesised callee of a call (T705: a parenthesised, cast or comma-expression callee, an alias
      such as `const r = require`, `require.resolve`, `require` passed as a value) it fails as
-     `imports-story-module` naming the file (a property or key spelled `require` is not that
-     identifier); when it uses `import.meta.glob` or `import.meta.globEager`
+     `imports-story-module` naming the file (a property, key, specifier or label name spelled
+     `require` is not a reference to it); when it uses `import.meta.glob` or `import.meta.globEager`
      (`imports-story-module`), whatever the pattern, written as a call, aliased
      (`const g = import.meta.glob`) or reached as `import.meta['glob']` or by indexing `import.meta`
      with a key that is not a string literal (`import.meta.env` stays legal); and when it imports a
@@ -1838,8 +1838,8 @@ hover:underline-offset-2` beside `active:underline-offset-4`, `src/screens/DataE
      unreadable** (T704). A getter or setter runs when Storybook reads the object and can write
      `this.parameters`; a method is called with the object as its `this`; a `this` in a function
      expression binds to the object it is called on. On a story object, or on the default export, any
-     getter, setter or method, and any `this` anywhere inside the object (T705: a nested class's
-     heritage clause, computed member names, methods and field initialisers included), fails the run
+     getter, setter or method, and any `this` expression inside the object (T705: in a nested class
+     too; a `this` type or a `this` parameter is not an expression and is not refused), fails the run
      as `unreadable-parameters` and as `unreadable-tags`, naming the story (every story of the file,
      for the default export), and the
      story is credited no mount and no forced state. An arrow function's `this` is refused too: it
@@ -1849,13 +1849,13 @@ hover:underline-offset-2` beside `active:underline-offset-4`, `src/screens/DataE
      them into every story's prepared parameters, which the capture reads for its clip.
      `packages/design-system/.storybook/preview.tsx` is held to its own rules: one readable default
      export shape; its binding not referenced outside its declaration and its export in the preview
-     file; no accessor, method, `this` or spread in it; a `parameters` that is an identifier-keyed
-     object literal written once; and no export other than the default export (T705: Storybook reads a
-     named export of the preview as a project annotation when the default export lacks that field, so
-     `export const`, `export function`, `export { … }` other than `as default`, `export *`, `export =`
-     and a type-only export all fail). When it carries a `visualCaptureClip` or breaks one of those
-     rules, the run fails once, as `project-clip`, naming the preview and not each story, and every
-     story is credited no mount. A project-level `visualForceState` is not read.
+     file; no accessor or method among its own properties, no spread among them or in its `parameters`,
+     no `this` expression inside it; a `parameters` that is an identifier-keyed object literal written
+     once; and no export that is not a default export (T705: Storybook reads a named export of the
+     preview as a project annotation when the default export lacks that field, so `export const`,
+     `export function`, `export *` and `export =` fail). When it carries a `visualCaptureClip` or
+     breaks one of those rules, the run fails once, as `project-clip`, naming the preview and not
+     each story, and every story is credited no mount. A project-level `visualForceState` is not read.
    - **What the static reading cannot see: the known shapes, not an exhaustive list.** A static reading
      cannot prove that no clip applies to a story. Storybook merges project, component and story
      parameters, passes the story's `parameters` to `play`, loaders, `beforeEach` and decorators, and
