@@ -7526,7 +7526,7 @@ for (const [name, stamp] of BAD_STAMPS) {
 
 test('T698 contrast: null stamps with null placing instances, and well-formed stamps, stay legal', () => {
   assert.equal(entryShapeProblem(forceAtWidths({}), { forced: true }), null)
-  for (const stamp of [MINI_BUTTON_STAMP, `${BUTTON_FILE}:213`, 'a/b c.tsx:7']) {
+  for (const stamp of [MINI_BUTTON_STAMP, `${BUTTON_FILE}:213`, 'a/b-c.tsx:7']) {
     assert.equal(
       entryShapeProblem(forceAtWidths({ 768: pairForce(stamp, PAIR_GHOST) }), { forced: true }),
       null,
@@ -7862,4 +7862,223 @@ test('T699 contrast: tagged visual-full-page by an identifier-keyed tags, an ove
   })
   assert.deepEqual(creditsOf(computed, 'ZzOverlay'), ['Button|secondary|md|disabled'])
   assert.deepEqual(computed.manifestProblems, [])
+})
+
+// ---- T702: the readers match what their commits claim. ------------------------------------------------
+// (L1) a component named like an `Object.prototype` member is looked up by own property; (L2) a stamp is
+// the one form the capture writes; (L3) `importPath` and `exportName` are strings; (L5) only a string
+// settles a call site's axis.
+
+// (L1) The axis table is a plain object: `PRIMITIVE_AXES['constructor']` is `Object`, which is not
+// iterable, so a manifest instance placed by such a name threw instead of being refused.
+const PROTOTYPE_NAMES = ['constructor', 'toString', '__proto__', 'hasOwnProperty', 'valueOf']
+const prototypeInstance = (component, disabledAt = []) => ({
+  component,
+  variant: null,
+  size: null,
+  disabledAt,
+})
+
+for (const name of PROTOTYPE_NAMES) {
+  test(`T702 (L1) plant: rowAxesOf, readAxisValues and the shape check refuse a component named ${name} without throwing`, () => {
+    const instance = prototypeInstance(name)
+    assert.doesNotThrow(() => rowAxesOf(instance))
+    assert.match(rowAxesOf(instance).reason, /is not a tracked primitive/)
+    assert.deepEqual(readAxisValues(parse('export type X = 1'), name), {
+      variant: null,
+      size: null,
+    })
+    const entry = { files: [], widths: atEveryWidth({ mounts: [instance], focus: null }) }
+    assert.equal(entryShapeProblem(entry, { forced: false }), null)
+    const placed = {
+      files: [],
+      widths: atEveryWidth({ mounts: [], focus: { stamp: MINI_BUTTON_STAMP, placedBy: instance } }),
+    }
+    assert.equal(entryShapeProblem(placed, { forced: false }), null)
+  })
+
+  test(`T702 (L1) plant: a mount named ${name} credits nothing and names no problem`, () => {
+    const computed = miniRun(`export const ZzProto = { args: { disabled: true } }\n`, {
+      'zz-proto': miniEntry(
+        'ZzProto',
+        miniRecord([prototypeInstance(name, [MINI_BUTTON_STAMP]), disabledMount]),
+      ),
+    })
+    assert.deepEqual(computed.manifestProblems, [])
+    assert.deepEqual(creditsOf(computed, 'ZzProto'), [
+      'Button|secondary|md|disabled',
+      'Button|secondary|md|rest',
+    ])
+  })
+
+  test(`T702 (L1) plant: a force placed by a ${name} instance is refused as untracked, crediting no matrix cell, without throwing`, () => {
+    const entry = forceAtWidths(
+      Object.fromEntries(
+        WIDTHS.map((w) => [w, pairForce(MINI_BUTTON_STAMP, prototypeInstance(name))]),
+      ),
+    )
+    assert.doesNotThrow(() => resolveRuntimeForce(entry, { recordOneKeys: new Set() }))
+    const verdict = resolveRuntimeForce(entry, { recordOneKeys: new Set() })
+    assert.equal(verdict.placedBy ?? null, null)
+    assert.equal(verdict.malformed, undefined)
+    assert.doesNotThrow(() => pairRun(entry))
+    const computed = pairRun(entry)
+    assert.deepEqual(
+      creditsOf(computed, 'ZzPair').filter((credit) => credit.startsWith('Button|')),
+      [],
+    )
+  })
+}
+
+test('T702 (L1) plant: a component that is not a string is not a tracked primitive, whatever it coerces to', () => {
+  const instance = { component: ['Button'], variant: 'ghost', size: 'md', disabledAt: [] }
+  assert.match(rowAxesOf(instance).reason, /is not a tracked primitive/)
+})
+
+test('T702 (L1) contrast: a tracked primitive still lands on its row', () => {
+  const row = rowAxesOf({ component: 'Button', variant: 'ghost', size: 'md', disabledAt: [] })
+  assert.equal(row.reason, undefined)
+  assert.equal(row.variant.value, 'ghost')
+  assert.equal(row.size.value, 'md')
+  assert.deepEqual(Object.keys(PRIMITIVE_AXES).sort(), [...PRIMITIVE_NAMES].sort())
+})
+
+// (L2) The stamp is `<repository-relative path>:<line>`: no whitespace anywhere, no leading `./` or `/`,
+// a line from 1. `disabledAt` entries are stamps too (the capture writes the same keys there).
+const MALFORMED_STAMPS = [
+  ['a leading space', ' packages/x.tsx:3'],
+  ['a leading ./', './packages/x.tsx:3'],
+  ['a leading /', '/abs/x.tsx:3'],
+  ['a newline before the colon', 'x\n:12'],
+  ['a trailing space', 'packages/x.tsx:3 '],
+  ['a trailing newline', 'packages/x.tsx:3\n'],
+  ['a space inside the path', 'packages/a b.tsx:3'],
+  ['a tab inside the path', 'packages/a\tb.tsx:3'],
+  ['a leading zero line', 'packages/x.tsx:03'],
+]
+for (const [name, stamp] of MALFORMED_STAMPS) {
+  test(`T702 (L2) plant: a stamp with ${name} is malformed in a force, a focus and a disabledAt`, () => {
+    const force = forceAtWidths({ 768: pairForce(stamp, PAIR_GHOST) })
+    assert.match(entryShapeProblem(force, { forced: true }), /stamp/)
+    const focus = {
+      files: [],
+      widths: atEveryWidth({ mounts: [], focus: { stamp, placedBy: null } }),
+    }
+    assert.match(entryShapeProblem(focus, { forced: false }), /stamp/)
+    const mounted = {
+      files: [],
+      widths: atEveryWidth({ mounts: [placedInstance('Button', 'ghost', 'md', [stamp])] }),
+    }
+    assert.match(entryShapeProblem(mounted, { forced: false }), /disabledAt/)
+    const placed = forceAtWidths({
+      768: pairForce(MINI_BUTTON_STAMP, placedInstance('Button', 'ghost', 'md', [stamp])),
+    })
+    assert.match(entryShapeProblem(placed, { forced: true }), /disabledAt/)
+    assert.deepEqual(problemsOf(pairRun(forceAtWidths({ 768: pairForce(stamp, null) }))), [
+      ['malformed-entry', 'src/primitives/Button/Button.stories.tsx:ZzPair'],
+    ])
+  })
+}
+
+test('T702 (L2) contrast: a repository-relative path, a dotted directory and a deep line are stamps', () => {
+  for (const stamp of [
+    MINI_BUTTON_STAMP,
+    `${BUTTON_FILE}:213`,
+    'packages/design-system/.storybook/x.tsx:10',
+    'a/b-c.tsx:7',
+  ]) {
+    const entry = forceAtWidths({
+      768: pairForce(stamp, placedInstance('Button', 'ghost', 'md', [stamp])),
+    })
+    assert.equal(entryShapeProblem(entry, { forced: true }), null, stamp)
+  }
+})
+
+test('T702 (L2) contrast: every stamp and disabledAt of the committed manifest is well-formed, unchanged', () => {
+  const { manifest } = readManifest()
+  assert.ok(Object.keys(manifest).length > 0)
+  for (const [id, entry] of Object.entries(manifest)) {
+    assert.equal(entryShapeProblem(entry, { forced: true }), null, id)
+  }
+})
+
+// (L3) `importPath` and `exportName` are strings the capture writes; `String()` made `['./src/…']`
+// and `1` a key that credited, or a story the manifest never named.
+const nonStringKeys = [
+  ['importPath as an array holding the path', { importPath: [`./src/${CARD_STORIES}`] }],
+  ['a numeric importPath', { importPath: 1 }],
+  ['a null importPath', { importPath: null }],
+  ['a numeric exportName', { exportName: 1 }],
+  ['a null exportName', { exportName: null }],
+  ['an exportName that is an array holding the name', { exportName: ['ZzB'] }],
+]
+for (const [name, override] of nonStringKeys) {
+  test(`T702 (L3) plant: an entry with ${name} is a malformed entry naming its id, credited from nothing`, () => {
+    const computed = cardRun({
+      stories: DISABLED_BUTTON_STORY('ZzB'),
+      manifest: { 'zz-b': { ...cardEntry('ZzB', { mounts: [disabledMount] }), ...override } },
+    })
+    const malformed = computed.manifestProblems.filter((p) => p.kind === 'malformed-entry')
+    assert.deepEqual(
+      malformed.map((p) => p.location),
+      [`${MANIFEST_FILE}:zz-b`],
+    )
+    assert.match(malformed[0].detail, /importPath|exportName/)
+    assert.ok(malformed[0].detail.includes(REWRITE_COMMAND))
+    assert.deepEqual(creditsOf(computed, 'ZzB'), [])
+  })
+}
+
+test('T702 (L3) plant: a non-string key beside a sound entry does not stop the sound entry being read', () => {
+  const computed = cardRun({
+    stories: `${DISABLED_BUTTON_STORY('ZzA')}${DISABLED_BUTTON_STORY('ZzB')}`,
+    manifest: {
+      'zz-a': { ...cardEntry('ZzA', { mounts: [disabledMount] }), importPath: 7 },
+      'zz-b': cardEntry('ZzB', { mounts: [disabledMount] }),
+    },
+  })
+  assert.deepEqual(creditsOf(computed, 'ZzA'), [])
+  assert.deepEqual(creditsOf(computed, 'ZzB'), ['Button|secondary|md|disabled'])
+})
+
+test('T702 (L3) contrast: string keys, with or without the leading ./, are read as before', () => {
+  for (const importPath of [`./src/${CARD_STORIES}`, `src/${CARD_STORIES}`]) {
+    const computed = cardRun({
+      stories: DISABLED_BUTTON_STORY('ZzB'),
+      manifest: { 'zz-b': { ...cardEntry('ZzB', { mounts: [disabledMount] }), importPath } },
+    })
+    assert.deepEqual(computed.manifestProblems, [])
+    assert.deepEqual(creditsOf(computed, 'ZzB'), ['Button|secondary|md|disabled'])
+  }
+})
+
+// (L5) Only a string settles an axis: a boolean attribute is `true`, a number is a number, and neither
+// is a value of `variant` or `size`, so neither opens a row or earns a `Rest` credit.
+for (const [name, source] of [
+  ['a boolean `variant` attribute', `const el = <Button variant size="lg">Go</Button>`],
+  ['a boolean `size` attribute', `const el = <Button variant="ghost" size>Go</Button>`],
+  ['variant={1}', `const el = <Button variant={1} size="lg">Go</Button>`],
+  ['size={1}', `const el = <Button variant="ghost" size={1}>Go</Button>`],
+  ['variant={true}', `const el = <Button variant={true} size="lg">Go</Button>`],
+  ['variant={false}', `const el = <Button variant={false} size="lg">Go</Button>`],
+  ['variant={null}', `const el = <Button variant={null} size="lg">Go</Button>`],
+  ['variant={-1}', `const el = <Button variant={-1} size="lg">Go</Button>`],
+  ['size={undefined}', `const el = <Button variant="ghost" size={undefined}>Go</Button>`],
+]) {
+  test(`T702 (L5) plant: ${name} settles nothing and opens no row`, () => {
+    assert.deepEqual(rowKeys(matrixOf(source)), [])
+    const [site] = callSites(source)
+    assert.ok([site.variant.resolved, site.size.resolved].includes('unresolved'))
+  })
+}
+
+test('T702 (L5) contrast: a string literal, a template without substitutions, and their wrappers still settle', () => {
+  for (const source of [
+    `const el = <Button variant="ghost" size="lg">Go</Button>`,
+    `const el = <Button variant={'ghost'} size={\`lg\`}>Go</Button>`,
+    `const el = <Button variant={('ghost' as const)} size={"lg" satisfies string}>Go</Button>`,
+    'const el = <Button variant={`ghost`} size="lg">Go</Button>',
+  ]) {
+    assert.deepEqual(rowKeys(matrixOf(source)), ['ghost|lg'], source)
+  }
 })

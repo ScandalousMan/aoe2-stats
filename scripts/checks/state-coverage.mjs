@@ -1000,7 +1000,8 @@ export function findVariantSizeDefaults(sourceFile) {
 // spread attribute follows it in the attribute list (a spread before it is overridden by it). The value
 // is a string literal, a no-substitution template literal, or either under `as const`, `as <T>`,
 // `satisfies <T>` or parentheses in any nesting (`unwrapExpression`); any other expression, a
-// template literal with substitutions included, is not settled by the source. `attributePresent` is
+// template literal with substitutions, a boolean attribute (`<Button variant />` is `true`), a number
+// and `null` included, is not settled by the source: only a string is a value of an axis (T702). `attributePresent` is
 // whether the call site names the prop at all, which decides whether a default may fill an omitted axis.
 function settleAxisAttr(openingElement, name) {
   const properties = openingElement.attributes.properties
@@ -1018,8 +1019,6 @@ function settleAxisAttr(openingElement, name) {
   if (inner && (ts.isStringLiteral(inner) || ts.isNoSubstitutionTemplateLiteral(inner))) {
     return { attributePresent: true, settled: true, value: inner.text }
   }
-  const lit = attrLiteral(attr)
-  if (lit.present && lit.literal) return { attributePresent: true, settled: true, value: lit.value }
   return { attributePresent: true, settled: false }
 }
 
@@ -2515,10 +2514,20 @@ export const PRIMITIVE_AXES = {
   Menu: ['variant'],
 }
 
+// The axes a tracked primitive keys its rows on, or `undefined` for anything else. `PRIMITIVE_AXES` is
+// a plain object, so a component named `constructor`, `toString` or `__proto__` would find an
+// `Object.prototype` member there, and a non-string (`['Button']` coerces to `Button`) would find a
+// real entry: only a string that is an own key is a tracked primitive (T702).
+function axesOfPrimitive(component) {
+  return typeof component === 'string' && Object.hasOwn(PRIMITIVE_AXES, component)
+    ? PRIMITIVE_AXES[component]
+    : undefined
+}
+
 // A manifest `importPath` as the package-relative path it names (`./src/x.stories.tsx` is
 // `src/x.stories.tsx`).
 function normaliseImportPath(importPath) {
-  return String(importPath ?? '').replace(/^\.\//, '')
+  return importPath.replace(/^\.\//, '')
 }
 
 function isFixtureImportPath(importPath) {
@@ -2591,7 +2600,7 @@ function stableFocus(entry) {
 // browser rendered with no value (`Menu` mounted without a `variant`) has no row in a matrix that
 // has none for it, and inventing a `(no axis)` row would only open cells nothing can close.
 export function rowAxesOf(instance) {
-  const axes = PRIMITIVE_AXES[instance.component]
+  const axes = axesOfPrimitive(instance.component)
   if (!axes) return { reason: `${instance.component} is not a tracked primitive` }
   for (const axis of axes) {
     if (instance[axis] == null) {
@@ -2621,7 +2630,7 @@ const show = (value) => String(JSON.stringify(value))
 // a value outside the set is a manifest the pass did not write (`instanceShapeProblem`).
 export function readAxisValues(sourceFile, primitive) {
   const values = { variant: null, size: null }
-  for (const axis of PRIMITIVE_AXES[primitive] ?? []) {
+  for (const axis of axesOfPrimitive(primitive) ?? []) {
     const aliasName = `${primitive}${axis[0].toUpperCase()}${axis.slice(1)}`
     for (const statement of sourceFile.statements) {
       if (!ts.isTypeAliasDeclaration(statement) || statement.name.text !== aliasName) continue
@@ -2646,11 +2655,11 @@ function instanceShapeProblem(instance, where, knownAxisValues) {
   if (!isPlainObject(instance)) return `${where} is not an object (${show(instance)})`
   if (
     !Array.isArray(instance.disabledAt) ||
-    !instance.disabledAt.every((stamp) => typeof stamp === 'string')
+    !instance.disabledAt.every((stamp) => typeof stamp === 'string' && STAMP_FORM.test(stamp))
   ) {
-    return `${where} has a disabledAt that is not an array of strings (${show(instance.disabledAt)})`
+    return `${where} has a disabledAt that is not an array of \`file:line\` stamps (${show(instance.disabledAt)})`
   }
-  for (const axis of PRIMITIVE_AXES[instance.component] ?? []) {
+  for (const axis of axesOfPrimitive(instance.component) ?? []) {
     const value = instance[axis]
     if (value === null) continue
     if (typeof value !== 'string') {
@@ -2668,9 +2677,12 @@ function instanceShapeProblem(instance, where, knownAxisValues) {
 // `packages/design-system/.storybook/source-stamp.mjs` writes (`keyOf`: the path, a colon, the 1-based
 // line of the opening tag) and what `tests/visual/state-coverage-runtime.ts` reads back (`stampFile`
 // cuts at the last colon). That capture maps every falsy stamp to `{ stamp: null, placedBy: null }`,
-// so an empty string is a stamp it never writes (T698). The check reads only the shape, not whether
+// so an empty string is a stamp it never writes (T698). The path is repository-relative: no
+// whitespace anywhere (a space or a newline is a stamp it never writes), no leading `./` or `/`, and
+// the line has no leading zero (T702). The same form is each `disabledAt` entry's: the capture writes
+// those keys from the same stamp attribute. The check reads only the shape, not whether
 // the path names a file: a stamp that names none credits no record-1 element.
-const STAMP_FORM = /^.+:[1-9][0-9]*$/s
+const STAMP_FORM = /^(?!\.\/|\/)\S+:[1-9][0-9]*$/
 
 // What is wrong with an element record's `stamp` (a force's or a focus's), or `null`: it is `null`
 // (an element no source file stamped) or a non-empty string of the `file:line` form (T698).
@@ -3138,6 +3150,21 @@ export function computeStateCoverage({
         location: `${MANIFEST_PATH}:${id}`,
         detail:
           `${MANIFEST_PATH}'s entry ${id} is not an object (${show(entry)}). ` +
+          `Run \`${REWRITE_COMMAND}\` to rewrite it.`,
+      })
+      continue
+    }
+    // `importPath` and `exportName` are the strings the capture writes; `String()` made an array or a
+    // number a key that credits (T702). Such an entry is named by its key and credited from nothing.
+    const notStrings = ['importPath', 'exportName'].filter(
+      (field) => typeof entry[field] !== 'string',
+    )
+    if (notStrings.length > 0) {
+      manifestProblems.push({
+        kind: 'malformed-entry',
+        location: `${MANIFEST_PATH}:${id}`,
+        detail:
+          `${MANIFEST_PATH}'s entry ${id} has ${notStrings.map((f) => `an ${f} that is not a string (${show(entry[f])})`).join(' and ')}. ` +
           `Run \`${REWRITE_COMMAND}\` to rewrite it.`,
       })
       continue

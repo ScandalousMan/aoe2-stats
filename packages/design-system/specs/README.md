@@ -1746,7 +1746,8 @@ hover:underline-offset-2` beside `active:underline-offset-4`, `src/screens/DataE
      record-1 elements' Disabled cells are all `none`). A story gives no mount credit when it declares
      a `visualCaptureClip`, or when its story object, default export or `parameters` spreads another
      object or is not an object literal; a story or default export that spreads another object also
-     fails the run, because its `tags` cannot be read.
+     fails the run, because its `tags` cannot be read. That is a refusal of the clips the pass can see;
+     the ones it cannot are the last group of **What the static reading cannot see**, below.
    - **A story's binding, and the binding its default export names, may appear only in their own
      declaration and in an export** (`export default meta`, `export { meta as default }`,
      `export { X }`). Any other identifier reference to either, anywhere in the file, fails the run
@@ -1782,16 +1783,63 @@ hover:underline-offset-2` beside `active:underline-offset-4`, `src/screens/DataE
      `import.meta['glob']` or by indexing `import.meta` with a key that is not a string literal
      (`import.meta.env` stays legal); and when it imports a `*.test.*` module
      (`imports-test-module`), by any of the specifier forms above, since a test module is not read
-     here. A `*.test.*` file may do all three. Not covered: a specifier built wholly at run time
-     (`import(name)`), code in a string (`eval`, `new Function`), and an importer outside `src` and
-     `.storybook`.
-   - **A manifest entry's shape is checked** before anything is read from it: every width's record is
-     an object whose `mounts` is an array; every mount, `placedBy` and `focus.placedBy` is an object
-     with a `disabledAt` that is an array of strings and, on each axis its primitive keys rows on, a
-     string among the values its own type exports (`ButtonVariant`, `ButtonSize`, `LinkVariant`,
-     `FieldSize`, `MenuVariant`) or `null`; and a force that matched one element carries a `stamp`
-     that is a string, or the explicit `null` of an element no design-system file wrote. Anything else
-     fails the run naming the story.
+     here. A `*.test.*` file may do all three. What this rule cannot see is listed once, below, under
+     **What the static reading cannot see**.
+   - **A manifest entry's shape is checked** before anything is read from it (T696, T698, T702).
+     Anything that breaks one of these rules fails the run as `malformed-entry`, naming the story (or,
+     for the first two rules, the entry's key), and credits nothing from that entry:
+     - the entry is an object whose `importPath` and `exportName` are both strings (an array or a
+       number is not coerced into a key), and no other entry names the same story: two entries for
+       one story (`./src/x.stories.tsx` and `src/x.stories.tsx` are one path) are each named by key and
+       neither is credited;
+     - `files` is present and is an array of strings;
+     - every width's record is an object whose `mounts` is an array;
+     - every mount, `placedBy` and `focus.placedBy` is an object with a `disabledAt` that is an array of
+       stamps and, on each axis its primitive keys rows on, a string among the values its own type
+       exports (`ButtonVariant`, `ButtonSize`, `LinkVariant`, `FieldSize`, `MenuVariant`) or `null`. A
+       `component` is a tracked primitive only when it is a string that is an own key of the axis table
+       (`Object.hasOwn`): `constructor`, `toString`, `__proto__` or a non-string is an untracked
+       component, refused as such, never a reason to throw;
+     - a stamp (a force's or a focus's `stamp`, and every `disabledAt` entry) is `null` (an element no
+       design-system file wrote; `disabledAt` entries are never `null`) or the one form
+       `packages/design-system/.storybook/source-stamp.mjs` writes, `<repository-relative path>:<line>`:
+       no whitespace anywhere, no leading `./` or `/`, a `:` and a line number from 1 with no leading
+       zero. The check reads the shape, not whether the path names a file;
+     - a focus or a force whose `stamp` is `null` has a `placedBy` of `null` too: an element no source
+       file stamped is placed by no tracked primitive; a force that matched one element carries a
+       `stamp` key, `null` or a stamp, never a missing one.
+   - **A `parameters` or `tags` property this pass cannot read by name is refused, not skipped** (T699).
+     On a story object and on the default export, a `parameters` or a `tags` written as a quoted key
+     (`'parameters'`, `"tags"`), a computed key (`['parameters']`, a template-literal key), a getter, a
+     setter or a method, a property written twice (the engine keeps the last; the reader never took
+     it), or a shorthand beside an assignment, fails the run as `unreadable-parameters` or
+     `unreadable-tags`, naming the story, and the story is credited no mount and no forced state. The
+     same holds inside a `parameters` object literal for `visualCaptureClip` and `visualForceState`.
+     A computed key whose name cannot be evaluated (`[key]`) could spell any of them, so it makes both
+     unreadable on its object. A story's `parameters` that is not an object literal, and a `tags` that is
+     not an array of string literals, are refused the same way. A quoted key that is neither `parameters` nor `tags` (nor, inside `parameters`, a clip or a force)
+     is not refused.
+   - **What the static reading cannot see.** This is the one list of what the source readers (the clip
+     and tag readers, the story-reference rule and the import rule) cannot reach. Each item below
+     credits a mount under a clip the check cannot see, so it is an **over-credit, not the safe
+     direction**: it can print a `Disabled` or `Rest` cell as proven by a frame the capture clipped
+     away. Nothing refuses any of them today:
+     - a module specifier built at run time (`import(name)`, `require(name)`), so the import rule does
+       not see which module it loads;
+     - code in a string (`eval`, `new Function`);
+     - an importer outside `packages/design-system/src` and `packages/design-system/.storybook`;
+     - an `.mdx` file, which this pass never reads and which may import a story and amend its
+       parameters;
+     - a path alias that reaches a story module without the `.stories` suffix in its specifier (the
+       import rule matches the suffix);
+     - a clip that reaches `parameters` through the story context: a `play`, a `loader`, a
+       `beforeEach` or a `decorator` that mutates `context.parameters`; the deprecated `story`
+       annotation (`story: { parameters: … }`), which Storybook merges into the story; and a
+       `__proto__` key, which Storybook reads through the prototype chain and which the reader takes
+       for an ordinary key.
+       T703 closes the last group, the context, the annotation and `__proto__`, by recording the clip the
+       browser applied, from the same settled `parameters` the capture uses, and crediting mounts from that
+       record, not from a reading of the source; the rest of the list stays until a check refuses it.
    - **Every other forced story credits no cell and is reported with the true reason** — no element
      matched, more than one (Playwright's strict mode refuses it, so no frame can be captured), stamps
      or placing instances that differ across widths, a stamp in no record-1 element and no placing
@@ -1891,7 +1939,9 @@ hover:underline-offset-2` beside `active:underline-offset-4`, `src/screens/DataE
    files no `Rest` credit and opens no row (T700: JSX applies the last attribute, so a spread before an
    axis attribute is overridden by it and `<Button {...rest} variant="ghost" size="lg" />` keeps its
    `ghost|lg` row, while `<Button variant="ghost" size="lg" {...rest} />` opens none; `axisKey`,
-   `scripts/checks/state-coverage.mjs`; one unsettled axis is enough, a literal
+   `scripts/checks/state-coverage.mjs`; only a string settles an axis (T702): a boolean attribute
+   (`<Button variant size="lg" />`), a number (`variant={1}`), `true`, `false` and `null` open no
+   row, as a forwarded prop does; one unsettled axis is enough, a literal
    `variant` beside a dynamic `size` opens neither a `ghost|unresolved` row nor a half-keyed one). The
    instances such a call site mounts are not lost: the runtime manifest places every instance a
    story mounts at the row the browser rendered it to (`ghost|md` for `FavouriteToggle`, `destructive|lg`
