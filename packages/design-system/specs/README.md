@@ -1849,13 +1849,13 @@ hover:underline-offset-2` beside `active:underline-offset-4`, `src/screens/DataE
      them into every story's prepared parameters, which the capture reads for its clip.
      `packages/design-system/.storybook/preview.tsx` is held to its own rules: one readable default
      export shape; its binding not referenced outside its declaration and its export in the preview
-     file; no accessor or method among its own properties, no spread among them or in its `parameters`,
-     no `this` expression inside it; a `parameters` that is an identifier-keyed object literal written
-     once; and no export that is not a default export (T705: Storybook reads a named export of the
-     preview as a project annotation when the default export lacks that field, so `export const`,
-     `export function`, `export *` and `export =` fail). When it carries a `visualCaptureClip` or
-     breaks one of those rules, the run fails once, as `project-clip`, naming the preview and not
-     each story, and every story is credited no mount. A project-level `visualForceState` is not read.
+     file; no accessor, method or spread among its own properties, no spread among its `parameters`'
+     own properties (not deeper), no `this` expression inside it; a `parameters` that is an
+     identifier-keyed object literal written once; no export of a name other than `default` (T705:
+     Storybook reads a named export of the preview as a project annotation when the default export
+     lacks that field, so `export const`, `export function`, `export *` and `export =` fail). When it
+     carries a `visualCaptureClip` or breaks one of those rules, the run fails once, as `project-clip`,
+     naming the preview, and every story is credited no mount. A project-level `visualForceState` is not read.
    - **What the static reading cannot see: the known shapes, not an exhaustive list.** A static reading
      cannot prove that no clip applies to a story. Storybook merges project, component and story
      parameters, passes the story's `parameters` to `play`, loaders, `beforeEach` and decorators, and

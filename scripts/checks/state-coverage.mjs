@@ -1309,8 +1309,8 @@ function readProp(objLiteral, name) {
 // not this object's either way. None of that is in an object literal this pass reads, so the owner's
 // `parameters` and `tags` are unreadable and the story gets no mount credit. T705: every `this`
 // expression inside the owner is refused, a nested class's included (a `this` type or a `this` parameter
-// is not an expression and is not refused), over-refusing being the safe direction. The owner's own shape only: an
-// accessor or method of a nested `parameters` object is not this rule's (T703's runtime record is what
+// is not an expression and is not refused), over-refusing being the safe direction. The owner's own
+// shape only: an accessor or method of a nested `parameters` object is not this rule's (T703's runtime record is what
 // proves what the browser applied).
 const ownerHazardCache = new WeakMap()
 function findOwnerHazard(owner) {
@@ -3212,7 +3212,8 @@ function findOverlayFiles(filesByPath, sourceFiles) {
 // readable only as `export default <identifier>` or an inline object literal (`readDefaultExport`), the
 // binding not referenced outside its declaration and its export in this file (`findBindingReferences`),
 // no accessor or method among its own properties and no `this` expression in it (`findOwnerHazard`), no
-// spread among its own properties or in its `parameters`, and a `parameters` that is an
+// spread among its own properties or among its `parameters`' own properties (not deeper), and a
+// `parameters` that is an
 // identifier-keyed object literal written once with no `visualCaptureClip` (and no `visualForceState`)
 // this pass cannot read by name. One problem per preview file naming the first reason, not one per
 // story. A preview that is not in `moduleFilesByPath` (a fixture with none) has no project parameters.
