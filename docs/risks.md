@@ -104,11 +104,12 @@ jurisdiction, `<account>.r2...` does not).
 - [x] Functions report region `cdg1`; database and bucket are EU — both functions report `cdg1` in
       `vercel inspect` and in `x-vercel-id`; Neon runs in `eu-central-1`; the R2 bucket carries the
       EU jurisdiction, confirmed by its `.eu.` endpoint
-- [x] A pull request gets a preview deployment; `main` deploys production — pull request #2 carried
-      a passing Vercel check and a preview deployment, and merging it produced a production
-      deployment on its own, with no CLI involved. Preview URLs answer `302`: that is Vercel's
-      deployment protection, not an application fault, and reaching one from a script needs a
-      bypass token
+- [ ] Only `main` deploys; a branch or pull request gets no deployment — `git.deploymentEnabled` in
+      `vercel.json` (pull request #120, 2026-10-04), read from the pushed commit, so it holds only on
+      branches that contain it. The branch half is observed: #120's own branch got no Vercel
+      check. The `main` half is to confirm on the first production deploy after #120 merges.
+      Before #120, pull request #2 carried a preview deployment and merging it produced a
+      production deployment with no CLI involved
 - [x] The cron endpoint returns 401 without its secret — verified in production for both `GET` (what
       Vercel Cron actually sends) and `POST`, each returning the error envelope
 - [x] The Python bundle stays under the 500 MB limit — 43.69 MB per function, 8.7% of the ceiling.

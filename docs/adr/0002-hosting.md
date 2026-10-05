@@ -70,6 +70,17 @@ Constitution principle XII exists because of this ADR. In particular:
   reaches the function, so a bad deploy cannot be blocked from the repository's side. The build
   command (`buildCommand` in `vercel.json`) is therefore the only place left to run a check first —
   `scripts/checks/config-preflight.mjs` is that check today.
+- **Only `main` deploys.** Hobby allows 100 deployments per rolling day, and a push to any branch
+  creates one even when the project's Ignored Build Step (Vercel project settings, Git) cancels
+  it at once. On 2026-10-04 two sessions pushing branches spent the quota and the production
+  deploy of a fix was refused. `git.deploymentEnabled` in `vercel.json` turns deployments off for
+  branches that contain it — Vercel reads it from the pushed commit, so an older branch still
+  deploys until `main` is merged into it. Nothing in CI reads a preview (`smoke.yml` probes
+  production after a push to `main`).
+- **The upload carries no test artifact and no secret.** `.vercelignore` keeps visual-test
+  baselines, the Storybook build, Playwright output and tool caches out of every deployment, and
+  `.env*` files (except `.env.example`, which `config-preflight.mjs` reads) out of a CLI upload,
+  since the CLI does not apply `.gitignore`. Deployment storage had reached ~86.9 GB of 10 GB on 2026-10-04.
 
 ## The single-page fallback is a host requirement, not a Vercel setting
 

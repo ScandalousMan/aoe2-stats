@@ -1,0 +1,25 @@
+# Development and test artifacts that are never an input to the production deployment: the build
+# (`vercel.json`'s `buildCommand`: config-preflight, then `tsr generate`, `tsc -b`, `vite build`)
+# and the Python functions under `api/` read none of them. Visual tests and Storybook run in GitHub
+# Actions from a git checkout, which this file does not affect. See docs/adr/0002-hosting.md.
+
+# Playwright output (`playwright.config.ts`)
+/test-results/
+/playwright-report/
+
+# Python tool caches
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# Visual-test baselines, tracked in git for `tests/visual/` and `pr.yml`/`baselines.yml`
+/packages/design-system/__screenshots__/
+
+# Generated Storybook build (`pnpm --filter design-system build-storybook`)
+/packages/design-system/storybook-static/
+
+# Local environment files: the CLI uploads a working copy and does not apply `.gitignore`, so
+# without this a production `.env.vercel` would be uploaded. `.env.example` stays: the build's
+# `scripts/checks/config-preflight.mjs` reads it.
+.env*
+!.env.example
