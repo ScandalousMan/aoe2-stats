@@ -1746,8 +1746,10 @@ hover:underline-offset-2` beside `active:underline-offset-4`, `src/screens/DataE
      record-1 elements' Disabled cells are all `none`). A story gives no mount credit when it declares
      a `visualCaptureClip`, or when its story object, default export or `parameters` spreads another
      object or is not an object literal; a story or default export that spreads another object also
-     fails the run, because its `tags` cannot be read. That is a refusal of the clips the pass can see;
-     the ones it cannot are the last group of **What the static reading cannot see**, below.
+     fails the run, because its `tags` cannot be read. That refuses the clips of the shapes this pass
+     reads. It does not prove that no clip applies to a story it credits: the shapes it is known not to
+     see are listed, as known shapes and not as an exhaustive list, under **What the static reading
+     cannot see**, below.
    - **A story's binding, and the binding its default export names, may appear only in their own
      declaration and in an export** (`export default meta`, `export { meta as default }`,
      `export { X }`). Any other identifier reference to either, anywhere in the file, fails the run
@@ -1777,14 +1779,23 @@ hover:underline-offset-2` beside `active:underline-offset-4`, `src/screens/DataE
    - **A module under `src` or `.storybook` other than a `*.test.*` file** fails the run naming the
      importing file when it imports a `*.stories` module (`imports-story-module`): a static `import`
      (type-only included), `export … from`, `import x = require()`, a dynamic `import()` or an
-     `import()` type and a `require()`, each with a literal, a templated or a `+`-joined specifier;
-     when it uses `import.meta.glob` or `import.meta.globEager` (`imports-story-module`), whatever the
+     `import()` type and a `require()`, each with a plain string-literal specifier (a string or a
+     template without a substitution); when an `import()` or a `require()` takes a specifier that is
+     not a plain string literal (T704: a template with a substitution, a `+`-joined or conditional
+     specifier, a call, a variable), whatever it ends with (`imports-story-module`, naming the file and
+     its "non-literal specifier"), because Vite compiles a templated `import()` into a glob over every
+     file its static parts can match and the last part says nothing of what the first ones build; when
+     it uses `import.meta.glob` or `import.meta.globEager` (`imports-story-module`), whatever the
      pattern, written as a call, aliased (`const g = import.meta.glob`) or reached as
      `import.meta['glob']` or by indexing `import.meta` with a key that is not a string literal
      (`import.meta.env` stays legal); and when it imports a `*.test.*` module
-     (`imports-test-module`), by any of the specifier forms above, since a test module is not read
-     here. A `*.test.*` file may do all three. What this rule cannot see is listed once, below, under
-     **What the static reading cannot see**.
+     (`imports-test-module`), by any of the literal specifier forms above, since a test module is not
+     read here. A `*.test.*` file may do all four. A story path is never a test module (T704): a file
+     named `Evil.test.stories.tsx` is a story to Storybook, so it is read as one and held to every rule
+     in this list, and one predicate decides what a test module is for every reader that asks (the
+     module walk, the first pass, the overlay reader and the specifier test). Known shapes this rule
+     does not see are listed below, under **What the static reading cannot see**; that list is not
+     exhaustive.
    - **A manifest entry's shape is checked** before anything is read from it (T696, T698, T702).
      Anything that breaks one of these rules fails the run as `malformed-entry`, naming the story (or,
      for the first two rules, the entry's key), and credits nothing from that entry:
@@ -1819,27 +1830,55 @@ hover:underline-offset-2` beside `active:underline-offset-4`, `src/screens/DataE
      unreadable on its object. A story's `parameters` that is not an object literal, and a `tags` that is
      not an array of string literals, are refused the same way. A quoted key that is neither `parameters` nor `tags` (nor, inside `parameters`, a clip or a force)
      is not refused.
-   - **What the static reading cannot see.** This is the one list of what the source readers (the clip
-     and tag readers, the story-reference rule and the import rule) cannot reach. Each item below
-     credits a mount under a clip the check cannot see, so it is an **over-credit, not the safe
-     direction**: it can print a `Disabled` or `Rest` cell as proven by a frame the capture clipped
-     away. Nothing refuses any of them today:
-     - a module specifier built at run time (`import(name)`, `require(name)`), so the import rule does
-       not see which module it loads;
+   - **An accessor, a method or a `this` in a story object or in the default export makes that object
+     unreadable** (T704). A getter or setter runs when Storybook reads the object and can write
+     `this.parameters`; a method is called with the object as its `this`; a `this` in a function
+     expression binds to the object it is called on. On a story object, or on the default export, any
+     getter, setter or method, and any `this` anywhere inside the object other than inside a nested
+     class body (which is the class's own), fails the run as `unreadable-parameters` and as
+     `unreadable-tags`, naming the story (every story of the file, for the default export), and the
+     story is credited no mount and no forced state. An arrow function's `this` is refused too: it
+     inherits the module's, not the object's, and over-refusing is the safe direction. Only the owner's
+     own shape is read this way: an accessor inside a nested `parameters` object is not this rule's.
+   - **The Storybook preview's project-level `parameters` are a third owner** (T704). Storybook merges
+     them into every story's prepared parameters, which the capture reads for its clip.
+     `packages/design-system/.storybook/preview.tsx`'s default export is read under the same rules as a
+     story file's default export (one readable shape, its binding not referenced outside its
+     declaration and its export, no accessor, method, `this` or spread in it, a `parameters` that is an
+     identifier-keyed object literal written once). When it carries a `visualCaptureClip` or cannot be
+     read, the run fails once, as `project-clip`, naming the preview and not each story, and every story
+     is credited no mount. A project-level `visualForceState` is not read.
+   - **What the static reading cannot see: the known shapes, not an exhaustive list.** A static reading
+     cannot prove that no clip applies to a story. Storybook merges project, component and story
+     parameters, passes the story's `parameters` to `play`, loaders, `beforeEach` and decorators, and
+     reads objects through their prototype chain, and each round of hardening here has closed the
+     shapes reported and left their neighbours. The shapes below are the ones known to reach a story's
+     clip, parameters or tags unseen; one that is not listed may reach it too. Each credits a mount
+     under a clip the check cannot see, so it is an **over-credit, not the safe direction**: it can
+     print a `Disabled` or `Rest` cell as proven by a frame the capture clipped away. Nothing refuses
+     any of them today:
+     - a `require` that does not go through the bare `require` identifier (`module.require(name)`,
+       `createRequire(…)(name)`), so the import rule does not see it;
      - code in a string (`eval`, `new Function`);
      - an importer outside `packages/design-system/src` and `packages/design-system/.storybook`;
      - an `.mdx` file, which this pass never reads and which may import a story and amend its
        parameters;
      - a path alias that reaches a story module without the `.stories` suffix in its specifier (the
        import rule matches the suffix);
+     - project annotations from anywhere but `preview.tsx`: a preview file an addon contributes, or one
+       `.storybook/main.ts` adds, which Storybook merges and this pass never reads;
      - a clip that reaches `parameters` through the story context: a `play`, a `loader`, a
-       `beforeEach` or a `decorator` that mutates `context.parameters`; the deprecated `story`
-       annotation (`story: { parameters: … }`), which Storybook merges into the story; and a
-       `__proto__` key, which Storybook reads through the prototype chain and which the reader takes
-       for an ordinary key.
-       T703 closes the last group, the context, the annotation and `__proto__`, by recording the clip the
-       browser applied, from the same settled `parameters` the capture uses, and crediting mounts from that
-       record, not from a reading of the source; the rest of the list stays until a check refuses it.
+       `beforeEach` or a `decorator` (the preview's included) that mutates `context.parameters`; the
+       deprecated `story` annotation (`story: { parameters: … }`), which Storybook merges into the
+       story; and a `__proto__` key, which Storybook reads through the prototype chain and which the
+       reader takes for an ordinary key.
+
+     Only a record of the clip the browser applied proves a frame's clip: T703 (filed, not landed) is
+     to record it, from the same settled `parameters` the capture uses, and to credit mounts from that
+     record and not from a reading of the source. Until it lands, and for any shape not listed, the
+     source readers are a refusal of the shapes they know, never a proof that a credited story is
+     unclipped.
+
    - **Every other forced story credits no cell and is reported with the true reason** — no element
      matched, more than one (Playwright's strict mode refuses it, so no frame can be captured), stamps
      or placing instances that differ across widths, a stamp in no record-1 element and no placing
@@ -2415,14 +2454,25 @@ row's variant and size. A force on an element whose stamp is in the placing inst
 refused. The Disabled column of every matrix, and a primitive's own stories' Rest column, come from
 the primitive instances a story mounts, as rendered, and from nothing else: a `disabled` or `loading`
 written at a call site, and a `disabled: true` in a story's `args`, credit no Disabled cell. A story
-gives no mount credit when it declares a `visualCaptureClip` (the manifest does not record whether a
-mount lies inside the clipped rect), when its story object, its default export or its `parameters`
-spreads another object or is not an object literal (a clip may come in with it), or when it has
-neither a clip nor the `visual-full-page` tag and rendered a design-system file with an unprefixed
-`fixed` class (that element need not intersect the root box it is screenshotted as). A tracked
-primitive written in a story file credits nothing. Every other forced story credits no cell and the
-check names why. A manifest entry of the wrong shape fails the check, naming the story, and so does a
-story object or default export that spreads another object (its `tags` cannot be read).
+gives no mount credit for the reasons row 8's prose lists, among them: it declares a
+`visualCaptureClip` (the manifest does not record whether a mount lies inside the clipped rect); its
+story object, its default export or its `parameters` spreads another object or is not an object
+literal (a clip may come in with it); its `parameters` or `tags` cannot be read by name (a quoted,
+computed or duplicated key, an accessor, a method, or a `this` in the story object or the default
+export); the story or the default export is referenced outside its declaration and an export, the
+default export is not one this pass reads, or a story or meta binding is declared twice or with `var`
+or `let`; the Storybook preview's project-level `parameters` carry a clip or cannot be read
+(`project-clip`); or it has neither a clip nor the `visual-full-page` tag and rendered a
+design-system file with an unprefixed `fixed` class (that element need not intersect the root box it
+is screenshotted as). A tracked primitive written in a story file credits nothing. Crediting a story
+is not a proof that no clip applied to it: the source readers refuse the shapes they know, the shapes
+they are known not to see are listed, without claiming the list is exhaustive, under row 8's **What
+the static reading cannot see**, and only the runtime record of the clip the browser applied (T703)
+would prove a frame's clip. Every other forced story credits no cell and the check fails naming why
+(a filed, dated exception is the one way to tolerate it), except that a force whose placing instance
+has no matrix row credits the half it can and names the other in a note. A manifest entry of the
+wrong shape fails the check, naming the story, and so does a story object or default export that
+spreads another object (its `tags` cannot be read).
 
 **Still static, and read from source:**
 

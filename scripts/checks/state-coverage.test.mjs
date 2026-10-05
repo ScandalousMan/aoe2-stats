@@ -5129,6 +5129,9 @@ test('the check fails (exit 1) on the real tree with a story appended that has n
 function runCheckOnPlantedTree(
   storyAppendix,
   storyFileSegments = ['composites', 'MatchRow', 'MatchRow.stories.tsx'],
+  // T704: `[from, to]` rewrites the target file instead of appending (the project-level parameters of
+  // the preview can only be changed from inside its own object literal).
+  replacement = null,
 ) {
   const checksDir = path.dirname(fileURLToPath(import.meta.url))
   const repoRoot = path.resolve(checksDir, '..', '..')
@@ -5157,10 +5160,15 @@ function runCheckOnPlantedTree(
       path.join(dsDir, 'node_modules'),
       path.join(tmp, 'packages', 'design-system', 'node_modules'),
     )
-    appendFileSync(
-      path.join(tmp, 'packages', 'design-system', 'src', ...storyFileSegments),
-      storyAppendix,
-    )
+    const target = path.join(tmp, 'packages', 'design-system', 'src', ...storyFileSegments)
+    if (replacement) {
+      const [from, to] = replacement
+      const before = readFileSync(target, 'utf8')
+      assert.ok(before.includes(from), `${from} is not in ${target}`)
+      writeFileSync(target, before.replace(from, to))
+    } else {
+      appendFileSync(target, storyAppendix)
+    }
     return spawnSync(
       process.execPath,
       [path.join(tmp, 'scripts', 'checks', 'state-coverage.mjs')],
@@ -6781,10 +6789,7 @@ const IMPORT_PLANTS = {
   'a re-export': ['src/lib/helper.ts', `export { ZzA } from '../composites/Card/Card.stories'\n`],
   'an export star': ['src/lib/helper.ts', `export * from '../composites/Card/Card.stories.ts'\n`],
   'a dynamic import()': ['src/lib/helper.ts', `export const load = () => import('./X.stories')\n`],
-  'a dynamic import() of a template': [
-    'src/lib/helper.ts',
-    'export const load = (n) => import(`./${n}.stories`)\n',
-  ],
+  // T704: a templated or `+`-joined specifier is refused whatever it ends with (see the T704 plants).
   'a require()': ['.storybook/helper.cjs', `const s = require('../src/X.stories.tsx')\n`],
   'an import = require()': ['src/lib/helper.ts', `import s = require('./X.stories')\n`],
   'an import.meta.glob() of story files': [
@@ -8081,4 +8086,401 @@ test('T702 (L5) contrast: a string literal, a template without substitutions, an
   ]) {
     assert.deepEqual(rowKeys(matrixOf(source)), ['ghost|lg'], source)
   }
+})
+
+// ---- T704: what the third adversarial review of #121 found, and the residue stated as known ----------
+//
+// (H1) The project-level `parameters` of the Storybook preview reach every story: a clip there, or a
+// preview this pass cannot read, refuses every story's mount credit and names the preview once. (M1) An
+// accessor, a method or a `this` in a story object or the default export is unreadable. (M2) Any
+// `import()` or `require()` in a non-test module whose specifier is not a plain string literal fails
+// naming the file. (L1) One test-module predicate, and a story path is never a test module.
+const PROJECT_CLIP = 'project-clip'
+const PREVIEW_PATH = '.storybook/preview.tsx'
+const UNREADABLE_PARAMETERS = 'unreadable-parameters'
+const UNREADABLE_TAGS = 'unreadable-tags'
+const CREDITED = ['Button|secondary|md|disabled']
+const previewRun = (source) => importerRun(new Map([[path.join(DS_DIR, PREVIEW_PATH), source]]))
+const previewSource = (parameters, before = '', after = '') =>
+  `import type { Preview } from '@storybook/react-vite'\n${before}const preview: Preview = {\n  tags: ['autodocs'],\n  parameters: ${parameters},\n  decorators: [],\n}\n${after}export default preview\n`
+const assertPreviewRefused = (computed) => {
+  // The preview is named once, not once per story, and no story keeps a mount credit.
+  assert.deepEqual(problemsOf(computed), [[PROJECT_CLIP, PREVIEW_PATH]])
+  assert.match(computed.manifestProblems[0].detail, /\.storybook\/preview\.tsx/)
+  assert.deepEqual(creditsOf(computed, 'ZzA'), [])
+  assert.deepEqual(creditsOf(computed, 'ZzB'), [])
+}
+
+const PREVIEW_PLANTS = {
+  'a visualCaptureClip in the preview parameters': previewSource(`{ visualCaptureClip: ${CLIP} }`),
+  'a quoted visualCaptureClip': previewSource(`{ 'visualCaptureClip': ${CLIP} }`),
+  'a computed visualCaptureClip': previewSource(`{ ['visualCaptureClip']: ${CLIP} }`),
+  'a visualCaptureClip written twice': previewSource(
+    `{ visualCaptureClip: ${CLIP}, visualCaptureClip: null }`,
+  ),
+  'a visualCaptureClip behind a getter': previewSource(
+    `{ get visualCaptureClip() { return ${CLIP} } }`,
+  ),
+  'parameters that is an identifier, parameters: shared': previewSource(
+    'shared',
+    `const shared = { visualCaptureClip: ${CLIP} }\n`,
+  ),
+  'parameters that spreads another object': previewSource(
+    '{ ...shared }',
+    `const shared = { visualCaptureClip: ${CLIP} }\n`,
+  ),
+  'parameters that is a call': previewSource(
+    'make()',
+    `const make = () => ({ visualCaptureClip: ${CLIP} })\n`,
+  ),
+  'a quoted parameters key': `const preview = { 'parameters': { visualCaptureClip: ${CLIP} } }\nexport default preview\n`,
+  'a getter named parameters': `const preview = { get parameters() { return { visualCaptureClip: ${CLIP} } } }\nexport default preview\n`,
+  'a clip written onto the binding after its declaration': previewSource(
+    '{}',
+    '',
+    `preview.parameters.visualCaptureClip = ${CLIP}\n`,
+  ),
+  'a default export built by a call': `const define = (p) => p\nexport default define({ parameters: { visualCaptureClip: ${CLIP} } })\n`,
+  'a preview with no default export': `export const preview = { parameters: {} }\n`,
+  'an inline default export that carries a clip': `export default { parameters: { visualCaptureClip: ${CLIP} } }\n`,
+  'a method on the preview': `const preview = { parameters: {}, beforeAll() {} }\nexport default preview\n`,
+  'a this in the preview': `const preview = { parameters: {}, decorators: [function (Story) { return this }] }\nexport default preview\n`,
+}
+for (const [name, source] of Object.entries(PREVIEW_PLANTS)) {
+  test(`T704 (H1) plant: ${name} fails the check naming the preview once and credits no story a mount`, () => {
+    assertPreviewRefused(previewRun(source))
+  })
+}
+
+test('T704 (H1) contrast: ordinary preview parameters, an inline default export and no preview at all leave every story credited', () => {
+  const ordinary = previewSource(
+    `{ controls: { matchers: { color: /(background|color)$/i } }, options: { storySort: { order: ['Foundations', ['Colour']] } }, layout: 'padded' }`,
+  )
+  for (const source of [
+    ordinary,
+    `export default { parameters: { layout: 'centered' } }\n`,
+    `const preview = { tags: ['autodocs'] }\nexport default preview\n`,
+  ]) {
+    const computed = previewRun(source)
+    assert.deepEqual(computed.manifestProblems, [])
+    assert.deepEqual(creditsOf(computed, 'ZzA'), CREDITED)
+    assert.deepEqual(creditsOf(computed, 'ZzB'), CREDITED)
+  }
+  assert.deepEqual(creditsOf(importerRun(new Map()), 'ZzA'), CREDITED)
+})
+
+test('T704 (H1) contrast: a preview in a test module, or in no .storybook directory, is not the preview', () => {
+  const clip = previewSource(`{ visualCaptureClip: ${CLIP} }`)
+  const computed = importerRun(
+    new Map([
+      [path.join(DS_DIR, '.storybook/preview.test.tsx'), clip],
+      [path.join(DS_DIR, 'src/lib/preview.tsx'), clip],
+    ]),
+  )
+  assert.deepEqual(computed.manifestProblems, [])
+  assert.deepEqual(creditsOf(computed, 'ZzA'), CREDITED)
+})
+
+test('T704 (H1) end to end: the check exits 1 on the real tree with a visualCaptureClip in the preview parameters, naming the preview once', () => {
+  const run = runCheckOnPlantedTree(
+    '',
+    ['..', '.storybook', 'preview.tsx'],
+    [
+      'parameters: {\n    controls: {',
+      `parameters: {\n    visualCaptureClip: ${CLIP},\n    controls: {`,
+    ],
+  )
+  assert.equal(run.status, 1, run.stdout + run.stderr)
+  assert.match(run.stderr, /\.storybook\/preview\.tsx/)
+  assert.equal(run.stderr.split('\n').filter((line) => line.includes('preview.tsx')).length, 1)
+})
+
+test('T704 contrast: the check exits 0 on the real tree, and its generated region is the committed one', () => {
+  const checksDir = path.dirname(fileURLToPath(import.meta.url))
+  const run = spawnSync(process.execPath, [path.join(checksDir, 'state-coverage.mjs')], {
+    encoding: 'utf8',
+    timeout: 120000,
+  })
+  assert.equal(run.status, 0, run.stdout + run.stderr)
+})
+
+// (M1) An accessor or a method on a story object or the default export, and a `this` inside one outside
+// a nested class, make that object's parameters and tags unreadable.
+const ACCESSOR_RENDER = `render: () => <Button disabled>Go</Button>`
+const ACCESSOR_STORIES = {
+  'a getter that writes this.parameters': `export const ZzG = { get name() { this.parameters.visualCaptureClip = ${CLIP}; return 'X' }, ${ACCESSOR_RENDER} }\n`,
+  'get decorators()': `export const ZzG = { get decorators() { return [] }, ${ACCESSOR_RENDER} }\n`,
+  'a setter': `export const ZzG = { set name(value) {}, ${ACCESSOR_RENDER} }\n`,
+  'a method, play() {}': `export const ZzG = { play() {}, ${ACCESSOR_RENDER} }\n`,
+  'an async method': `export const ZzG = { async play() {}, ${ACCESSOR_RENDER} }\n`,
+  'a generator method': `export const ZzG = { *items() {}, ${ACCESSOR_RENDER} }\n`,
+  'a computed-key method': `export const ZzG = { ['play']() {}, ${ACCESSOR_RENDER} }\n`,
+  'render: function () { return this }': `export const ZzG = { render: function () { return this } }\n`,
+  'a this in an arrow function': `export const ZzG = { render: () => { void this; return <Button disabled>Go</Button> } }\n`,
+  'a this in a function nested in a render': `export const ZzG = { render: () => { const f = function () { return this }; return <Button disabled>Go</Button> } }\n`,
+  'a this in a nested object literal': `export const ZzG = { args: { x: { get y() { return this } } }, ${ACCESSOR_RENDER} }\n`,
+  'a getter in a type-asserted story': `export const ZzG = { get name() { return 'X' }, ${ACCESSOR_RENDER} } as const\n`,
+}
+const accessorStoryRun = (story) =>
+  cardRun({
+    stories: `${story}${DISABLED_BUTTON_STORY('ZzSib')}`,
+    manifest: {
+      'zz-g': cardEntry('ZzG', { mounts: [disabledMount] }),
+      'zz-sib': cardEntry('ZzSib', { mounts: [disabledMount] }),
+    },
+  })
+for (const [name, story] of Object.entries(ACCESSOR_STORIES)) {
+  test(`T704 (M1) plant: ${name} makes the story's parameters and tags unreadable, naming it and crediting it nothing`, () => {
+    const computed = accessorStoryRun(story)
+    const at = `${CARD_STORIES_LOCATION}:ZzG`
+    assert.deepEqual(ofKind(computed, UNREADABLE_PARAMETERS), [[UNREADABLE_PARAMETERS, at]])
+    assert.deepEqual(ofKind(computed, UNREADABLE_TAGS), [[UNREADABLE_TAGS, at]])
+    assert.deepEqual(creditsOf(computed, 'ZzG'), [])
+    // The sibling it does not touch is credited and not named.
+    assert.deepEqual(creditsOf(computed, 'ZzSib'), CREDITED)
+    assert.deepEqual(
+      problemsOf(computed).filter(([, location]) => location.endsWith(':ZzSib')),
+      [],
+    )
+  })
+}
+
+const ACCESSOR_METAS = {
+  'meta get id()': `const meta = { component: Card, get id() { return 'x' } }\nexport default meta\n`,
+  'meta set title': `const meta = { component: Card, set title(value) {} }\nexport default meta\n`,
+  'a meta method': `const meta = { component: Card, play() {} }\nexport default meta\n`,
+  'a meta render: function () { return this }': `const meta = { component: Card, render: function () { return this } }\nexport default meta\n`,
+  'a meta decorator that reads this': `const meta = { component: Card, decorators: [function (Story) { return this }] }\nexport default meta\n`,
+  'an inline default export with a getter': `export default { component: Card, get id() { return 'x' } }\n`,
+}
+for (const [name, metaBlock] of Object.entries(ACCESSOR_METAS)) {
+  test(`T704 (M1) plant: ${name} makes the parameters and tags of every story of the file unreadable and credits none`, () => {
+    const computed = metaRun(metaBlock)
+    assert.deepEqual(ofKind(computed, UNREADABLE_PARAMETERS), BOTH_STORIES(UNREADABLE_PARAMETERS))
+    assert.deepEqual(ofKind(computed, UNREADABLE_TAGS), BOTH_STORIES(UNREADABLE_TAGS))
+    assert.deepEqual(creditsOf(computed, 'ZzA'), [])
+    assert.deepEqual(creditsOf(computed, 'ZzB'), [])
+  })
+}
+
+test('T704 (M1) contrast: a function expression without this, an arrow, a property that holds a function, and a this inside a nested class stay readable and credited', () => {
+  const story = `export const ZzG = {
+  render: function () { return <Button disabled>Go</Button> },
+  play: async () => {},
+  loaders: [() => Promise.resolve({})],
+  args: { items: [{ label: 'a' }] },
+  decorators: [(Story) => { class Local { read() { return this } } void Local; return <Story /> }],
+}\n`
+  const computed = accessorStoryRun(story)
+  assert.deepEqual(computed.manifestProblems, [])
+  assert.deepEqual(creditsOf(computed, 'ZzG'), CREDITED)
+  const meta = metaRun(
+    `const meta = { component: Card, parameters: { layout: 'padded' }, tags: ['autodocs'], decorators: [(Story) => <Story />] }\nexport default meta\n`,
+  )
+  assert.deepEqual(meta.manifestProblems, [])
+  assert.deepEqual(creditsOf(meta, 'ZzA'), CREDITED)
+})
+
+// (M2) A non-literal specifier in an `import()` or a `require()` of a non-test module.
+const NON_LITERAL_SPECIFIER = /calls import\(\) or require\(\) with a non-literal specifier/
+const NON_LITERAL_PLANTS = {
+  'a template whose last part ends in .tsx': [
+    'src/lib/helper.ts',
+    'export const load = (n) => import(`../src/primitives/Button/${n}.tsx`)\n',
+  ],
+  'a template whose last part is a story suffix': [
+    'src/lib/helper.ts',
+    'export const load = (n) => import(`./${n}.stories`)\n',
+  ],
+  'a template with a leading substitution': [
+    'src/lib/helper.ts',
+    'export const load = (n) => import(`${n}`)\n',
+  ],
+  "a `+`-joined specifier, './Button.stories' + ''": [
+    'src/lib/helper.ts',
+    "export const load = () => import('./Button.stories' + '')\n",
+  ],
+  'a `+`-joined specifier of two literals': [
+    'src/lib/helper.ts',
+    "export const load = () => import('./Button' + '.stories')\n",
+  ],
+  'a require of a variable, require(x)': ['.storybook/helper.cjs', `const s = require(x)\n`],
+  'an import of a variable, import(x)': [
+    'src/lib/helper.ts',
+    'export const load = (x) => import(x)\n',
+  ],
+  'a conditional specifier': [
+    'src/lib/helper.ts',
+    "export const load = (x) => import(x ? './a' : './b')\n",
+  ],
+  'a call that builds the specifier': [
+    'src/lib/helper.ts',
+    'export const load = (x) => import(name(x))\n',
+  ],
+  'a require of a template': ['.storybook/helper.cjs', 'const s = require(`./${name}.ts`)\n'],
+  'a story file with a non-literal import': [
+    'src/composites/Other/Other.stories.tsx',
+    'export const load = (x) => import(x)\n',
+  ],
+}
+for (const [name, [file, text]] of Object.entries(NON_LITERAL_PLANTS)) {
+  test(`T704 (M2) plant: ${name} fails the check naming the file`, () => {
+    const computed = importerRun(new Map([[path.join(DS_DIR, file), text]]))
+    assert.deepEqual(ofKind(computed, IMPORTS_STORY), [[IMPORTS_STORY, file]])
+    const problem = computed.manifestProblems.find((p) => p.kind === IMPORTS_STORY)
+    assert.match(problem.detail, new RegExp(`${file.replace(/[.]/g, '\\.')} `))
+    assert.match(problem.detail, NON_LITERAL_SPECIFIER)
+  })
+}
+
+test('T704 (M2) contrast: a literal import(), a no-substitution template, a wrapped literal and a require of a literal are legal, and so is a non-literal one in a test module', () => {
+  const computed = importerRun(
+    new Map([
+      [
+        path.join(DS_DIR, 'src/lib/helper.ts'),
+        "export const a = () => import('./x')\nexport const b = () => import(`./x`)\nexport const c = () => import(('./x'))\nexport const d = () => import('./x' as string)\nexport const e = () => import('./x', { with: { type: 'json' } })\n",
+      ],
+      [
+        path.join(DS_DIR, '.storybook/helper.cjs'),
+        "const s = require('./x')\nconst t = require(`./y`)\n",
+      ],
+      [
+        path.join(DS_DIR, 'src/lib/helper.test.ts'),
+        'export const load = (n) => import(`./${n}.stories`)\nconst r = require(n)\n',
+      ],
+    ]),
+  )
+  assert.deepEqual(computed.manifestProblems, [])
+})
+
+test('T704 (M2) end to end: the check exits 1 on the real tree with a templated import() in a helper, naming it', () => {
+  const run = runCheckOnPlantedTree(
+    '\nexport const planted = (n: string) => import(`./primitives/Button/${n}.tsx`)\n',
+    ['lib', 'cx.ts'],
+  )
+  assert.equal(run.status, 1, run.stdout + run.stderr)
+  assert.match(
+    run.stderr,
+    /src\/lib\/cx\.ts calls import\(\) or require\(\) with a non-literal specifier/,
+  )
+})
+
+// (L1) One test-module predicate; a story path is never a test module.
+test('T704 (L1) plant: a *.test.stories.tsx file is a story, so it may not import a story module', () => {
+  const file = 'src/composites/Card/Evil.test.stories.tsx'
+  const computed = importerRun(
+    new Map([
+      [path.join(DS_DIR, file), `import { ZzA } from './Card.stories'\nZzA.parameters = {}\n`],
+    ]),
+  )
+  assert.deepEqual(ofKind(computed, IMPORTS_STORY), [[IMPORTS_STORY, file]])
+})
+
+test('T704 (L1) plant: a *.test.stories.tsx file may not glob, import a test module or use a non-literal specifier either', () => {
+  const file = 'src/composites/Card/Evil.test.stories.tsx'
+  for (const [text, kind] of [
+    [`export const all = import.meta.glob('./*')\n`, IMPORTS_STORY],
+    [`import './other.test'\n`, IMPORTS_TEST],
+    ['export const load = (n) => import(n)\n', IMPORTS_STORY],
+  ]) {
+    const computed = importerRun(new Map([[path.join(DS_DIR, file), text]]))
+    assert.deepEqual(ofKind(computed, kind), [[kind, file]], text)
+  }
+})
+
+test('T704 (L1) plant: a specifier naming a *.test.stories module is a story import, not a test-module import', () => {
+  const computed = importerRun(
+    new Map([
+      [
+        path.join(DS_DIR, 'src/lib/helper.ts'),
+        `import './Evil.test.stories'\nimport './Evil.test.stories.tsx'\n`,
+      ],
+    ]),
+  )
+  assert.deepEqual(ofKind(computed, IMPORTS_STORY), [[IMPORTS_STORY, 'src/lib/helper.ts']])
+  assert.deepEqual(ofKind(computed, IMPORTS_TEST), [])
+})
+
+test('T704 (L1) end to end: the check exits 1 on the real tree with an Evil.test.stories.tsx importing a story, naming it', () => {
+  const run = runCheckOnPlantedTree("import './MatchRow.stories'\n", [
+    'composites',
+    'MatchRow',
+    'Evil.test.stories.tsx',
+  ])
+  assert.equal(run.status, 1, run.stdout + run.stderr)
+  assert.match(
+    run.stderr,
+    /src\/composites\/MatchRow\/Evil\.test\.stories\.tsx imports a \*\.stories module/,
+  )
+})
+
+test('T704 (L1) contrast: a *.test.tsx file importing a story, a test module or a glob stays legal, and a fixed class in one is no overlay', () => {
+  const computed = importerRun(
+    new Map([
+      [
+        path.join(DS_DIR, 'src/composites/Card/Card.test.tsx'),
+        `import { ZzA } from './Card.stories'\nimport './other.test'\nexport const all = import.meta.glob('./*')\n`,
+      ],
+    ]),
+  )
+  assert.deepEqual(computed.manifestProblems, [])
+  // The same `fixed` class in a test module is no overlay (credit kept), in a design-system file it is.
+  const overlay = (panelFile) => {
+    const filesByPath = new Map([
+      [srcFile('primitives/Button/index.tsx'), MINI_BUTTON],
+      [srcFile(MINI_STORIES), BUTTON_STORIES_HEADER],
+      [srcFile(CARD_INDEX), 'export function Card() { return <div /> }\n'],
+      [
+        srcFile(`composites/Card/${panelFile}`),
+        `export const P = () => <div className="fixed inset-0" />\n`,
+      ],
+      [srcFile(CARD_STORIES), cardStoriesSource(DISABLED_BUTTON_STORY('ZzA'))],
+    ])
+    return creditsOf(
+      computeStateCoverage({
+        componentDirs: CARD_DIRS,
+        filesByPath,
+        manifest: {
+          'zz-a': cardEntry('ZzA', { mounts: [disabledMount] }, [
+            `${STAMP_ROOT}composites/Card/${panelFile}`,
+          ]),
+        },
+      }),
+      'ZzA',
+    )
+  }
+  assert.deepEqual(overlay('Panel.test.tsx'), CREDITED)
+  assert.deepEqual(overlay('Panel.tsx'), [])
+})
+
+test('T704 (L1): one test-module definition in state-coverage.mjs, used by every reader', () => {
+  const source = readFileSync(
+    path.join(path.dirname(fileURLToPath(import.meta.url)), 'state-coverage.mjs'),
+    'utf8',
+  )
+  for (const gone of [".endsWith('.test.tsx')", 'TEST_MODULE_SPECIFIER']) {
+    assert.equal(source.includes(gone), false, `${gone} is still in state-coverage.mjs`)
+  }
+  assert.equal(source.match(/const TEST_MODULE\b/g)?.length, 1)
+})
+
+// (L2) The generated region's legend is held to the same rule as row 8's prose: its list of refusals is
+// among the reasons, not a closed one, and crediting a story is not a proof that no clip applied.
+test('T704 (L2): the legend names the refusals as among the reasons and says a credit is no proof of an unclipped frame', () => {
+  for (const phrase of [
+    /gives no mount credit for the reasons row 8's prose lists, among them:/,
+    /an accessor, a method, or a `this` in the story object or the default\nexport/,
+    /project-level `parameters` carry a clip or cannot be read\n\(`project-clip`\)/,
+    /Crediting a story\nis not a proof that no clip applied to it/,
+    /without claiming the list is exhaustive, under row 8's \*\*What\nthe static reading cannot see\*\*/,
+    /only the runtime record of the clip the browser applied \(T703\)/,
+    /credits the half it can and names the other in a note/,
+  ]) {
+    assert.match(REGION_LEGEND, phrase)
+  }
+  assert.doesNotMatch(REGION_LEGEND, /gives no mount credit when it declares/)
+  assert.doesNotMatch(
+    REGION_LEGEND,
+    /Every other forced story credits no cell and the\ncheck names why/,
+  )
 })

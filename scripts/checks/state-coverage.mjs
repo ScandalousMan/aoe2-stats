@@ -1302,6 +1302,45 @@ function readProp(objLiteral, name) {
   return { present: true, node: found.node }
 }
 
+// T704: what makes a story object or the default export unreadable as a whole, or `null`. An accessor
+// (`get name()`, `set name(v)`) runs when Storybook reads the object and can write `this.parameters`; a
+// method (`play() {}`) is called with the object as its `this`; a `this` in a function expression binds
+// to the object the function is called on, and one in an arrow function inherits the module's, which is
+// not this object's either way. None of that is in an object literal this pass reads, so the owner's
+// `parameters` and `tags` are unreadable and the story gets no mount credit. A `this` inside a nested
+// class body is the class's own and is not looked at; every other `this` is refused, over-refusing being
+// the safe direction. The owner's own shape only: an accessor or method of a nested `parameters` object
+// is not this rule's (T703's runtime record is what proves what the browser applied).
+const ownerHazardCache = new WeakMap()
+function findOwnerHazard(owner) {
+  if (!owner) return null
+  if (ownerHazardCache.has(owner)) return ownerHazardCache.get(owner)
+  let hazard = null
+  for (const prop of owner.properties) {
+    if (ts.isGetAccessorDeclaration(prop) || ts.isSetAccessorDeclaration(prop)) {
+      hazard = `an accessor (\`${prop.name.getText()}\`)`
+      break
+    }
+    if (ts.isMethodDeclaration(prop)) {
+      hazard = `a method (\`${prop.name.getText()}\`)`
+      break
+    }
+  }
+  if (hazard === null) {
+    const visit = (node) => {
+      if (hazard !== null || ts.isClassLike(node)) return
+      if (node.kind === ts.SyntaxKind.ThisKeyword) {
+        hazard = 'a `this`'
+        return
+      }
+      ts.forEachChild(node, visit)
+    }
+    visit(owner)
+  }
+  ownerHazardCache.set(owner, hazard)
+  return hazard
+}
+
 function literalOf(expr) {
   if (!expr) return { present: false }
   if (ts.isStringLiteral(expr) || ts.isNoSubstitutionTemplateLiteral(expr)) {
@@ -1326,6 +1365,7 @@ export function extractVisualForceState(storyObj) {
   // (`hasUnreadableParameters`).
   // A `parameters` or a `visualForceState` this pass cannot read by name (T699) carries no force it can
   // read either, and `hasUnreadableParameters` names the story.
+  if (findOwnerHazard(storyObj)) return null
   const parameters = readProp(storyObj, 'parameters')
   if (!parameters.present) return null
   const params = unwrapExpression(parameters.node)
@@ -1354,6 +1394,7 @@ export function extractVisualForceState(storyObj) {
 // not readable from this object. A literal that spreads another object is not this case: the spread's
 // clip is `storyDeclaresClip`'s, and a force it hides is named when the manifest records one.
 function hasUnreadableParameters(storyObj) {
+  if (findOwnerHazard(storyObj)) return true
   const parameters = readProp(storyObj, 'parameters')
   if (parameters.unreadable) return true
   if (!parameters.present) return false
@@ -1369,6 +1410,7 @@ function hasUnreadableParameters(storyObj) {
 // (`readParameterObjects`).
 function hasUnreadableNamedParameters(owner) {
   if (!owner) return false
+  if (findOwnerHazard(owner)) return true
   const parameters = readProp(owner, 'parameters')
   if (parameters.unreadable) return true
   if (!parameters.present) return false
@@ -1717,27 +1759,30 @@ export function isStoryModuleSpecifier(specifier) {
   return STORY_MODULE_SPECIFIER.test(specifier.replace(/[?#].*$/, ''))
 }
 
-// The text a module-specifier expression ends in, or `null` when it cannot be told: a string, a
-// template (its last literal part: `./${name}.stories`) or a `+` concatenation (its right side). What
-// a wholly computed argument (`import(name)`) holds is not readable.
-function specifierTail(expression) {
+// Whether an expression is a plain string literal: a string or a no-substitution template, with `!`,
+// `as`, `satisfies` and parentheses unwrapped. T704: it is the only specifier an `import()` or a
+// `require()` of a non-test module may take. What a template with a substitution, a `+` concatenation, a
+// conditional, a call or a variable evaluates to is not read, and its last literal part says nothing of
+// what the first parts build, so none of them is told apart from the others.
+function isPlainStringLiteral(expression) {
   const node = unwrapExpression(expression)
-  if (!node) return null
-  if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) return node.text
-  if (ts.isTemplateExpression(node)) return node.templateSpans.at(-1)?.literal.text ?? null
-  if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.PlusToken) {
-    return specifierTail(node.right)
-  }
-  return null
+  return Boolean(node) && (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node))
 }
 
-// Every module specifier a file names, whatever the form: a static `import` (type-only included), an
-// `export … from`, an `import x = require()`, a dynamic `import()` or an `import()` type, a `require()`.
-// A specifier this pass cannot read at all (`import(name)`) is not in the list.
+const isRequireOrImportCall = (node) =>
+  ts.isCallExpression(node) &&
+  (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
+    (ts.isIdentifier(node.expression) && node.expression.text === 'require'))
+
+// Every module specifier a file names as a plain string literal, whatever the form: a static `import`
+// (type-only included), an `export … from`, an `import x = require()`, a dynamic `import()` or an
+// `import()` type, a `require()`. A specifier that is not a plain string literal is not in the list: it
+// is `findNonLiteralSpecifiers`'s.
 function collectModuleSpecifiers(sourceFile) {
   const found = []
-  const consider = (specifier) => {
-    if (specifier !== null) found.push(specifier)
+  const consider = (expression) => {
+    if (!isPlainStringLiteral(expression)) return
+    found.push(unwrapExpression(expression).text)
   }
   const visit = (node) => {
     if (
@@ -1745,26 +1790,47 @@ function collectModuleSpecifiers(sourceFile) {
       node.moduleSpecifier &&
       ts.isStringLiteral(node.moduleSpecifier)
     ) {
-      consider(node.moduleSpecifier.text)
+      found.push(node.moduleSpecifier.text)
     } else if (
       ts.isImportEqualsDeclaration(node) &&
       ts.isExternalModuleReference(node.moduleReference)
     ) {
-      consider(specifierTail(node.moduleReference.expression))
+      consider(node.moduleReference.expression)
     } else if (
       ts.isImportTypeNode(node) &&
       ts.isLiteralTypeNode(node.argument) &&
       ts.isStringLiteral(node.argument.literal)
     ) {
-      consider(node.argument.literal.text)
-    } else if (ts.isCallExpression(node)) {
-      const callee = node.expression
-      if (
-        callee.kind === ts.SyntaxKind.ImportKeyword ||
-        (ts.isIdentifier(callee) && callee.text === 'require')
-      ) {
-        consider(specifierTail(node.arguments[0]))
-      }
+      found.push(node.argument.literal.text)
+    } else if (isRequireOrImportCall(node)) {
+      consider(node.arguments[0])
+    }
+    ts.forEachChild(node, visit)
+  }
+  visit(sourceFile)
+  return found
+}
+
+// T704: every `import()` or `require()` (and `import x = require(...)`) in a file whose specifier is not
+// a plain string literal: the text of the call, truncated. Vite compiles a templated `import()` into a
+// glob over every file its static parts can match, so a specifier is not read from its last part (the
+// T701 rule for `import.meta.glob`, applied to the call that becomes one). The wholly computed
+// `import(name)` and `require(name)` are in the list: what they load is not readable at all.
+export function findNonLiteralSpecifiers(sourceFile) {
+  const found = []
+  const describe = (node) => {
+    const text = node.getText(sourceFile).replace(/\s+/g, ' ')
+    found.push(text.length > 80 ? `${text.slice(0, 77)}...` : text)
+  }
+  const visit = (node) => {
+    if (isRequireOrImportCall(node)) {
+      if (!isPlainStringLiteral(node.arguments[0])) describe(node)
+    } else if (
+      ts.isImportEqualsDeclaration(node) &&
+      ts.isExternalModuleReference(node.moduleReference) &&
+      !isPlainStringLiteral(node.moduleReference.expression)
+    ) {
+      describe(node)
     }
     ts.forEachChild(node, visit)
   }
@@ -1779,17 +1845,24 @@ export function findStoryModuleImports(sourceFile) {
   return collectModuleSpecifiers(sourceFile).filter(isStoryModuleSpecifier)
 }
 
-// T701: a specifier that names a test module: `….test`, `….test.ts`, `….test.tsx` (the file-name rule
-// `TEST_MODULE` applies to a path; a specifier may leave the extension off).
-const TEST_MODULE_SPECIFIER = /\.test(\.[^/\\]+)?$/
+// T701, T704: the one test-module predicate, for a file path and for a module specifier alike (a
+// specifier may leave the extension off): `….test`, `….test.ts`, `….test.tsx`. A story is never a test
+// module, whatever its name: Storybook indexes `Evil.test.stories.tsx` as a story, so it is read as one
+// by every reader, and a specifier that names a story module names a story module. A query or fragment
+// is not part of the name.
+const TEST_MODULE = /\.test(\.[^/\\]+)?$/
+
+export function isTestModule(pathOrSpecifier) {
+  const name = pathOrSpecifier.replace(/[?#].*$/, '')
+  if (isStoryPath(name) || isStoryModuleSpecifier(name)) return false
+  return TEST_MODULE.test(name)
+}
 
 // The `*.test.*` module specifiers a file imports. `walkModuleFiles` does not read a test module, so a
 // story module a test module imports is one only the test module's own importers could name: a module
 // that is not a test may not import one.
 export function findTestModuleImports(sourceFile) {
-  return collectModuleSpecifiers(sourceFile).filter((specifier) =>
-    TEST_MODULE_SPECIFIER.test(specifier.replace(/[?#].*$/, '')),
-  )
+  return collectModuleSpecifiers(sourceFile).filter(isTestModule)
 }
 
 // T701: every use of `import.meta.glob` or `import.meta.globEager` in a file, whatever its pattern: the
@@ -2078,7 +2151,7 @@ function walkAllTsxFiles(rootSrcDir) {
       const full = path.join(dir, entry)
       const st = statSync(full)
       if (st.isDirectory()) walk(full)
-      else if (entry.endsWith('.tsx') && !entry.endsWith('.test.tsx')) files.push(full)
+      else if (entry.endsWith('.tsx') && !isTestModule(entry)) files.push(full)
     }
   }
   for (const segment of TIER_SEGMENTS) {
@@ -2920,12 +2993,6 @@ function walkStoryFiles() {
   return files
 }
 
-const TEST_MODULE = /\.test\.[^/\\]+$/
-
-function isTestModulePath(filePath) {
-  return TEST_MODULE.test(filePath)
-}
-
 // Every script module under `src` and `.storybook` that is not a test: what the import rule reads.
 // A story file is one too (another story file importing a story is refused).
 function walkModuleFiles() {
@@ -2941,7 +3008,7 @@ function walkModuleFiles() {
       if (name === 'node_modules') continue
       const full = path.join(dir, name)
       if (statSync(full).isDirectory()) walk(full)
-      else if (/\.([cm]?[jt]sx?)$/.test(name) && !isTestModulePath(name)) {
+      else if (/\.([cm]?[jt]sx?)$/.test(name) && !isTestModule(name)) {
         files.set(full, readFileSync(full, 'utf8'))
       }
     }
@@ -2965,7 +3032,7 @@ export function readStoryTags(metaObject, storyObject) {
   const tags = new Set()
   let unreadable = false
   for (const owner of [metaObject, storyObject]) {
-    if (hasSpreadElement(owner)) unreadable = true
+    if (hasSpreadElement(owner) || findOwnerHazard(owner)) unreadable = true
     const property = readProp(owner, 'tags')
     if (property.unreadable) {
       unreadable = true
@@ -2999,7 +3066,7 @@ function readParameterObjects(metaObject, storyObject) {
   const objects = []
   let unreadable = false
   for (const owner of [metaObject, storyObject]) {
-    if (hasSpreadElement(owner)) unreadable = true
+    if (hasSpreadElement(owner) || findOwnerHazard(owner)) unreadable = true
     const property = readProp(owner, 'parameters')
     if (property.unreadable) {
       unreadable = true
@@ -3040,7 +3107,7 @@ export function storyDeclaresClip(metaObject, storyObject) {
 function findOverlayFiles(filesByPath, sourceFiles) {
   const overlay = new Set()
   for (const [file, sourceFile] of sourceFiles) {
-    if (isStoryPath(file) || file.endsWith('.test.tsx')) continue
+    if (isStoryPath(file) || isTestModule(file)) continue
     let found = false
     const visit = (node) => {
       if (found) return
@@ -3061,6 +3128,71 @@ function findOverlayFiles(filesByPath, sourceFiles) {
     if (found) overlay.add(relPath(file))
   }
   return overlay
+}
+
+// T704: the project-level `parameters` of the Storybook preview (`.storybook/preview.<ext>`, its default
+// export), read as a third owner beside a story's and its meta's. Storybook merges them into every
+// story's prepared parameters, which `tests/visual/story-render.ts` reads for the capture clip, so a
+// `visualCaptureClip` there clips every story. Read under the same rules as the default export of a story
+// file: readable only as `export default <identifier>` or an inline object literal (`readDefaultExport`),
+// the binding not referenced outside its declaration and its export (`findBindingReferences`), no
+// accessor, method or `this` in it (`findOwnerHazard`), no spread, and a `parameters` that is an
+// identifier-keyed object literal written once with no `visualCaptureClip` (and no `visualForceState`)
+// this pass cannot read by name. One problem per preview file naming the first reason, not one per
+// story. A preview that is not in `moduleFilesByPath` (a fixture with none) has no project parameters.
+const PREVIEW_PATH = /^\.storybook\/preview\.[cm]?[jt]sx?$/
+
+function findProjectParametersProblems(moduleFilesByPath) {
+  const problems = []
+  for (const filePath of [...moduleFilesByPath.keys()].sort()) {
+    const packageRelative = path.relative(dsDir, filePath).split(path.sep).join('/')
+    if (!PREVIEW_PATH.test(packageRelative) || isTestModule(packageRelative)) continue
+    const sourceFile = ts.createSourceFile(
+      filePath,
+      moduleFilesByPath.get(filePath),
+      ts.ScriptTarget.Latest,
+      true,
+    )
+    const reason = projectParametersReason(sourceFile)
+    if (reason === null) continue
+    problems.push({
+      kind: 'project-clip',
+      location: packageRelative,
+      detail:
+        `the Storybook preview ${packageRelative} ${reason}. Its project-level parameters reach every ` +
+        "story's prepared parameters, which the capture reads for its clip, so this pass cannot tell " +
+        'that no story is clipped and credits none of them a mount. Write the preview as `const preview ' +
+        '= { … }; export default preview` (or an inline `export default { … }`), its `parameters` an ' +
+        'identifier-keyed object literal with no `visualCaptureClip`, and no accessor, method, `this` ' +
+        'or spread in the object.',
+    })
+  }
+  return problems
+}
+
+function projectParametersReason(sourceFile) {
+  const { object, binding, problem } = readDefaultExport(sourceFile)
+  if (problem) return `has a default export this pass cannot read: ${problem.reason}`
+  if (binding !== null && findBindingReferences(sourceFile, new Set([binding])).has(binding)) {
+    return `references its default export's binding \`${binding}\` outside its declaration and its export, which may set a clip through that reference`
+  }
+  const hazard = findOwnerHazard(object)
+  if (hazard) return `has ${hazard} in its default export, which this pass does not read`
+  if (hasSpreadElement(object)) return 'spreads another object into its default export'
+  if (hasUnreadableNamedParameters(object)) {
+    return 'has a `parameters` this pass cannot read by name (a quoted or computed key, a property written twice, or such a `visualCaptureClip` or `visualForceState` inside it)'
+  }
+  const parameters = readProp(object, 'parameters')
+  if (!parameters.present) return null
+  const parametersObject = unwrapExpression(parameters.node)
+  if (!parametersObject || !ts.isObjectLiteralExpression(parametersObject)) {
+    return 'has a `parameters` that is not an object literal (an identifier, a call)'
+  }
+  if (hasSpreadElement(parametersObject)) return 'spreads another object into its `parameters`'
+  if (readProp(parametersObject, 'visualCaptureClip').present) {
+    return 'carries a `visualCaptureClip` in its `parameters`'
+  }
+  return null
 }
 
 export function computeStateCoverage({
@@ -3105,7 +3237,7 @@ export function computeStateCoverage({
   // Pass 1, static, source only: every local interactive element (record 1's rows) and every call site
   // of a tracked primitive (record 3's `Rest` column). Nothing about a story is read here.
   for (const filePath of allFiles) {
-    if (filePath.endsWith('.test.tsx')) continue
+    if (isTestModule(filePath)) continue
     // A tracked primitive written in a STORY file credits nothing here, neither `Rest` nor `Disabled`:
     // a story's JSX may sit under an `args` key its render never passes, behind a branch that never
     // runs, or carry a `disabled` the primitive does not render (`<Button href disabled>` is an
@@ -3203,9 +3335,10 @@ export function computeStateCoverage({
 
   // T697: a module other than a test that imports a story module may reference a story's binding from
   // where the per-file reference rule below cannot see it. T701: so may one that globs files by a
-  // pattern, whatever the pattern, and one that imports a test module, which is not read here.
+  // pattern, whatever the pattern, and one that imports a test module, which is not read here. T704: so
+  // may one whose `import()` or `require()` takes a specifier that is not a plain string literal.
   for (const filePath of [...moduleFilesByPath.keys()].sort()) {
-    if (isTestModulePath(filePath)) continue
+    if (isTestModule(filePath)) continue
     const moduleSource = ts.createSourceFile(
       filePath,
       moduleFilesByPath.get(filePath),
@@ -3224,6 +3357,19 @@ export function computeStateCoverage({
           "a story file is Storybook's, and a reference to its bindings from another file is one this " +
           'pass cannot see, so a clip or a tag set that way is invisible here. Only a *.test.* file may ' +
           'import one; share what both need from a module that is not a story file.',
+      })
+    }
+    const nonLiteral = findNonLiteralSpecifiers(moduleSource)
+    if (nonLiteral.length > 0) {
+      manifestProblems.push({
+        kind: 'imports-story-module',
+        location: packageRelative,
+        detail:
+          `${packageRelative} calls import() or require() with a non-literal specifier (${quoted(nonLiteral)}): ` +
+          'a templated or concatenated specifier is compiled into a glob over every file its static parts ' +
+          'can match, which can include a *.stories module, and this pass does not read what such a ' +
+          'specifier loads, whatever it ends with. Write every specifier of a module that is not a test ' +
+          'as a plain string literal, or move the dynamic load into a *.test.* file.',
       })
     }
     const globs = findImportMetaGlobs(moduleSource)
@@ -3251,6 +3397,12 @@ export function computeStateCoverage({
       })
     }
   }
+
+  // T704: the project-level `parameters` of the Storybook preview reach every story's prepared
+  // parameters, which the capture reads. A clip there, or a preview this pass cannot read, is named once,
+  // here, and every story below gives no mount credit.
+  const projectProblems = findProjectParametersProblems(moduleFilesByPath)
+  manifestProblems.push(...projectProblems)
 
   for (const filePath of [...storySources.keys()].sort()) {
     const sourceFile = sourceFiles.get(filePath) ?? parseTsx(filePath, storySources.get(filePath))
@@ -3317,9 +3469,10 @@ export function computeStateCoverage({
             'string literals, or its story object or default export spreads another object (which may ' +
             'bring one), or either object has a `tags` this pass cannot read by name (a quoted or ' +
             'computed key, an accessor, a method, a property written twice) or a computed key it ' +
-            `cannot evaluate, so this pass cannot tell whether it is a ${FIXTURE_TAG} story. Write ` +
+            'cannot evaluate, or either object has an accessor, a method or a `this` anywhere in it ' +
+            `(T704), so this pass cannot tell whether it is a ${FIXTURE_TAG} story. Write ` +
             'the tags as one identifier-keyed array of string literals and spread nothing into the ' +
-            'story or the default export.',
+            'story or the default export, which carry no accessor, method or `this`.',
         })
       }
       const reference = referenceTo(exportName)
@@ -3371,9 +3524,11 @@ export function computeStateCoverage({
             `story ${exportName} of ${packageRelative} carries a \`parameters\` that is not an object ` +
             'literal (an identifier, a call), or one this pass cannot read by name (a quoted or computed ' +
             'key, an accessor, a method, a property written twice, a computed key it cannot evaluate, ' +
-            'or such a `visualCaptureClip` or `visualForceState` inside it), so this pass cannot read ' +
-            'its `visualForceState` or tell whether it declares a clip. Write the parameters as an ' +
-            'object literal in the story, every key an identifier written once.',
+            'or such a `visualCaptureClip` or `visualForceState` inside it), or the story object has an ' +
+            'accessor, a method or a `this` anywhere in it (T704), so this pass cannot read its ' +
+            '`visualForceState` or tell whether it declares a clip. Write the parameters as an object ' +
+            'literal in the story, every key an identifier written once, and no accessor, method or `this` ' +
+            'in the story object.',
         })
       } else if (hasUnreadableNamedParameters(metaObj)) {
         // The default export's `parameters` is named for the same shapes, on every story of the file
@@ -3385,8 +3540,10 @@ export function computeStateCoverage({
             `the default export of ${packageRelative} carries a \`parameters\` this pass cannot read by ` +
             'name (a quoted or computed key, an accessor, a method, a property written twice, a ' +
             'computed key it cannot evaluate, or such a `visualCaptureClip` or `visualForceState` ' +
-            `inside it), so it cannot tell whether story ${exportName} declares a clip. Write the ` +
-            'parameters as an object literal, every key an identifier written once.',
+            'inside it), or has an accessor, a method or a `this` anywhere in it (T704), so it cannot ' +
+            `tell whether story ${exportName} declares a clip. Write the parameters as an object ` +
+            'literal, every key an identifier written once, and no accessor, method or `this` in the ' +
+            'default export.',
         })
       }
       // A forced state outside the three the harness drives (`hover`, `focus-visible`, `active`) is
@@ -3457,8 +3614,12 @@ export function computeStateCoverage({
       // A story, or the default export, referenced outside its declaration and an export may have had a
       // clip set through that reference: clipped.
       // A default export this pass cannot read, or a story binding declared twice or with `var` or `let`,
-      // leaves what the capture clips unread: clipped.
+      // leaves what the capture clips unread: clipped. A story object or default export with an accessor,
+      // a method or a `this` is unreadable (`findOwnerHazard`), which `storyDeclaresClip` reads as a clip.
+      // The project-level parameters carrying a clip, or unreadable (`findProjectParametersProblems`),
+      // clip every story the same way.
       const clipped =
+        projectProblems.length > 0 ||
         reference !== null ||
         defaultProblem !== null ||
         storyBindingProblem !== null ||
@@ -4098,14 +4259,25 @@ export const REGION_LEGEND = [
   "refused. The Disabled column of every matrix, and a primitive's own stories' Rest column, come from",
   'the primitive instances a story mounts, as rendered, and from nothing else: a `disabled` or `loading`',
   "written at a call site, and a `disabled: true` in a story's `args`, credit no Disabled cell. A story",
-  'gives no mount credit when it declares a `visualCaptureClip` (the manifest does not record whether a',
-  'mount lies inside the clipped rect), when its story object, its default export or its `parameters`',
-  'spreads another object or is not an object literal (a clip may come in with it), or when it has',
-  'neither a clip nor the `visual-full-page` tag and rendered a design-system file with an unprefixed',
-  '`fixed` class (that element need not intersect the root box it is screenshotted as). A tracked',
-  'primitive written in a story file credits nothing. Every other forced story credits no cell and the',
-  'check names why. A manifest entry of the wrong shape fails the check, naming the story, and so does a',
-  'story object or default export that spreads another object (its `tags` cannot be read).',
+  "gives no mount credit for the reasons row 8's prose lists, among them: it declares a",
+  '`visualCaptureClip` (the manifest does not record whether a mount lies inside the clipped rect); its',
+  'story object, its default export or its `parameters` spreads another object or is not an object',
+  'literal (a clip may come in with it); its `parameters` or `tags` cannot be read by name (a quoted,',
+  'computed or duplicated key, an accessor, a method, or a `this` in the story object or the default',
+  'export); the story or the default export is referenced outside its declaration and an export, the',
+  'default export is not one this pass reads, or a story or meta binding is declared twice or with `var`',
+  "or `let`; the Storybook preview's project-level `parameters` carry a clip or cannot be read",
+  '(`project-clip`); or it has neither a clip nor the `visual-full-page` tag and rendered a',
+  'design-system file with an unprefixed `fixed` class (that element need not intersect the root box it',
+  'is screenshotted as). A tracked primitive written in a story file credits nothing. Crediting a story',
+  'is not a proof that no clip applied to it: the source readers refuse the shapes they know, the shapes',
+  "they are known not to see are listed, without claiming the list is exhaustive, under row 8's **What",
+  'the static reading cannot see**, and only the runtime record of the clip the browser applied (T703)',
+  "would prove a frame's clip. Every other forced story credits no cell and the check fails naming why",
+  '(a filed, dated exception is the one way to tolerate it), except that a force whose placing instance',
+  'has no matrix row credits the half it can and names the other in a note. A manifest entry of the',
+  'wrong shape fails the check, naming the story, and so does a story object or default export that',
+  'spreads another object (its `tags` cannot be read).',
   '',
   '**Still static, and read from source:**',
   '',
