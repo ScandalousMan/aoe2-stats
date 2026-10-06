@@ -455,8 +455,8 @@ def _single_chapter(parsed: Mapping[str, object]) -> Mapping[str, object]:
     than read as the first. The chapter must open with exactly one `Pregame` operation, the block
     that replaced the old `meta`: none, a second one, or one anywhere but first is refused here,
     once, so no caller meets a bare `KeyError` or `IndexError` further down. Nothing is read from
-    the `Pregame` itself: its `rec_owner` is 1 in every committed recording, whoever recorded it,
-    so it names no one (see `_point_of_view_profile_id`).
+    the `Pregame` itself: its `rec_owner` does not identify the recorder (see
+    `_point_of_view_profile_id`).
     """
     chapters = parsed.get("chapters")
     if not isinstance(chapters, Sequence) or isinstance(chapters, str | bytes):
@@ -489,13 +489,12 @@ def _point_of_view_profile_id(chapter: Mapping[str, object]) -> int:
     """The profile that recorded this match: the player whose number is `replay.rec_player`.
 
     `zheader.replay.rec_player` is a player number, matched here against each player's own
-    `player_number`. Measured on all three committed recordings it names the profile the download
-    was requested for (`tests/fixtures/replays/README.md`), which is the recording's perspective
-    (`docs/data-sources.md`). `Pregame.rec_owner` does not: it is 1 in all three, so read as an
-    index into `game_settings.players` it named the recorder of the two build 180059 recordings by
-    coincidence (both were recorded by player number 2, index 1) and the opponent in the build
-    185872 one. A recording where no player, or more than one, carries that number is refused: the
-    perspective is never guessed.
+    `player_number`. On every committed recording it names the profile the download was requested
+    for (measured in `tests/fixtures/replays/README.md`), which is the recording's perspective
+    (`docs/data-sources.md`). `Pregame.rec_owner` does not: read as an index into
+    `game_settings.players` it named the opponent in match 511523321's recording, and the recorder
+    elsewhere only by coincidence (same README). A recording where no player, or more than one,
+    carries that number is refused: the perspective is never guessed.
     """
     zheader = cast(Mapping[str, object], chapter["zheader"])
     replay = cast(Mapping[str, object], zheader.get("replay") or {})

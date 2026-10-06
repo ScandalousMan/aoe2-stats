@@ -530,15 +530,15 @@ def canonical_events(
         elif kind == "Pregame":
             # The 0.1.22+ wheel's old `meta` block, as the chapter's first operation (T672). It
             # produces no event, deliberately: nothing in it is intent. Its `rec_owner` is not the
-            # point of view either, despite the name: it is 1 in every committed recording, whoever
-            # recorded it (T672a), and the point of view is `zheader.replay.rec_player`, read by
-            # `aoe2rec._point_of_view_profile_id` for the timeline and carried by no canonical
-            # event; the other fields are engine framing (checksum interval, multiplayer, sequence
-            # numbers). Emitting an event would also move every committed canonical golden, which
-            # the upgrade must not do. Like `Viewlock` it is known and consumed, not a drop reason,
-            # so it is not an `unknown_operation`. It opens the chapter exactly once: a second one,
-            # or one anywhere but first, is a shape nothing here has measured, and is refused
-            # rather than silently counted (T672a).
+            # point of view either, despite the name (T672a, measured in
+            # `tests/fixtures/replays/README.md`), and the point of view is
+            # `zheader.replay.rec_player`, read by `aoe2rec._point_of_view_profile_id` for the
+            # timeline and carried by no canonical event; the other fields are engine framing
+            # (checksum interval, multiplayer, sequence numbers). Emitting an event would also move
+            # every committed canonical golden, which the upgrade must not do. Like `Viewlock` it is
+            # known and consumed, not a drop reason, so it is not an `unknown_operation`. It opens
+            # the chapter exactly once: a second one, or one anywhere but first, is a shape nothing
+            # here has measured, and is refused rather than silently counted (T672a).
             if position != 0:
                 raise EngineParseError(
                     f"a Pregame operation at position {position}: it must be the chapter's "

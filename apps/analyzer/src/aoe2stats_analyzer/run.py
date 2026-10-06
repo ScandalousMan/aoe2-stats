@@ -531,8 +531,7 @@ def _describe(exc: BaseException) -> tuple[str, str]:
     (`type(exc).__name__`, e.g. `PanicException`), never a stand-in.
 
     A message is shown to the person who asked (`routers/matches.py` prints a `failed` row's
-    `error_message` verbatim), so what is recorded must be this package's own text or a fixed
-    sentence, never text this package did not write:
+    `error_message` verbatim):
 
     - A `BaseException` that is not an `Exception` is a native crash, and its text is the engine's
       own, not ours: the measured `PanicException` message is ~770 characters of terminal escape
@@ -541,9 +540,10 @@ def _describe(exc: BaseException) -> tuple[str, str]:
     - A snapshot error quotes the packaged knowledge files, and a database error embeds the SQL
       statement and its bound parameters: each is replaced by a fixed sentence, the class kept.
     - Everything else that is an `Exception` - a parse failure, a refused document, a placement or
-      serialisation error - is this package's own text about the document, and is kept as 003's
-      failure path always kept it; an empty message is recorded as the class name, so a `failed`
-      row never shows a blank reason.
+      serialisation error - is recorded verbatim, as 003's failure path always recorded it; an
+      empty message is recorded as the class name, so a `failed` row never shows a blank reason.
+      Verbatim is not the same as written here: an `EngineParseError` quotes the engine's or the
+      archive library's own text, which is shown.
     """
     if isinstance(exc, _PublishRefused):
         return type(exc.cause).__name__, exc.step

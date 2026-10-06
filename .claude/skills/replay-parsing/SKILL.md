@@ -33,8 +33,8 @@ that counts) the result is `{"chapters": [chapter, ...]}`. The adapter reads exa
 refuses any other count with `EngineParseError` — how several would join is not established, and
 every recording seen has one. The chapter's `zheader["game_settings"]` holds the lobby and
 per-player setup. Its `operations` is the full event stream — `Pregame` (always first: the old
-`meta` block; its `rec_owner` is 1 in every recording seen, whoever recorded it, so it names no
-one), `Sync`, `Viewlock`, `Action`, `Chat`, `PostGame`. The point of view is
+`meta` block; never read its `rec_owner` as the point of view — see
+`tests/fixtures/replays/README.md`), `Sync`, `Viewlock`, `Action`, `Chat`, `PostGame`. The point of view is
 `zheader["replay"]["rec_player"]`, a player number matched against each player's `player_number`.
 Duration is the sum of `Sync.time_increment`. `Build` plus `Research` plus that clock is what age-up times, opening
 detection and idle-TC are computed from. `PostGame` carries per-player elo.

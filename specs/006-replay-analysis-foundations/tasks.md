@@ -1617,6 +1617,13 @@ T671 and T672 ship together; T673 follows once T672 is deployed.
       `retained_recordings` row for its match. Such a row cannot be recomputed, and its
       perspective is wrong. Count them first and report; correcting them is a separate decision.
       Reads production, so the user runs it or grants the read
+- [x] T672b Close #124's second review (`reviewer` REJECT 2026-10-06 on T672a; code findings
+      closed, prose overclaims left). Cut to what was measured: `docs/risks.md`'s entry names the
+      one recording measured as build 185872 and states capture quarantine as what the code
+      implies, uncounted until T673; `_describe`'s docstring no longer says every recorded message
+      is this package's own text (an `EngineParseError` quotes the engine's); the replay-parsing
+      skill and the adapter's and canonical stream's comments cite the fixtures README for
+      `rec_owner` instead of restating its measurement
 - [ ] T673 Re-validate captures that ended `quarantined` because the engine could not parse them,
       once T672 is deployed: read the committed object, check it against the row's own
       `zip_sha256`, and run it through the capture barrier again, marking `stored` or leaving it
