@@ -1594,6 +1594,29 @@ T671 and T672 ship together; T673 follows once T672 is deployed.
       engine version enters the identity digest, so published analyses recompute: say so in the
       commit body. Update every living statement of the pinned version in `docs/` and the
       replay-parsing skill; leave frozen `specs/` records alone
+- [ ] T672a Close #124's review (`reviewer` REJECT 2026-10-06). **Point of view:** the adapter
+      takes the recorder from `rec_owner` as an index into `game_settings.players`, and that index
+      is 1 in all three committed recordings: it named the recorder in the two build 180059
+      fixtures by coincidence and names the wrong player in match 511523321's. Take it from
+      `zheader.replay.rec_player`, a player number, matched against each player's
+      `player_number`, which names the downloaded profile in all three; refuse a recording where no
+      player carries it. Assert the downloaded profile (5632575) for the new fixture, keep the two
+      older goldens unchanged, drop the refusals keyed on `rec_owner`, and correct the fixtures
+      README, the replay-parsing skill and the canonical stream's comment. **Pregame:** refuse a
+      chapter with more than one `Pregame`, and a `Pregame` anywhere but first, in both the adapter
+      and the canonical stream. **Panic message:** a `BaseException` that is not an `Exception`
+      is recorded as its class and a fixed sentence and its full text is logged, never shown:
+      the measured `PanicException` text carries terminal escape codes, a backtrace and crate
+      paths. Test with that measured text. Say in `_extract_and_publish`'s docstring that any
+      exception in the barrier now ends a first analysis `failed`, where it used to propagate and
+      be claimed again. **Docs:** `docs/risks.md` says only what is measured: new captures and
+      analyses read build 185872, the quarantined backlog waits on T673 and is not counted; it
+      does not restate the sample count kept in this phase's purpose
+- [ ] T674 Find the published analyses whose point of view was taken from the wrong player
+      (T672a): every `match_analyses` row whose `point_of_view_profile_id` has no
+      `retained_recordings` row for its match. Such a row cannot be recomputed, and its
+      perspective is wrong. Count them first and report; correcting them is a separate decision.
+      Reads production, so the user runs it or grants the read
 - [ ] T673 Re-validate captures that ended `quarantined` because the engine could not parse them,
       once T672 is deployed: read the committed object, check it against the row's own
       `zip_sha256`, and run it through the capture barrier again, marking `stored` or leaving it
