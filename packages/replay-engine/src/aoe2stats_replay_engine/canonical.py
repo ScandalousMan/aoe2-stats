@@ -520,7 +520,7 @@ def canonical_events(
     state = _Exits()
     clock = 0
     operations = cast(Sequence[Mapping[str, object]], parsed["operations"])
-    for operation in operations:
+    for position, operation in enumerate(operations):
         kind = next(iter(operation))
         body = cast(_Payload, operation[kind])
         if kind == "Sync":
@@ -529,13 +529,21 @@ def canonical_events(
             continue
         elif kind == "Pregame":
             # The 0.1.22+ wheel's old `meta` block, as the chapter's first operation (T672). It
-            # produces no event, deliberately: its only content that matters is `rec_owner`, the
-            # point of view of the recording, which is read by `aoe2rec._build_timeline` for the
-            # timeline and which no canonical event carries; the other fields are engine framing
-            # (checksum interval, multiplayer, sequence numbers), not intent. Emitting an event
-            # would also move every committed canonical golden, which the upgrade must not do.
-            # Like `Viewlock` it is known and consumed, not a drop reason, so it is not an
-            # `unknown_operation`.
+            # produces no event, deliberately: nothing in it is intent. Its `rec_owner` is not the
+            # point of view either, despite the name: it is 1 in every committed recording, whoever
+            # recorded it (T672a), and the point of view is `zheader.replay.rec_player`, read by
+            # `aoe2rec._point_of_view_profile_id` for the timeline and carried by no canonical
+            # event; the other fields are engine framing (checksum interval, multiplayer, sequence
+            # numbers). Emitting an event would also move every committed canonical golden, which
+            # the upgrade must not do. Like `Viewlock` it is known and consumed, not a drop reason,
+            # so it is not an `unknown_operation`. It opens the chapter exactly once: a second one,
+            # or one anywhere but first, is a shape nothing here has measured, and is refused
+            # rather than silently counted (T672a).
+            if position != 0:
+                raise EngineParseError(
+                    f"a Pregame operation at position {position}: it must be the chapter's "
+                    "first operation, and the only one"
+                )
             continue
         elif kind == "PostGame":
             yield _match_ended(clock, body)

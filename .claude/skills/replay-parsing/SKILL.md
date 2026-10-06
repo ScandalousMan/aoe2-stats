@@ -33,9 +33,10 @@ that counts) the result is `{"chapters": [chapter, ...]}`. The adapter reads exa
 refuses any other count with `EngineParseError` — how several would join is not established, and
 every recording seen has one. The chapter's `zheader["game_settings"]` holds the lobby and
 per-player setup. Its `operations` is the full event stream — `Pregame` (always first: the old
-`meta` block, whose `rec_owner` names the point of view), `Sync`, `Viewlock`, `Action`, `Chat`,
-`PostGame`. Duration is the sum of
-`Sync.time_increment`. `Build` plus `Research` plus that clock is what age-up times, opening
+`meta` block; its `rec_owner` is 1 in every recording seen, whoever recorded it, so it names no
+one), `Sync`, `Viewlock`, `Action`, `Chat`, `PostGame`. The point of view is
+`zheader["replay"]["rec_player"]`, a player number matched against each player's `player_number`.
+Duration is the sum of `Sync.time_increment`. `Build` plus `Research` plus that clock is what age-up times, opening
 detection and idle-TC are computed from. `PostGame` carries per-player elo.
 
 **Do not use the bundled `RecSummary` helper.** It raises `KeyError` on chat from a player id absent
@@ -64,7 +65,7 @@ A replay that fails to parse:
 1. stays **untouched** in object storage. Never deleted, never "repaired".
 2. gets a `replay_parses` row with `status='quarantined'`, the exception class, the full message and
    the stack.
-3. raises **no per-item alert**. Alert on the quarantine *rate*. One unparsable file is a curiosity;
+3. raises **no per-item alert**. Alert on the quarantine _rate_. One unparsable file is a curiosity;
    a rising fraction is a patch that broke the parser.
 4. stays replayable. Quarantine is a state, not an ending.
 

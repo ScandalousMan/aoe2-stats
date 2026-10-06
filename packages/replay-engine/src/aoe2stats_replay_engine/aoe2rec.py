@@ -33,8 +33,8 @@ module docstring and `_EXPECTED_BUILDING_TYPE_COUNTS` for the full derivation.
 The wheel's result shape changed in 0.1.22 (T672, game build 185872): it is now `{"chapters":
 [chapter, ...]}`, each chapter carrying `zheader` and `operations`, and the old `meta` block is the
 first operation, `{"Pregame": {...}}`. `_parse_or_raise` is the one place that reads that shape: it
-accepts exactly one chapter, refuses any other count and a chapter whose first operation is not a
-`Pregame`, all with `EngineParseError`, and hands the chapter on — a mapping with `zheader` and
+accepts exactly one chapter, refuses any other count and a chapter that does not open with exactly
+one `Pregame`, all with `EngineParseError`, and hands the chapter on — a mapping with `zheader` and
 `operations`, which is all `canonical.canonical_events` ever read — so nothing downstream sees the
 chapter list. How several chapters would join is not established (every recording seen has one),
 so a recording with more is refused rather than guessed at.
@@ -452,9 +452,11 @@ def _single_chapter(parsed: Mapping[str, object]) -> Mapping[str, object]:
 
     Exactly one chapter is understood: every recording seen has one, and nothing establishes how
     the operations of several would join, so more (or none) is refused with the count named rather
-    than read as the first. The chapter must open with the `Pregame` operation that replaced the
-    old `meta` block; a missing or misplaced one is refused here, once, so no caller meets a bare
-    `KeyError` or `IndexError` further down.
+    than read as the first. The chapter must open with exactly one `Pregame` operation, the block
+    that replaced the old `meta`: none, a second one, or one anywhere but first is refused here,
+    once, so no caller meets a bare `KeyError` or `IndexError` further down. Nothing is read from
+    the `Pregame` itself: its `rec_owner` is 1 in every committed recording, whoever recorded it,
+    so it names no one (see `_point_of_view_profile_id`).
     """
     chapters = parsed.get("chapters")
     if not isinstance(chapters, Sequence) or isinstance(chapters, str | bytes):
@@ -468,14 +470,45 @@ def _single_chapter(parsed: Mapping[str, object]) -> Mapping[str, object]:
         )
     chapter = cast(Mapping[str, object], chapters[0])
     operations = chapter.get("operations")
-    first = operations[0] if isinstance(operations, Sequence) and operations else None
-    pregame = first.get("Pregame") if isinstance(first, Mapping) else None
-    if not isinstance(pregame, Mapping) or not isinstance(pregame.get("rec_owner"), int):
+    if not isinstance(operations, Sequence) or isinstance(operations, str | bytes):
+        raise EngineParseError("the chapter carries no operations list")
+    pregames = [
+        index
+        for index, operation in enumerate(operations)
+        if isinstance(operation, Mapping) and "Pregame" in operation
+    ]
+    if pregames != [0]:
         raise EngineParseError(
-            "the chapter's first operation is not a Pregame carrying rec_owner, which is where the "
-            "recording owner is read"
+            "the chapter must open with exactly one Pregame operation; "
+            + ("it has none" if not pregames else f"Pregame operations sit at positions {pregames}")
         )
     return chapter
+
+
+def _point_of_view_profile_id(chapter: Mapping[str, object]) -> int:
+    """The profile that recorded this match: the player whose number is `replay.rec_player`.
+
+    `zheader.replay.rec_player` is a player number, matched here against each player's own
+    `player_number`. Measured on all three committed recordings it names the profile the download
+    was requested for (`tests/fixtures/replays/README.md`), which is the recording's perspective
+    (`docs/data-sources.md`). `Pregame.rec_owner` does not: it is 1 in all three, so read as an
+    index into `game_settings.players` it named the recorder of the two build 180059 recordings by
+    coincidence (both were recorded by player number 2, index 1) and the opponent in the build
+    185872 one. A recording where no player, or more than one, carries that number is refused: the
+    perspective is never guessed.
+    """
+    zheader = cast(Mapping[str, object], chapter["zheader"])
+    replay = cast(Mapping[str, object], zheader.get("replay") or {})
+    rec_player = replay.get("rec_player")
+    game_settings = cast(Mapping[str, object], zheader["game_settings"])
+    raw_players = cast(Sequence[Mapping[str, object]], game_settings["players"])
+    carriers = [p for p in raw_players if p["player_number"] == rec_player]
+    if not isinstance(rec_player, int) or len(carriers) != 1:
+        raise EngineParseError(
+            f"zheader.replay.rec_player is {rec_player!r}, which exactly one player must carry as "
+            f"their player_number; {len(carriers)} do"
+        )
+    return cast(int, carriers[0]["profile_id"])
 
 
 def _build_timeline(parsed: Mapping[str, object]) -> MatchTimeline:
@@ -483,20 +516,7 @@ def _build_timeline(parsed: Mapping[str, object]) -> MatchTimeline:
     game_settings = cast(Mapping[str, object], zheader["game_settings"])
     raw_players = cast(Sequence[Mapping[str, object]], game_settings["players"])
 
-    # `Pregame.rec_owner` (the first operation, `_single_chapter` has checked it is there; before
-    # 0.1.22 it was `meta.rec_owner`) is a zero-based index into `game_settings.players`, not a
-    # `player_number` (R2): confirmed against the reference replay, whose `rec_owner` is `1` and
-    # whose recording owner is `players[1]` (profile 196240), not the player whose own
-    # `player_number` is `1` (profile 288714) — the two disagree on this exact recording, which is
-    # what makes this worth pinning rather than assuming.
-    first_operation = cast(Sequence[Mapping[str, Mapping[str, object]]], parsed["operations"])[0]
-    rec_owner_index = cast(int, first_operation["Pregame"]["rec_owner"])
-    if not 0 <= rec_owner_index < len(raw_players):
-        raise EngineParseError(
-            f"Pregame names recording owner {rec_owner_index}, but the game settings list "
-            f"{len(raw_players)} players"
-        )
-    point_of_view_profile_id = cast(int, raw_players[rec_owner_index]["profile_id"])
+    point_of_view_profile_id = _point_of_view_profile_id(parsed)
 
     builds: dict[int, list[BuildEvent]] = defaultdict(list)
     trainings: dict[int, list[TrainingEvent]] = defaultdict(list)

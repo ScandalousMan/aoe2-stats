@@ -1594,7 +1594,7 @@ T671 and T672 ship together; T673 follows once T672 is deployed.
       engine version enters the identity digest, so published analyses recompute: say so in the
       commit body. Update every living statement of the pinned version in `docs/` and the
       replay-parsing skill; leave frozen `specs/` records alone
-- [ ] T672a Close #124's review (`reviewer` REJECT 2026-10-06). **Point of view:** the adapter
+- [x] T672a Close #124's review (`reviewer` REJECT 2026-10-06). **Point of view:** the adapter
       takes the recorder from `rec_owner` as an index into `game_settings.players`, and that index
       is 1 in all three committed recordings: it named the recorder in the two build 180059
       fixtures by coincidence and names the wrong player in match 511523321's. Take it from

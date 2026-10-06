@@ -517,27 +517,40 @@ async def _publish(
         await object_store.put_if_absent(result_key, payload, content_type="application/json")
 
 
+#: What a person is told when the replay engine crashed natively while reading their recording.
+#: Fixed: the engine's own text is logged, never shown (`_describe`).
+_ENGINE_CRASH_REASON = "the replay engine crashed while reading this recording"
+
+
 def _describe(exc: BaseException) -> tuple[str, str]:
     """The class and message a refused analysis is recorded and logged under.
 
     `exc` is a `BaseException`, not an `Exception`, because a native engine panic
     (`pyo3_runtime.PanicException`) inherits `BaseException` directly and reaches here through
     `_extract_and_publish`'s barrier. The class recorded is always the real one
-    (`type(exc).__name__`, e.g. `PanicException`), never a stand-in; an empty message - a panic
-    raised without text - is recorded as the class name, so a `failed` row never shows a blank
-    reason.
+    (`type(exc).__name__`, e.g. `PanicException`), never a stand-in.
 
     A message is shown to the person who asked (`routers/matches.py` prints a `failed` row's
-    `error_message` verbatim), so the ones that describe this deployment's internals are replaced by
-    a fixed sentence: a snapshot error quotes the packaged knowledge files, and a database error
-    embeds the SQL statement and its bound parameters. The class name is kept for both. Everything
-    else - a parse failure, a refused document, a placement or serialisation error - is this
-    package's own text about the document, and is kept as 003's failure path always kept it.
+    `error_message` verbatim), so what is recorded must be this package's own text or a fixed
+    sentence, never text this package did not write:
+
+    - A `BaseException` that is not an `Exception` is a native crash, and its text is the engine's
+      own, not ours: the measured `PanicException` message is ~770 characters of terminal escape
+      codes, a backtrace and the engine's crate paths (T672a). It is recorded as its class and a
+      fixed sentence; `_refuse` logs the full text, which is for the operator and never shown.
+    - A snapshot error quotes the packaged knowledge files, and a database error embeds the SQL
+      statement and its bound parameters: each is replaced by a fixed sentence, the class kept.
+    - Everything else that is an `Exception` - a parse failure, a refused document, a placement or
+      serialisation error - is this package's own text about the document, and is kept as 003's
+      failure path always kept it; an empty message is recorded as the class name, so a `failed`
+      row never shows a blank reason.
     """
     if isinstance(exc, _PublishRefused):
         return type(exc.cause).__name__, exc.step
     if isinstance(exc, SnapshotError):
         return type(exc).__name__, "the knowledge snapshot for this recording could not be loaded"
+    if not isinstance(exc, Exception):
+        return type(exc).__name__, _ENGINE_CRASH_REASON
     return type(exc).__name__, str(exc) or type(exc).__name__
 
 
@@ -623,6 +636,13 @@ async def _refuse(
     """An analysis that cannot be completed. A first analysis has nothing to keep and ends `failed`
     through 003's failure path; a recompute keeps what it was replacing (`_keep_prior`)."""
     error_class, error_message = _describe(exc)
+    if not isinstance(exc, Exception):
+        # The text `_describe` withheld from the row. A native engine crash carries the engine's
+        # own message - terminal escape codes, a backtrace, crate paths - which is for whoever
+        # operates this deployment and is shown to nobody else (T672a).
+        logger.error(
+            "replay engine crashed: game_id=%s %s: %s", game_id, type(exc).__name__, str(exc)
+        )
     if keep_prior:
         await _keep_prior(
             session_factory,
@@ -682,20 +702,32 @@ async def _extract_and_publish(
     nothing about this recording.
 
     **The barrier (T671) sits around building, validating and serialising the document, and
-    nowhere else.** That block is synchronous, writes nothing, and calls no network service, database
-    or object store; the one thing it reads is the knowledge snapshot packaged with the deployment
-    (`snapshot_for`), which `verify_deployment` checks before the claim. Whatever leaves it is
-    therefore about this recording, this code or this deployment, not a remote service. It therefore
-    contains a `BaseException`, as `aoe2stats_ingester.capture._validate_with_barrier` does on the
-    capture path: the native engine's panic (`pyo3_runtime.PanicException`) inherits
+    nowhere else.** That block is synchronous, writes nothing, and calls no network service,
+    database or object store; the one thing it reads is the knowledge snapshot packaged with the
+    deployment (`snapshot_for`), which `verify_deployment` checks before the claim. Whatever leaves
+    it is about this recording, this code or this deployment, not a remote service. The barrier
+    therefore contains a `BaseException`, as `aoe2stats_ingester.capture._validate_with_barrier`
+    does on the capture path: the native engine's panic (`pyo3_runtime.PanicException`) inherits
     `BaseException` directly, so the `ValueError` clause never saw it, and it ended the request as
     a 500 with the row left `running` (production, 2026-10-05, game build 185872). A panic takes
-    the same `_refuse` as any other refused document: `failed` with its class and message on a
-    first analysis, the prior analysis kept on a recompute. Not contained:
+    the same `_refuse` as any other refused document: `failed` on a first analysis, recorded with
+    its class and a fixed sentence while its own text is logged (`_describe`), and the prior
+    analysis kept on a recompute. Not contained:
     `asyncio.CancelledError`, `KeyboardInterrupt`, `SystemExit` and `GeneratorExit` are re-raised,
     because a cancelled request or a shutdown is not a verdict on the recording (the capture path's
     T055a lesson). `_publish` and the reads before this function are outside it, so a transient
     failure there propagates as before.
+
+    **Any exception inside the barrier now ends a first analysis `failed`, terminally** (T672a).
+    Before T671 an exception that was neither a `ValueError` nor a `ReplayValidationError` - a
+    `MemoryError` from a recording too large to materialise, say - propagated: the row stayed
+    `running`, its lease lapsed and the next request claimed it again. It is now recorded `failed`
+    like any other refusal, and a `failed` row is not claimed again (`_TERMINAL_STATES`). That is
+    deliberate: a retry would re-fetch the recording from the source, spending the budget capture
+    depends on (constitution I), and an exception raised while reading this recording from bytes
+    already in hand is most likely about the recording, so a second read of the same bytes would
+    most likely raise it again. The cost is that a failure that was in fact transient is not
+    retried either.
     """
     try:
         document = build_document(

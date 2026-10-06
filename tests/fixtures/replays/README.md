@@ -52,20 +52,27 @@ A ranked 1v1 on Arabian Desert played on **2026-10-05**, downloaded the same day
 `https://aoe.ms/replay/?gameId=511523321&profileId=5632575` (which 301-redirects to
 `api.ageofempires.com` `GetMatchReplay`), byte-for-byte as served.
 
-| Property       | Value                                                                                                                      |
-| -------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| Game build     | 185872 (VER 9.4, version_major 68)                                                                                         |
-| Zip size       | 861 726 bytes                                                                                                              |
-| Extracted size | 5 122 364 bytes (ratio x5.9)                                                                                               |
-| Members        | exactly one: `AgeIIDE_Replay_511523321.aoe2record`                                                                         |
-| Point of view  | profile 212721 (`Pregame.rec_owner` 1, the second listed player); the download was requested as profile 5632575, the first |
-| Operations     | 349 253 (`Sync` 172 417, `Viewlock` 172 417, `Action` 4 402, `Chat` 15, `Pregame` 1, `PostGame` 1), in one chapter         |
+| Property       | Value                                                                                                                                 |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Game build     | 185872 (VER 9.4, version_major 68)                                                                                                    |
+| Zip size       | 861 726 bytes                                                                                                                         |
+| Extracted size | 5 122 364 bytes (ratio x5.9)                                                                                                          |
+| Members        | exactly one: `AgeIIDE_Replay_511523321.aoe2record`                                                                                    |
+| Point of view  | profile 5632575, the profile the download was requested as (`zheader.replay.rec_player` 1, the first listed player's `player_number`) |
+| Operations     | 349 253 (`Sync` 172 417, `Viewlock` 172 417, `Action` 4 402, `Chat` 15, `Pregame` 1, `PostGame` 1), in one chapter                    |
 
 **Why it is committed.** It is the first recording on a game build the pinned parser of the time,
 `aoe2rec-py` 0.1.21, could not read: that version panics on it, and 0.1.24 parses it in 0.22 s.
 Replays are purged from the official servers after about 31 days, so this file cannot be
 re-downloaded. It carries the 0.1.22+ result shape (one chapter, `Pregame` as the first operation)
 and the first chat message on a channel other than 0 (one message, channel 1).
+
+**The point of view is `zheader.replay.rec_player`, not `Pregame.rec_owner`.** `rec_player` is a
+player number, matched against each player's `player_number`; on all three recordings it names the
+profile the download was requested for (196240, 2582827, 5632575). `Pregame.rec_owner` is 1 in all
+three: read as an index into the player list it named the recorder of the two build 180059
+recordings only because both were recorded by player number 2 (index 1), and it names the opponent
+here, where the recorder is player number 1 (index 0).
 
 The operation counts of the two recordings above were measured with 0.1.21, which returned the
 `Pregame` block as a separate `meta` key; 0.1.24 reports it as the first operation, so it counts

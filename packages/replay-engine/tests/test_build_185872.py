@@ -9,8 +9,9 @@ are tested here:
   numbers measured from the file itself; and
 - the adapter's reading of the new shape, on synthetic parse results with the engine stubbed (the
   same technique as `test_extract_limits.py`): one chapter accepted, any other count refused with
-  `EngineParseError` naming it, and a missing or misplaced `Pregame` refused with
-  `EngineParseError` rather than a bare `KeyError` or `IndexError`.
+  `EngineParseError` naming it, a missing, repeated or misplaced `Pregame` refused with
+  `EngineParseError` rather than a bare `KeyError` or `IndexError`, and the point of view read from
+  `zheader.replay.rec_player` (a player number) and never from `Pregame.rec_owner` (T672a).
 """
 
 from __future__ import annotations
@@ -53,10 +54,10 @@ def _extractor() -> Aoe2RecExtractor:
 def test_the_build_185872_recording_extracts() -> None:
     timeline = _extractor().extract(BUILD_185872_REPLAY.read_bytes())
 
-    # `rec_owner` is 1 in this recording's `Pregame`, a zero-based index into the players, so the
-    # point of view is the second listed player (R2), not the profile the download was requested
-    # for (5632575, the first listed player) — measured from the file, recorded in the README.
-    assert timeline.point_of_view_profile_id == 212721
+    # The point of view is the profile the download was requested for (5632575): the player whose
+    # `player_number` is `zheader.replay.rec_player` (1 here). `Pregame.rec_owner` is 1 as well, but
+    # as an index it names the second listed player, the opponent (212721) — the T672a regression.
+    assert timeline.point_of_view_profile_id == 5632575
     assert [p.profile_id for p in timeline.participants] == [5632575, 212721]
     assert [p.player_number for p in timeline.participants] == [1, 2]
     # The accumulated `Sync` clock and the post-game `WorldTime` agree, as on both older recordings.
@@ -120,7 +121,11 @@ def _pregame(rec_owner: int = 0) -> dict[str, object]:
 
 
 def _chapter(
-    operations: list[dict[str, object]] | None = None, *, rec_owner: int = 0
+    operations: list[dict[str, object]] | None = None,
+    *,
+    rec_owner: int = 0,
+    rec_player: int | None = 1,
+    player_numbers: tuple[int, ...] = (1, 2),
 ) -> dict[str, object]:
     if operations is None:
         operations = [
@@ -134,6 +139,7 @@ def _chapter(
         "next_chapter_address": 0,
         "zheader": {
             "build": 185872,
+            "replay": {} if rec_player is None else {"rec_player": rec_player},
             "game_settings": {
                 "resolved_map_id": 9,
                 "starting_resources_id": 0,
@@ -146,7 +152,7 @@ def _chapter(
                         "civ_id": n,
                         "resolved_team_id": n + 1,
                     }
-                    for n in (1, 2)
+                    for n in player_numbers
                 ],
             },
         },
@@ -166,26 +172,64 @@ def _extract(extractor: Aoe2RecExtractor, zip_bytes: bytes) -> object:
 
 
 def _events(extractor: Aoe2RecExtractor, zip_bytes: bytes) -> object:
-    return extractor.events(zip_bytes)
+    # `events` is lazy: drain it, so a refusal is met whichever entry point is under test.
+    return list(extractor.events(zip_bytes))
 
 
-def test_a_single_chapter_is_accepted_and_its_pregame_names_the_point_of_view(
+def test_a_single_chapter_is_accepted_and_its_rec_player_names_the_point_of_view(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # The contrast case for every refusal below: the same synthetic shape, one chapter.
-    _stub(monkeypatch, {"chapters": [_chapter(rec_owner=1)]})
+    _stub(monkeypatch, {"chapters": [_chapter(rec_player=2)]})
 
     timeline = _extractor().extract(_zip_bytes())
 
-    # `players[1]` is profile 1002: the owner comes from `Pregame`, as a zero-based index.
+    # Player number 2 is profile 1002.
     assert timeline.point_of_view_profile_id == 1_002
     assert timeline.world_time_ms == 1_000
 
 
-def test_the_point_of_view_follows_the_pregame_owner(monkeypatch: pytest.MonkeyPatch) -> None:
-    _stub(monkeypatch, {"chapters": [_chapter(rec_owner=0)]})
+@pytest.mark.parametrize(("rec_player", "profile"), [(1, 1_001), (2, 1_002)])
+@pytest.mark.parametrize("rec_owner", [0, 1, 7])
+def test_the_point_of_view_follows_rec_player_whatever_the_pregame_owner_says(
+    monkeypatch: pytest.MonkeyPatch, rec_player: int, profile: int, rec_owner: int
+) -> None:
+    _stub(monkeypatch, {"chapters": [_chapter(rec_owner=rec_owner, rec_player=rec_player)]})
 
-    assert _extractor().extract(_zip_bytes()).point_of_view_profile_id == 1_001
+    assert _extractor().extract(_zip_bytes()).point_of_view_profile_id == profile
+
+
+def test_rec_player_is_matched_against_player_number_not_against_a_list_index(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Player numbers 3 and 5: `rec_player` 5 sits at index 1, and no index is 5.
+    _stub(monkeypatch, {"chapters": [_chapter(rec_player=5, player_numbers=(3, 5))]})
+
+    assert _extractor().extract(_zip_bytes()).point_of_view_profile_id == 1_005
+
+
+@pytest.mark.parametrize(
+    ("rec_player", "player_numbers", "carried"),
+    [
+        (3, (1, 2), 0),
+        (None, (1, 2), 0),
+        (1, (1, 1), 2),
+    ],
+    ids=["no player carries it", "no rec_player at all", "two players carry it"],
+)
+def test_a_recording_whose_rec_player_is_not_carried_by_exactly_one_player_is_refused(
+    monkeypatch: pytest.MonkeyPatch,
+    rec_player: int | None,
+    player_numbers: tuple[int, ...],
+    carried: int,
+) -> None:
+    _stub(
+        monkeypatch,
+        {"chapters": [_chapter(rec_player=rec_player, player_numbers=player_numbers)]},
+    )
+
+    with pytest.raises(EngineParseError, match=rf"rec_player.*{carried} do"):
+        _extractor().extract(_zip_bytes())
 
 
 @pytest.mark.parametrize("entry", [_extract, _events], ids=["extract", "events"])
@@ -248,10 +292,59 @@ def test_pregame_yields_no_event_and_is_not_an_unknown_operation() -> None:
     assert accounting == Accounting()
 
 
-def test_a_recording_owner_outside_the_players_is_refused_not_an_index_error(
+# --- Pregame opens the chapter exactly once (T672a) --------------------------------------------
+
+_SYNC: dict[str, object] = {"Sync": {"time_increment": 1_000, "next": 0, "checksum": None}}
+_POST_GAME: dict[str, object] = {
+    "PostGame": {"blocks": [{"WorldTime": {"length": 4, "world_time": 1_000}}]}
+}
+
+
+def test_one_pregame_first_is_accepted_through_both_entry_points(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _stub(monkeypatch, {"chapters": [_chapter(rec_owner=2)]})
+    # The contrast case for the two refusals below: identical operations, Pregame once and first.
+    _stub(monkeypatch, {"chapters": [_chapter([_pregame(), _SYNC, _POST_GAME])]})
 
-    with pytest.raises(EngineParseError, match="recording owner 2"):
-        _extractor().extract(_zip_bytes())
+    assert _extractor().extract(_zip_bytes()).world_time_ms == 1_000
+    assert list(_extractor().events(_zip_bytes()))[-1].kind is EventKind.MATCH_ENDED
+
+
+@pytest.mark.parametrize("entry", [_extract, _events], ids=["extract", "events"])
+def test_a_second_pregame_is_refused(monkeypatch: pytest.MonkeyPatch, entry: _Entry) -> None:
+    operations = [_pregame(), _SYNC, _pregame(), _POST_GAME]
+    _stub(monkeypatch, {"chapters": [_chapter(operations)]})
+
+    with pytest.raises(EngineParseError, match="Pregame"):
+        entry(_extractor(), _zip_bytes())
+
+
+@pytest.mark.parametrize("entry", [_extract, _events], ids=["extract", "events"])
+def test_a_pregame_at_position_one_is_refused(
+    monkeypatch: pytest.MonkeyPatch, entry: _Entry
+) -> None:
+    _stub(monkeypatch, {"chapters": [_chapter([_SYNC, _pregame(), _POST_GAME])]})
+
+    with pytest.raises(EngineParseError, match="Pregame"):
+        entry(_extractor(), _zip_bytes())
+
+
+@pytest.mark.parametrize(
+    "operations",
+    [[_pregame(), _SYNC, _pregame()], [_SYNC, _pregame()]],
+    ids=["second pregame", "pregame not first"],
+)
+def test_the_canonical_stream_refuses_a_misplaced_pregame_by_itself(
+    operations: list[dict[str, object]],
+) -> None:
+    # The stream is public on its own (`canonical_events`), so it does not lean on the adapter.
+    stream = {**_chapter(), "operations": operations}
+
+    with pytest.raises(EngineParseError, match="Pregame"):
+        list(canonical_events(stream))
+
+
+def test_the_canonical_stream_accepts_one_pregame_first() -> None:
+    stream = {**_chapter(), "operations": [_pregame(), _SYNC, _POST_GAME]}
+
+    assert [e.kind for e in canonical_events(stream)][-1] is EventKind.MATCH_ENDED

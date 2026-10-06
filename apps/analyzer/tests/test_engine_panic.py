@@ -13,8 +13,10 @@ done here, so this file needs no engine and no recording.
 
 Three things are pinned:
 
-- A panic ends a first analysis `failed`, with the real class name and the message recorded, and
-  the recording is fetched from the source exactly once however often it is asked for.
+- A panic ends a first analysis `failed`, with the real class name and a fixed sentence recorded -
+  never the engine's own text, which `routers/matches.py` would show to the person who asked (T672a)
+  - and the recording is fetched from the source exactly once however often it is asked for. The
+  full text reaches the log instead.
 - A panic on a recompute leaves the analysis being replaced exactly as it was served (T666c).
 - `asyncio.CancelledError`, `KeyboardInterrupt`, `SystemExit` and `GeneratorExit` are not a verdict
   on the recording: they propagate out of `run_once` and leave the row as the claim left it. Each
@@ -25,6 +27,7 @@ Three things are pinned:
 from __future__ import annotations
 
 import asyncio
+import logging
 import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -54,12 +57,62 @@ _BUDGET_SECONDS = 300
 _ENGINE_NAME = "aoe2rec-py"
 _ENGINE_VERSION_1 = "0.1.21"
 _ENGINE_VERSION_2 = "0.1.22"  # a later parser version: the published analysis is stale under it
-_PANIC_MESSAGE = "called `Option::unwrap()` on a `None` value"
+
+#: The text of a real `pyo3_runtime.PanicException`, measured from `aoe2rec-py` 0.1.21 on a
+#: recording of game build 185872 (T672a): 770 characters of terminal escape codes (`\x1b[1m`), a
+#: backtrace banner and the engine's crate paths. Embedded as a literal, not rebuilt from a sketch
+#: of it, so the assertions below meet the text a person would have been shown.
+_MEASURED_PANIC_MESSAGE = (
+    "called `Result::unwrap()` on an `Err` value: \n"
+    " \u257a\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501"
+    "\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2505 Bac"
+    "ktrace \u2505\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501"
+    "\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501"
+    "\u2578\n"
+    "\n"
+    " 0: \x1b[1m\x1b[1mError: bad magic at 0x7f376: [0, 0]\x1b[22m\n"
+    "           \x1b[1mWhile parsing field 'unknown1' in InnerUnknownPlayer"
+    "Struct\x1b[22m\x1b[22m\n"
+    "     at crates/aoe2rec/src/header/mod.rs:422\n"
+    " 1: \x1b[1mWhile parsing field 'unknown_inner' in UnknownPlayerStruct"
+    "\x1b[22m\n"
+    "     at crates/aoe2rec/src/header/mod.rs:445\n"
+    " 2: \x1b[1mWhile parsing field 'unknown_struct' in PlayerInit\x1b[22m"
+    "\n"
+    "     at crates/aoe2rec/src/header/mod.rs:501\n"
+    " 3: \x1b[1mWhile parsing field 'players' in Initial\x1b[22m\n"
+    "     at crates/aoe2rec/src/header/mod.rs:404\n"
+    " 4: \x1b[1mWhile parsing field 'initial' in RecHeader\x1b[22m\n"
+    "     at crates/aoe2rec/src/header/mod.rs:38\n"
+    "\n"
+    " \u257a\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501"
+    "\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501"
+    "\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501"
+    "\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501"
+    "\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2578\n"
+    "\n"
+    ""
+)
 
 
-class _EnginePanic(BaseException):
+_FIXED_SENTENCE = "the replay engine crashed while reading this recording"
+
+
+@pytest.fixture(autouse=True)
+def _enable_the_analyzer_logger() -> Iterator[None]:
+    """`infra/migrations/env.py` runs `logging.config.fileConfig` the first time the throwaway
+    database is migrated, which disables every logger that already exists - this package's among
+    them - so a `caplog` assertion would otherwise depend on test order (the identical fixture in
+    `test_run_once.py`)."""
+    run_module.logger.disabled = False
+    yield
+    run_module.logger.disabled = False
+
+
+class PanicException(BaseException):
     """Stands in for `pyo3_runtime.PanicException`: inherits `BaseException` directly and not
-    `Exception`, which is the property the production failure turned on."""
+    `Exception`, which is the property the production failure turned on. Named as the real class
+    is, because the class name is what a `failed` row records."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -215,7 +268,9 @@ async def _ask(
 
 
 async def test_a_panic_fails_a_first_analysis_and_the_source_is_fetched_once(
-    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     game_id = 500_671_100
     profile_id, user_id = await _seed(session_factory, game_id=game_id)
@@ -225,11 +280,12 @@ async def test_a_panic_fails_a_first_analysis_and_the_source_is_fetched_once(
     def panicking() -> _Extractor:
         return _Extractor(
             point_of_view_profile_id=profile_id,
-            raises=_EnginePanic(_PANIC_MESSAGE),
+            raises=PanicException(_MEASURED_PANIC_MESSAGE),
             max_calls=1,
         )
 
     extractor = panicking()
+    caplog.set_level(logging.WARNING, logger="aoe2stats_analyzer")
     # Must not raise: a panic that escapes is a 500 and leaves the row `running`.
     await _ask(
         session_factory,
@@ -242,8 +298,14 @@ async def test_a_panic_fails_a_first_analysis_and_the_source_is_fetched_once(
 
     row = await _row(session_factory, game_id)
     assert row.state == MatchAnalysisState.FAILED
-    assert row.error_class == "_EnginePanic"
-    assert row.error_message == _PANIC_MESSAGE
+    assert row.error_class == "PanicException"
+    # What `routers/matches.py` prints verbatim: a fixed sentence, none of the engine's text.
+    assert row.error_message == _FIXED_SENTENCE
+    assert "\x1b" not in row.error_message
+    assert "crates/" not in row.error_message
+    assert "Backtrace" not in row.error_message
+    # The full text is for the operator: it reaches the log, escape codes and all.
+    assert any(_MEASURED_PANIC_MESSAGE in record.getMessage() for record in caplog.records)
     assert row.result_key is None
     assert row.identity_digest is None
     assert not any(key.startswith("analyses/") for key in store.put_calls)
@@ -269,7 +331,9 @@ async def test_a_panic_fails_a_first_analysis_and_the_source_is_fetched_once(
 
 
 async def test_a_panic_on_a_recompute_keeps_the_analysis_it_was_replacing(
-    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     game_id = 500_671_200
     profile_id, user_id = await _seed(session_factory, game_id=game_id)
@@ -289,10 +353,11 @@ async def test_a_panic_on_a_recompute_keeps_the_analysis_it_was_replacing(
     puts_before = list(store.put_calls)
 
     # A newer parser makes the row stale, so this asks to recompute from the retained bytes.
+    caplog.set_level(logging.WARNING, logger="aoe2stats_analyzer")
     panicking = _Extractor(
         point_of_view_profile_id=profile_id,
         engine_version=_ENGINE_VERSION_2,
-        raises=_EnginePanic(_PANIC_MESSAGE),
+        raises=PanicException(_MEASURED_PANIC_MESSAGE),
         max_calls=1,
     )
     await _ask(
@@ -306,6 +371,7 @@ async def test_a_panic_on_a_recompute_keeps_the_analysis_it_was_replacing(
 
     after = await _row(session_factory, game_id)
     assert panicking.calls == 1
+    assert any(_MEASURED_PANIC_MESSAGE in record.getMessage() for record in caplog.records)
     assert after.state == MatchAnalysisState.PUBLISHED
     assert after.result_key == published.result_key
     assert after.identity_digest == published.identity_digest
