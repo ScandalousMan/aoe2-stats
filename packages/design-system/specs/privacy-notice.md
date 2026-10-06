@@ -724,11 +724,13 @@ records, walked independently, each starting `nth` from its own zero. `InlineLin
 `InlineLinkFocusVisible` and `InlineLinkActive` resolved `unresolved` against `Link`, and
 `PrivacyNotice`'s own local pool, no longer aware that four real elements used to sit between
 `Contents` and `ObjectionCallToAction`, wrongly re-numbered `nth: 9` onto `ObjectionCallToAction`
-itself (`README.md`'s own generated region briefly carried both defects). Fixed in
-`resolveNameMatch`'s own `nth` branch (`scripts/checks/state-coverage.mjs`): a `foreignExtents`
-array lets each record fold the other's own real, counted width into its own walk without the other
-record's own candidate ever being returned as the `'match'`. The trio now credits `Link`'s own
-`inline` row, and `ObjectionCallToAction`'s own cells credit only its own three stories.
+itself (`README.md`'s own generated region briefly carried both defects). The extractor was fixed
+to fold each record's counted width into the other's walk, and the trio then credited `Link`'s own
+`inline` row. T694 (2026-10-04) removed the walk altogether: the extractor no longer counts `nth`,
+and credits the trio from the element the browser located at `nth: 9` and the `Link` instance
+`packages/design-system/specs/state-coverage-runtime.json` records as placing it, so the same two
+records cannot disagree about a position again. `ObjectionCallToAction`'s own cells credit only its
+own three stories.
 
 **What the commit that applies this owes.** The shipped anchor is a local `text-link underline` with
 no `hover:`, `focus-visible:` or `active:` class of any kind: the rest frame is already right and

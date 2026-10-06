@@ -29,7 +29,7 @@ import {
   findLocalElements,
   findVariantSizeDefaults,
   findPrimitiveInstances,
-  findMeta,
+  readDefaultExport,
   findExportedStoryObjects,
   extractVisualForceState,
   findPlayFocusTarget,
@@ -43,7 +43,6 @@ import {
   extractGeneratedRegion,
   replaceGeneratedRegion,
   formatWithPrettier,
-  findHelperInvocationIterationContext,
   renderRecord1,
   computeStateCoverage,
   checkCitations,
@@ -66,6 +65,7 @@ import {
   readManifest,
   resolveRuntimeForce,
   entryShapeProblem,
+  filesProblem,
   readAxisValues,
   stableMounts,
   rowAxesOf,
@@ -398,7 +398,6 @@ test('buildElementMatrix never credits a play-click match when the element carri
       role: null,
       tabIndex: null,
       ariaHidden: false,
-      isHelper: false,
       text: '',
       file: 'Widget/index.tsx',
       line: 10,
@@ -437,49 +436,199 @@ export const Hover = {
   })
 })
 
-// --- Fixture 6c: a JSX candidate's own static axis and the axis its own force-state resolves to
-// per story disagree (T594's REJECT on #80, item 2). `Widget`'s real button carries a literal
-// `variant="ghost"` but a *dynamic* `size` prop — the same shape `FavouriteToggle`'s own real
-// button and `Dialog`'s own two `Button` instances carry live in this tree. Pre-fix, the JSX
-// candidate's own `rest` entry filed at `ghost|unresolved` (the static axis, size never a literal)
-// while the same source line's own story-resolved match — `size` resolved to `'md'` per story —
-// filed its `hover` cell at `ghost|md` instead: one source line in two rows, the first reading a
-// confirmed `'none'` over a comparison that actually found a match on the second. Built directly
-// against `buildAxisMatrix` (the function item 2 changed) rather than through the full
-// `computeStateCoverage` file-parsing pipeline, the same level fixture 6a
-// ("buildAxisMatrix renders a play-driven focus-visible match…") already uses. --------------------
+// --- Fixture 6c: a call site whose `variant` or `size` the source cannot settle opens no row (T695).
+// `FavouriteToggle` forwards a `size` prop and `Dialog` computes its action's `variant`: both used to
+// file their `Rest` credit at a `ghost|unresolved` / `unresolved|lg` row, a row no story's frame could
+// ever be rendered at, because the manifest places every mounted instance at the row the browser
+// rendered it on (`ghost|md`, `destructive|lg`). Keying a row by an axis the source cannot settle
+// opened four cells nothing could close. A call site whose axis is a literal or a primitive default
+// keeps its row and its `Rest` credit exactly as before. Built against `findPrimitiveInstances`
+// (what reads the source) and `buildAxisMatrix` (what keys the row), the two halves of the rule. -----
 
-function redirectFixtureInstances() {
-  return [
-    {
+const BUTTON_DEFAULTS = { Button: { variant: 'secondary', size: 'md' } }
+const callSites = (source) => findPrimitiveInstances(parse(source), 'fixture.tsx', BUTTON_DEFAULTS)
+const matrixOf = (source) =>
+  buildAxisMatrix(
+    'Button',
+    callSites(source).map((site) => ({ ...site, kind: 'jsx', componentKey: 'composites/Widget' })),
+  )
+const rowKeys = (matrix) => matrix.map((row) => row.variantSize)
+
+test('a call site whose size is a forwarded prop opens no row (T695, size axis)', () => {
+  const matrix = matrixOf(`const el = <Button variant="ghost" size={size}>Go</Button>`)
+  assert.deepEqual(rowKeys(matrix), [])
+})
+
+test('a call site whose variant is a computed expression opens no row (T695, variant axis)', () => {
+  const matrix = matrixOf(
+    `const el = <Button variant={action.variant ?? 'destructive'} size="lg">Go</Button>`,
+  )
+  assert.deepEqual(rowKeys(matrix), [])
+})
+
+test('a call site with a literal variant and a dynamic size opens no row at all, not a half-keyed one (T695, one axis dynamic)', () => {
+  for (const source of [
+    `const el = <Button variant="ghost" size={size}>Go</Button>`,
+    `const el = <Button variant="ghost" size={compact ? 'sm' : 'md'}>Go</Button>`,
+    `const el = <Button variant={variant} size="lg">Go</Button>`,
+    `const el = <Button variant={variant} size={size}>Go</Button>`,
+  ]) {
+    assert.deepEqual(
+      rowKeys(matrixOf(source)),
+      [],
+      `${source} must open no row, not a "...|unresolved" one`,
+    )
+  }
+})
+
+test('a call site that spreads props over an axis it does not pass opens no row (T695, spread)', () => {
+  assert.deepEqual(
+    rowKeys(matrixOf(`const el = <Button variant="ghost" {...rest}>Go</Button>`)),
+    [],
+  )
+})
+
+// --- Fixture 6d: a call site's axis is settled the way JSX settles it (T700). The last attribute
+// naming a prop wins, and a spread is an attribute too: an axis attribute is settled only when no
+// spread follows it, a spread before it is overridden. A string literal under a template without
+// substitutions, `as const`, `as <T>`, `satisfies <T>` or parentheses (any nesting) is the literal. ---
+
+test('a literal axis followed by a spread is not settled, whichever axis it is (T700, spread after)', () => {
+  for (const source of [
+    `const el = <Button variant="ghost" size="lg" {...rest}>Go</Button>`,
+    `const el = <Button variant="ghost" {...rest} size="lg">Go</Button>`,
+    `const el = <Button size="lg" {...rest} variant="ghost">Go</Button>`,
+    `const el = <Button variant={'ghost'} size={\`lg\`} {...rest}>Go</Button>`,
+  ]) {
+    assert.deepEqual(rowKeys(matrixOf(source)), [], `${source} must open no row`)
+  }
+})
+
+test('a spread before a literal axis is overridden by it: the row and its Rest credit stay (T700, contrast)', () => {
+  const matrix = matrixOf(`const el = <Button {...rest} variant="ghost" size="lg">Go</Button>`)
+  assert.deepEqual(rowKeys(matrix), ['ghost|lg'])
+  assert.deepEqual(matrix[0].rest, ['composites/Widget (fixture.tsx:1)'])
+})
+
+test('a spread between the two axes leaves only the later one settled, so the call site opens no row (T700)', () => {
+  assert.deepEqual(
+    rowKeys(matrixOf(`const el = <Button variant="ghost" {...rest} size="lg">Go</Button>`)),
+    [],
+  )
+  assert.deepEqual(
+    rowKeys(matrixOf(`const el = <Button size="lg" {...rest} variant="ghost">Go</Button>`)),
+    [],
+  )
+})
+
+test('an axis omitted beside a spread anywhere stays unsettled exactly as T695 made it (T700, contrast)', () => {
+  for (const source of [
+    `const el = <Button {...rest} variant="ghost">Go</Button>`,
+    `const el = <Button variant="ghost" {...rest}>Go</Button>`,
+  ]) {
+    assert.deepEqual(rowKeys(matrixOf(source)), [], `${source} must open no row`)
+  }
+})
+
+test('a template literal without substitutions settles the axis as the string literal does (T700)', () => {
+  const matrix = matrixOf('const el = <Button variant={`ghost`} size="lg">Go</Button>')
+  assert.deepEqual(rowKeys(matrix), ['ghost|lg'])
+  assert.deepEqual(matrix[0].rest, ['composites/Widget (fixture.tsx:1)'])
+})
+
+test('a string literal under as const, as, satisfies or parentheses settles the axis (T700)', () => {
+  for (const [source, row] of [
+    [`const el = <Button variant={'ghost' as const}>Go</Button>`, 'ghost|md'],
+    [`const el = <Button variant={'ghost' as ButtonVariant}>Go</Button>`, 'ghost|md'],
+    [`const el = <Button variant={('ghost' satisfies ButtonVariant)}>Go</Button>`, 'ghost|md'],
+    [
+      `const el = <Button variant={(('ghost' as const) satisfies V)} size={('lg')}>Go</Button>`,
+      'ghost|lg',
+    ],
+    ['const el = <Button size={`lg` as const}>Go</Button>', 'secondary|lg'],
+  ]) {
+    assert.deepEqual(rowKeys(matrixOf(source)), [row], source)
+  }
+})
+
+test('a template literal with substitutions, or a wrapped non-literal, stays unsettled (T700, contrast)', () => {
+  for (const source of [
+    'const el = <Button variant={`gh${x}`}>Go</Button>',
+    `const el = <Button variant={variant as ButtonVariant}>Go</Button>`,
+    `const el = <Button variant={(cond ? 'ghost' : 'primary') as const}>Go</Button>`,
+  ]) {
+    assert.deepEqual(rowKeys(matrixOf(source)), [], `${source} must open no row`)
+  }
+})
+
+test('contrast (T695): a literal-axis call site keeps its row and its Rest credit exactly as before', () => {
+  const matrix = matrixOf(`const el = <Button variant="ghost" size="lg">Go</Button>`)
+  assert.deepEqual(rowKeys(matrix), ['ghost|lg'])
+  assert.deepEqual(matrix[0].rest, ['composites/Widget (fixture.tsx:1)'])
+})
+
+test('contrast (T695): an omitted size resolves to the primitive default and still keys its row', () => {
+  const matrix = matrixOf(`const el = <Button variant="ghost">Go</Button>`)
+  assert.deepEqual(rowKeys(matrix), ['ghost|md'])
+  assert.deepEqual(matrix[0].rest, ['composites/Widget (fixture.tsx:1)'])
+})
+
+test('contrast (T695): an omitted variant resolves to the primitive default and still keys its row', () => {
+  const matrix = matrixOf(`const el = <Button size="lg">Go</Button>`)
+  assert.deepEqual(rowKeys(matrix), ['secondary|lg'])
+})
+
+test('contrast (T695): a dynamic call site beside a literal one opens only the row of the literal one', () => {
+  const matrix = matrixOf(`
+const a = <Button variant="ghost" size="md">A</Button>
+const b = <Button variant="ghost" size={size}>B</Button>
+`)
+  assert.deepEqual(rowKeys(matrix), ['ghost|md'])
+  assert.deepEqual(matrix[0].rest, ['composites/Widget (fixture.tsx:2)'])
+})
+
+test('contrast (T695): the instance a dynamic call site mounts is credited at the row the manifest renders it to', () => {
+  const instances = [
+    ...callSites(`const el = <Button variant="ghost" size={size}>Go</Button>`).map((site) => ({
+      ...site,
       kind: 'jsx',
       componentKey: 'composites/Widget',
-      file: 'composites/Widget/index.tsx',
-      line: 6,
-      variant: { value: 'ghost', resolved: 'explicit' },
-      size: { value: null, resolved: 'unresolved' },
-      disabled: false,
-    },
+    })),
     {
       kind: 'composed-story',
       componentKey: 'composites/Widget',
       file: 'composites/Widget/Widget.stories.tsx',
       storyName: 'Hover',
-      variant: { value: 'ghost', resolved: 'explicit' },
-      size: { value: 'md', resolved: 'resolved-from-story' },
+      variant: { value: 'ghost', resolved: 'runtime' },
+      size: { value: 'md', resolved: 'runtime' },
       forced: { state: 'hover', role: 'button', name: 'Toggle', selector: null, nth: null },
       playFocus: null,
-      sourceLine: 6,
-      sourceFile: 'composites/Widget/index.tsx',
+      disabled: false,
     },
   ]
-}
+  const matrix = buildAxisMatrix('Button', instances)
+  assert.deepEqual(rowKeys(matrix), ['ghost|md'])
+  assert.deepEqual(matrix[0].hover, ['Widget:Hover'])
+})
 
-test('contrast: a JSX candidate with no story resolving it anywhere still reads a genuine none, not a manufactured redirect', () => {
-  const [jsxOnly] = redirectFixtureInstances()
-  const matrix = buildAxisMatrix('Button', [jsxOnly])
-  const unresolvedRow = matrix.find((r) => r.variantSize === 'ghost|unresolved')
-  assert.deepEqual(unresolvedRow.hover, ['none'])
+test('a manifest instance with no settled axis fails loudly rather than landing on no row (T695)', () => {
+  assert.throws(
+    () =>
+      buildAxisMatrix('Button', [
+        {
+          kind: 'composed-story',
+          componentKey: 'composites/Widget',
+          file: 'composites/Widget/Widget.stories.tsx',
+          storyName: 'Hover',
+          variant: { value: 'ghost', resolved: 'runtime' },
+          size: { value: null, resolved: 'runtime' },
+          forced: null,
+          playFocus: null,
+          disabled: false,
+        },
+      ]),
+    /only a call site read from the source may land on no row/,
+  )
 })
 
 test('contrast: a story-resolved match whose axis agrees with its own JSX row never needs a redirect (same row throughout)', () => {
@@ -784,33 +933,11 @@ export const FocusVisible = {
 }
 `
   const sourceFile = parse(source)
-  const metaObj = findMeta(sourceFile)
+  const { object: metaObj } = readDefaultExport(sourceFile)
   const [{ node }] = findExportedStoryObjects(sourceFile)
   const literals = storyArgsStringLiterals(metaObj, node)
   assert.ok(literals.has('Turn it off'))
   assert.ok(literals.has('Default heading'))
-})
-
-test('contrast (findPrimitiveInstances): a primitive instance declared behind a real, nested local helper still reads isHelper: true — only the owning component itself is excluded (T595)', () => {
-  const nestedHelperSource = `
-    function Decoy({ href }) {
-      return <Link href={href} variant="standalone">Decoy</Link>
-    }
-    export function TwoLinkFooter({ href }) {
-      return <div><Decoy href={href} /></div>
-    }
-  `
-  const sourceFile = parse(nestedHelperSource)
-  const found = findPrimitiveInstances(
-    sourceFile,
-    'fixture.tsx',
-    {},
-    [],
-    new Map(),
-    'TwoLinkFooter',
-  )
-  assert.equal(found.length, 1)
-  assert.equal(found[0].isHelper, true)
 })
 
 // --- The invariant itself: every real `visualForceState` is credited or named somewhere in the
@@ -1574,7 +1701,6 @@ test('buildElementMatrix reports "none" (not unresolved) when no force-state sha
       role: null,
       tabIndex: null,
       ariaHidden: false,
-      isHelper: false,
       text: '',
       file: 'f.tsx',
       line: 10,
@@ -1893,18 +2019,16 @@ test('buildAxisMatrix credits disabled from a story whose own args admit a neste
   assert.deepEqual(row.disabled, ['Menu:ActionsWithDisabledItem'])
 })
 
-test('contrast: buildElementMatrix keeps a confirmed none when the element carries no disabled-capable attribute at all', () => {
+test('contrast: buildElementMatrix leaves the Disabled cell none for a record-1 element nothing credits', () => {
   const elements = [
     {
       tag: 'a',
       role: null,
       tabIndex: null,
       ariaHidden: false,
-      isHelper: false,
       text: '',
       file: 'f.tsx',
       line: 10,
-      hasDisabledAttr: false,
     },
   ]
   const storyStates = [
@@ -1917,77 +2041,6 @@ test('contrast: buildElementMatrix keeps a confirmed none when the element carri
   ]
   const rows = buildElementMatrix(elements, storyStates)
   assert.deepEqual(rows[0].disabled, ['none'])
-})
-
-// T594's row-8 remediation, item 4: `FavouritesList`'s own row link sits one indirection past the
-// inline shape above — inside a sibling helper (`FavouriteRow`), invoked from `entries.map()` with
-// `entry={entry}`, a prop passed through literally. `findHelperInvocationIterationContext` finds
-// that mapping; `findLocalElements` applies it to a candidate declared inside the helper's own
-// body that has no iteration context of its own.
-
-const FAVOURITES_LIST_SHAPE_SOURCE = `
-function FavouritesList({ entries }) {
-  return (
-    <ul>
-      {entries.map((entry) => (
-        <FavouriteRow key={entry.profileId} entry={entry} />
-      ))}
-    </ul>
-  )
-}
-
-function FavouriteRow({ entry }) {
-  return (
-    <a href={entry.href} className="hover:bg-surface-sunken">
-      {entry.alias}
-    </a>
-  )
-}
-`
-
-test('findHelperInvocationIterationContext maps a helper invoked with a literal iteration-variable prop', () => {
-  const sourceFile = parse(FAVOURITES_LIST_SHAPE_SOURCE, 'index.tsx')
-  const map = findHelperInvocationIterationContext(sourceFile)
-  const entry = map.get('FavouriteRow')
-  assert.ok(entry, 'FavouriteRow must be mapped')
-  assert.equal(entry.iterationVar, 'entry')
-  assert.equal(entry.iterationArrayExpr.getText(), 'entries')
-})
-
-// Contrast: a prop whose value is not a bare identifier equal to the iteration variable (a
-// transform, here) never maps the helper — `findLocalElements` then finds no inherited iteration
-// context, and the candidate's own selector stays unresolved rather than guessed.
-const FAVOURITES_LIST_NON_LITERAL_PROP_SOURCE = `
-function FavouritesList({ entries }) {
-  return (
-    <ul>
-      {entries.map((entry) => (
-        <FavouriteRow key={entry.profileId} entry={{ ...entry, decorated: true }} />
-      ))}
-    </ul>
-  )
-}
-
-function FavouriteRow({ entry }) {
-  return (
-    <a href={entry.href} className="hover:bg-surface-sunken">
-      {entry.alias}
-    </a>
-  )
-}
-`
-
-test('contrast: a prop whose value is not passed through literally leaves the helper unmapped', () => {
-  const sourceFile = parse(FAVOURITES_LIST_NON_LITERAL_PROP_SOURCE, 'index.tsx')
-  const map = findHelperInvocationIterationContext(sourceFile)
-  assert.equal(map.get('FavouriteRow'), undefined)
-
-  const constMap = buildConstStringMap(sourceFile)
-  const found = findLocalElements(sourceFile, 'index.tsx', constMap, 'FavouritesList', map)
-  const anchor = found.find((el) => el.tag === 'a')
-  assert.ok(anchor)
-  assert.equal(anchor.iterationVar, null)
-  assert.equal(anchor.iterationArrayExpr, null)
 })
 
 // --- REJECT on #80, item 2: roles. INTRINSIC_ROLE lacked `main`/`region` and mapped every `input`
@@ -2069,10 +2122,10 @@ test('renderRecord1 emits a row for a component with no local interactive elemen
   assert.match(rendered, /primitives\/Widget/)
 })
 
-// --- T595 (row 8, H5): closing the three `noImpliedRoleReason` shapes — `INTRINSIC_ROLE` widened
+// --- T595 (row 8, H5): closing the three shapes of the "no implied role" reason — `INTRINSIC_ROLE` widened
 // to the heading and table families, a dynamic `role={…}` resolved per story, and `hover`/`active`
 // credited from a confirmed descendant match. Routed through `computeStateCoverage`, not hand-built
-// instances, wherever a fixture needs `attrExprs`/`localConsts`/`guards`/`nodeStart`/`nodeEnd` —
+// instances, wherever a fixture needs `localConsts`/`nodeStart`/`nodeEnd` —
 // none of which a hand-built object can carry honestly. Each mechanism gets its own resolving case
 // and its own contrast (boundary) case, run against the pre-T595 code first (see the task hand-back
 // for the failing output). ------------------------------------------------------------------------
@@ -5076,6 +5129,9 @@ test('the check fails (exit 1) on the real tree with a story appended that has n
 function runCheckOnPlantedTree(
   storyAppendix,
   storyFileSegments = ['composites', 'MatchRow', 'MatchRow.stories.tsx'],
+  // T704: `[from, to]` rewrites the target file instead of appending (the project-level parameters of
+  // the preview can only be changed from inside its own object literal).
+  replacement = null,
 ) {
   const checksDir = path.dirname(fileURLToPath(import.meta.url))
   const repoRoot = path.resolve(checksDir, '..', '..')
@@ -5104,10 +5160,15 @@ function runCheckOnPlantedTree(
       path.join(dsDir, 'node_modules'),
       path.join(tmp, 'packages', 'design-system', 'node_modules'),
     )
-    appendFileSync(
-      path.join(tmp, 'packages', 'design-system', 'src', ...storyFileSegments),
-      storyAppendix,
-    )
+    const target = path.join(tmp, 'packages', 'design-system', 'src', ...storyFileSegments)
+    if (replacement) {
+      const [from, to] = replacement
+      const before = readFileSync(target, 'utf8')
+      assert.ok(before.includes(from), `${from} is not in ${target}`)
+      writeFileSync(target, before.replace(from, to))
+    } else {
+      appendFileSync(target, storyAppendix)
+    }
     return spawnSync(
       process.execPath,
       [path.join(tmp, 'scripts', 'checks', 'state-coverage.mjs')],
@@ -5348,7 +5409,6 @@ const elementFixture = (extra = {}) => ({
   role: null,
   tabIndex: null,
   ariaHidden: false,
-  isHelper: false,
   text: '',
   file: 'Tooltip/index.tsx',
   line: 259,
@@ -5429,7 +5489,7 @@ test('buildElementMatrix (record 1, static play-click credit): a click credits a
 })
 
 test('buildElementMatrix (record 1, Disabled column): a story’s args credit no Disabled cell, whatever the element carries and whatever files the story rendered', () => {
-  const elements = [elementFixture({ hasDisabledAttr: true })]
+  const elements = [elementFixture()]
   const story = (files) => ({
     exportName: 'ActionsWithDisabledItem',
     forced: null,
@@ -5569,15 +5629,22 @@ function cardRun({
   cardIndex = 'export function Card() { return <div /> }\n',
   stories,
   meta,
+  source = cardStoriesSource(stories, meta),
   manifest,
+  modules,
 }) {
   const filesByPath = new Map([
     [srcFile('primitives/Button/index.tsx'), MINI_BUTTON],
     [srcFile(MINI_STORIES), BUTTON_STORIES_HEADER],
     [srcFile(CARD_INDEX), cardIndex],
-    [srcFile(CARD_STORIES), cardStoriesSource(stories, meta)],
+    [srcFile(CARD_STORIES), source],
   ])
-  return computeStateCoverage({ componentDirs: CARD_DIRS, filesByPath, manifest })
+  return computeStateCoverage({
+    componentDirs: CARD_DIRS,
+    filesByPath,
+    manifest,
+    moduleFilesByPath: modules,
+  })
 }
 const cardEntry = (exportName, record, files = [CARD_INDEX_FILE]) =>
   manifestEntry(`src/${CARD_STORIES}`, exportName, record, files)
@@ -5828,7 +5895,7 @@ test('B2 (record 1) plant: a `disabled: true` in a story’s args — top-level 
 // A file that places an element in `position: fixed`, rendered by a story captured as its root box.
 const PANEL_INDEX = 'composites/Panel/index.tsx'
 const PANEL_FILE = `${STAMP_ROOT}${PANEL_INDEX}`
-function overlayRun({ panel, tags = '' }) {
+function overlayRun({ panel, tags = '', meta }) {
   const filesByPath = new Map([
     [srcFile('primitives/Button/index.tsx'), MINI_BUTTON],
     [srcFile(MINI_STORIES), BUTTON_STORIES_HEADER],
@@ -5838,6 +5905,7 @@ function overlayRun({ panel, tags = '' }) {
       srcFile(CARD_STORIES),
       cardStoriesSource(
         `export const ZzOverlay = { ${tags} render: () => <Button disabled>Go</Button> }\n`,
+        meta,
       ),
     ],
   ])
@@ -6306,8 +6374,13 @@ test('M1 contrast: a force whose stamp is the explicit null of an element no fil
     resolveRuntimeForce(entry, { recordOneKeys: new Set() }).refusal,
     /carries no source stamp/,
   )
-  // Menu rendered with no variant is a recorded `null`, a note and no row — not a malformed entry.
-  const menu = withForce({ count: 1, stamp: null, placedBy: placedInstance('Menu', null, null) })
+  // Menu rendered with no variant is a recorded `null`, a note and no row — not a malformed entry. Its
+  // element is stamped: a null stamp never comes with a placing instance (T696).
+  const menu = withForce({
+    count: 1,
+    stamp: `${STAMP_ROOT}primitives/Menu/index.tsx:10`,
+    placedBy: placedInstance('Menu', null, null),
+  })
   assert.equal(entryShapeProblem(menu, { forced: true }), null)
 })
 
@@ -6358,7 +6431,7 @@ test('B2 plant: a story object that spreads a clipped story gets no mount credit
       },
     })
   const spread = run(
-    `export const ZzA = { parameters: { visualCaptureClip: ${CLIP} }, render: () => <Button disabled>Go</Button> }\nexport const ZzB = { ...ZzA }\n`,
+    `const CLIPPED = { parameters: { visualCaptureClip: ${CLIP} } }\nexport const ZzA = { render: () => <Button disabled>Go</Button> }\nexport const ZzB = { ...CLIPPED }\n`,
   )
   assert.deepEqual(creditsOf(spread, 'ZzB'), [])
   assert.deepEqual(spreadProblems(spread), [['unreadable-tags', 'ZzB']])
@@ -6472,4 +6545,2105 @@ test('the Rest label counts credits, not call sites, and the legend names the ga
     assert.match(REGION_LEGEND, phrase)
   }
   assert.doesNotMatch(REGION_LEGEND, /backs/)
+})
+
+// ---- T696: shapes the reviews of #116 left open. Each plant below credited, or threw, before it. ------
+
+const CARD_STORIES_LOCATION = 'src/composites/Card/Card.stories.tsx'
+const problemsOf = (computed) => computed.manifestProblems.map((p) => [p.kind, p.location])
+const DISABLED_BUTTON_STORY = (name) =>
+  `export const ${name} = { render: () => <Button disabled>Go</Button> }\n`
+const bothDisabledMounts = {
+  'zz-a': cardEntry('ZzA', { mounts: [disabledMount] }),
+  'zz-b': cardEntry('ZzB', { mounts: [disabledMount] }),
+}
+const afterDeclaration = (tail, extraStories = '') =>
+  cardRun({
+    stories: `${DISABLED_BUTTON_STORY('ZzA')}${DISABLED_BUTTON_STORY('ZzB')}${extraStories}${tail}`,
+    manifest: bothDisabledMounts,
+  })
+
+// (a) T697: a story's binding, and the binding the default export names, appear only in their own
+// declaration and in an export. Any other reference, read or write, at any depth, fails the check
+// naming the story (every story of the file, for the default export's binding) and gives it no mount
+// credit: Storybook reads what a reference does to the object, and this pass reads the object literal.
+const REFERENCED = 'referenced-after-declaration'
+const REFERENCED_DETAIL = (story) =>
+  new RegExp(
+    `story ${story} of src/composites/Card/Card\\.stories\\.tsx is referenced outside its declaration and an export`,
+  )
+const ZZA_ONLY = [[REFERENCED, `${CARD_STORIES_LOCATION}:ZzA`]]
+const ZZA_AND_ZZB = [
+  [REFERENCED, `${CARD_STORIES_LOCATION}:ZzA`],
+  [REFERENCED, `${CARD_STORIES_LOCATION}:ZzB`],
+]
+const STORY_REFERENCES = {
+  'X.parameters = …': `ZzA.parameters = { visualCaptureClip: ${CLIP} }\n`,
+  'X.tags = …': `ZzA.tags = ['visual-full-page']\n`,
+  'the nested X.parameters.foo = …': `ZzA.parameters.visualCaptureClip = ${CLIP}\n`,
+  "the computed X['parameters'] = …": `ZzA['parameters'] = { visualCaptureClip: ${CLIP} }\n`,
+  'a compound X.tags ??= …': `ZzA.tags ??= []\n`,
+  'an assignment inside a top-level block': `if (globalThis.x) {\n  ZzA.parameters = {}\n}\n`,
+  'Object.assign(X, …)': `Object.assign(ZzA, { parameters: {} })\n`,
+  'Object.defineProperty(X, …)': `Object.defineProperty(ZzA, 'parameters', { value: {} })\n`,
+  'an object destructuring assignment target': `;({ x: ZzA.parameters } = { x: ${CLIP} })\n`,
+  'an array destructuring assignment target': `;[ZzA.parameters] = [${CLIP}]\n`,
+  'a for…of target': `for (ZzA.parameters of [${CLIP}]) {}\n`,
+  "Object['assign'](X, …)": `Object['assign'](ZzA, { parameters: {} })\n`,
+  "Reflect.set(X, 'parameters', …)": `Reflect.set(ZzA, 'parameters', ${CLIP})\n`,
+  'an alias, then a write through it': `const alias = ZzA\nalias.parameters = { visualCaptureClip: ${CLIP} }\n`,
+  'X.tags.pop()': `ZzA.tags.pop()\n`,
+  'X.tags.splice(0)': `ZzA.tags.splice(0)\n`,
+  'delete X.tags': `delete ZzA.tags\n`,
+  'a plain read, const p = X.parameters': `const p = ZzA.parameters\n`,
+  'a reference inside a function body': `function later() {\n  return ZzA\n}\n`,
+  'a shorthand property { X }': `const holder = { ZzA }\n`,
+  'a spread { ...X }': `const copy = { ...ZzA }\n`,
+  'a computed property key': `const keyed = { [ZzA.tags]: 1 }\n`,
+  'a JSX tag name': `const tag = <ZzA />\n`,
+  'a call argument': `register(ZzA)\n`,
+  'a parameter that shadows it (over-refusal, the safe direction)': `const shadow = (ZzA) => ZzA\n`,
+  'a class heritage clause': `class Derived extends ZzA {}\n`,
+}
+for (const [name, tail] of Object.entries(STORY_REFERENCES)) {
+  test(`T697 (a) plant: ${name} fails the check naming the story and credits its mounts nothing`, () => {
+    const computed = afterDeclaration(tail)
+    assert.deepEqual(problemsOf(computed), ZZA_ONLY)
+    assert.match(computed.manifestProblems[0].detail, REFERENCED_DETAIL('ZzA'))
+    assert.deepEqual(creditsOf(computed, 'ZzA'), [])
+    // The sibling it does not touch is credited as before, and is not named.
+    assert.deepEqual(creditsOf(computed, 'ZzB'), ['Button|secondary|md|disabled'])
+  })
+}
+
+test('T697 (a) plant: a story referenced inside its own initializer is named', () => {
+  const computed = cardRun({
+    stories: `export const ZzSelf = { render: () => <Button disabled>{String(ZzSelf.tags)}</Button> }\n`,
+    manifest: { 'zz-self': cardEntry('ZzSelf', { mounts: [disabledMount] }) },
+  })
+  assert.deepEqual(problemsOf(computed), [[REFERENCED, `${CARD_STORIES_LOCATION}:ZzSelf`]])
+  assert.deepEqual(creditsOf(computed, 'ZzSelf'), [])
+})
+
+// The default export's binding: a reference names every story of the file, since each reads its tags
+// and parameters from it.
+const META_REFERENCES = {
+  'meta.parameters = …': `meta.parameters = { visualCaptureClip: ${CLIP} }\n`,
+  'Object.assign(meta, …)': `Object.assign(meta, { parameters: { visualCaptureClip: ${CLIP} } })\n`,
+  'meta.tags.pop()': `meta.tags.pop()\n`,
+  'a plain read of meta': `const p = meta.parameters\n`,
+  'a reference inside a function body': `function later() {\n  return meta\n}\n`,
+  "Reflect.set(meta, 'tags', …)": `Reflect.set(meta, 'tags', [])\n`,
+}
+for (const [name, tail] of Object.entries(META_REFERENCES)) {
+  test(`T697 (a) plant: ${name} on the default export fails the check naming every story of the file`, () => {
+    const computed = afterDeclaration(tail)
+    assert.deepEqual(problemsOf(computed), ZZA_AND_ZZB)
+    assert.match(computed.manifestProblems[0].detail, REFERENCED_DETAIL('ZzA'))
+    assert.match(computed.manifestProblems[1].detail, REFERENCED_DETAIL('ZzB'))
+    assert.deepEqual(creditsOf(computed, 'ZzA'), [])
+    assert.deepEqual(creditsOf(computed, 'ZzB'), [])
+  })
+}
+
+test("T697 (a) plant: meta carrying `tags: ['visual-full-page']`, then `meta.tags = []`, names every story and credits none", () => {
+  const computed = cardRun({
+    stories: `${DISABLED_BUTTON_STORY('ZzA')}${DISABLED_BUTTON_STORY('ZzB')}meta.tags = []\n`,
+    meta: `{ component: Card, tags: ['visual-full-page'] }`,
+    manifest: bothDisabledMounts,
+  })
+  assert.deepEqual(problemsOf(computed), ZZA_AND_ZZB)
+  assert.deepEqual(creditsOf(computed, 'ZzA'), [])
+  assert.deepEqual(creditsOf(computed, 'ZzB'), [])
+})
+
+test('T697 (a) plant: a default export named through `export { meta as default }` is tracked as well', () => {
+  const computed = cardRun({
+    source: `import { Card } from './index'\nimport { Button } from '../../primitives/Button'\nconst meta = { component: Card }\nexport { meta as default }\n${DISABLED_BUTTON_STORY('ZzA')}${DISABLED_BUTTON_STORY('ZzB')}meta.tags = []\n`,
+    manifest: bothDisabledMounts,
+  })
+  assert.deepEqual(problemsOf(computed), ZZA_AND_ZZB)
+})
+
+test('T697 (a) plant, T701: a default export reached through an alias (`const m2 = meta; export default m2`) is unreadable, naming every story, whichever binding is written to', () => {
+  for (const tail of [`meta.tags = []\n`, `m2.tags = []\n`]) {
+    const computed = cardRun({
+      source: `import { Card } from './index'\nimport { Button } from '../../primitives/Button'\nconst meta = { component: Card }\nconst m2 = meta\nexport default m2\n${DISABLED_BUTTON_STORY('ZzA')}${DISABLED_BUTTON_STORY('ZzB')}${tail}`,
+      manifest: bothDisabledMounts,
+    })
+    const unreadable = 'unreadable-default-export'
+    assert.deepEqual(
+      problemsOf(computed).filter(([kind]) => kind === unreadable),
+      [
+        [unreadable, `${CARD_STORIES_LOCATION}:ZzA`],
+        [unreadable, `${CARD_STORIES_LOCATION}:ZzB`],
+      ],
+      tail,
+    )
+    assert.deepEqual(creditsOf(computed, 'ZzA'), [], tail)
+    assert.deepEqual(creditsOf(computed, 'ZzB'), [], tail)
+  }
+})
+
+test('T697 (a) contrast: `export default meta`, `export { meta as default }`, a property named like a story, an object key, a JSX attribute and a type query are not references', () => {
+  const stories = `${DISABLED_BUTTON_STORY('ZzA')}${DISABLED_BUTTON_STORY('ZzB')}`
+  const quiet =
+    `const helper = {}\nhelper.ZzA = 1\nhelper.meta = 2\nconst keyed = { ZzA: 1, meta: 2 }\n` +
+    `const tag = <div ZzA="x" meta="y" />\ntype Shape = typeof ZzA\ntype Meta = typeof meta\n` +
+    `const { ZzA: renamed } = keyed\nconst text = 'ZzA meta'\nconst intrinsic = <meta name="x" />\n`
+  for (const computed of [
+    cardRun({ stories: `${stories}${quiet}`, manifest: bothDisabledMounts }),
+    cardRun({
+      source: `import { Card } from './index'\nimport { Button } from '../../primitives/Button'\nconst meta = { component: Card }\nexport { meta as default }\n${stories}`,
+      manifest: bothDisabledMounts,
+    }),
+  ]) {
+    assert.deepEqual(computed.manifestProblems, [])
+    assert.deepEqual(creditsOf(computed, 'ZzA'), ['Button|secondary|md|disabled'])
+    assert.deepEqual(creditsOf(computed, 'ZzB'), ['Button|secondary|md|disabled'])
+  }
+})
+
+test('T697 (a) contrast: a member assignment on a local that is not a story or the default export, and a story with its parameters inline, are credited as before', () => {
+  const computed = afterDeclaration(
+    `helper.parameters = { visualCaptureClip: ${CLIP} }\nhelper['tags'] = []\nObject.assign(helper, { parameters: {} })\n`,
+    `const helper = {}\nexport const ZzInline = { parameters: { layout: 'padded' }, render: () => <Button disabled>Go</Button> }\n`,
+  )
+  assert.deepEqual(
+    problemsOf(computed).filter(([kind]) => kind === REFERENCED),
+    [],
+  )
+  assert.deepEqual(creditsOf(computed, 'ZzA'), ['Button|secondary|md|disabled'])
+  const inline = cardRun({
+    stories: `export const ZzInline = { parameters: { layout: 'padded' }, render: () => <Button disabled>Go</Button> }\n`,
+    manifest: { 'zz-inline': cardEntry('ZzInline', { mounts: [disabledMount] }) },
+  })
+  assert.deepEqual(inline.manifestProblems, [])
+  assert.deepEqual(creditsOf(inline, 'ZzInline'), ['Button|secondary|md|disabled'])
+})
+
+test('T697 (a): a story exported by `export { Y as X }` is not one this pass reads, so its manifest entry is named stale; a reference to its local is not what names it', () => {
+  const computed = cardRun({
+    stories: `const Y = { render: () => <Button disabled>Go</Button> }\nexport { Y as ZzAliased }\nY.parameters = {}\n`,
+    manifest: { 'zz-aliased': cardEntry('ZzAliased', { mounts: [disabledMount] }) },
+  })
+  assert.deepEqual(problemsOf(computed), [['stale-entry', `${CARD_STORIES_LOCATION}:ZzAliased`]])
+})
+
+test('T697 (a): the member-chain and Object.* detection of T696 is gone, not kept beside the rule', async () => {
+  const exported = await import('./state-coverage.mjs')
+  assert.equal('findStoriesAssignedAfterDeclaration' in exported, false)
+  const source = readFileSync(
+    path.join(path.dirname(fileURLToPath(import.meta.url)), 'state-coverage.mjs'),
+    'utf8',
+  )
+  for (const gone of ['ASSIGNMENT_MUTATORS', 'memberRootName', 'assigned-after-declaration']) {
+    assert.equal(source.includes(gone), false, `${gone} is still in state-coverage.mjs`)
+  }
+})
+
+test('T697 (a) end to end: the check exits 1 on the real tree with a story referenced after its declaration, naming it', () => {
+  const run = runCheckOnPlantedTree(`\nWin.tags = ['visual-full-page']\n`)
+  assert.equal(run.status, 1, run.stdout + run.stderr)
+  assert.match(
+    run.stderr,
+    /story Win of src\/composites\/MatchRow\/MatchRow\.stories\.tsx is referenced outside its declaration and an export/,
+  )
+})
+
+test('T697 (a) end to end: the check exits 1 on the real tree with the default export mutated, naming a story of the file', () => {
+  const run = runCheckOnPlantedTree(`\nmeta.tags = []\n`)
+  assert.equal(run.status, 1, run.stdout + run.stderr)
+  assert.match(
+    run.stderr,
+    /story Win of src\/composites\/MatchRow\/MatchRow\.stories\.tsx is referenced outside its declaration and an export/,
+  )
+})
+
+// A module that imports a `*.stories` module may reference its bindings from another file, where the
+// reference rule above cannot see it: only a test file may.
+const IMPORTS_STORY = 'imports-story-module'
+const importerRun = (modules) =>
+  cardRun({
+    stories: `${DISABLED_BUTTON_STORY('ZzA')}${DISABLED_BUTTON_STORY('ZzB')}`,
+    manifest: bothDisabledMounts,
+    modules,
+  })
+const IMPORT_PLANTS = {
+  'another story file importing a story': [
+    'src/composites/Other/Other.stories.tsx',
+    `import { ZzA } from '../Card/Card.stories'\nZzA.parameters = {}\n`,
+  ],
+  'a non-story helper .ts importing a stories module': [
+    'src/lib/helper.ts',
+    `import { ZzA } from '../composites/Card/Card.stories'\nexport const x = ZzA\n`,
+  ],
+  'a side-effect import of a .stories.tsx path': [
+    'src/lib/helper.ts',
+    `import '../composites/Card/Card.stories.tsx'\n`,
+  ],
+  'a type-only import': [
+    'src/lib/helper.ts',
+    `import type { ZzA } from '../composites/Card/Card.stories'\n`,
+  ],
+  'a re-export': ['src/lib/helper.ts', `export { ZzA } from '../composites/Card/Card.stories'\n`],
+  'an export star': ['src/lib/helper.ts', `export * from '../composites/Card/Card.stories.ts'\n`],
+  'a dynamic import()': ['src/lib/helper.ts', `export const load = () => import('./X.stories')\n`],
+  // T704: a templated or `+`-joined specifier is refused whatever it ends with (see the T704 plants).
+  'a require()': ['.storybook/helper.cjs', `const s = require('../src/X.stories.tsx')\n`],
+  'an import = require()': ['src/lib/helper.ts', `import s = require('./X.stories')\n`],
+  'an import.meta.glob() of story files': [
+    '.storybook/preview.tsx',
+    `export const all = import.meta.glob('../src/**/*.stories.tsx')\n`,
+  ],
+}
+for (const [name, [file, text]] of Object.entries(IMPORT_PLANTS)) {
+  test(`T697 (a) plant: ${name} fails the check naming the importing file`, () => {
+    const computed = importerRun(new Map([[path.join(DS_DIR, file), text]]))
+    const named = problemsOf(computed).filter(([kind]) => kind === IMPORTS_STORY)
+    assert.deepEqual(named, [[IMPORTS_STORY, file]])
+    const problem = computed.manifestProblems.find((p) => p.kind === IMPORTS_STORY)
+    // A glob is named for the call (T701: whatever its pattern), the others for the import.
+    const verb = text.includes('import.meta.glob')
+      ? 'calls import\\.meta\\.glob'
+      : 'imports a \\*\\.stories module'
+    assert.match(problem.detail, new RegExp(`${file.replace(/[.]/g, '\\.')} ${verb}`))
+  })
+}
+
+test('T697 (a) contrast: a *.test.* file importing a stories module, and imports of modules that merely look alike, are legal', () => {
+  const computed = importerRun(
+    new Map([
+      [
+        path.join(DS_DIR, 'src/composites/Card/Card.test.tsx'),
+        `import { ZzA } from './Card.stories'\n`,
+      ],
+      [
+        path.join(DS_DIR, 'src/lib/helper.ts'),
+        `import { a } from './stories'\nimport { b } from './Card'\nimport { c } from './Card.stories.helper'\nimport { d } from './stories.config'\nconst e = import('./lazy')\n`,
+      ],
+    ]),
+  )
+  assert.deepEqual(computed.manifestProblems, [])
+})
+
+test('T697 (a) end to end: the check exits 1 on the real tree with a helper importing a stories module, naming the helper', () => {
+  const run = runCheckOnPlantedTree(`\nimport './composites/MatchRow/MatchRow.stories'\n`, [
+    'lib',
+    'cx.ts',
+  ])
+  assert.equal(run.status, 1, run.stdout + run.stderr)
+  assert.match(run.stderr, /src\/lib\/cx\.ts imports a \*\.stories module/)
+})
+
+// ---- T701: what T697's export-only rule left open ------------------------------------------------
+//
+// The default export is readable only as `export default <identifier>` or `export { <identifier> as
+// default }` (with `!`, `as`, `satisfies` and parentheses unwrapped) naming a top-level `const` initialised
+// with an object literal, or as an inline object literal; anything else fails naming every story of the
+// file and gives each no mount credit. A story or meta binding declared more than once, or with `var` or
+// `let`, fails naming the story. Any `import.meta.glob` and any import of a `*.test.*` module in a
+// non-test module fails naming the file. An instantiation expression in a value position is a reference.
+const UNREADABLE_DEFAULT = 'unreadable-default-export'
+const REDECLARED = 'redeclared-binding'
+const MUTABLE = 'mutable-binding'
+const IMPORTS_TEST = 'imports-test-module'
+const T701_HEADER = `import { Card } from './index'\nimport { Button } from '../../primitives/Button'\n`
+const TWO_STORIES = `${DISABLED_BUTTON_STORY('ZzA')}${DISABLED_BUTTON_STORY('ZzB')}`
+const metaRun = (metaBlock, stories = TWO_STORIES) =>
+  cardRun({ source: `${T701_HEADER}${metaBlock}${stories}`, manifest: bothDisabledMounts })
+const ofKind = (computed, kind) => problemsOf(computed).filter(([k]) => k === kind)
+const BOTH_STORIES = (kind) => [
+  [kind, `${CARD_STORIES_LOCATION}:ZzA`],
+  [kind, `${CARD_STORIES_LOCATION}:ZzB`],
+]
+const CLIP_PARAMETERS = `{ component: Card, parameters: { visualCaptureClip: ${CLIP} } }`
+
+const UNREADABLE_DEFAULTS = {
+  'export default (0, meta)': `const meta = ${CLIP_PARAMETERS}\nexport default (0, meta)\n`,
+  'export default withClip(meta)': `const withClip = (m) => m\nconst meta = ${CLIP_PARAMETERS}\nexport default withClip(meta)\n`,
+  'export default Object.assign(meta, …)': `const meta = { component: Card }\nexport default Object.assign(meta, { parameters: { visualCaptureClip: ${CLIP} } })\n`,
+  'a meta built by Object.assign({}, base, …)': `const base = { component: Card }\nconst meta = Object.assign({}, base, { parameters: { visualCaptureClip: ${CLIP} } })\nexport default meta\n`,
+  'a meta built by a call, make(base)': `const make = (b) => b\nconst base = { component: Card }\nconst meta = make(base)\nexport default meta\n`,
+  'a meta built by a conditional': `const a = { component: Card }\nconst b = { component: Card, parameters: { visualCaptureClip: ${CLIP} } }\nconst meta = globalThis.x ? a : b\nexport default meta\n`,
+  'export { meta as default } over a meta built by a call': `const make = (b) => b\nconst meta = make({ component: Card })\nexport { meta as default }\n`,
+  'a meta that aliases another binding': `const base = { component: Card }\nconst meta = base\nexport default meta\n`,
+  'an instantiation expression, export default meta<0>': `const meta = { component: Card }\nexport default meta<0>\n`,
+  'a default export that is a function': `export default function meta() {\n  return { component: Card }\n}\n`,
+  'a default export that is a class': `export default class Meta {}\n`,
+  'a re-exported default, export { default } from': `export { default } from './other'\n`,
+  'a default export re-exported under another name, export { x as default } from': `export { meta as default } from './other'\n`,
+  'export * as default from': `export * as default from './other'\n`,
+  'a default export that is an imported binding': `import meta from './other'\nexport default meta\n`,
+  'a meta destructured from another object': `const { meta } = { meta: { component: Card } }\nexport default meta\n`,
+  'a meta declared by a function': `function meta() {}\nexport default meta\n`,
+  'a file with no default export at all': `const meta = { component: Card }\n`,
+  'an object literal wrapped in a call, export default withClip({ … })': `const withClip = (m) => m\nexport default withClip({ component: Card })\n`,
+}
+for (const [name, metaBlock] of Object.entries(UNREADABLE_DEFAULTS)) {
+  test(`T701 (H1) plant: ${name} fails the check naming every story of the file and credits no mount`, () => {
+    const computed = metaRun(metaBlock)
+    assert.deepEqual(ofKind(computed, UNREADABLE_DEFAULT), BOTH_STORIES(UNREADABLE_DEFAULT))
+    const detail = computed.manifestProblems.find((p) => p.kind === UNREADABLE_DEFAULT).detail
+    assert.match(detail, /default export of src\/composites\/Card\/Card\.stories\.tsx/)
+    assert.deepEqual(creditsOf(computed, 'ZzA'), [])
+    assert.deepEqual(creditsOf(computed, 'ZzB'), [])
+  })
+}
+
+test('T701 (H1) plant: `export default meta!` followed by `meta.parameters = { visualCaptureClip }` is a reference to the default export, naming every story', () => {
+  const computed = metaRun(
+    `const meta = { component: Card }\nexport default meta!\nmeta.parameters = { visualCaptureClip: ${CLIP} }\n`,
+  )
+  assert.deepEqual(ofKind(computed, REFERENCED), BOTH_STORIES(REFERENCED))
+  assert.deepEqual(creditsOf(computed, 'ZzA'), [])
+  assert.deepEqual(creditsOf(computed, 'ZzB'), [])
+})
+
+test('T701 (H1) plant: the default export is named through every wrapper, in any nesting, when it is mutated', () => {
+  for (const wrapped of ['meta!', '(meta)', 'meta as Meta', '((meta as Meta)!) satisfies Meta']) {
+    const computed = metaRun(
+      `const meta = { component: Card }\nexport default ${wrapped}\nmeta.tags = []\n`,
+    )
+    assert.deepEqual(ofKind(computed, REFERENCED), BOTH_STORIES(REFERENCED), wrapped)
+    assert.deepEqual(ofKind(computed, UNREADABLE_DEFAULT), [], wrapped)
+  }
+})
+
+test('T701 (H1) plant: no annotation is read from a guessed object, so a default export the pass cannot read leaves the first object with a `component` unread', () => {
+  // The first object with a `component` key carries no clip; the default export, built by a call, does.
+  // The old fallback read the first and credited the mount.
+  const computed = metaRun(
+    `const decoy = { component: Card }\nconst make = () => ({ component: Card, parameters: { visualCaptureClip: ${CLIP} } })\nexport default make()\n`,
+  )
+  assert.deepEqual(ofKind(computed, UNREADABLE_DEFAULT), BOTH_STORIES(UNREADABLE_DEFAULT))
+  assert.deepEqual(creditsOf(computed, 'ZzA'), [])
+})
+
+test('T701 (H1) contrast: `export default meta`, a satisfies, an as, parentheses, a `!`, `export { meta as default }` and an inline object literal are read and credited', () => {
+  const readable = [
+    `const meta = { component: Card }\nexport default meta\n`,
+    `const meta = { component: Card } satisfies Meta\nexport default meta satisfies Meta\n`,
+    `const meta: Meta<typeof Card> = { component: Card } as const\nexport default meta\n`,
+    `const meta = ({ component: Card } as Meta)!\nexport default ((meta as Meta)!) satisfies Meta\n`,
+    `const meta = { component: Card }\nexport { meta as default }\n`,
+    `export default { title: 'x', component: Card }\n`,
+    `export default ({ title: 'x', component: Card } satisfies Meta)\n`,
+  ]
+  for (const metaBlock of readable) {
+    const computed = metaRun(metaBlock)
+    assert.deepEqual(computed.manifestProblems, [], metaBlock)
+    assert.deepEqual(creditsOf(computed, 'ZzA'), ['Button|secondary|md|disabled'], metaBlock)
+    assert.deepEqual(creditsOf(computed, 'ZzB'), ['Button|secondary|md|disabled'], metaBlock)
+  }
+})
+
+test('T701 (H1) contrast: an inline default export that carries a clip is still read as clipped', () => {
+  const computed = metaRun(`export default ${CLIP_PARAMETERS}\n`)
+  assert.deepEqual(computed.manifestProblems, [])
+  assert.deepEqual(creditsOf(computed, 'ZzA'), [])
+})
+
+test('T701 (H1): the guessed fallback `findDefaultMetaObject(...) ?? metaObj` is gone, not kept beside the reader', () => {
+  const source = readFileSync(
+    path.join(path.dirname(fileURLToPath(import.meta.url)), 'state-coverage.mjs'),
+    'utf8',
+  )
+  for (const gone of ['findDefaultMetaObject', 'findMeta(', '?? metaObj']) {
+    assert.equal(source.includes(gone), false, `${gone} is still in state-coverage.mjs`)
+  }
+})
+
+// (H2) A binding declared more than once, or with `var` or `let`.
+const REDECLARED_METAS = {
+  'var meta = { clip }; export default meta; var meta = { no clip }': `var meta = ${CLIP_PARAMETERS}\nexport default meta\nvar meta = { component: Card }\n`,
+  'a meta declared twice with const and var': `const meta = { component: Card }\nexport default meta\nvar meta = { component: Card }\n`,
+  'a meta declared as a const and as a function': `const meta = { component: Card }\nexport default meta\nfunction meta() {}\n`,
+  'a meta declared as a const and as a class': `const meta = { component: Card }\nexport default meta\nclass meta {}\n`,
+  'export { meta as default } over a meta declared twice': `var meta = { component: Card }\nvar meta = ${CLIP_PARAMETERS}\nexport { meta as default }\n`,
+}
+for (const [name, metaBlock] of Object.entries(REDECLARED_METAS)) {
+  test(`T701 (H2) plant: ${name} fails the check naming every story and credits no mount`, () => {
+    const computed = metaRun(metaBlock)
+    assert.deepEqual(ofKind(computed, REDECLARED), BOTH_STORIES(REDECLARED))
+    assert.match(
+      computed.manifestProblems.find((p) => p.kind === REDECLARED).detail,
+      /binding `meta` of src\/composites\/Card\/Card\.stories\.tsx is declared 2 times/,
+    )
+    assert.deepEqual(creditsOf(computed, 'ZzA'), [])
+    assert.deepEqual(creditsOf(computed, 'ZzB'), [])
+  })
+}
+
+for (const keyword of ['let', 'var']) {
+  test(`T701 (H2) plant: a meta declared with \`${keyword}\` fails the check naming every story and credits no mount`, () => {
+    const computed = metaRun(`${keyword} meta = { component: Card }\nexport default meta\n`)
+    assert.deepEqual(ofKind(computed, MUTABLE), BOTH_STORIES(MUTABLE))
+    assert.match(
+      computed.manifestProblems.find((p) => p.kind === MUTABLE).detail,
+      new RegExp(
+        `binding \`meta\` of src/composites/Card/Card\\.stories\\.tsx is declared with ${keyword}`,
+      ),
+    )
+    assert.deepEqual(creditsOf(computed, 'ZzA'), [])
+    assert.deepEqual(creditsOf(computed, 'ZzB'), [])
+  })
+}
+
+const REDECLARED_STORIES = {
+  'a story declared twice, export var A … var A': `export var ZzA = { render: () => <Button disabled>Go</Button> }\nvar ZzA = { parameters: { visualCaptureClip: ${CLIP} } }\n`,
+  'a story declared twice, export const A … const A in a later statement': `export const ZzA = { render: () => <Button disabled>Go</Button> }\nexport const ZzA = { parameters: {} }\n`,
+  'a story and a function of the same name': `export const ZzA = { render: () => <Button disabled>Go</Button> }\nfunction ZzA() {}\n`,
+  'a story and a class of the same name': `export const ZzA = { render: () => <Button disabled>Go</Button> }\nclass ZzA {}\n`,
+}
+for (const [name, aStory] of Object.entries(REDECLARED_STORIES)) {
+  test(`T701 (H2) plant: ${name} fails the check naming the story and credits its mounts nothing`, () => {
+    const computed = metaRun(
+      `const meta = { component: Card }\nexport default meta\n`,
+      `${aStory}${DISABLED_BUTTON_STORY('ZzB')}`,
+    )
+    assert.deepEqual(
+      [...new Set(ofKind(computed, REDECLARED).map(String))],
+      [`${REDECLARED},${CARD_STORIES_LOCATION}:ZzA`],
+    )
+    assert.deepEqual(ofKind(computed, MUTABLE), [])
+    assert.deepEqual(creditsOf(computed, 'ZzA'), [])
+    assert.deepEqual(creditsOf(computed, 'ZzB'), ['Button|secondary|md|disabled'])
+  })
+}
+
+test('T701 (H2) plant: a story declared with `let` or `var` fails the check naming it and credits its mounts nothing', () => {
+  for (const keyword of ['let', 'var']) {
+    const computed = metaRun(
+      `const meta = { component: Card }\nexport default meta\n`,
+      `export ${keyword} ZzA = { render: () => <Button disabled>Go</Button> }\n${DISABLED_BUTTON_STORY('ZzB')}`,
+    )
+    assert.deepEqual(
+      ofKind(computed, MUTABLE),
+      [[MUTABLE, `${CARD_STORIES_LOCATION}:ZzA`]],
+      keyword,
+    )
+    assert.match(
+      computed.manifestProblems.find((p) => p.kind === MUTABLE).detail,
+      new RegExp(
+        `binding \`ZzA\` of src/composites/Card/Card\\.stories\\.tsx is declared with ${keyword}`,
+      ),
+    )
+    assert.deepEqual(creditsOf(computed, 'ZzA'), [], keyword)
+    assert.deepEqual(creditsOf(computed, 'ZzB'), ['Button|secondary|md|disabled'], keyword)
+  }
+})
+
+test('T701 (H2) contrast: a name declared once as a const, and a type or interface of the same name, are legal', () => {
+  const computed = metaRun(
+    `const meta = { component: Card }\nexport default meta\ntype ZzA = { x: 1 }\ninterface ZzB { y: 2 }\n`,
+  )
+  assert.deepEqual(computed.manifestProblems, [])
+  assert.deepEqual(creditsOf(computed, 'ZzA'), ['Button|secondary|md|disabled'])
+})
+
+test('T701 (H2) end to end: the check exits 1 on the real tree with the default export declared a second time, naming a story of the file', () => {
+  const run = runCheckOnPlantedTree(`\nvar meta = {}\n`)
+  assert.equal(run.status, 1, run.stdout + run.stderr)
+  assert.match(
+    run.stderr,
+    /binding `meta` of src\/composites\/MatchRow\/MatchRow\.stories\.tsx is declared 2 times/,
+  )
+})
+
+test('T701 (H1) end to end: the check exits 1 on the real tree with a second, call-wrapped default export, naming a story of the file', () => {
+  const run = runCheckOnPlantedTree(`\nexport default Object.assign(meta, {})\n`)
+  assert.equal(run.status, 1, run.stdout + run.stderr)
+  assert.match(
+    run.stderr,
+    /the default export of src\/composites\/MatchRow\/MatchRow\.stories\.tsx is not one this pass can read/,
+  )
+})
+
+// (M1) A glob, whatever its pattern, and an import of a test module, from a non-test module.
+const GLOB_PLANTS = {
+  'the repository idiom, a glob of ../src/**/*.stories.@(ts|tsx) with eager': [
+    '.storybook/preview.tsx',
+    `export const all = import.meta.glob('../src/**/*.stories.@(ts|tsx)', { eager: true })\n`,
+  ],
+  'a brace pattern, ./*.stories.{ts,tsx}': [
+    'src/lib/helper.ts',
+    `export const all = import.meta.glob('./*.stories.{ts,tsx}')\n`,
+  ],
+  'a pattern that names nothing story-like, ./*': [
+    'src/lib/helper.ts',
+    `export const all = import.meta.glob('./*')\n`,
+  ],
+  'an array of patterns': [
+    'src/lib/helper.ts',
+    `export const all = import.meta.glob(['./a/*', '!./b/*'])\n`,
+  ],
+  'a pattern built at run time': [
+    'src/lib/helper.ts',
+    `export const all = (p) => import.meta.glob(p)\n`,
+  ],
+  'import.meta.globEager': [
+    'src/lib/helper.ts',
+    `export const all = import.meta.globEager('./*')\n`,
+  ],
+  "import.meta['glob']": ['src/lib/helper.ts', `export const all = import.meta['glob']('./*')\n`],
+  'import.meta indexed by a key that is not a string literal': [
+    'src/lib/helper.ts',
+    `export const all = (k) => import.meta[k]('./*')\n`,
+  ],
+  'an alias of the function, const g = import.meta.glob': [
+    'src/lib/helper.ts',
+    `const g = import.meta.glob\nexport const all = g('./*')\n`,
+  ],
+}
+for (const [name, [file, text]] of Object.entries(GLOB_PLANTS)) {
+  test(`T701 (M1) plant: ${name} fails the check naming the file`, () => {
+    const computed = importerRun(new Map([[path.join(DS_DIR, file), text]]))
+    assert.deepEqual(ofKind(computed, IMPORTS_STORY), [[IMPORTS_STORY, file]])
+    assert.match(
+      computed.manifestProblems.find((p) => p.kind === IMPORTS_STORY).detail,
+      new RegExp(`${file.replace(/[.]/g, '\\.')} calls import\\.meta\\.glob`),
+    )
+  })
+}
+
+const TEST_IMPORT_PLANTS = {
+  'a static import of ./x.test.tsx': [
+    'src/lib/helper.ts',
+    `import './x.test.tsx'\nexport const x = 1\n`,
+  ],
+  'a named import of a test module without its extension': [
+    'src/lib/helper.ts',
+    `import { x } from './x.test'\n`,
+  ],
+  'a re-export from a test module': [
+    'src/lib/helper.ts',
+    `export { x } from '../composites/Card/Card.test.tsx'\n`,
+  ],
+  'a dynamic import() of a test module': [
+    'src/lib/helper.ts',
+    `export const load = () => import('./x.test.ts')\n`,
+  ],
+  'a require() of a test module': [
+    '.storybook/helper.cjs',
+    `const t = require('../src/x.test.tsx')\n`,
+  ],
+  'a story file importing a test module': [
+    'src/composites/Other/Other.stories.tsx',
+    `import { x } from './Other.test'\n`,
+  ],
+}
+for (const [name, [file, text]] of Object.entries(TEST_IMPORT_PLANTS)) {
+  test(`T701 (M1) plant: ${name} fails the check naming the importer`, () => {
+    const computed = importerRun(new Map([[path.join(DS_DIR, file), text]]))
+    assert.deepEqual(ofKind(computed, IMPORTS_TEST), [[IMPORTS_TEST, file]])
+    assert.match(
+      computed.manifestProblems.find((p) => p.kind === IMPORTS_TEST).detail,
+      new RegExp(`${file.replace(/[.]/g, '\\.')} imports a \\*\\.test\\.\\* module`),
+    )
+  })
+}
+
+test('T701 (M1) contrast: a test file may glob and import test modules, and modules that merely look alike stay legal', () => {
+  const computed = importerRun(
+    new Map([
+      [
+        path.join(DS_DIR, 'src/lib/helper.test.ts'),
+        `import './other.test'\nexport const all = import.meta.glob('./*')\n`,
+      ],
+      [
+        path.join(DS_DIR, 'src/lib/helper.ts'),
+        `import { a } from './test'\nimport { b } from './testing'\nimport { c } from './latest.config'\nimport { d } from './x.test-utils'\nconst g = { glob: 1 }\nexport const e = g.glob\nexport const env = [import.meta.env, import.meta['env'], import.meta.hot]\n`,
+      ],
+    ]),
+  )
+  assert.deepEqual(computed.manifestProblems, [])
+})
+
+test('T701 (M1) end to end: the check exits 1 on the real tree with a glob in the Storybook preview, naming it', () => {
+  const run = runCheckOnPlantedTree(
+    `\nexport const planted = import.meta.glob('../src/**/*.stories.@(ts|tsx)', { eager: true })\n`,
+    ['..', '.storybook', 'preview.tsx'],
+  )
+  assert.equal(run.status, 1, run.stdout + run.stderr)
+  assert.match(run.stderr, /\.storybook\/preview\.tsx calls import\.meta\.glob/)
+})
+
+// (M2) An instantiation expression in a value position is a reference; a type query stays a type.
+test('T701 (M2) plant: `ZzA<0>` and `Object.assign(ZzA<0>, …)` are references to the story, naming it and crediting it nothing', () => {
+  for (const tail of [
+    `ZzA<0>\n`,
+    `// @ts-expect-error\nObject.assign(ZzA<0>, { parameters: {} })\n`,
+    `const alias = ZzA<0>\n`,
+  ]) {
+    const computed = afterDeclaration(tail)
+    assert.deepEqual(problemsOf(computed), ZZA_ONLY, tail)
+    assert.deepEqual(creditsOf(computed, 'ZzA'), [], tail)
+    assert.deepEqual(creditsOf(computed, 'ZzB'), ['Button|secondary|md|disabled'], tail)
+  }
+})
+
+test('T701 (M2) plant: `Object.assign(meta<0>, …)` names every story of the file and credits none', () => {
+  const computed = afterDeclaration(
+    `// @ts-expect-error\nObject.assign(meta<0>, { parameters: { visualCaptureClip: ${CLIP} } })\n`,
+  )
+  assert.deepEqual(problemsOf(computed), ZZA_AND_ZZB)
+  assert.deepEqual(creditsOf(computed, 'ZzA'), [])
+  assert.deepEqual(creditsOf(computed, 'ZzB'), [])
+})
+
+test('T701 (M2) contrast: a type query with type arguments, a heritage clause that names nothing story-related and an implements clause are not references', () => {
+  const stories = TWO_STORIES
+  const quiet =
+    `type Rows = Array<{ id: string }>\ntype Q = typeof ZzA<0>\ntype M = typeof meta<0>\n` +
+    `class Base<T> {}\nclass X extends Base<Rows> {}\ninterface Shape<T> {}\nclass Y implements Shape<Rows> {}\n` +
+    `interface Z extends Shape<Rows> {}\n`
+  const computed = cardRun({
+    source: `${T701_HEADER}const meta: Meta<typeof Card<Row>> = { component: Card }\nexport default meta\n${stories}${quiet}`,
+    manifest: bothDisabledMounts,
+  })
+  assert.deepEqual(computed.manifestProblems, [])
+  assert.deepEqual(creditsOf(computed, 'ZzA'), ['Button|secondary|md|disabled'])
+})
+
+test('T701 (M2) plant: a class that extends the story with type arguments is still a reference', () => {
+  const computed = afterDeclaration(`class Derived extends ZzA<0> {}\n`)
+  assert.deepEqual(problemsOf(computed), ZZA_ONLY)
+})
+
+// (b) A forced or focused element no source file stamped is placed by no tracked primitive: the
+// capture writes `{ stamp: null, placedBy: null }` for it, never a null stamp with an instance.
+const PAIR_GHOST = placedInstance('Button', 'ghost', 'md')
+const pairForce = (stamp, placedBy) => ({ count: 1, stamp, placedBy })
+const forceAtWidths = (byWidth) => ({
+  widths: Object.fromEntries(
+    WIDTHS.map((w) => [w, { mounts: [], force: byWidth[w] ?? pairForce(null, null) }]),
+  ),
+})
+const PAIR_STORY = `export const ZzPair = { parameters: { visualForceState: { state: 'hover', role: 'button' } } }\n`
+const pairRun = (entry) =>
+  miniRun(PAIR_STORY, {
+    'zz-pair': {
+      ...entry,
+      importPath: `./src/${MINI_STORIES}`,
+      exportName: 'ZzPair',
+      files: [BUTTON_FILE],
+    },
+  })
+const PAIR_PLANTS = {
+  'at every captured width': forceAtWidths(
+    Object.fromEntries(WIDTHS.map((w) => [w, pairForce(null, PAIR_GHOST)])),
+  ),
+  // Per matched element, per captured width: one width carries the bad pair, the others are legal.
+  'at one captured width only': forceAtWidths({ 768: pairForce(null, PAIR_GHOST) }),
+}
+for (const [name, entry] of Object.entries(PAIR_PLANTS)) {
+  test(`T696 (b) plant: a force with a null stamp and a placing instance ${name} is a malformed entry naming the story, credited nowhere`, () => {
+    const verdict = resolveRuntimeForce(entry, { recordOneKeys: new Set() })
+    assert.equal(typeof verdict.malformed, 'string', JSON.stringify(verdict))
+    assert.match(verdict.malformed, /null stamp and a placedBy/)
+    assert.equal(verdict.refusal, undefined)
+    const computed = pairRun(entry)
+    assert.deepEqual(problemsOf(computed), [
+      ['malformed-entry', 'src/primitives/Button/Button.stories.tsx:ZzPair'],
+    ])
+    assert.match(computed.manifestProblems[0].detail, /story ZzPair of /)
+    assert.deepEqual(creditsOf(computed, 'ZzPair'), [])
+  })
+}
+
+test('T696 (b) plant: a focus record with a null stamp and a placing instance is malformed too, naming the story', () => {
+  const entry = {
+    widths: atEveryWidth({ mounts: [], focus: { stamp: null, placedBy: PAIR_GHOST } }),
+  }
+  assert.match(entryShapeProblem(entry, { forced: false }), /null stamp and a placedBy/)
+  const computed = miniRun(`export const ZzFocusPair = {}\n`, {
+    'zz-focus-pair': miniEntry('ZzFocusPair', entry.widths[WIDTHS[0]]),
+  })
+  assert.deepEqual(problemsOf(computed), [
+    ['malformed-entry', 'src/primitives/Button/Button.stories.tsx:ZzFocusPair'],
+  ])
+})
+
+test('T696 (b) contrast: a null stamp with a null placing instance stays legal and is refused with its own reason', () => {
+  const entry = forceAtWidths({})
+  assert.equal(entryShapeProblem(entry, { forced: true }), null)
+  assert.equal(
+    resolveRuntimeForce(entry, { recordOneKeys: new Set() }).refusal,
+    'the located element carries no source stamp: no design-system source file wrote it (it is an element the story itself renders), so it is in no record-1 element and no tracked primitive placed it',
+  )
+  const computed = pairRun(entry)
+  assert.deepEqual(computed.manifestProblems, [])
+  assert.deepEqual(creditsOf(computed, 'ZzPair'), [])
+  assert.match(
+    refusalOf(computed, 'primitives/Button', 'ZzPair').refusal,
+    /carries no source stamp/,
+  )
+  // A stamped element with no placing instance, and a stamped one with an instance, stay legal.
+  assert.equal(
+    entryShapeProblem(forceAtWidths({ 768: pairForce(MINI_BUTTON_STAMP, null) }), { forced: true }),
+    null,
+  )
+  assert.equal(
+    entryShapeProblem(forceAtWidths({ 768: pairForce(MINI_BUTTON_STAMP, PAIR_GHOST) }), {
+      forced: true,
+    }),
+    null,
+  )
+})
+
+// (c) A `visualForceState.state` other than the three the harness drives credits the record-3 column
+// of that name (`disabled`, `rest`) or throws at record 1, and is not one the browser applies.
+for (const [name, state] of Object.entries({
+  'an unknown string': `'pressed'`,
+  'a column that is not a state': `'disabled'`,
+  'a case variant': `'Hover'`,
+  'a number': `1`,
+  'a boolean': `true`,
+})) {
+  test(`T696 (c) plant: a forced state that is ${name} fails the check naming the story, before crediting`, () => {
+    const computed = miniRun(
+      `export const ZzState = { parameters: { visualForceState: { state: ${state}, role: 'button' } } }\n`,
+      {
+        'zz-state': miniEntry(
+          'ZzState',
+          miniRecord([disabledMount], {
+            count: 1,
+            stamp: MINI_BUTTON_STAMP,
+            placedBy: PAIR_GHOST,
+          }),
+        ),
+      },
+    )
+    assert.deepEqual(problemsOf(computed), [
+      ['unknown-force-state', 'src/primitives/Button/Button.stories.tsx:ZzState'],
+    ])
+    assert.match(
+      computed.manifestProblems[0].detail,
+      /story ZzState of src\/primitives\/Button\/Button\.stories\.tsx forces state /,
+    )
+    assert.deepEqual(creditsOf(computed, 'ZzState'), [])
+  })
+}
+
+for (const [state, column] of [
+  ['hover', 'hover'],
+  ['focus-visible', 'focusVisible'],
+  ['active', 'active'],
+]) {
+  test(`T696 (c) contrast: a forced ${state} still credits the ${column} column of the placing row and of the element`, () => {
+    const computed = miniRun(
+      `export const ZzValid = { parameters: { visualForceState: { state: '${state}', role: 'button' } } }\n`,
+      {
+        'zz-valid': miniEntry(
+          'ZzValid',
+          miniRecord([], { count: 1, stamp: MINI_BUTTON_STAMP, placedBy: PAIR_GHOST }),
+        ),
+      },
+    )
+    assert.deepEqual(computed.manifestProblems, [])
+    assert.deepEqual(creditsOf(computed, 'ZzValid'), [
+      `Button|ghost|md|${column}`,
+      `record1|${MINI_BUTTON_STAMP}|${state === 'focus-visible' ? 'focusVisible' : state}`,
+    ])
+  })
+}
+
+// (d) Shapes that threw: a story whose `parameters` is not an object literal, a manifest entry that is
+// not an object.
+for (const [name, tail, parameters] of [
+  ['an identifier', `const shared = { layout: 'padded' }\n`, 'parameters: shared'],
+  ['a shorthand identifier', `const parameters = {}\n`, 'parameters'],
+  ['a call expression', `const make = () => ({})\n`, 'parameters: make()'],
+]) {
+  test(`T696 (d) plant: a story whose parameters is ${name} fails the check naming the story instead of throwing`, () => {
+    const computed = cardRun({
+      stories: `${tail}export const ZzParams = { ${parameters}, render: () => <Button disabled>Go</Button> }\n`,
+      manifest: { 'zz-params': cardEntry('ZzParams', { mounts: [disabledMount] }) },
+    })
+    assert.deepEqual(problemsOf(computed), [
+      ['unreadable-parameters', `${CARD_STORIES_LOCATION}:ZzParams`],
+    ])
+    assert.match(
+      computed.manifestProblems[0].detail,
+      /story ZzParams of src\/composites\/Card\/Card\.stories\.tsx carries a `parameters` that is not an object literal/,
+    )
+    assert.deepEqual(creditsOf(computed, 'ZzParams'), [])
+  })
+}
+
+test('T696 (d) plant: extractVisualForceState reads no force from a parameters that is not an object literal and does not throw', () => {
+  const stories = (source) => findExportedStoryObjects(parse(source))[0].node
+  for (const source of [
+    `const shared = {}\nexport const Z = { parameters: shared }\n`,
+    `export const Z = { parameters: make() }\n`,
+    `export const Z = { parameters }\n`,
+  ]) {
+    assert.equal(extractVisualForceState(stories(source)), null, source)
+  }
+})
+
+test('T696 (d) plant: a story whose parameters object literal is wrapped in `as const` is read, not thrown on', () => {
+  const computed = miniRun(
+    `export const ZzConst = { parameters: { visualForceState: { state: 'hover', role: 'button' } } as const }\n`,
+    {
+      'zz-const': miniEntry(
+        'ZzConst',
+        miniRecord([], { count: 1, stamp: MINI_BUTTON_STAMP, placedBy: PAIR_GHOST }),
+      ),
+    },
+  )
+  assert.deepEqual(computed.manifestProblems, [])
+  assert.deepEqual(creditsOf(computed, 'ZzConst'), [
+    'Button|ghost|md|hover',
+    `record1|${MINI_BUTTON_STAMP}|hover`,
+  ])
+})
+
+test('T696 (d) contrast: an object-literal parameters with a force recorded credits as before; a spread-only parameters is named by the unreadable force it hides', () => {
+  const forceRecord = { count: 1, stamp: MINI_BUTTON_STAMP, placedBy: PAIR_GHOST }
+  const literal = miniRun(
+    `export const ZzLit = { parameters: { visualForceState: { state: 'hover', role: 'button' } } }\n`,
+    { 'zz-lit': miniEntry('ZzLit', miniRecord([], forceRecord)) },
+  )
+  assert.deepEqual(literal.manifestProblems, [])
+  assert.deepEqual(creditsOf(literal, 'ZzLit'), [
+    'Button|ghost|md|hover',
+    `record1|${MINI_BUTTON_STAMP}|hover`,
+  ])
+  const spread = miniRun(
+    `const shared = { visualForceState: { state: 'hover', role: 'button' } }\nexport const ZzSpread = { parameters: { ...shared } }\n`,
+    { 'zz-spread': miniEntry('ZzSpread', miniRecord([], forceRecord)) },
+  )
+  assert.deepEqual(problemsOf(spread), [
+    ['unreadable-force', 'src/primitives/Button/Button.stories.tsx:ZzSpread'],
+  ])
+  assert.deepEqual(creditsOf(spread, 'ZzSpread'), [])
+})
+
+for (const [name, value] of [
+  ['null', null],
+  ['a string', 'x'],
+  ['an array', []],
+  ['a number', 3],
+]) {
+  test(`T696 (d) plant: a manifest entry that is ${name} fails the check naming its key instead of throwing`, () => {
+    const computed = cardRun({
+      stories: DISABLED_BUTTON_STORY('ZzB'),
+      manifest: { 'zz-broken-key': value, 'zz-b': cardEntry('ZzB', { mounts: [disabledMount] }) },
+    })
+    assert.deepEqual(problemsOf(computed), [
+      ['malformed-entry', 'packages/design-system/specs/state-coverage-runtime.json:zz-broken-key'],
+    ])
+    assert.match(computed.manifestProblems[0].detail, /entry zz-broken-key is not an object/)
+    assert.ok(computed.manifestProblems[0].detail.includes(REWRITE_COMMAND))
+    // Every other entry is still read.
+    assert.deepEqual(creditsOf(computed, 'ZzB'), ['Button|secondary|md|disabled'])
+  })
+}
+
+// (e) The focus record's `stamp` is a string or null; the branch that says so is pinned here, and the
+// mutation that removes it is the one that turns these red.
+for (const [name, stamp] of [
+  ['a number', 7],
+  ['an object', { file: 'x' }],
+  ['absent', undefined],
+]) {
+  test(`T696 (e): a focus record whose stamp is ${name} is a malformed entry naming the story`, () => {
+    const focus = stamp === undefined ? { placedBy: null } : { stamp, placedBy: null }
+    const entry = { widths: atEveryWidth({ mounts: [], focus }) }
+    assert.match(
+      entryShapeProblem(entry, { forced: false }),
+      /^its record at 375px's focus has a stamp that is neither a string nor null/,
+    )
+    const computed = miniRun(`export const ZzFocusStamp = {}\n`, {
+      'zz-focus-stamp': miniEntry('ZzFocusStamp', entry.widths[WIDTHS[0]]),
+    })
+    assert.deepEqual(problemsOf(computed), [
+      ['malformed-entry', 'src/primitives/Button/Button.stories.tsx:ZzFocusStamp'],
+    ])
+  })
+}
+
+test('T696 (e) contrast: a focus record with a string or null stamp is well-formed', () => {
+  for (const stamp of [MINI_BUTTON_STAMP, null]) {
+    const entry = { widths: atEveryWidth({ mounts: [], focus: { stamp, placedBy: null } }) }
+    assert.equal(entryShapeProblem(entry, { forced: false }), null)
+  }
+})
+
+// ---- T698: the manifest shapes the capture never writes, twins of T696 (b), (d) and (e). -------------
+// A stamp is `null` or a non-empty `file:line` string (`tests/visual/state-coverage-runtime.ts` writes
+// nothing else: `if (!stamp)` maps every falsy stamp to `{ stamp: null, placedBy: null }`). `files` is
+// an array of strings. Two entries naming one story are a manifest the pass did not write.
+
+const MANIFEST_FILE = 'packages/design-system/specs/state-coverage-runtime.json'
+const BAD_STAMPS = [
+  ['an empty string', ''],
+  ['a string that is not file:line', 'x'],
+  ['a string with no line number', `${BUTTON_FILE}:`],
+  ['a string with a non-numeric line', `${BUTTON_FILE}:three`],
+  ['a string with line zero', `${BUTTON_FILE}:0`],
+  ['a number', 42],
+]
+for (const [name, stamp] of BAD_STAMPS) {
+  test(`T698 plant: a force record whose stamp is ${name}, with a placing instance, is a malformed entry at every captured width`, () => {
+    const entry = forceAtWidths(
+      Object.fromEntries(WIDTHS.map((w) => [w, pairForce(stamp, PAIR_GHOST)])),
+    )
+    const verdict = resolveRuntimeForce(entry, { recordOneKeys: new Set() })
+    assert.equal(typeof verdict.malformed, 'string', JSON.stringify(verdict))
+    assert.equal(verdict.refusal, undefined)
+    const computed = pairRun(entry)
+    assert.deepEqual(problemsOf(computed), [
+      ['malformed-entry', 'src/primitives/Button/Button.stories.tsx:ZzPair'],
+    ])
+    assert.deepEqual(creditsOf(computed, 'ZzPair'), [])
+  })
+
+  test(`T698 plant: a force record whose stamp is ${name} is malformed at one captured width only`, () => {
+    const entry = forceAtWidths({ 768: pairForce(stamp, PAIR_GHOST) })
+    assert.equal(typeof entryShapeProblem(entry, { forced: true }), 'string')
+    assert.deepEqual(problemsOf(pairRun(entry)), [
+      ['malformed-entry', 'src/primitives/Button/Button.stories.tsx:ZzPair'],
+    ])
+  })
+
+  test(`T698 plant: a force record whose stamp is ${name}, with no placing instance, is malformed too`, () => {
+    assert.equal(
+      typeof entryShapeProblem(forceAtWidths({ 768: pairForce(stamp, null) }), { forced: true }),
+      'string',
+    )
+  })
+
+  test(`T698 plant: a focus record whose stamp is ${name}, with a placing instance, is a malformed entry naming the story`, () => {
+    const focus = { stamp, placedBy: PAIR_GHOST }
+    const entry = { files: [], widths: atEveryWidth({ mounts: [], focus }) }
+    assert.equal(typeof entryShapeProblem(entry, { forced: false }), 'string')
+    const computed = miniRun(`export const ZzFocusStamp = {}\n`, {
+      'zz-focus-stamp': miniEntry('ZzFocusStamp', entry.widths[WIDTHS[0]]),
+    })
+    assert.deepEqual(problemsOf(computed), [
+      ['malformed-entry', 'src/primitives/Button/Button.stories.tsx:ZzFocusStamp'],
+    ])
+  })
+}
+
+test('T698 contrast: null stamps with null placing instances, and well-formed stamps, stay legal', () => {
+  assert.equal(entryShapeProblem(forceAtWidths({}), { forced: true }), null)
+  for (const stamp of [MINI_BUTTON_STAMP, `${BUTTON_FILE}:213`, 'a/b-c.tsx:7']) {
+    assert.equal(
+      entryShapeProblem(forceAtWidths({ 768: pairForce(stamp, PAIR_GHOST) }), { forced: true }),
+      null,
+      stamp,
+    )
+    const focus = { stamp, placedBy: PAIR_GHOST }
+    assert.equal(
+      entryShapeProblem(
+        { files: [], widths: atEveryWidth({ mounts: [], focus }) },
+        { forced: false },
+      ),
+      null,
+      stamp,
+    )
+  }
+  const nullFocus = {
+    files: [],
+    widths: atEveryWidth({ mounts: [], focus: { stamp: null, placedBy: null } }),
+  }
+  assert.equal(entryShapeProblem(nullFocus, { forced: false }), null)
+})
+
+// `files` is read for the overlay verdict before anything else of the entry; a value that is not an
+// array of strings fails the check naming the story, and the story's disabled mount is credited nowhere.
+for (const [name, files] of [
+  ['a string', 'x'],
+  ['an object', {}],
+  ['an array holding a number', [1]],
+  ['an array holding null', [null]],
+  ['null', null],
+  ['a number', 7],
+]) {
+  test(`T698 plant: a manifest entry whose files is ${name} fails the check naming the story instead of throwing`, () => {
+    const entry = cardEntry('ZzB', { mounts: [disabledMount] }, files)
+    assert.match(filesProblem(entry), /files/)
+    const computed = cardRun({
+      stories: DISABLED_BUTTON_STORY('ZzB'),
+      manifest: { 'zz-b': entry },
+    })
+    assert.deepEqual(problemsOf(computed), [['malformed-entry', `${CARD_STORIES_LOCATION}:ZzB`]])
+    assert.deepEqual(creditsOf(computed, 'ZzB'), [])
+  })
+}
+
+test('T698 plant: a manifest entry with no files key is malformed, since the overlay verdict reads nothing from it', () => {
+  const entry = cardEntry('ZzB', { mounts: [disabledMount] })
+  delete entry.files
+  assert.match(filesProblem(entry), /files/)
+  const computed = cardRun({ stories: DISABLED_BUTTON_STORY('ZzB'), manifest: { 'zz-b': entry } })
+  assert.deepEqual(problemsOf(computed), [['malformed-entry', `${CARD_STORIES_LOCATION}:ZzB`]])
+  assert.deepEqual(creditsOf(computed, 'ZzB'), [])
+})
+
+test('T698 contrast: an array of strings, empty or not, is a legal files', () => {
+  for (const files of [[], [CARD_INDEX_FILE], [BUTTON_FILE, CARD_INDEX_FILE]]) {
+    const entry = cardEntry('ZzB', { mounts: [disabledMount] }, files)
+    assert.equal(filesProblem(entry), null)
+  }
+})
+
+// Two entries naming the same normalised `importPath#exportName` resolve last-wins in a map: the later
+// entry's disabled mount would credit a story the earlier one records with none. Neither is credited.
+const duplicatePairs = {
+  'the later entry carries the disabled mount': {
+    'zz-b': cardEntry('ZzB', { mounts: [] }),
+    'zz-b2': cardEntry('ZzB', { mounts: [disabledMount] }),
+  },
+  'the earlier entry carries the disabled mount': {
+    'zz-b': cardEntry('ZzB', { mounts: [disabledMount] }),
+    'zz-b2': cardEntry('ZzB', { mounts: [] }),
+  },
+  'the import paths differ only by the leading ./': {
+    'zz-b': {
+      ...cardEntry('ZzB', { mounts: [] }),
+      importPath: `src/${'composites/Card/Card.stories.tsx'}`,
+    },
+    'zz-b2': cardEntry('ZzB', { mounts: [disabledMount] }),
+  },
+}
+for (const [name, manifest] of Object.entries(duplicatePairs)) {
+  test(`T698 plant: two entries for one story (${name}) are malformed naming both ids, credited nowhere`, () => {
+    const computed = cardRun({ stories: DISABLED_BUTTON_STORY('ZzB'), manifest })
+    const malformed = computed.manifestProblems.filter((p) => p.kind === 'malformed-entry')
+    assert.deepEqual(problemsOf(computed).sort(), [
+      ['malformed-entry', `${MANIFEST_FILE}:zz-b`],
+      ['malformed-entry', `${MANIFEST_FILE}:zz-b2`],
+    ])
+    for (const problem of malformed) {
+      assert.match(problem.detail, /zz-b\b/)
+      assert.match(problem.detail, /zz-b2\b/)
+      assert.ok(problem.detail.includes(REWRITE_COMMAND))
+    }
+    assert.deepEqual(creditsOf(computed, 'ZzB'), [])
+  })
+}
+
+test('T698 plant: three entries for one story name all three ids, and a duplicate with no story is reported', () => {
+  const computed = cardRun({
+    stories: DISABLED_BUTTON_STORY('ZzB'),
+    manifest: {
+      'zz-b': cardEntry('ZzB', { mounts: [] }),
+      'zz-b2': cardEntry('ZzB', { mounts: [] }),
+      'zz-b3': cardEntry('ZzB', { mounts: [disabledMount] }),
+    },
+  })
+  assert.equal(computed.manifestProblems.length, 3)
+  for (const problem of computed.manifestProblems) {
+    assert.equal(problem.kind, 'malformed-entry')
+    for (const id of ['zz-b', 'zz-b2', 'zz-b3']) assert.ok(problem.detail.includes(id), id)
+  }
+  assert.deepEqual(creditsOf(computed, 'ZzB'), [])
+  const stale = cardRun({
+    stories: DISABLED_BUTTON_STORY('ZzB'),
+    manifest: {
+      'zz-b': cardEntry('ZzB', { mounts: [disabledMount] }),
+      'zz-gone': cardEntry('ZzGone', { mounts: [] }),
+      'zz-gone2': cardEntry('ZzGone', { mounts: [] }),
+    },
+  })
+  assert.deepEqual(problemsOf(stale).sort(), [
+    ['malformed-entry', `${MANIFEST_FILE}:zz-gone`],
+    ['malformed-entry', `${MANIFEST_FILE}:zz-gone2`],
+  ])
+  assert.deepEqual(creditsOf(stale, 'ZzB'), ['Button|secondary|md|disabled'])
+})
+
+test('T698 contrast: entries for different stories of one file are not duplicates', () => {
+  const computed = cardRun({
+    stories: `${DISABLED_BUTTON_STORY('ZzA')}${DISABLED_BUTTON_STORY('ZzB')}`,
+    manifest: bothDisabledMounts,
+  })
+  assert.deepEqual(computed.manifestProblems, [])
+  assert.deepEqual(creditsOf(computed, 'ZzB'), ['Button|secondary|md|disabled'])
+})
+
+// ---- T699: a `parameters` or `tags` property this pass cannot read by name is refused, not skipped ------
+//
+// The property reader matched identifier names and took the first match. A quoted key, a computed key, an
+// accessor, a method and a property written twice (JavaScript keeps the last) each left a clip or a tag
+// Storybook applies unseen, and the mounts were credited. Each plant below is red against the check before
+// T699 (the hand-back lists each one's failing output).
+
+const T699_LOCATION = `${CARD_STORIES_LOCATION}:ZzS`
+const T699_CLIP = `{ visualCaptureClip: ${CLIP} }`
+// An owner is the story object or the default export; the story is `ZzS` either way.
+const T699_OWNERS = {
+  story: (props, tail = '') => ({
+    stories: `${tail}export const ZzS = { ${props}, render: () => <Button disabled>Go</Button> }\n`,
+  }),
+  'default export': (props, tail = '') => ({
+    meta: `{ component: Card, ${props} }`,
+    stories: `${tail}${DISABLED_BUTTON_STORY('ZzS')}`,
+  }),
+}
+const t699Run = (owner, props, tail) =>
+  cardRun({
+    ...T699_OWNERS[owner](props, tail),
+    manifest: { 'zz-s': cardEntry('ZzS', { mounts: [disabledMount] }) },
+  })
+
+const T699_PARAMETER_SHAPES = [
+  ['a quoted key', `'parameters': ${T699_CLIP}`],
+  ['a double-quoted key', `"parameters": ${T699_CLIP}`],
+  ['a computed string-literal key', `['parameters']: ${T699_CLIP}`],
+  ['a getter', `get parameters() { return ${T699_CLIP} }`],
+  ['a setter', `set parameters(value) {}`],
+  ['a method', `parameters() {}`],
+  ['a no-substitution template computed key', `[\`parameters\`]: ${T699_CLIP}`],
+  ['written twice, the clip in the second', `parameters: {}, parameters: ${T699_CLIP}`],
+  ['a shorthand and an assignment', `parameters, parameters: ${T699_CLIP}`],
+  ['an assignment and a shorthand', `parameters: ${T699_CLIP}, parameters`],
+  ['inside a literal, a quoted visualCaptureClip', `parameters: { 'visualCaptureClip': ${CLIP} }`],
+  [
+    'inside a literal, visualCaptureClip written twice',
+    `parameters: { visualCaptureClip: undefined, visualCaptureClip: ${CLIP} }`,
+  ],
+  [
+    'inside a literal, a getter visualCaptureClip',
+    `parameters: { get visualCaptureClip() { return ${CLIP} } }`,
+  ],
+  ['a non-literal computed key', `[key]: 1`],
+]
+for (const owner of Object.keys(T699_OWNERS)) {
+  for (const [name, props] of T699_PARAMETER_SHAPES) {
+    test(`T699 plant: the ${owner} with parameters as ${name} fails naming the story and credits no mount`, () => {
+      const computed = t699Run(owner, props, `const key = 'parameters'\nconst parameters = {}\n`)
+      const kinds = computed.manifestProblems.map((p) => p.kind)
+      assert.ok(kinds.includes('unreadable-parameters'), JSON.stringify(problemsOf(computed)))
+      assert.ok(
+        computed.manifestProblems.every((p) => p.location === T699_LOCATION),
+        JSON.stringify(problemsOf(computed)),
+      )
+      assert.deepEqual(creditsOf(computed, 'ZzS'), [])
+    })
+  }
+}
+
+// A force this pass cannot read is named and credits no state; it is not a clip, so the mounts of a story
+// that is otherwise unclipped keep their credit.
+const T699_FORCE_SHAPES = [
+  [
+    'visualForceState written twice',
+    `parameters: { visualForceState: { state: 'hover', role: 'button' }, visualForceState: { state: 'focus-visible', role: 'button' } }`,
+  ],
+  [
+    'a quoted visualForceState',
+    `parameters: { 'visualForceState': { state: 'hover', role: 'button' } }`,
+  ],
+]
+for (const owner of Object.keys(T699_OWNERS)) {
+  for (const [name, props] of T699_FORCE_SHAPES) {
+    test(`T699 plant: the ${owner} with parameters inside which ${name} fails naming the story and credits no forced state`, () => {
+      const computed = t699Run(owner, props)
+      assert.deepEqual(problemsOf(computed), [['unreadable-parameters', T699_LOCATION]])
+      assert.ok(
+        creditsOf(computed, 'ZzS').every((credit) => !credit.endsWith('|hover')),
+        JSON.stringify(creditsOf(computed, 'ZzS')),
+      )
+    })
+  }
+}
+
+const T699_TAG_SHAPES = [
+  ['a quoted key', `'tags': ['!visual-full-page']`],
+  ['a double-quoted key', `"tags": ['!visual-full-page']`],
+  ['a computed string-literal key', `['tags']: ['!visual-full-page']`],
+  ['a getter', `get tags() { return ['!visual-full-page'] }`],
+  ['a method', `tags() {}`],
+  ['written twice', `tags: ['!visual-full-page'], tags: ['x']`],
+  ['a shorthand and an assignment', `tags, tags: ['!visual-full-page']`],
+  ['an assignment and a shorthand', `tags: ['!visual-full-page'], tags`],
+  ['a non-literal computed key', `[key]: ['!visual-full-page']`],
+]
+for (const owner of Object.keys(T699_OWNERS)) {
+  for (const [name, props] of T699_TAG_SHAPES) {
+    test(`T699 plant: the ${owner} with tags as ${name} fails naming the story`, () => {
+      const computed = t699Run(owner, props, `const key = 'tags'\nconst tags = []\n`)
+      assert.ok(
+        computed.manifestProblems.some((p) => p.kind === 'unreadable-tags'),
+        JSON.stringify(problemsOf(computed)),
+      )
+      assert.ok(computed.manifestProblems.every((p) => p.location === T699_LOCATION))
+    })
+  }
+}
+
+test('T699 plant: a quoted `tags` that removes visual-full-page on a story rendering a position: fixed file credits no mount, and names the story', () => {
+  const fixedPanel = `export function Panel() { return <div className="fixed inset-0" /> }\n`
+  const computed = overlayRun({
+    panel: fixedPanel,
+    meta: `{ component: Card, tags: ['visual-full-page'] }`,
+    tags: `'tags': ['!visual-full-page'],`,
+  })
+  assert.deepEqual(creditsOf(computed, 'ZzOverlay'), [])
+  assert.deepEqual(problemsOf(computed), [
+    ['unreadable-tags', `${CARD_STORIES_LOCATION}:ZzOverlay`],
+  ])
+})
+
+test('T699 plant: a non-literal computed key makes both parameters and tags unreadable on its object, named once each', () => {
+  for (const owner of Object.keys(T699_OWNERS)) {
+    const computed = t699Run(owner, `[key]: 1`, `const key = 'parameters'\n`)
+    assert.deepEqual(
+      problemsOf(computed),
+      [
+        ['unreadable-tags', T699_LOCATION],
+        ['unreadable-parameters', T699_LOCATION],
+      ],
+      owner,
+    )
+  }
+})
+
+test('T699 plant: the problem names the object and the reason, and the force of a doubled visualForceState is not read', () => {
+  const doubled = t699Run(
+    'story',
+    `parameters: { visualForceState: { state: 'hover', role: 'button' }, visualForceState: {} }`,
+  )
+  assert.match(
+    doubled.manifestProblems[0].detail,
+    /story ZzS of src\/composites\/Card\/Card\.stories\.tsx carries a `parameters` that is not an object literal .* or one this pass cannot read by name/,
+  )
+  const meta = t699Run('default export', `'parameters': {}`)
+  assert.match(
+    meta.manifestProblems[0].detail,
+    /the default export of src\/composites\/Card\/Card\.stories\.tsx carries a `parameters` this pass cannot read by name/,
+  )
+  assert.ok(
+    extractVisualForceState(
+      findExportedStoryObjects(
+        parse(
+          `export const Z = { parameters: { visualForceState: { state: 'hover' }, visualForceState: { state: 'active' } } }\n`,
+        ),
+      )[0].node,
+    ) === null,
+  )
+  assert.equal(
+    extractVisualForceState(
+      findExportedStoryObjects(
+        parse(`export const Z = { 'parameters': { visualForceState: { state: 'hover' } } }\n`),
+      )[0].node,
+    ),
+    null,
+  )
+})
+
+for (const owner of Object.keys(T699_OWNERS)) {
+  test(`T699 contrast: the ${owner} with an identifier-keyed parameters and tags, each read once, behaves as before`, () => {
+    const clipped = t699Run(owner, `parameters: ${T699_CLIP}, tags: ['autodocs']`)
+    assert.deepEqual(clipped.manifestProblems, [])
+    assert.deepEqual(creditsOf(clipped, 'ZzS'), [])
+    const plain = t699Run(owner, `parameters: { layout: 'padded' }, tags: ['autodocs']`)
+    assert.deepEqual(plain.manifestProblems, [])
+    assert.deepEqual(creditsOf(plain, 'ZzS'), ['Button|secondary|md|disabled'])
+  })
+
+  test(`T699 contrast: the ${owner} with a quoted key that is neither parameters nor tags, and a quoted key inside parameters that is not a clip or a force, is not refused`, () => {
+    const computed = t699Run(
+      owner,
+      `'args': {}, parameters: { 'layout': 'padded', 'docs': {} }, tags: ['autodocs']`,
+    )
+    assert.deepEqual(computed.manifestProblems, [])
+    assert.deepEqual(creditsOf(computed, 'ZzS'), ['Button|secondary|md|disabled'])
+  })
+}
+
+test('T699 contrast: tagged visual-full-page by an identifier-keyed tags, an overlay story still credits', () => {
+  const fixedPanel = `export function Panel() { return <div className="fixed inset-0" /> }\n`
+  const computed = overlayRun({
+    panel: fixedPanel,
+    meta: `{ component: Card, tags: ['visual-full-page'] }`,
+    tags: `tags: ['autodocs'],`,
+  })
+  assert.deepEqual(creditsOf(computed, 'ZzOverlay'), ['Button|secondary|md|disabled'])
+  assert.deepEqual(computed.manifestProblems, [])
+})
+
+// ---- T702: the readers match what their commits claim. ------------------------------------------------
+// (L1) a component named like an `Object.prototype` member is looked up by own property; (L2) a stamp is
+// the one form the capture writes; (L3) `importPath` and `exportName` are strings; (L5) only a string
+// settles a call site's axis.
+
+// (L1) The axis table is a plain object: `PRIMITIVE_AXES['constructor']` is `Object`, which is not
+// iterable, so a manifest instance placed by such a name threw instead of being refused.
+const PROTOTYPE_NAMES = ['constructor', 'toString', '__proto__', 'hasOwnProperty', 'valueOf']
+const prototypeInstance = (component, disabledAt = []) => ({
+  component,
+  variant: null,
+  size: null,
+  disabledAt,
+})
+
+for (const name of PROTOTYPE_NAMES) {
+  test(`T702 (L1) plant: rowAxesOf, readAxisValues and the shape check refuse a component named ${name} without throwing`, () => {
+    const instance = prototypeInstance(name)
+    assert.doesNotThrow(() => rowAxesOf(instance))
+    assert.match(rowAxesOf(instance).reason, /is not a tracked primitive/)
+    assert.deepEqual(readAxisValues(parse('export type X = 1'), name), {
+      variant: null,
+      size: null,
+    })
+    const entry = { files: [], widths: atEveryWidth({ mounts: [instance], focus: null }) }
+    assert.equal(entryShapeProblem(entry, { forced: false }), null)
+    const placed = {
+      files: [],
+      widths: atEveryWidth({ mounts: [], focus: { stamp: MINI_BUTTON_STAMP, placedBy: instance } }),
+    }
+    assert.equal(entryShapeProblem(placed, { forced: false }), null)
+  })
+
+  test(`T702 (L1) plant: a mount named ${name} credits nothing and names no problem`, () => {
+    const computed = miniRun(`export const ZzProto = { args: { disabled: true } }\n`, {
+      'zz-proto': miniEntry(
+        'ZzProto',
+        miniRecord([prototypeInstance(name, [MINI_BUTTON_STAMP]), disabledMount]),
+      ),
+    })
+    assert.deepEqual(computed.manifestProblems, [])
+    assert.deepEqual(creditsOf(computed, 'ZzProto'), [
+      'Button|secondary|md|disabled',
+      'Button|secondary|md|rest',
+    ])
+  })
+
+  test(`T702 (L1) plant: a force placed by a ${name} instance is refused as untracked, crediting no matrix cell, without throwing`, () => {
+    const entry = forceAtWidths(
+      Object.fromEntries(
+        WIDTHS.map((w) => [w, pairForce(MINI_BUTTON_STAMP, prototypeInstance(name))]),
+      ),
+    )
+    assert.doesNotThrow(() => resolveRuntimeForce(entry, { recordOneKeys: new Set() }))
+    const verdict = resolveRuntimeForce(entry, { recordOneKeys: new Set() })
+    assert.equal(verdict.placedBy ?? null, null)
+    assert.equal(verdict.malformed, undefined)
+    assert.doesNotThrow(() => pairRun(entry))
+    const computed = pairRun(entry)
+    assert.deepEqual(
+      creditsOf(computed, 'ZzPair').filter((credit) => credit.startsWith('Button|')),
+      [],
+    )
+  })
+}
+
+test('T702 (L1) plant: a component that is not a string is not a tracked primitive, whatever it coerces to', () => {
+  const instance = { component: ['Button'], variant: 'ghost', size: 'md', disabledAt: [] }
+  assert.match(rowAxesOf(instance).reason, /is not a tracked primitive/)
+})
+
+test('T702 (L1) contrast: a tracked primitive still lands on its row', () => {
+  const row = rowAxesOf({ component: 'Button', variant: 'ghost', size: 'md', disabledAt: [] })
+  assert.equal(row.reason, undefined)
+  assert.equal(row.variant.value, 'ghost')
+  assert.equal(row.size.value, 'md')
+  assert.deepEqual(Object.keys(PRIMITIVE_AXES).sort(), [...PRIMITIVE_NAMES].sort())
+})
+
+// (L2) The stamp is `<repository-relative path>:<line>`: no whitespace anywhere, no leading `./` or `/`,
+// a line from 1. `disabledAt` entries are stamps too (the capture writes the same keys there).
+const MALFORMED_STAMPS = [
+  ['a leading space', ' packages/x.tsx:3'],
+  ['a leading ./', './packages/x.tsx:3'],
+  ['a leading /', '/abs/x.tsx:3'],
+  ['a newline before the colon', 'x\n:12'],
+  ['a trailing space', 'packages/x.tsx:3 '],
+  ['a trailing newline', 'packages/x.tsx:3\n'],
+  ['a space inside the path', 'packages/a b.tsx:3'],
+  ['a tab inside the path', 'packages/a\tb.tsx:3'],
+  ['a leading zero line', 'packages/x.tsx:03'],
+]
+for (const [name, stamp] of MALFORMED_STAMPS) {
+  test(`T702 (L2) plant: a stamp with ${name} is malformed in a force, a focus and a disabledAt`, () => {
+    const force = forceAtWidths({ 768: pairForce(stamp, PAIR_GHOST) })
+    assert.match(entryShapeProblem(force, { forced: true }), /stamp/)
+    const focus = {
+      files: [],
+      widths: atEveryWidth({ mounts: [], focus: { stamp, placedBy: null } }),
+    }
+    assert.match(entryShapeProblem(focus, { forced: false }), /stamp/)
+    const mounted = {
+      files: [],
+      widths: atEveryWidth({ mounts: [placedInstance('Button', 'ghost', 'md', [stamp])] }),
+    }
+    assert.match(entryShapeProblem(mounted, { forced: false }), /disabledAt/)
+    const placed = forceAtWidths({
+      768: pairForce(MINI_BUTTON_STAMP, placedInstance('Button', 'ghost', 'md', [stamp])),
+    })
+    assert.match(entryShapeProblem(placed, { forced: true }), /disabledAt/)
+    assert.deepEqual(problemsOf(pairRun(forceAtWidths({ 768: pairForce(stamp, null) }))), [
+      ['malformed-entry', 'src/primitives/Button/Button.stories.tsx:ZzPair'],
+    ])
+  })
+}
+
+test('T702 (L2) contrast: a repository-relative path, a dotted directory and a deep line are stamps', () => {
+  for (const stamp of [
+    MINI_BUTTON_STAMP,
+    `${BUTTON_FILE}:213`,
+    'packages/design-system/.storybook/x.tsx:10',
+    'a/b-c.tsx:7',
+  ]) {
+    const entry = forceAtWidths({
+      768: pairForce(stamp, placedInstance('Button', 'ghost', 'md', [stamp])),
+    })
+    assert.equal(entryShapeProblem(entry, { forced: true }), null, stamp)
+  }
+})
+
+test('T702 (L2) contrast: every stamp and disabledAt of the committed manifest is well-formed, unchanged', () => {
+  const { manifest } = readManifest()
+  assert.ok(Object.keys(manifest).length > 0)
+  for (const [id, entry] of Object.entries(manifest)) {
+    assert.equal(entryShapeProblem(entry, { forced: true }), null, id)
+  }
+})
+
+// (L3) `importPath` and `exportName` are strings the capture writes; `String()` made `['./src/…']`
+// and `1` a key that credited, or a story the manifest never named.
+const nonStringKeys = [
+  ['importPath as an array holding the path', { importPath: [`./src/${CARD_STORIES}`] }],
+  ['a numeric importPath', { importPath: 1 }],
+  ['a null importPath', { importPath: null }],
+  ['a numeric exportName', { exportName: 1 }],
+  ['a null exportName', { exportName: null }],
+  ['an exportName that is an array holding the name', { exportName: ['ZzB'] }],
+]
+for (const [name, override] of nonStringKeys) {
+  test(`T702 (L3) plant: an entry with ${name} is a malformed entry naming its id, credited from nothing`, () => {
+    const computed = cardRun({
+      stories: DISABLED_BUTTON_STORY('ZzB'),
+      manifest: { 'zz-b': { ...cardEntry('ZzB', { mounts: [disabledMount] }), ...override } },
+    })
+    const malformed = computed.manifestProblems.filter((p) => p.kind === 'malformed-entry')
+    assert.deepEqual(
+      malformed.map((p) => p.location),
+      [`${MANIFEST_FILE}:zz-b`],
+    )
+    assert.match(malformed[0].detail, /importPath|exportName/)
+    assert.ok(malformed[0].detail.includes(REWRITE_COMMAND))
+    assert.deepEqual(creditsOf(computed, 'ZzB'), [])
+  })
+}
+
+test('T702 (L3) plant: a non-string key beside a sound entry does not stop the sound entry being read', () => {
+  const computed = cardRun({
+    stories: `${DISABLED_BUTTON_STORY('ZzA')}${DISABLED_BUTTON_STORY('ZzB')}`,
+    manifest: {
+      'zz-a': { ...cardEntry('ZzA', { mounts: [disabledMount] }), importPath: 7 },
+      'zz-b': cardEntry('ZzB', { mounts: [disabledMount] }),
+    },
+  })
+  assert.deepEqual(creditsOf(computed, 'ZzA'), [])
+  assert.deepEqual(creditsOf(computed, 'ZzB'), ['Button|secondary|md|disabled'])
+})
+
+test('T702 (L3) contrast: string keys, with or without the leading ./, are read as before', () => {
+  for (const importPath of [`./src/${CARD_STORIES}`, `src/${CARD_STORIES}`]) {
+    const computed = cardRun({
+      stories: DISABLED_BUTTON_STORY('ZzB'),
+      manifest: { 'zz-b': { ...cardEntry('ZzB', { mounts: [disabledMount] }), importPath } },
+    })
+    assert.deepEqual(computed.manifestProblems, [])
+    assert.deepEqual(creditsOf(computed, 'ZzB'), ['Button|secondary|md|disabled'])
+  }
+})
+
+// (L5) Only a string settles an axis: a boolean attribute is `true`, a number is a number, and neither
+// is a value of `variant` or `size`, so neither opens a row or earns a `Rest` credit.
+for (const [name, source] of [
+  ['a boolean `variant` attribute', `const el = <Button variant size="lg">Go</Button>`],
+  ['a boolean `size` attribute', `const el = <Button variant="ghost" size>Go</Button>`],
+  ['variant={1}', `const el = <Button variant={1} size="lg">Go</Button>`],
+  ['size={1}', `const el = <Button variant="ghost" size={1}>Go</Button>`],
+  ['variant={true}', `const el = <Button variant={true} size="lg">Go</Button>`],
+  ['variant={false}', `const el = <Button variant={false} size="lg">Go</Button>`],
+  ['variant={null}', `const el = <Button variant={null} size="lg">Go</Button>`],
+  ['variant={-1}', `const el = <Button variant={-1} size="lg">Go</Button>`],
+  ['size={undefined}', `const el = <Button variant="ghost" size={undefined}>Go</Button>`],
+]) {
+  test(`T702 (L5) plant: ${name} settles nothing and opens no row`, () => {
+    assert.deepEqual(rowKeys(matrixOf(source)), [])
+    const [site] = callSites(source)
+    assert.ok([site.variant.resolved, site.size.resolved].includes('unresolved'))
+  })
+}
+
+test('T702 (L5) contrast: a string literal, a template without substitutions, and their wrappers still settle', () => {
+  for (const source of [
+    `const el = <Button variant="ghost" size="lg">Go</Button>`,
+    `const el = <Button variant={'ghost'} size={\`lg\`}>Go</Button>`,
+    `const el = <Button variant={('ghost' as const)} size={"lg" satisfies string}>Go</Button>`,
+    'const el = <Button variant={`ghost`} size="lg">Go</Button>',
+  ]) {
+    assert.deepEqual(rowKeys(matrixOf(source)), ['ghost|lg'], source)
+  }
+})
+
+// ---- T704: what the third adversarial review of #121 found, and the residue stated as known ----------
+//
+// (H1) The project-level `parameters` of the Storybook preview reach every story: a clip there, or a
+// preview this pass cannot read, refuses every story's mount credit and names the preview once. (M1) An
+// accessor, a method or a `this` in a story object or the default export is unreadable. (M2) Any
+// `import()` or `require()` in a non-test module whose specifier is not a plain string literal fails
+// naming the file. (L1) One test-module predicate, and a story path is never a test module.
+const PROJECT_CLIP = 'project-clip'
+const PREVIEW_PATH = '.storybook/preview.tsx'
+const UNREADABLE_PARAMETERS = 'unreadable-parameters'
+const UNREADABLE_TAGS = 'unreadable-tags'
+const CREDITED = ['Button|secondary|md|disabled']
+const previewRun = (source) => importerRun(new Map([[path.join(DS_DIR, PREVIEW_PATH), source]]))
+const previewSource = (parameters, before = '', after = '') =>
+  `import type { Preview } from '@storybook/react-vite'\n${before}const preview: Preview = {\n  tags: ['autodocs'],\n  parameters: ${parameters},\n  decorators: [],\n}\n${after}export default preview\n`
+const assertPreviewRefused = (computed) => {
+  // The preview is named once, not once per story, and no story keeps a mount credit.
+  assert.deepEqual(problemsOf(computed), [[PROJECT_CLIP, PREVIEW_PATH]])
+  assert.match(computed.manifestProblems[0].detail, /\.storybook\/preview\.tsx/)
+  assert.deepEqual(creditsOf(computed, 'ZzA'), [])
+  assert.deepEqual(creditsOf(computed, 'ZzB'), [])
+}
+
+const PREVIEW_PLANTS = {
+  'a visualCaptureClip in the preview parameters': previewSource(`{ visualCaptureClip: ${CLIP} }`),
+  'a quoted visualCaptureClip': previewSource(`{ 'visualCaptureClip': ${CLIP} }`),
+  'a computed visualCaptureClip': previewSource(`{ ['visualCaptureClip']: ${CLIP} }`),
+  'a visualCaptureClip written twice': previewSource(
+    `{ visualCaptureClip: ${CLIP}, visualCaptureClip: null }`,
+  ),
+  'a visualCaptureClip behind a getter': previewSource(
+    `{ get visualCaptureClip() { return ${CLIP} } }`,
+  ),
+  'parameters that is an identifier, parameters: shared': previewSource(
+    'shared',
+    `const shared = { visualCaptureClip: ${CLIP} }\n`,
+  ),
+  'parameters that spreads another object': previewSource(
+    '{ ...shared }',
+    `const shared = { visualCaptureClip: ${CLIP} }\n`,
+  ),
+  'parameters that is a call': previewSource(
+    'make()',
+    `const make = () => ({ visualCaptureClip: ${CLIP} })\n`,
+  ),
+  'a quoted parameters key': `const preview = { 'parameters': { visualCaptureClip: ${CLIP} } }\nexport default preview\n`,
+  'a getter named parameters': `const preview = { get parameters() { return { visualCaptureClip: ${CLIP} } } }\nexport default preview\n`,
+  'a clip written onto the binding after its declaration': previewSource(
+    '{}',
+    '',
+    `preview.parameters.visualCaptureClip = ${CLIP}\n`,
+  ),
+  'a default export built by a call': `const define = (p) => p\nexport default define({ parameters: { visualCaptureClip: ${CLIP} } })\n`,
+  'a preview with no default export': `export const preview = { parameters: {} }\n`,
+  'an inline default export that carries a clip': `export default { parameters: { visualCaptureClip: ${CLIP} } }\n`,
+  'a method on the preview': `const preview = { parameters: {}, beforeAll() {} }\nexport default preview\n`,
+  'a this in the preview': `const preview = { parameters: {}, decorators: [function (Story) { return this }] }\nexport default preview\n`,
+}
+for (const [name, source] of Object.entries(PREVIEW_PLANTS)) {
+  test(`T704 (H1) plant: ${name} fails the check naming the preview once and credits no story a mount`, () => {
+    assertPreviewRefused(previewRun(source))
+  })
+}
+
+test('T704 (H1) contrast: ordinary preview parameters, an inline default export and no preview at all leave every story credited', () => {
+  const ordinary = previewSource(
+    `{ controls: { matchers: { color: /(background|color)$/i } }, options: { storySort: { order: ['Foundations', ['Colour']] } }, layout: 'padded' }`,
+  )
+  for (const source of [
+    ordinary,
+    `export default { parameters: { layout: 'centered' } }\n`,
+    `const preview = { tags: ['autodocs'] }\nexport default preview\n`,
+  ]) {
+    const computed = previewRun(source)
+    assert.deepEqual(computed.manifestProblems, [])
+    assert.deepEqual(creditsOf(computed, 'ZzA'), CREDITED)
+    assert.deepEqual(creditsOf(computed, 'ZzB'), CREDITED)
+  }
+  assert.deepEqual(creditsOf(importerRun(new Map()), 'ZzA'), CREDITED)
+})
+
+test('T704 (H1) contrast: a preview in a test module, or in no .storybook directory, is not the preview', () => {
+  const clip = previewSource(`{ visualCaptureClip: ${CLIP} }`)
+  const computed = importerRun(
+    new Map([
+      [path.join(DS_DIR, '.storybook/preview.test.tsx'), clip],
+      [path.join(DS_DIR, 'src/lib/preview.tsx'), clip],
+    ]),
+  )
+  assert.deepEqual(computed.manifestProblems, [])
+  assert.deepEqual(creditsOf(computed, 'ZzA'), CREDITED)
+})
+
+test('T704 (H1) end to end: the check exits 1 on the real tree with a visualCaptureClip in the preview parameters, naming the preview once', () => {
+  const run = runCheckOnPlantedTree(
+    '',
+    ['..', '.storybook', 'preview.tsx'],
+    [
+      'parameters: {\n    controls: {',
+      `parameters: {\n    visualCaptureClip: ${CLIP},\n    controls: {`,
+    ],
+  )
+  assert.equal(run.status, 1, run.stdout + run.stderr)
+  assert.match(run.stderr, /\.storybook\/preview\.tsx/)
+  assert.equal(run.stderr.split('\n').filter((line) => line.includes('preview.tsx')).length, 1)
+})
+
+test('T704 contrast: the check exits 0 on the real tree, and its generated region is the committed one', () => {
+  const checksDir = path.dirname(fileURLToPath(import.meta.url))
+  const run = spawnSync(process.execPath, [path.join(checksDir, 'state-coverage.mjs')], {
+    encoding: 'utf8',
+    timeout: 120000,
+  })
+  assert.equal(run.status, 0, run.stdout + run.stderr)
+})
+
+// (M1) An accessor or a method on a story object or the default export, and a `this` inside one outside
+// a nested class, make that object's parameters and tags unreadable.
+const ACCESSOR_RENDER = `render: () => <Button disabled>Go</Button>`
+const ACCESSOR_STORIES = {
+  'a getter that writes this.parameters': `export const ZzG = { get name() { this.parameters.visualCaptureClip = ${CLIP}; return 'X' }, ${ACCESSOR_RENDER} }\n`,
+  'get decorators()': `export const ZzG = { get decorators() { return [] }, ${ACCESSOR_RENDER} }\n`,
+  'a setter': `export const ZzG = { set name(value) {}, ${ACCESSOR_RENDER} }\n`,
+  'a method, play() {}': `export const ZzG = { play() {}, ${ACCESSOR_RENDER} }\n`,
+  'an async method': `export const ZzG = { async play() {}, ${ACCESSOR_RENDER} }\n`,
+  'a generator method': `export const ZzG = { *items() {}, ${ACCESSOR_RENDER} }\n`,
+  'a computed-key method': `export const ZzG = { ['play']() {}, ${ACCESSOR_RENDER} }\n`,
+  'render: function () { return this }': `export const ZzG = { render: function () { return this } }\n`,
+  'a this in an arrow function': `export const ZzG = { render: () => { void this; return <Button disabled>Go</Button> } }\n`,
+  'a this in a function nested in a render': `export const ZzG = { render: () => { const f = function () { return this }; return <Button disabled>Go</Button> } }\n`,
+  'a this in a nested object literal': `export const ZzG = { args: { x: { get y() { return this } } }, ${ACCESSOR_RENDER} }\n`,
+  'a getter in a type-asserted story': `export const ZzG = { get name() { return 'X' }, ${ACCESSOR_RENDER} } as const\n`,
+}
+const accessorStoryRun = (story) =>
+  cardRun({
+    stories: `${story}${DISABLED_BUTTON_STORY('ZzSib')}`,
+    manifest: {
+      'zz-g': cardEntry('ZzG', { mounts: [disabledMount] }),
+      'zz-sib': cardEntry('ZzSib', { mounts: [disabledMount] }),
+    },
+  })
+for (const [name, story] of Object.entries(ACCESSOR_STORIES)) {
+  test(`T704 (M1) plant: ${name} makes the story's parameters and tags unreadable, naming it and crediting it nothing`, () => {
+    const computed = accessorStoryRun(story)
+    const at = `${CARD_STORIES_LOCATION}:ZzG`
+    assert.deepEqual(ofKind(computed, UNREADABLE_PARAMETERS), [[UNREADABLE_PARAMETERS, at]])
+    assert.deepEqual(ofKind(computed, UNREADABLE_TAGS), [[UNREADABLE_TAGS, at]])
+    assert.deepEqual(creditsOf(computed, 'ZzG'), [])
+    // The sibling it does not touch is credited and not named.
+    assert.deepEqual(creditsOf(computed, 'ZzSib'), CREDITED)
+    assert.deepEqual(
+      problemsOf(computed).filter(([, location]) => location.endsWith(':ZzSib')),
+      [],
+    )
+  })
+}
+
+const ACCESSOR_METAS = {
+  'meta get id()': `const meta = { component: Card, get id() { return 'x' } }\nexport default meta\n`,
+  'meta set title': `const meta = { component: Card, set title(value) {} }\nexport default meta\n`,
+  'a meta method': `const meta = { component: Card, play() {} }\nexport default meta\n`,
+  'a meta render: function () { return this }': `const meta = { component: Card, render: function () { return this } }\nexport default meta\n`,
+  'a meta decorator that reads this': `const meta = { component: Card, decorators: [function (Story) { return this }] }\nexport default meta\n`,
+  'an inline default export with a getter': `export default { component: Card, get id() { return 'x' } }\n`,
+}
+for (const [name, metaBlock] of Object.entries(ACCESSOR_METAS)) {
+  test(`T704 (M1) plant: ${name} makes the parameters and tags of every story of the file unreadable and credits none`, () => {
+    const computed = metaRun(metaBlock)
+    assert.deepEqual(ofKind(computed, UNREADABLE_PARAMETERS), BOTH_STORIES(UNREADABLE_PARAMETERS))
+    assert.deepEqual(ofKind(computed, UNREADABLE_TAGS), BOTH_STORIES(UNREADABLE_TAGS))
+    assert.deepEqual(creditsOf(computed, 'ZzA'), [])
+    assert.deepEqual(creditsOf(computed, 'ZzB'), [])
+  })
+}
+
+test('T704 (M1) contrast: a function expression without this, an arrow and a property that holds a function stay readable and credited', () => {
+  const story = `export const ZzG = {
+  render: function () { return <Button disabled>Go</Button> },
+  play: async () => {},
+  loaders: [() => Promise.resolve({})],
+  args: { items: [{ label: 'a' }] },
+  decorators: [(Story) => { class Local { read() { return 1 } } void Local; return <Story /> }],
+}\n`
+  const computed = accessorStoryRun(story)
+  assert.deepEqual(computed.manifestProblems, [])
+  assert.deepEqual(creditsOf(computed, 'ZzG'), CREDITED)
+  const meta = metaRun(
+    `const meta = { component: Card, parameters: { layout: 'padded' }, tags: ['autodocs'], decorators: [(Story) => <Story />] }\nexport default meta\n`,
+  )
+  assert.deepEqual(meta.manifestProblems, [])
+  assert.deepEqual(creditsOf(meta, 'ZzA'), CREDITED)
+})
+
+// (M2) A non-literal specifier in an `import()` or a `require()` of a non-test module.
+const NON_LITERAL_SPECIFIER = /calls import\(\) or require\(\) with a non-literal specifier/
+const NON_LITERAL_PLANTS = {
+  'a template whose last part ends in .tsx': [
+    'src/lib/helper.ts',
+    'export const load = (n) => import(`../src/primitives/Button/${n}.tsx`)\n',
+  ],
+  'a template whose last part is a story suffix': [
+    'src/lib/helper.ts',
+    'export const load = (n) => import(`./${n}.stories`)\n',
+  ],
+  'a template with a leading substitution': [
+    'src/lib/helper.ts',
+    'export const load = (n) => import(`${n}`)\n',
+  ],
+  "a `+`-joined specifier, './Button.stories' + ''": [
+    'src/lib/helper.ts',
+    "export const load = () => import('./Button.stories' + '')\n",
+  ],
+  'a `+`-joined specifier of two literals': [
+    'src/lib/helper.ts',
+    "export const load = () => import('./Button' + '.stories')\n",
+  ],
+  'a require of a variable, require(x)': ['.storybook/helper.cjs', `const s = require(x)\n`],
+  'an import of a variable, import(x)': [
+    'src/lib/helper.ts',
+    'export const load = (x) => import(x)\n',
+  ],
+  'a conditional specifier': [
+    'src/lib/helper.ts',
+    "export const load = (x) => import(x ? './a' : './b')\n",
+  ],
+  'a call that builds the specifier': [
+    'src/lib/helper.ts',
+    'export const load = (x) => import(name(x))\n',
+  ],
+  'a require of a template': ['.storybook/helper.cjs', 'const s = require(`./${name}.ts`)\n'],
+  'a story file with a non-literal import': [
+    'src/composites/Other/Other.stories.tsx',
+    'export const load = (x) => import(x)\n',
+  ],
+}
+for (const [name, [file, text]] of Object.entries(NON_LITERAL_PLANTS)) {
+  test(`T704 (M2) plant: ${name} fails the check naming the file`, () => {
+    const computed = importerRun(new Map([[path.join(DS_DIR, file), text]]))
+    assert.deepEqual(ofKind(computed, IMPORTS_STORY), [[IMPORTS_STORY, file]])
+    const problem = computed.manifestProblems.find((p) => p.kind === IMPORTS_STORY)
+    assert.match(problem.detail, new RegExp(`${file.replace(/[.]/g, '\\.')} `))
+    assert.match(problem.detail, NON_LITERAL_SPECIFIER)
+  })
+}
+
+test('T704 (M2) contrast: a literal import(), a no-substitution template, a wrapped literal and a require of a literal are legal, and so is a non-literal one in a test module', () => {
+  const computed = importerRun(
+    new Map([
+      [
+        path.join(DS_DIR, 'src/lib/helper.ts'),
+        "export const a = () => import('./x')\nexport const b = () => import(`./x`)\nexport const c = () => import(('./x'))\nexport const d = () => import('./x' as string)\nexport const e = () => import('./x', { with: { type: 'json' } })\n",
+      ],
+      [
+        path.join(DS_DIR, '.storybook/helper.cjs'),
+        "const s = require('./x')\nconst t = require(`./y`)\n",
+      ],
+      [
+        path.join(DS_DIR, 'src/lib/helper.test.ts'),
+        'export const load = (n) => import(`./${n}.stories`)\nconst r = require(n)\n',
+      ],
+    ]),
+  )
+  assert.deepEqual(computed.manifestProblems, [])
+})
+
+test('T704 (M2) end to end: the check exits 1 on the real tree with a templated import() in a helper, naming it', () => {
+  const run = runCheckOnPlantedTree(
+    '\nexport const planted = (n: string) => import(`./primitives/Button/${n}.tsx`)\n',
+    ['lib', 'cx.ts'],
+  )
+  assert.equal(run.status, 1, run.stdout + run.stderr)
+  assert.match(
+    run.stderr,
+    /src\/lib\/cx\.ts calls import\(\) or require\(\) with a non-literal specifier/,
+  )
+})
+
+// (L1) One test-module predicate; a story path is never a test module.
+test('T704 (L1) plant: a *.test.stories.tsx file is a story, so it may not import a story module', () => {
+  const file = 'src/composites/Card/Evil.test.stories.tsx'
+  const computed = importerRun(
+    new Map([
+      [path.join(DS_DIR, file), `import { ZzA } from './Card.stories'\nZzA.parameters = {}\n`],
+    ]),
+  )
+  assert.deepEqual(ofKind(computed, IMPORTS_STORY), [[IMPORTS_STORY, file]])
+})
+
+test('T704 (L1) plant: a *.test.stories.tsx file may not glob, import a test module or use a non-literal specifier either', () => {
+  const file = 'src/composites/Card/Evil.test.stories.tsx'
+  for (const [text, kind] of [
+    [`export const all = import.meta.glob('./*')\n`, IMPORTS_STORY],
+    [`import './other.test'\n`, IMPORTS_TEST],
+    ['export const load = (n) => import(n)\n', IMPORTS_STORY],
+  ]) {
+    const computed = importerRun(new Map([[path.join(DS_DIR, file), text]]))
+    assert.deepEqual(ofKind(computed, kind), [[kind, file]], text)
+  }
+})
+
+test('T704 (L1) plant: a specifier naming a *.test.stories module is a story import, not a test-module import', () => {
+  const computed = importerRun(
+    new Map([
+      [
+        path.join(DS_DIR, 'src/lib/helper.ts'),
+        `import './Evil.test.stories'\nimport './Evil.test.stories.tsx'\n`,
+      ],
+    ]),
+  )
+  assert.deepEqual(ofKind(computed, IMPORTS_STORY), [[IMPORTS_STORY, 'src/lib/helper.ts']])
+  assert.deepEqual(ofKind(computed, IMPORTS_TEST), [])
+})
+
+test('T704 (L1) end to end: the check exits 1 on the real tree with an Evil.test.stories.tsx importing a story, naming it', () => {
+  const run = runCheckOnPlantedTree("import './MatchRow.stories'\n", [
+    'composites',
+    'MatchRow',
+    'Evil.test.stories.tsx',
+  ])
+  assert.equal(run.status, 1, run.stdout + run.stderr)
+  assert.match(
+    run.stderr,
+    /src\/composites\/MatchRow\/Evil\.test\.stories\.tsx imports a \*\.stories module/,
+  )
+})
+
+test('T704 (L1) contrast: a *.test.tsx file importing a story, a test module or a glob stays legal, and a fixed class in one is no overlay', () => {
+  const computed = importerRun(
+    new Map([
+      [
+        path.join(DS_DIR, 'src/composites/Card/Card.test.tsx'),
+        `import { ZzA } from './Card.stories'\nimport './other.test'\nexport const all = import.meta.glob('./*')\n`,
+      ],
+    ]),
+  )
+  assert.deepEqual(computed.manifestProblems, [])
+  // The same `fixed` class in a test module is no overlay (credit kept), in a design-system file it is.
+  const overlay = (panelFile) => {
+    const filesByPath = new Map([
+      [srcFile('primitives/Button/index.tsx'), MINI_BUTTON],
+      [srcFile(MINI_STORIES), BUTTON_STORIES_HEADER],
+      [srcFile(CARD_INDEX), 'export function Card() { return <div /> }\n'],
+      [
+        srcFile(`composites/Card/${panelFile}`),
+        `export const P = () => <div className="fixed inset-0" />\n`,
+      ],
+      [srcFile(CARD_STORIES), cardStoriesSource(DISABLED_BUTTON_STORY('ZzA'))],
+    ])
+    return creditsOf(
+      computeStateCoverage({
+        componentDirs: CARD_DIRS,
+        filesByPath,
+        manifest: {
+          'zz-a': cardEntry('ZzA', { mounts: [disabledMount] }, [
+            `${STAMP_ROOT}composites/Card/${panelFile}`,
+          ]),
+        },
+      }),
+      'ZzA',
+    )
+  }
+  assert.deepEqual(overlay('Panel.test.tsx'), CREDITED)
+  assert.deepEqual(overlay('Panel.tsx'), [])
+})
+
+test('T704 (L1): one test-module definition in state-coverage.mjs, used by every reader', () => {
+  const source = readFileSync(
+    path.join(path.dirname(fileURLToPath(import.meta.url)), 'state-coverage.mjs'),
+    'utf8',
+  )
+  for (const gone of [".endsWith('.test.tsx')", 'TEST_MODULE_SPECIFIER']) {
+    assert.equal(source.includes(gone), false, `${gone} is still in state-coverage.mjs`)
+  }
+  assert.equal(source.match(/const TEST_MODULE\b/g)?.length, 1)
+})
+
+// (L2) The generated region's legend is held to the same rule as row 8's prose: its list of refusals is
+// among the reasons, not a closed one, and crediting a story is not a proof that no clip applied.
+test('T704 (L2): the legend names the refusals as among the reasons and says a credit is no proof of an unclipped frame', () => {
+  for (const phrase of [
+    /gives no mount credit for the reasons row 8's prose lists, among them:/,
+    /an accessor, a method, or a `this` in the story object or the default\nexport/,
+    /project-level `parameters` carry a clip or cannot be read\n\(`project-clip`\)/,
+    /Crediting a story\nis not a proof that no clip applied to it/,
+    /without claiming the list is exhaustive, under row 8's \*\*What\nthe static reading cannot see\*\*/,
+    /only the runtime record of the clip the browser applied \(T703\)/,
+    /names the record-3 half in a note; any other is refused like the rest\./,
+  ]) {
+    assert.match(REGION_LEGEND, phrase)
+  }
+  assert.doesNotMatch(REGION_LEGEND, /gives no mount credit when it declares/)
+  assert.doesNotMatch(
+    REGION_LEGEND,
+    /Every other forced story credits no cell and the\ncheck names why/,
+  )
+})
+
+// ---- T705: what the fourth adversarial review of #121 found, by refusing more and never reading more ---
+//
+// (H1) The preview module's only export is its default export: any other export fails as `project-clip`,
+// whatever it is called. (M1) Every `this` anywhere inside a story object, a default export or the
+// preview's default export makes it unreadable, with no class exception. (L1) In a non-test module the
+// identifier `require` is a binding's declared name or the direct callee of a call; any other reference
+// fails as `imports-story-module` naming the file. (L2) The legend sentence says what the force
+// resolution does.
+
+// (H1) Storybook composes the preview's annotations as `default?.[field] ?? namespace[field]`.
+const PREVIEW_EXPORT_PLANTS = {
+  'a named parameters export beside a default without parameters': `const preview = { tags: ['autodocs'] }\nexport const parameters = { visualCaptureClip: ${CLIP} }\nexport default preview\n`,
+  'a local parameters const exported with export { parameters }': `const parameters = { visualCaptureClip: ${CLIP} }\nconst preview = { tags: ['autodocs'] }\nexport { parameters }\nexport default preview\n`,
+  'an inline default export beside export const parameters': `export default { tags: ['autodocs'] }\nexport const parameters = { visualCaptureClip: ${CLIP} }\n`,
+  'export { x as parameters }': `const x = { visualCaptureClip: ${CLIP} }\nconst preview = { tags: ['autodocs'] }\nexport { x as parameters }\nexport default preview\n`,
+  'export * from a shared module': `const preview = { tags: ['autodocs'] }\nexport * from './shared'\nexport default preview\n`,
+  'a named export that is not called parameters, export const decorators': `const preview = { tags: ['autodocs'] }\nexport const decorators = []\nexport default preview\n`,
+  'an exported function': `const preview = { tags: ['autodocs'] }\nexport function loaders() { return [] }\nexport default preview\n`,
+  'an exported class': `const preview = { tags: ['autodocs'] }\nexport class K {}\nexport default preview\n`,
+  'export { x } from another module': `const preview = { tags: ['autodocs'] }\nexport { parameters } from './shared'\nexport default preview\n`,
+  'export = ': `const preview = { tags: ['autodocs'] }\nexport = preview\n`,
+  'a type-only export, export type': `const preview = { tags: ['autodocs'] }\nexport type P = typeof preview\nexport default preview\n`,
+  'a type-only export, export interface': `const preview = { tags: ['autodocs'] }\nexport interface P { a: 1 }\nexport default preview\n`,
+}
+for (const [name, source] of Object.entries(PREVIEW_EXPORT_PLANTS)) {
+  test(`T705 (H1) plant: ${name} fails the check as project-clip naming the preview once and credits no story a mount`, () => {
+    const computed = previewRun(source)
+    assertPreviewRefused(computed)
+    assert.match(
+      computed.manifestProblems[0].detail,
+      /Storybook reads a named export of the preview as a project annotation/,
+    )
+  })
+}
+
+test('T705 (H1) contrast: a preview whose only export is its default export stays credited, in both spellings', () => {
+  for (const source of [
+    `const preview = { tags: ['autodocs'], parameters: { layout: 'padded' } }\nexport default preview\n`,
+    `const preview = { tags: ['autodocs'], parameters: { layout: 'padded' } }\nexport { preview as default }\n`,
+    `export default { tags: ['autodocs'] }\n`,
+  ]) {
+    const computed = previewRun(source)
+    assert.deepEqual(computed.manifestProblems, [], source)
+    assert.deepEqual(creditsOf(computed, 'ZzA'), CREDITED)
+    assert.deepEqual(creditsOf(computed, 'ZzB'), CREDITED)
+  }
+})
+
+// (M1) A `this` anywhere inside the owner, nested classes included.
+const THIS_IN_HERITAGE = `class K extends (this.parameters = { visualCaptureClip: ${CLIP} }, Object) {}`
+const THIS_STORIES = {
+  'a this in the heritage clause of a class inside a render': `export const ZzG = { render: function () { ${THIS_IN_HERITAGE}\n return <Button disabled>Go</Button> } }\n`,
+  'a this in a computed member name of a class inside a function property': `export const ZzG = { render: function () { class K { [this.k] = 1 }\n return <Button disabled>Go</Button> } }\n`,
+  'a this in a function expression in a class field': `export const ZzG = { play: new (class { f = function () { this.parameters = { visualCaptureClip: ${CLIP} } } })().f, ${ACCESSOR_RENDER} }\n`,
+  'a plain this inside an ordinary nested class method (the intended over-refusal)': `export const ZzG = { render: () => { class Local { read() { return this } } void Local; return <Button disabled>Go</Button> } }\n`,
+}
+for (const [name, story] of Object.entries(THIS_STORIES)) {
+  test(`T705 (M1) plant: ${name} makes the story's parameters and tags unreadable and credits it nothing`, () => {
+    const computed = accessorStoryRun(story)
+    const at = `${CARD_STORIES_LOCATION}:ZzG`
+    assert.deepEqual(ofKind(computed, UNREADABLE_PARAMETERS), [[UNREADABLE_PARAMETERS, at]])
+    assert.deepEqual(ofKind(computed, UNREADABLE_TAGS), [[UNREADABLE_TAGS, at]])
+    assert.deepEqual(creditsOf(computed, 'ZzG'), [])
+    assert.deepEqual(creditsOf(computed, 'ZzSib'), CREDITED)
+  })
+}
+
+test('T705 (M1) plant: the heritage shape on the meta makes every story of the file unreadable', () => {
+  const computed = metaRun(
+    `const meta = { component: Card, decorators: [function (Story) { ${THIS_IN_HERITAGE}\n return <Story /> }] }\nexport default meta\n`,
+  )
+  assert.deepEqual(ofKind(computed, UNREADABLE_PARAMETERS), BOTH_STORIES(UNREADABLE_PARAMETERS))
+  assert.deepEqual(ofKind(computed, UNREADABLE_TAGS), BOTH_STORIES(UNREADABLE_TAGS))
+  assert.deepEqual(creditsOf(computed, 'ZzA'), [])
+  assert.deepEqual(creditsOf(computed, 'ZzB'), [])
+})
+
+test('T705 (M1) plant: the heritage shape in a preview decorator fails as project-clip', () => {
+  assertPreviewRefused(
+    previewRun(
+      `const preview = { decorators: [(Story) => { ${THIS_IN_HERITAGE}\n return <Story /> }] }\nexport default preview\n`,
+    ),
+  )
+})
+
+test('T705 (M1) contrast: a nested class with no this stays readable and credited', () => {
+  const computed = accessorStoryRun(
+    `export const ZzG = { render: () => { class Local { read() { return 1 } } void Local; return <Button disabled>Go</Button> } }\n`,
+  )
+  assert.deepEqual(computed.manifestProblems, [])
+  assert.deepEqual(creditsOf(computed, 'ZzG'), CREDITED)
+})
+
+// (L1) The identifier `require`.
+const REQUIRE_FILE = '.storybook/helper.cjs'
+const REQUIRE_PLANTS = {
+  '(require)(n)': `const s = (require)(n)\n`,
+  '(0, require)(n)': `const s = (0, require)(n)\n`,
+  '(require as any)(n)': `const s = (require as any)(n)\n`,
+  "(require)('../composites/Card/Card.stories')": `const s = (require)('../composites/Card/Card.stories')\n`,
+  'const r = require; r(n)': `const r = require\nconst s = r(n)\n`,
+  'require.resolve(n)': `const s = require.resolve(n)\n`,
+  'require passed as an argument': `register(require)\n`,
+  'a shorthand property { require }': `const o = { require }\n`,
+  'a literal call through an optional parenthesised callee, (require)?.("x")': `const s = (require)?.('./x')\n`,
+}
+for (const [name, text] of Object.entries(REQUIRE_PLANTS)) {
+  test(`T705 (L1) plant: ${name} fails the check as imports-story-module naming the file`, () => {
+    const computed = importerRun(new Map([[path.join(DS_DIR, REQUIRE_FILE), text]]))
+    assert.deepEqual(ofKind(computed, IMPORTS_STORY), [[IMPORTS_STORY, REQUIRE_FILE]], text)
+    const problem = computed.manifestProblems.find((p) => p.kind === IMPORTS_STORY)
+    assert.match(problem.detail, /\.storybook\/helper\.cjs /)
+  })
+}
+
+test('T705 (L1) plant: the same shapes fail in a src module and in a story file, and a test module may use them', () => {
+  for (const file of ['src/lib/helper.ts', 'src/composites/Other/Other.stories.tsx']) {
+    const computed = importerRun(
+      new Map([[path.join(DS_DIR, file), `const s = (0, require)(n)\n`]]),
+    )
+    assert.deepEqual(ofKind(computed, IMPORTS_STORY), [[IMPORTS_STORY, file]], file)
+  }
+  const inTest = importerRun(
+    new Map([[path.join(DS_DIR, 'src/lib/helper.test.ts'), `const s = (0, require)(n)\n`]]),
+  )
+  assert.deepEqual(inTest.manifestProblems, [])
+})
+
+test('T705 (L1) contrast: a declared require, its literal call, and a property or key named require are not references', () => {
+  const computed = importerRun(
+    new Map([
+      [
+        path.join(DS_DIR, '.storybook/source-stamp.mjs'),
+        `import { createRequire } from 'node:module'\nconst require = createRequire(import.meta.url)\nconst ts = require('typescript')\nexport default ts\n`,
+      ],
+      [
+        path.join(DS_DIR, '.storybook/helper.cjs'),
+        `const o = { require: 1 }\nconst a = obj.require(n)\nconst b = module.require(name)\nconst c = o.require\nfunction f(require) { return require('./x') }\nconst { require: renamed } = o\nexport { f as require }\n`,
+      ],
+    ]),
+  )
+  assert.deepEqual(computed.manifestProblems, [])
+})
+
+test('T705 (L1) end to end: the check exits 1 on the real tree with a parenthesised require in a helper, naming it', () => {
+  const run = runCheckOnPlantedTree('\nexport const planted = (n: string) => (0, require)(n)\n', [
+    'lib',
+    'cx.ts',
+  ])
+  assert.equal(run.status, 1, run.stdout + run.stderr)
+  assert.match(run.stderr, /src\/lib\/cx\.ts references the identifier `require`/)
+})
+
+// (L2) The legend sentence is the one the force resolution implements.
+test('T705 (L2): the legend credits only a record-1 located force with no matrix row, and refuses any other like the rest', () => {
+  assert.ok(
+    REGION_LEGEND.replace(/\s+/g, ' ').includes(
+      'except that a force whose located element is a record-1 element and whose placing instance has no matrix row credits that record-1 cell and names the record-3 half in a note; any other is refused like the rest.',
+    ),
+  )
+  assert.doesNotMatch(REGION_LEGEND, /credits the half it can/)
 })

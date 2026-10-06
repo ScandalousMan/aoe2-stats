@@ -148,43 +148,22 @@ export const Active: Story = {
 // `getAllByRole('link')[9]` the same way `nth: 0` above matches `getAllByRole('link')[0]` — verified
 // against the real DOM, which is what the Playwright capture actually drives.
 //
-// `state-coverage.mjs` credits this trio, but T674 (`InlineLink` now composes the shared `Link`
-// primitive, `index.tsx:228`, rather than hand-copying its recipe into a local `<a>`) moved *where*:
-// this trio's own real target is `primitives/Link`'s own "inline" variant row, reached through
-// `resolveComposedStoryMatches`'s composed-primitive pool, not this component's own local-element
-// pool the way it read before that move — this file no longer declares a local element for
-// `InlineLink` at all (`findLocalElements` never walks into an imported component). That move
-// re-opened exactly the gap `nth`'s own history already closed once, for the *other* record: `Link`'s
-// own composed-primitive pool cannot see `Contents`' nine entries or `ObjectionCallToAction`'s one at
-// all (two different records, walked independently), so it always counted `nth` from its own zero
-// regardless of how many real elements of the same role render before it in the DOM — every one of
-// `nth: 0`/`nth: 9` above was `unresolved` against `Link`'s own pool, and PrivacyNotice's own local
-// pool, no longer aware that four real elements used to sit between `Contents` and
-// `ObjectionCallToAction`, wrongly re-numbered `nth: 9` onto `ObjectionCallToAction` itself. Fixed at
-// its root, in `resolveNameMatch`'s own `nth` branch (`scripts/checks/state-coverage.mjs`): a
-// `foreignExtents` array, read only inside that branch, lets each record fold the other's own real,
-// counted width into the same walk without the other record's own candidate ever being returned as
-// the `'match'` — `PrivacyNotice`'s own local pool now counts `InlineLink`'s four real call sites on
-// its own way to `ObjectionCallToAction`, and `Link`'s own composed pool now counts `Contents`' nine
-// and `ObjectionCallToAction`'s one on its own way to `InlineLink`. The one side effect worth naming:
-// the contact-route anchor (`index.tsx:783`, T596's own subject, not this task's) shares `Link`'s own
-// composed pool with `InlineLink`, and both fixes together still correctly rule it out of `nth: 9`'s
-// own range (a clean `reject`, not `ambiguous`) whenever `controllerContact` is absent — as of T599,
-// its own cells still read `none`, not `unresolved`. `ObjectionCallToAction`'s own
-// `selector` match (below) used to attempt this anchor's `href` without ever checking whether it
-// renders at all; `resolveSelectorMatch`'s own caller now excludes a candidate this story's scope
-// confirms `'unreached'` before attempting it — and the cell's own reason names
-// `ObjectionCallToActionHover`/`FocusVisible`/`Active` below, whose own args are
-// `{ lastUpdated, hrefs }`, no `controllerContact`. `buildStoryPropsScope`
-// (`scripts/checks/state-coverage.mjs`) used to seed a component prop with no destructuring default
-// as unknown whenever the story it is evaluating for did not name it in `args`, rather than as the
-// `undefined` it actually is at render; T599 fixed that package-wide, so evaluated against those
-// stories' own scope, `controllerContact` now resolves to its real value there, `undefined`, and
-// this anchor's guard, `controllerContact ? <a…> : …`, is `'unreached'`, not `'unresolved'`.
-// `WithPublishedContact` above does set `controllerContact` and genuinely renders this anchor (with
-// `href="/contact"`), but it forces no state at all, so it never enters this comparison either way
-// — the gap was never "no story sets `controllerContact`," it was that the one story that does
-// carries no `visualForceState`, and the three that do carry one never set it.
+// `state-coverage.mjs` credits this trio from what the browser rendered, not from a reading of this
+// file: the force below locates exactly one element at every captured width, and
+// `packages/design-system/specs/state-coverage-runtime.json` (T694) names the `Link` instance that
+// placed it — `primitives/Link`'s own "inline" row, since T674 (`InlineLink` now composes the shared
+// `Link` primitive, `index.tsx:228`, rather than hand-copying its recipe into a local `<a>`). The
+// check no longer counts `nth` itself: the DOM order the browser reports decides which of the ten
+// links `nth: 9` is, and a force that matches more or fewer than one element fails the check. Before
+// T694 the static pass had to learn, one fix at a time, how many real elements this component's own
+// local pool and `Link`'s composed pool each contributed ahead of `nth: 9` (T674's move, M4 on PR
+// #102). One side effect is worth naming: the contact-route anchor (`index.tsx:783`, T596's own
+// subject, not this task's) renders only behind `controllerContact ? <a…> : …`. This trio's args
+// carry no `controllerContact`, so that anchor is absent from the DOM the browser captures and cannot
+// take `nth: 9`. `WithPublishedContact` above does set it and genuinely renders the anchor (with
+// `href="/contact"`), but it forces no state at all, so its frame credits nothing either way — the
+// gap was never "no story sets `controllerContact`," it was that the one story that does carries no
+// `visualForceState`, and the three that do carry one never set it.
 const INLINE_LINK_CLIP = { parts: [{ role: 'link', nth: 9 }], pad: '2' } as const
 
 export const InlineLinkHover: Story = {
@@ -222,18 +201,13 @@ export const InlineLinkActive: Story = {
 // anchor's own `href={hrefs.objectionForm}` is a literal in this story's own `args`
 // (`hrefs.objectionForm`, `'/object'`, defined once above), unique in the whole render, so
 // `a[href="/object"]` names it directly and unambiguously, with no positional reasoning needed at
-// all — `nth: 13` would work too now that `InlineLinkHover`'s own fix gives `state-coverage.mjs`'s
-// candidate pool each group's real width, but a selector keyed to this anchor's own unique `href`
-// is simpler and does not depend on how many links render before it. It has its own residual
-// boundary, worth naming rather than hiding behind the choice: `resolveSelectorMatch`'s own caller
-// now excludes a candidate this story's scope confirms `'unreached'` before ever attempting its own
-// attribute, the same guard-fold `InlineLinkHover`'s own fix uses for `nth` — and the contact-route
-// anchor (`index.tsx:797`, T596's own subject) renders behind `controllerContact ? <a…> : …`. This
-// trio's own args (below) never set `controllerContact`, but as of T599's package-wide
-// `buildStoryPropsScope` fix, evaluated against *this* trio's own scope, `controllerContact`
-// resolves to its real value there — `undefined`, since Storybook's own `args` are the complete
-// prop set and a key absent from it is genuinely `undefined`, not unknown — so its guard is
-// `'unreached'` (confirmed false), not `'unresolved'` (genuinely unknown) as it used to read.
+// all — `nth: 13` would work too, but a selector keyed to this anchor's own unique `href` is simpler
+// and does not depend on how many links render before it. It has its own residual boundary, worth
+// naming rather than hiding behind the choice: the contact-route anchor (`index.tsx:797`, T596's own
+// subject) renders behind `controllerContact ? <a…> : …`, which this trio's own args (below) never
+// set, so it is absent from the DOM the browser captures and the selector can match only the one
+// anchor — which the manifest (`packages/design-system/specs/state-coverage-runtime.json`, T694)
+// confirms, and the check fails if it ever stops being exactly one.
 // `WithPublishedContact` above does set `controllerContact` and genuinely renders this anchor, but
 // carries no `visualForceState`, so it never enters this trio's own comparison either way.
 // The selector string is inlined directly in every `visualForceState` below, never read from a

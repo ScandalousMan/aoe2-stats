@@ -314,8 +314,13 @@ jobs:
       # duplicate-baseline gap register" carries tables this script renders between its
       # `state-coverage:begin`/`end` markers (record 1 — every local interactive element — and
       # record 3 — every primitive's variant-by-state matrix). Parses source and stories with the
-      # TypeScript compiler API, never a line grep; fails when that region differs from a fresh
-      # render against the live tree, never on a `none` cell by itself (`--write` regenerates it).
+      # TypeScript compiler API, never a line grep, for the elements, the Rest call sites and the
+      # `play()` click credit; credits every forced story from the browser pass's own record,
+      # `packages/design-system/specs/state-coverage-runtime.json` (T694), never from a static
+      # reading of the story's args. A call site whose `variant` or `size` is not a literal or a
+      # default opens no record-3 row of its own (T695): the instances it mounts are credited at the
+      # rows they render to. Fails when that region differs from a fresh render against the live
+      # tree, never on a `none` cell by itself (`--write` regenerates it).
       # Needs no build, same as the other static source checks above; its own `node --test` suite,
       # planted shapes each with a contrast case, runs immediately after.
       - run: node scripts/checks/state-coverage.mjs

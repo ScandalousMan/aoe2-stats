@@ -1746,14 +1746,147 @@ hover:underline-offset-2` beside `active:underline-offset-4`, `src/screens/DataE
      record-1 elements' Disabled cells are all `none`). A story gives no mount credit when it declares
      a `visualCaptureClip`, or when its story object, default export or `parameters` spreads another
      object or is not an object literal; a story or default export that spreads another object also
-     fails the run, because its `tags` cannot be read.
-   - **A manifest entry's shape is checked** before anything is read from it: every width's record is
-     an object whose `mounts` is an array; every mount, `placedBy` and `focus.placedBy` is an object
-     with a `disabledAt` that is an array of strings and, on each axis its primitive keys rows on, a
-     string among the values its own type exports (`ButtonVariant`, `ButtonSize`, `LinkVariant`,
-     `FieldSize`, `MenuVariant`) or `null`; and a force that matched one element carries a `stamp`
-     that is a string, or the explicit `null` of an element no design-system file wrote. Anything else
-     fails the run naming the story.
+     fails the run, because its `tags` cannot be read. That refuses the clips of the shapes this pass
+     reads. It does not prove that no clip applies to a story it credits: the shapes it is known not to
+     see are listed, as known shapes and not as an exhaustive list, under **What the static reading
+     cannot see**, below.
+   - **A story's binding, and the binding its default export names, may appear only in their own
+     declaration and in an export** (`export default meta`, `export { meta as default }`,
+     `export { X }`). Any other identifier reference to either, anywhere in the file, fails the run
+     naming the story and gives it no mount credit: a read or a write, at any depth, inside a function
+     or the story's own initializer, as an argument, an alias, a destructuring or `for…of` target, a
+     spread, a shorthand property, a JSX tag or an instantiation expression in a value position
+     (`meta<0>`, which evaluates `meta`). A reference to the default export's binding names every story
+     of the file. A reference is found by identifier, not by text: a property name (`obj.X`,
+     `{ X: … }`, a JSX attribute name, a destructuring key), an import's own name and anything inside a
+     type (`typeof meta`, `typeof Table<MatchRow>`, an `implements` clause) are not references; a
+     local of the same name in a nested scope is read as one, which over-refuses and never
+     over-credits.
+   - **The default export is read in one shape only** (T701): `export default <identifier>` or
+     `export { <identifier> as default }`, with `!`, `as`, `satisfies` and parentheses stripped in any
+     nesting, naming a top-level binding that is declared once, with `const`, and initialised with an
+     object literal (stripped the same way); or an inline `export default { … }`. Any other default
+     export (a call, a conditional, a comma expression, an instantiation expression, an alias of
+     another binding, a function or class, an imported binding, a re-export, a file with none or with
+     two) fails the run with `unreadable-default-export`, naming every story of the file, and gives
+     each no mount credit. No tag, parameter, clip, `component` or `args` is read from any other
+     object: there is no fallback to the first object in the file that carries a `component`.
+   - **A story's binding, and the binding the default export names, is declared once, with `const`**
+     (T701). A name declared more than once at the top level, in any mix of `var`, `let`, `const`, a
+     function, a class, an enum, a namespace or an import, fails the run with `redeclared-binding`; one
+     declared with `var` or `let` fails it with `mutable-binding`. Each names the story, and names every
+     story of the file when the binding is the default export's, which gives it no mount credit.
+   - **A module under `src` or `.storybook` other than a `*.test.*` file** fails the run naming the
+     importing file when it imports a `*.stories` module (`imports-story-module`): a static `import`
+     (type-only included), `export … from`, `import x = require()`, a dynamic `import()` or an
+     `import()` type and a `require()`, each with a plain string-literal specifier (a string or a
+     template without a substitution); when an `import()` or a `require()` takes a specifier that is
+     not a plain string literal (T704: a template with a substitution, a `+`-joined or conditional
+     specifier, a call, a variable), whatever it ends with (`imports-story-module`, naming the file and
+     its "non-literal specifier"), because Vite compiles a templated `import()` into a glob over every
+     file its static parts can match and the last part says nothing of what the first ones build; when
+     the identifier `require` appears other than as the declared name of a binding or as the direct,
+     unparenthesised callee of a call (T705: a parenthesised, cast or comma-expression callee, an alias
+     such as `const r = require`, `require.resolve`, `require` passed as a value) it fails as
+     `imports-story-module` naming the file (a property, key, specifier or label name spelled
+     `require` is not a reference to it); when it uses `import.meta.glob` or `import.meta.globEager`
+     (`imports-story-module`), whatever the pattern, written as a call, aliased
+     (`const g = import.meta.glob`) or reached as `import.meta['glob']` or by indexing `import.meta`
+     with a key that is not a string literal (`import.meta.env` stays legal); and when it imports a
+     `*.test.*` module (`imports-test-module`), by any of the literal specifier forms above, since a
+     test module is not read here. A `*.test.*` file may do each of these. A story path is never a test module (T704): a file
+     named `Evil.test.stories.tsx` is a story to Storybook, so it is read as one and held to every rule
+     in this list, and one predicate decides what a test module is for every reader that asks (the
+     module walk, the first pass, the overlay reader and the specifier test). Known shapes this rule
+     does not see are listed below, under **What the static reading cannot see**; that list is not
+     exhaustive.
+   - **A manifest entry's shape is checked** before anything is read from it (T696, T698, T702).
+     Anything that breaks one of these rules fails the run as `malformed-entry`, naming the story (or,
+     for the first two rules, the entry's key), and credits nothing from that entry:
+     - the entry is an object whose `importPath` and `exportName` are both strings (an array or a
+       number is not coerced into a key), and no other entry names the same story: two entries for
+       one story (`./src/x.stories.tsx` and `src/x.stories.tsx` are one path) are each named by key and
+       neither is credited;
+     - `files` is present and is an array of strings;
+     - every width's record is an object whose `mounts` is an array;
+     - every mount, `placedBy` and `focus.placedBy` is an object with a `disabledAt` that is an array of
+       stamps and, on each axis its primitive keys rows on, a string among the values its own type
+       exports (`ButtonVariant`, `ButtonSize`, `LinkVariant`, `FieldSize`, `MenuVariant`) or `null`. A
+       `component` is a tracked primitive only when it is a string that is an own key of the axis table
+       (`Object.hasOwn`): `constructor`, `toString`, `__proto__` or a non-string is an untracked
+       component, refused as such, never a reason to throw;
+     - a stamp (a force's or a focus's `stamp`, and every `disabledAt` entry) is `null` (an element no
+       design-system file wrote; `disabledAt` entries are never `null`) or the one form
+       `packages/design-system/.storybook/source-stamp.mjs` writes, `<repository-relative path>:<line>`:
+       no whitespace anywhere, no leading `./` or `/`, a `:` and a line number from 1 with no leading
+       zero. The check reads the shape, not whether the path names a file;
+     - a focus or a force whose `stamp` is `null` has a `placedBy` of `null` too: an element no source
+       file stamped is placed by no tracked primitive; a force that matched one element carries a
+       `stamp` key, `null` or a stamp, never a missing one.
+   - **A `parameters` or `tags` property this pass cannot read by name is refused, not skipped** (T699).
+     On a story object and on the default export, a `parameters` or a `tags` written as a quoted key
+     (`'parameters'`, `"tags"`), a computed key (`['parameters']`, a template-literal key), a getter, a
+     setter or a method, a property written twice (the engine keeps the last; the reader never took
+     it), or a shorthand beside an assignment, fails the run as `unreadable-parameters` or
+     `unreadable-tags`, naming the story, and the story is credited no mount and no forced state. The
+     same holds inside a `parameters` object literal for `visualCaptureClip` and `visualForceState`.
+     A computed key whose name cannot be evaluated (`[key]`) could spell any of them, so it makes both
+     unreadable on its object. A story's `parameters` that is not an object literal, and a `tags` that is
+     not an array of string literals, are refused the same way. A quoted key that is neither `parameters` nor `tags` (nor, inside `parameters`, a clip or a force)
+     is not refused.
+   - **An accessor, a method or a `this` in a story object or in the default export makes that object
+     unreadable** (T704). A getter or setter runs when Storybook reads the object and can write
+     `this.parameters`; a method is called with the object as its `this`; a `this` in a function
+     expression binds to the object it is called on. On a story object, or on the default export, any
+     getter, setter or method, and any `this` expression inside the object (T705: in a nested class
+     too; a `this` type or a `this` parameter is not an expression and is not refused), fails the run
+     as `unreadable-parameters` and as `unreadable-tags`, naming the story (every story of the file,
+     for the default export), and the
+     story is credited no mount and no forced state. An arrow function's `this` is refused too: it
+     inherits the module's, not the object's, and over-refusing is the safe direction. Only the owner's
+     own shape is read this way: an accessor inside a nested `parameters` object is not this rule's.
+   - **The Storybook preview's project-level `parameters` are a third owner** (T704). Storybook merges
+     them into every story's prepared parameters, which the capture reads for its clip.
+     `packages/design-system/.storybook/preview.tsx` is held to its own rules: one readable default
+     export shape; its binding not referenced outside its declaration and its export in the preview
+     file; no accessor, method or spread among its own properties, no spread among its `parameters`'
+     own properties (not deeper), no `this` expression inside it; a `parameters` that is an
+     identifier-keyed object literal written once; no export of a name other than `default` (T705:
+     Storybook reads a named export of the preview as a project annotation when the default export
+     lacks that field, so `export const`, `export function`, `export *` and `export =` fail). When it
+     carries a `visualCaptureClip` or breaks one of those rules, the run fails once, as `project-clip`,
+     naming the preview, and every story is credited no mount. A project-level `visualForceState` is not read.
+   - **What the static reading cannot see: the known shapes, not an exhaustive list.** A static reading
+     cannot prove that no clip applies to a story. Storybook merges project, component and story
+     parameters, passes the story's `parameters` to `play`, loaders, `beforeEach` and decorators, and
+     reads objects through their prototype chain, and each round of hardening here has closed the
+     shapes reported and left their neighbours. The shapes below are the ones known to reach a story's
+     clip, parameters or tags unseen; one that is not listed may reach it too. Each credits a mount
+     under a clip the check cannot see, so it is an **over-credit, not the safe direction**: it can
+     print a `Disabled` or `Rest` cell as proven by a frame the capture clipped away. Nothing refuses
+     any of them today:
+     - a `require` that does not go through the bare `require` identifier (`module.require(name)`,
+       `createRequire(…)(name)`), so the import rule does not see it;
+     - code in a string (`eval`, `new Function`);
+     - an importer outside `packages/design-system/src` and `packages/design-system/.storybook`;
+     - an `.mdx` file, which this pass never reads and which may import a story and amend its
+       parameters;
+     - a path alias that reaches a story module without the `.stories` suffix in its specifier (the
+       import rule matches the suffix);
+     - project annotations from anywhere but `preview.tsx`: a preview file an addon contributes, or one
+       `.storybook/main.ts` adds, which Storybook merges and this pass never reads;
+     - a clip that reaches `parameters` through the story context: a `play`, a `loader`, a
+       `beforeEach` or a `decorator` (the preview's included) that mutates `context.parameters`; the
+       deprecated `story` annotation (`story: { parameters: … }`), which Storybook merges into the
+       story; and a `__proto__` key, which Storybook reads through the prototype chain and which the
+       reader takes for an ordinary key.
+
+     Only a record of the clip the browser applied proves a frame's clip: T703 (filed, not landed) is
+     to record it, from the same settled `parameters` the capture uses, and to credit mounts from that
+     record and not from a reading of the source. Until it lands, and for any shape not listed, the
+     source readers are a refusal of the shapes they know, never a proof that a credited story is
+     unclipped.
+
    - **Every other forced story credits no cell and is reported with the true reason** — no element
      matched, more than one (Playwright's strict mode refuses it, so no frame can be captured), stamps
      or placing instances that differ across widths, a stamp in no record-1 element and no placing
@@ -1792,11 +1925,18 @@ hover:underline-offset-2` beside `active:underline-offset-4`, `src/screens/DataE
    `resolveComposedStoryMatches`, `resolveDisabledFromStories`, `injectComposedPrimitiveLocalCredits`
    (T598), `findComposedElsewhereNames` and the `Tooltip` hop (T595), the guard and reachability
    evaluation for forces (`evaluateGuards`, `storyReachesComponentModule`, `storyRendersComponent`,
-   `buildStoryPropsScope`), `findRenderJsxProps`, `impliedRoleForPrimitiveInstance`,
-   `noImpliedRoleReason`'s ancestor and dynamic-role wording, and T686's own-story verification.
+   `buildStoryPropsScope`, `buildFileValueScope`), `findRenderJsxProps`, `impliedRoleForPrimitiveInstance`
+   (and `PRIMITIVE_INSTANCE_ROLES`, derived from it), `componentHasOwnCandidateForRole`,
+   `noImpliedRoleReason`'s ancestor and dynamic-role wording, and T686's own-story verification;
+   T696 then removed, as dead, the helper call-site, guard and iteration machinery that fed only them
+   (`findHelperCallSites`, `findHelperInvocationGuards`, `findHelperInvocationIterationContext`) and
+   the fields that carried it (`isHelper`, `mainComponentName`).
    Each passage below that cites one describes the reading that was in force when that task closed, kept
    as the record of why the rule existed; the generated region above is read from the manifest and
-   is the only current statement of what any cell credits.
+   is the only current statement of what any cell credits. The same holds for the per-story redirect
+   (`storyResolvedBySourceLine`, which credited a dynamic-axis call site's row from the story that
+   resolved the axis) and for the `ghost|unresolved` and `unresolved|lg` rows it served: T694 deleted
+   the one, T695 removed the other.
 
    **Record 1's own class half, when a candidate's `className` expression resolves through an object
    literal indexed by a prop the component itself gives more than one meaning across its own callers
@@ -1836,87 +1976,38 @@ hover:underline-offset-2` beside `active:underline-offset-4`, `src/screens/DataE
    neither carries one — a caller's own `className` was never going to be this component's own answer
    to that question, whatever it might someday hold.
 
-   **Record 3's own ambiguity precedence, stated rather than left implied (T594's REJECT on #80,
-   item 4).** An ambiguous composed-story match — several candidates share a force-state's role and
-   `resolveNameMatch` cannot settle it on one — never renders a confirmed `'none'` on any row it was
-   ambiguous between; it renders `'unresolved: …'` there instead. But that `'unresolved'` note is
-   itself dropped from a given row's own state cell whenever that exact row already carries a real,
-   unambiguous match for that state from elsewhere — another story, another candidate: a state known
-   to be covered is positive knowledge in its own right, and outranks noting that a _different_
-   comparison could not be settled. `Menu`'s own `actions` row used to be the one cell this left with
-   nothing else to show, keeping the note, until T595's own composed-elsewhere tracing (below) ruled
-   both of `ProfileSummary`'s `Menu` instances out directly — the tally this paragraph describes is
-   zero, live in this tree today, and this is no longer a real example of a kept note, only of the
-   mechanism that would keep one. The exact split, over every ambiguity live in this tree today, is
-   `node scripts/checks/state-coverage.mjs`'s own printed "record 3 ambiguity tally" line
-   (`summarizeAmbiguities`, `scripts/checks/state-coverage.mjs`) — cited here rather than restated,
-   this paragraph's own rule below: a hand count written directly into this prose was wrong twice
-   (T594's row 8 sweep, item 2 — six ambiguities read as one story-name count where the real
-   comparison is over tainted `(row, state)` cells, of which there are more than twice that many).
-   **Record 3's own axis-mismatch redirect (item 2 of the
-   same REJECT), and the multi-row credit it settles on (T595) — one mechanism, reaching all five
-   columns, corrected once already during this task's own review.** A JSX candidate's own
-   statically-resolved axis (a dynamic `size`/`variant`, no literal to key a row on) and the axis its
-   own force-state resolves to _per story_ can disagree — the same source line then owns a `rest`
-   entry on one row and a real match on another (`FavouriteToggle`'s own `size={size}`, a bare prop of
-   the composite, resolves to `'md'` under most of its own stories and to `'lg'` under
-   `RealisticProfileHeader`; `Dialog`'s own `variant={primaryAction.variant ?? 'destructive'}`, a
-   nested property access behind a `??` default, resolves the same way). **The call site is credited
-   to every row its own stories resolve it to, never to one** — the same source line's own state is
-   real knowledge on whichever row a story actually established it, and a row a call site's static
-   parse cannot key at all is not a reason to withhold that knowledge from the row _the same call site
-   resolves to elsewhere_.
+   **A call site whose `variant` or `size` the source cannot settle opens no record-3 row (T695).**
+   A `Button` call site is keyed on its `variant|size` pair only when each axis is settled: a literal
+   (a string, a template literal without substitutions, or either under `as const`, `as <T>`,
+   `satisfies <T>` or parentheses) or the primitive's own default. A forwarded prop
+   (`FavouriteToggle`'s `size={size}`), a computed expression (`Dialog`'s
+   `variant={primaryAction.variant ?? 'destructive'}`), an axis attribute followed by a spread, and
+   an axis the call site omits beside a spread anywhere leave the axis unsettled, and the call site
+   files no `Rest` credit and opens no row (T700: JSX applies the last attribute, so a spread before an
+   axis attribute is overridden by it and `<Button {...rest} variant="ghost" size="lg" />` keeps its
+   `ghost|lg` row, while `<Button variant="ghost" size="lg" {...rest} />` opens none; `axisKey`,
+   `scripts/checks/state-coverage.mjs`; only a string settles an axis (T702): a boolean attribute
+   (`<Button variant size="lg" />`), a number (`variant={1}`), `true`, `false` and `null` open no
+   row, as a forwarded prop does; one unsettled axis is enough, a literal
+   `variant` beside a dynamic `size` opens neither a `ghost|unresolved` row nor a half-keyed one). The
+   instances such a call site mounts are not lost: the runtime manifest places every instance a
+   story mounts at the row the browser rendered it to (`ghost|md` for `FavouriteToggle`, `destructive|lg`
+   for `Dialog`'s default action), so the frames those stories prove are credited there. A manifest
+   instance that arrives with no settled axis is a bug in the reader and throws, because only a call
+   site read from source may land on no row. The cost is stated, not hidden: the region no longer
+   says which call site placed an instance, and the manifest does not record it either — T695 chose
+   to drop the rows rather than add a placing-call-site field that no frame depends on.
 
-   Concretely: `storyResolvedBySourceLine` (`scripts/checks/state-coverage.mjs`) is one map, keyed by
-   `(source line, state)`, holding the **exact label** a confirmed match proved there — never a
-   target row's key. It is fed by every `composed-story` match (`hover`/`focus-visible`/`active`) and
-   by every `jsx-disabled-resolved` match (`disabled`, `resolveDisabledFromStories`'s own real,
-   positive resolution — an `'unresolved'` or ambiguous one never feeds it, the same exclusion the
-   ambiguity paragraph below already applies to `unresolvedByState`). Before a row's own state cell
-   falls to `'none'`, every source line in its own `rest` list is checked against this map for that
-   state; the labels found — there can be more than one, when two different call sites on the same
-   static row settle to two different target rows — are credited directly, the same
-   positive-knowledge-outranks-a-note precedence the ambiguity paragraph already states, applied
-   across rows rather than within one.
-
-   **Crediting the exact label, never a target row's whole list, is the fix over this task's own
-   first draft (orchestrator finding on the hand-back): a first version stored the target row's key
-   and had `cellFor` pull that row's entire state list, which was correct only by accident — every
-   target `ghost|unresolved`'s own redirects ever reached happened to carry exactly one contributor.**
-   `disabled` broke that accident immediately: `unresolved|lg`'s own two call sites (`Dialog`'s
-   `index.tsx:127`/`:138`) resolve to `destructive|lg` and `secondary|lg`, and `secondary|lg`'s own
-   disabled list also carries `MatchDetailPanel:DownloadPreparing`/`ArchivalControl:Submitting` — real
-   coverage for two wholly unrelated Button call sites that only share that row by axis coincidence,
-   never a fact about either of `Dialog`'s own buttons. Pulling the whole row would have credited
-   `unresolved|lg` with stories that prove nothing about its own call sites — the exact "a per-story
-   resolution is knowledge about that story, never a claim about the call site in general" bar this
-   whole mechanism exists to hold, and the reason the map stores a label rather than a row.
-
-   Because the map is fed exclusively by confirmed matches, a credited label is never a bare pointer
-   needing a fallback note: there is nothing left for an `'unresolved: axis resolved only per story (→
-…)'` phrasing to name that is not already real, printed coverage — so that phrasing, T594's own
-   fix, is now dead by construction rather than merely rare, and `cellFor` no longer emits it.
-
-   **The rows this redirect targets (`ghost|unresolved`, `unresolved|lg`) do not disappear once every
-   occurrence on them resolves, and are not redistributed into the rows their stories resolve to.**
-   They stay because their own `rest` list is real, independent information — the exact source
-   positions whose axis genuinely cannot be read from a literal prop or the primitive's own default —
-   and no mechanism here moves a `rest` entry between rows; only the state cells (which are never
-   claims about the source line's own static axis, only about what some story renders) borrow coverage
-   from wherever a story actually proved it. A row that never resolves through any story at all keeps
-   reading its own `'unresolved: <reason>'` on every state, exactly as before — T595 closed the seven
-   cells where a story's own data _did_ settle it: `ghost|unresolved`'s hover (`FavouriteToggle:Hover`),
-   focus-visible (`FavouriteToggle:FocusVisible`), active (`FavouriteToggle:Active`) and disabled
-   (`FavouriteToggle:AddingInFlight; FavouriteToggle:Bounded; FavouriteToggle:RemovingInFlight` — the
-   seventh cell, found only once the redirect reached `disabled` too, the same defect class as
-   `unresolved|lg`'s and closed by the same fix rather than a second one); `unresolved|lg`'s
-   focus-visible (`Dialog:FocusVisible`) and disabled (`Dialog:PrimaryPending`) — never a case where no
-   story provides one. `ghost|unresolved`'s own focus-visible/active cells no longer also read
-   `Button:GhostFocusVisible`/`Button:GhostActive` (a side effect of the same correction, not a
-   separate one): those are `Button.stories.tsx`'s own literal `ghost|md` instance, a call site with
-   no relation to `FavouriteToggle`'s, and the whole-row-pull draft was crediting `ghost|unresolved`
-   with them purely because they shared `ghost|md` as their axis bucket — the identical pollution the
-   `secondary|lg` case caught, one row earlier, before `Dialog`'s own shape forced the fix.
+   Until T694 and T695 such a call site filed its `Rest` credit under a row keyed `unresolved`
+   (`Button`'s `ghost|unresolved` and `unresolved|lg`), and T595's per-story redirect — a map from a
+   source line and state to the exact label a confirmed match proved there, never to a target row's
+   whole list, the correction an orchestrator finding forced on its first draft — credited that row's
+   state cells from the story whose `args` resolved the axis. T694 deleted the redirect with the
+   rest of the static resolution and reopened the row's eight cells; T695 removed the two rows. The
+   note precedence that survives is the one `buildAxisMatrix` still applies: a play-driven focus note
+   (`unresolved: <story> (play-driven; frame not provable statically)`) is dropped from a cell that
+   already has a real match, positive knowledge outranking a note that one comparison could not be
+   settled.
 
    **`disabled` is not read from a `visualForceState` at all — there is no pseudo-class to force —
    so it is resolved differently from the other three states (T594's row 8 sweep, item 1: this
@@ -2371,14 +2462,26 @@ row's variant and size. A force on an element whose stamp is in the placing inst
 refused. The Disabled column of every matrix, and a primitive's own stories' Rest column, come from
 the primitive instances a story mounts, as rendered, and from nothing else: a `disabled` or `loading`
 written at a call site, and a `disabled: true` in a story's `args`, credit no Disabled cell. A story
-gives no mount credit when it declares a `visualCaptureClip` (the manifest does not record whether a
-mount lies inside the clipped rect), when its story object, its default export or its `parameters`
-spreads another object or is not an object literal (a clip may come in with it), or when it has
-neither a clip nor the `visual-full-page` tag and rendered a design-system file with an unprefixed
-`fixed` class (that element need not intersect the root box it is screenshotted as). A tracked
-primitive written in a story file credits nothing. Every other forced story credits no cell and the
-check names why. A manifest entry of the wrong shape fails the check, naming the story, and so does a
-story object or default export that spreads another object (its `tags` cannot be read).
+gives no mount credit for the reasons row 8's prose lists, among them: it declares a
+`visualCaptureClip` (the manifest does not record whether a mount lies inside the clipped rect); its
+story object, its default export or its `parameters` spreads another object or is not an object
+literal (a clip may come in with it); its `parameters` or `tags` cannot be read by name (a quoted,
+computed or duplicated key, an accessor, a method, or a `this` in the story object or the default
+export); the story or the default export is referenced outside its declaration and an export, the
+default export is not one this pass reads, or a story or meta binding is declared twice or with `var`
+or `let`; the Storybook preview's project-level `parameters` carry a clip or cannot be read
+(`project-clip`); or it has neither a clip nor the `visual-full-page` tag and rendered a
+design-system file with an unprefixed `fixed` class (that element need not intersect the root box it
+is screenshotted as). A tracked primitive written in a story file credits nothing. Crediting a story
+is not a proof that no clip applied to it: the source readers refuse the shapes they know, the shapes
+they are known not to see are listed, without claiming the list is exhaustive, under row 8's **What
+the static reading cannot see**, and only the runtime record of the clip the browser applied (T703)
+would prove a frame's clip. Every other forced story credits no cell and the check fails naming why
+(a filed, dated exception is the one way to tolerate it), except that a force whose located element
+is a record-1 element and whose placing instance has no matrix row credits that record-1 cell and
+names the record-3 half in a note; any other is refused like the rest. A manifest entry of the
+wrong shape fails the check, naming the story, and so does a story object or default export that
+spreads another object (its `tags` cannot be read).
 
 **Still static, and read from source:**
 
@@ -2468,18 +2571,16 @@ clip, because the force target and the clip are located independently.
 
 #### `Button`
 
-| Row               | Rest                                                                                                                                                                                                                                                                                                 | Hover                                     | Focus-visible                                                   | Press (active)                              | Disabled                                                                                                                                                                                                                                                                        |
-| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- | --------------------------------------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| destructive\|lg   | screens/AccountErasurePanel (packages/design-system/src/screens/AccountErasurePanel/index.tsx:219)                                                                                                                                                                                                   | Dialog:Hover                              | Dialog:FocusVisible                                             | Dialog:Active                               | Dialog:PrimaryPending; AccountErasurePanel:Minting                                                                                                                                                                                                                              |
-| destructive\|md   | Button:Destructive; Button:AllVariants                                                                                                                                                                                                                                                               | Button:DestructiveHover                   | Button:DestructiveFocusVisible                                  | Button:DestructiveActive                    | none                                                                                                                                                                                                                                                                            |
-| ghost\|lg         | Button:RealisticPageActions                                                                                                                                                                                                                                                                          | Button:GhostHoverLg                       | Button:GhostFocusVisibleLg                                      | Button:GhostActiveLg                        | FavouritesList:RealisticList                                                                                                                                                                                                                                                    |
-| ghost\|md         | Button:Ghost; Button:AllVariants                                                                                                                                                                                                                                                                     | Button:GhostHover; FavouriteToggle:Hover  | Button:GhostFocusVisible; FavouriteToggle:FocusVisible          | Button:GhostActive; FavouriteToggle:Active  | FavouriteToggle:Bounded; FavouriteToggle:AddingInFlight; FavouriteToggle:RemovingInFlight; FavouriteToggle:AllStates                                                                                                                                                            |
-| ghost\|unresolved | composites/FavouriteToggle (packages/design-system/src/composites/FavouriteToggle/index.tsx:115); composites/FavouriteToggle (packages/design-system/src/composites/FavouriteToggle/index.tsx:126); composites/FavouriteToggle (packages/design-system/src/composites/FavouriteToggle/index.tsx:171) | none                                      | none                                                            | none                                        | none                                                                                                                                                                                                                                                                            |
-| primary\|lg       | 22 credits                                                                                                                                                                                                                                                                                           | Button:Hover                              | Button:FocusVisible                                             | Button:Active                               | Button:Loading; Button:Disabled; UploadControl:Uploading; UploadControl:UploadingValidating; SignInScreen:Leaving; SignInScreen:Unavailable; ThirdPartyObjectionForm:Submitting                                                                                                 |
-| primary\|md       | Button:AllVariants                                                                                                                                                                                                                                                                                   | Button:PrimaryHoverMd                     | Callout:FocusVisible                                            | Button:PrimaryActiveMd                      | none                                                                                                                                                                                                                                                                            |
-| secondary\|lg     | 17 credits                                                                                                                                                                                                                                                                                           | ReplayAvailabilityList:Hover              | ReplayAvailabilityList:FocusVisible; UploadControl:FocusVisible | ReplayAvailabilityList:Active               | MatchDetailPanel:DownloadPreparing; ReplayAvailabilityList:DownloadPreparing; UploadControl:Uploading; UploadControl:UploadingValidating; Dialog:PrimaryPending; ArchivalControl:Submitting; ArchivalControl:Unavailable; DataExportPanel:Requesting; DataExportPanel:Preparing |
-| secondary\|md     | Button:Secondary; Button:AllVariants; Button:AsLink                                                                                                                                                                                                                                                  | Button:SecondaryHover; Button:AsLinkHover | Button:SecondaryFocusVisible; Button:AsLinkFocusVisible         | Button:SecondaryActive; Button:AsLinkActive | ErrorState:RetryInProgress                                                                                                                                                                                                                                                      |
-| unresolved\|lg    | primitives/Dialog (packages/design-system/src/primitives/Dialog/index.tsx:127); primitives/Dialog (packages/design-system/src/primitives/Dialog/index.tsx:138)                                                                                                                                       | none                                      | none                                                            | none                                        | none                                                                                                                                                                                                                                                                            |
+| Row             | Rest                                                                                               | Hover                                     | Focus-visible                                                   | Press (active)                              | Disabled                                                                                                                                                                                                                                                                        |
+| --------------- | -------------------------------------------------------------------------------------------------- | ----------------------------------------- | --------------------------------------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| destructive\|lg | screens/AccountErasurePanel (packages/design-system/src/screens/AccountErasurePanel/index.tsx:219) | Dialog:Hover                              | Dialog:FocusVisible                                             | Dialog:Active                               | Dialog:PrimaryPending; AccountErasurePanel:Minting                                                                                                                                                                                                                              |
+| destructive\|md | Button:Destructive; Button:AllVariants                                                             | Button:DestructiveHover                   | Button:DestructiveFocusVisible                                  | Button:DestructiveActive                    | none                                                                                                                                                                                                                                                                            |
+| ghost\|lg       | Button:RealisticPageActions                                                                        | Button:GhostHoverLg                       | Button:GhostFocusVisibleLg                                      | Button:GhostActiveLg                        | FavouritesList:RealisticList                                                                                                                                                                                                                                                    |
+| ghost\|md       | Button:Ghost; Button:AllVariants                                                                   | Button:GhostHover; FavouriteToggle:Hover  | Button:GhostFocusVisible; FavouriteToggle:FocusVisible          | Button:GhostActive; FavouriteToggle:Active  | FavouriteToggle:Bounded; FavouriteToggle:AddingInFlight; FavouriteToggle:RemovingInFlight; FavouriteToggle:AllStates                                                                                                                                                            |
+| primary\|lg     | 22 credits                                                                                         | Button:Hover                              | Button:FocusVisible                                             | Button:Active                               | Button:Loading; Button:Disabled; UploadControl:Uploading; UploadControl:UploadingValidating; SignInScreen:Leaving; SignInScreen:Unavailable; ThirdPartyObjectionForm:Submitting                                                                                                 |
+| primary\|md     | Button:AllVariants                                                                                 | Button:PrimaryHoverMd                     | Callout:FocusVisible                                            | Button:PrimaryActiveMd                      | none                                                                                                                                                                                                                                                                            |
+| secondary\|lg   | 17 credits                                                                                         | ReplayAvailabilityList:Hover              | ReplayAvailabilityList:FocusVisible; UploadControl:FocusVisible | ReplayAvailabilityList:Active               | MatchDetailPanel:DownloadPreparing; ReplayAvailabilityList:DownloadPreparing; UploadControl:Uploading; UploadControl:UploadingValidating; Dialog:PrimaryPending; ArchivalControl:Submitting; ArchivalControl:Unavailable; DataExportPanel:Requesting; DataExportPanel:Preparing |
+| secondary\|md   | Button:Secondary; Button:AllVariants; Button:AsLink                                                | Button:SecondaryHover; Button:AsLinkHover | Button:SecondaryFocusVisible; Button:AsLinkFocusVisible         | Button:SecondaryActive; Button:AsLinkActive | ErrorState:RetryInProgress                                                                                                                                                                                                                                                      |
 
 #### `Callout`
 
@@ -2720,7 +2821,7 @@ checker can verify it the same way it verifies 8c's own table.
 | `ProfileSummary`          | `:510` "The switcher's own hover/focus/active are `Menu`'s stories" (comment) and `:594-595` "carry theirs, per `Menu`" (rendered text, `RatingEntryHoverNotApplicable`) — **false for hover, same shape as F15**: `Menu`'s own trigger has no hover frame anywhere in the tree (F15), so neither quote's claim holds for hover; both are added to the F15/F16-carried finding below as this component's own story-level echo of the spec's `profile-summary.md:134` claim, not a new, separate false claim.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `ArchivalControl`         | `:88` "carry their own hover, focus and active states" (rendered text) — **corrected 2026-09-21 (T596, F11 closed)**: the comment above it used to quote the spec's own now-deleted transitional sentence and flag this rendered claim as known-false; that comment is rewritten to state §5.1's real decision instead, so it carries no more deferral-vocabulary hit of its own. The rendered claim is **true for the privacy link** (`Link` `standalone`, real hover/focus-visible/active classes, `PrivacyNoticeLinkHover`/`FocusVisible`/`Active`) and **still false for the button's hover** (F2, `secondary\|lg`) — unaffected by this task.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `DataExportPanel`         | `:126` "owned by the `Button`s, the `DownloadLink`… the sections" (comment, quoting the spec) and `:150-151` "its hover, focus-visible and press are all real, but the frames that prove them are `ReplayAvailabilityList`'s and `UploadControl`'s own" (rendered text) — **corrected 2026-09-19 (T595)**: the pair used to read "already covered by `Button.stories.tsx`'s per-variant stories," true for the ownership fact and false for the story named — `RequestButton` is `secondary\|lg` (`index.tsx:118-119,215`), and `Button.stories.tsx`'s own per-variant stories force `md`, never `lg`, the same shape F20 found in `AccountErasurePanel` and this audit found in `MatchDetailPanel`. The generated `secondary\|lg` row's own hover, focus-visible and press cells all read `ReplayAvailabilityList`/`UploadControl`, never `Button.stories.tsx`'s own — the rewritten text now states exactly that.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| `Dialog`                  | `:205` "malformed call site, and hover, active and disabled all belong to the `Button`s inside it" (comment) and `:213` "Hover, active and disabled all belong to the `Button`s inside it" (rendered text) — **true as a blanket statement**: this specific story renders no actions at all (a malformed-call-site demonstration), so there is no variant/size this claim can be falsified against; `Dialog`'s real actions are covered per F3/F20 above, a different story's own claim. (Line numbers moved from `:130`/`:138` to `:169`/`:177` when T600 appended `Hover`/`Active` above this story in the same file, to `:187`/`:195` when row 8's own debt-closure remediation (2026-09-23) corrected the comment above `PRIMARY_ACTION_CLIP`, to `:183`/`:191` when that same comment was cut to remove unverifiable claims, to `:186`/`:194` when T675's own Hover-signal comment above `PRIMARY_ACTION_CLIP` grew by three lines, to `:188`/`:196` when T675's own clip work moved `PRIMARY_ACTION_CLIP`'s declaration earlier in the file and clipped `FocusVisible`/`KeyboardFocusOrderAndTrap` too, to `:192`/`:200` when that clip work was restructured once more to keep the `visual-equivalence` marker directly attached to `FocusVisible`'s export with no blank line or intervening statement between them, to `:204`/`:212` when slice 4b gave `Hover` its own tighter, dedicated clip constant, then to `:205`/`:213` when that constant's own target narrowed once more, from the button to its label, still immediately above this story in the same file.) |
+| `Dialog`                  | `:207` "malformed call site, and hover, active and disabled all belong to the `Button`s inside it" (comment) and `:215` "Hover, active and disabled all belong to the `Button`s inside it" (rendered text) — **true as a blanket statement**: this specific story renders no actions at all (a malformed-call-site demonstration), so there is no variant/size this claim can be falsified against; `Dialog`'s real actions are covered per F3/F20 above, a different story's own claim. (Line numbers moved from `:130`/`:138` to `:169`/`:177` when T600 appended `Hover`/`Active` above this story in the same file, to `:187`/`:195` when row 8's own debt-closure remediation (2026-09-23) corrected the comment above `PRIMARY_ACTION_CLIP`, to `:183`/`:191` when that same comment was cut to remove unverifiable claims, to `:186`/`:194` when T675's own Hover-signal comment above `PRIMARY_ACTION_CLIP` grew by three lines, to `:188`/`:196` when T675's own clip work moved `PRIMARY_ACTION_CLIP`'s declaration earlier in the file and clipped `FocusVisible`/`KeyboardFocusOrderAndTrap` too, to `:192`/`:200` when that clip work was restructured once more to keep the `visual-equivalence` marker directly attached to `FocusVisible`'s export with no blank line or intervening statement between them, to `:204`/`:212` when slice 4b gave `Hover` its own tighter, dedicated clip constant, then to `:205`/`:213` when that constant's own target narrowed once more, from the button to its label, still immediately above this story in the same file.) |
 | `Section`                 | `:124` "the components inside it carry their own" (comment, quoting `structural-tier.md` §6) and `:130` "The components inside it carry their own." (rendered text) — target: none, the same no-fixed-owner shape N2 already files — **true as a blanket statement**: `Section` renders no local interactive element of its own (generated Record 1: no entry) and this story's own illustrative render composes no child to falsify the claim against, the same reason `Dialog`'s blanket claim above is true.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `Callout`                 | `:104` "hover / active — none; the root is not interactive. Actions inside it have their own." (comment, quoting the spec, reused from N4/8c's own `shared-primitives.md:285-286`) and `:110` "carry their own hover and active states." (rendered text) — this story's own render composes `<Button variant="primary">Try again</Button>` at `:115`, no `size` given, so `primary\|md` (the primitive's own default) — **false for both hover and active**: the generated `Button` matrix's own `primary\|md` row reads `hover: none`, `active: none` (F14's own subject) — a third component whose story-level text repeats a claim F14 already shows false, added there rather than filed as a separate finding.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `Text`                    | `:134` "none of its own. `Text` is not focusable" (comment, quoting `structural-tier.md` §8, reused from N3/8c's own `:552`) and `:142-143` "that ring belongs to the caller, not to this component." (rendered text) — target: none, the same no-fixed-owner shape N3 already files — **true as a blanket statement**: this story renders `<Text role="display">Recent matches</Text>` with no `tabIndex` at all, so there is no focused instance here to falsify the claim against, the same reason `Section`'s and `Dialog`'s blanket claims above are true.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
@@ -2732,7 +2833,7 @@ checker can verify it the same way it verifies 8c's own table.
 **Excluded — grep hits outside this list, named rather than left silent, none of them a
 hover/focus-visible/active deferral (Record 1's own tracked axes):** `PlayerResultRow.stories.tsx:75-76`
 ("Those states belong to `SearchBox`'s own `ResultsRegion`") is a disabled/loading/error/empty
-provenance note; `Badge.stories.tsx:125-126` ("a failure belongs to whatever produced the state it names, never to the badge.") and `PrivacyNotice.stories.tsx:340-341` ("A failure belongs to the route a link leads to, never to the sentence stating the right.") are both about the `error`/
+provenance note; `Badge.stories.tsx:125-126` ("a failure belongs to whatever produced the state it names, never to the badge.") and `PrivacyNotice.stories.tsx:314-315` ("A failure belongs to the route a link leads to, never to the sentence stating the right.") are both about the `error`/
 `disabled` vocabulary entry, not hover/focus-visible/active; `SiteHeader.stories.tsx:230` ("that
 state belongs to `Menu`") is about the `expansion` vocabulary entry (`Menu`'s own disclosure state,
 not `SiteHeader`'s hover/focus/active); `ProfileSummary.stories.tsx:572` ("carries its own mark
@@ -2765,8 +2866,8 @@ itself surfaced these; none is a hover/focus-visible/active deferral).** `SiteHe
 ("owns internally) ever mounts") is about which component mounts/instantiates another (`SiteHeader`
 and the `ThemeProvider` it owns internally, `:104-105`), not which one paints a state.
 `Callout.stories.tsx:77` ("the same shape `Dialog`'s heading owns") is a cross-reference to a shared
-_pattern_, not a state handoff. `Menu.stories.tsx:356` ("already owns.") says which _story_ (this
-one's own preceding sentence: which `Selection` above already depicts, `:355-356`) is about the
+_pattern_, not a state handoff. `Menu.stories.tsx:358` ("already owns.") says which _story_ (this
+one's own preceding sentence: which `Selection` above already depicts, `:357-358`) is about the
 `selection`/`expansion` vocabulary entry, not which component paints hover/focus/active.
 `Page.stories.tsx:347` ("the between-sections rhythm `Page` owns") and `Section.stories.tsx:16`
 ("owns the space between the components inside it", the component's own Storybook description) and
@@ -3017,10 +3118,10 @@ again</Button>` its own `FocusVisible` story renders, once candidates are narrow
   `RealisticProfileHeader` renders `<FavouriteToggle size="lg" />` (`FavouriteToggle.stories.tsx:141`),
   never a `Button` directly — `FavouriteToggle` composes `Button` inside its own `index.tsx`, a
   file this story never touches, so the story produces no `Button` instance for the generator to see
-  at all. `ghost|unresolved`'s own `rest` bucket is populated by `FavouriteToggle`'s own source-level
+  at all. `ghost|unresolved`'s own `rest` bucket was populated by `FavouriteToggle`'s own source-level
   `Button` instances instead (`index.tsx:115,126,171`, real regardless of which story renders the
-  component), unrelated to this specific story; `ghost/lg` remains real only by reading, invisible to
-  Record 3 either way. `destructive/lg` has a real **rest** frame
+  component; T695 later removed that row, a call site with a dynamic axis opening none), unrelated to
+  this specific story; `ghost/lg` remains real only by reading, invisible to Record 3 either way. `destructive/lg` has a real **rest** frame
   (`AccountErasurePanel:218`) and a real **focus-visible** frame, now resolved directly: the
   generated `destructive|lg` row's own focus-visible cell reads `Dialog:FocusVisible` (F3) — but no
   hover or press frame anywhere, own or elsewhere, at `lg`. `secondary/lg` remains the one
@@ -3228,38 +3329,14 @@ in the file — fixed directly, not by resolving an argument) and `Menu`'s foote
 (`footerItem: { label: 'Link another Steam account' }`, a nested-object arg, the sole candidate for
 `role: 'menuitem'` once `Menu`'s own item — a genuinely dynamic `role={…}` — is correctly excluded
 from that role's candidate pool rather than wrongly pooled under its tag's intrinsic role). Two
-`axisKey` labels still read `unresolved` in their own row key (`ghost|unresolved`,
-`unresolved|lg` in the generated `Button` matrix) — real call sites whose `size`/`variant`
-genuinely pass through a dynamic prop no story's own literal args resolve, never a coverage gap in
-themselves. **Corrected in this pass (T594's REJECT on #80, item 2): the closing clause here used
-to claim that none of either row's own occurrences carries a force-state to resolve against at
-all — false of both.** `FavouriteToggle`'s real button (`index.tsx:126`, the one non-hidden `ghost`
-`Button`) is exactly the candidate `FavouriteToggle:Hover`/`FocusVisible`/`Active` resolve against
-(F13); `Dialog`'s own two `Button` instances (`index.tsx:127`, `:138`) are exactly what
-`Dialog:FocusVisible` resolves against (F3). Both rows' own occurrences do carry a force-state; what
-stays genuinely unresolved is the _row itself_ — a JSX candidate's own static axis (dynamic
-`size`/`variant`, no literal to key a shared row on) and the axis its own force-state resolves to
-_per story_ disagree, so the same source line's own `rest` entry and its own resolved state used to
-land on two different rows, the second confirming `none` on the first over a comparison that
-actually found a match. `buildAxisMatrix` used to point each of these rows' own state cells at
-wherever that resolution actually landed instead (`unresolved: axis resolved only per story (→
-ghost|md)`, `(→ destructive|lg)`), rather than leaving them read a `none` the pass never actually
-established. **Superseded 2026-09-19 (T595), twice in the same day.** The first correction read the
-target row's own cell directly and credited this row's cell with that same match rather than the
-pointer — a description already superseded by the second, an orchestrator finding on this same
-task's own hand-back: reading the target row's _whole_ cell rather than the specific label a story
-proved was correct only by accident (every target this description's own two rows reached happened
-to carry exactly one contributor), and `disabled` broke that accident immediately once the redirect
-was made to reach it at all — `unresolved|lg`'s own two call sites share `secondary|lg` with two
-wholly unrelated Button call sites in other components, and a whole-row read would have credited
-`unresolved|lg` with stories that prove nothing about either of `Dialog`'s own buttons. `cellFor`
-now credits the exact label `storyResolvedBySourceLine` proved for that line and state, never a row
-lookup, and that map is fed by `disabled`'s own confirmed matches too, not only the three states
-`composed-story` covers — `ghost|unresolved`'s hover/focus-visible/active/disabled and
-`unresolved|lg`'s focus-visible/disabled all read real story names today (the generated region
-above, cited there rather than restated here), and the pointer note itself is gone: fed exclusively
-by confirmed matches, the map never has a target with nothing to show. Row 8's own Method section
-states the current mechanism, both corrections, and the decision behind it in full.
+`axisKey` labels once read `unresolved` in their own row key (`ghost|unresolved`, `unresolved|lg` in
+the generated `Button` matrix) — real call sites whose `size`/`variant` pass through a dynamic prop no
+story's own literal args resolve, never a coverage gap in themselves. T595 credited those rows' state
+cells from the stories that resolved the axis (`FavouriteToggle:Hover`, `Dialog:FocusVisible` and so
+on); T694 deleted that resolution and T695 removed the two rows, so the generated region no longer
+carries either and the same stories are credited at the rows the browser renders them to (`ghost|md`,
+`destructive|lg`). Row 8's own Method section states the current rule (a call site whose axis the
+source cannot settle opens no row) and the decision behind it.
 `RealisticProfileHeader` itself — `FavouriteToggle`'s own `lg` story, carrying no `visualForceState`
 at all — is unrelated to this shape: it renders `<FavouriteToggle size="lg" />`, never a `<Button>`
 directly, so it produces no `Button` instance and is invisible to this matrix altogether (F14/F19
@@ -3460,9 +3537,9 @@ duplicates-debt.json` (that file's own discipline: a stale entry fails the run, 
   `PrimaryHoverMd`/`PrimaryActiveMd` close `primary|md`; `Dialog`'s own new `Hover`/`Active`
   (`primaryAction.variant ?? 'destructive'`, unset by every Dialog story here, so every one of them
   renders the same default `destructive|lg` `Hover`/`Active` already prove) give `destructive|lg` a
-  forcing story for both states — and, via the same per-story redirect this Method section's own
-  "Record 3's own axis-mismatch redirect" paragraph already describes, so does the pseudo-row
-  `unresolved|lg` these same two Dialog call sites file their own `rest` entries under. A forcing
+  forcing story for both states — and, when this was written, so did the pseudo-row `unresolved|lg`
+  these same two Dialog call sites filed their own `rest` entries under, through a per-story
+  redirect T694 deleted and T695's removal of that row superseded. A forcing
   story existing is what `state-coverage.mjs`'s "covered" means, not that the comparator defends
   either state — T675's register (below) records which one does. `ghost|lg` had no hover,
   focus-visible or press frame at all — `variantClasses.ghost`/`focusRing` (`index.tsx`) paint the
@@ -3605,36 +3682,13 @@ reason: Cause E — a real, substantive spec answer that simply is not the close
 R1 composites/SearchBox active input@packages/design-system/src/composites/SearchBox/index.tsx:129
 -->
 
-<!-- state-coverage-debt
-date: 2026-10-04
-fixBy: 2026-10-18
-owner: T695
-Cause F — a record-3 row keyed by an axis this pass could not read from source. `FavouriteToggle`'s
-three `Button` call sites (`ghost|unresolved`: a literal `variant="ghost"`, a `size` that is a prop
-the component forwards) and `Dialog`'s two (`unresolved|lg`: `primaryAction.variant ?? 'destructive'`)
-are rows because their `variant` or `size` is dynamic, so the row key says `unresolved`. These eight
-cells read `FavouriteToggle:Hover`, `Dialog:Active` and so on before T694, credited through a redirect
-from the call site's source line to the row the story's own `args` resolved the axis to, which T694
-deletes: the redirect read the call site's dynamic `variant` or `size` from the story's `args`. The browser's manifest records the instance that placed the
-forced element at its rendered row (`ghost|md`, `destructive|lg`), and those rows now carry the credit
-(`FavouriteToggle:Hover` and `Dialog:Hover` read on `ghost|md` and `destructive|lg`); it records no
-call site, so it cannot say that the `unresolved` row's call site is what the story depicted, and this
-pass will not claim it. Nothing is wrong with the frames — the cells are reopened, not the coverage
-lost. Closing them means either recording the call site in the manifest or resolving the dynamic axis
-at the call site, which is T695's work.
-R3 Button hover ghost|unresolved
-R3 Button focus-visible ghost|unresolved
-R3 Button active ghost|unresolved
-R3 Button disabled ghost|unresolved
-R3 Button hover unresolved|lg
-R3 Button focus-visible unresolved|lg
-R3 Button active unresolved|lg
-R3 Button disabled unresolved|lg
--->
-
 **Owner: T595 (Cause A closed 2026-09-21, T600 — 8i, above; Cause C closed 2026-09-21, T671 — 8j,
 above; Cause D closed 2026-09-21, T596 — 8g, above). All three of this row's own earlier `state-coverage-debt`
-entries are closed; one remains, filed 2026-10-04 by T694 (Cause F, above, `fixBy` 2026-10-18).** T596 gave `ArchivalControl`'s privacy link and `PrivacyNotice`'s
+entries are closed, and so is the one T694 filed on 2026-10-04 (Cause F: eight `Button` cells on
+the `ghost|unresolved` and `unresolved|lg` rows, closed by T695 on 2026-10-04 by removing the two rows
+rather than re-dating the entry — a call site whose axis the source cannot settle opens no row, and
+the instances it mounts are credited at the rows the manifest renders them to). No
+`state-coverage-debt` entry remains.** T596 gave `ArchivalControl`'s privacy link and `PrivacyNotice`'s
 contact-route link real `Link` instances (`standalone` and `inline`) with real
 hover/focus-visible/active classes, and each a clipped `Hover`/`FocusVisible`/`Active` story, so the
 Cause D `state-coverage-debt` entry is deleted rather than re-dated — the same closing discipline
