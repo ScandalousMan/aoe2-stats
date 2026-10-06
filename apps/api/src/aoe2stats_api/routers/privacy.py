@@ -566,10 +566,10 @@ async def _pseudonymise_profile_ids(db_session: AsyncSession, profile_ids: Seque
     the trace this exists to close.
 
     **T459e: row locks are taken in the global order, all of them before any write.** The order
-    is `matches`, `aoe_profiles` ascending by `profile_id`, `match_players` ascending by
-    `(game_id, profile_id)` (`discover.persist_matches_and_profiles`'s module notes); a row lock is
-    held to commit, so a writer that reaches an earlier table or a lower key after a later one can
-    wait on a discovery batch that waits on it. This function writes no `matches` row. It takes:
+    is the global one, defined in the module notes above `touch_aoe_profiles` in
+    `apps/ingester/src/aoe2stats_ingester/discover.py`; a row lock is held to commit, so a writer
+    that reaches an earlier table or a lower key after a later one can wait on a discovery batch
+    that waits on it. This function writes no `matches` row. It takes:
 
     1. every `aoe_profiles` key it writes or references — each original and each placeholder —
        one key at a time in ascending order across **all** of `profile_ids`, not per profile: a
