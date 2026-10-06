@@ -542,8 +542,8 @@ def _describe(exc: BaseException) -> tuple[str, str]:
     - Everything else that is an `Exception` - a parse failure, a refused document, a placement or
       serialisation error - is recorded verbatim, as 003's failure path always recorded it; an
       empty message is recorded as the class name, so a `failed` row never shows a blank reason.
-      Verbatim is not the same as written here: an `EngineParseError` quotes the engine's or the
-      archive library's own text, which is shown.
+      Verbatim is not the same as written here: an exception raised in this package can quote
+      text from the engine or a library it wraps, and that text is shown.
     """
     if isinstance(exc, _PublishRefused):
         return type(exc.cause).__name__, exc.step

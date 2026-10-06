@@ -121,8 +121,8 @@ identifier** needs decoding from `data`, which is what `decode_build_action` doe
 ## Amendment — 2026-10-05: pinned at 0.1.24
 
 The Evidence table above is a 2026-08-19 measurement and stays as it was: `aoe2rec-py` 0.1.21 read
-build 180059 in 0.54 s. It is no longer what is pinned. Game build 185872 made 0.1.21 panic, so
-the pin is now **0.1.24** (`packages/replay-engine/pyproject.toml` is the authority). 0.1.22 and
+build 180059 in 0.54 s. It is no longer what is pinned. 0.1.21 panics on match 511523321's recording
+(game build 185872), so the pin is now **0.1.24** (`packages/replay-engine/pyproject.toml` is the authority). 0.1.22 and
 later return `{"chapters": [chapter, ...]}` instead of one flat document, and the former `meta` block
 is the chapter's first operation, `Pregame`. The adapter reads exactly one chapter and refuses any
 other count; the two build-180059 recordings yield the same canonical streams as before, and a
