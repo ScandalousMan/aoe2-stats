@@ -765,15 +765,19 @@ class _LockRecorder:
     bound into it, an `IN` list read as a set). Only a `SELECT ... FOR UPDATE` of that shape whose
     `ORDER BY` is both key columns **and that ends at a plain `FOR UPDATE`** (not `SKIP LOCKED`,
     not `NO KEY UPDATE`, not `OF`) is one ordered lock; `violations` places its rows above every
-    key of its table. An `UPDATE` or `DELETE` of that shape is credited only when such a select
+    key of its table. That strength test applies to a partial-`IN` select only: a keyed statement
+    is ranked by its key, and its lock strength (`SKIP LOCKED`, `NO KEY UPDATE`, `KEY SHARE`, `OF`)
+    is not modelled. An `UPDATE` or `DELETE` of that shape is credited only when such a select
     earlier in the same transaction had the **same identity**, and is otherwise **unordered**. A
     partial lock whose identity differs from one this transaction already holds on the table is a
     violation: the recorder cannot tell that its rows come after the earlier ones.
 
     Credit lasts as long as the row locks it stands for. It ends with the transaction
     (`commit`, `rollback`), and a savepoint that rolls back takes with it the credit of every lock
-    taken inside it. Re-touches are deduplicated the same way: a statement with the identity of one
-    already held **in the same transaction, outside a rolled-back savepoint**, is a re-touch.
+    taken inside it, **unless that savepoint is nested inside another that also rolls back**: that
+    shape is refused with an `AssertionError`, not modelled. Re-touches are deduplicated the same
+    way: a statement with the identity of one already held **in the same transaction, outside a
+    rolled-back savepoint**, is a re-touch.
     Tables outside the four (`provider_calls`, `rating_snapshots`) are never ranked.
     """
 
@@ -842,6 +846,7 @@ class _LockRecorder:
             if stack[index][0] == name:
                 del stack[index:]
                 return
+        raise AssertionError(f"a release of a savepoint the recorder never saw begin: {name}")
 
     def _savepoint_rolled_back(self, conn: Any, name: str, *_: Any) -> None:
         """`ROLLBACK TO SAVEPOINT` releases every row lock taken since it began: the credit goes
@@ -857,6 +862,10 @@ class _LockRecorder:
             del stack[index:]
             driver._lock_recorder_ordered = ordered
             locks = self.by_connection.get(getattr(driver, "_lock_recorder_id", 0), [])
+            assert not any(lock.released for lock in locks[recorded:]), (
+                "a savepoint rolled back inside another savepoint that rolls back is not modelled: "
+                f"{name} releases locks an inner savepoint already released"
+            )
             group = next(self._ids)
             locks[recorded:] = [replace(lock, released=group) for lock in locks[recorded:]]
             return
@@ -1111,7 +1120,8 @@ class _LockRecorder:
         the same transaction, every row first locked by an unordered statement, and every partial
         `IN` lock over a table this transaction already holds a partial lock on with a different
         identity. What a transaction holds is what it locked **since it began**, minus whatever a
-        savepoint that rolled back had taken: a row locked earlier in the same transaction, outside
+        savepoint that rolled back had taken (a savepoint nested inside another that rolls back is
+        refused, not modelled): a row locked earlier in the same transaction, outside
         such a savepoint, is a re-touch and not an acquisition, and so is a partial `IN` statement
         with an identity already held; nothing carries across a commit or a rollback.
 
@@ -1119,8 +1129,11 @@ class _LockRecorder:
         as a lock below every key of its table — any lock this transaction holds on that table, or
         on a higher-ranked one, makes it a violation — and **held** as a lock above every key of
         it — any later keyed lock on that table is a violation, and a later lock on a higher-ranked
-        table is not. What a savepoint that rolled back took is checked as it was taken, in order,
-        and then forgotten, so the locks after it are compared with what was held before it."""
+        table is not. Only a partial-`IN` select is credited as ordered solely at a plain trailing
+        `FOR UPDATE`; a keyed statement is ranked by its key and its lock strength is not modelled.
+        What a savepoint that rolled back took is checked as it was taken, in order, and then
+        forgotten when it is not nested inside another savepoint that rolls back, so the locks
+        after it are compared with what was held before it."""
         problems: list[str] = []
         for connection, locks in self.by_connection.items():
             state = _OrderState()
@@ -2372,6 +2385,40 @@ async def test_recorder_still_checks_what_a_savepoint_did_while_it_was_alive(
             await savepoint.rollback()
             await connection.rollback()
     assert recorder.violations(), recorder.sequence()
+
+
+async def test_recorder_refuses_a_savepoint_rolled_back_inside_another_that_rolls_back(
+    engine: AsyncEngine,
+    clean_database: None,
+) -> None:
+    """The inner savepoint's lock would be replayed with the outer one and never forgotten, so a
+    step back after it would read as a re-touch: the shape is refused, not modelled. The contrasts
+    (one rolled-back savepoint; an inner one released, then the outer rolled back) are unchanged."""
+    with _LockRecorder(engine):
+        async with engine.connect() as connection:
+            outer = await connection.begin_nested()
+            inner = await connection.begin_nested()
+            await connection.execute(_lock_capture(1, _BRAVO))
+            await inner.rollback()
+            await connection.execute(_lock_capture(2, _BRAVO))
+            await connection.execute(_lock_capture(1, _BRAVO))
+            with pytest.raises(AssertionError, match="not modelled"):
+                await outer.rollback()
+            await connection.rollback()
+    for single in (False, True):
+        with _LockRecorder(engine) as recorder:
+            async with engine.connect() as connection:
+                outer = await connection.begin_nested()
+                if single:
+                    await connection.execute(_lock_capture(1, _BRAVO))
+                    await outer.rollback()
+                else:
+                    inner = await connection.begin_nested()
+                    await connection.execute(_lock_capture(1, _BRAVO))
+                    await inner.commit()
+                    await outer.rollback()
+                await connection.rollback()
+        assert not recorder.violations(), recorder.sequence()
 
 
 @pytest.mark.parametrize("strength", ["skip_locked", "key_share"])
