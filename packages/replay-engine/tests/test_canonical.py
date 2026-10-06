@@ -46,8 +46,10 @@ _FIXTURE_MAX_RAW_BYTES = 50_000_000
 
 _Parsed = Mapping[str, object]
 
-# Both committed recordings are on this build (tests/fixtures/replays/README.md).
+# The first two committed recordings are on this build; the third is on `_BUILD_BY_RECORDING`'s
+# (tests/fixtures/replays/README.md).
 _FIXTURE_BUILD = 180059
+_BUILD_BY_RECORDING = {"AgeIIDE_Replay_511523321": 185872}
 
 
 def _parse(path: Path) -> _Parsed:
@@ -97,7 +99,7 @@ def test_the_committed_recordings_are_found() -> None:
 
 
 def test_the_first_event_of_every_stream_is_match_started(
-    parsed: _Parsed, canonical_stream: list[CanonicalEvent]
+    parsed: _Parsed, canonical_stream: list[CanonicalEvent], recording_path: Path
 ) -> None:
     """T629a: `match-started` comes from the header and corresponds to no operation (it is
     excluded from the conservation equation by name, not by a widened tolerance — see
@@ -118,7 +120,7 @@ def test_the_first_event_of_every_stream_is_match_started(
     assert first.participant is None
     assert isinstance(first.payload, MatchStartedPayload)
     assert {(p.slot, p.civilisation) for p in first.payload.participants} == seated
-    assert first.payload.build == _FIXTURE_BUILD
+    assert first.payload.build == _BUILD_BY_RECORDING.get(recording_path.stem, _FIXTURE_BUILD)
 
 
 #: The DE lobby's own "no team" sentinel (`resolved_team_id`) — see `canonical.py`'s own
@@ -536,8 +538,8 @@ def test_placement_decodes_position_and_building_from_the_raw_bytes() -> None:
 
 
 def test_conservation_every_operation_is_an_event_or_a_counted_category(parsed: _Parsed) -> None:
-    """events + syncs + viewlocks + collapsed + after_exit + unseated + unknown_operation ==
-    operations.
+    """events + syncs + viewlocks + pregames + collapsed + after_exit + unseated +
+    unknown_operation == operations.
 
     The two left-hand counts the wheel reports come from the raw operation list; the rest come from
     the generator's own `Accounting`, so a new way to lose an operation has to be named to pass.
@@ -557,14 +559,17 @@ def test_conservation_every_operation_is_an_event_or_a_counted_category(parsed: 
     operations = _operations(parsed)
     syncs = sum(1 for op in operations if "Sync" in op)
     viewlocks = sum(1 for op in operations if "Viewlock" in op)
+    pregames = sum(1 for op in operations if "Pregame" in op)
 
     assert match_started == 1
+    assert pregames == 1
     assert accounting.unknown_operation == 0
     assert (
         len(events)
         - match_started
         + syncs
         + viewlocks
+        + pregames
         + accounting.collapsed
         + accounting.after_exit
         + accounting.unseated
@@ -742,12 +747,18 @@ _GOLDEN_MARKET: Mapping[str, Mapping[tuple[str, str, int], int]] = {
         ("sell", "wood", 1): 74,
         ("sell", "wood", 5): 14,
     },
+    "AgeIIDE_Replay_511523321": {
+        ("buy", "stone", 1): 3,
+        ("sell", "food", 1): 5,
+        ("sell", "wood", 1): 4,
+    },
 }
 # Deletion golden: (count, sum of the object ids) — the ids themselves are checked one by one
 # against the raw bytes below; the sum pins the whole list so a shifted field cannot match.
 _GOLDEN_DELETES: Mapping[str, tuple[int, int]] = {
     "AgeIIDE_Replay_500546441": (43, 273252),
     "AgeIIDE_Replay_504695319": (16, 348476),
+    "AgeIIDE_Replay_511523321": (23, 131164),
 }
 
 
@@ -820,7 +831,7 @@ def test_a_market_object_that_is_deleted_is_deleted_after_its_last_transaction(
     for market, when in hits.items():
         assert when > last[market]
     # Recording-level evidence: recordings that show the pairing show it every time it can occur.
-    assert hits or named[0] == "AgeIIDE_Replay_504695319"
+    assert hits or named[0] in {"AgeIIDE_Replay_504695319", "AgeIIDE_Replay_511523321"}
 
 
 def test_every_deletion_is_decoded_exactly_and_matches_the_golden(
@@ -1019,7 +1030,9 @@ def test_no_chat_text_reaches_any_event_or_log_line_of_either_recording(
     assert caplog.records == []
     chats = [e for e in events if e.kind is EventKind.CHAT]
     assert chats
-    assert all(cast(ChatPayload, e.payload).channel == "0" for e in chats)
+    # The channel is the game's integer as a decimal string: the first two recordings only show
+    # channel 0, the third (build 185872) has one message on channel 1.
+    assert all(cast(ChatPayload, e.payload).channel in {"0", "1"} for e in chats)
 
 
 def test_no_chat_text_reaches_an_event_or_a_log_line_on_a_planted_message(

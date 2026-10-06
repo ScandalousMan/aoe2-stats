@@ -31,10 +31,11 @@ invented participant.
 No silent drop (FR-019) and the accounting
 ------------------------------------------
 Every operation is exactly one of: a `Sync` (consumed for the clock), a `Viewlock` (a camera
-position, no intent), an operation that yields one event, or an operation deliberately dropped for
+position, no intent), the `Pregame` that opens a chapter (the recording's framing, no intent; T672),
+an operation that yields one event, or an operation deliberately dropped for
 one of four named reasons. `Accounting` counts each reason as it happens, so that
 
-    events + syncs + viewlocks + collapsed + after_exit + unseated + unknown_operation
+    events + syncs + viewlocks + pregames + collapsed + after_exit + unseated + unknown_operation
         == operations
 
 is an equation a test can check rather than an assurance:
@@ -58,8 +59,9 @@ cannot be avoided on the way to the other two, so it is parsed and then discarde
 to no name that outlives `_decode_chat`, appears in no event, no exception message and no log line
 (this module logs nothing). A string that is not the expected JSON object is counted as
 `unseated` (it names no seated participant, and `undecoded` requires one), never quoted. The
-channel is the game's integer, carried as its decimal string; the recordings only ever show
-channel 0 and the names of the others cannot be established from them, so none is invented.
+channel is the game's integer, carried as its decimal string; the first two recordings only show
+channel 0, the third (build 185872) carries one message on channel 1, and the names of the channels
+cannot be established from them, so none is invented.
 
 Every action the adapter does not decode is emitted as `undecoded`, carrying the engine's own label
 (for a `Game` command, the wheel's name for the inner command) and the payload length the wheel
@@ -524,6 +526,16 @@ def canonical_events(
         if kind == "Sync":
             clock += cast(int, body["time_increment"])
         elif kind == "Viewlock":
+            continue
+        elif kind == "Pregame":
+            # The 0.1.22+ wheel's old `meta` block, as the chapter's first operation (T672). It
+            # produces no event, deliberately: its only content that matters is `rec_owner`, the
+            # point of view of the recording, which is read by `aoe2rec._build_timeline` for the
+            # timeline and which no canonical event carries; the other fields are engine framing
+            # (checksum interval, multiplayer, sequence numbers), not intent. Emitting an event
+            # would also move every committed canonical golden, which the upgrade must not do.
+            # Like `Viewlock` it is known and consumed, not a drop reason, so it is not an
+            # `unknown_operation`.
             continue
         elif kind == "PostGame":
             yield _match_ended(clock, body)

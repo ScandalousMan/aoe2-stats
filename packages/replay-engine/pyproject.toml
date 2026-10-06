@@ -13,7 +13,7 @@ requires-python = ">=3.13,<3.14"
 dependencies = [
   "aoe2stats-core",
   "aoe2stats-knowledge",
-  "aoe2rec-py==0.1.21",
+  "aoe2rec-py==0.1.24",
   "packaging",
 ]
 

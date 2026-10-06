@@ -79,6 +79,7 @@ checksum to precede.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
@@ -108,7 +109,6 @@ from aoe2stats_analyzer.retain import (
 )
 from aoe2stats_analyzer.staleness import is_stale
 from aoe2stats_core.replay.analysis import AnalysisExtractor
-from aoe2stats_core.replay.validation import ReplayValidationError
 from aoe2stats_providers.base import NotFound, ReplayProvider
 from aoe2stats_storage.models import (
     Match,
@@ -517,8 +517,15 @@ async def _publish(
         await object_store.put_if_absent(result_key, payload, content_type="application/json")
 
 
-def _describe(exc: Exception) -> tuple[str, str]:
+def _describe(exc: BaseException) -> tuple[str, str]:
     """The class and message a refused analysis is recorded and logged under.
+
+    `exc` is a `BaseException`, not an `Exception`, because a native engine panic
+    (`pyo3_runtime.PanicException`) inherits `BaseException` directly and reaches here through
+    `_extract_and_publish`'s barrier. The class recorded is always the real one
+    (`type(exc).__name__`, e.g. `PanicException`), never a stand-in; an empty message - a panic
+    raised without text - is recorded as the class name, so a `failed` row never shows a blank
+    reason.
 
     A message is shown to the person who asked (`routers/matches.py` prints a `failed` row's
     `error_message` verbatim), so the ones that describe this deployment's internals are replaced by
@@ -531,7 +538,7 @@ def _describe(exc: Exception) -> tuple[str, str]:
         return type(exc.cause).__name__, exc.step
     if isinstance(exc, SnapshotError):
         return type(exc).__name__, "the knowledge snapshot for this recording could not be loaded"
-    return type(exc).__name__, str(exc)
+    return type(exc).__name__, str(exc) or type(exc).__name__
 
 
 #: What computing a would-be digest may raise without that being a defect: a value error from the
@@ -608,7 +615,7 @@ async def _refuse(
     game_id: int,
     object_key: str,
     zip_sha256: str,
-    exc: Exception,
+    exc: BaseException,
     now: datetime,
     keep_prior: bool,
     retry_after: timedelta,
@@ -673,6 +680,22 @@ async def _extract_and_publish(
     from the source a second time - spending the source budget capture depends on (constitution I).
     A transient error (the object store, a lost connection) is still left to propagate: it says
     nothing about this recording.
+
+    **The barrier (T671) sits around building, validating and serialising the document, and
+    nowhere else.** That block is synchronous, writes nothing, and calls no network service, database
+    or object store; the one thing it reads is the knowledge snapshot packaged with the deployment
+    (`snapshot_for`), which `verify_deployment` checks before the claim. Whatever leaves it is
+    therefore about this recording, this code or this deployment, not a remote service. It therefore
+    contains a `BaseException`, as `aoe2stats_ingester.capture._validate_with_barrier` does on the
+    capture path: the native engine's panic (`pyo3_runtime.PanicException`) inherits
+    `BaseException` directly, so the `ValueError` clause never saw it, and it ended the request as
+    a 500 with the row left `running` (production, 2026-10-05, game build 185872). A panic takes
+    the same `_refuse` as any other refused document: `failed` with its class and message on a
+    first analysis, the prior analysis kept on a recompute. Not contained:
+    `asyncio.CancelledError`, `KeyboardInterrupt`, `SystemExit` and `GeneratorExit` are re-raised,
+    because a cancelled request or a shutdown is not a verdict on the recording (the capture path's
+    T055a lesson). `_publish` and the reads before this function are outside it, so a transient
+    failure there propagates as before.
     """
     try:
         document = build_document(
@@ -687,7 +710,18 @@ async def _extract_and_publish(
         # FR-041, T659: exactly the canonical bytes, so a reproduction compares against what was
         # stored. Serialised before anything is written: the serialiser can refuse.
         payload = canonical_bytes(document)
-    except (ReplayValidationError, ValueError) as exc:
+    except (asyncio.CancelledError, KeyboardInterrupt, SystemExit, GeneratorExit):
+        # Clause order is the fix (T671; capture.py's T055a) and must not change. These four
+        # inherit `BaseException` directly, exactly as a native engine panic does, so the
+        # `BaseException` clause below would catch them too. They are listed first and re-raised so
+        # that a cancelled request or a shutdown leaves the row as the claim left it instead of
+        # being written down as a failed analysis; moving the catch-all above this clause silently
+        # undoes that.
+        raise
+    except BaseException as exc:
+        # The barrier proper: `ReplayValidationError` and `ValueError` as before, and a native
+        # engine panic (a `BaseException`, see the docstring).
+        #
         # A refused document caused by a *code* defect (a builder that places a datum where its
         # tier forbids, a serialiser refusal, a snapshot fault only this recording's build can
         # reach) cannot be checked in advance, so it stays on 003's failure path: a first analysis

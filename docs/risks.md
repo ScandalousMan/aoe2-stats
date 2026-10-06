@@ -23,6 +23,10 @@ cannot be recreated by anyone, at any price.
 - **2026-08-19 — R3.** Confirmed by measurement before a line of parser code was written. `aoc-mgz`
   1.8.51 cannot read a current-patch replay; `aoe2rec-py` 0.1.21 reads it in 0.54 s. Resolved by
   ADR 0001. Severity downgraded from High to Medium.
+- **2026-10-05 — R3.** Game build 185872 broke the pinned parser: `aoe2rec-py` 0.1.21 panics on
+  fourteen of fifteen recordings sampled between 2026-09-27 and 2026-10-05, so analysis answered 500
+  and captures ended `quarantined` with their object kept. Fixed by pinning 0.1.24 (feature 006,
+  Phase 7); `docs/adr/0001-replay-parser.md` carries the amendment.
 - **2026-08-19 — R4.** `aoe-api.reliclink.com` now serves a certificate for `*.worldsedgelink.com`,
   so every community document naming that host is stale. Recorded before it could cost anything.
 - **2026-08-19 — R4.** aoe2companion returned 403 from CI while the identical request succeeded from

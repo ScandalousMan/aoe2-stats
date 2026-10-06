@@ -12,7 +12,7 @@ is_rejected` (plus the inner-content truncation already covered by
 rejected`, and `test_not_a_zip_is_rejected` respectively.
 
 The bottom of the file covers `decode_build_action` (T354, not yet implemented — see the
-`xfail(strict=True)` markers). Measured directly against the pinned wheel (`aoe2rec-py==0.1.21`,
+`xfail(strict=True)` markers). Measured directly against the pinned wheel (`aoe2rec-py==0.1.24`,
 the exact version this package depends on) rather than taken on trust from the docs: R4 and
 ADR-0001's 2026-08-24 correction both say the wheel hands `Build` back with "no `player_id` field
 at all". That is not what this wheel returns — `test_the_pinned_wheel_already_returns_a_player_id_
@@ -110,21 +110,19 @@ def test_a_zip_bomb_ratio_is_rejected(validator: Aoe2RecValidator) -> None:
         validator.validate(zip_bytes)
 
 
-def test_an_engine_crash_on_malformed_content_is_not_caught_by_the_adapter(
+def test_garbage_the_engine_opens_as_no_chapters_is_rejected(
     validator: Aoe2RecValidator,
 ) -> None:
-    # Well-formed archive, garbage inner content. `aoe2rec-py`'s bridge panics on malformed input
-    # (`pyo3_runtime.PanicException`, a bare BaseException) rather than raising an Exception — this
-    # is exactly the crash the ingester's containment barrier (T055) exists to catch, so the
-    # adapter must not turn it into `EngineParseError` or swallow it in any other way.
+    # Well-formed archive, garbage inner content. Before 0.1.22 the engine panicked on this
+    # (`pyo3_runtime.PanicException`); since then it returns `{"chapters": []}` without raising
+    # (T672), so "parse_rec did not raise" is no longer evidence of a recording and the validator
+    # itself must refuse an empty chapter list — otherwise capture would store garbage as valid.
+    # The engine's own panic is still left uncaught for the ingester's barrier (T055): see
+    # `test_a_truncated_reference_replay_still_reaches_the_engine_uncaught`.
     zip_bytes = _zip_bytes({"AgeIIDE_Replay_1.aoe2record": b"not a real replay" * 20})
 
-    with pytest.raises(BaseException) as excinfo:
+    with pytest.raises(EngineParseError, match="no recording chapter"):
         validator.validate(zip_bytes)
-
-    assert not isinstance(excinfo.value, Exception)
-    assert not isinstance(excinfo.value, EngineParseError)
-    assert not isinstance(excinfo.value, MalformedArchiveError)
 
 
 def test_a_truncated_reference_replay_still_reaches_the_engine_uncaught(
@@ -269,10 +267,10 @@ def _reference_build_actions() -> list[dict[str, object]]:
     with zipfile.ZipFile(io.BytesIO(zip_bytes)) as archive:
         inner_name = archive.namelist()[0]
         inner_bytes = archive.read(inner_name)
-    parsed = _native.parse_rec(inner_bytes)
+    (chapter,) = _native.parse_rec(inner_bytes)["chapters"]
     return [
         operation["Action"]["action_data"]["Build"]
-        for operation in parsed["operations"]
+        for operation in chapter["operations"]
         if "Action" in operation and "Build" in operation["Action"]["action_data"]
     ]
 
@@ -283,7 +281,7 @@ def test_the_reference_replay_has_326_build_actions() -> None:
 
 
 def test_the_pinned_wheel_already_returns_a_player_id_for_build_actions() -> None:
-    """Pins a fact about the pinned dependency (`aoe2rec-py==0.1.21`) that contradicts R4 and
+    """Pins a fact about the pinned dependency (`aoe2rec-py==0.1.24`) that contradicts R4 and
     ADR-0001's 2026-08-24 correction, both of which say `Build` comes back as
     `{"action_length": 36, "data": [...]}` with no `player_id` field at all. Measured directly
     against this package's own pinned version: every `Build` action already carries a top-level

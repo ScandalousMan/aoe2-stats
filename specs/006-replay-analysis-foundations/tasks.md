@@ -1574,7 +1574,7 @@ parse match 511523321 but changed the shape of what they return. Capture is not 
 is committed before validation, so the same recordings end `quarantined` with their object kept.
 T671 and T672 ship together; T673 follows once T672 is deployed.
 
-- [ ] T671 Contain a native engine panic on the analysis path, as `apps/ingester/src/
+- [x] T671 Contain a native engine panic on the analysis path, as `apps/ingester/src/
       aoe2stats_ingester/capture.py`'s `_validate_with_barrier` does on the capture path. A
       `BaseException` raised while the extractor builds the document ends a first analysis `failed`
       with its class and message recorded, and keeps the prior analysis on a recompute, through the
@@ -1582,7 +1582,7 @@ T671 and T672 ship together; T673 follows once T672 is deployed.
       propagate. Test first against a stand-in `BaseException` subclass, as `apps/ingester/tests/
       test_quarantine.py` does, and show the test failing on the current tree: the request must
       not raise, the row must not stay `running`, and the source must be fetched once
-- [ ] T672 Upgrade `aoe2rec-py` to 0.1.24 and adapt `packages/replay-engine/`: the parse result is
+- [x] T672 Upgrade `aoe2rec-py` to 0.1.24 and adapt `packages/replay-engine/`: the parse result is
       now a list of chapters, each carrying `zheader` and `operations`, and the former `meta` block
       is the first operation, of kind `Pregame`. Read the single chapter, take the recording owner
       from `Pregame`, and treat `Pregame` as a known kind in the canonical stream rather than an

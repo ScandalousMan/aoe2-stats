@@ -46,8 +46,8 @@ def _recorded_checksum(archive_name: str) -> str | None:
 def _post_game_operations(archive: Path) -> list[dict[str, Any]]:
     with zipfile.ZipFile(archive) as zf:
         inner = zf.read(zf.namelist()[0])
-    parsed = _native.parse_rec(inner)
-    return [op["PostGame"] for op in parsed["operations"] if "PostGame" in op]
+    (chapter,) = _native.parse_rec(inner)["chapters"]
+    return [op["PostGame"] for op in chapter["operations"] if "PostGame" in op]
 
 
 @pytest.fixture(scope="module")
