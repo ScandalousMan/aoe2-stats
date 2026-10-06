@@ -4490,7 +4490,10 @@ const DS_DIR = path.resolve(REPO_SRC_DIR, '..')
 const STAMP_ROOT = 'packages/design-system/src/'
 // The widths every story is captured and recorded at: one source, `scripts/visual/review-widths.mjs`.
 const WIDTHS = REVIEW_WIDTHS.map(String)
-const atEveryWidth = (record) => Object.fromEntries(WIDTHS.map((w) => [w, record]))
+// A record is what the browser wrote at one width: the capture frame (T703: `clip` and `fullPage`, no
+// clip and not full-page unless a test says otherwise) and what mounted. A test overrides either.
+const FRAME = { clip: false, fullPage: false }
+const atEveryWidth = (record) => Object.fromEntries(WIDTHS.map((w) => [w, { ...FRAME, ...record }]))
 const placedInstance = (component, variant, size, disabledAt = []) => ({
   component,
   variant,
@@ -4561,7 +4564,7 @@ test('resolveRuntimeForce: two matches are refused as strict-mode ambiguity, wit
 })
 
 test('resolveRuntimeForce: a stamp that differs across widths is refused, naming each width and its stamp', () => {
-  const stampAt = (stamp) => ({ mounts: [], force: { count: 1, stamp, placedBy: null } })
+  const stampAt = (stamp) => ({ ...FRAME, mounts: [], force: { count: 1, stamp, placedBy: null } })
   const verdict = resolveRuntimeForce(
     {
       widths: {
@@ -4578,6 +4581,7 @@ test('resolveRuntimeForce: a stamp that differs across widths is refused, naming
 
 test('resolveRuntimeForce: a placing instance that differs across widths is refused', () => {
   const at = (variant) => ({
+    ...FRAME,
     mounts: [],
     force: {
       count: 1,
@@ -5780,74 +5784,64 @@ const CLIP = `{ parts: [{ role: 'checkbox' }] }`
 const disabledMount = placedInstance('Button', 'secondary', 'md', [MINI_BUTTON_STAMP])
 
 test('B2 plant: a clipped own-story mounting a disabled Button credits neither Disabled nor Rest; contrast: the same story unclipped credits both', () => {
-  const run = (parameters) =>
-    miniRun(`export const ZzClip = { args: { disabled: true }${parameters} }\n`, {
-      'zz-clip': miniEntry('ZzClip', miniRecord([disabledMount])),
+  // The clip is the record's (T703): the source says nothing of it.
+  const run = (clip) =>
+    miniRun(`export const ZzClip = { args: { disabled: true } }\n`, {
+      'zz-clip': miniEntry('ZzClip', { ...miniRecord([disabledMount]), clip }),
     })
-  assert.deepEqual(creditsOf(run(`, parameters: { visualCaptureClip: ${CLIP} }`), 'ZzClip'), [])
-  assert.deepEqual(creditsOf(run(''), 'ZzClip'), [
+  assert.deepEqual(creditsOf(run(true), 'ZzClip'), [])
+  assert.deepEqual(creditsOf(run(false), 'ZzClip'), [
     'Button|secondary|md|disabled',
     'Button|secondary|md|rest',
   ])
 })
 
 test('B2 plant: a clipped story composing a disabled Button (AccountErasurePanel:AcknowledgementCheckboxFocusVisible’s shape) credits no Disabled cell; contrast: unclipped credits it', () => {
-  const story = (parameters) =>
-    `export const ZzComposed = { render: () => <Button disabled>Go</Button>${parameters} }\n`
-  const run = (parameters) =>
+  const run = (clip) =>
     cardRun({
-      stories: story(parameters),
-      manifest: { 'zz-composed': cardEntry('ZzComposed', { mounts: [disabledMount] }) },
+      stories: `export const ZzComposed = { render: () => <Button disabled>Go</Button> }\n`,
+      manifest: { 'zz-composed': cardEntry('ZzComposed', { mounts: [disabledMount], clip }) },
     })
-  assert.deepEqual(creditsOf(run(`, parameters: { visualCaptureClip: ${CLIP} }`), 'ZzComposed'), [])
-  assert.deepEqual(creditsOf(run(''), 'ZzComposed'), ['Button|secondary|md|disabled'])
+  assert.deepEqual(creditsOf(run(true), 'ZzComposed'), [])
+  assert.deepEqual(creditsOf(run(false), 'ZzComposed'), ['Button|secondary|md|disabled'])
 })
 
-test('B2 siblings: a clip on the default export, and a parameters object this pass cannot read in full, are clips too', () => {
-  const run = (meta, story) =>
+test('B2 siblings: a clip literal on the default export, and a parameters object this pass cannot read in full, decide nothing: the record does', () => {
+  const run = (meta, story, clip) =>
     cardRun({
       meta,
       stories: story,
-      manifest: { 'zz-sib': cardEntry('ZzSib', { mounts: [disabledMount] }) },
+      manifest: { 'zz-sib': cardEntry('ZzSib', { mounts: [disabledMount], clip }) },
     })
   const plain = `export const ZzSib = { render: () => <Button disabled>Go</Button> }\n`
-  assert.deepEqual(
-    creditsOf(
-      run(`{ component: Card, parameters: { visualCaptureClip: ${CLIP} } }`, plain),
-      'ZzSib',
-    ),
-    [],
-  )
-  assert.deepEqual(
-    creditsOf(
-      run(
-        `{ component: Card }`,
-        `const shared = {}\nexport const ZzSib = { parameters: { ...shared }, render: () => <Button disabled>Go</Button> }\n`,
-      ),
-      'ZzSib',
-    ),
-    [],
-  )
-  assert.deepEqual(creditsOf(run(`{ component: Card, parameters: {} }`, plain), 'ZzSib'), [
-    'Button|secondary|md|disabled',
-  ])
+  const spread = `const shared = {}\nexport const ZzSib = { parameters: { ...shared }, render: () => <Button disabled>Go</Button> }\n`
+  const literal = `{ component: Card, parameters: { visualCaptureClip: ${CLIP} } }`
+  for (const [meta, story] of [
+    [literal, plain],
+    [`{ component: Card }`, spread],
+    [`{ component: Card, parameters: {} }`, plain],
+  ]) {
+    assert.deepEqual(creditsOf(run(meta, story, true), 'ZzSib'), [], 'clipped: refused')
+    assert.deepEqual(creditsOf(run(meta, story, false), 'ZzSib'), ['Button|secondary|md|disabled'])
+  }
 })
 
 test('B2: a clipped forced story keeps its forced credit and gives no Disabled or Rest from its mounts', () => {
   const placed = placedInstance('Button', 'ghost', 'md')
-  const run = (parameters) =>
+  const run = (clip) =>
     cardRun({
-      stories: `export const ZzForced = { render: () => <Button>Go</Button>, parameters: { visualForceState: { state: 'hover', role: 'button' }${parameters} } }\n`,
+      stories: `export const ZzForced = { render: () => <Button>Go</Button>, parameters: { visualForceState: { state: 'hover', role: 'button' } } }\n`,
       manifest: {
         'zz-forced': cardEntry('ZzForced', {
+          clip,
           mounts: [placed, disabledMount],
           force: { count: 1, stamp: MINI_BUTTON_STAMP, placedBy: placed },
         }),
       },
     })
   const forcedOnly = ['Button|ghost|md|hover', `record1|${MINI_BUTTON_STAMP}|hover`]
-  assert.deepEqual(creditsOf(run(`, visualCaptureClip: ${CLIP}`), 'ZzForced'), forcedOnly)
-  assert.deepEqual(creditsOf(run(''), 'ZzForced'), [
+  assert.deepEqual(creditsOf(run(true), 'ZzForced'), forcedOnly)
+  assert.deepEqual(creditsOf(run(false), 'ZzForced'), [
     'Button|ghost|md|hover',
     'Button|secondary|md|disabled',
     `record1|${MINI_BUTTON_STAMP}|hover`,
@@ -5892,10 +5886,11 @@ test('B2 (record 1) plant: a `disabled: true` in a story’s args — top-level 
   }
 })
 
-// A file that places an element in `position: fixed`, rendered by a story captured as its root box.
+// A file that places an element in `position: fixed`, rendered by a story captured as its root box. Whether
+// the frame is the root box or the whole page is the record's `fullPage` (T703), the built index's tag.
 const PANEL_INDEX = 'composites/Panel/index.tsx'
 const PANEL_FILE = `${STAMP_ROOT}${PANEL_INDEX}`
-function overlayRun({ panel, tags = '', meta }) {
+function overlayRun({ panel, tags = '', meta, fullPage = false }) {
   const filesByPath = new Map([
     [srcFile('primitives/Button/index.tsx'), MINI_BUTTON],
     [srcFile(MINI_STORIES), BUTTON_STORIES_HEADER],
@@ -5913,7 +5908,7 @@ function overlayRun({ panel, tags = '', meta }) {
     componentDirs: [...CARD_DIRS, { segment: 'composites', name: 'Panel' }],
     filesByPath,
     manifest: {
-      'zz-overlay': cardEntry('ZzOverlay', { mounts: [disabledMount] }, [
+      'zz-overlay': cardEntry('ZzOverlay', { mounts: [disabledMount], fullPage }, [
         CARD_INDEX_FILE,
         PANEL_FILE,
       ]),
@@ -5921,13 +5916,12 @@ function overlayRun({ panel, tags = '', meta }) {
   })
 }
 
-test('B2 sibling: a root-box story that rendered a position: fixed file gives no mount credit; tagged visual-full-page, or with only a prefixed fixed, it does', () => {
+test('B2 sibling: a root-box story that rendered a position: fixed file gives no mount credit; recorded full-page, or with only a prefixed fixed, it does', () => {
   const fixedPanel = `export function Panel() { return <div className="fixed inset-0" /> }\n`
   assert.deepEqual(creditsOf(overlayRun({ panel: fixedPanel }), 'ZzOverlay'), [])
-  assert.deepEqual(
-    creditsOf(overlayRun({ panel: fixedPanel, tags: `tags: ['visual-full-page'],` }), 'ZzOverlay'),
-    ['Button|secondary|md|disabled'],
-  )
+  assert.deepEqual(creditsOf(overlayRun({ panel: fixedPanel, fullPage: true }), 'ZzOverlay'), [
+    'Button|secondary|md|disabled',
+  ])
   const prefixed = `export function Panel() { return <div className="focus:fixed top-0" /> }\n`
   assert.deepEqual(creditsOf(overlayRun({ panel: prefixed }), 'ZzOverlay'), [
     'Button|secondary|md|disabled',
@@ -5985,6 +5979,7 @@ test('B3 contrast: a forced hover on an enabled Button next to a disabled siblin
 
 test('B3: a stamp disabled at one width only is refused too, and disabledAt is read from the DOM as :disabled or aria-disabled="true"', () => {
   const at = (disabledAt) => ({
+    ...FRAME,
     mounts: [],
     force: {
       count: 1,
@@ -6053,11 +6048,14 @@ const MALFORMED_ENTRIES = {
   'a fractional count': withForce({ ...wellFormedForce, count: 1.5 }),
   'a width missing': {
     widths: Object.fromEntries(
-      WIDTHS.slice(1).map((w) => [w, { mounts: [], force: wellFormedForce }]),
+      WIDTHS.slice(1).map((w) => [w, { ...FRAME, mounts: [], force: wellFormedForce }]),
     ),
   },
   'an extra width': {
-    widths: { ...withForce(wellFormedForce).widths, 1920: { mounts: [], force: wellFormedForce } },
+    widths: {
+      ...withForce(wellFormedForce).widths,
+      1920: { ...FRAME, mounts: [], force: wellFormedForce },
+    },
   },
   'empty widths': { widths: {} },
   // The shapes a record's own fields can take (second remediation): each used to credit, or throw.
@@ -6474,11 +6472,12 @@ test('B2 contrast: a default export with no spread, whatever else it carries, cr
 // ---- Mutation gaps: each guard has a test that fails without it ----
 
 const OTHER_DISABLED_STAMP = `${BUTTON_FILE}:99`
-const forcedRun = ({ placed, parameters = '', mounts = [placed] }) =>
+const forcedRun = ({ placed, parameters = '', mounts = [placed], clip = false }) =>
   cardRun({
     stories: `export const ZzForced = { render: () => <Button>Go</Button>, parameters: { visualForceState: { state: 'hover', role: 'button' }${parameters} } }\n`,
     manifest: {
       'zz-forced': cardEntry('ZzForced', {
+        clip,
         mounts,
         force: { count: 1, stamp: MINI_BUTTON_STAMP, placedBy: placed },
       }),
@@ -6488,10 +6487,7 @@ const forcedRun = ({ placed, parameters = '', mounts = [placed] }) =>
 test('B2: a clipped forced story whose placing instance itself has a disabled element credits no Disabled; unclipped it does', () => {
   const placed = placedInstance('Button', 'ghost', 'md', [OTHER_DISABLED_STAMP])
   const forcedOnly = ['Button|ghost|md|hover', `record1|${MINI_BUTTON_STAMP}|hover`]
-  assert.deepEqual(
-    creditsOf(forcedRun({ placed, parameters: `, visualCaptureClip: ${CLIP}` }), 'ZzForced'),
-    forcedOnly,
-  )
+  assert.deepEqual(creditsOf(forcedRun({ placed, clip: true }), 'ZzForced'), forcedOnly)
   assert.deepEqual(creditsOf(forcedRun({ placed }), 'ZzForced'), [
     'Button|ghost|md|disabled',
     ...forcedOnly,
@@ -6508,18 +6504,20 @@ test('B3 contrast: a forced enabled element is still credited when its placing i
   ])
 })
 
-test('B2: a meta whose parameters is not an object literal is a clip this pass cannot read; contrast: an object literal without a clip is not', () => {
-  const run = (meta) =>
+test('B2: a meta whose parameters is not an object literal decides nothing about the frame: the record does', () => {
+  const run = (meta, clip) =>
     cardRun({
       meta,
       stories: `const shared = {}\nexport const ZzSib = { render: () => <Button disabled>Go</Button> }\n`,
-      manifest: { 'zz-sib': cardEntry('ZzSib', { mounts: [disabledMount] }) },
+      manifest: { 'zz-sib': cardEntry('ZzSib', { mounts: [disabledMount], clip }) },
     })
-  assert.deepEqual(creditsOf(run(`{ component: Card, parameters: shared }`), 'ZzSib'), [])
-  assert.deepEqual(
-    creditsOf(run(`{ component: Card, parameters: { layout: 'padded' } }`), 'ZzSib'),
-    ['Button|secondary|md|disabled'],
-  )
+  for (const meta of [
+    `{ component: Card, parameters: shared }`,
+    `{ component: Card, parameters: { layout: 'padded' } }`,
+  ]) {
+    assert.deepEqual(creditsOf(run(meta, true), 'ZzSib'), [], meta)
+    assert.deepEqual(creditsOf(run(meta, false), 'ZzSib'), ['Button|secondary|md|disabled'], meta)
+  }
 })
 
 test('the Rest label counts credits, not call sites, and the legend names the gaps that remain in their exact shapes', () => {
@@ -6938,10 +6936,10 @@ test('T701 (H1) contrast: `export default meta`, a satisfies, an as, parentheses
   }
 })
 
-test('T701 (H1) contrast: an inline default export that carries a clip is still read as clipped', () => {
+test('T701 (H1) contrast: an inline default export that carries a clip literal is read like any other, and the frame is the recorded one', () => {
   const computed = metaRun(`export default ${CLIP_PARAMETERS}\n`)
   assert.deepEqual(computed.manifestProblems, [])
-  assert.deepEqual(creditsOf(computed, 'ZzA'), [])
+  assert.deepEqual(creditsOf(computed, 'ZzA'), ['Button|secondary|md|disabled'])
 })
 
 test('T701 (H1): the guessed fallback `findDefaultMetaObject(...) ?? metaObj` is gone, not kept beside the reader', () => {
@@ -7217,7 +7215,7 @@ const PAIR_GHOST = placedInstance('Button', 'ghost', 'md')
 const pairForce = (stamp, placedBy) => ({ count: 1, stamp, placedBy })
 const forceAtWidths = (byWidth) => ({
   widths: Object.fromEntries(
-    WIDTHS.map((w) => [w, { mounts: [], force: byWidth[w] ?? pairForce(null, null) }]),
+    WIDTHS.map((w) => [w, { ...FRAME, mounts: [], force: byWidth[w] ?? pairForce(null, null) }]),
   ),
 })
 const PAIR_STORY = `export const ZzPair = { parameters: { visualForceState: { state: 'hover', role: 'button' } } }\n`
@@ -7676,6 +7674,7 @@ test('T698 contrast: entries for different stories of one file are not duplicate
 
 const T699_LOCATION = `${CARD_STORIES_LOCATION}:ZzS`
 const T699_CLIP = `{ visualCaptureClip: ${CLIP} }`
+const T699_FORCE = `{ state: 'hover', role: 'button' }`
 // An owner is the story object or the default export; the story is `ZzS` either way.
 const T699_OWNERS = {
   story: (props, tail = '') => ({
@@ -7686,10 +7685,10 @@ const T699_OWNERS = {
     stories: `${tail}${DISABLED_BUTTON_STORY('ZzS')}`,
   }),
 }
-const t699Run = (owner, props, tail) =>
+const t699Run = (owner, props, tail, clip = false) =>
   cardRun({
     ...T699_OWNERS[owner](props, tail),
-    manifest: { 'zz-s': cardEntry('ZzS', { mounts: [disabledMount] }) },
+    manifest: { 'zz-s': cardEntry('ZzS', { mounts: [disabledMount], clip }) },
   })
 
 const T699_PARAMETER_SHAPES = [
@@ -7703,14 +7702,17 @@ const T699_PARAMETER_SHAPES = [
   ['written twice, the clip in the second', `parameters: {}, parameters: ${T699_CLIP}`],
   ['a shorthand and an assignment', `parameters, parameters: ${T699_CLIP}`],
   ['an assignment and a shorthand', `parameters: ${T699_CLIP}, parameters`],
-  ['inside a literal, a quoted visualCaptureClip', `parameters: { 'visualCaptureClip': ${CLIP} }`],
   [
-    'inside a literal, visualCaptureClip written twice',
-    `parameters: { visualCaptureClip: undefined, visualCaptureClip: ${CLIP} }`,
+    'inside a literal, a quoted visualForceState',
+    `parameters: { 'visualForceState': ${T699_FORCE} }`,
   ],
   [
-    'inside a literal, a getter visualCaptureClip',
-    `parameters: { get visualCaptureClip() { return ${CLIP} } }`,
+    'inside a literal, visualForceState written twice',
+    `parameters: { visualForceState: undefined, visualForceState: ${T699_FORCE} }`,
+  ],
+  [
+    'inside a literal, a getter visualForceState',
+    `parameters: { get visualForceState() { return ${T699_FORCE} } }`,
   ],
   ['a non-literal computed key', `[key]: 1`],
 ]
@@ -7840,15 +7842,19 @@ test('T699 plant: the problem names the object and the reason, and the force of 
 
 for (const owner of Object.keys(T699_OWNERS)) {
   test(`T699 contrast: the ${owner} with an identifier-keyed parameters and tags, each read once, behaves as before`, () => {
-    const clipped = t699Run(owner, `parameters: ${T699_CLIP}, tags: ['autodocs']`)
-    assert.deepEqual(clipped.manifestProblems, [])
-    assert.deepEqual(creditsOf(clipped, 'ZzS'), [])
+    // The clip literal is read by nobody (T703): the frame is the record's, whatever the source says.
+    const literal = `parameters: ${T699_CLIP}, tags: ['autodocs']`
+    assert.deepEqual(t699Run(owner, literal).manifestProblems, [])
+    assert.deepEqual(creditsOf(t699Run(owner, literal, '', true), 'ZzS'), [])
+    assert.deepEqual(creditsOf(t699Run(owner, literal, '', false), 'ZzS'), [
+      'Button|secondary|md|disabled',
+    ])
     const plain = t699Run(owner, `parameters: { layout: 'padded' }, tags: ['autodocs']`)
     assert.deepEqual(plain.manifestProblems, [])
     assert.deepEqual(creditsOf(plain, 'ZzS'), ['Button|secondary|md|disabled'])
   })
 
-  test(`T699 contrast: the ${owner} with a quoted key that is neither parameters nor tags, and a quoted key inside parameters that is not a clip or a force, is not refused`, () => {
+  test(`T699 contrast: the ${owner} with a quoted key that is neither parameters nor tags, and a quoted key inside parameters that is not a force, is not refused`, () => {
     const computed = t699Run(
       owner,
       `'args': {}, parameters: { 'layout': 'padded', 'docs': {} }, tags: ['autodocs']`,
@@ -7858,12 +7864,13 @@ for (const owner of Object.keys(T699_OWNERS)) {
   })
 }
 
-test('T699 contrast: tagged visual-full-page by an identifier-keyed tags, an overlay story still credits', () => {
+test('T699 contrast: an identifier-keyed tags read once, recorded as a full-page frame, an overlay story still credits', () => {
   const fixedPanel = `export function Panel() { return <div className="fixed inset-0" /> }\n`
   const computed = overlayRun({
     panel: fixedPanel,
     meta: `{ component: Card, tags: ['visual-full-page'] }`,
     tags: `tags: ['autodocs'],`,
+    fullPage: true,
   })
   assert.deepEqual(creditsOf(computed, 'ZzOverlay'), ['Button|secondary|md|disabled'])
   assert.deepEqual(computed.manifestProblems, [])
@@ -8090,111 +8097,15 @@ test('T702 (L5) contrast: a string literal, a template without substitutions, an
 
 // ---- T704: what the third adversarial review of #121 found, and the residue stated as known ----------
 //
-// (H1) The project-level `parameters` of the Storybook preview reach every story: a clip there, or a
-// preview this pass cannot read, refuses every story's mount credit and names the preview once. (M1) An
-// accessor, a method or a `this` in a story object or the default export is unreadable. (M2) Any
-// `import()` or `require()` in a non-test module whose specifier is not a plain string literal fails
-// naming the file. (L1) One test-module predicate, and a story path is never a test module.
-const PROJECT_CLIP = 'project-clip'
-const PREVIEW_PATH = '.storybook/preview.tsx'
+// (H1) The project-level `parameters` of the Storybook preview reach every story's frame; since T703
+// that is the runtime record's to say (its plants are the T703 ones below), and the preview rules that
+// guarded it are gone. (M1) An accessor, a method or a `this` in a story object or the default export is
+// unreadable. (M2) Any `import()` or `require()` in a non-test module whose specifier is not a plain
+// string literal fails naming the file. (L1) One test-module predicate, and a story path is never a test
+// module.
 const UNREADABLE_PARAMETERS = 'unreadable-parameters'
 const UNREADABLE_TAGS = 'unreadable-tags'
 const CREDITED = ['Button|secondary|md|disabled']
-const previewRun = (source) => importerRun(new Map([[path.join(DS_DIR, PREVIEW_PATH), source]]))
-const previewSource = (parameters, before = '', after = '') =>
-  `import type { Preview } from '@storybook/react-vite'\n${before}const preview: Preview = {\n  tags: ['autodocs'],\n  parameters: ${parameters},\n  decorators: [],\n}\n${after}export default preview\n`
-const assertPreviewRefused = (computed) => {
-  // The preview is named once, not once per story, and no story keeps a mount credit.
-  assert.deepEqual(problemsOf(computed), [[PROJECT_CLIP, PREVIEW_PATH]])
-  assert.match(computed.manifestProblems[0].detail, /\.storybook\/preview\.tsx/)
-  assert.deepEqual(creditsOf(computed, 'ZzA'), [])
-  assert.deepEqual(creditsOf(computed, 'ZzB'), [])
-}
-
-const PREVIEW_PLANTS = {
-  'a visualCaptureClip in the preview parameters': previewSource(`{ visualCaptureClip: ${CLIP} }`),
-  'a quoted visualCaptureClip': previewSource(`{ 'visualCaptureClip': ${CLIP} }`),
-  'a computed visualCaptureClip': previewSource(`{ ['visualCaptureClip']: ${CLIP} }`),
-  'a visualCaptureClip written twice': previewSource(
-    `{ visualCaptureClip: ${CLIP}, visualCaptureClip: null }`,
-  ),
-  'a visualCaptureClip behind a getter': previewSource(
-    `{ get visualCaptureClip() { return ${CLIP} } }`,
-  ),
-  'parameters that is an identifier, parameters: shared': previewSource(
-    'shared',
-    `const shared = { visualCaptureClip: ${CLIP} }\n`,
-  ),
-  'parameters that spreads another object': previewSource(
-    '{ ...shared }',
-    `const shared = { visualCaptureClip: ${CLIP} }\n`,
-  ),
-  'parameters that is a call': previewSource(
-    'make()',
-    `const make = () => ({ visualCaptureClip: ${CLIP} })\n`,
-  ),
-  'a quoted parameters key': `const preview = { 'parameters': { visualCaptureClip: ${CLIP} } }\nexport default preview\n`,
-  'a getter named parameters': `const preview = { get parameters() { return { visualCaptureClip: ${CLIP} } } }\nexport default preview\n`,
-  'a clip written onto the binding after its declaration': previewSource(
-    '{}',
-    '',
-    `preview.parameters.visualCaptureClip = ${CLIP}\n`,
-  ),
-  'a default export built by a call': `const define = (p) => p\nexport default define({ parameters: { visualCaptureClip: ${CLIP} } })\n`,
-  'a preview with no default export': `export const preview = { parameters: {} }\n`,
-  'an inline default export that carries a clip': `export default { parameters: { visualCaptureClip: ${CLIP} } }\n`,
-  'a method on the preview': `const preview = { parameters: {}, beforeAll() {} }\nexport default preview\n`,
-  'a this in the preview': `const preview = { parameters: {}, decorators: [function (Story) { return this }] }\nexport default preview\n`,
-}
-for (const [name, source] of Object.entries(PREVIEW_PLANTS)) {
-  test(`T704 (H1) plant: ${name} fails the check naming the preview once and credits no story a mount`, () => {
-    assertPreviewRefused(previewRun(source))
-  })
-}
-
-test('T704 (H1) contrast: ordinary preview parameters, an inline default export and no preview at all leave every story credited', () => {
-  const ordinary = previewSource(
-    `{ controls: { matchers: { color: /(background|color)$/i } }, options: { storySort: { order: ['Foundations', ['Colour']] } }, layout: 'padded' }`,
-  )
-  for (const source of [
-    ordinary,
-    `export default { parameters: { layout: 'centered' } }\n`,
-    `const preview = { tags: ['autodocs'] }\nexport default preview\n`,
-  ]) {
-    const computed = previewRun(source)
-    assert.deepEqual(computed.manifestProblems, [])
-    assert.deepEqual(creditsOf(computed, 'ZzA'), CREDITED)
-    assert.deepEqual(creditsOf(computed, 'ZzB'), CREDITED)
-  }
-  assert.deepEqual(creditsOf(importerRun(new Map()), 'ZzA'), CREDITED)
-})
-
-test('T704 (H1) contrast: a preview in a test module, or in no .storybook directory, is not the preview', () => {
-  const clip = previewSource(`{ visualCaptureClip: ${CLIP} }`)
-  const computed = importerRun(
-    new Map([
-      [path.join(DS_DIR, '.storybook/preview.test.tsx'), clip],
-      [path.join(DS_DIR, 'src/lib/preview.tsx'), clip],
-    ]),
-  )
-  assert.deepEqual(computed.manifestProblems, [])
-  assert.deepEqual(creditsOf(computed, 'ZzA'), CREDITED)
-})
-
-test('T704 (H1) end to end: the check exits 1 on the real tree with a visualCaptureClip in the preview parameters, naming the preview once', () => {
-  const run = runCheckOnPlantedTree(
-    '',
-    ['..', '.storybook', 'preview.tsx'],
-    [
-      'parameters: {\n    controls: {',
-      `parameters: {\n    visualCaptureClip: ${CLIP},\n    controls: {`,
-    ],
-  )
-  assert.equal(run.status, 1, run.stdout + run.stderr)
-  assert.match(run.stderr, /\.storybook\/preview\.tsx/)
-  assert.equal(run.stderr.split('\n').filter((line) => line.includes('preview.tsx')).length, 1)
-})
-
 test('T704 contrast: the check exits 0 on the real tree, and its generated region is the committed one', () => {
   const checksDir = path.dirname(fileURLToPath(import.meta.url))
   const run = spawnSync(process.execPath, [path.join(checksDir, 'state-coverage.mjs')], {
@@ -8464,74 +8375,36 @@ test('T704 (L1): one test-module definition in state-coverage.mjs, used by every
   assert.equal(source.match(/const TEST_MODULE\b/g)?.length, 1)
 })
 
-// (L2) The generated region's legend is held to the same rule as row 8's prose: its list of refusals is
-// among the reasons, not a closed one, and crediting a story is not a proof that no clip applied.
-test('T704 (L2): the legend names the refusals as among the reasons and says a credit is no proof of an unclipped frame', () => {
+// (L2) The generated region's legend is held to the same rule as row 8's prose: its list of refusals says
+// what the code refuses, and the clip is the record's (T703), not a source reading.
+test('T704 (L2) and T703: the legend credits mounts from the recorded clip and full-page frame, and names the source refusals', () => {
   for (const phrase of [
-    /gives no mount credit for the reasons row 8's prose lists, among them:/,
-    /an accessor, a method, or a `this` in the story object or the default\nexport/,
-    /project-level `parameters` carry a clip or cannot be read\n\(`project-clip`\)/,
-    /Crediting a story\nis not a proof that no clip applied to it/,
-    /without claiming the list is exhaustive, under row 8's \*\*What\nthe static reading cannot see\*\*/,
-    /only the runtime record of the clip the browser applied \(T703\)/,
-    /names the record-3 half in a note; any other is refused like the rest\./,
+    /gives no mount credit when the browser applied a `visualCaptureClip` to it at any captured width/,
+    /read from the settled story the capture itself\nreads, so a clip no object literal spells counts/,
+    /an accessor, a method, or a `this` in the\nstory object or the default export/,
+    /An entry that records no boolean `clip` and `fullPage` at\nevery captured width fails the run/,
+    /names the record-3 half in a note; any other is refused\nlike the rest\./,
   ]) {
     assert.match(REGION_LEGEND, phrase)
   }
-  assert.doesNotMatch(REGION_LEGEND, /gives no mount credit when it declares/)
-  assert.doesNotMatch(
-    REGION_LEGEND,
-    /Every other forced story credits no cell and the\ncheck names why/,
-  )
+  for (const gone of [
+    'project-clip',
+    'is not a proof that no clip applied',
+    'static reading cannot see',
+    'gives no mount credit for the reasons row 8',
+    'gives no mount credit when it declares',
+  ]) {
+    assert.equal(REGION_LEGEND.replace(/\s+/g, ' ').includes(gone), false, gone)
+  }
 })
 
 // ---- T705: what the fourth adversarial review of #121 found, by refusing more and never reading more ---
 //
-// (H1) The preview module's only export is its default export: any other export fails as `project-clip`,
-// whatever it is called. (M1) Every `this` anywhere inside a story object, a default export or the
-// preview's default export makes it unreadable, with no class exception. (L1) In a non-test module the
+// (H1, the preview's exports) is gone with the preview rules (T703). (M1) Every `this` anywhere inside a
+// story object or a default export makes it unreadable, with no class exception. (L1) In a non-test module the
 // identifier `require` is a binding's declared name or the direct callee of a call; any other reference
 // fails as `imports-story-module` naming the file. (L2) The legend sentence says what the force
 // resolution does.
-
-// (H1) Storybook composes the preview's annotations as `default?.[field] ?? namespace[field]`.
-const PREVIEW_EXPORT_PLANTS = {
-  'a named parameters export beside a default without parameters': `const preview = { tags: ['autodocs'] }\nexport const parameters = { visualCaptureClip: ${CLIP} }\nexport default preview\n`,
-  'a local parameters const exported with export { parameters }': `const parameters = { visualCaptureClip: ${CLIP} }\nconst preview = { tags: ['autodocs'] }\nexport { parameters }\nexport default preview\n`,
-  'an inline default export beside export const parameters': `export default { tags: ['autodocs'] }\nexport const parameters = { visualCaptureClip: ${CLIP} }\n`,
-  'export { x as parameters }': `const x = { visualCaptureClip: ${CLIP} }\nconst preview = { tags: ['autodocs'] }\nexport { x as parameters }\nexport default preview\n`,
-  'export * from a shared module': `const preview = { tags: ['autodocs'] }\nexport * from './shared'\nexport default preview\n`,
-  'a named export that is not called parameters, export const decorators': `const preview = { tags: ['autodocs'] }\nexport const decorators = []\nexport default preview\n`,
-  'an exported function': `const preview = { tags: ['autodocs'] }\nexport function loaders() { return [] }\nexport default preview\n`,
-  'an exported class': `const preview = { tags: ['autodocs'] }\nexport class K {}\nexport default preview\n`,
-  'export { x } from another module': `const preview = { tags: ['autodocs'] }\nexport { parameters } from './shared'\nexport default preview\n`,
-  'export = ': `const preview = { tags: ['autodocs'] }\nexport = preview\n`,
-  'a type-only export, export type': `const preview = { tags: ['autodocs'] }\nexport type P = typeof preview\nexport default preview\n`,
-  'a type-only export, export interface': `const preview = { tags: ['autodocs'] }\nexport interface P { a: 1 }\nexport default preview\n`,
-}
-for (const [name, source] of Object.entries(PREVIEW_EXPORT_PLANTS)) {
-  test(`T705 (H1) plant: ${name} fails the check as project-clip naming the preview once and credits no story a mount`, () => {
-    const computed = previewRun(source)
-    assertPreviewRefused(computed)
-    assert.match(
-      computed.manifestProblems[0].detail,
-      /Storybook reads a named export of the preview as a project annotation/,
-    )
-  })
-}
-
-test('T705 (H1) contrast: a preview whose only export is its default export stays credited, in both spellings', () => {
-  for (const source of [
-    `const preview = { tags: ['autodocs'], parameters: { layout: 'padded' } }\nexport default preview\n`,
-    `const preview = { tags: ['autodocs'], parameters: { layout: 'padded' } }\nexport { preview as default }\n`,
-    `export default { tags: ['autodocs'] }\n`,
-  ]) {
-    const computed = previewRun(source)
-    assert.deepEqual(computed.manifestProblems, [], source)
-    assert.deepEqual(creditsOf(computed, 'ZzA'), CREDITED)
-    assert.deepEqual(creditsOf(computed, 'ZzB'), CREDITED)
-  }
-})
 
 // (M1) A `this` anywhere inside the owner, nested classes included.
 const THIS_IN_HERITAGE = `class K extends (this.parameters = { visualCaptureClip: ${CLIP} }, Object) {}`
@@ -8560,14 +8433,6 @@ test('T705 (M1) plant: the heritage shape on the meta makes every story of the f
   assert.deepEqual(ofKind(computed, UNREADABLE_TAGS), BOTH_STORIES(UNREADABLE_TAGS))
   assert.deepEqual(creditsOf(computed, 'ZzA'), [])
   assert.deepEqual(creditsOf(computed, 'ZzB'), [])
-})
-
-test('T705 (M1) plant: the heritage shape in a preview decorator fails as project-clip', () => {
-  assertPreviewRefused(
-    previewRun(
-      `const preview = { decorators: [(Story) => { ${THIS_IN_HERITAGE}\n return <Story /> }] }\nexport default preview\n`,
-    ),
-  )
 })
 
 test('T705 (M1) contrast: a nested class with no this stays readable and credited', () => {
@@ -8646,4 +8511,240 @@ test('T705 (L2): the legend credits only a record-1 located force with no matrix
     ),
   )
   assert.doesNotMatch(REGION_LEGEND, /credits the half it can/)
+})
+
+// ---- T703: the mounts a story credits come from the clip the browser applied, not from its source ----
+//
+// A story's `parameters` reaches the capture through `play`, loaders, `beforeEach` and decorators (the
+// story context), through the deprecated `story` annotation, through a `__proto__` key and the
+// prototype chain, and from the preview, so a clip can reach the frame without appearing in any object
+// literal a reader of the source can find. Two rounds of static hardening (T696, T697 to T702) closed the
+// shapes reported and left their twins. `tests/visual/state-coverage-runtime.ts` now records, per story
+// and width, whether a clip applied (`readCaptureClip`, the capture's own reader, on the settled story)
+// and whether the frame was full-page (the built index's tag, the capture's own source), and
+// `computeStateCoverage` credits a story's mounts from that record alone.
+//
+// What each plant guards: the SOURCE of the story (or of a module) is clean, as a reader of object
+// literals would read it, and the RECORD says a clip applied. Nesting level: the record is a width record
+// of the entry (`entry.widths[w].clip`), read at every width. Each plant is red against the check before
+// T703 (it credits the mount) and each has its contrast: the same source with a record that says no clip
+// is credited, because the browser showed the whole frame.
+const T703_CREDITED = ['Button|secondary|md|disabled']
+const clipRecord = (clip, extra = {}) => ({ mounts: [disabledMount], clip, ...extra })
+const t703Run = ({ stories, meta, modules, record = {}, files }) =>
+  cardRun({
+    stories,
+    meta,
+    modules,
+    manifest: { 'zz-a': cardEntry('ZzA', { mounts: [disabledMount], ...record }, files) },
+  })
+const T703_CLIP_LITERAL = `{ parts: [{ role: 'button' }] }`
+const T703_STORY = (before = '') =>
+  `export const ZzA = { ${before} render: () => <Button disabled>Go</Button> }\n`
+
+// Story level: the context is how the clip arrives.
+const T703_STORY_SHAPES = {
+  'a clip set from play': {
+    stories: T703_STORY(
+      `play: ({ parameters }) => { parameters.visualCaptureClip = ${T703_CLIP_LITERAL} },`,
+    ),
+  },
+  'a clip set from a loader': {
+    stories: T703_STORY(
+      `loaders: [({ parameters }) => { parameters.visualCaptureClip = ${T703_CLIP_LITERAL}; return {} }],`,
+    ),
+  },
+  'a clip set from a decorator of the story': {
+    stories: T703_STORY(
+      `decorators: [(Story, { parameters }) => { parameters.visualCaptureClip = ${T703_CLIP_LITERAL}; return <Story /> }],`,
+    ),
+  },
+  'a clip set from a decorator of the meta': {
+    stories: T703_STORY(),
+    meta: `{ component: Card, decorators: [(Story, { parameters }) => { parameters.visualCaptureClip = ${T703_CLIP_LITERAL}; return <Story /> }] }`,
+  },
+  'a clip declared through the deprecated story annotation': {
+    stories: T703_STORY(`story: { parameters: { visualCaptureClip: ${T703_CLIP_LITERAL} } },`),
+  },
+  'a clip declared under a __proto__ key of the story object': {
+    stories: T703_STORY(`__proto__: { parameters: { visualCaptureClip: ${T703_CLIP_LITERAL} } },`),
+  },
+  'a clip declared under a __proto__ key of the default export': {
+    stories: T703_STORY(),
+    meta: `{ component: Card, __proto__: { parameters: { visualCaptureClip: ${T703_CLIP_LITERAL} } } }`,
+  },
+}
+for (const [name, shape] of Object.entries(T703_STORY_SHAPES)) {
+  test(`T703 plant: ${name}, which no object literal spells, is refused its mount credit from the record; contrast: the same source with a record that says no clip is credited`, () => {
+    const clipped = t703Run({ ...shape, record: { clip: true } })
+    assert.deepEqual(clipped.manifestProblems, [], 'the record refuses it, nothing else fails')
+    assert.deepEqual(creditsOf(clipped, 'ZzA'), [])
+    assert.deepEqual(
+      creditsOf(t703Run({ ...shape, record: { clip: false } }), 'ZzA'),
+      T703_CREDITED,
+    )
+  })
+}
+
+// Preview and module level: a clip that reaches every story from outside the story file. The record is
+// the same width record, whatever put the clip there, so each shape is one source and one record.
+const CLEAN_PREVIEW = `const preview = { parameters: { layout: 'padded' } }\nexport default preview\n`
+const T703_MODULE_SHAPES = {
+  "the preview's parameters mutated from another module that imports it": [
+    [path.join(DS_DIR, '.storybook/preview.tsx'), CLEAN_PREVIEW],
+    [
+      path.join(DS_DIR, '.storybook/clip-setup.ts'),
+      `import preview from './preview'\npreview.parameters.visualCaptureClip = ${T703_CLIP_LITERAL}\n`,
+    ],
+  ],
+  'a config.tsx beside main.ts loaded in place of a preview': [
+    [
+      path.join(DS_DIR, '.storybook/config.tsx'),
+      `export default { parameters: { visualCaptureClip: ${T703_CLIP_LITERAL} } }\n`,
+    ],
+  ],
+  'a visualCaptureClip getter defined on Object.prototype': [
+    [
+      path.join(DS_DIR, '.storybook/clip-getter.ts'),
+      `Object.defineProperty(Object.prototype, 'visualCaptureClip', { configurable: true, get: () => (${T703_CLIP_LITERAL}) })\n`,
+    ],
+  ],
+  'the preview mutating its own default export through a namespace import of itself': [
+    [
+      path.join(DS_DIR, '.storybook/preview.tsx'),
+      `import * as self from './preview'\nself.default.parameters = { visualCaptureClip: ${T703_CLIP_LITERAL} }\nconst preview = { parameters: { layout: 'padded' } }\nexport default preview\n`,
+    ],
+  ],
+}
+for (const [name, modules] of Object.entries(T703_MODULE_SHAPES)) {
+  test(`T703 plant: ${name} is refused its mount credit from the record; contrast: a record that says no clip credits it`, () => {
+    const run = (clip) =>
+      t703Run({ stories: T703_STORY(), modules: new Map(modules), record: { clip } })
+    assert.deepEqual(creditsOf(run(true), 'ZzA'), [])
+    assert.deepEqual(creditsOf(run(false), 'ZzA'), T703_CREDITED)
+    assert.deepEqual(run(false).manifestProblems, [], 'a preview shape alone is no failure now')
+  })
+}
+
+test('T703 plant: a clip at any one captured width refuses the credit, wherever the clip applies', () => {
+  for (const clippedWidth of WIDTHS) {
+    const widths = Object.fromEntries(
+      WIDTHS.map((w) => [
+        w,
+        { clip: w === clippedWidth, fullPage: false, mounts: [disabledMount] },
+      ]),
+    )
+    const computed = cardRun({
+      stories: T703_STORY(),
+      manifest: {
+        'zz-a': {
+          importPath: `./src/${CARD_STORIES}`,
+          exportName: 'ZzA',
+          files: [CARD_INDEX_FILE],
+          widths,
+        },
+      },
+    })
+    assert.deepEqual(creditsOf(computed, 'ZzA'), [], `clip only at ${clippedWidth}px`)
+  }
+})
+
+test('T703 contrast: a story with no clip keeps its credit, whatever its source says about parameters', () => {
+  // A source a reader of object literals refused as "may carry a clip" (a spread, a `parameters`
+  // read from an identifier), which the record shows has none.
+  const plain = t703Run({ stories: T703_STORY(), record: { clip: false } })
+  assert.deepEqual(creditsOf(plain, 'ZzA'), T703_CREDITED)
+  const spread = t703Run({
+    stories: `const shared = { layout: 'padded' }\n${T703_STORY('parameters: { ...shared },')}`,
+    record: { clip: false },
+  })
+  assert.deepEqual(creditsOf(spread, 'ZzA'), T703_CREDITED)
+  const clippedLiteral = t703Run({
+    stories: T703_STORY(`parameters: { visualCaptureClip: ${T703_CLIP_LITERAL} },`),
+    record: { clip: false },
+  })
+  assert.deepEqual(
+    creditsOf(clippedLiteral, 'ZzA'),
+    T703_CREDITED,
+    'the record decides: a literal clip the browser did not apply is no clip',
+  )
+})
+
+// The full-page half of the frame: the record decides, and a clip wins over the tag.
+const PANEL_FIXED = `export function Panel() { return <div className="fixed inset-0" /> }\n`
+const t703Overlay = ({ tags = '', record }) => {
+  const filesByPath = new Map([
+    [srcFile('primitives/Button/index.tsx'), MINI_BUTTON],
+    [srcFile(MINI_STORIES), BUTTON_STORIES_HEADER],
+    [srcFile(CARD_INDEX), 'export function Card() { return <div /> }\n'],
+    [srcFile(PANEL_INDEX), PANEL_FIXED],
+    [srcFile(CARD_STORIES), cardStoriesSource(T703_STORY(tags))],
+  ])
+  return computeStateCoverage({
+    componentDirs: [...CARD_DIRS, { segment: 'composites', name: 'Panel' }],
+    filesByPath,
+    manifest: {
+      'zz-a': cardEntry('ZzA', { mounts: [disabledMount], ...record }, [
+        CARD_INDEX_FILE,
+        PANEL_FILE,
+      ]),
+    },
+  })
+}
+test('T703: a position: fixed file refuses a root-box frame and not a full-page one, from the record and not from the story tag', () => {
+  assert.deepEqual(creditsOf(t703Overlay({ record: {} }), 'ZzA'), [])
+  assert.deepEqual(creditsOf(t703Overlay({ record: { fullPage: true } }), 'ZzA'), T703_CREDITED)
+  // The source tag is not read: tagged in the source, recorded as a root-box frame, refused; untagged in
+  // the source, recorded full-page, credited.
+  assert.deepEqual(
+    creditsOf(
+      t703Overlay({ tags: `tags: ['visual-full-page'],`, record: { fullPage: false } }),
+      'ZzA',
+    ),
+    [],
+  )
+  assert.deepEqual(creditsOf(t703Overlay({ record: { fullPage: true } }), 'ZzA'), T703_CREDITED)
+  // A clip wins over the tag, as in the capture: a full-page record with a clip is clipped.
+  assert.deepEqual(creditsOf(t703Overlay({ record: { fullPage: true, clip: true } }), 'ZzA'), [])
+})
+
+test('T703: an entry whose width records carry no boolean clip or fullPage is malformed and credits nothing', () => {
+  for (const [name, patch] of [
+    ['no clip key', { clip: undefined }],
+    ['a clip that is a string', { clip: 'false' }],
+    ['a clip that is null', { clip: null }],
+    ['no fullPage key', { fullPage: undefined }],
+    ['a fullPage that is a number', { fullPage: 0 }],
+  ]) {
+    const computed = t703Run({ stories: T703_STORY(), record: patch })
+    assert.deepEqual(creditsOf(computed, 'ZzA'), [], name)
+    assert.deepEqual(
+      problemsOf(computed),
+      [['malformed-entry', `${CARD_STORIES_LOCATION}:ZzA`]],
+      name,
+    )
+    assert.match(computed.manifestProblems[0].detail, /clip|fullPage/, name)
+  }
+  // A width that carries both, as booleans, is well-formed.
+  assert.deepEqual(t703Run({ stories: T703_STORY(), record: {} }).manifestProblems, [])
+})
+
+test('T703: the static clip and project-level readers are gone, not kept beside the record', async () => {
+  const exported = await import('./state-coverage.mjs')
+  assert.equal('storyDeclaresClip' in exported, false)
+  const source = readFileSync(
+    path.join(path.dirname(fileURLToPath(import.meta.url)), 'state-coverage.mjs'),
+    'utf8',
+  )
+  for (const gone of [
+    'storyDeclaresClip',
+    'readParameterObjects',
+    'findProjectParametersProblems',
+    'projectParametersReason',
+    'findNonDefaultExport',
+    'PREVIEW_PATH',
+    "kind: 'project-clip'",
+  ]) {
+    assert.equal(source.includes(gone), false, `${gone} is still in state-coverage.mjs`)
+  }
 })

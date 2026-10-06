@@ -26,7 +26,7 @@ import {
   selectRuntimeStories,
   serializeManifest,
 } from './state-coverage-runtime-model.mjs'
-import { FIXTURE_TAG } from './story-index.mjs'
+import { FIXTURE_TAG, FULL_PAGE_TAG } from './story-index.mjs'
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 
@@ -50,7 +50,7 @@ const inst = (component, variant = null, size = null, disabledAt = []) => ({
   size,
   disabledAt,
 })
-const record = { mounts: [inst('Button', 'secondary', 'md')] }
+const record = { clip: false, fullPage: false, mounts: [inst('Button', 'secondary', 'md')] }
 const entryOf = (s) => buildEntry(s, { 1280: record, 375: record, 768: record })
 const manifestOf = (...stories) => Object.fromEntries(stories.map((s) => [s.id, entryOf(s)]))
 
@@ -66,6 +66,61 @@ test('findKeyProblems: agreement, including a plant and ignoring a docs entry, i
     findKeyProblems({ manifest: manifestOf(A, B, PLANT), index: indexOf(A, B, PLANT, DOCS) }),
     [],
   )
+})
+
+test('buildEntry keeps the capture frame of every width in its own record (T703)', () => {
+  const entry = buildEntry(A, {
+    375: { ...record, clip: true },
+    768: record,
+    1280: { ...record, fullPage: true },
+  })
+  assert.deepEqual(
+    Object.entries(entry.widths).map(([w, r]) => [w, r.clip, r.fullPage]),
+    [
+      ['375', true, false],
+      ['768', false, false],
+      ['1280', false, true],
+    ],
+  )
+})
+
+// The full-page half of the frame is the built index's tag, so the browserless key check holds it: a tag
+// added or removed without a rewrite is a disagreement, and a clip (a browser's observation) is not.
+test('findKeyProblems: a visual-full-page tag the entry does not record, and one it records that the index lacks, are reported at each width', () => {
+  const tagged = story('a--one', './src/A.stories.tsx', 'One', [FULL_PAGE_TAG])
+  const added = findKeyProblems({ manifest: manifestOf(A), index: indexOf(tagged) })
+  assert.deepEqual(
+    added.map((p) => [p.kind, p.id, p.detail.split(' ')[2]]),
+    [
+      ['full-page', 'a--one', '375px'],
+      ['full-page', 'a--one', '768px'],
+      ['full-page', 'a--one', '1280px'],
+    ],
+  )
+  const removed = findKeyProblems({
+    manifest: {
+      'a--one': buildEntry(tagged, {
+        375: { ...record, fullPage: true },
+        768: { ...record, fullPage: true },
+        1280: { ...record, fullPage: true },
+      }),
+    },
+    index: indexOf(A),
+  })
+  assert.equal(removed.length, 3)
+  assert.match(removed[0].detail, /does not tag the story `visual-full-page`/)
+})
+
+test('findKeyProblems: agreement on the tag, and a recorded clip, are clean', () => {
+  const tagged = story('a--one', './src/A.stories.tsx', 'One', [FULL_PAGE_TAG])
+  const manifest = {
+    'a--one': buildEntry(tagged, {
+      375: { ...record, fullPage: true, clip: true },
+      768: { ...record, fullPage: true },
+      1280: { ...record, fullPage: true },
+    }),
+  }
+  assert.deepEqual(findKeyProblems({ manifest, index: indexOf(tagged) }), [])
 })
 
 test('findKeyProblems: a story added without its entry is reported', () => {
@@ -135,7 +190,8 @@ test('findEntryDifferences compares only the ids the pass ran, ignoring key orde
 
 test('mergeManifest rewrites only the entries the pass ran, drops a story the index lost, keeps id order', () => {
   const manifest = { ...manifestOf(A, B), 'gone--x': entryOf(story('gone--x', './x', 'X')) }
-  const shifted = buildEntry(B, { 375: { mounts: [] }, 768: { mounts: [] }, 1280: { mounts: [] } })
+  const empty = { ...record, mounts: [] }
+  const shifted = buildEntry(B, { 375: empty, 768: empty, 1280: empty })
   const merged = mergeManifest({ manifest, fresh: { [B.id]: shifted }, index: indexOf(A, B) })
   assert.deepEqual(Object.keys(merged), [A.id, B.id])
   assert.deepEqual(merged[A.id], manifest[A.id])

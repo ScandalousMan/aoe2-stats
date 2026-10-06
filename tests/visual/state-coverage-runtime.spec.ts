@@ -25,6 +25,8 @@ import type { Instance, WidthRecord } from './state-coverage-runtime'
 interface WorkItem {
   id: string
   widths: number[]
+  // Whether the built index tags the story `visual-full-page` (`isFullPageEntry`): the capture's own source.
+  fullPage: boolean
 }
 // What the driver hands over: the stories to run, and every fixture story the built index lists —
 // whatever the selection — so the plants can be held to set equality with their assertions.
@@ -42,6 +44,8 @@ const work: Work = workPath
 const DIR = 'packages/design-system/src/primitives'
 const stampIn = (component: string) => new RegExp(`^${DIR}/${component}/index\\.tsx:\\d+$`)
 const PLANT = 'state-coverage-fixture-plants--'
+const CLIP_PLANT = 'state-coverage-fixture-clip-plants--'
+const CLIP_META_PLANT = 'state-coverage-fixture-clip-meta-decorator--'
 
 const inst = (
   component: string,
@@ -206,6 +210,42 @@ const PLANTS: Record<string, (record: WidthRecord) => void> = {
   },
 }
 
+// T703: what the browser must record for the capture frame of each clip plant. The shapes in the first
+// group put a clip on the settled `story.parameters` without writing it in an object literal of the
+// story; `clip: true` is the record `scripts/checks/state-coverage.mjs` refuses a mount credit from.
+// The contrasts record the other halves: no clip, and a full-page tag read from the built index.
+const CLIPPED = (r: WidthRecord) => {
+  expect(r.clip).toBe(true)
+  expect(r.fullPage).toBe(false)
+  expect(r.mounts).toEqual([button('primary', 'md')])
+}
+Object.assign(PLANTS, {
+  [`${CLIP_PLANT}no-clip`]: (r: WidthRecord) => {
+    expect(r.clip).toBe(false)
+    expect(r.fullPage).toBe(false)
+    expect(r.mounts).toEqual([button('primary', 'md')])
+  },
+  [`${CLIP_PLANT}full-page-tagged`]: (r: WidthRecord) => {
+    expect(r.clip).toBe(false)
+    expect(r.fullPage).toBe(true)
+    expect(r.mounts).toEqual([button('primary', 'md')])
+  },
+  [`${CLIP_PLANT}clip-from-play`]: CLIPPED,
+  [`${CLIP_PLANT}clip-from-loader`]: CLIPPED,
+  [`${CLIP_PLANT}clip-from-decorator`]: CLIPPED,
+  [`${CLIP_PLANT}clip-from-story-annotation`]: CLIPPED,
+  [`${CLIP_PLANT}clip-from-proto`]: CLIPPED,
+  // The same key one level down never reaches the capture: Storybook's merge of the parameters copies
+  // own keys only, so the record says no clip.
+  [`${CLIP_PLANT}proto-inside-parameters-no-clip`]: (r: WidthRecord) => {
+    expect(r.clip).toBe(false)
+    expect(r.fullPage).toBe(false)
+    expect(r.mounts).toEqual([button('primary', 'md')])
+  },
+  [`${CLIP_PLANT}clip-from-object-prototype`]: CLIPPED,
+  [`${CLIP_META_PLANT}clip-from-meta-decorator`]: CLIPPED,
+})
+
 // The plants fail closed: a fixture story and its assertion exist together or the pass fails. Never
 // part of a run that has no work (the file declares no test then).
 if (workPath) {
@@ -214,7 +254,7 @@ if (workPath) {
   })
 }
 
-for (const { id, widths } of work.stories) {
+for (const { id, widths, fullPage } of work.stories) {
   test(`${id} runtime record`, async ({ page }) => {
     await installSteamAvatarStub(page)
     const outFile = outDir ? path.join(outDir, `${id}.json`) : null
@@ -228,8 +268,12 @@ for (const { id, widths } of work.stories) {
       }
       const records: Record<string, WidthRecord> = {}
       for (const width of widths) {
-        records[String(width)] = await probeStory(page, id, width)
+        records[String(width)] = await probeStory(page, id, width, fullPage)
         assertion?.(records[String(width)])
+        // Every fixture story outside the two clip plant files is a story with no clip.
+        if (isFixture && !id.startsWith(CLIP_PLANT) && !id.startsWith(CLIP_META_PLANT)) {
+          expect(records[String(width)].clip).toBe(false)
+        }
       }
       if (outFile) writeFileSync(outFile, JSON.stringify({ id, widths: records }))
     } catch (error) {

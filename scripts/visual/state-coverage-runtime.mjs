@@ -76,7 +76,7 @@ import {
   selectRuntimeStories,
   serializeManifest,
 } from './state-coverage-runtime-model.mjs'
-import { isFixtureEntry, listStories } from './story-index.mjs'
+import { isFixtureEntry, isFullPageEntry, listStories } from './story-index.mjs'
 import { changedFiles, fileAtBase } from './story-selection.mjs'
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
@@ -209,7 +209,11 @@ function main() {
   writeFileSync(
     workPath,
     JSON.stringify({
-      stories: selected.map((s) => ({ id: s.id, widths: REVIEW_WIDTHS })),
+      stories: selected.map((s) => ({
+        id: s.id,
+        widths: REVIEW_WIDTHS,
+        fullPage: isFullPageEntry(s),
+      })),
       fixtureIds,
     }),
   )

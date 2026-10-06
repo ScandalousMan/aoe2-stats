@@ -53,7 +53,7 @@ import { resetResultsDir, checkStaleness } from './a11y-scan.cjs'
 import { REVIEW_WIDTHS } from './review-widths.mjs'
 import { decideMissingIndex, BUILD_STORYBOOK_COMMAND } from './missing-index.mjs'
 import { changedFiles, selectChangedStories } from './story-selection.mjs'
-import { listStories } from './story-index.mjs'
+import { isFullPageEntry, listStories } from './story-index.mjs'
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const designSystemDir = path.join(rootDir, 'packages', 'design-system')
@@ -152,7 +152,7 @@ async function main() {
         // positioned descendant does not enlarge that box, so a screenshot clipped to it never
         // reaches the popover at all). Screenshotting the whole page instead of just the root
         // element is the only way those baselines see the thing they are named for.
-        fullPage: (entry.tags ?? []).includes('visual-full-page'),
+        fullPage: isFullPageEntry(entry),
       })),
     ),
   )

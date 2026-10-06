@@ -39,7 +39,12 @@
 // enabled `<a>`, so it is empty, which is the point of reading the DOM.
 import type { Locator, Page } from '@playwright/test'
 import { STAMP_ATTRIBUTE } from '../../packages/design-system/.storybook/source-stamp-attribute.cjs'
-import { gotoAndWaitForStorySettled, locateTarget, readForceState } from './story-render'
+import {
+  gotoAndWaitForStorySettled,
+  locateTarget,
+  readCaptureClip,
+  readForceState,
+} from './story-render'
 import type { VisualForceState } from './story-render'
 
 export { STAMP_ATTRIBUTE }
@@ -76,7 +81,18 @@ export interface ForceRecord extends ElementRecord {
 // One width's record of one story. `force` is present only for a story that carries a
 // `visualForceState`; `focus` only for a story with a `play()` function, `null` when nothing but the
 // document body holds focus once it has settled.
+//
+// `clip` and `fullPage` are the two facts about the capture frame the credit for a story's mounts rests
+// on (T703). `clip` is whether a `visualCaptureClip` applied: `readCaptureClip` (`story-render.ts`), the
+// reader `stories.spec.ts` captures through, run on the SETTLED story (after the loaders, the
+// decorators and the `play()` that may write to `parameters`) and read through the same `story.
+// parameters` object, its prototype chain included — so a clip that no object literal spells reaches
+// this record. `fullPage` is whether the capture takes the whole page when no clip applies, from the
+// built index's tags, the one place the capture reads it (`isFullPageEntry`, `story-index.mjs`). A
+// clip wins over the tag, as it does in the capture.
 export interface WidthRecord {
+  clip: boolean
+  fullPage: boolean
   force?: ForceRecord
   focus?: ElementRecord | null
   mounts: Instance[]
@@ -349,6 +365,7 @@ export async function probeSettledStory(
   root: Locator,
   storyId: string,
   forceState: VisualForceState | null,
+  fullPage: boolean,
 ): Promise<WidthRecord> {
   await assertRegistryPresent(page)
   const inspectOptions = (mode: 'element' | 'mounts' | 'files'): InspectOptions => ({
@@ -356,6 +373,9 @@ export async function probeSettledStory(
     stampAttribute: STAMP_ATTRIBUTE,
   })
   const record: WidthRecord = {
+    // The capture's own test: `if (captureClip)`, so a falsy clip is no clip.
+    clip: Boolean(await readCaptureClip(page, storyId)),
+    fullPage,
     mounts: (await root.evaluate(inspect, inspectOptions('mounts'))) as Instance[],
     files: (await root.evaluate(inspect, inspectOptions('files'))) as string[],
   }
@@ -390,10 +410,15 @@ export async function probeSettledStory(
 // changes paint, never which element a role, a name and an `nth` select nor which component placed
 // it, and the capture suite still drives both themes through the same locator — settles it the way
 // `stories.spec.ts` does, and probes it.
-export async function probeStory(page: Page, storyId: string, width: number): Promise<WidthRecord> {
+export async function probeStory(
+  page: Page,
+  storyId: string,
+  width: number,
+  fullPage: boolean,
+): Promise<WidthRecord> {
   // The same height rule `stories.spec.ts` applies per unit (see the comment there).
   const height = width === 375 ? 900 : 720
   const root = await gotoAndWaitForStorySettled(page, storyId, 'light', width, height)
   const forceState = await readForceState(page, storyId)
-  return probeSettledStory(page, root, storyId, forceState)
+  return probeSettledStory(page, root, storyId, forceState, fullPage)
 }

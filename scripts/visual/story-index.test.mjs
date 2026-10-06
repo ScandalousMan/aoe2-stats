@@ -23,7 +23,13 @@ import path from 'node:path'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { buildStateSignalWork, indexedStories } from './state-signal-model.mjs'
-import { FIXTURE_TAG, fixtureStoryFiles, listStories } from './story-index.mjs'
+import {
+  FIXTURE_TAG,
+  FULL_PAGE_TAG,
+  fixtureStoryFiles,
+  isFullPageEntry,
+  listStories,
+} from './story-index.mjs'
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 
@@ -159,4 +165,16 @@ test('only the runtime pass asks for fixtures', () => {
     'scripts/visual/state-coverage-runtime-model.mjs',
     'scripts/visual/state-coverage-runtime.mjs',
   ])
+})
+
+// T703: the capture's full-page rule has one definition, which `run.mjs` builds its capture units with and
+// the runtime pass records the frame with.
+test('isFullPageEntry reads the built index tag and nothing else, and run.mjs builds its units with it', () => {
+  assert.equal(FULL_PAGE_TAG, 'visual-full-page')
+  assert.equal(isFullPageEntry({ tags: ['test', FULL_PAGE_TAG] }), true)
+  assert.equal(isFullPageEntry({ tags: ['test'] }), false)
+  assert.equal(isFullPageEntry({}), false)
+  const runSource = readFileSync(path.join(rootDir, 'scripts/visual/run.mjs'), 'utf8')
+  assert.match(runSource, /fullPage: isFullPageEntry\(entry\)/)
+  assert.equal(runSource.includes("'visual-full-page'"), false)
 })

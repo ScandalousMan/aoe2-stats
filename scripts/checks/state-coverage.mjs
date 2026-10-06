@@ -1307,11 +1307,10 @@ function readProp(objLiteral, name) {
 // method (`play() {}`) is called with the object as its `this`; a `this` in a function expression binds
 // to the object the function is called on, and one in an arrow function inherits the module's, which is
 // not this object's either way. None of that is in an object literal this pass reads, so the owner's
-// `parameters` and `tags` are unreadable and the story gets no mount credit. T705: every `this`
+// `parameters` and `tags` are unreadable, the run fails for it, and the story gets no mount credit. T705: every `this`
 // expression inside the owner is refused, a nested class's included (a `this` type or a `this` parameter
 // is not an expression and is not refused), over-refusing being the safe direction. The owner's own
-// shape only: an accessor or method of a nested `parameters` object is not this rule's (T703's runtime record is what
-// proves what the browser applied).
+// shape only: an accessor or method of a nested `parameters` object is not this rule's.
 const ownerHazardCache = new WeakMap()
 function findOwnerHazard(owner) {
   if (!owner) return null
@@ -1392,8 +1391,8 @@ export function extractVisualForceState(storyObj) {
 
 // Whether a story's own `parameters` is present and not an object literal (`parameters: shared`,
 // `parameters: make()`, a shorthand `parameters`): what it holds, a `visualForceState` among it, is
-// not readable from this object. A literal that spreads another object is not this case: the spread's
-// clip is `storyDeclaresClip`'s, and a force it hides is named when the manifest records one.
+// not readable from this object. A literal that spreads another object is not this case: a force it
+// hides is named when the manifest records one.
 function hasUnreadableParameters(storyObj) {
   if (findOwnerHazard(storyObj)) return true
   const parameters = readProp(storyObj, 'parameters')
@@ -1406,9 +1405,10 @@ function hasUnreadableParameters(storyObj) {
 // T699: the `parameters` of an owner (a story object or the default export) this pass cannot read by name:
 // the property itself is quoted, computed, an accessor, a method or written more than once, or the object
 // has a computed key whose name cannot be evaluated; or, in a `parameters` object literal, the same holds
-// of `visualCaptureClip` or `visualForceState`. A `parameters` that is not an object literal is the
-// story's own reason (`hasUnreadableParameters`) and, on the default export, the clip's
-// (`readParameterObjects`).
+// of `visualForceState`. A `parameters` that is not an object literal is the story's own reason
+// (`hasUnreadableParameters`). What these rules guard is the reading of `visualForceState` and `tags`
+// (the fixture tag): the record carries neither the force's state nor the story's tags, T703 moved the
+// clip and the full-page frame to it.
 function hasUnreadableNamedParameters(owner) {
   if (!owner) return false
   if (findOwnerHazard(owner)) return true
@@ -1420,10 +1420,7 @@ function hasUnreadableNamedParameters(owner) {
 }
 
 function hasUnreadableAnnotation(parametersObject) {
-  return (
-    readProp(parametersObject, 'visualCaptureClip').unreadable === true ||
-    readProp(parametersObject, 'visualForceState').unreadable === true
-  )
+  return readProp(parametersObject, 'visualForceState').unreadable === true
 }
 
 // T697: the rule that replaced T696 (a)'s list of mutation shapes. A story's binding, and the binding
@@ -2030,7 +2027,7 @@ export function extractStringLiteralsDeep(
 // `buildConstStringMap` (which only keeps the ones that resolve to a class string). Used to chase a
 // story's own shorthand `args` property back to its declaration. Stores the *unwrapped* initializer
 // (`unwrapExpression`, above) — a `const X = {...} as const` is the common shape every
-// `visualCaptureClip` constant not written inline uses, and a caller resolving `X` back through this
+// `visualCaptureClip` constant not written inline uses (a story's own `args` constants too), and a caller resolving `X` back through this
 // map wants the object literal itself, never the `AsExpression` wrapping it.
 export function buildTopLevelConstNodeMap(sourceFile) {
   const map = new Map()
@@ -2627,8 +2624,9 @@ function asPrinted(storyObjectsWithMeta) {
 //   - a record-3 cell when the entry's placing instance is a tracked primitive at the variant and size
 //     the browser rendered it at;
 //   - the Disabled column (from nothing else) and a primitive's own stories' Rest column from the instances the manifest
-//     says the story mounts, as rendered, unless the story declares a `visualCaptureClip` or may paint
-//     outside its root box (`computeStateCoverage`); a tracked primitive written in a story file
+//     says the story mounts, as rendered, unless the record says a `visualCaptureClip` applied to the
+//     story (T703: observed by the browser, never read from source) or the frame may not show where a
+//     rendered file painted (`computeStateCoverage`); a tracked primitive written in a story file
 //     credits nothing;
 //   - every other forced story credits no cell and is reported with the reason (`resolveRuntimeForce`),
 //     among them a force on an element the browser reports disabled.
@@ -2907,6 +2905,13 @@ export function entryShapeProblem(entry, { forced, knownAxisValues } = {}) {
     if (!Array.isArray(record.mounts)) {
       return `${at} has \`mounts\` that is not an array (${show(record.mounts)})`
     }
+    // The capture frame (T703): booleans the browser pass writes. An entry without them predates the
+    // record, and a mount credit read from nothing would be a credit for a frame nobody observed.
+    for (const field of ['clip', 'fullPage']) {
+      if (typeof record[field] !== 'boolean') {
+        return `${at} has \`${field}\` that is not a boolean (${show(record[field])}), so the capture frame it shows is not recorded`
+      }
+    }
     for (const [i, mount] of record.mounts.entries()) {
       const problem = instanceShapeProblem(mount, `${at}'s mounts[${i}]`, knownAxisValues)
       if (problem) return problem
@@ -3132,49 +3137,9 @@ export function readStoryTags(metaObject, storyObject) {
   return { tags, unreadable }
 }
 
-// The `parameters` object literals of a story file's meta and of one story. A `parameters` that is not
-// an object literal, or that spreads another object, or a meta or story object that itself spreads
-// another one (which may bring a `parameters`), may carry a `visualCaptureClip` this pass cannot see:
-// `unreadable`.
-function readParameterObjects(metaObject, storyObject) {
-  const objects = []
-  let unreadable = false
-  for (const owner of [metaObject, storyObject]) {
-    if (hasSpreadElement(owner) || findOwnerHazard(owner)) unreadable = true
-    const property = readProp(owner, 'parameters')
-    if (property.unreadable) {
-      unreadable = true
-      continue
-    }
-    if (!property.present) continue
-    const object = unwrapExpression(property.node)
-    if (!object || !ts.isObjectLiteralExpression(object)) {
-      unreadable = true
-      continue
-    }
-    if (hasSpreadElement(object)) unreadable = true
-    objects.push(object)
-  }
-  return { objects, unreadable }
-}
-
-// Whether a story declares a `visualCaptureClip`: a `visualCaptureClip` key on the story's or the
-// meta's `parameters`, or a `parameters` or an owner object this pass cannot read in full (not an
-// object literal, or one that spreads another object) that may carry one.
-export function storyDeclaresClip(metaObject, storyObject) {
-  const { objects, unreadable } = readParameterObjects(metaObject, storyObject)
-  return (
-    unreadable ||
-    objects.some((object) => {
-      const clip = readProp(object, 'visualCaptureClip')
-      return clip.present || clip.unreadable === true
-    })
-  )
-}
-
 // The design-system source files with a string literal holding the unprefixed class token `fixed`
-// (`position: fixed`). A story captured as its root element's box (neither clipped nor tagged
-// `visual-full-page`, `tests/visual/stories.spec.ts`) that renders one may paint what that file
+// (`position: fixed`). A story captured as its root element's box (the record says neither clipped nor
+// full-page, `tests/visual/stories.spec.ts`) that renders one may paint what that file
 // placed outside the box, which the screenshot then does not show. Only this shape is identified: an
 // absolutely positioned popover, a prefixed `fixed` (`focus:fixed`) and an element the story's own
 // file positions are not.
@@ -3202,112 +3167,6 @@ function findOverlayFiles(filesByPath, sourceFiles) {
     if (found) overlay.add(relPath(file))
   }
   return overlay
-}
-
-// T704: the project-level `parameters` of the Storybook preview (`.storybook/preview.<ext>`, its default
-// export), read as a third owner beside a story's and its meta's. Storybook merges them into every
-// story's prepared parameters, which `tests/visual/story-render.ts` reads for the capture clip, so a
-// `visualCaptureClip` there clips every story. The preview's own rules, none of them borrowed from the
-// story-file rules: no export other than the default export (`findNonDefaultExport`), a default export
-// readable only as `export default <identifier>` or an inline object literal (`readDefaultExport`), the
-// binding not referenced outside its declaration and its export in this file (`findBindingReferences`),
-// no accessor or method among its own properties and no `this` expression in it (`findOwnerHazard`), no
-// spread among its own properties or among its `parameters`' own properties (not deeper), and a
-// `parameters` that is an
-// identifier-keyed object literal written once with no `visualCaptureClip` (and no `visualForceState`)
-// this pass cannot read by name. One problem per preview file naming the first reason, not one per
-// story. A preview that is not in `moduleFilesByPath` (a fixture with none) has no project parameters.
-const PREVIEW_PATH = /^\.storybook\/preview\.[cm]?[jt]sx?$/
-
-function findProjectParametersProblems(moduleFilesByPath) {
-  const problems = []
-  for (const filePath of [...moduleFilesByPath.keys()].sort()) {
-    const packageRelative = path.relative(dsDir, filePath).split(path.sep).join('/')
-    if (!PREVIEW_PATH.test(packageRelative) || isTestModule(packageRelative)) continue
-    const sourceFile = ts.createSourceFile(
-      filePath,
-      moduleFilesByPath.get(filePath),
-      ts.ScriptTarget.Latest,
-      true,
-    )
-    const reason = projectParametersReason(sourceFile)
-    if (reason === null) continue
-    problems.push({
-      kind: 'project-clip',
-      location: packageRelative,
-      detail:
-        `the Storybook preview ${packageRelative} ${reason}. Its project-level parameters reach every ` +
-        "story's prepared parameters, which the capture reads for its clip, so this pass cannot tell " +
-        'that no story is clipped and credits none of them a mount. Write the preview as `const preview ' +
-        '= { … }; export default preview` (or an inline `export default { … }`) with no other export, ' +
-        'its `parameters` an identifier-keyed object literal with no `visualCaptureClip`, and no ' +
-        'accessor, method, `this` or spread in the object.',
-    })
-  }
-  return problems
-}
-
-// T705: what the preview module exports besides its default export, or `null`. Storybook composes the
-// preview's annotations as `default?.[field] ?? namespace[field]`, so a named export reaches every story
-// when the default export lacks that field, whatever the export is called. The only legal exports are
-// `export default <…>` and `export { <identifier> as default }`; a statement carrying `default` is not
-// looked at here.
-function findNonDefaultExport(sourceFile) {
-  for (const statement of sourceFile.statements) {
-    const text = () => statement.getText(sourceFile).replace(/\s+/g, ' ').slice(0, 60)
-    if (ts.isExportAssignment(statement)) {
-      if (statement.isExportEquals) return text()
-    } else if (ts.isExportDeclaration(statement)) {
-      const clause = statement.exportClause
-      if (statement.isTypeOnly || !clause) return text()
-      if (ts.isNamespaceExport(clause)) {
-        if (clause.name.text !== 'default') return text()
-      } else if (clause.elements.some((element) => element.name.text !== 'default')) {
-        return text()
-      }
-    } else if (ts.isNamespaceExportDeclaration(statement)) {
-      return text()
-    } else if (
-      ts.canHaveModifiers(statement) &&
-      ts.getModifiers(statement)?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword) &&
-      !ts.getModifiers(statement).some((m) => m.kind === ts.SyntaxKind.DefaultKeyword)
-    ) {
-      return text()
-    }
-  }
-  return null
-}
-
-function projectParametersReason(sourceFile) {
-  const otherExport = findNonDefaultExport(sourceFile)
-  if (otherExport !== null) {
-    return (
-      `has an export other than its default export (\`${otherExport}\`): Storybook reads a named export ` +
-      'of the preview as a project annotation when the default export lacks that field'
-    )
-  }
-  const { object, binding, problem } = readDefaultExport(sourceFile)
-  if (problem) return `has a default export this pass cannot read: ${problem.reason}`
-  if (binding !== null && findBindingReferences(sourceFile, new Set([binding])).has(binding)) {
-    return `references its default export's binding \`${binding}\` outside its declaration and its export, which may set a clip through that reference`
-  }
-  const hazard = findOwnerHazard(object)
-  if (hazard) return `has ${hazard} in its default export, which this pass does not read`
-  if (hasSpreadElement(object)) return 'spreads another object into its default export'
-  if (hasUnreadableNamedParameters(object)) {
-    return 'has a `parameters` this pass cannot read by name (a quoted or computed key, a property written twice, or such a `visualCaptureClip` or `visualForceState` inside it)'
-  }
-  const parameters = readProp(object, 'parameters')
-  if (!parameters.present) return null
-  const parametersObject = unwrapExpression(parameters.node)
-  if (!parametersObject || !ts.isObjectLiteralExpression(parametersObject)) {
-    return 'has a `parameters` that is not an object literal (an identifier, a call)'
-  }
-  if (hasSpreadElement(parametersObject)) return 'spreads another object into its `parameters`'
-  if (readProp(parametersObject, 'visualCaptureClip').present) {
-    return 'carries a `visualCaptureClip` in its `parameters`'
-  }
-  return null
 }
 
 export function computeStateCoverage({
@@ -3470,7 +3329,7 @@ export function computeStateCoverage({
         detail:
           `${packageRelative} imports a *.stories module (${quoted(specifiers)}): ` +
           "a story file is Storybook's, and a reference to its bindings from another file is one this " +
-          'pass cannot see, so a clip or a tag set that way is invisible here. Only a *.test.* file may ' +
+          'pass cannot see, so a tag or a force set that way is invisible here. Only a *.test.* file may ' +
           'import one; share what both need from a module that is not a story file.',
       })
     }
@@ -3525,12 +3384,6 @@ export function computeStateCoverage({
       })
     }
   }
-
-  // T704: the project-level `parameters` of the Storybook preview reach every story's prepared
-  // parameters, which the capture reads. A clip there, or a preview this pass cannot read, is named once,
-  // here, and every story below gives no mount credit.
-  const projectProblems = findProjectParametersProblems(moduleFilesByPath)
-  manifestProblems.push(...projectProblems)
 
   for (const filePath of [...storySources.keys()].sort()) {
     const sourceFile = sourceFiles.get(filePath) ?? parseTsx(filePath, storySources.get(filePath))
@@ -3615,7 +3468,7 @@ export function computeStateCoverage({
               ? ', the binding the default export names, whose tags and parameters every story of the file reads'
               : '') +
             '. Storybook reads what such a reference does to the object, and this pass reads the ' +
-            'object literal, so a clip or a tag it sets is invisible here. Write every annotation inside ' +
+            'object literal, so a tag or a force it sets is invisible here. Write every annotation inside ' +
             'the object literal, and name the binding only in its declaration and in `export default`.',
         })
       }
@@ -3644,6 +3497,8 @@ export function computeStateCoverage({
       const forced = extractVisualForceState(node)
       const recordsAForce = Object.values(entry.widths ?? {}).some((record) => record?.force)
       const parametersUnreadable = hasUnreadableParameters(node)
+      const metaParametersUnreadable =
+        !parametersUnreadable && hasUnreadableNamedParameters(metaObj)
       if (parametersUnreadable) {
         manifestProblems.push({
           kind: 'unreadable-parameters',
@@ -3652,24 +3507,23 @@ export function computeStateCoverage({
             `story ${exportName} of ${packageRelative} carries a \`parameters\` that is not an object ` +
             'literal (an identifier, a call), or one this pass cannot read by name (a quoted or computed ' +
             'key, an accessor, a method, a property written twice, a computed key it cannot evaluate, ' +
-            'or such a `visualCaptureClip` or `visualForceState` inside it), or the story object has an ' +
+            'or such a `visualForceState` inside it), or the story object has an ' +
             'accessor, a method or a `this` anywhere in it (T704), so this pass cannot read its ' +
-            '`visualForceState` or tell whether it declares a clip. Write the parameters as an object ' +
+            '`visualForceState`. Write the parameters as an object ' +
             'literal in the story, every key an identifier written once, and no accessor, method or `this` ' +
             'in the story object.',
         })
-      } else if (hasUnreadableNamedParameters(metaObj)) {
-        // The default export's `parameters` is named for the same shapes, on every story of the file
-        // (a non-literal `parameters` on it is only ever refused as a clip, as before).
+      } else if (metaParametersUnreadable) {
+        // The default export's `parameters` is named for the same shapes, on every story of the file.
         manifestProblems.push({
           kind: 'unreadable-parameters',
           location: `${packageRelative}:${exportName}`,
           detail:
             `the default export of ${packageRelative} carries a \`parameters\` this pass cannot read by ` +
             'name (a quoted or computed key, an accessor, a method, a property written twice, a ' +
-            'computed key it cannot evaluate, or such a `visualCaptureClip` or `visualForceState` ' +
+            'computed key it cannot evaluate, or such a `visualForceState` ' +
             'inside it), or has an accessor, a method or a `this` anywhere in it (T704), so it cannot ' +
-            `tell whether story ${exportName} declares a clip. Write the parameters as an object ` +
+            `read the \`visualForceState\` of story ${exportName}. Write the parameters as an object ` +
             'literal, every key an identifier written once, and no accessor, method or `this` in the ' +
             'default export.',
         })
@@ -3728,37 +3582,42 @@ export function computeStateCoverage({
         })
       }
       // What the capture shows of this story, for the credit its mounts give (Disabled, and Rest of a
-      // primitive's own story). The manifest records which instances a story mounts, not where they
-      // paint. A story that declares a `visualCaptureClip` is screenshotted through that clip alone, so
-      // it gives no mount credit. A story with neither a clip nor the `visual-full-page` tag is a
-      // screenshot of its root element's box (`tests/visual/stories.spec.ts`), and an element in
-      // `position: fixed` need not intersect that box: it gives none either when a design-system file
-      // it rendered carries one (`findOverlayFiles`). The force's own credit is not narrowed by a
-      // clip: `applyForceState` and `resolveCaptureClip` (`tests/visual/story-render.ts`) share only
-      // `locateTarget`, so nothing in the capture ties the located element to the clip. The nightly
-      // state-signal sweep fails a forced story whose state frame differs from its rest frame by no more
-      // than the threshold inside the captured frame; it does not check that the target lies in the clip.
-      // A story object or default export that spreads another object may bring a clip in: clipped.
-      // A story, or the default export, referenced outside its declaration and an export may have had a
-      // clip set through that reference: clipped.
-      // A default export this pass cannot read, or a story binding declared twice or with `var` or `let`,
-      // leaves what the capture clips unread: clipped. A story object or default export with an accessor,
-      // a method or a `this` is unreadable (`findOwnerHazard`), which `storyDeclaresClip` reads as a clip.
-      // The project-level parameters carrying a clip, or unreadable (`findProjectParametersProblems`),
-      // clip every story the same way.
-      const clipped =
-        projectProblems.length > 0 ||
+      // primitive's own story), read from the record the browser wrote and from nothing in the story's
+      // source (T703). The manifest records which instances a story mounts, and, per width, whether a
+      // `visualCaptureClip` applied (`readCaptureClip` on the settled story, so a clip written from
+      // `play`, a loader or a decorator, through the `story` annotation, a `__proto__` key, the preview
+      // or `Object.prototype` is in it) and whether the built index tags the frame `visual-full-page`.
+      //   - a clip at ANY captured width: the story is screenshotted through that clip alone, so it gives
+      //     no mount credit (the record does not say whether a mount lies inside the clipped rect);
+      //   - no clip, and not full-page at some width: a screenshot of the root element's box
+      //     (`tests/visual/stories.spec.ts`), and an element in `position: fixed` need not intersect that
+      //     box, so it gives none either when a design-system file it rendered carries one
+      //     (`findOverlayFiles`);
+      //   - otherwise the mounts credit.
+      // The force's own credit is not narrowed by a clip: `applyForceState` and `resolveCaptureClip`
+      // (`tests/visual/story-render.ts`) share only `locateTarget`, so nothing in the capture ties the
+      // located element to the clip. The nightly state-signal sweep fails a forced story whose state
+      // frame differs from its rest frame by no more than the threshold inside the captured frame; it
+      // does not check that the target lies in the clip.
+      // A story whose source this pass was refused a reading of (a reference to its binding, a default
+      // export it cannot read, a binding declared twice or with `var` or `let`, a `parameters` or `tags`
+      // it cannot read by name) fails the run for it below; it also gives no mount credit, the safe
+      // direction, though the record is what decides every other story.
+      const widthRecords = shapeProblem ? [] : Object.values(entry.widths)
+      const clipped = widthRecords.some((record) => record.clip === true)
+      const fullPage = widthRecords.length > 0 && widthRecords.every((record) => record.fullPage)
+      const sourceUnread =
         reference !== null ||
         defaultProblem !== null ||
         storyBindingProblem !== null ||
-        storyDeclaresClip(metaObj, node)
+        parametersUnreadable ||
+        metaParametersUnreadable ||
+        tagsUnreadable
       // `files` is read only once it is known to be an array of strings (`filesProblem`).
       const entryFiles = filesProblem(entry) ? [] : entry.files
       const mayRenderOutsideRoot =
-        !clipped &&
-        !(!tagsUnreadable && tags.has('visual-full-page')) &&
-        entryFiles.some((file) => overlayFiles.has(file))
-      const mountCredit = !shapeProblem && !clipped && !mayRenderOutsideRoot
+        !clipped && !fullPage && entryFiles.some((file) => overlayFiles.has(file))
+      const mountCredit = !shapeProblem && !sourceUnread && !clipped && !mayRenderOutsideRoot
       let verdict = null
       if (shapeProblem) {
         verdict = { refusal: `the manifest entry is malformed (${shapeProblem})` }
@@ -4387,26 +4246,25 @@ export const REGION_LEGEND = [
   "refused. The Disabled column of every matrix, and a primitive's own stories' Rest column, come from",
   'the primitive instances a story mounts, as rendered, and from nothing else: a `disabled` or `loading`',
   "written at a call site, and a `disabled: true` in a story's `args`, credit no Disabled cell. A story",
-  "gives no mount credit for the reasons row 8's prose lists, among them: it declares a",
-  '`visualCaptureClip` (the manifest does not record whether a mount lies inside the clipped rect); its',
-  'story object, its default export or its `parameters` spreads another object or is not an object',
-  'literal (a clip may come in with it); its `parameters` or `tags` cannot be read by name (a quoted,',
-  'computed or duplicated key, an accessor, a method, or a `this` in the story object or the default',
-  'export); the story or the default export is referenced outside its declaration and an export, the',
-  'default export is not one this pass reads, or a story or meta binding is declared twice or with `var`',
-  "or `let`; the Storybook preview's project-level `parameters` carry a clip or cannot be read",
-  '(`project-clip`); or it has neither a clip nor the `visual-full-page` tag and rendered a',
-  'design-system file with an unprefixed `fixed` class (that element need not intersect the root box it',
-  'is screenshotted as). A tracked primitive written in a story file credits nothing. Crediting a story',
-  'is not a proof that no clip applied to it: the source readers refuse the shapes they know, the shapes',
-  "they are known not to see are listed, without claiming the list is exhaustive, under row 8's **What",
-  'the static reading cannot see**, and only the runtime record of the clip the browser applied (T703)',
-  "would prove a frame's clip. Every other forced story credits no cell and the check fails naming why",
-  '(a filed, dated exception is the one way to tolerate it), except that a force whose located element',
-  'is a record-1 element and whose placing instance has no matrix row credits that record-1 cell and',
-  'names the record-3 half in a note; any other is refused like the rest. A manifest entry of the',
-  'wrong shape fails the check, naming the story, and so does a story object or default export that',
-  'spreads another object (its `tags` cannot be read).',
+  'gives no mount credit when the browser applied a `visualCaptureClip` to it at any captured width (the',
+  'manifest records, per width, whether one applied, read from the settled story the capture itself',
+  'reads, so a clip no object literal spells counts; it does not record whether a mount lies inside the',
+  'clipped rect); when it has no clip, the built index does not tag it `visual-full-page` (also recorded',
+  'per width) and it rendered a design-system file with an unprefixed `fixed` class (that element need',
+  'not intersect the root box it is screenshotted as); or when its source is one this pass was refused',
+  'a reading of, which also fails the run naming the story: the story or the default export is',
+  'referenced outside its declaration and an export, the default export is not one this pass reads, a',
+  'story or meta binding is declared twice or with `var` or `let`, its `parameters` is not an object',
+  'literal, or its `parameters` or `tags` cannot be read by name (a quoted, computed or duplicated key,',
+  'an accessor, a method, or a `this` in the',
+  'story object or the default export), or its story object or default export spreads another object',
+  '(its `tags` cannot be read). A tracked primitive',
+  'written in a story file credits nothing. An entry that records no boolean `clip` and `fullPage` at',
+  'every captured width fails the run, naming the story, and credits nothing. Every other forced story',
+  'credits no cell and the check fails naming why (a filed, dated exception is the one way to tolerate',
+  'it), except that a force whose located element is a record-1 element and whose placing instance has',
+  'no matrix row credits that record-1 cell and names the record-3 half in a note; any other is refused',
+  'like the rest. A manifest entry of the wrong shape fails the check, naming the story.',
   '',
   '**Still static, and read from source:**',
   '',

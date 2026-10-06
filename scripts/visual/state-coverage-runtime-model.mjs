@@ -25,7 +25,7 @@ import { spawnSync } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { BUILD_STORYBOOK_COMMAND } from './missing-index.mjs'
-import { importFile, isFixtureEntry, listStories } from './story-index.mjs'
+import { importFile, isFixtureEntry, isFullPageEntry, listStories } from './story-index.mjs'
 import { selectChangedStories } from './story-selection.mjs'
 
 export const MANIFEST_PATH = 'packages/design-system/specs/state-coverage-runtime.json'
@@ -87,6 +87,19 @@ export function findKeyProblems({ manifest, index }) {
         id,
         detail: `exportName is ${JSON.stringify(entry.exportName)}, the index says ${JSON.stringify(story.exportName)}`,
       })
+    }
+    // The frame's full-page half is the built index's tag, the capture's own source, so it is checked
+    // here without a browser (T703): a tag added or removed without a rewrite fails the keys. The clip
+    // half is a browser's observation and only a pass can check it.
+    const fullPage = isFullPageEntry(story)
+    for (const [width, record] of Object.entries(entry.widths ?? {})) {
+      if (record?.fullPage !== fullPage) {
+        problems.push({
+          kind: 'full-page',
+          id,
+          detail: `fullPage at ${width}px is ${JSON.stringify(record?.fullPage)}, the index ${fullPage ? 'tags' : 'does not tag'} the story \`visual-full-page\``,
+        })
+      }
     }
   }
   for (const id of Object.keys(manifest).sort()) {
