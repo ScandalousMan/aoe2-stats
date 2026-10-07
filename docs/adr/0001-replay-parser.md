@@ -111,12 +111,24 @@ first, so they are corrected here rather than left for a reader to discover the 
   what it does not cover. It was open when this note was written.
 
 **Amendment — 2026-09-19.** The first bullet above says the `Build` action carries no `player_id`
-and that the repository must decode it from `data`. That is false of the pinned wheel
-(`aoe2rec-py==0.1.21`): it returns `{"player_id", "action_length", "data"}`, and
+and that the repository must decode it from `data`. That is false of the wheel (`aoe2rec-py`
+0.1.21 when this was written; pinned at 0.1.24 since 2026-10-05, same `Build` shape): it returns `{"player_id", "action_length", "data"}`, and
 `packages/replay-engine/tests/test_aoe2rec.py` asserts the `player_id` field on every placement in
 the reference fixture, and that no fixed byte offset in `data` recovers it. Only the **building
 identifier** needs decoding from `data`, which is what `decode_build_action` does. The
 `replay-parsing` skill carried the same error and is corrected alongside.
+
+## Amendment — 2026-10-05: pinned at 0.1.24
+
+The Evidence table above is a 2026-08-19 measurement and stays as it was: `aoe2rec-py` 0.1.21 read
+build 180059 in 0.54 s. It is no longer what is pinned. 0.1.21 panics on match 511523321's recording
+(game build 185872), so the pin is now **0.1.24** (`packages/replay-engine/pyproject.toml` is the authority). 0.1.22 and
+later return `{"chapters": [chapter, ...]}` instead of one flat document, and the former `meta` block
+is the chapter's first operation, `Pregame`. The adapter reads exactly one chapter and refuses any
+other count; the two build-180059 recordings yield the same canonical streams as before, and a
+third recording on build 185872 is committed (`tests/fixtures/replays/README.md`). The wheel's
+"lags the Rust crate" caveat in Consequences held in the opposite direction here: a patch outran the
+pin, and the fix was a version bump, not a source build.
 
 ## Alternatives considered
 

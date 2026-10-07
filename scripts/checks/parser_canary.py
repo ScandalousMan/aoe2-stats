@@ -59,13 +59,17 @@ def try_aoe2rec(data: bytes) -> tuple[bool, str]:
     except Exception as exc:
         return False, f"{version}: {type(exc).__name__}: {exc}"
 
-    ops = rec["operations"]
+    chapters = rec.get("chapters")  # 0.1.22+: one chapter per recording, holding the operations
+    if not isinstance(chapters, list) or len(chapters) != 1:
+        return False, f"{version}: expected exactly one chapter, got {chapters!r:.80}"
+    chapter = chapters[0]
+    ops = chapter["operations"]
     actions = [k for op in ops if "Action" in op for k in op["Action"]["action_data"]]
     if "Build" not in actions:
         return False, f"{version}: parsed but found no Build action — output looks wrong"
     if "Research" not in actions:
         return False, f"{version}: parsed but found no Research action — output looks wrong"
-    build = rec["zheader"].get("build")
+    build = chapter["zheader"].get("build")
     return True, f"{version}: {len(ops)} operations in {elapsed:.2f}s (game build {build})"
 
 

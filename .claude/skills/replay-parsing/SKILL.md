@@ -28,9 +28,15 @@ from aoe2rec_py import aoe2rec_py as native
 rec = native.parse_rec(data)   # data: bytes
 ```
 
-`rec["zheader"]["game_settings"]` holds the lobby and per-player setup. `rec["operations"]` is the
-full event stream — `Sync`, `Viewlock`, `Action`, `Chat`, `PostGame`. Duration is the sum of
-`Sync.time_increment`. `Build` plus `Research` plus that clock is what age-up times, opening
+Since 0.1.22 (pinned at 0.1.24; the version in `packages/replay-engine/pyproject.toml` is the one
+that counts) the result is `{"chapters": [chapter, ...]}`. The adapter reads exactly one chapter and
+refuses any other count with `EngineParseError` — how several would join is not established, and
+every recording seen has one. The chapter's `zheader["game_settings"]` holds the lobby and
+per-player setup. Its `operations` is the full event stream — `Pregame` (always first: the old
+`meta` block; never read its `rec_owner` as the point of view — see
+`tests/fixtures/replays/README.md`), `Sync`, `Viewlock`, `Action`, `Chat`, `PostGame`. The point of view is
+`zheader["replay"]["rec_player"]`, a player number matched against each player's `player_number`.
+Duration is the sum of `Sync.time_increment`. `Build` plus `Research` plus that clock is what age-up times, opening
 detection and idle-TC are computed from. `PostGame` carries per-player elo.
 
 **Do not use the bundled `RecSummary` helper.** It raises `KeyError` on chat from a player id absent
@@ -39,6 +45,12 @@ build our own summary; we want our own domain model anyway.
 
 **The published wheel lags the Rust crate.** Saved-and-restored games may fail to parse until a new
 wheel ships. Building from source with `maturin` is the fallback.
+
+**A game patch can break the engine and the engine's shape in one release.** Build 185872 made
+0.1.21 panic on most recent recordings, and the wheel that reads it (0.1.22 and later) changed what
+`parse_rec` returns. Read the shape in one place (`_parse_or_raise`, `aoe2rec.py`), never at the call
+sites. Also since 0.1.22, garbage input no longer panics: it returns `{"chapters": []}`, so "did not
+raise" is not evidence of a recording and the validator refuses an empty chapter list itself.
 
 ## Version discipline
 
@@ -53,7 +65,7 @@ A replay that fails to parse:
 1. stays **untouched** in object storage. Never deleted, never "repaired".
 2. gets a `replay_parses` row with `status='quarantined'`, the exception class, the full message and
    the stack.
-3. raises **no per-item alert**. Alert on the quarantine *rate*. One unparsable file is a curiosity;
+3. raises **no per-item alert**. Alert on the quarantine _rate_. One unparsable file is a curiosity;
    a rising fraction is a patch that broke the parser.
 4. stays replayable. Quarantine is a state, not an ending.
 

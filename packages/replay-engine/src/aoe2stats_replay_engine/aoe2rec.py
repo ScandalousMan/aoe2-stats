@@ -21,14 +21,23 @@ job is limited here to confirming the inner bytes are a replay it can open — n
 content is read or returned.
 
 `decode_build_action` (T354) decodes one raw `Build` action dict from the pinned wheel
-(`aoe2rec-py==0.1.21`). `player_id` is already present on the field the wheel provides — R4 and
-ADR-0001's 2026-08-24 correction are wrong on this point, measured directly against the pinned
-wheel in `tests/test_aoe2rec.py` — so it is passed through unchanged, never re-derived from `data`.
+(`aoe2rec-py==0.1.24`). `player_id` is already present on the field the wheel provides — R4 and
+ADR-0001's 2026-08-24 correction are wrong on this point, measured directly against the wheel in
+`tests/test_aoe2rec.py` — so it is passed through unchanged, never re-derived from `data`.
 What the wheel genuinely does not expose as a named field is the building-type identifier: the AoE2
 DE Genie building id, recovered from `data[12:16]`, an unsigned little-endian 32-bit integer. That
 offset was found empirically (swept across every byte position and all 17 distinct `action_length`
 groups in the reference replay) and cross-checked against known Genie ids — see the test file's
 module docstring and `_EXPECTED_BUILDING_TYPE_COUNTS` for the full derivation.
+
+The wheel's result shape changed in 0.1.22 (T672, game build 185872): it is now `{"chapters":
+[chapter, ...]}`, each chapter carrying `zheader` and `operations`, and the old `meta` block is the
+first operation, `{"Pregame": {...}}`. `_parse_or_raise` is the one place that reads that shape: it
+accepts exactly one chapter, refuses any other count and a chapter that does not open with exactly
+one `Pregame`, all with `EngineParseError`, and hands the chapter on — a mapping with `zheader` and
+`operations`, which is all `canonical.canonical_events` ever read — so nothing downstream sees the
+chapter list. How several chapters would join is not established (every recording seen has one),
+so a recording with more is refused rather than guessed at.
 
 `Aoe2RecExtractor` (T355) satisfies `aoe2stats_core.replay.analysis.ReplayExtractor`. It shares
 `_read_member_bytes` with `Aoe2RecValidator.validate` — the same well-formedness check, the same
@@ -222,10 +231,20 @@ class Aoe2RecValidator:
         # uncaught here: that is the failure the ingester's containment barrier (T055) exists to
         # catch. Only an ordinary `Exception` — e.g. a future wheel returning a typed error instead
         # of panicking — is translated into this package's own error type.
+        #
+        # Since 0.1.22 the wheel does not reject every non-replay: garbage bytes come back as
+        # `{"chapters": []}`, no panic and no exception (measured against 0.1.24, T672), so "did
+        # not raise" no longer means "is a recording". A result with no chapter is therefore
+        # refused here. Nothing else of `_single_chapter`'s rule is applied: capture asks only
+        # "can the engine open this?", and a recording it opens but the analysis cannot yet join
+        # (several chapters) must still be stored (constitution I), not quarantined.
         try:
-            _native.parse_rec(data)
+            parsed = _native.parse_rec(data)
         except Exception as exc:
             raise EngineParseError(f"{ENGINE_NAME} rejected the replay: {exc}") from exc
+        chapters = parsed.get("chapters") if isinstance(parsed, Mapping) else None
+        if not isinstance(chapters, Sequence) or not chapters:
+            raise EngineParseError(f"{ENGINE_NAME} found no recording chapter in the input")
 
 
 def _decompression_ratio(member: zipfile.ZipInfo) -> float:
@@ -295,7 +314,7 @@ class DecodedBuildAction:
     action, never re-derived from `data` — see `test_the_pinned_wheel_already_returns_a_player_id_
     for_build_actions` and `test_no_fixed_byte_offset_in_build_data_recovers_player_id` in
     `tests/test_aoe2rec.py`, which pin this as measured fact against the pinned
-    `aoe2rec-py==0.1.21` wheel and correct R4 / ADR-0001's now-superseded claim that the field is
+    `aoe2rec-py==0.1.24` wheel and correct R4 / ADR-0001's now-superseded claim that the field is
     missing entirely. `building_id` is the one piece genuinely absent from the wheel's own output:
     the AoE2 DE Genie building id, decoded from raw bytes.
     """
@@ -308,7 +327,7 @@ def decode_build_action(build_action: Mapping[str, object]) -> DecodedBuildActio
     """Decode a raw `Build` action dict from the pinned `aoe2rec-py` wheel.
 
     `build_action` is the `{"player_id", "action_length", "data"}` dict the wheel hands back for
-    one `Build` action (`parsed["operations"][i]["Action"]["action_data"]["Build"]`). `player_id`
+    one `Build` action (`chapter["operations"][i]["Action"]["action_data"]["Build"]`). `player_id`
     passes through unchanged. `building_id` is decoded from `data[12:16]`, an unsigned
     little-endian 32-bit integer — the offset `tests/test_aoe2rec.py` pins against all 326 `Build`
     actions in the reference replay, cross-checked there against known AoE2 DE Genie building ids.
@@ -341,7 +360,7 @@ class Aoe2RecExtractor:
     Shares `_read_member_bytes` with `Aoe2RecValidator.validate` — see that function's docstring —
     so this class implements no well-formedness check of its own. Once the wheel has parsed the
     bytes, `extract` folds the canonical event stream, which walks
-    `parsed["operations"]` exactly once, reducing directly into the returned `MatchTimeline` and
+    the chapter's `operations` exactly once, reducing directly into the returned `MatchTimeline` and
     never retaining the operation list or the events (R3): everything the wheel materialised is
     eligible for collection the moment this method returns. The published `actions` is the stream's
     raw per-participant command count, taken before collapse and before the exit rule, so it and
@@ -415,13 +434,80 @@ class Aoe2RecExtractor:
 
 
 def _parse_or_raise(data: bytes) -> Mapping[str, object]:
-    # Same uncaught-BaseException discipline as `Aoe2RecValidator._confirm_parseable`: a native
-    # engine crash (`pyo3_runtime.PanicException`, a bare `BaseException`) is T055's containment
-    # barrier's to catch, not this adapter's.
+    """Parse `data` and return its single chapter: a mapping with `zheader` and `operations`.
+
+    Same uncaught-`BaseException` discipline as `Aoe2RecValidator._confirm_parseable`: a native
+    engine crash (`pyo3_runtime.PanicException`, a bare `BaseException`) is T055's containment
+    barrier's to catch, not this adapter's.
+    """
     try:
-        return cast(Mapping[str, object], _native.parse_rec(data))
+        parsed = _native.parse_rec(data)
     except Exception as exc:
         raise EngineParseError(f"{ENGINE_NAME} rejected the replay: {exc}") from exc
+    return _single_chapter(cast(Mapping[str, object], parsed))
+
+
+def _single_chapter(parsed: Mapping[str, object]) -> Mapping[str, object]:
+    """The one chapter of a 0.1.22+ parse result, or `EngineParseError` (T672).
+
+    Exactly one chapter is understood: every recording seen has one, and nothing establishes how
+    the operations of several would join, so more (or none) is refused with the count named rather
+    than read as the first. The chapter must open with exactly one `Pregame` operation, the block
+    that replaced the old `meta`: none, a second one, or one anywhere but first is refused here,
+    once, so no caller meets a bare `KeyError` or `IndexError` further down. Nothing is read from
+    the `Pregame` itself: its `rec_owner` does not identify the recorder (see
+    `_point_of_view_profile_id`).
+    """
+    chapters = parsed.get("chapters")
+    if not isinstance(chapters, Sequence) or isinstance(chapters, str | bytes):
+        raise EngineParseError(
+            f"{ENGINE_NAME} returned no 'chapters' list — a result shape this adapter does not read"
+        )
+    if len(chapters) != 1:
+        raise EngineParseError(
+            f"{ENGINE_NAME} returned {len(chapters)} chapters; exactly one is understood, and how "
+            "several would join is not established"
+        )
+    chapter = cast(Mapping[str, object], chapters[0])
+    operations = chapter.get("operations")
+    if not isinstance(operations, Sequence) or isinstance(operations, str | bytes):
+        raise EngineParseError("the chapter carries no operations list")
+    pregames = [
+        index
+        for index, operation in enumerate(operations)
+        if isinstance(operation, Mapping) and "Pregame" in operation
+    ]
+    if pregames != [0]:
+        raise EngineParseError(
+            "the chapter must open with exactly one Pregame operation; "
+            + ("it has none" if not pregames else f"Pregame operations sit at positions {pregames}")
+        )
+    return chapter
+
+
+def _point_of_view_profile_id(chapter: Mapping[str, object]) -> int:
+    """The profile that recorded this match: the player whose number is `replay.rec_player`.
+
+    `zheader.replay.rec_player` is a player number, matched here against each player's own
+    `player_number`. On every committed recording it names the profile the download was requested
+    for (measured in `tests/fixtures/replays/README.md`), which is the recording's perspective
+    (`docs/data-sources.md`). `Pregame.rec_owner` does not: read as an index into
+    `game_settings.players` it named the opponent in match 511523321's recording, and the recorder
+    elsewhere only by coincidence (same README). A recording where no player, or more than one,
+    carries that number is refused: the perspective is never guessed.
+    """
+    zheader = cast(Mapping[str, object], chapter["zheader"])
+    replay = cast(Mapping[str, object], zheader.get("replay") or {})
+    rec_player = replay.get("rec_player")
+    game_settings = cast(Mapping[str, object], zheader["game_settings"])
+    raw_players = cast(Sequence[Mapping[str, object]], game_settings["players"])
+    carriers = [p for p in raw_players if p["player_number"] == rec_player]
+    if not isinstance(rec_player, int) or len(carriers) != 1:
+        raise EngineParseError(
+            f"zheader.replay.rec_player is {rec_player!r}, which exactly one player must carry as "
+            f"their player_number; {len(carriers)} do"
+        )
+    return cast(int, carriers[0]["profile_id"])
 
 
 def _build_timeline(parsed: Mapping[str, object]) -> MatchTimeline:
@@ -429,14 +515,7 @@ def _build_timeline(parsed: Mapping[str, object]) -> MatchTimeline:
     game_settings = cast(Mapping[str, object], zheader["game_settings"])
     raw_players = cast(Sequence[Mapping[str, object]], game_settings["players"])
 
-    # `meta.rec_owner` is a zero-based index into `game_settings.players`, not a `player_number`
-    # (R2): confirmed against the reference replay, whose `rec_owner` is `1` and whose recording
-    # owner is `players[1]` (profile 196240), not the player whose own `player_number` is `1`
-    # (profile 288714) — the two disagree on this exact recording, which is what makes this worth
-    # pinning rather than assuming.
-    meta = cast(Mapping[str, object], parsed["meta"])
-    rec_owner_index = cast(int, meta["rec_owner"])
-    point_of_view_profile_id = cast(int, raw_players[rec_owner_index]["profile_id"])
+    point_of_view_profile_id = _point_of_view_profile_id(parsed)
 
     builds: dict[int, list[BuildEvent]] = defaultdict(list)
     trainings: dict[int, list[TrainingEvent]] = defaultdict(list)

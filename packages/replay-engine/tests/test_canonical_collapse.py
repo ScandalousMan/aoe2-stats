@@ -54,6 +54,9 @@ _Parsed = Mapping[str, object]
 # FR-018).
 _AGE_UP_TECHNOLOGIES = (101, 102, 103)
 
+# Recordings in which no age-up was double-clicked (measured; the build-185872 one).
+_NO_DOUBLE_CLICKED_AGE_UP = frozenset({"AgeIIDE_Replay_511523321"})
+
 _ResearchKey = tuple[int, int]  # (participant, technology_id)
 _QueueKey = tuple[
     int, int, int, int, int
@@ -143,7 +146,7 @@ def _unit_queued_events(events: Sequence[CanonicalEvent]) -> Sequence[CanonicalE
 
 
 def test_a_real_double_clicked_age_up_collapses_to_one_event(
-    parsed: _Parsed, canonical_stream: list[CanonicalEvent]
+    parsed: _Parsed, canonical_stream: list[CanonicalEvent], recording_path: Path
 ) -> None:
     """SC-010: the age-up a fixture's player double-clicked appears once in the canonical stream.
 
@@ -155,6 +158,18 @@ def test_a_real_double_clicked_age_up_collapses_to_one_event(
     """
     raw_counts = _raw_age_up_occurrences(parsed)
     doubled = {key: count for key, count in raw_counts.items() if count >= 2}
+    if recording_path.stem in _NO_DOUBLE_CLICKED_AGE_UP:
+        # Measured, not assumed: this recording has no double-clicked age-up, so there is nothing
+        # for the sweep below to find. What is left to assert is the invariant itself — no
+        # age-up reaches the canonical stream twice for one participant.
+        assert not doubled
+        age_ups = [
+            (e.participant, cast(ResearchQueuedPayload, e.payload).technology_id)
+            for e in _research_events(canonical_stream)
+            if cast(ResearchQueuedPayload, e.payload).technology_id in _AGE_UP_TECHNOLOGIES
+        ]
+        assert len(age_ups) == len(set(age_ups))
+        return
     assert doubled, (
         "expected at least one age-up (technology 101, 102 or 103) issued more than once by the "
         "same participant in this recording (a double-click); the sweep of raw Research actions "

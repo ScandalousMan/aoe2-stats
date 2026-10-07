@@ -1563,6 +1563,79 @@ quickstart run, and the lint. `/speckit-implement` stops here when T670 exits 0.
 
 ---
 
+## Phase 7: Game build 185872 (filed 2026-10-05, production incident)
+
+**Purpose**: `POST /api/analyze` answered 500 for match 511523321. The pinned `aoe2rec-py` 0.1.21
+panics on fourteen of fifteen recordings sampled between 2026-09-27 and 2026-10-05 from two
+profiles (match 511523321 is game build 185872), and that panic is a `BaseException` the analysis path never
+contains: the request fails, the claimed row stays `running`, and once its lease lapses the next
+request fetches the recording from the source again. `aoe2rec-py` 0.1.22 (2026-09-22) to 0.1.24
+parse match 511523321 but changed the shape of what they return. Capture is not losing bytes: the blob
+is committed before validation, so the same recordings end `quarantined` with their object kept.
+T671 and T672 ship together; T673 follows once T672 is deployed.
+
+- [x] T671 Contain a native engine panic on the analysis path, as `apps/ingester/src/
+      aoe2stats_ingester/capture.py`'s `_validate_with_barrier` does on the capture path. A
+      `BaseException` raised while the extractor builds the document ends a first analysis `failed`
+      with its class and message recorded, and keeps the prior analysis on a recompute, through the
+      existing `_refuse`; `asyncio.CancelledError`, `KeyboardInterrupt` and `SystemExit` still
+      propagate. Test first against a stand-in `BaseException` subclass, as `apps/ingester/tests/
+      test_quarantine.py` does, and show the test failing on the current tree: the request must
+      not raise, the row must not stay `running`, and the source must be fetched once
+- [x] T672 Upgrade `aoe2rec-py` to 0.1.24 and adapt `packages/replay-engine/`: the parse result is
+      now a list of chapters, each carrying `zheader` and `operations`, and the former `meta` block
+      is the first operation, of kind `Pregame`. Read the single chapter, take the recording owner
+      from `Pregame`, and treat `Pregame` as a known kind in the canonical stream rather than an
+      unknown one; refuse a recording with more than one chapter with `EngineParseError` rather
+      than guessing how chapters join. Commit match 511523321's recording (build 185872) as a third
+      fixture in `tests/fixtures/replays/` under that README's rules, and test that it extracts.
+      The two committed build 180059 fixtures must yield byte-identical golden timelines and
+      canonical streams; regenerate a golden only if it does not, and explain every diff. The
+      engine version enters the identity digest, so published analyses recompute: say so in the
+      commit body. Update every living statement of the pinned version in `docs/` and the
+      replay-parsing skill; leave frozen `specs/` records alone
+- [x] T672a Close #124's review (`reviewer` REJECT 2026-10-06). **Point of view:** the adapter
+      takes the recorder from `rec_owner` as an index into `game_settings.players`, and that index
+      is 1 in all three committed recordings: it named the recorder in the two build 180059
+      fixtures by coincidence and names the wrong player in match 511523321's. Take it from
+      `zheader.replay.rec_player`, a player number, matched against each player's
+      `player_number`, which names the downloaded profile in all three; refuse a recording where no
+      player carries it. Assert the downloaded profile (5632575) for the new fixture, keep the two
+      older goldens unchanged, drop the refusals keyed on `rec_owner`, and correct the fixtures
+      README, the replay-parsing skill and the canonical stream's comment. **Pregame:** refuse a
+      chapter with more than one `Pregame`, and a `Pregame` anywhere but first, in both the adapter
+      and the canonical stream. **Panic message:** a `BaseException` that is not an `Exception`
+      is recorded as its class and a fixed sentence and its full text is logged, never shown:
+      the measured `PanicException` text carries terminal escape codes, a backtrace and crate
+      paths. Test with that measured text. Say in `_extract_and_publish`'s docstring that any
+      exception in the barrier now ends a first analysis `failed`, where it used to propagate and
+      be claimed again. **Docs:** `docs/risks.md` says only what is measured: new captures and
+      analyses read build 185872, the quarantined backlog waits on T673 and is not counted; it
+      does not restate the sample count kept in this phase's purpose
+- [ ] T674 Find the published analyses whose point of view was taken from the wrong player
+      (T672a): every `match_analyses` row whose `point_of_view_profile_id` has no
+      `retained_recordings` row for its match. Such a row cannot be recomputed, and its
+      perspective is wrong. Count them first and report; correcting them is a separate decision.
+      Reads production, so the user runs it or grants the read
+- [x] T672b Close #124's second review (`reviewer` REJECT 2026-10-06 on T672a; code findings
+      closed, prose overclaims left). Cut to what was measured: `docs/risks.md`'s entry names the
+      one recording measured as build 185872 and states capture quarantine as what the code
+      implies, uncounted until T673; `_describe`'s docstring no longer says every recorded message
+      is this package's own text (an `EngineParseError` quotes the engine's); the replay-parsing
+      skill and the adapter's and canonical stream's comments cite the fixtures README for
+      `rec_owner` instead of restating its measurement. Third review: `_describe` names no class as
+      the only one quoting foreign text, and ADR 0001's amendment names the one recording measured
+- [ ] T673 Re-validate captures that ended `quarantined` because the engine could not parse them,
+      once T672 is deployed: read the committed object, check it against the row's own
+      `zip_sha256`, and run it through the capture barrier again, marking `stored` or leaving it
+      `quarantined` with the new error. Never re-download, never modify or delete an object. Bound
+      the selection to the engine's own failure text so an integrity quarantine (missing object,
+      checksum mismatch) is never reopened. Urgent: 31 days after a recording, an analysis of its
+      match has no source to fall back on. The earliest affected recording is not measured; the
+      earliest sampled is from 2026-09-27, and 0.1.22 shipped on 2026-09-22
+
+---
+
 ## Dependencies and execution order
 
 ### Phase dependencies
