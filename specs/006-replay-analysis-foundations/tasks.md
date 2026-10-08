@@ -1707,6 +1707,24 @@ T671 and T672 ship together; T673 follows once T672 is deployed.
       supplying ink, so a story shows what the component itself declares, or add a check that
       refuses text without a token; decide which, list every component the change exposes, and
       say which baselines move
+- [ ] T706a Close #127's review (`reviewer` REJECT 2026-10-08 on T706). **Lease shorter than the
+      run**: the claim's lease is the run budget (240 s) while the function may run 300 s, so a
+      live run reads expired for its last minute and T706's page now re-claims it: a second fetch,
+      a second parse, two publishes. Claim with the lease length the configuration already
+      declares for this (`.env.example`'s lease key, read by nothing today), and test that a
+      run's lease never expires while its function may still be running. **Retries without a
+      bound**: `attempts` is incremented and never read, so a recording that kills its
+      invocation every time is re-claimed, uncounted, on every page view, each time fetching from
+      the source. Enforce the bound 003's data model states: a claim that would exceed the
+      configured maximum ends the row `failed` with a fixed reason instead, read from a new
+      required setting (no default, declared where every setting is, `.env.example` sizing it).
+      Test the boundary. **Refused takeover**: when the page's automatic `POST` on `queued` is
+      refused (admission 409, 401, network), the page keeps polling with no message; show the
+      refusal and stop polling, with a test, and correct the comment that says it is read back
+      through the polls. **Prose**: cut "starts nothing new", "never a free analysis",
+      "over-counts, never under-counts" and "bounded" to what holds (a takeover re-fetches; the
+      narrow overlap of a live run publishing before an uncounted request can recompute), and
+      make the uncounted-path admission test exercise all three gates or name the one it proves
 
 ---
 
