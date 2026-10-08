@@ -1634,6 +1634,34 @@ T671 and T672 ship together; T673 follows once T672 is deployed.
       match has no source to fall back on. The earliest affected recording is not measured; the
       earliest sampled is from 2026-09-27, and 0.1.22 shipped on 2026-09-22
 
+- [ ] T706 Unstick an analysis whose lease expired (filed 2026-10-08; decided by the user the same
+      day). Match 511523321's row stayed `running` from the 2026-10-05 crash until a manual
+      `POST`: `GET /api/matches/{game_id}` serves `running` without reading `lease_expires_at`,
+      the match page polls while `running` and never sends the `POST` that would re-claim it, so
+      003's "the next person to open the match takes it" was never implemented. The data model
+      already defines `running` as a lease held and unexpired. **Server**: serve a `running` row
+      whose lease has expired as `queued` in the `analysis` object. **Client**: on `queued`, the
+      match page sends `POST /api/analyze` once per page view, not on every poll. **Limit**: a
+      `POST` for a match whose analysis row exists in `queued` or `running` does not count
+      against the per-user daily limit (FR-040): it re-claims or joins, it starts nothing new;
+      every admission gate still applies. Tests, each red before: an expired-lease row is served
+      `queued`, a live one `running`; the page sends exactly one `POST` across several `queued`
+      polls and none while `running`; a re-claim or join leaves the counter unchanged while a
+      first request still increments it. Update `packages/design-system/specs/analysis-timeline.md`
+      §5 if it describes the polling, keeping that file's line count (its lines are cited)
+- [ ] T707 Name what a build 185872 analysis shows. Knowledge snapshots exist for build 180059 only
+      (`packages/knowledge/snapshots/`), so an analysis of a build 185872 recording resolves no
+      name and shows identifiers (`Technology ID 101`, `Building ID 70`). Promote a snapshot for
+      build 185872 from the same source and by the same procedure as the 180059 one, with its
+      provenance, and test that a build 185872 analysis resolves the age-up and building names
+- [ ] T708 Give `AnalysisTimeline`'s event lists a text colour. In
+      `packages/design-system/src/composites/AnalysisTimeline/index.tsx` only a resolved name
+      carries `text-text-primary`; the surrounding text, the times and an unresolved identifier
+      inherit no token, and in the dark theme they render dark on dark (seen in production on
+      match 511523321, 2026-10-08). Set the list's colour from a design-system token, check the
+      unresolved-identifier style against the contrast table, and move the dark baselines that
+      show it
+
 ---
 
 ## Dependencies and execution order
