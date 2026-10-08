@@ -143,19 +143,22 @@ const isFile = (file) => {
 }
 
 // Every file a relative specifier can name that exists, as absolute paths (possibly none): as written,
-// then with each extension, then as a directory's `index`; a specifier ending in `/` names a directory
-// and tries the `index` candidates only. Each existing candidate is returned, not the first: over-
-// selecting is the safe direction, so which one a bundler would load (`helper.js` or `helper.ts`, a
-// file or a directory index of the same name) is a question the walk never needs to answer, and its
-// extension order is irrelevant. A bare specifier (a package, an alias), one that resolves to nothing,
-// and a candidate outside `dsDir` or inside `node_modules` yield nothing: not walked.
+// then with each extension, then as a directory's `index`; a specifier ending in `/`, and the bare `.`
+// and `..`, name a directory and try the `index` candidates only. Each existing candidate is returned,
+// not the first: over-selecting is the safe direction, so which one a bundler would load (`helper.js`
+// or `helper.ts`, a file or a directory index of the same name) is a question the walk never needs to
+// answer, and its extension order is irrelevant. A bare specifier (a package, an alias), one that
+// resolves to nothing, and a candidate outside `dsDir` or inside `node_modules` yield nothing: not
+// walked.
 function resolveRelativeSpecifier(fromFile, rawSpecifier, dsDir) {
   const specifier = rawSpecifier.replace(/[?#].*$/, '')
-  if (!specifier.startsWith('./') && !specifier.startsWith('../')) return []
+  const bareDirectory = specifier === '.' || specifier === '..'
+  if (!bareDirectory && !specifier.startsWith('./') && !specifier.startsWith('../')) return []
+  const isDirectory = bareDirectory || specifier.endsWith('/')
   const base = path.resolve(path.dirname(fromFile), specifier)
   const indexes = RESOLVE_EXTENSIONS.map((ext) => path.join(base, `index${ext}`))
   let candidates
-  if (specifier.endsWith('/')) {
+  if (isDirectory) {
     candidates = indexes
   } else {
     const emitted = EMITTED_EXTENSION[path.extname(base)] ?? []

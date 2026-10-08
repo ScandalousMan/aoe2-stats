@@ -1751,10 +1751,11 @@ hover:underline-offset-2` beside `active:underline-offset-4`, `src/screens/DataE
      in the dark theme, because decorators, loaders and `play` receive `context.globals` and the capture
      runs both themes, so a clip set in one theme only is a clip; the record is the disjunction of the
      two. The mounts, the rendered files, the force and the focus are recorded from the light render
-     only, and a render that depends on the theme is credited from the light render only, the safe
-     direction: an element only the dark render mounts is under-credited, never over-credited. Every
-     settle starts with cleared cookies and storages, as a capture unit starts in a fresh browser
-     context. A clip that no object literal spells is in it (written from a
+     only: an element only the dark render mounts is not credited, and an element only the light
+     render mounts is credited though the dark capture does not show it, which T710 records as an
+     open over-credit. Cookies, `localStorage` and `sessionStorage` are cleared before each settle;
+     IndexedDB, Cache Storage and `window.name` are not, and nothing in the design system uses them;
+     a capture unit starts in a fresh browser context, which clears all of them. A clip that no object literal spells is in it (written from a
      `play`, a loader or a decorator of the story or of its meta, through the deprecated `story`
      annotation, under a `__proto__` key of the story object or of the default export, from the
      preview or another module that imports it, or from a getter on `Object.prototype`). `fullPage` is
@@ -1780,8 +1781,10 @@ hover:underline-offset-2` beside `active:underline-offset-4`, `src/screens/DataE
      source file the entry recorded as rendered changed, or the entry differing from the manifest at
      the diff base. A `clip` that a file outside all five decides waits for nightly's full pass,
      which checks every entry; the known shapes that stay outside, not an exhaustive list, are a file
-     reached only at run time and not through a module specifier (a hook's side effect, a
-     stylesheet's `@import`, a `new URL(…, import.meta.url)`, a file a plugin injects). A story whose
+     reached only at run time and not through a module specifier its story file or a reached file
+     names (a hook's side effect, state a module sets at run time that a story reads without
+     importing the module that set it, a stylesheet's own `@import`, a `new URL(…, import.meta.url)`
+     reach, a file a plugin or the bundler configuration injects). A story whose
      source this pass was refused a reading of (the rules below) fails the run for it and gives no
      mount credit as well.
    - **A story's binding, and the binding its default export names, may appear only in their own

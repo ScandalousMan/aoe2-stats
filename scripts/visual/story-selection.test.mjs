@@ -268,6 +268,44 @@ test('T709 plant 2: a specifier ending in a slash names the directory index, bes
   )
 })
 
+test('T710 plant: the relative specifiers `..` and `.` name the directory index, like a trailing slash', () => {
+  withTree(
+    {
+      'src/composites/Card/Card.stories.tsx':
+        "import { x } from '../Panel/helpers/x'\nexport default {}\n",
+      'src/composites/Panel/helpers/x.ts': "import { P } from '..'\nexport const x = P\n",
+      'src/composites/Panel/index.tsx': 'export const P = 1\n',
+    },
+    (select) => {
+      assert.deepEqual(select(`${PKG}src/composites/Panel/index.tsx`), [CARD])
+    },
+  )
+  withTree(
+    {
+      'src/composites/Card/Card.stories.tsx':
+        "import { x } from '../Panel/helpers/x'\nexport default {}\n",
+      'src/composites/Panel/helpers/x.ts': "import { H } from '.'\nexport const x = H\n",
+      'src/composites/Panel/helpers/index.ts': 'export const H = 1\n',
+    },
+    (select) => {
+      assert.deepEqual(select(`${PKG}src/composites/Panel/helpers/index.ts`), [CARD])
+    },
+  )
+  // Directory-only: `..` does not name a file beside the directory, so `Panel.tsx` is not followed.
+  withTree(
+    {
+      'src/composites/Card/Card.stories.tsx':
+        "import { x } from '../Panel/helpers/x'\nexport default {}\n",
+      'src/composites/Panel/helpers/x.ts': "import { P } from '..'\nexport const x = P\n",
+      'src/composites/Panel/index.tsx': 'export const P = 1\n',
+      'src/composites/Panel.tsx': 'export const P = 2\n',
+    },
+    (select) => {
+      assert.deepEqual(select(`${PKG}src/composites/Panel.tsx`), [])
+    },
+  )
+})
+
 test('T709 plant 3: an extensionless specifier resolves to a .mjs, .mts, .cjs and .cts file', () => {
   for (const ext of ['.mjs', '.mts', '.cjs', '.cts']) {
     withTree(

@@ -88,11 +88,13 @@ export interface ForceRecord extends ElementRecord {
 // the reader `stories.spec.ts` captures through, run on the SETTLED story (after the loaders, the
 // decorators and the `play()` that may write to `parameters`) and read through the same
 // `story.parameters` object, its prototype chain included — so a clip that no object literal spells
-// reaches this record. `mounts`, `files`, `force` and `focus` are the light theme's settled story
-// alone, a theme-dependent render being credited from the light render only (the safe direction: an
-// element only the dark render mounts is under-credited, never over-credited). Every settle starts with
-// cleared cookies and storages, the way a capture unit starts in a fresh browser context
-// (`stories.spec.ts`), so what the light settle wrote never reaches the dark one. `fullPage` is whether
+// reaches this record. `mounts`, `files`, `force` and `focus` are recorded from the light render
+// only: an element only the dark render mounts is not credited, and an element only the light render
+// mounts is credited though the dark capture does not show it (a decorator branching on
+// `context.globals.theme` can do either), an over-credit T710 records as open. Cookies, `localStorage`
+// and `sessionStorage` are cleared before each settle; IndexedDB, Cache Storage and `window.name` are
+// not, and nothing in the design system uses them. A capture unit starts in a fresh browser context
+// (`stories.spec.ts`), which clears all of them. `fullPage` is whether
 // the capture takes the whole page when no clip applies, from the built index's tags, the one place the
 // capture reads it (`isFullPageEntry`, `story-index.mjs`). A clip wins over the tag, as it does in the
 // capture.
@@ -412,11 +414,13 @@ export async function probeSettledStory(
   return record
 }
 
-// Clears everything a previous settle of this page may have left for the next one: the context's cookies
-// and the `localStorage` and `sessionStorage` of the origin the page is on. `stories.spec.ts` gives every
-// capture unit a fresh browser context, while this spec reuses one page for every theme and width, so
-// without this a decorator or loader that writes a flag in the light settle (the design system's own
-// `ThemeProvider` writes `localStorage`) would show it to the dark settle the capture never sees it in.
+// Clears what a previous settle of this page may have left for the next one: the context's cookies and
+// the `localStorage` and `sessionStorage` of the origin the page is on. IndexedDB, Cache Storage and
+// `window.name` are not cleared, and nothing in the design system uses them. `stories.spec.ts` gives
+// every capture unit a fresh browser context, which clears all of them, while this spec reuses one page
+// for every theme and width, so without this a decorator or loader that writes a flag in the light
+// settle (the design system's own `ThemeProvider` writes `localStorage`) would show it to the dark
+// settle the capture never sees it in.
 // Storage can only be cleared from a page on the right origin: a page that has not navigated yet is on
 // `about:blank`, where reading `localStorage` throws, and where nothing of this page's was written.
 async function clearBrowserState(page: Page): Promise<void> {
@@ -432,12 +436,13 @@ async function clearBrowserState(page: Page): Promise<void> {
 }
 
 // Navigates to a story at one width and settles it the way `stories.spec.ts` does, in both themes the
-// capture runs, each settle starting from cleared cookies and storages (`clearBrowserState`, T708) as a
-// capture unit starts in a fresh context. What is recorded per theme (T706, T708): `mounts`, `files`,
+// capture runs, each settle starting from cleared cookies, `localStorage` and `sessionStorage`
+// (`clearBrowserState`, T708; a capture unit's fresh context clears more). What is recorded per theme (T706, T708): `mounts`, `files`,
 // `force` and `focus` are recorded from the LIGHT render only, and `clip` from both. A render that
 // depends on the theme (a decorator, a loader or a `play()` branching on `context.globals.theme`) is
-// credited from the light render only; that is the safe direction, an element the dark render alone
-// mounts being under-credited and never over-credited. `clip` is the exception because the capture
+// credited from the light render only: an element the dark render alone mounts is not credited, and an
+// element the light render alone mounts is credited though the dark capture does not show it, which
+// T710 records as an open over-credit. `clip` is the exception because the capture
 // reads it at each theme: the story is settled a second time at the same width in the DARK theme,
 // through the same `gotoAndWaitForStorySettled`, and `clip` is recorded true when either theme applied
 // one. `fullPage` comes from the built index and does not depend on the theme.
