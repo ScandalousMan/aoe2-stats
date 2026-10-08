@@ -23,6 +23,18 @@ is a person, on one match, asking once.
 `routers/analysis.py`, as where that half of FR-040 lives, since the router only ever reads state
 (constitution V, that router's own docstring).
 
+**What counts against it (T706).** A request for a match whose `match_analyses` row is `queued` or
+`running` - a lease live or expired - re-claims or joins work already on the books and starts
+nothing new, so it does not increment the counter; the person who opens a match whose analysis was
+abandoned is not charged for taking it over. Everything else counts: no row (a first request), a
+`failed`/`unavailable`/`refused` row (a retry) and a `published` row (a stale recompute). Every
+admission gate below still applies to an uncounted request. The row is read before the counter,
+with no lock, so there is a race: a row created between that read and the claim was read as absent,
+so the request counts, and so does its rival - the error is an over-count, never a free analysis.
+The reverse (a row read as `queued`/`running` that finishes before the claim) makes the request
+serve the finished row without work. The body is read first, since the match is what decides
+whether the request counts: an unreadable body is refused before anything is counted.
+
 **FR-039/FR-047's three admission gates (R7) are applied here too, before `run_once` is ever
 called.** `apps/analyzer/src/aoe2stats_analyzer/admission.py::check_admission` and
 `apps/analyzer/src/aoe2stats_analyzer/run.py` both say, in their own words, that `run_once` "holds
@@ -70,6 +82,7 @@ from aoe2stats_api.analyze_stages import build_analyze_dependencies
 from aoe2stats_api.errors import error_response
 from aoe2stats_api.routers.matches import _analysis_json, _analysis_row, _retained_row
 from aoe2stats_api.settings import get_settings
+from aoe2stats_storage.models import MatchAnalysisState
 from aoe2stats_storage.repositories.base import session_scope
 
 #: `AdmissionOutcome.code` (`admission.py`) -> the message this route answers with, carrying the
@@ -94,6 +107,14 @@ _ADMISSION_REFUSAL_MESSAGES = {
 #: daily_cap` proves `ratelimit.check_and_increment` itself against these two exact values.
 _RATE_LIMIT_BUCKET = "analysis_request"
 _RATE_LIMIT_WINDOW_SECONDS = 24 * 60 * 60
+
+
+#: T706: a POST for a match whose row is in one of these states re-claims or joins work that is
+#: already on the books (`queued`: nobody holds it; `running`: a lease is held, live or expired) and
+#: is not counted against the daily limit. Any other state - no row, or a terminal one - is a
+#: request for new work and counts: `absent`, `failed`/`unavailable`/`refused` (a retry) and a
+#: stale `published` row (a recompute) all spend a source fetch or a parse.
+_UNCOUNTED_STATES = frozenset({MatchAnalysisState.QUEUED, MatchAnalysisState.RUNNING})
 
 
 def _unauthorized() -> JSONResponse:
@@ -176,15 +197,26 @@ async def _analyze(request: Request) -> JSONResponse:
         if session_row is None:
             return _unauthorized()
 
-        outcome = await ratelimit.check_and_increment(
-            session,
-            user_id=session_row.user_id,
-            bucket=_RATE_LIMIT_BUCKET,
-            limit=settings.analysis_max_requests_per_user_per_day,
-            window_seconds=_RATE_LIMIT_WINDOW_SECONDS,
-        )
-        if not outcome.allowed:
-            return _rate_limited(outcome.retry_after)
+        try:
+            body: Any = await request.json()
+            game_id = int(body["game_id"])
+        except (ValueError, KeyError, TypeError):
+            return _invalid_body()
+
+        # T706: a request that joins or re-claims work already on the books starts nothing new, so
+        # it is not counted against FR-040's daily limit (module docstring). The row is read
+        # without a lock, before the counter is touched.
+        existing = await _analysis_row(session, game_id=game_id)
+        if existing is None or existing.state not in _UNCOUNTED_STATES:
+            outcome = await ratelimit.check_and_increment(
+                session,
+                user_id=session_row.user_id,
+                bucket=_RATE_LIMIT_BUCKET,
+                limit=settings.analysis_max_requests_per_user_per_day,
+                window_seconds=_RATE_LIMIT_WINDOW_SECONDS,
+            )
+            if not outcome.allowed:
+                return _rate_limited(outcome.retry_after)
 
         # R7/FR-039/FR-047: the three admission gates, applied before `run_once` is ever called
         # (module docstring). A blocked gate returns here, straight from the code
@@ -200,12 +232,6 @@ async def _analyze(request: Request) -> JSONResponse:
             return _admission_refused(admission.code)
 
         requested_by_user_id = session_row.user_id
-
-    try:
-        body: Any = await request.json()
-        game_id = int(body["game_id"])
-    except (ValueError, KeyError, TypeError):
-        return _invalid_body()
 
     try:
         await run_once(
@@ -230,7 +256,9 @@ async def _analyze(request: Request) -> JSONResponse:
         # is false by construction and this response would disagree with the match page.
         retained = await _retained_row(session, row=row)
 
-    return JSONResponse(_analysis_json(game_id=game_id, row=row, retained=retained))
+    return JSONResponse(
+        _analysis_json(game_id=game_id, row=row, retained=retained, now=datetime.now(UTC))
+    )
 
 
 app = Starlette(routes=[Route("/api/analyze", _analyze, methods=["POST"])])

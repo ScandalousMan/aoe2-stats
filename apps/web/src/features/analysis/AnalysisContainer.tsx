@@ -98,6 +98,25 @@ export function AnalysisContainer({ gameId }: AnalysisContainerProps) {
     ? 'running'
     : summary?.state
 
+  // T706: a `queued` analysis is one nobody holds - the server serves a `running` row whose lease
+  // expired as `queued` - and nothing else will take it, so the page asks once. One `POST
+  // /api/analyze` per page view and per match, never one per poll, and never while `running`
+  // (a live lease is held by someone else). The same ref records the click's own POST, so a poll
+  // that still reads `queued` while that request is in flight does not send a second one. A
+  // rejection is not retried: it is read back through the polls, as the click's is.
+  const requestedForGameIdRef = useRef<number | null>(null)
+  const serverState = summary?.state
+  useEffect(() => {
+    if (numericGameId === null || serverState !== 'queued') {
+      return
+    }
+    if (requestedForGameIdRef.current === numericGameId) {
+      return
+    }
+    requestedForGameIdRef.current = numericGameId
+    void requestAnalysis(numericGameId).catch(() => {})
+  }, [numericGameId, serverState])
+
   const documentQuery = useQuery({
     ...analysisDocumentQueryOptions(numericGameId ?? -1),
     enabled: numericGameId !== null && effectiveState === 'published',
@@ -108,6 +127,7 @@ export function AnalysisContainer({ gameId }: AnalysisContainerProps) {
       return
     }
     clickedAtRef.current = Date.now()
+    requestedForGameIdRef.current = numericGameId
     setOptimisticRunning(true)
     // Fire-and-forget (this function's own docstring, `api.ts`) — a rejection here (a rate limit,
     // the cap) is read back through the next poll, never through this promise.

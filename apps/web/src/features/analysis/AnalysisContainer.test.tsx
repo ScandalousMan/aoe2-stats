@@ -361,6 +361,92 @@ describe('AnalysisContainer', () => {
     }
   })
 
+  it('sends exactly one POST /api/analyze across several "queued" polls (T706)', async () => {
+    vi.useFakeTimers()
+    try {
+      const fetchMock = installFakeApi({
+        detail: () => jsonResponse(baseDetail({ state: 'queued' })),
+      })
+      renderAnalysis()
+
+      await act(async () => {
+        await vi.waitFor(() => expect(screen.getByText('Waiting to start…')).toBeInTheDocument())
+      })
+      for (let poll = 0; poll < 3; poll += 1) {
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(5000)
+        })
+      }
+
+      const detailCalls = fetchMock.mock.calls.filter(
+        ([input]) => input === '/api/matches/500546441',
+      ).length
+      const postCalls = fetchMock.mock.calls.filter(
+        ([input, init]) => input === '/api/analyze' && init?.method === 'POST',
+      )
+      expect(detailCalls).toBe(4)
+      expect(postCalls).toHaveLength(1)
+      expect(postCalls[0]?.[1]?.body).toBe(JSON.stringify({ game_id: 500_546_441 }))
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('sends no POST /api/analyze while the analysis is "running" (T706)', async () => {
+    vi.useFakeTimers()
+    try {
+      const fetchMock = installFakeApi({
+        detail: () => jsonResponse(baseDetail({ state: 'running' })),
+      })
+      renderAnalysis()
+
+      await act(async () => {
+        await vi.waitFor(() =>
+          expect(screen.getByText('Analysing this match…')).toBeInTheDocument(),
+        )
+      })
+      for (let poll = 0; poll < 3; poll += 1) {
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(5000)
+        })
+      }
+
+      expect(fetchMock.mock.calls.filter(([input]) => input === '/api/analyze')).toHaveLength(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('does not send a second POST for a "queued" poll after the user already requested it (T706)', async () => {
+    vi.useFakeTimers()
+    try {
+      let call = 0
+      const fetchMock = installFakeApi({
+        detail: () => {
+          call += 1
+          return jsonResponse(baseDetail({ state: call === 1 ? 'absent' : 'queued' }))
+        },
+      })
+      renderAnalysis()
+
+      await act(async () => {
+        await vi.waitFor(() =>
+          expect(screen.getByRole('button', { name: 'Request analysis' })).toBeInTheDocument(),
+        )
+      })
+      fireEvent.click(screen.getByRole('button', { name: 'Request analysis' }))
+      for (let poll = 0; poll < 3; poll += 1) {
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(5000)
+        })
+      }
+
+      expect(fetchMock.mock.calls.filter(([input]) => input === '/api/analyze')).toHaveLength(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('renders the load-error callout on a network failure, with a working retry', async () => {
     let attempt = 0
     const fetchMock = installFakeApi({

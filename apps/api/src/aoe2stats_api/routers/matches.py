@@ -774,7 +774,11 @@ async def _analysis_row(db_session: AsyncSession, *, game_id: int) -> MatchAnaly
 
 
 def _analysis_json(
-    *, game_id: int, row: MatchAnalysis | None, retained: RetainedRecording | None
+    *,
+    game_id: int,
+    row: MatchAnalysis | None,
+    retained: RetainedRecording | None,
+    now: datetime,
 ) -> dict[str, Any]:
     """The `analysis` object `contracts/http-api.md`'s "Analysis" section fixes, in each of its
     seven states (module docstring). `row is None` is `absent` — never requested, requestable —
@@ -782,7 +786,14 @@ def _analysis_json(
 
     **`retained` is required, with no default (T666m).** `stale` is false whenever it is `None`, so
     a caller that forgot it - as `api/analyze.py` once did - got a flag false by construction. Pass
-    `_retained_row(...)`'s answer, or `None` knowingly when the row is `None`."""
+    `_retained_row(...)`'s answer, or `None` knowingly when the row is `None`.
+
+    **An expired lease is served `queued` (T706).** `running` is a lease, not liveness (R6): a row
+    whose `lease_expires_at <= now` (`MatchAnalysis.lease_has_expired`, the claim's own predicate)
+    is claimable in fact, so the object says `queued` - waiting for someone to take it - and the
+    match page, which POSTs once on `queued`, is what takes it (003: "the next person to open the
+    match takes it"). The stored state is not touched; this is a read. `now` is passed in, never
+    read here, and is required for the same reason `retained` is."""
     result_path = f"/api/matches/{game_id}/analysis"
     if row is None:
         return {
@@ -793,8 +804,9 @@ def _analysis_json(
             "result_path": result_path,
             "reason": None,
         }
+    state = MatchAnalysisState.QUEUED if row.lease_has_expired(now) else row.state
     return {
-        "state": row.state.value,
+        "state": state.value,
         "parser_version": row.parser_version,
         "stale": _is_stale(row, retained),
         "point_of_view_profile_id": row.point_of_view_profile_id,
@@ -1104,6 +1116,7 @@ async def get_match_detail(
             game_id=game_id,
             row=analysis_row,
             retained=await _retained_row(db_session, row=analysis_row),
+            now=datetime.now(UTC),
         )
 
         return _match_detail_json(detail, replay_by_profile=replay_by_profile, analysis=analysis)

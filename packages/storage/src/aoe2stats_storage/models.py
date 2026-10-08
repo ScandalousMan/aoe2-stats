@@ -878,6 +878,25 @@ class MatchAnalysis(Base):
     # the object store. Nullable for the same reason as `identity_digest`: NULL reads as stale.
     recording_build: Mapped[int | None] = mapped_column(Integer)
 
+    def lease_has_expired(self, now: datetime) -> bool:
+        """True when this row is `running` under a lease that has lapsed: `lease_expires_at <=
+        now` (T706). It is the Python form of the predicate `claim_for_analysis` writes in SQL
+        (`apps/analyzer/src/aoe2stats_analyzer/claim.py`), and `test_claim.py` asserts the two
+        agree at the boundary - `<=`, so a lease expiring exactly at `now` has expired.
+
+        A `running` row with no `lease_expires_at` is **not** expired, because the claim does not
+        take it either (`IS NOT NULL` is part of its predicate): reporting it as claimable would
+        send a client to POST for a re-claim that cannot happen. Such a row is not written by
+        this codebase (the claim sets both columns together); it stays `running`.
+
+        `now` is a parameter, never read from the clock here, so a caller's verdict is
+        deterministic."""
+        return (
+            self.state is MatchAnalysisState.RUNNING
+            and self.lease_expires_at is not None
+            and self.lease_expires_at <= now
+        )
+
 
 class RetainedRecording(Base):
     """`retained_recordings` — FR-033. A separate table from `replay_captures` on purpose (R9),

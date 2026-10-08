@@ -1634,7 +1634,7 @@ T671 and T672 ship together; T673 follows once T672 is deployed.
       match has no source to fall back on. The earliest affected recording is not measured; the
       earliest sampled is from 2026-09-27, and 0.1.22 shipped on 2026-09-22
 
-- [ ] T706 Unstick an analysis whose lease expired (filed 2026-10-08; decided by the user the same
+- [x] T706 Unstick an analysis whose lease expired (filed 2026-10-08; decided by the user the same
       day). Match 511523321's row stayed `running` from the 2026-10-05 crash until a manual
       `POST`: `GET /api/matches/{game_id}` serves `running` without reading `lease_expires_at`,
       the match page polls while `running` and never sends the `POST` that would re-claim it, so

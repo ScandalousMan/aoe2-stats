@@ -194,6 +194,51 @@ async def test_an_expired_lease_is_reclaimable(
     assert outcome.attempts == 2
 
 
+async def test_the_claim_takes_exactly_the_running_rows_whose_lease_has_expired(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """T706: the API serves `MatchAnalysis.lease_has_expired(now)` rows as `queued`, so that Python
+    predicate and the claim's SQL one must agree: past, exactly at `now` (`<=`), future, and no
+    lease at all (never claimed, never expired)."""
+    from aoe2stats_analyzer.claim import claim_for_analysis
+
+    now = datetime(2026, 8, 29, 12, 0, tzinfo=UTC)
+    cases = [
+        (900_100_001, now - timedelta(seconds=1)),
+        (900_100_002, now),
+        (900_100_003, now + timedelta(seconds=1)),
+        (900_100_004, None),
+    ]
+    async with session_factory() as setup_session:
+        for game_id, lease in cases:
+            await _seed_match(setup_session, game_id=game_id, completed_at=now - timedelta(days=1))
+            await _seed_match_analysis(
+                setup_session,
+                game_id=game_id,
+                state=MatchAnalysisState.RUNNING,
+                requested_at=now - timedelta(hours=1),
+                claimed_at=now - timedelta(hours=1),
+                lease_expires_at=lease,
+                attempts=1,
+            )
+
+    for game_id, lease in cases:
+        row = MatchAnalysis(game_id=game_id, state=MatchAnalysisState.RUNNING)
+        row.lease_expires_at = lease
+        outcome = await claim_for_analysis(
+            session_factory,
+            game_id=game_id,
+            point_of_view_profile_id=_POV_PROFILE_ID,
+            requested_by_user_id=None,
+            lease_seconds=60,
+            now=now,
+        )
+        assert outcome.claimed is row.lease_has_expired(now), f"lease {lease}"
+
+    queued = MatchAnalysis(game_id=1, state=MatchAnalysisState.QUEUED)
+    assert queued.lease_has_expired(now) is False, "only a running row holds a lease"
+
+
 async def test_a_second_asker_under_a_live_lease_joins_the_row_and_starts_no_second_parse(
     session_factory: async_sessionmaker[AsyncSession], clean_database: None
 ) -> None:

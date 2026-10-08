@@ -77,6 +77,9 @@ async def claim_for_analysis(
     Commits before returning either way, so the row a caller reads back (whether it won or not) is
     always the current, durable state.
     """
+    # The "expired lease" arm below is the SQL twin of `MatchAnalysis.lease_has_expired` (T706):
+    # the API serves a row for which that is true as `queued`, so the two must agree
+    # (`test_claim.py`).
     eligible_game_ids = (
         select(MatchAnalysis.game_id)
         .where(
