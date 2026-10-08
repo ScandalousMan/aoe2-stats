@@ -16855,6 +16855,28 @@
       }
     }
   },
+  "state-coverage-fixture-clip-plants--clip-only-in-dark-while-storage-flag-absent": {
+    "importPath": "./.storybook/fixtures/ClipPlants.stories.tsx",
+    "exportName": "ClipOnlyInDarkWhileStorageFlagAbsent",
+    "files": ["packages/design-system/src/primitives/Button/index.tsx"],
+    "widths": {
+      "375": {
+        "clip": true,
+        "fullPage": false,
+        "mounts": [{ "component": "Button", "variant": "primary", "size": "md", "disabledAt": [] }]
+      },
+      "768": {
+        "clip": true,
+        "fullPage": false,
+        "mounts": [{ "component": "Button", "variant": "primary", "size": "md", "disabledAt": [] }]
+      },
+      "1280": {
+        "clip": true,
+        "fullPage": false,
+        "mounts": [{ "component": "Button", "variant": "primary", "size": "md", "disabledAt": [] }]
+      }
+    }
+  },
   "state-coverage-fixture-clip-plants--clip-only-in-light": {
     "importPath": "./.storybook/fixtures/ClipPlants.stories.tsx",
     "exportName": "ClipOnlyInLight",

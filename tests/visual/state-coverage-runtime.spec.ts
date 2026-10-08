@@ -1,6 +1,8 @@
 // The runtime pass (T693, feature 005): settles stories in the built Storybook and records, per
-// review width in the light theme, what a real browser does with each — see
-// `tests/visual/state-coverage-runtime.ts` for what is recorded and why.
+// review width, what a real browser does with each: the mounts, files, force and focus from the light
+// theme's render only, and the clip from both themes the capture runs (T706). Every settle starts with
+// cleared cookies and storages (T708). See `tests/visual/state-coverage-runtime.ts` for what is
+// recorded and why.
 //
 // Never run by hand and never part of `pnpm test:visual`: `scripts/visual/state-coverage-runtime.mjs`
 // selects the stories (all, `--changed`, or the plants alone), writes the work list to the file named
@@ -248,6 +250,9 @@ Object.assign(PLANTS, {
   [`${CLIP_PLANT}clip-only-in-dark`]: CLIPPED,
   [`${CLIP_PLANT}clip-literal-deleted-unless-dark`]: CLIPPED,
   [`${CLIP_PLANT}clip-only-in-light`]: CLIPPED,
+  // T708: the dark clip depends on a storage flag the light settle writes; every settle starts with
+  // cleared cookies and storages, as a capture unit's fresh context does, so the flag is absent.
+  [`${CLIP_PLANT}clip-only-in-dark-while-storage-flag-absent`]: CLIPPED,
   [`${CLIP_META_PLANT}clip-from-meta-decorator`]: CLIPPED,
 })
 
@@ -261,12 +266,13 @@ if (workPath) {
 
 for (const { id, widths, fullPage } of work.stories) {
   test(`${id} runtime record`, async ({ page }) => {
-    // One navigation unit gets 30 s in `stories.spec.ts` (the Playwright default, which
-    // `playwright.config.ts` does not override); this test does two per width, the light settle and the
-    // dark one T706 added for the clip. Measured 2026-10-08 with 4 workers: the four foundations
-    // overviews took 16.1 to 18.7 s and two PrivacyNotice stories 7.7 s each, and all six timed out at
-    // 30 s once the dark settle doubled the navigations. This is that per-navigation budget times the
-    // settles, not slack.
+    // The budget is a rule, not a measurement: 30 s per navigation (the per-unit default of
+    // `stories.spec.ts`, which `playwright.config.ts` does not override) times the settles, which are
+    // two per width, the light settle and the dark one T706 added for the clip. Two measurements,
+    // 2026-10-08, of the same six stories (the four foundations overviews, two PrivacyNotice stories):
+    // in a full pass with four workers in contention all six timed out at the 30 s default once the
+    // dark settle doubled the navigations; rerun alone with four workers they take 7.7 to 18.7 s with
+    // both settles.
     test.setTimeout(widths.length * 2 * 30_000)
     await installSteamAvatarStub(page)
     const outFile = outDir ? path.join(outDir, `${id}.json`) : null

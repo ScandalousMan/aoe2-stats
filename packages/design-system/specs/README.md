@@ -1750,9 +1750,11 @@ hover:underline-offset-2` beside `active:underline-offset-4`, `src/screens/DataE
      the reader the capture takes its clip from, run on the settled story in the light theme and again
      in the dark theme, because decorators, loaders and `play` receive `context.globals` and the capture
      runs both themes, so a clip set in one theme only is a clip; the record is the disjunction of the
-     two. The light theme's settled story is what the mounts, the rendered files, the force and the
-     focus come from, a theme changing paint and never which element exists. A clip that no object
-     literal spells is in it (written from a
+     two. The mounts, the rendered files, the force and the focus are recorded from the light render
+     only, and a render that depends on the theme is credited from the light render only, the safe
+     direction: an element only the dark render mounts is under-credited, never over-credited. Every
+     settle starts with cleared cookies and storages, as a capture unit starts in a fresh browser
+     context. A clip that no object literal spells is in it (written from a
      `play`, a loader or a decorator of the story or of its meta, through the deprecated `story`
      annotation, under a `__proto__` key of the story object or of the default export, from the
      preview or another module that imports it, or from a getter on `Object.prototype`). `fullPage` is
