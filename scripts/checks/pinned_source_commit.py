@@ -15,12 +15,14 @@ asserts it" — nothing asserted any of the above, across seven files, until thi
 
 **More than one pack (T707).** A snapshot must stay re-derivable from the pack revision it was
 imported from, so a newer revision is vendored *beside* the first, never over it: every directory
-under `packages/knowledge/packs/` with a `MANIFEST.json` is a pinned pack, each pinned by its own
-`commit`. For each pack its `LICENCE.md` and its row in `docs/asset-packs.md` must state that
-commit, and `docs/data-sources.md` must state every pack's commit and no other 40-hex commit. For
-each snapshot, `[snapshot].source_version` must be the commit of **some** vendored pack: a snapshot
-whose `source_version` names no vendored pack cannot be re-derived from anything in the repository,
-and is refused. The four derived measurements below stay the 180059 carry-forward's.
+under `packages/knowledge/packs/` is a pinned pack and must hold a `MANIFEST.json` (a directory
+without one is refused, not skipped), each pinned by its own `commit`, no two by the same one, and
+each named by some snapshot's `source_version` (a pack nothing is derived from is refused). For each
+pack its `LICENCE.md` and its row in `docs/asset-packs.md` must state that commit, and
+`docs/data-sources.md` must state every pack's commit and no other 40-hex commit. For each snapshot,
+`[snapshot].source_version` must be the commit of **some** vendored pack: a snapshot whose
+`source_version` names no vendored pack cannot be re-derived from anything in the repository, and is
+refused. The four derived measurements below stay the 180059 carry-forward's.
 
 **Source of truth.** For the sha: `MANIFEST.json`, because `import_knowledge_pack.py` writes it
 from the operator's own `--commit` argument and never verifies it against the checkout's git
@@ -104,17 +106,21 @@ def shas_in_backticks(text: str) -> list[str]:
 
 @dataclass(frozen=True)
 class VendoredPack:
-    """One directory under `packages/knowledge/packs/` that holds a `MANIFEST.json`: the pack's
-    directory name, the commit that manifest pins (`None` when unreadable) and its `LICENCE.md`."""
+    """One directory under `packages/knowledge/packs/`: the pack's directory name, the commit its
+    `MANIFEST.json` pins (`None` when the manifest is absent or unreadable), its `LICENCE.md`, and
+    whether the manifest file exists at all."""
 
     name: str
     commit: str | None
     licence_path: Path
+    has_manifest: bool = True
 
 
 def vendored_packs(packs_dir: Path = _PACKS_DIR) -> tuple[VendoredPack, ...]:
-    """Every pack under `packs_dir`, sorted by name. A directory without a `MANIFEST.json` is not
-    a pack this check can pin, and is `asset_packs.py`'s concern (it demands a `LICENCE.md`)."""
+    """Every directory under `packs_dir`, sorted by name. A directory without a
+    `MANIFEST.json` is still listed (`has_manifest` false): it is a pack this check cannot pin, and
+    `check_commit_agreement` refuses it rather than skipping it - a skipped directory is a pack
+    nothing verifies."""
     if not packs_dir.is_dir():
         return ()
     return tuple(
@@ -122,9 +128,10 @@ def vendored_packs(packs_dir: Path = _PACKS_DIR) -> tuple[VendoredPack, ...]:
             name=entry.name,
             commit=manifest_commit(entry / "MANIFEST.json"),
             licence_path=entry / "LICENCE.md",
+            has_manifest=(entry / "MANIFEST.json").is_file(),
         )
         for entry in sorted(packs_dir.iterdir(), key=lambda entry: entry.name)
-        if entry.is_dir() and (entry / "MANIFEST.json").is_file()
+        if entry.is_dir()
     )
 
 
@@ -215,19 +222,29 @@ def check_commit_agreement(
 
     Per pack: its `LICENCE.md` and its row in `asset-packs.md` state its commit. Across packs:
     `data-sources.md` states every pack's commit and no 40-hex commit that is not one of them (a
-    stale one). Per snapshot: `[snapshot].source_version` is the commit of some vendored pack.
-    One failure per file or snapshot that is missing the sha, or disagrees."""
+    stale one). Per snapshot: `[snapshot].source_version` is the commit of some vendored pack, and
+    conversely every pack is named by some snapshot (no orphan). A pack directory with no
+    `MANIFEST.json`, and two packs pinning one commit, are refused. One failure per file, pack or
+    snapshot that is missing the sha, or disagrees."""
     if not packs:
-        return [
-            "packages/knowledge/packs: no vendored pack with a MANIFEST.json - nothing to check"
-        ]
+        return ["packages/knowledge/packs: no vendored pack - nothing to check"]
     failures: list[str] = []
     commits: dict[str, str] = {}
     for pack in packs:
-        if pack.commit is None:
+        if not pack.has_manifest:
+            failures.append(
+                f"{pack.name}: no MANIFEST.json - a pack directory with no manifest pins nothing, "
+                "so nothing verifies it"
+            )
+        elif pack.commit is None:
             failures.append(
                 f"{pack.name}/MANIFEST.json: no readable 'commit' field - "
                 "nothing to check the rest against"
+            )
+        elif pack.commit in commits:
+            failures.append(
+                f"packs {commits[pack.commit]!r} and {pack.name!r} both pin `{pack.commit}` - "
+                "one revision is vendored once, and a pack is found by its commit"
             )
         else:
             commits[pack.commit] = pack.name
@@ -269,8 +286,11 @@ def check_commit_agreement(
             f"{_rel(data_sources_path)}: states commit `{stale}`, which no vendored pack pins"
         )
 
+    named: set[str] = set()
     for snapshot_path in snapshot_toml_paths:
         found = snapshot_source_version(snapshot_path)
+        if found is not None:
+            named.add(found)
         if found is None:
             failures.append(f"{_rel(snapshot_path)}: no readable [snapshot].source_version")
         elif found not in commits:
@@ -278,6 +298,13 @@ def check_commit_agreement(
                 f"{_rel(snapshot_path)}: [snapshot].source_version is `{found}`, which names no "
                 "vendored pack - the snapshot cannot be re-derived from anything in the "
                 f"repository (vendored: {', '.join(f'`{c}`' for c in sorted(commits))})"
+            )
+
+    for commit, name in commits.items():
+        if commit not in named:
+            failures.append(
+                f"packages/knowledge/packs/{name}: pins `{commit}`, which no snapshot's "
+                "[snapshot].source_version names - an orphan pack that nothing is derived from"
             )
 
     return failures

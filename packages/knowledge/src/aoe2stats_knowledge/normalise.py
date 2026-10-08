@@ -69,13 +69,6 @@ from typing import Any, Final
 #: `importlib.resources` and never a bare filesystem path.
 _PACKAGE: Final[str] = "aoe2stats_knowledge"
 
-#: The default pack: the first revision of the one source this feature vendors (research.md D3: no
-#: lawful independent second dataset). T707 vendors a newer revision beside it, in its own
-#: directory under `packs/`, so every function below takes the pack directory's name and defaults
-#: to this one - a snapshot is re-derived from the pack revision it was imported from, never from
-#: whichever is newest.
-_PACK_NAME: Final[str] = "aoe2techtree"
-
 #: `Cost` dict keys, as the pack spells them, to the lower-case resource names `rules.json` uses.
 #: Fixed order: a cost is rendered with its resources always in this order, never dict-insertion
 #: order, so two runs over identical data produce byte-identical output.
@@ -126,27 +119,27 @@ class _TreeReading:
     name: str | None
 
 
-def _pack_root(pack_name: str = _PACK_NAME) -> resources.abc.Traversable:
+def _pack_root(pack_name: str) -> resources.abc.Traversable:
     """The packaged pack root, resolved through `importlib.resources` alone — the same mechanism
     `snapshot.py` uses for `snapshots/`, extended here to `packs/` (see this package's
     `pyproject.toml` `force-include` and the `packs` symlink beside `snapshots`)."""
     return resources.files(_PACKAGE).joinpath("packs").joinpath(pack_name)
 
 
-def _load_pack_json(relative_path: str, pack_name: str = _PACK_NAME) -> Any:
+def _load_pack_json(relative_path: str, pack_name: str) -> Any:
     return json.loads(_pack_root(pack_name).joinpath(relative_path).read_text(encoding="utf-8"))
 
 
-def _civilisation_names() -> tuple[str, ...]:
+def _civilisation_names(pack_name: str) -> tuple[str, ...]:
     """Every civilisation the pack's top-level `civs` table names, sorted — the "civilisations"
     this normaliser is asked to carry (FR-022). Not wired into a query surface here: which
     civilisations are *modelled* (their bonuses hand-transcribed) is T645's concern, not this
     normaliser's; this list is simply what the pack itself contains."""
-    data = _load_pack_json("data.json")
+    data = _load_pack_json("data.json", pack_name)
     return tuple(sorted(data["civs"].keys()))
 
 
-def _tree_filenames(pack_name: str = _PACK_NAME) -> tuple[str, ...]:
+def _tree_filenames(pack_name: str) -> tuple[str, ...]:
     """The `trees/*.json` filenames actually committed, sorted — never a bare filesystem walk."""
     trees_dir = _pack_root(pack_name).joinpath("trees")
     return tuple(
@@ -405,11 +398,15 @@ def normalise_pack_data(
     )
 
 
-def normalise_pack(pack_name: str = _PACK_NAME) -> NormalisedPack:
-    """Normalise one real, committed pack, `packages/knowledge/packs/<pack_name>/` (the first
-    revision, `aoe2techtree`, unless a snapshot imported from a later one names it), read entirely
+def normalise_pack(pack_name: str) -> NormalisedPack:
+    """Normalise one real, committed pack, `packages/knowledge/packs/<pack_name>/`, read entirely
     through `importlib.resources` (FR-026, SC-006: nothing here opens a socket or a filesystem
-    path)."""
+    path).
+
+    `pack_name` has no default (T707a): packs are vendored beside one another, one per pinned
+    revision, and a default would quietly derive a newer snapshot from the first revision. A
+    caller names the pack its snapshot's `source_version` is pinned by (`MANIFEST.json`'s
+    `commit`)."""
     data = _load_pack_json("data.json", pack_name)
     strings = _load_pack_json("strings.en.json", pack_name)
     tree_by_civilisation = {

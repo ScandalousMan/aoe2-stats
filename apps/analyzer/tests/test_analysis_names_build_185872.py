@@ -1,10 +1,12 @@
-"""T707: an analysis of a build 185872 recording is answered by a snapshot, and the names it shows
-resolve.
+"""T707: an analysis of a build 185872 recording is answered by a snapshot, and `query.name`
+resolves the identifiers the document carries.
 
 Match 511523321 (game build 185872, `tests/fixtures/replays/README.md`) was analysed in production
 on 2026-10-08 with only a build 180059 snapshot installed, so the analysis named no knowledge
-snapshot and showed `Technology ID 101` / `Building ID 70`. Built here from the committed recording
-and the real adapter, exactly as `test_document_build.py` does for the first recording.
+snapshot. Built here from the committed recording and the real adapter, exactly as
+`test_document_build.py` does for the first recording. The stored document still carries
+identifiers only and the page still shows them (T709): this file proves the snapshot can name them,
+not that anything does.
 """
 
 from __future__ import annotations

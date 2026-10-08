@@ -235,15 +235,18 @@ def test_shas_in_backticks_reads_every_forty_hex_run() -> None:
     assert shas_in_backticks(f"`{_SHA}` and `{_SECOND_SHA}` and `abc`") == [_SHA, _SECOND_SHA]
 
 
-def test_vendored_packs_lists_every_directory_with_a_manifest(tmp_path: Path) -> None:
+def test_vendored_packs_lists_every_directory_manifest_or_not(tmp_path: Path) -> None:
+    """A directory without a `MANIFEST.json` is listed, flagged, not skipped: skipping it is how a
+    pack escapes every check below (T707a)."""
     paths = _write_full_tree(tmp_path)
     _write(paths["packs_dir"] / "not-a-pack" / "README.md", "no manifest")
 
     packs = vendored_packs(paths["packs_dir"])
 
-    assert [(pack.name, pack.commit) for pack in packs] == [
-        ("aoe2techtree", _SHA),
-        (_SECOND_PACK, _SECOND_SHA),
+    assert [(pack.name, pack.commit, pack.has_manifest) for pack in packs] == [
+        ("aoe2techtree", _SHA, True),
+        (_SECOND_PACK, _SECOND_SHA, True),
+        ("not-a-pack", None, False),
     ]
 
 
@@ -259,10 +262,56 @@ def test_check_commit_agreement_refuses_a_snapshot_whose_source_version_names_no
 
     failures = _agreement(paths)
 
-    assert len(failures) == 1
+    # Two faults, one cause: the snapshot names no pack, and the pack it used to name is now an
+    # orphan.
+    assert len(failures) == 2
     assert "aoe2techtree-185872" in failures[0]
     assert _OTHER_SHA in failures[0]
     assert "names no vendored pack" in failures[0]
+    assert _SECOND_PACK in failures[1]
+    assert "orphan" in failures[1]
+
+
+def test_check_commit_agreement_refuses_a_pack_directory_without_a_manifest(
+    tmp_path: Path,
+) -> None:
+    """T707a plant: a directory under `packs/` with no `MANIFEST.json` was skipped, so a pack
+    nothing pinned or verified could sit there unseen."""
+    paths = _write_full_tree(tmp_path)
+    _write(paths["packs_dir"] / "stray-pack" / "data.json", "{}")
+
+    failures = _agreement(paths)
+
+    assert len(failures) == 1
+    assert "stray-pack" in failures[0]
+    assert "no MANIFEST.json" in failures[0]
+
+
+def test_check_commit_agreement_refuses_two_packs_pinning_one_commit(tmp_path: Path) -> None:
+    """T707a plant: the second pack's manifest copies the first's commit. A pack is found by its
+    commit, so two packs pinning one is ambiguous - and the dictionary the check keeps used to
+    overwrite the first silently."""
+    paths = _write_full_tree(tmp_path, second_manifest_commit_value=_SHA)
+
+    failures = _agreement(paths)
+
+    assert any(
+        "aoe2techtree" in failure and _SECOND_PACK in failure and "both pin" in failure
+        for failure in failures
+    ), failures
+
+
+def test_check_commit_agreement_refuses_a_pack_no_snapshot_names(tmp_path: Path) -> None:
+    """T707a plant: a pack whose commit no snapshot's `source_version` carries is derived from by
+    nothing, yet vendored (and budgeted) all the same."""
+    paths = _write_full_tree(tmp_path, snapshot_source_versions={"second": _SHA})
+
+    failures = _agreement(paths)
+
+    assert len(failures) == 1
+    assert _SECOND_PACK in failures[0]
+    assert _SECOND_SHA in failures[0]
+    assert "orphan" in failures[0]
 
 
 def test_a_snapshot_may_name_either_vendored_pack(tmp_path: Path) -> None:

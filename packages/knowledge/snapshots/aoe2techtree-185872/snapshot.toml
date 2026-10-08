@@ -1,6 +1,8 @@
-# The snapshot an analysis of a build 185872 recording resolves names against (T707): Feudal Age,
-# Castle Age, House and the rest, which an analysis showed as `Technology ID 101` / `Building ID 70`
-# while no snapshot described this build.
+# The knowledge snapshot for game build 185872 (T707). `query.name` resolves Feudal Age, Castle Age,
+# House and the rest against it, where before it a build 185872 recording's identifiers had no
+# snapshot to resolve against. No analysis page shows a name for any build yet (T709): the
+# analysis of match 511523321 showed `Technology ID 101` / `Building ID 70` before this snapshot
+# and still does, and no published analysis names this snapshot.
 #
 # **This is a direct import (research.md D3), not a carry-forward (D4).** Unlike
 # `aoe2techtree-180059`, the source has a revision for this build: `SiegeEngineers/aoe2techtree`
@@ -18,7 +20,7 @@
 source = "aoe2techtree"
 source_version = "3bb43b1439eef88dfe7fe892d7f7dc41ac9dd76f"
 describes_build = 185872
-digest = "sha256:8c0002381fe2ce5f1808b92e6ff3f9a5da1ce50680293365ee7d61b4cd0db443"
+digest = "sha256:5711236e73d189c38d5bdc1e8a6234ca24750e05a19806dcf0d0f55fa188d8e6"
 promoted = true
 civilisations_modelled = []
 
@@ -31,14 +33,22 @@ checked_against = """\
 the source's own commit history: 3bb43b1439eef88dfe7fe892d7f7dc41ac9dd76f, authored 2026-09-11, \
 message "Add The Viking Sagas", whose body is the single line \
 https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/ - the \
-publisher's page for build 185872. The commit is the newest in the local checkout and changes \
-data/data.json (the main game's data: 1692 insertions, 239 deletions) and the locales, so \
-the data the pack carries is the data of that update. research.md D3: the build lives in commit-message prose, \
-not in a dedicated field, so this is a reading of that prose, not a lookup\
+publisher's page for build 185872. Three dates, none of them the same: the commit was authored \
+2026-09-11 (2026-09-11T20:26:11Z, read from the local clone) and committed 2026-09-22 \
+(2026-09-22T19:21:29Z, same clone); the publisher's page carries datePublished \
+2026-09-22T17:16Z (the date the build was released; reported by #126's review of 2026-10-08 and \
+not fetched again here). The commit is the newest in the local checkout and changes \
+data/data.json (the main game's data: 1692 insertions, 239 deletions) and the locales. \
+research.md D3: the build lives in commit-message prose, not in a dedicated field, so this is a \
+reading of that prose, not a lookup\
 """
 performed_by = "the T707 implementer, by direct reading of the source's own commit history"
 performed_at = "2026-10-08"
 not_checked = """\
+That the data matching the released build was not verified: the commit's data was authored eleven \
+days before the publisher released the build, so it may describe a state earlier than the \
+release, and nothing compares it with the released game. No FR-030 value validation was done: \
+no cost, time or age in rules.json was checked against the game or against any published value. \
 No patch notes were read and no second source was compared (research.md D3: none is lawful to \
 vendor). Civilisation bonuses are not modelled for this build at all (effects.toml), so no \
 bonus is attested; the baseline costs, times and ages in rules.json are the pack's reading of \

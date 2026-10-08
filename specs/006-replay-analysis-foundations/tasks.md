@@ -1655,13 +1655,14 @@ T671 and T672 ship together; T673 follows once T672 is deployed.
       (research.md D3), vendored as a second pack beside the first; it models no civilisation, and
       names resolve through `query.name` for build 185872. An analysis still shows identifiers:
       putting names on the page is T709
-- [ ] T708 Give `AnalysisTimeline`'s event lists a text colour. In
+- [x] T708 Give `AnalysisTimeline`'s event lists a text colour. In
       `packages/design-system/src/composites/AnalysisTimeline/index.tsx` only a resolved name
       carries `text-text-primary`; the surrounding text, the times and an unresolved identifier
       inherit no token, and in the dark theme they render dark on dark (seen in production on
       match 511523321, 2026-10-08). Set the list's colour from a design-system token, check the
-      unresolved-identifier style against the contrast table, and move the dark baselines that
-      show it
+      unresolved-identifier style against the contrast table, and record that no baseline can
+      move: Storybook's preview wraps every story in the primary ink, so the stories never showed
+      the defect (#126's visual job: 478 passed, none moved); the unit test is the guard (T710)
 - [ ] T709 Show names on the analysis page. Found closing T707 (2026-10-08): no stage maps an id to
       a name for any build — the stored document carries ids only, and
       `apps/web/src/features/analysis/mappers.ts` renders every technology, unit and building
@@ -1672,7 +1673,7 @@ T671 and T672 ship together; T673 follows once T672 is deployed.
       them; an id the snapshot does not name stays unresolved as today. Tests: a build 185872 and
       a build 180059 document each show Feudal Age, Castle Age and House; an id outside the
       snapshot stays unresolved; the stored object is byte-identical before and after
-- [ ] T707a Close #126's review (`reviewer` REJECT 2026-10-08 on T707). **Frozen prose first**:
+- [x] T707a Close #126's review (`reviewer` REJECT 2026-10-08 on T707). **Frozen prose first**:
       `packages/knowledge/snapshots/aoe2techtree-185872/effects.toml`'s header is covered by the
       digest and says the snapshot resolves the labels an analysis shows and a
       civilisation-neutral baseline; neither holds (T709; every rule query refuses an unmodelled
@@ -1694,6 +1695,14 @@ T671 and T672 ship together; T673 follows once T672 is deployed.
       found by `source_version`. `normalise_pack`'s pack name has no default. Plants, each red
       before: a snapshot naming pack A's commit but derived from pack B; a pack directory without
       a manifest; a duplicate pin; an orphan pack
+- [ ] T710 Make the visual tests able to see a missing text token. Found closing T708
+      (2026-10-08): `packages/design-system/.storybook/preview.tsx` wraps every story in
+      `text-text-primary`, so a component whose text carries no token of its own renders correctly
+      in every story and baseline, and wrong wherever the application does not supply that ink —
+      `AnalysisTimeline`'s lists did, on the match page, in production. Either stop the preview
+      supplying ink, so a story shows what the component itself declares, or add a check that
+      refuses text without a token; decide which, list every component the change exposes, and
+      say which baselines move
 
 ---
 

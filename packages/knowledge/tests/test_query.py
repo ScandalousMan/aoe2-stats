@@ -87,8 +87,8 @@ build 180059 by carry-forward (T642) from source revision `b9d494df...`'s own la
 build, 177723 — a build that same revision's `rules.json` already, directly, describes with no
 carry-forward needed at all. The second fixture names exactly that build instead: same
 `source_version`, byte-identical `rules.json` (re-derived independently via
-`aoe2stats_knowledge.normalise.normalise_pack()` and confirmed to match, not hand-copied data),
-different `describes_build`, and a `[validation]` record whose `method` is
+`aoe2stats_knowledge.normalise.normalise_pack("aoe2techtree")` and confirmed to match, not
+hand-copied data), different `describes_build`, and a `[validation]` record whose `method` is
 `"source-implements-build"` rather than `"carry-forward"` — real, and simpler than a second
 carry-forward record, because this build genuinely needs none. Its own real content therefore
 cannot differ numerically from the first fixture's (nothing changed between 177723 and 180059 —

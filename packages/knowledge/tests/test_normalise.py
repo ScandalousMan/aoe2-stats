@@ -12,6 +12,7 @@ by every committed reference recording resolves" (the contract's own words) mean
 from __future__ import annotations
 
 import json
+import shutil
 import tomllib
 from pathlib import Path
 from typing import Any
@@ -26,6 +27,11 @@ from aoe2stats_knowledge.normalise import (
     normalise_pack_data,
     rules_json_bytes,
 )
+from aoe2stats_knowledge.snapshot import load_resolvable_snapshots
+
+#: The two vendored packs by directory name (`packs/<name>/MANIFEST.json` pins each one's commit).
+_FIRST_PACK = "aoe2techtree"
+_SECOND_PACK = "aoe2techtree-3bb43b1"
 
 _FIXTURES_ROOT = Path(__file__).resolve().parents[3] / "tests" / "fixtures" / "replays"
 
@@ -235,7 +241,7 @@ def test_the_real_committed_pack_has_no_tech_and_unit_upgrades_disagreement() ->
     """FR-028's own finding for this pack revision, stated as a test rather than only in a
     docstring: the two ids the real pack's Tech and unit_upgrades tables both name (34, 35) agree
     completely, so the real, committed `disagreements.toml` is empty."""
-    pack = normalise_pack()
+    pack = normalise_pack(_FIRST_PACK)
     assert pack.disagreements == ()
 
 
@@ -288,7 +294,7 @@ def test_the_four_unit_upgrades_only_technology_ids_from_the_contract_are_exactl
         for event in document["events"]
         if event["kind"] == "research-queued"
     }
-    pack = normalise_pack()
+    pack = normalise_pack(_FIRST_PACK)
     unit_upgrades_only = {
         technology_id
         for technology_id in technology_ids
@@ -301,7 +307,7 @@ def test_every_unit_and_technology_referenced_by_a_committed_recording_resolves(
     """Contract, "Entity resolution": "a test asserts every entity referenced by every committed
     reference recording resolves" — units and technologies fully do, against the real pack."""
     unit_ids, technology_ids, _building_ids = _entity_ids_referenced_by_golden_streams()
-    pack = normalise_pack()
+    pack = normalise_pack(_FIRST_PACK)
     unresolved_units = {i for i in unit_ids if str(i) not in pack.entities["unit"]}
     unresolved_technologies = {
         i for i in technology_ids if str(i) not in pack.entities["technology"]
@@ -331,18 +337,22 @@ def test_every_building_referenced_by_a_committed_recording_resolves_or_is_a_nam
     assertion still fails if that set of names ever grows or shrinks unexpectedly, so a change
     here is a signal, not a silent pass."""
     _unit_ids, _technology_ids, building_ids = _entity_ids_referenced_by_golden_streams()
-    pack = normalise_pack()
+    pack = normalise_pack(_FIRST_PACK)
     unresolved_buildings = {i for i in building_ids if str(i) not in pack.entities["building"]}
     assert unresolved_buildings == _BUILDING_IDS_ABSENT_FROM_THE_VENDORED_PACK
 
 
-#: Every committed, promoted snapshot directory (`snapshots/*/snapshot.toml`, `promoted = true`):
+_SNAPSHOTS_ROOT = Path(__file__).resolve().parents[1] / "snapshots"
+_PACKS_ROOT = Path(__file__).resolve().parents[1] / "packs"
+
+#: Every promoted snapshot the loader finds under `snapshots/` (T707a: found, never listed by hand,
+#: so a snapshot promoted later is re-derived and checked without anyone registering it here).
 #: `contracts/knowledge-base.md`'s "Entity resolution" is not only about what a committed
 #: recording's canonical stream names directly, but about every entity `rules.json` itself names.
-_PROMOTED_SNAPSHOT_DIRECTORIES: tuple[str, ...] = (
-    "aoe2techtree-180059",
-    "aoe2techtree-177723-test",
-    "aoe2techtree-185872",
+#: The unpromoted `aoe2techtree-test-stub` is excepted by the loader itself: its `rules.json` is a
+#: hand-written stub, not normalised output.
+_PROMOTED_SNAPSHOT_DIRECTORIES: tuple[str, ...] = tuple(
+    snapshot.directory for snapshot in load_resolvable_snapshots()
 )
 
 
@@ -374,12 +384,12 @@ def test_no_entity_in_either_promoted_snapshot_carries_prerequisites() -> None:
 
 
 def test_rules_json_bytes_is_deterministic_across_runs() -> None:
-    pack = normalise_pack()
+    pack = normalise_pack(_FIRST_PACK)
     assert rules_json_bytes(pack) == rules_json_bytes(pack)
 
 
 def test_rules_json_bytes_is_valid_json_ending_in_one_newline() -> None:
-    pack = normalise_pack()
+    pack = normalise_pack(_FIRST_PACK)
     raw = rules_json_bytes(pack)
     assert raw.endswith(b"\n")
     assert not raw.endswith(b"\n\n")
@@ -426,48 +436,81 @@ def test_disagreements_toml_text_renders_a_synthetic_conflict() -> None:
 def _pack_directory_pinned_at(commit: str) -> str:
     """The `packs/` directory whose `MANIFEST.json` pins `commit` - how a snapshot finds the pack
     it was imported from, by its `source_version` and nothing else."""
-    packs_root = Path(__file__).resolve().parents[1] / "packs"
     matches = [
         manifest.parent.name
-        for manifest in sorted(packs_root.glob("*/MANIFEST.json"))
+        for manifest in sorted(_PACKS_ROOT.glob("*/MANIFEST.json"))
         if json.loads(manifest.read_text(encoding="utf-8"))["commit"] == commit
     ]
     assert len(matches) == 1, f"{commit} must be pinned by exactly one vendored pack: {matches}"
     return matches[0]
 
 
-@pytest.mark.parametrize(
-    ("snapshot_directory", "pack_directory"),
-    [
-        ("aoe2techtree-180059", "aoe2techtree"),
-        ("aoe2techtree-185872", "aoe2techtree-3bb43b1"),
-    ],
-)
-def test_the_committed_promoted_fixtures_rules_json_matches_a_fresh_normalisation(
-    snapshot_directory: str, pack_directory: str
-) -> None:
-    """The `rules.json` a snapshot commits is not hand-edited output: re-running the normaliser
-    over the real, unpatched pack *the snapshot was imported from* reproduces it byte for byte.
-    A newer revision is vendored beside the first (T707), so each snapshot is re-derived from its
-    own pack, and a failure here means the committed file has drifted from what the normaliser now
-    produces (see `tests/fixtures/replays/README.md`'s golden discipline for the same principle
-    applied to the canonical stream)."""
-    root = Path(__file__).resolve().parents[1] / "snapshots" / snapshot_directory
-    committed = (root / "rules.json").read_bytes()
-    assert committed == rules_json_bytes(normalise_pack(pack_directory))
-
-    # The pack is found from the snapshot's own `source_version`, not trusted from this table.
-    source_version = tomllib.loads((root / "snapshot.toml").read_text(encoding="utf-8"))[
+def _rederived_rules_json(snapshot_directory: Path) -> bytes:
+    """`rules.json` as the normaliser produces it from the pack the snapshot's own `snapshot.toml`
+    names: the pack is found from `[snapshot].source_version` through each pack's `MANIFEST.json`,
+    never from a table kept here."""
+    source_version = tomllib.loads((snapshot_directory / "snapshot.toml").read_text("utf-8"))[
         "snapshot"
     ]["source_version"]
-    assert _pack_directory_pinned_at(source_version) == pack_directory
+    return rules_json_bytes(normalise_pack(_pack_directory_pinned_at(source_version)))
+
+
+def test_the_promoted_snapshots_are_found_not_listed() -> None:
+    """The parametrisation below is only as good as what the loader finds: the two builds of the
+    first revision, the second revision's, and not the unpromoted stub."""
+    assert set(_PROMOTED_SNAPSHOT_DIRECTORIES) >= {
+        "aoe2techtree-177723-test",
+        "aoe2techtree-180059",
+        "aoe2techtree-185872",
+    }
+    assert "aoe2techtree-test-stub" not in _PROMOTED_SNAPSHOT_DIRECTORIES
+
+
+@pytest.mark.parametrize("snapshot_directory", _PROMOTED_SNAPSHOT_DIRECTORIES)
+def test_every_promoted_snapshots_rules_json_matches_a_fresh_normalisation(
+    snapshot_directory: str,
+) -> None:
+    """The `rules.json` a snapshot commits is not hand-edited output: re-running the normaliser
+    over the real, unpatched pack *the snapshot names* reproduces it byte for byte. A newer
+    revision is vendored beside the first (T707), so each snapshot is re-derived from the pack its
+    own `source_version` pins, and a failure here means the committed file has drifted from what
+    the normaliser now produces (see `tests/fixtures/replays/README.md`'s golden discipline for the
+    same principle applied to the canonical stream)."""
+    root = _SNAPSHOTS_ROOT / snapshot_directory
+    assert (root / "rules.json").read_bytes() == _rederived_rules_json(root)
+
+
+def test_a_snapshot_naming_one_packs_commit_but_derived_from_another_is_caught(
+    tmp_path: Path,
+) -> None:
+    """T707a plant: build 185872's `rules.json` is derived from pack `aoe2techtree-3bb43b1`. Point
+    its `source_version` at the first pack's commit instead (a copy in `tmp_path`, the committed
+    snapshot untouched) and the re-derivation is from the *other* pack, so it no longer reproduces
+    the committed bytes - the test above would fail for exactly this."""
+    copy = tmp_path / "aoe2techtree-185872"
+    shutil.copytree(_SNAPSHOTS_ROOT / "aoe2techtree-185872", copy)
+    first_pack_commit = json.loads((_PACKS_ROOT / "aoe2techtree" / "MANIFEST.json").read_text())[
+        "commit"
+    ]
+    toml_path = copy / "snapshot.toml"
+    text = toml_path.read_text(encoding="utf-8")
+    toml_path.write_text(
+        text.replace(
+            "3bb43b1439eef88dfe7fe892d7f7dc41ac9dd76f",
+            first_pack_commit,
+        ),
+        encoding="utf-8",
+    )
+    assert first_pack_commit in toml_path.read_text(encoding="utf-8")
+
+    assert (copy / "rules.json").read_bytes() != _rederived_rules_json(copy)
 
 
 def test_the_two_vendored_revisions_describe_different_data() -> None:
     """The reason a second pack sits beside the first: re-deriving 180059 from the newer revision
     would not reproduce its committed `rules.json`, so replacing the pack would have orphaned it."""
-    assert rules_json_bytes(normalise_pack()) != rules_json_bytes(
-        normalise_pack("aoe2techtree-3bb43b1")
+    assert rules_json_bytes(normalise_pack(_FIRST_PACK)) != rules_json_bytes(
+        normalise_pack(_SECOND_PACK)
     )
 
 

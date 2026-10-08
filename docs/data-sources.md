@@ -504,26 +504,34 @@ against keeping one measurement in two homes.
 - **Version identifier**: two pinned commits, each recorded in its own pack's `MANIFEST.json` and
   `LICENCE.md` under `packages/knowledge/packs/`. The first, `b9d494df6921d4080df69b22f9dbb7a4d1dcd9f0`
   (2026-06-21, pack `aoe2techtree`), is the one `aoe2techtree-180059` is derived from. The second,
-  `3bb43b1439eef88dfe7fe892d7f7dc41ac9dd76f` (2026-09-11, pack `aoe2techtree-3bb43b1`), is the one
-  `aoe2techtree-185872` is derived from; it is vendored beside the first because a snapshot must
-  stay re-derivable from its own source revision. The source carries no explicit build tag; the game
-  build a commit implements is read from that commit's own message, a derived reading, not a field
-  (research.md D3, D4). The first pinned commit's own newest "Implement DE Update" commit is
-  `daf5fa18de` (2026-06-03), implementing build 177723 — three builds behind the committed
-  fixtures' build 180059 — which is why every snapshot describing 180059 carries a carry-forward
-  validation record rather than a direct import
-  (`packages/knowledge/snapshots/aoe2techtree-180059/snapshot.toml`). The second pinned commit's
-  message ("Add The Viking Sagas") names build 185872 by the publisher's update page, so
-  `aoe2techtree-185872` is a direct import with no carry-forward
-  (`packages/knowledge/snapshots/aoe2techtree-185872/snapshot.toml`).
+  `3bb43b1439eef88dfe7fe892d7f7dc41ac9dd76f` (pack `aoe2techtree-3bb43b1`; authored 2026-09-11,
+  committed 2026-09-22, assessed 2026-10-08), is the one `aoe2techtree-185872` is derived from; it is
+  vendored beside the first because a snapshot must stay re-derivable from its own source revision.
+  The source carries no explicit build tag; the game build a commit implements is read from that
+  commit's own message, a derived reading, not a field (research.md D3, D4). The first pinned
+  commit's own newest "Implement DE Update" commit is `daf5fa18de` (2026-06-03), implementing build
+  177723 — three builds behind build 180059, the build of the first two committed fixtures — which
+  is why every snapshot describing 180059 carries a carry-forward validation record rather than a
+  direct import (`packages/knowledge/snapshots/aoe2techtree-180059/snapshot.toml`). The second
+  pinned commit's message ("Add The Viking Sagas") carries the publisher's update page for build
+  185872, so `aoe2techtree-185872` is a direct import with no carry-forward
+  (`packages/knowledge/snapshots/aoe2techtree-185872/snapshot.toml`); the third committed
+  fixture, match 511523321 (`tests/fixtures/replays/README.md`), is a build 185872 recording.
+  Assessed 2026-10-08, the link from commit to build is a reading of commit-message prose and no
+  more: the commit was authored eleven days before the publisher released the build (2026-09-22)
+  and committed on the release day, that its data matches the released build was not verified, and
+  neither was any value in the snapshot (FR-030).
 - **Coverage**: all 53 civilisations present in the trees directory at the first pinned commit (56
   at the second, which adds Saxons, Danes and Varangians); costs,
-  times and ages for every unit, building and technology those trees name. The first
-  knowledge snapshot imports this but validates and hand-models bonuses only for the six
-  civilisations the committed reference recordings need — Byzantines, Koreans, Franks, Persians,
-  Teutons, Gurjaras (research.md D11) — and everything else surfaces as a gap on first use rather
-  than as an unvalidated value (FR-022a). The build 185872 snapshot models no civilisation at all:
-  it resolves names and baselines, and every civilisation-qualified cost or time is a gap.
+  times and ages for every unit, building and technology those trees name. The build 180059
+  snapshot imports this but validates and hand-models bonuses only for six civilisations — Franks,
+  Teutons, Persians, Saracens, Malians, Tatars (research.md D11 first named a different six; T652m
+  corrected them to the ones whose bonuses were transcribed and validated) — and everything else surfaces as
+  a gap on first use rather than as an unvalidated value (FR-022a). Assessed 2026-10-08, the build
+  185872 snapshot models no civilisation at all: names resolve through the knowledge query
+  (`query.name`), not on the analysis page, which shows no name for any build (T709), and no
+  baseline query answers, because every other query takes a civilisation and refuses an unmodelled
+  one.
 - **Known limitations**: no civilisation-specific bonus data as structured values, no build/version
   field of its own, no combat attributes (attack, armour, hit points, range) — halfon carries those
   (below). Three builds (178524, 179158, 180059) unimplemented by the first pinned commit as of this
@@ -533,7 +541,9 @@ against keeping one measurement in two homes.
   `packages/knowledge` does not carry a `prerequisites` field for this reason.
 - **Assessed**: 2026-09-19 (survey, research.md D3); vendored and carry-forward-validated
   2026-09-20 (`packages/knowledge/packs/aoe2techtree/LICENCE.md`,
-  `packages/knowledge/snapshots/aoe2techtree-180059/snapshot.toml`). Licence: MIT, **copy
+  `packages/knowledge/snapshots/aoe2techtree-180059/snapshot.toml`); the second pack vendored and
+  the build 185872 snapshot promoted 2026-10-08
+  (`packages/knowledge/snapshots/aoe2techtree-185872/snapshot.toml`). Licence: MIT, **copy
   in** — `docs/asset-packs.md` "Knowledge packs".
 
 ### halfon

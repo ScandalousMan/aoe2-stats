@@ -1,11 +1,11 @@
-"""T707: a build 185872 recording resolves the names an analysis shows.
+"""T707: a build 185872 recording's identifiers resolve to names through `query.name`.
 
 Production, 2026-10-08, match 511523321 (game build 185872, `tests/fixtures/replays/README.md`):
-the analysis showed `Technology ID 101` and `Building ID 70` because only build 180059 had a
-promoted snapshot, so `snapshot_for(185872)` answered a `no-snapshot-for-build` gap. This file is
-what stays true once `aoe2techtree-185872` exists: the names resolve, from the snapshot imported
-from the pack revision whose commit names the build, and nothing the snapshot does not model is
-invented for it.
+the analysis named no knowledge snapshot because only build 180059 had a promoted one, so
+`snapshot_for(185872)` answered a `no-snapshot-for-build` gap. This file is what stays true once
+`aoe2techtree-185872` exists: `query.name` resolves, from the snapshot imported from the pack
+revision whose commit names the build, and nothing the snapshot does not model is invented for it.
+It does not say an analysis shows those names: none does, for any build (T709).
 """
 
 from __future__ import annotations
@@ -39,7 +39,7 @@ def test_the_build_resolves_to_its_own_promoted_snapshot() -> None:
         ("building", "70", "House"),
     ],
 )
-def test_the_names_an_analysis_shows_resolve_for_the_build(
+def test_the_names_of_the_ids_a_recording_carries_resolve_for_the_build(
     kind: str, entity_id: str, expected: str
 ) -> None:
     answer = query.name(query.EntityRef(kind=kind, id=entity_id, build=_BUILD))

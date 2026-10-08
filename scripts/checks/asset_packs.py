@@ -49,9 +49,13 @@ FONT_SIZE_BUDGET_BYTES = 1 * 1024 * 1024
 #: (`trees/*.json`, 53 civilisation files, ~5.3 MB; `data.json` ~926 KB; `strings.en.json` ~185 KB),
 #: budgeted at 12 MiB. T707 vendors a second revision beside it (a snapshot must stay re-derivable
 #: from the pack it was imported from, so a newer revision never replaces an older one): measured
-#: 2026-10-08, the two packs total 13,461,664 bytes (~12.8 MiB), the second being ~7.1 MB (56 tree
-#: files). Budgeted at 24 MiB, a little under double that measurement - room for one more revision
-#: of that size, not for a third copy by accident. Revisit when a third pack is proposed.
+#: 2026-10-08, the two packs total 13,461,664 bytes (~12.8 MiB), the second being ~6.9 MB (56 tree
+#: files). Budgeted at 24 MiB (25,165,824 bytes), a little under double that measurement. A third
+#: revision of the same size (~20.4 MB in all) fits; a fourth (~27.3 MB) does not. The budget does
+#: not stop a third pack and is not meant to: it stops a stray duplicate beyond that. Whether a
+#: pack belongs at all is `pinned_source_commit.py`'s question (it refuses a pack with no
+#: manifest, two packs pinning one commit, and a pack no snapshot names). Revisit the number when
+#: a fourth pack is proposed.
 KNOWLEDGE_PACK_SIZE_BUDGET_BYTES = 24 * 1024 * 1024
 
 #: specs/006-replay-analysis-foundations/contracts/knowledge-base.md's on-disk layout for
