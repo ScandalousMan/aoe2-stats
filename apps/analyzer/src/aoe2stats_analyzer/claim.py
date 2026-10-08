@@ -31,11 +31,15 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from uuid import UUID
 
-from sqlalchemy import and_, or_, select, update
+from sqlalchemy import Text, and_, cast, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from aoe2stats_storage.models import MatchAnalysis, MatchAnalysisState
+
+#: The fixed reason a row ends `failed` when a claim would exceed the configured maximum number of
+#: attempts (T706a). `error_class` is what a reader filters on; the message carries the count.
+ATTEMPTS_EXHAUSTED = "AttemptsExhausted"
 
 
 @dataclass(frozen=True)
@@ -61,6 +65,7 @@ async def claim_for_analysis(
     point_of_view_profile_id: int,
     requested_by_user_id: UUID | None,
     lease_seconds: int,
+    max_attempts: int,
     now: datetime,
 ) -> ClaimOutcome:
     """Claim `match_analyses.game_id == game_id` for analysis, or report it as it stands if this
@@ -74,26 +79,59 @@ async def claim_for_analysis(
     (`data-model.md`'s retry bound). `point_of_view_profile_id` and `requested_by_user_id` are
     recorded against the caller now driving the work.
 
+    **The retry bound (T706a).** An eligible row that already has `max_attempts` attempts is not
+    claimed: it ends `failed` (`error_class` `AttemptsExhausted`, a fixed message carrying the
+    count) and the outcome is `claimed=False`, so a recording that kills its invocation every time
+    is fetched `max_attempts` times and no more. The N-th claim proceeds, the N+1-th fails the row.
+
     Commits before returning either way, so the row a caller reads back (whether it won or not) is
     always the current, durable state.
     """
     # The "expired lease" arm below is the SQL twin of `MatchAnalysis.lease_has_expired` (T706):
     # the API serves a row for which that is true as `queued`, so the two must agree
     # (`test_claim.py`).
+    is_claimable = and_(
+        MatchAnalysis.game_id == game_id,
+        or_(
+            MatchAnalysis.state == MatchAnalysisState.QUEUED,
+            and_(
+                MatchAnalysis.state == MatchAnalysisState.RUNNING,
+                MatchAnalysis.lease_expires_at.is_not(None),
+                MatchAnalysis.lease_expires_at <= now,
+            ),
+        ),
+    )
     eligible_game_ids = (
         select(MatchAnalysis.game_id)
-        .where(
-            MatchAnalysis.game_id == game_id,
-            or_(
-                MatchAnalysis.state == MatchAnalysisState.QUEUED,
-                and_(
-                    MatchAnalysis.state == MatchAnalysisState.RUNNING,
-                    MatchAnalysis.lease_expires_at.is_not(None),
-                    MatchAnalysis.lease_expires_at <= now,
-                ),
-            ),
-        )
+        .where(is_claimable, MatchAnalysis.attempts < max_attempts)
         .with_for_update(skip_locked=True)
+    )
+    exhausted_game_ids = (
+        select(MatchAnalysis.game_id)
+        .where(is_claimable, MatchAnalysis.attempts >= max_attempts)
+        .with_for_update(skip_locked=True)
+    )
+
+    exhaust = (
+        update(MatchAnalysis)
+        .where(MatchAnalysis.game_id.in_(exhausted_game_ids))
+        .values(
+            state=MatchAnalysisState.FAILED,
+            finished_at=now,
+            error_class=ATTEMPTS_EXHAUSTED,
+            error_message=func.concat(
+                "the analysis was interrupted ",
+                cast(MatchAnalysis.attempts, Text),
+                " times and is not retried",
+            ),
+            result_key=None,
+        )
+        .returning(
+            MatchAnalysis.state,
+            MatchAnalysis.attempts,
+            MatchAnalysis.claimed_at,
+            MatchAnalysis.lease_expires_at,
+        )
     )
 
     statement = (
@@ -135,6 +173,20 @@ async def claim_for_analysis(
             state, attempts, claimed_at, lease_expires_at = claimed_row
             return ClaimOutcome(
                 claimed=True,
+                state=state,
+                attempts=attempts,
+                claimed_at=claimed_at,
+                lease_expires_at=lease_expires_at,
+            )
+
+        # A claimable row that has used up its attempts is ended here, not claimed: the caller
+        # sees `claimed=False` and fetches nothing (T706a).
+        exhausted_row = (await session.execute(exhaust)).one_or_none()
+        if exhausted_row is not None:
+            await session.commit()
+            state, attempts, claimed_at, lease_expires_at = exhausted_row
+            return ClaimOutcome(
+                claimed=False,
                 state=state,
                 attempts=attempts,
                 claimed_at=claimed_at,

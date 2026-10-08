@@ -35,6 +35,7 @@ from __future__ import annotations
 import dataclasses
 import logging
 import secrets
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from importlib import metadata
 from pathlib import Path
@@ -836,17 +837,52 @@ async def test_a_request_on_a_terminal_row_still_counts_against_the_limit(
     assert response.json()["error"]["code"] == "rate_limited"
 
 
+async def _close_no_gate(monkeypatch: pytest.MonkeyPatch, db_session: AsyncSession) -> None:
+    return None
+
+
+async def _close_the_source_budget(
+    monkeypatch: pytest.MonkeyPatch, db_session: AsyncSession
+) -> None:
+    monkeypatch.setenv("ANALYSIS_MAX_SOURCE_REQUESTS_PER_DAY", "0")
+
+
+async def _reach_the_retention_cap(
+    monkeypatch: pytest.MonkeyPatch, db_session: AsyncSession
+) -> None:
+    monkeypatch.setenv("ANALYSIS_RETENTION_CAP_BYTES", "0")
+
+
+async def _put_a_capture_in_its_deadline_window(
+    monkeypatch: pytest.MonkeyPatch, db_session: AsyncSession
+) -> None:
+    await _seed_capture_in_deadline_danger(db_session)
+
+
+@pytest.mark.parametrize(
+    "close_the_gate,code",
+    [
+        (_put_a_capture_in_its_deadline_window, "capture_deadline_contention"),
+        (_close_the_source_budget, "analysis_budget_exhausted"),
+        (_reach_the_retention_cap, "analysis_cap_reached"),
+    ],
+    ids=["capture_deadline_contention", "analysis_budget_exhausted", "analysis_cap_reached"],
+)
 async def test_an_uncounted_request_still_meets_every_admission_gate(
     db_session: AsyncSession,
     database_url: str,
     clean_database: None,
     monkeypatch: pytest.MonkeyPatch,
+    close_the_gate: Callable[[pytest.MonkeyPatch, AsyncSession], Awaitable[None]],
+    code: str,
 ) -> None:
+    """All three of R7's gates, on the uncounted path (a `queued` row): each refuses with its own
+    code, nothing is counted, nothing is fetched and the row is left as it was."""
     monkeypatch.setenv("DATABASE_URL", database_url)
-    monkeypatch.setenv("ANALYSIS_MAX_SOURCE_REQUESTS_PER_DAY", "0")
     _install_no_calls_allowed_upstream(monkeypatch)
     await _seed_fixture_match(db_session)
     await _seed_fixture_analysis_row(db_session, state=MatchAnalysisState.QUEUED)
+    await close_the_gate(monkeypatch, db_session)
     user = await _seed_user(db_session)
 
     with _client() as client:
@@ -854,8 +890,46 @@ async def test_an_uncounted_request_still_meets_every_admission_gate(
         response = client.post("/api/analyze", json={"game_id": _FIXTURE_GAME_ID})
 
     assert response.status_code == 409
-    assert response.json()["error"]["code"] == "analysis_budget_exhausted"
+    assert response.json()["error"]["code"] == code
     assert await _counted_requests(db_session, user) == 0
+    row = await db_session.get(MatchAnalysis, _FIXTURE_GAME_ID)
+    assert row is not None
+    await db_session.refresh(row)
+    assert (row.state, row.attempts) == (MatchAnalysisState.QUEUED, 0)
+
+
+async def test_the_configured_lease_and_attempt_bound_reach_run_once_not_the_run_budget(
+    db_session: AsyncSession,
+    database_url: str,
+    clean_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """T706a: the claim's lease is `ANALYSIS_LEASE_SECONDS` and its bound `ANALYSIS_MAX_ATTEMPTS`;
+    the run budget is passed as the budget. Distinct values, so a swap cannot pass."""
+    import api.analyze as analyze_module
+
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    monkeypatch.setenv("ANALYSIS_RUN_BUDGET_SECONDS", "111")
+    monkeypatch.setenv("ANALYSIS_LEASE_SECONDS", "777")
+    monkeypatch.setenv("ANALYSIS_MAX_ATTEMPTS", "7")
+    _install_fake_aoems_upstream(monkeypatch, _reference_replay_bytes())
+    _install_fake_object_store(monkeypatch)
+    await _seed_fixture_match(db_session)
+    user = await _seed_user(db_session)
+    seen: dict[str, object] = {}
+
+    async def records(*args: object, **kwargs: object) -> None:
+        seen["budget"] = args[1]
+        seen.update(kwargs)
+
+    monkeypatch.setattr(analyze_module, "run_once", records)
+    with _client() as client:
+        await _sign_in(client, db_session, user)
+        client.post("/api/analyze", json={"game_id": _FIXTURE_GAME_ID})
+
+    assert seen["budget"] == 111
+    assert seen["lease_seconds"] == 777
+    assert seen["max_attempts"] == 7
 
 
 async def test_an_unreadable_body_is_refused_before_anything_is_counted(

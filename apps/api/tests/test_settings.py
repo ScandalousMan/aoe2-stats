@@ -45,6 +45,7 @@ REQUIRED_ENV: dict[str, str] = {
     "ANALYSIS_RETENTION_CAP_BYTES": "2147483648",
     "ANALYSIS_RUN_BUDGET_SECONDS": "240",
     "ANALYSIS_LEASE_SECONDS": "300",
+    "ANALYSIS_MAX_ATTEMPTS": "3",
     "ANALYSIS_MAX_RAW_BYTES": "25165824",
     "ANALYSIS_RECOMPUTE_RETRY_SECONDS": "3600",
     "REQUEST_IDLE_IN_TRANSACTION_TIMEOUT_SECONDS": "15",
@@ -129,6 +130,8 @@ def test_numeric_fields_are_typed_correctly(monkeypatch: pytest.MonkeyPatch) -> 
     assert settings.analysis_run_budget_seconds == 240
     assert isinstance(settings.analysis_lease_seconds, int)
     assert settings.analysis_lease_seconds == 300
+    assert isinstance(settings.analysis_max_attempts, int)
+    assert settings.analysis_max_attempts == 3
     assert isinstance(settings.analysis_max_raw_bytes, int)
     assert settings.analysis_max_raw_bytes == 25165824
     assert isinstance(settings.analysis_recompute_retry_seconds, int)
@@ -334,6 +337,43 @@ def test_an_unset_recompute_retry_window_is_a_startup_error_like_every_other_key
         get_settings()
 
     assert raised.value.keys == ["ANALYSIS_RECOMPUTE_RETRY_SECONDS"]
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "11", "three", "1.5", ""])
+def test_max_attempts_outside_its_bounds_is_rejected_naming_the_key(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    """T706a: zero would refuse every first analysis; past ten, a stray digit would let a
+    recording that kills its invocation spend the source budget that many times over."""
+    _set_all(monkeypatch, {"ANALYSIS_MAX_ATTEMPTS": value})
+
+    with pytest.raises(ConfigurationError) as raised:
+        get_settings()
+
+    assert raised.value.keys == ["ANALYSIS_MAX_ATTEMPTS"]
+    assert not value or value not in str(raised.value)
+
+
+@pytest.mark.parametrize("value", [1, 3, 10])
+def test_max_attempts_accepts_its_whole_range(monkeypatch: pytest.MonkeyPatch, value: int) -> None:
+    _set_all(monkeypatch, {"ANALYSIS_MAX_ATTEMPTS": str(value)})
+
+    assert get_settings().analysis_max_attempts == value
+
+
+def test_an_unset_max_attempts_is_a_startup_error_like_every_other_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No Python-side default (module docstring of `settings.py`): the 3 lives in `.env.example`."""
+    values = dict(REQUIRED_ENV)
+    del values["ANALYSIS_MAX_ATTEMPTS"]
+    for key, value in values.items():
+        monkeypatch.setenv(key, value)
+
+    with pytest.raises(ConfigurationError) as raised:
+        get_settings()
+
+    assert raised.value.keys == ["ANALYSIS_MAX_ATTEMPTS"]
 
 
 # --- T459b: the request idle-in-transaction bound is configuration, validated at startup ----------

@@ -1,8 +1,11 @@
 """The Vercel on-demand analysis entrypoint (T366). `maxDuration: 300` is set for this file in
 `vercel.json` — the platform's per-execution budget `docs/adr/0002-hosting.md` measured, and the
-exact number `apps/analyzer/src/aoe2stats_analyzer/run.py::run_once` threads into its own claim as
-`lease_seconds` (that module's own docstring: "the same number `api/analyze.py`'s `maxDuration`
-will carry").
+ceiling the claim's lease has to outlast: `ANALYSIS_LEASE_SECONDS` is handed to
+`apps/analyzer/src/aoe2stats_analyzer/run.py::run_once` as the lease, and `scripts/checks/
+config-preflight.mjs` fails the build when it is below the number `vercel.json` gives this file
+(T706a). The run budget (`ANALYSIS_RUN_BUDGET_SECONDS`) is the shorter number and is not the lease:
+a lease equal to it would read as expired for the last minute of a run the platform still allows,
+and the match page would take that run over.
 
 `api/index.py` is capped at `maxDuration: 10` (`vercel.json`); a serverless function cannot keep
 working after its response is returned, so the request that asks for the analysis has to be the
@@ -24,16 +27,19 @@ is a person, on one match, asking once.
 (constitution V, that router's own docstring).
 
 **What counts against it (T706).** A request for a match whose `match_analyses` row is `queued` or
-`running` - a lease live or expired - re-claims or joins work already on the books and starts
-nothing new, so it does not increment the counter; the person who opens a match whose analysis was
-abandoned is not charged for taking it over. Everything else counts: no row (a first request), a
-`failed`/`unavailable`/`refused` row (a retry) and a `published` row (a stale recompute). Every
-admission gate below still applies to an uncounted request. The row is read before the counter,
-with no lock, so there is a race: a row created between that read and the claim was read as absent,
-so the request counts, and so does its rival - the error is an over-count, never a free analysis.
-The reverse (a row read as `queued`/`running` that finishes before the claim) makes the request
-serve the finished row without work. The body is read first, since the match is what decides
-whether the request counts: an unreadable body is refused before anything is counted.
+`running` - a lease live or expired - re-claims or joins work already on the books, so it does not
+increment the counter; the person who opens a match whose analysis was abandoned is not charged for
+taking it over. A takeover is still work: it re-fetches the recording from the source and parses it
+again (the claim bounds how often, `ANALYSIS_MAX_ATTEMPTS`, T706a), and every admission gate below
+still applies to it. Everything else counts: no row (a first request), a `failed`/`unavailable`/
+`refused` row (a retry) and a `published` row (a stale recompute). The row is read before the
+counter, with no lock, so there is a race. A row created between that read and the claim was read
+as absent, so the request counts, and so does its rival. A row read as `queued`/`running` that is
+published by a live run before the claim makes this request serve the finished row without a
+fetch - but if that run published under a different parser version, this request finds the row
+stale and recomputes it from the retained recording, uncounted. The body is read first, since the
+match is what decides whether the request counts: an unreadable body is refused before anything is
+counted.
 
 **FR-039/FR-047's three admission gates (R7) are applied here too, before `run_once` is ever
 called.** `apps/analyzer/src/aoe2stats_analyzer/admission.py::check_admission` and
@@ -111,9 +117,10 @@ _RATE_LIMIT_WINDOW_SECONDS = 24 * 60 * 60
 
 #: T706: a POST for a match whose row is in one of these states re-claims or joins work that is
 #: already on the books (`queued`: nobody holds it; `running`: a lease is held, live or expired) and
-#: is not counted against the daily limit. Any other state - no row, or a terminal one - is a
-#: request for new work and counts: `absent`, `failed`/`unavailable`/`refused` (a retry) and a
-#: stale `published` row (a recompute) all spend a source fetch or a parse.
+#: is not counted against the daily limit. It is not free: a takeover re-fetches and re-parses, and
+#: the claim limits how many times (`ANALYSIS_MAX_ATTEMPTS`, T706a). Any other state - no row, or a
+#: terminal one - is a request for new work and counts: `absent`, `failed`/`unavailable`/`refused`
+#: (a retry) and a stale `published` row (a recompute) all spend a source fetch or a parse.
 _UNCOUNTED_STATES = frozenset({MatchAnalysisState.QUEUED, MatchAnalysisState.RUNNING})
 
 
@@ -203,9 +210,9 @@ async def _analyze(request: Request) -> JSONResponse:
         except (ValueError, KeyError, TypeError):
             return _invalid_body()
 
-        # T706: a request that joins or re-claims work already on the books starts nothing new, so
-        # it is not counted against FR-040's daily limit (module docstring). The row is read
-        # without a lock, before the counter is touched.
+        # T706: a request that joins or re-claims work already on the books is not counted against
+        # FR-040's daily limit (module docstring). The row is read without a lock, before the
+        # counter is touched.
         existing = await _analysis_row(session, game_id=game_id)
         if existing is None or existing.state not in _UNCOUNTED_STATES:
             outcome = await ratelimit.check_and_increment(
@@ -238,6 +245,8 @@ async def _analyze(request: Request) -> JSONResponse:
             game_id,
             settings.analysis_run_budget_seconds,
             requested_by_user_id,
+            lease_seconds=settings.analysis_lease_seconds,
+            max_attempts=settings.analysis_max_attempts,
             session_factory=deps.session_factory,
             replay_provider=deps.replay_provider,
             extractor=deps.extractor,

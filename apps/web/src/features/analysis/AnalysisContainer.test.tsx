@@ -447,6 +447,78 @@ describe('AnalysisContainer', () => {
     }
   })
 
+  it('stops polling and shows the API message when the automatic POST on "queued" is refused (T706a)', async () => {
+    vi.useFakeTimers()
+    try {
+      const refusal =
+        'Analysis is paused while replay capture has unstored recordings inside their deadline window. Try again shortly.'
+      const fetchMock = installFakeApi({
+        detail: () => jsonResponse(baseDetail({ state: 'queued' })),
+        analyze: () =>
+          jsonResponse({ error: { code: 'capture_deadline_contention', message: refusal } }, 409),
+      })
+      renderAnalysis()
+
+      await act(async () => {
+        await vi.waitFor(() => expect(screen.getByText('Waiting to start…')).toBeInTheDocument())
+      })
+      for (let poll = 0; poll < 3; poll += 1) {
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(5000)
+        })
+      }
+
+      expect(screen.getByText(refusal)).toBeInTheDocument()
+
+      expect(
+        fetchMock.mock.calls.filter(([input]) => input === '/api/matches/500546441'),
+      ).toHaveLength(1)
+      expect(fetchMock.mock.calls.filter(([input]) => input === '/api/analyze')).toHaveLength(1)
+      expect(screen.queryByText('Waiting to start…')).not.toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('shows a fixed message when the automatic POST never reaches the server, and "Try again" sends it once more (T706a)', async () => {
+    vi.useFakeTimers()
+    try {
+      let attempts = 0
+      const fetchMock = installFakeApi({
+        detail: () => jsonResponse(baseDetail({ state: 'queued' })),
+        analyze: () => {
+          attempts += 1
+          if (attempts === 1) {
+            throw new TypeError('Failed to fetch')
+          }
+          return jsonResponse(baseDetail({ state: 'running' }).analysis)
+        },
+      })
+      renderAnalysis()
+
+      await act(async () => {
+        await vi.waitFor(() => expect(screen.getByText('Waiting to start…')).toBeInTheDocument())
+      })
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      expect(
+        screen.getByText("We could not ask for this match's analysis to continue."),
+      ).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5000)
+      })
+
+      expect(fetchMock.mock.calls.filter(([input]) => input === '/api/analyze')).toHaveLength(2)
+      expect(
+        screen.queryByText("We could not ask for this match's analysis to continue."),
+      ).not.toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('renders the load-error callout on a network failure, with a working retry', async () => {
     let attempt = 0
     const fetchMock = installFakeApi({

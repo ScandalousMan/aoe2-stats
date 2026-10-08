@@ -88,6 +88,8 @@ _MAX_RAW_BYTES = (
     25_165_824  # `.env.example`'s ANALYSIS_MAX_RAW_BYTES; the fixture inflates to ~7 MB
 )
 _BUDGET_SECONDS = 300
+_LEASE_SECONDS = 300  # ANALYSIS_LEASE_SECONDS: not below api/analyze.py's maxDuration
+_MAX_ATTEMPTS = 3
 _RETAINED_KEY = f"retained-recordings/{_GAME_ID}/{_POINT_OF_VIEW_PROFILE_ID}.zip"
 
 #: The wall-clock set (T659): everything else in a document is a pure function of the identity.
@@ -364,6 +366,8 @@ async def _run_once(
         _GAME_ID,
         _BUDGET_SECONDS,
         user_id,
+        lease_seconds=_LEASE_SECONDS,
+        max_attempts=_MAX_ATTEMPTS,
         session_factory=session_factory,
         replay_provider=provider,
         extractor=extractor,

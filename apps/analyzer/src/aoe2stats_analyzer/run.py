@@ -4,11 +4,11 @@
 and exercised against every function here — quickstart scenarios 7, 8 and 10. This module knows
 nothing about its caller: it takes every session, provider, extractor and object store it needs as
 an explicit argument (the same discipline `admission.py`, `claim.py` and `retain.py` already carry
-in this package), and its only opinion about the platform it runs on is `budget_seconds` itself,
-which it uses as the claim's own lease duration (see below) — never a re-read of a setting from the
-environment, and never an HTTP concern. `api/analyze.py` (T366) is the one place this function is
-ever called from in production, and it is free to translate whatever `run_once` leaves in
-`match_analyses` into a response; this function returns nothing, because — as
+in this package), and its only opinions about the platform it runs on are the numbers it is handed
+(`budget_seconds`, `lease_seconds`, `max_attempts`; see `run_once`) — never a re-read of a setting
+from the environment, and never an HTTP concern. `api/analyze.py` (T366) is the one place this
+function is ever called from in production, and it is free to translate whatever `run_once` leaves
+in `match_analyses` into a response; this function returns nothing, because — as
 `test_run_once.py`'s own module docstring states — every assertion about what one call did reads
 the row back from `match_analyses`, `retained_recordings` or `replay_access_log` directly, never a
 return value.
@@ -381,9 +381,11 @@ async def _mark_failed(
 
     **Never unpublishes (T666m, FR-042).** A `published` row is a served analysis and is left
     exactly as it was, as `_mark_unavailable` leaves it (T666i). The recompute path never reaches
-    here, but a lease overrun can: the lease (240 s) is shorter than the invocation's `maxDuration`
-    (300 s), so run A can outlive its lease, run B can claim the row, A can publish, and B's refusal
-    then arrives at a row that is no longer B's. The refusal belongs to a claim that was lost.
+    here, but a lost claim still can: the lease is the platform's `maxDuration` (T706a), so a run
+    that finishes inside its function never loses it, but a clock step, a lease configured shorter
+    than the function, or a hand edit of the row lets run A outlive its lease, run B claim the row,
+    A publish, and B's refusal then arrive at a row that is no longer B's. The refusal belongs to a
+    claim that was lost.
     """
     async with session_scope(session_factory) as session:
         # The guard is in the statement, not in a read before it: a publish that commits between a
@@ -880,6 +882,8 @@ async def run_once(
     budget_seconds: float,
     requested_by_user_id: UUID,
     *,
+    lease_seconds: int,
+    max_attempts: int,
     session_factory: async_sessionmaker[AsyncSession],
     replay_provider: ReplayProvider,
     extractor: AnalysisExtractor,
@@ -895,12 +899,22 @@ async def run_once(
     recording (`DeploymentFault`, T666h): that is not an outcome for a match, so it raises, and
     only for a request that would have claimed.
 
-    `budget_seconds` is threaded into `claim_for_analysis` as the claim's own `lease_seconds` —
-    the same number `api/analyze.py`'s `maxDuration` will carry (T366), so a lease this call takes
-    never outlives the invocation that could still be extending it, and an interrupted run really
-    does leave the row claimable the moment its own lease — not a separately configured one —
-    expires (FR-037).
+    `budget_seconds` is the time the caller sizes one run to (`ANALYSIS_RUN_BUDGET_SECONDS`); this
+    function does not stop at it, and it is not the lease. `lease_seconds` is the claim's lease
+    (`ANALYSIS_LEASE_SECONDS`, T706a), which must outlast everything the invocation may still do:
+    the function's own `maxDuration`, not the budget, which is the shorter number by design. A lease
+    shorter than the budget would expire while the run is inside it, so it is refused as a caller
+    error before anything is read. A lease that is not shorter than the function means a live run
+    never reads as expired, and an interrupted one really does leave the row claimable once the
+    function could no longer be working (FR-037). `max_attempts` (`ANALYSIS_MAX_ATTEMPTS`) bounds
+    the claims of one match: the claim past it ends the row `failed` instead and this call fetches
+    nothing.
     """
+    if lease_seconds < budget_seconds:
+        raise ValueError(
+            f"lease_seconds ({lease_seconds}) is shorter than budget_seconds ({budget_seconds}): "
+            "a live run would read as expired"
+        )
     now = _now()
 
     async with session_factory() as session:
@@ -966,11 +980,15 @@ async def run_once(
         game_id=game_id,
         point_of_view_profile_id=point_of_view_profile_id,
         requested_by_user_id=requested_by_user_id,
-        lease_seconds=int(budget_seconds),
+        lease_seconds=lease_seconds,
+        max_attempts=max_attempts,
         now=now,
     )
     if not outcome.claimed:
-        return  # FR-038: someone else holds a live lease; this call joins no second parse.
+        # FR-038: someone else holds a live lease, so this call joins no second parse; or the claim
+        # would have exceeded `max_attempts` and ended the row `failed` (T706a). Either way,
+        # nothing is fetched.
+        return
 
     blob = await replay_provider.fetch_replay(game_id, point_of_view_profile_id)
     if isinstance(blob, NotFound):

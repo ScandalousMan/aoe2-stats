@@ -303,7 +303,7 @@ six domain states tabled in §3, which this vocabulary's `loading`/`error`/`empt
   concrete mechanism behind FR-035's "let the user leave and come back": leaving means navigating away
   and returning to find the right state already showing, not necessarily watching this page the whole
   time. Polling stops the instant `state` is anything other than `queued`/`running`, and stops entirely
-  when the component unmounts. A `queued` summary (an unclaimed analysis; the server also serves a `running` one whose lease expired as `queued`) makes it send one `POST /api/analyze` per page view, not one per poll and never while `running`. Requesting or recomputing an analysis (§3.4) does not wait on its own
+  when the component unmounts. A `queued` summary (an unclaimed analysis; the server also serves a `running` one whose lease expired as `queued`) makes it send one `POST /api/analyze` per page view, not one per poll and never while `running`; if that `POST` is refused, polling stops and the page shows the refusal in a `Callout` with a "Try again". Requesting or recomputing an analysis (§3.4) does not wait on its own
   `POST /api/analyze` response to update this component: the click fires the request and this component
   immediately shows `AnalysisProgress`, relying on the very next poll (or the eventual page it lands on)
   to read the outcome — this is what keeps SC-007's "never a frozen screen" true even though a single

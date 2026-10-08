@@ -54,6 +54,8 @@ from aoe2stats_storage.repositories.base import session_scope
 # `session_factory` and `clean_database` come from `apps/analyzer/tests/conftest.py`.
 
 _BUDGET_SECONDS = 300
+_LEASE_SECONDS = 300  # ANALYSIS_LEASE_SECONDS: not below api/analyze.py's maxDuration
+_MAX_ATTEMPTS = 3
 _ENGINE_NAME = "aoe2rec-py"
 _ENGINE_VERSION_1 = "0.1.21"
 _ENGINE_VERSION_2 = "0.1.22"  # a later parser version: the published analysis is stale under it
@@ -260,6 +262,8 @@ async def _ask(
         game_id,
         _BUDGET_SECONDS,
         user_id,
+        lease_seconds=_LEASE_SECONDS,
+        max_attempts=_MAX_ATTEMPTS,
         session_factory=session_factory,
         replay_provider=provider,
         extractor=extractor,

@@ -48,6 +48,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from tests.db import clean_database, database_url, db_session, engine, session_factory
 
+from aoe2stats_analyzer.claim import ClaimOutcome
 from aoe2stats_storage.models import Match, MatchAnalysis, MatchAnalysisState
 
 # Re-exported so ruff sees these names used: pytest discovers a fixture imported into a test
@@ -57,6 +58,7 @@ __all__ = ["clean_database", "database_url", "db_session", "engine", "session_fa
 
 _GAME_ID = 900_000_001
 _POV_PROFILE_ID = 12_345_678
+_MAX_ATTEMPTS = 3
 _INGESTER_SRC = Path(__file__).resolve().parents[2] / "ingester" / "src" / "aoe2stats_ingester"
 
 
@@ -131,6 +133,7 @@ async def test_claim_is_exclusive_under_for_update_skip_locked(
             point_of_view_profile_id=_POV_PROFILE_ID,
             requested_by_user_id=None,
             lease_seconds=60,
+            max_attempts=_MAX_ATTEMPTS,
             now=now,
         )
         assert outcome_while_locked.claimed is False
@@ -145,6 +148,7 @@ async def test_claim_is_exclusive_under_for_update_skip_locked(
         point_of_view_profile_id=_POV_PROFILE_ID,
         requested_by_user_id=None,
         lease_seconds=60,
+        max_attempts=_MAX_ATTEMPTS,
         now=now,
     )
     assert outcome_after_release.claimed is True
@@ -182,6 +186,7 @@ async def test_an_expired_lease_is_reclaimable(
         point_of_view_profile_id=_POV_PROFILE_ID,
         requested_by_user_id=None,
         lease_seconds=60,
+        max_attempts=_MAX_ATTEMPTS,
         now=now,
     )
 
@@ -231,6 +236,7 @@ async def test_the_claim_takes_exactly_the_running_rows_whose_lease_has_expired(
             point_of_view_profile_id=_POV_PROFILE_ID,
             requested_by_user_id=None,
             lease_seconds=60,
+            max_attempts=_MAX_ATTEMPTS,
             now=now,
         )
         assert outcome.claimed is row.lease_has_expired(now), f"lease {lease}"
@@ -257,6 +263,7 @@ async def test_a_second_asker_under_a_live_lease_joins_the_row_and_starts_no_sec
         point_of_view_profile_id=_POV_PROFILE_ID,
         requested_by_user_id=None,
         lease_seconds=300,
+        max_attempts=_MAX_ATTEMPTS,
         now=now,
     )
     assert first_asker.claimed is True
@@ -269,6 +276,7 @@ async def test_a_second_asker_under_a_live_lease_joins_the_row_and_starts_no_sec
         point_of_view_profile_id=_POV_PROFILE_ID,
         requested_by_user_id=None,
         lease_seconds=300,
+        max_attempts=_MAX_ATTEMPTS,
         now=now + timedelta(seconds=5),
     )
 
@@ -279,6 +287,100 @@ async def test_a_second_asker_under_a_live_lease_joins_the_row_and_starts_no_sec
     assert second_asker.attempts == first_asker.attempts
     assert second_asker.claimed_at == first_asker.claimed_at
     assert second_asker.lease_expires_at == first_asker.lease_expires_at
+
+
+async def test_the_nth_claim_proceeds_and_the_next_one_fails_the_row_without_fetching(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """T706a: `attempts` is read. With a maximum of N, claims 1..N proceed (each after the
+    previous lease expired); claim N+1 ends the row `failed` with a fixed reason, reports it as
+    not claimed - the caller's cue to fetch nothing - and moves neither the lease nor `attempts`.
+    A later claim finds a terminal row and touches nothing."""
+    from aoe2stats_analyzer.claim import claim_for_analysis
+
+    start = datetime(2026, 10, 8, 9, 0, tzinfo=UTC)
+    lease = 300
+    async with session_factory() as setup_session:
+        await _seed_match(setup_session, game_id=_GAME_ID, completed_at=start - timedelta(days=1))
+        await _seed_match_analysis(
+            setup_session, game_id=_GAME_ID, state=MatchAnalysisState.QUEUED, requested_at=start
+        )
+
+    async def claim(now: datetime) -> ClaimOutcome:
+        return await claim_for_analysis(
+            session_factory,
+            game_id=_GAME_ID,
+            point_of_view_profile_id=_POV_PROFILE_ID,
+            requested_by_user_id=None,
+            lease_seconds=lease,
+            max_attempts=_MAX_ATTEMPTS,
+            now=now,
+        )
+
+    now = start
+    for attempt in range(1, _MAX_ATTEMPTS + 1):
+        outcome = await claim(now)
+        assert outcome.claimed is True, f"claim {attempt} of {_MAX_ATTEMPTS}"
+        assert outcome.attempts == attempt
+        assert outcome.lease_expires_at == now + timedelta(seconds=lease)
+        now += timedelta(seconds=lease + 1)  # the invocation died; its lease has expired
+
+    exhausted = await claim(now)
+    assert exhausted.claimed is False
+    assert exhausted.state == MatchAnalysisState.FAILED
+    assert exhausted.attempts == _MAX_ATTEMPTS
+
+    async with session_factory() as session:
+        row = await session.get(MatchAnalysis, _GAME_ID)
+        assert row is not None
+        assert row.state == MatchAnalysisState.FAILED
+        assert row.attempts == _MAX_ATTEMPTS
+        assert row.error_class == "AttemptsExhausted"
+        assert row.error_message == (
+            f"the analysis was interrupted {_MAX_ATTEMPTS} times and is not retried"
+        )
+        assert row.finished_at == now
+        assert row.result_key is None
+
+    again = await claim(now + timedelta(days=1))
+    assert again.claimed is False
+    assert again.state == MatchAnalysisState.FAILED
+    assert again.attempts == _MAX_ATTEMPTS
+
+
+async def test_a_live_lease_is_not_failed_by_the_attempt_bound(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """The bound applies to a claim that would otherwise win: a row on its last attempt whose
+    lease is still live is joined, not failed."""
+    from aoe2stats_analyzer.claim import claim_for_analysis
+
+    now = datetime(2026, 10, 8, 9, 0, tzinfo=UTC)
+    async with session_factory() as setup_session:
+        await _seed_match(setup_session, game_id=_GAME_ID, completed_at=now - timedelta(days=1))
+        await _seed_match_analysis(
+            setup_session,
+            game_id=_GAME_ID,
+            state=MatchAnalysisState.RUNNING,
+            requested_at=now,
+            claimed_at=now,
+            lease_expires_at=now + timedelta(seconds=300),
+            attempts=_MAX_ATTEMPTS,
+        )
+
+    outcome = await claim_for_analysis(
+        session_factory,
+        game_id=_GAME_ID,
+        point_of_view_profile_id=_POV_PROFILE_ID,
+        requested_by_user_id=None,
+        lease_seconds=300,
+        max_attempts=_MAX_ATTEMPTS,
+        now=now + timedelta(seconds=5),
+    )
+
+    assert outcome.claimed is False
+    assert outcome.state == MatchAnalysisState.RUNNING
+    assert outcome.attempts == _MAX_ATTEMPTS
 
 
 async def test_nothing_sweeps_an_expired_lease(
@@ -309,6 +411,7 @@ async def test_nothing_sweeps_an_expired_lease(
         point_of_view_profile_id=_POV_PROFILE_ID,
         requested_by_user_id=None,
         lease_seconds=1,
+        max_attempts=_MAX_ATTEMPTS,
         now=abandon_at,
     )
     assert seeded.claimed is True  # sanity: the fixture really is an abandoned, expired lease

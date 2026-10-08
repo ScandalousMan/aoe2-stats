@@ -58,6 +58,8 @@ _RECORDINGS = {
 }
 _MAX_RAW_BYTES = 25_165_824
 _BUDGET_SECONDS = 300
+_LEASE_SECONDS = 300  # ANALYSIS_LEASE_SECONDS: not below api/analyze.py's maxDuration
+_MAX_ATTEMPTS = 3
 _UNRESOLVABLE_BUILD = 1
 
 
@@ -162,6 +164,8 @@ async def _run_once(
         game_id,
         _BUDGET_SECONDS,
         user_id,
+        lease_seconds=_LEASE_SECONDS,
+        max_attempts=_MAX_ATTEMPTS,
         session_factory=session_factory,
         replay_provider=_Provider(_zip_of(game_id)),
         extractor=extractor,
