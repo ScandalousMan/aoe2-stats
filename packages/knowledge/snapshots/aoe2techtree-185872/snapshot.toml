@@ -1,0 +1,46 @@
+# The snapshot an analysis of a build 185872 recording resolves names against (T707): Feudal Age,
+# Castle Age, House and the rest, which an analysis showed as `Technology ID 101` / `Building ID 70`
+# while no snapshot described this build.
+#
+# **This is a direct import (research.md D3), not a carry-forward (D4).** Unlike
+# `aoe2techtree-180059`, the source has a revision for this build: `SiegeEngineers/aoe2techtree`
+# commit 3bb43b1439eef88dfe7fe892d7f7dc41ac9dd76f ("Add The Viking Sagas", authored 2026-09-11)
+# carries the publisher's page for the build in its message body, and changes `data/data.json`
+# and the locales. `rules.json` is `normalise_pack("aoe2techtree-3bb43b1")` - the pack vendored
+# beside the first (`packages/knowledge/packs/aoe2techtree-3bb43b1/`), not the pack
+# `aoe2techtree-180059` is derived from, which stays untouched so that snapshot remains
+# re-derivable (constitution IV). `disagreements.toml` is the normaliser's own writer output; the
+# pack's two tables agree (nothing recorded). `effects.toml` models no civilisation - see its own
+# header - so `civilisations_modelled` is empty and every civilisation-qualified query is a gap.
+#
+# `digest` is over `rules.json` and `effects.toml`; the first revision's snapshots are unchanged.
+[snapshot]
+source = "aoe2techtree"
+source_version = "3bb43b1439eef88dfe7fe892d7f7dc41ac9dd76f"
+describes_build = 185872
+digest = "sha256:8c0002381fe2ce5f1808b92e6ff3f9a5da1ce50680293365ee7d61b4cd0db443"
+promoted = true
+civilisations_modelled = []
+
+# FR-030's validation record. `method` is "source-implements-build", the precedent
+# `aoe2techtree-177723-test` set: the build is the one the pinned revision itself names, so there
+# is no intervening, unattested build for a carry-forward record to cover.
+[validation]
+method = "source-implements-build"
+checked_against = """\
+the source's own commit history: 3bb43b1439eef88dfe7fe892d7f7dc41ac9dd76f, authored 2026-09-11, \
+message "Add The Viking Sagas", whose body is the single line \
+https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/ - the \
+publisher's page for build 185872. The commit is the newest in the local checkout and changes \
+data/data.json (the main game's data: 1692 insertions, 239 deletions) and the locales, so \
+the data the pack carries is the data of that update. research.md D3: the build lives in commit-message prose, \
+not in a dedicated field, so this is a reading of that prose, not a lookup\
+"""
+performed_by = "the T707 implementer, by direct reading of the source's own commit history"
+performed_at = "2026-10-08"
+not_checked = """\
+No patch notes were read and no second source was compared (research.md D3: none is lawful to \
+vendor). Civilisation bonuses are not modelled for this build at all (effects.toml), so no \
+bonus is attested; the baseline costs, times and ages in rules.json are the pack's reading of \
+the game data, as for every other snapshot.\
+"""

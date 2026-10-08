@@ -1,0 +1,17 @@
+# Civilisation effects for build 185872 (T707): none are modelled.
+#
+# research.md D5 hand-models civilisation bonuses from the English strings, civilisation by
+# civilisation, and an unmodelled civilisation is a gap: every civilisation-qualified cost and time
+# query for it answers `civilisation-not-modelled` (contracts/knowledge-base.md, "Civilisation
+# qualification" step 1). That is the state of this snapshot on purpose, not an omission to be
+# filled in by copying `aoe2techtree-180059/effects.toml`: the 180059 effects were transcribed from
+# that pack revision's strings and validated against that build's notes, and build 185872 is a
+# major update (a new chapter, three new civilisations in the pack) whose notes nobody has read
+# for a bonus change. Carrying six civilisations' bonuses across it would answer a cost with a
+# bonus that may no longer hold, which FR-023 forbids; refusing is the lawful answer.
+#
+# This snapshot therefore exists to resolve names (`query.name`, the age-up and building labels an
+# analysis shows) and the civilisation-neutral baseline of a unit, building or technology. It
+# carries no `[[civilisation_id]]` table either, so a participant's raw civilisation id resolves to
+# no name here; a later task that models a civilisation for this build adds the rows it can
+# validate, one civilisation at a time, in a new snapshot (a snapshot is immutable, FR-025).

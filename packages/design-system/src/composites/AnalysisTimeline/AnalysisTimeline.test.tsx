@@ -206,6 +206,34 @@ describe('AnalysisTimeline', () => {
       }
     })
 
+    it('gives every event list, and every time and count inside it, a text-colour token (dark theme: no inherited ink)', () => {
+      // Production, 2026-10-08, dark theme: only a resolved name carried `text-text-primary`; the
+      // rest of each row ("ordered —", "—"), every `m:ss` time and every `3×` count inherited no
+      // token and rendered dark on dark. jsdom has no theme, so the guard is structural: each
+      // element's nearest `text-text-*` ancestor (itself included) must exist before the card.
+      const inkOf = (el: Element): string | undefined => {
+        for (
+          let node: Element | null = el;
+          node && node.tagName !== 'ARTICLE';
+          node = node.parentElement
+        ) {
+          const ink = Array.from(node.classList).find((c) => /^text-text-/.test(c))
+          if (ink) return ink
+        }
+        return undefined
+      }
+      render(<AnalysisTimeline state="published" teams={teams} />)
+      for (const name of ['Age ups', 'Build order', 'Training order', 'Research']) {
+        const list = screen.getByRole('list', { name })
+        expect(list, `${name} list`).toHaveClass('text-text-primary')
+        const numerics = list.querySelectorAll('.type-numeric')
+        expect(numerics.length, `${name} numerics`).toBeGreaterThan(0)
+        for (const numeric of numerics) {
+          expect(inkOf(numeric), `${name}: ${numeric.textContent}`).toBe('text-text-primary')
+        }
+      }
+    })
+
     it('shows a ResignedLine only for a participant who resigned', () => {
       render(<AnalysisTimeline state="published" teams={teams} />)
       expect(

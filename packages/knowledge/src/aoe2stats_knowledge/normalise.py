@@ -69,7 +69,11 @@ from typing import Any, Final
 #: `importlib.resources` and never a bare filesystem path.
 _PACKAGE: Final[str] = "aoe2stats_knowledge"
 
-#: The one pack this feature vendors (research.md D3: no lawful independent second dataset).
+#: The default pack: the first revision of the one source this feature vendors (research.md D3: no
+#: lawful independent second dataset). T707 vendors a newer revision beside it, in its own
+#: directory under `packs/`, so every function below takes the pack directory's name and defaults
+#: to this one - a snapshot is re-derived from the pack revision it was imported from, never from
+#: whichever is newest.
 _PACK_NAME: Final[str] = "aoe2techtree"
 
 #: `Cost` dict keys, as the pack spells them, to the lower-case resource names `rules.json` uses.
@@ -122,15 +126,15 @@ class _TreeReading:
     name: str | None
 
 
-def _pack_root() -> resources.abc.Traversable:
+def _pack_root(pack_name: str = _PACK_NAME) -> resources.abc.Traversable:
     """The packaged pack root, resolved through `importlib.resources` alone — the same mechanism
     `snapshot.py` uses for `snapshots/`, extended here to `packs/` (see this package's
     `pyproject.toml` `force-include` and the `packs` symlink beside `snapshots`)."""
-    return resources.files(_PACKAGE).joinpath("packs").joinpath(_PACK_NAME)
+    return resources.files(_PACKAGE).joinpath("packs").joinpath(pack_name)
 
 
-def _load_pack_json(relative_path: str) -> Any:
-    return json.loads(_pack_root().joinpath(relative_path).read_text(encoding="utf-8"))
+def _load_pack_json(relative_path: str, pack_name: str = _PACK_NAME) -> Any:
+    return json.loads(_pack_root(pack_name).joinpath(relative_path).read_text(encoding="utf-8"))
 
 
 def _civilisation_names() -> tuple[str, ...]:
@@ -142,9 +146,9 @@ def _civilisation_names() -> tuple[str, ...]:
     return tuple(sorted(data["civs"].keys()))
 
 
-def _tree_filenames() -> tuple[str, ...]:
+def _tree_filenames(pack_name: str = _PACK_NAME) -> tuple[str, ...]:
     """The `trees/*.json` filenames actually committed, sorted — never a bare filesystem walk."""
-    trees_dir = _pack_root().joinpath("trees")
+    trees_dir = _pack_root(pack_name).joinpath("trees")
     return tuple(
         sorted(entry.name for entry in trees_dir.iterdir() if entry.name.endswith(".json"))
     )
@@ -401,15 +405,16 @@ def normalise_pack_data(
     )
 
 
-def normalise_pack() -> NormalisedPack:
-    """Normalise the real, committed `packages/knowledge/packs/aoe2techtree/` pack, read entirely
+def normalise_pack(pack_name: str = _PACK_NAME) -> NormalisedPack:
+    """Normalise one real, committed pack, `packages/knowledge/packs/<pack_name>/` (the first
+    revision, `aoe2techtree`, unless a snapshot imported from a later one names it), read entirely
     through `importlib.resources` (FR-026, SC-006: nothing here opens a socket or a filesystem
     path)."""
-    data = _load_pack_json("data.json")
-    strings = _load_pack_json("strings.en.json")
+    data = _load_pack_json("data.json", pack_name)
+    strings = _load_pack_json("strings.en.json", pack_name)
     tree_by_civilisation = {
-        filename.removesuffix(".json"): _load_pack_json(f"trees/{filename}")
-        for filename in _tree_filenames()
+        filename.removesuffix(".json"): _load_pack_json(f"trees/{filename}", pack_name)
+        for filename in _tree_filenames(pack_name)
     }
     return normalise_pack_data(data, strings, tree_by_civilisation)
 

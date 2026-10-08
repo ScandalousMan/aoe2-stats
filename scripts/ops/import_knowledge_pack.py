@@ -56,11 +56,34 @@ pack into a queryable snapshot (`snapshot.py`, T638); and it does not verify `--
 checkout's own git history — the checkout was already prepared by a human, and this script trusts
 what it is pointed at, the same way `sync_map_thumbnails.py` trusts `--source-dir`.
 
+**More than one pack (T707).** A snapshot must stay re-derivable from the pack revision it was
+imported from (constitution IV), so a newer revision is vendored *beside* the first, never over
+it: pass `--pack-name <directory>` (default `aoe2techtree`, the first pack) and the pack is written
+to `packages/knowledge/packs/<directory>/` with its own `MANIFEST.json`. The directory name is
+confined to one path segment under `packs/`. Each snapshot's `source_version` names the pack it
+comes from by commit; `scripts/checks/pinned_source_commit.py` refuses a snapshot whose
+`source_version` names no vendored pack.
+
+**The flat layout is the operator's step, and it is local.** The source keeps its files at
+`data/data.json`, `data/locales/en/strings.json` and `data/trees/*.json`; this script copies
+`data.json`, `strings.en.json` and `trees/` as they are named under `--source-checkout`. Prepare
+that folder from the checkout offline, with no network, then run this script on it:
+
+    git -C /path/to/aoe2techtree archive <sha> data | tar -x -C /scratch/extract
+    mkdir /scratch/flat
+    cp /scratch/extract/data/data.json /scratch/flat/data.json
+    cp /scratch/extract/data/locales/en/strings.json /scratch/flat/strings.en.json
+    cp -r /scratch/extract/data/trees /scratch/flat/trees
+
+`LICENCE.md` is written by hand beside the pack (a five-field human attestation), as for the first.
+
 Usage:
     uv run scripts/ops/import_knowledge_pack.py \\
         --source-checkout /path/to/aoe2techtree --commit <sha>
     uv run scripts/ops/import_knowledge_pack.py \\
         --source-checkout /path/to/aoe2techtree --commit <sha> --apply
+    uv run scripts/ops/import_knowledge_pack.py \\
+        --source-checkout /path/to/flat --commit <sha> --pack-name aoe2techtree-3bb43b1 --apply
 
 Exit: 0 on a completed run that found every manifest entry (dry-run or apply); 1 if the invocation
 is refused (`--source-checkout` missing or not a directory, blank `--commit`, `--apply` and
@@ -86,7 +109,8 @@ _SOURCE_NAME = "SiegeEngineers/aoe2techtree"
 #: absolute path, so the script works the same from any checkout (mirrors
 #: `sync_map_thumbnails.py`'s `_MAPS_PACK_DIR`).
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-_PACK_DIR = _REPO_ROOT / "packages" / "knowledge" / "packs" / "aoe2techtree"
+_PACKS_DIR = _REPO_ROOT / "packages" / "knowledge" / "packs"
+_DEFAULT_PACK_NAME = "aoe2techtree"
 
 #: The pack's expected top-level contents, per `plan.md`'s Project Structure
 #: (`packages/knowledge/packs/aoe2techtree/{data.json,trees/,strings.en.json}`). Overridable with
@@ -250,6 +274,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
         f"repeatable. Defaults to {_DEFAULT_MANIFEST!r} (plan.md's Project Structure) when omitted",
     )
     parser.add_argument(
+        "--pack-name",
+        default=_DEFAULT_PACK_NAME,
+        metavar="DIRECTORY",
+        help="the directory under packages/knowledge/packs/ to write (one path segment); "
+        f"defaults to {_DEFAULT_PACK_NAME!r}. A newer revision goes in a new directory, never "
+        "over an existing pack a snapshot was derived from",
+    )
+    parser.add_argument(
         "--apply",
         action="store_true",
         help="write the pack. Without this flag, nothing changes",
@@ -286,8 +318,26 @@ def main(argv: list[str] | None = None) -> int:
 
     manifest: tuple[str, ...] = tuple(args.manifest) if args.manifest else _DEFAULT_MANIFEST
 
+    pack_name: str = args.pack_name
+    if not pack_name or pack_name in {".", ".."} or Path(pack_name).name != pack_name:
+        print(
+            f"import-knowledge-pack: refused — --pack-name {pack_name!r} must be one directory "
+            "name under packages/knowledge/packs/."
+        )
+        return 1
+    pack_dir = _PACKS_DIR / pack_name
+    if args.apply and (pack_dir / _MANIFEST_FILENAME).is_file():
+        existing = json.loads((pack_dir / _MANIFEST_FILENAME).read_text(encoding="utf-8"))
+        if existing.get("commit") != commit:
+            print(
+                f"import-knowledge-pack: refused — {pack_name} is already pinned at "
+                f"{existing.get('commit')}; a pack a snapshot was derived from is never "
+                "overwritten with another revision. Use a new --pack-name."
+            )
+            return 1
+
     report = apply_import(
-        source_checkout, _PACK_DIR, commit=commit, manifest=manifest, apply=bool(args.apply)
+        source_checkout, pack_dir, commit=commit, manifest=manifest, apply=bool(args.apply)
     )
     _print_report(report)
 

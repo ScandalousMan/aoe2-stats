@@ -44,14 +44,15 @@ SIZE_BUDGET_BYTES = 10 * 1024 * 1024
 FONT_SIZE_BUDGET_BYTES = 1 * 1024 * 1024
 
 #: specs/006-replay-analysis-foundations/research.md D3's budget on the whole
-#: `packages/knowledge/packs` payload — vendored source files at a pinned commit, read only by the
-#: normaliser, never the network. Measured 2026-09-20: T636's `aoe2techtree` pack is ~6.3 MB
-#: (`trees/*.json`, 53 civilisation files, ~5.3 MB; `data.json` ~926 KB; `strings.en.json` ~185 KB).
-#: Budgeted at roughly double that measurement: enough headroom for the upstream project to add a
-#: handful more civilisations, or for `Checked` to be re-run against a newer commit with a larger
-#: `data.json`, before this ceiling needs revisiting — not so much that an accidental second pack,
-#: or an accidentally-unfiltered import, would pass unnoticed.
-KNOWLEDGE_PACK_SIZE_BUDGET_BYTES = 12 * 1024 * 1024
+#: `packages/knowledge/packs` payload - vendored source files at pinned commits, read only by the
+#: normaliser, never the network. Measured 2026-09-20: T636's `aoe2techtree` pack alone was ~6.3 MB
+#: (`trees/*.json`, 53 civilisation files, ~5.3 MB; `data.json` ~926 KB; `strings.en.json` ~185 KB),
+#: budgeted at 12 MiB. T707 vendors a second revision beside it (a snapshot must stay re-derivable
+#: from the pack it was imported from, so a newer revision never replaces an older one): measured
+#: 2026-10-08, the two packs total 13,461,664 bytes (~12.8 MiB), the second being ~7.1 MB (56 tree
+#: files). Budgeted at 24 MiB, a little under double that measurement - room for one more revision
+#: of that size, not for a third copy by accident. Revisit when a third pack is proposed.
+KNOWLEDGE_PACK_SIZE_BUDGET_BYTES = 24 * 1024 * 1024
 
 #: specs/006-replay-analysis-foundations/contracts/knowledge-base.md's on-disk layout for
 #: `packages/knowledge/snapshots` — measured, not estimated (T637/T652i). The three snapshots

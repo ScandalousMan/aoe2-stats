@@ -1649,18 +1649,28 @@ T671 and T672 ship together; T673 follows once T672 is deployed.
       polls and none while `running`; a re-claim or join leaves the counter unchanged while a
       first request still increments it. Update `packages/design-system/specs/analysis-timeline.md`
       §5 if it describes the polling, keeping that file's line count (its lines are cited)
-- [ ] T707 Name what a build 185872 analysis shows. Knowledge snapshots exist for build 180059 only
+- [x] T707 Name what a build 185872 analysis shows. Knowledge snapshots exist for build 180059 only
       (`packages/knowledge/snapshots/`), so an analysis of a build 185872 recording resolves no
       name and shows identifiers (`Technology ID 101`, `Building ID 70`). Promote a snapshot for
       build 185872 from the same source and by the same procedure as the 180059 one, with its
       provenance, and test that a build 185872 analysis resolves the age-up and building names
-- [ ] T708 Give `AnalysisTimeline`'s event lists a text colour. In
+- [x] T708 Give `AnalysisTimeline`'s event lists a text colour. In
       `packages/design-system/src/composites/AnalysisTimeline/index.tsx` only a resolved name
       carries `text-text-primary`; the surrounding text, the times and an unresolved identifier
       inherit no token, and in the dark theme they render dark on dark (seen in production on
       match 511523321, 2026-10-08). Set the list's colour from a design-system token, check the
       unresolved-identifier style against the contrast table, and move the dark baselines that
       show it
+- [ ] T709 Show names on the analysis page. Found closing T707 (2026-10-08): no stage maps an id to
+      a name for any build — the stored document carries ids only, and
+      `apps/web/src/features/analysis/mappers.ts` renders every technology, unit and building
+      unresolved under 003's FR-043a ("until such a table ships"). The knowledge snapshots are that
+      table. Resolve names from the snapshot the document's own identity names (never the nearest
+      one, FR-027), serve them beside the stored document from `GET
+      /api/matches/{game_id}/analysis` without changing the stored bytes or its digest, and render
+      them; an id the snapshot does not name stays unresolved as today. Tests: a build 185872 and
+      a build 180059 document each show Feudal Age, Castle Age and House; an id outside the
+      snapshot stays unresolved; the stored object is byte-identical before and after
 
 ---
 
