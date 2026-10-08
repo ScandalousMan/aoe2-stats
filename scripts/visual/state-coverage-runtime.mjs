@@ -16,7 +16,8 @@
 // Selection: every story of the built index (fixtures included — a plant's entry is the point), or
 // `--plants` (the fixture stories alone), or `--changed`: the union, for check and for write alike, of
 //   (a) what `pnpm test:visual --changed` selects (`scripts/visual/story-selection.mjs`): a story's own
-//       directory, or a global-reach path;
+//       directory, a global-reach path, or (T707) a module the story file imports, transitively,
+//       through a module specifier;
 //   (b) every story whose committed entry RECORDED, in its `files`, a source file the diff touches —
 //       the stamped files that rendered an element in that story, portals included (a rename lists both
 //       its paths, `--no-renames`);
@@ -24,9 +25,9 @@
 //       there means every entry differs), so a pull request that edits the manifest by hand has
 //       those entries re-checked in the browser.
 // The rules live in `selectRuntimeStories` (`state-coverage-runtime-model.mjs`). What they cannot see,
-// and nightly (every entry) does: a change in a file that renders no stamped element in the story's
-// settled state (after `play()`) — a hook, a lib helper outside a global-reach path, tokens or CSS
-// (paint, never which element exists), and a file whose elements a `play()` removes before settle.
+// and nightly (every entry) does: a file a story reaches only at run time, not through a module
+// specifier — a hook's side effect, a stylesheet's own `@import`, a file a plugin injects. A file a
+// specifier names is selected by (a) even when a `play()` removes the elements it rendered.
 //
 // Fails closed, before any browser starts: an unknown argument (a typo, or two flags joined in one
 // token) names itself and exits; a built index with no published story, and one with published stories

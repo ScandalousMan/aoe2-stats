@@ -128,7 +128,8 @@ async function main() {
   }
 
   if (changedOnly) {
-    // See `selectChangedStories` (`story-selection.mjs`) for what a diff affects.
+    // See `selectChangedStories` (`story-selection.mjs`) for what a diff affects: a story's directory,
+    // a global-reach path, or a module its story file imports.
     stories = selectChangedStories(stories, changedFiles()).stories
 
     if (stories.length === 0) {

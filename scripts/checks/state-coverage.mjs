@@ -57,6 +57,11 @@ import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
 import { execFileSync } from 'node:child_process'
 import { listComponentDirs } from './story-docs.mjs'
+import {
+  collectModuleSpecifiers,
+  findNonLiteralSpecifiers,
+  unwrapExpression,
+} from '../visual/module-specifiers.mjs'
 import { BUILD_STORYBOOK_COMMAND } from '../visual/missing-index.mjs'
 import { REVIEW_WIDTHS } from '../visual/review-widths.mjs'
 import { FIXTURE_TAG } from '../visual/story-index.mjs'
@@ -84,6 +89,10 @@ const prettierBin = path.join(rootDir, 'node_modules', '.bin', 'prettier')
 // resolved through that package's own node_modules rather than adding a second copy at the root.
 const dsRequire = createRequire(path.join(dsDir, 'package.json'))
 const ts = dsRequire('typescript')
+
+// The specifier reader moved to `scripts/visual/module-specifiers.mjs` (T707), shared with the story
+// selection; these two keep their old public names here.
+export { findNonLiteralSpecifiers, unwrapExpression }
 
 function log(message) {
   console.log(`state-coverage: ${message}`)
@@ -1184,31 +1193,6 @@ export function evaluateExpr(node, scope) {
 
 // --- Story parsing: exported story objects, args, visualForceState, play()-focus ----------------
 
-// Strips every `as <T>`, `satisfies <T>`, `x!` and `(...)` wrapper off an expression node, in whatever
-// order and however many deep they nest (`({...} as const)`, `{...} satisfies X as const`, and so
-// on) — never a single fixed shape, since nothing in this codebase's own TypeScript enforces one.
-// `findExportedStoryObjects` used to unwrap `satisfies` then `as` once each, inline, which is what
-// every real story object in this tree happens to need; `buildTopLevelConstNodeMap` unwrapped
-// neither at all, so a top-level `const X = {...} as const` — the shape `Button.stories.tsx`'s own
-// `PRIMARY_LG_CLIP` and most `visualCaptureClip` constants across this tree use — stored the
-// `AsExpression` itself. Every caller that then asked `ts.isObjectLiteralExpression(node)` (T675's
-// own `state-signal-model.mjs#extractVisualCaptureClip`, among others) got `false` and silently
-// treated a real, present clip as absent — the sweep's own `hasClip` field misreporting `false`
-// for a clipped story, found while implementing T675's own second-pass signals (slice 4b). Shared
-// here so every caller unwraps the same way, once.
-export function unwrapExpression(node) {
-  while (
-    node &&
-    (ts.isAsExpression(node) ||
-      ts.isSatisfiesExpression(node) ||
-      ts.isParenthesizedExpression(node) ||
-      ts.isNonNullExpression(node))
-  ) {
-    node = node.expression
-  }
-  return node
-}
-
 export function findExportedStoryObjects(sourceFile) {
   const defaultExportName = findDefaultExportBindings(sourceFile).values().next().value ?? null
   const stories = []
@@ -1755,85 +1739,6 @@ const STORY_MODULE_SPECIFIER = /\.stories(\.(tsx?|jsx?|mjs|cjs|mts|cts))?$/
 
 export function isStoryModuleSpecifier(specifier) {
   return STORY_MODULE_SPECIFIER.test(specifier.replace(/[?#].*$/, ''))
-}
-
-// Whether an expression is a plain string literal: a string or a no-substitution template, with `!`,
-// `as`, `satisfies` and parentheses unwrapped. T704: it is the only specifier an `import()` or a
-// `require()` of a non-test module may take. What a template with a substitution, a `+` concatenation, a
-// conditional, a call or a variable evaluates to is not read, and its last literal part says nothing of
-// what the first parts build, so none of them is told apart from the others.
-function isPlainStringLiteral(expression) {
-  const node = unwrapExpression(expression)
-  return Boolean(node) && (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node))
-}
-
-const isRequireOrImportCall = (node) =>
-  ts.isCallExpression(node) &&
-  (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
-    (ts.isIdentifier(node.expression) && node.expression.text === 'require'))
-
-// Every module specifier a file names as a plain string literal, whatever the form: a static `import`
-// (type-only included), an `export … from`, an `import x = require()`, a dynamic `import()` or an
-// `import()` type, a `require()`. A specifier that is not a plain string literal is not in the list: it
-// is `findNonLiteralSpecifiers`'s.
-function collectModuleSpecifiers(sourceFile) {
-  const found = []
-  const consider = (expression) => {
-    if (!isPlainStringLiteral(expression)) return
-    found.push(unwrapExpression(expression).text)
-  }
-  const visit = (node) => {
-    if (
-      (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
-      node.moduleSpecifier &&
-      ts.isStringLiteral(node.moduleSpecifier)
-    ) {
-      found.push(node.moduleSpecifier.text)
-    } else if (
-      ts.isImportEqualsDeclaration(node) &&
-      ts.isExternalModuleReference(node.moduleReference)
-    ) {
-      consider(node.moduleReference.expression)
-    } else if (
-      ts.isImportTypeNode(node) &&
-      ts.isLiteralTypeNode(node.argument) &&
-      ts.isStringLiteral(node.argument.literal)
-    ) {
-      found.push(node.argument.literal.text)
-    } else if (isRequireOrImportCall(node)) {
-      consider(node.arguments[0])
-    }
-    ts.forEachChild(node, visit)
-  }
-  visit(sourceFile)
-  return found
-}
-
-// T704: every `import()` or `require()` (and `import x = require(...)`) in a file whose specifier is not
-// a plain string literal: the text of the call, truncated. Vite compiles a templated `import()` into a
-// glob over every file its static parts can match, so a specifier is not read from its last part (the
-// T701 rule for `import.meta.glob`, applied to the call that becomes one). The wholly computed
-// `import(name)` and `require(name)` are in the list: what they load is not readable at all.
-export function findNonLiteralSpecifiers(sourceFile) {
-  const found = []
-  const describe = (node) => {
-    const text = node.getText(sourceFile).replace(/\s+/g, ' ')
-    found.push(text.length > 80 ? `${text.slice(0, 77)}...` : text)
-  }
-  const visit = (node) => {
-    if (isRequireOrImportCall(node)) {
-      if (!isPlainStringLiteral(node.arguments[0])) describe(node)
-    } else if (
-      ts.isImportEqualsDeclaration(node) &&
-      ts.isExternalModuleReference(node.moduleReference) &&
-      !isPlainStringLiteral(node.moduleReference.expression)
-    ) {
-      describe(node)
-    }
-    ts.forEachChild(node, visit)
-  }
-  visit(sourceFile)
-  return found
 }
 
 // T705: every identifier `require` in a file that is neither the declared name of a binding nor the

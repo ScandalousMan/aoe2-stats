@@ -4,7 +4,7 @@
 // file in its directory changed. Pure — no git, no browser.
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { test } from 'node:test'
@@ -31,10 +31,12 @@ test('a change under a global-reach prefix selects every story, fixtures include
   }
 })
 
-test('otherwise a story is selected by its own directory, and nothing else is', () => {
+test('otherwise a story is selected by its own directory or by a module its story file imports, and by nothing else', () => {
+  // `Plants.stories.tsx` (a real file) imports `src/primitives/Button`, so it follows Button's change
+  // although it lives in another directory (T707); the Menu story imports no Button file.
   assert.deepEqual(
     ids(selectChangedStories(stories, ['packages/design-system/src/primitives/Button/index.tsx'])),
-    ['button--primary'],
+    ['button--primary', 'plants--bare'],
   )
   assert.deepEqual(
     ids(
@@ -45,6 +47,166 @@ test('otherwise a story is selected by its own directory, and nothing else is', 
     ['menu--open'],
   )
   assert.deepEqual(ids(selectChangedStories(stories, ['apps/web/src/main.tsx'])), [])
+})
+
+// ---- T707: a module the story file imports, transitively --------------------------------------------
+
+const PKG = 'packages/design-system/'
+
+// A scratch design-system directory holding `files` (relative path -> text) and one index entry per
+// `.stories.` file, shaped like the built index's (`./src/.../X.stories.tsx`, relative to the package).
+function withTree(files, body) {
+  const root = mkdtempSync(path.join(tmpdir(), 'story-selection-tree-'))
+  const dsDir = path.join(root, 'packages', 'design-system')
+  try {
+    for (const [file, text] of Object.entries(files)) {
+      // A key starting with `/` is a file outside the package, under the scratch root.
+      const target = file.startsWith('/') ? path.join(root, file) : path.join(dsDir, file)
+      mkdirSync(path.dirname(target), { recursive: true })
+      writeFileSync(target, text)
+    }
+    const tree = Object.keys(files)
+      .filter((file) => /\.stories\.[jt]sx?$/.test(file))
+      .map((file) => ({ id: file.replace(/^src\//, ''), importPath: `./${file}` }))
+    const select = (...diff) => selectChangedStories(tree, diff, dsDir).stories.map((s) => s.id)
+    return body(select)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+}
+
+const CARD = 'composites/Card/Card.stories.tsx'
+const PANEL = 'composites/Panel/Panel.stories.tsx'
+const MENU = 'primitives/Menu/Menu.stories.tsx'
+
+test('T707 plant 1: a story file importing a module in another component’s directory is selected when the diff touches that module', () => {
+  withTree(
+    {
+      'src/composites/Card/Card.stories.tsx':
+        "import { CLIP } from '../Panel/story-parameters'\nexport default {}\n",
+      'src/composites/Panel/story-parameters.ts': 'export const CLIP = {}\n',
+      'src/composites/Panel/Panel.stories.tsx': 'export default {}\n',
+      'src/primitives/Menu/Menu.stories.tsx': 'export default {}\n',
+    },
+    (select) => {
+      // Card is selected by the import; Panel by its own directory; Menu by neither.
+      assert.deepEqual(select(`${PKG}src/composites/Panel/story-parameters.ts`), [CARD, PANEL])
+    },
+  )
+})
+
+test('T707 plant 2: a module the story reaches only through a second module is selected, cycles included', () => {
+  withTree(
+    {
+      'src/composites/Card/Card.stories.tsx': "import '../Panel/first'\nexport default {}\n",
+      'src/composites/Panel/first.ts': "export * from '../../shared/second'\n",
+      // `second` imports `first` back: the walk must end.
+      'src/shared/second.ts': "import { x } from '../composites/Panel/first'\nexport const y = 1\n",
+      'src/primitives/Menu/Menu.stories.tsx': 'export default {}\n',
+    },
+    (select) => {
+      assert.deepEqual(select(`${PKG}src/shared/second.ts`), [CARD])
+    },
+  )
+})
+
+test('T707 plant 3: a story file with a non-literal import() is selected on any diff inside the package, and on none outside it', () => {
+  withTree(
+    {
+      'src/composites/Card/Card.stories.tsx':
+        'const name = "x"\nexport const load = () => import(name)\nexport default {}\n',
+      'src/primitives/Menu/Menu.stories.tsx': 'export default {}\n',
+    },
+    (select) => {
+      assert.deepEqual(select(`${PKG}src/unrelated/elsewhere.ts`), [CARD])
+      assert.deepEqual(select(`${PKG}specs/README.md`), [CARD])
+      assert.deepEqual(select('apps/web/src/main.tsx'), [])
+    },
+  )
+})
+
+test('T707 plant 3b: the non-literal specifier may sit in a file the story reaches, and a templated require counts too', () => {
+  withTree(
+    {
+      'src/composites/Card/Card.stories.tsx': "import '../../shared/loader'\nexport default {}\n",
+      'src/shared/loader.ts': 'export const f = (n: string) => require(`./${n}`)\n',
+      'src/primitives/Menu/Menu.stories.tsx': 'export default {}\n',
+    },
+    (select) => {
+      assert.deepEqual(select(`${PKG}src/unrelated/elsewhere.ts`), [CARD])
+    },
+  )
+})
+
+test('T707 contrast: a diff on a module no story reaches selects nothing beyond the directory rule', () => {
+  withTree(
+    {
+      'src/composites/Card/Card.stories.tsx':
+        "import { a } from '../../shared/a'\nexport default {}\n",
+      'src/shared/a.ts': 'export const a = 1\n',
+      'src/shared/orphan.ts': 'export const o = 1\n',
+      'src/primitives/Menu/Menu.stories.tsx': 'export default {}\n',
+    },
+    (select) => {
+      assert.deepEqual(select(`${PKG}src/shared/orphan.ts`), [])
+      assert.deepEqual(select(`${PKG}src/primitives/Menu/other.ts`), [MENU])
+    },
+  )
+})
+
+test('T707 contrast: a story is not selected because a story in another directory imports the changed file', () => {
+  withTree(
+    {
+      'src/composites/Card/Card.stories.tsx':
+        "import { a } from '../../shared/a'\nexport default {}\n",
+      'src/composites/Panel/Panel.stories.tsx': 'export default {}\n',
+      'src/shared/a.ts': 'export const a = 1\n',
+    },
+    (select) => {
+      assert.deepEqual(select(`${PKG}src/shared/a.ts`), [CARD])
+    },
+  )
+})
+
+test('T707: every form of module specifier is followed, a bare or unresolvable one is ignored, and the walk stays in the package', () => {
+  withTree(
+    {
+      'src/composites/Card/Card.stories.tsx': [
+        "import type { T } from '../../types/type-only'",
+        "export { r } from '../../reexport/value'",
+        "const lazy = () => import('../../lazy/chunk.js')",
+        "const c = require('../../common/cjs')",
+        "import idx from '../../folder'",
+        "import tokens from '../../data/tokens.json'",
+        "import React from 'react'",
+        "import missing from '../../nowhere/missing'",
+        "import outside from '../../../../../outside/loader'",
+        'export default {}',
+      ].join('\n'),
+      'src/types/type-only.ts': 'export type T = 1\n',
+      'src/reexport/value.tsx': 'export const r = 1\n',
+      'src/lazy/chunk.ts': 'export const k = 1\n',
+      'src/common/cjs.cjs': 'module.exports = {}\n',
+      'src/folder/index.jsx': 'export default 1\n',
+      'src/data/tokens.json': '{}\n',
+      // A file outside the package is never walked, so its opaque import() selects nothing.
+      '/outside/loader.ts': 'export const f = (n: string) => import(n)\n',
+      'src/primitives/Menu/Menu.stories.tsx': 'export default {}\n',
+    },
+    (select) => {
+      for (const file of [
+        'src/types/type-only.ts',
+        'src/reexport/value.tsx',
+        'src/lazy/chunk.ts',
+        'src/folder/index.jsx',
+        'src/data/tokens.json',
+      ]) {
+        assert.deepEqual(select(`${PKG}${file}`), [CARD], file)
+      }
+      assert.deepEqual(select('apps/web/src/main.tsx'), [])
+      assert.deepEqual(select(`${PKG}src/nowhere/missing.ts`), [])
+    },
+  )
 })
 
 // ---- the caller's own prefix, and the manifest at the diff base ----------------------------------

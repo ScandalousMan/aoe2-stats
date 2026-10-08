@@ -1768,7 +1768,17 @@ hover:underline-offset-2` beside `active:underline-offset-4`, `src/screens/DataE
      preview's project-level `parameters`, `config.tsx` beside `.storybook/main.ts` and every other
      way a project annotation reaches a story are in the record or are not a clip; no source rule
      reads them. `scripts/visual/state-coverage-runtime.mjs --keys` checks `fullPage` against the
-     built index without a browser, and only a pass checks `clip`. A story whose source this pass was
+     built index without a browser, and only a pass checks `clip`. That pass is diff-scoped on a pull
+     request (T707): it re-checks, and rewrites, an entry only for a story selected by one of five
+     rules, namely a file in the story's own directory changed, a global-reach path changed
+     (`GLOBAL_REACH_PREFIXES`, `scripts/visual/story-selection.mjs`), a module the story file imports
+     changed, directly or through the modules it imports, by static `import`, `export … from`,
+     `import()` or `require()` with a string literal (a story file, or a file it reaches, with a
+     specifier that is not a string literal is selected on any change inside the package), a source
+     file the entry recorded as rendered changed, or the entry differing from the manifest at the diff
+     base. A `clip` that a file outside all five decides is therefore not re-recorded until nightly's
+     full pass, which checks every entry; what stays outside the module rule is a file a story
+     reaches only at run time, not through a module specifier. A story whose source this pass was
      refused a reading of (the rules below) fails the run for it and gives no mount credit as well.
    - **A story's binding, and the binding its default export names, may appear only in their own
      declaration and in an export** (`export default meta`, `export { meta as default }`,
