@@ -268,7 +268,7 @@ test('T709 plant 2: a specifier ending in a slash names the directory index, bes
   )
 })
 
-test('T710 plant: the relative specifiers `..` and `.` name the directory index, like a trailing slash', () => {
+test('T709 plant: the relative specifiers `..` and `.` name the directory index, like a trailing slash', () => {
   withTree(
     {
       'src/composites/Card/Card.stories.tsx':

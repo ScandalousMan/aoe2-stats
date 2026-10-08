@@ -153,8 +153,9 @@ export const ClipOnlyInLight: Story = {
 
 // T708: a clip that depends on storage the light settle wrote. `stories.spec.ts` gives every capture
 // unit a fresh browser context, so the dark capture never sees what the light one wrote; the runtime
-// pass reuses one page, so it clears cookies and both storages before each settle to start the way a
-// capture unit does. The decorator writes a flag in the light theme and clips in the dark theme only
+// pass reuses one page, so it clears cookies, `localStorage` and `sessionStorage` before each settle
+// (not IndexedDB, Cache Storage or `window.name`, which a fresh context would also clear). The
+// decorator writes a flag in the light theme and clips in the dark theme only
 // while that flag is absent. With storage shared across the two settles the dark settle finds the flag
 // and takes no clip (`clip: false`); with storage cleared per settle it clips (`clip: true`).
 const STORAGE_FLAG = 'state-coverage-fixture-clip-storage-flag'
