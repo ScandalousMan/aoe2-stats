@@ -82,14 +82,16 @@ export interface ForceRecord extends ElementRecord {
 // `visualForceState`; `focus` only for a story with a `play()` function, `null` when nothing but the
 // document body holds focus once it has settled.
 //
-// `clip` and `fullPage` are the two facts about the capture frame the credit for a story's mounts rests
-// on (T703). `clip` is whether a `visualCaptureClip` applied: `readCaptureClip` (`story-render.ts`), the
-// reader `stories.spec.ts` captures through, run on the SETTLED story (after the loaders, the
-// decorators and the `play()` that may write to `parameters`) and read through the same `story.
-// parameters` object, its prototype chain included — so a clip that no object literal spells reaches
-// this record. `fullPage` is whether the capture takes the whole page when no clip applies, from the
-// built index's tags, the one place the capture reads it (`isFullPageEntry`, `story-index.mjs`). A
-// clip wins over the tag, as it does in the capture.
+// `clip` and `fullPage` are the two facts about the capture frame the credit for a story's mounts
+// rests on (T703). `clip` is whether a `visualCaptureClip` applied in EITHER theme at this width
+// (T706, the disjunction of the two themes the capture runs): `readCaptureClip` (`story-render.ts`),
+// the reader `stories.spec.ts` captures through, run on the SETTLED story (after the loaders, the
+// decorators and the `play()` that may write to `parameters`) and read through the same
+// `story.parameters` object, its prototype chain included — so a clip that no object literal spells
+// reaches this record. `mounts`, `files`, `force` and `focus` are the light theme's settled story
+// alone. `fullPage` is whether the capture takes the whole page when no clip applies, from the built
+// index's tags, the one place the capture reads it (`isFullPageEntry`, `story-index.mjs`). A clip
+// wins over the tag, as it does in the capture.
 export interface WidthRecord {
   clip: boolean
   fullPage: boolean
@@ -406,10 +408,15 @@ export async function probeSettledStory(
   return record
 }
 
-// Navigates to a story at one width in the light theme — the only theme the pass records: a theme
-// changes paint, never which element a role, a name and an `nth` select nor which component placed
-// it, and the capture suite still drives both themes through the same locator — settles it the way
-// `stories.spec.ts` does, and probes it.
+// Navigates to a story at one width and settles it the way `stories.spec.ts` does, in both themes the
+// capture runs. The LIGHT theme's settled story is what `mounts`, `files`, `force` and `focus` are
+// probed from: a theme changes paint, never which element a role, a name and an `nth` select nor which
+// component placed it, and the capture suite still drives both themes through the same locator. `clip`
+// is the one fact that is not theme-free (T706): decorators, loaders and `play()` receive
+// `context.globals`, so a clip can be set in one theme only, and the capture reads it at each theme. The
+// story is therefore settled a second time at the same width in the DARK theme, through the same
+// `gotoAndWaitForStorySettled`, and `clip` is recorded true when either theme applied one. `fullPage`
+// comes from the built index and does not depend on the theme.
 export async function probeStory(
   page: Page,
   storyId: string,
@@ -420,5 +427,9 @@ export async function probeStory(
   const height = width === 375 ? 900 : 720
   const root = await gotoAndWaitForStorySettled(page, storyId, 'light', width, height)
   const forceState = await readForceState(page, storyId)
-  return probeSettledStory(page, root, storyId, forceState, fullPage)
+  const record = await probeSettledStory(page, root, storyId, forceState, fullPage)
+  await gotoAndWaitForStorySettled(page, storyId, 'dark', width, height)
+  // The capture's own test, `if (captureClip)`: a falsy clip is no clip.
+  const darkClip = Boolean(await readCaptureClip(page, storyId))
+  return { ...record, clip: record.clip || darkClip }
 }

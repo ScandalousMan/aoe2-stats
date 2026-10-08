@@ -16811,6 +16811,72 @@
       }
     }
   },
+  "state-coverage-fixture-clip-plants--clip-literal-deleted-unless-dark": {
+    "importPath": "./.storybook/fixtures/ClipPlants.stories.tsx",
+    "exportName": "ClipLiteralDeletedUnlessDark",
+    "files": ["packages/design-system/src/primitives/Button/index.tsx"],
+    "widths": {
+      "375": {
+        "clip": true,
+        "fullPage": false,
+        "mounts": [{ "component": "Button", "variant": "primary", "size": "md", "disabledAt": [] }]
+      },
+      "768": {
+        "clip": true,
+        "fullPage": false,
+        "mounts": [{ "component": "Button", "variant": "primary", "size": "md", "disabledAt": [] }]
+      },
+      "1280": {
+        "clip": true,
+        "fullPage": false,
+        "mounts": [{ "component": "Button", "variant": "primary", "size": "md", "disabledAt": [] }]
+      }
+    }
+  },
+  "state-coverage-fixture-clip-plants--clip-only-in-dark": {
+    "importPath": "./.storybook/fixtures/ClipPlants.stories.tsx",
+    "exportName": "ClipOnlyInDark",
+    "files": ["packages/design-system/src/primitives/Button/index.tsx"],
+    "widths": {
+      "375": {
+        "clip": true,
+        "fullPage": false,
+        "mounts": [{ "component": "Button", "variant": "primary", "size": "md", "disabledAt": [] }]
+      },
+      "768": {
+        "clip": true,
+        "fullPage": false,
+        "mounts": [{ "component": "Button", "variant": "primary", "size": "md", "disabledAt": [] }]
+      },
+      "1280": {
+        "clip": true,
+        "fullPage": false,
+        "mounts": [{ "component": "Button", "variant": "primary", "size": "md", "disabledAt": [] }]
+      }
+    }
+  },
+  "state-coverage-fixture-clip-plants--clip-only-in-light": {
+    "importPath": "./.storybook/fixtures/ClipPlants.stories.tsx",
+    "exportName": "ClipOnlyInLight",
+    "files": ["packages/design-system/src/primitives/Button/index.tsx"],
+    "widths": {
+      "375": {
+        "clip": true,
+        "fullPage": false,
+        "mounts": [{ "component": "Button", "variant": "primary", "size": "md", "disabledAt": [] }]
+      },
+      "768": {
+        "clip": true,
+        "fullPage": false,
+        "mounts": [{ "component": "Button", "variant": "primary", "size": "md", "disabledAt": [] }]
+      },
+      "1280": {
+        "clip": true,
+        "fullPage": false,
+        "mounts": [{ "component": "Button", "variant": "primary", "size": "md", "disabledAt": [] }]
+      }
+    }
+  },
   "state-coverage-fixture-clip-plants--full-page-tagged": {
     "importPath": "./.storybook/fixtures/ClipPlants.stories.tsx",
     "exportName": "FullPageTagged",

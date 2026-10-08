@@ -243,6 +243,11 @@ Object.assign(PLANTS, {
     expect(r.mounts).toEqual([button('primary', 'md')])
   },
   [`${CLIP_PLANT}clip-from-object-prototype`]: CLIPPED,
+  // T706: `clip` is the disjunction over the two themes the capture runs. The two dark-only shapes are
+  // recorded `clip: false` by a light-only probe; the light-only decorator is the contrast, `true` too.
+  [`${CLIP_PLANT}clip-only-in-dark`]: CLIPPED,
+  [`${CLIP_PLANT}clip-literal-deleted-unless-dark`]: CLIPPED,
+  [`${CLIP_PLANT}clip-only-in-light`]: CLIPPED,
   [`${CLIP_META_PLANT}clip-from-meta-decorator`]: CLIPPED,
 })
 
@@ -256,6 +261,13 @@ if (workPath) {
 
 for (const { id, widths, fullPage } of work.stories) {
   test(`${id} runtime record`, async ({ page }) => {
+    // One navigation unit gets 30 s in `stories.spec.ts` (the Playwright default, which
+    // `playwright.config.ts` does not override); this test does two per width, the light settle and the
+    // dark one T706 added for the clip. Measured 2026-10-08 with 4 workers: the four foundations
+    // overviews took 16.1 to 18.7 s and two PrivacyNotice stories 7.7 s each, and all six timed out at
+    // 30 s once the dark settle doubled the navigations. This is that per-navigation budget times the
+    // settles, not slack.
+    test.setTimeout(widths.length * 2 * 30_000)
     await installSteamAvatarStub(page)
     const outFile = outDir ? path.join(outDir, `${id}.json`) : null
     if (outDir) mkdirSync(outDir, { recursive: true })

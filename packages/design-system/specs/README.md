@@ -1746,8 +1746,13 @@ hover:underline-offset-2` beside `active:underline-offset-4`, `src/screens/DataE
      record-1 elements' Disabled cells are all `none`).
    - **A story's mounts credit from the capture frame the browser recorded, not from its source**
      (T703). The record of each width carries two booleans. `clip` is whether a `visualCaptureClip`
-     applied: `readCaptureClip` (`tests/visual/story-render.ts`), the reader the capture takes its clip
-     from, run on the settled story, so a clip that no object literal spells is in it (written from a
+     applied in either theme at that width (T706): `readCaptureClip` (`tests/visual/story-render.ts`),
+     the reader the capture takes its clip from, run on the settled story in the light theme and again
+     in the dark theme, because decorators, loaders and `play` receive `context.globals` and the capture
+     runs both themes, so a clip set in one theme only is a clip; the record is the disjunction of the
+     two. The light theme's settled story is what the mounts, the rendered files, the force and the
+     focus come from, a theme changing paint and never which element exists. A clip that no object
+     literal spells is in it (written from a
      `play`, a loader or a decorator of the story or of its meta, through the deprecated `story`
      annotation, under a `__proto__` key of the story object or of the default export, from the
      preview or another module that imports it, or from a getter on `Object.prototype`). `fullPage` is
@@ -2456,11 +2461,12 @@ row's variant and size. A force on an element whose stamp is in the placing inst
 refused. The Disabled column of every matrix, and a primitive's own stories' Rest column, come from
 the primitive instances a story mounts, as rendered, and from nothing else: a `disabled` or `loading`
 written at a call site, and a `disabled: true` in a story's `args`, credit no Disabled cell. A story
-gives no mount credit when the browser applied a `visualCaptureClip` to it at any captured width (the
-manifest records, per width, whether one applied, read from the settled story the capture itself
-reads, so a clip no object literal spells counts; it does not record whether a mount lies inside the
-clipped rect); when it has no clip, the built index does not tag it `visual-full-page` (also recorded
-per width) and it rendered a design-system file with an unprefixed `fixed` class (that element need
+gives no mount credit when the browser applied a `visualCaptureClip` to it in either theme at any
+captured width (the manifest records, per width, whether one applied, read from the settled story
+the capture itself reads, in the light theme and in the dark one, so a clip no object literal spells
+counts; it does not record whether a mount lies inside the clipped rect); when it has no clip, the
+built index does not tag it `visual-full-page` (also recorded per width) and it rendered a
+design-system file with an unprefixed `fixed` class (that element need
 not intersect the root box it is screenshotted as); or when its source is one this pass was refused
 a reading of, which also fails the run naming the story: the story or the default export is
 referenced outside its declaration and an export, the default export is not one this pass reads, a

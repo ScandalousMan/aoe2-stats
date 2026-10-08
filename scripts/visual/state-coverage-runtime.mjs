@@ -196,7 +196,7 @@ function main() {
   log(
     selected.length === 0
       ? 'nothing selected — running only the plant-coverage check.'
-      : `running ${selected.length} stor${selected.length === 1 ? 'y' : 'ies'} x ${REVIEW_WIDTHS.length} widths (light theme).`,
+      : `running ${selected.length} stor${selected.length === 1 ? 'y' : 'ies'} x ${REVIEW_WIDTHS.length} widths (light theme; the clip read in dark too).`,
   )
 
   const tmpDir = mkdtempSync(path.join(tmpdir(), 'aoe2-state-coverage-runtime-'))

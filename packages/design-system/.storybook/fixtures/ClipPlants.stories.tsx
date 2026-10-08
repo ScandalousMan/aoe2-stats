@@ -109,3 +109,44 @@ export const ClipFromObjectPrototype: Story = {
     },
   ],
 }
+
+// T706: a clip that depends on the theme. Decorators, loaders and `play` receive `context.globals`, and
+// the capture (`tests/visual/stories.spec.ts`) runs both themes and reads the clip at each, so a clip
+// applied in one theme only is a clip the capture shows. The record is the disjunction of the two
+// themes: each of the three stories below records `clip: true`, whichever theme carries the clip.
+
+// A story decorator that sets the clip only when the theme is dark: the light probe alone records none.
+export const ClipOnlyInDark: Story = {
+  render,
+  decorators: [
+    (Story, { parameters, globals }) => {
+      if (globals.theme === 'dark') parameters.visualCaptureClip = clip()
+      return <Story />
+    },
+  ],
+}
+
+// A clip literal that a decorator deletes unless the theme is dark: the light theme settles with no
+// clip, the dark one with the literal in place.
+export const ClipLiteralDeletedUnlessDark: Story = {
+  render,
+  parameters: { visualCaptureClip: clip() },
+  decorators: [
+    (Story, { parameters, globals }) => {
+      if (globals.theme !== 'dark') delete parameters.visualCaptureClip
+      return <Story />
+    },
+  ],
+}
+
+// The contrast: a clip set only in the light theme. The record is the disjunction, so it is `clip: true`
+// too, and the dark probe adds nothing to it.
+export const ClipOnlyInLight: Story = {
+  render,
+  decorators: [
+    (Story, { parameters, globals }) => {
+      if (globals.theme === 'light') parameters.visualCaptureClip = clip()
+      return <Story />
+    },
+  ],
+}

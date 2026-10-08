@@ -8379,8 +8379,8 @@ test('T704 (L1): one test-module definition in state-coverage.mjs, used by every
 // what the code refuses, and the clip is the record's (T703), not a source reading.
 test('T704 (L2) and T703: the legend credits mounts from the recorded clip and full-page frame, and names the source refusals', () => {
   for (const phrase of [
-    /gives no mount credit when the browser applied a `visualCaptureClip` to it at any captured width/,
-    /read from the settled story the capture itself\nreads, so a clip no object literal spells counts/,
+    /gives no mount credit when the browser applied a `visualCaptureClip` to it in either theme at any\ncaptured width/,
+    /read from the settled story\nthe capture itself reads, in the light theme and in the dark one, so a clip no object literal spells\ncounts/,
     /an accessor, a method, or a `this` in the\nstory object or the default export/,
     /An entry that records no boolean `clip` and `fullPage` at\nevery captured width fails the run/,
     /names the record-3 half in a note; any other is refused\nlike the rest\./,
