@@ -20,7 +20,7 @@
 source = "aoe2techtree"
 source_version = "3bb43b1439eef88dfe7fe892d7f7dc41ac9dd76f"
 describes_build = 185872
-digest = "sha256:e4954ca238a515907915eb21cdb36f20af2f98c1bc038359789512e2dc00d9f0"
+digest = "sha256:1c77d7cb5034b48dcb15641370512854a222d5f7d40baaa6129fb1b1c56fca5a"
 promoted = true
 civilisations_modelled = []
 

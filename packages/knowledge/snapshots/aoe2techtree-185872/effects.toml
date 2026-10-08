@@ -5,15 +5,16 @@
 # query for it answers `civilisation-not-modelled` (contracts/knowledge-base.md, "Civilisation
 # qualification" step 1). That is the state of this snapshot on purpose, not an omission to be
 # filled in by copying `aoe2techtree-180059/effects.toml`: the 180059 effects were transcribed from
-# that pack revision's strings and validated against that build's notes, and build 185872 is a
-# major update (a new chapter, three new civilisations in the pack) whose notes were not read
-# for a bonus change when this snapshot was made. Carrying six civilisations' bonuses across it would answer a cost with a
-# bonus that may no longer hold, which FR-023 forbids; refusing is the lawful answer.
+# that pack revision's strings and validated against that build's notes, and build 185872 is a major
+# update (a new chapter, three new civilisations in the pack) whose notes were not read for a bonus
+# change when this snapshot was made. Carrying six civilisations' bonuses across it would answer a
+# cost with a bonus that may no longer hold, which FR-023 forbids; refusing is the lawful answer.
 #
 # What this snapshot therefore answers is `query.name`, the one query that takes no civilisation:
 # the name of a unit, building or technology for build 185872. Every other query takes a
 # civilisation and refuses, because `civilisations_modelled` is empty (there is no
 # civilisation-neutral baseline query: a baseline is never served in place of a civilisation's
-# answer, FR-038). It carries no `[[civilisation_id]]` table either, so a participant's raw civilisation id resolves to no name
-# here; a later task that models a civilisation for this build adds the rows it can validate, one
-# civilisation at a time, in a new snapshot (a snapshot is immutable, FR-025).
+# answer, FR-038). It carries no `[[civilisation_id]]` table either, so a participant's raw
+# civilisation id resolves to no name here; a later task that models a civilisation for this build
+# adds the rows it can validate, one civilisation at a time, in a new snapshot (a snapshot is
+# immutable, FR-025).
