@@ -1773,13 +1773,15 @@ hover:underline-offset-2` beside `active:underline-offset-4`, `src/screens/DataE
      rules, namely a file in the story's own directory changed, a global-reach path changed
      (`GLOBAL_REACH_PREFIXES`, `scripts/visual/story-selection.mjs`), a module the story file imports
      changed, directly or through the modules it imports, by static `import`, `export … from`,
-     `import()` or `require()` with a string literal (a story file, or a file it reaches, with a
-     specifier that is not a string literal is selected on any change inside the package), a source
-     file the entry recorded as rendered changed, or the entry differing from the manifest at the diff
-     base. A `clip` that a file outside all five decides is therefore not re-recorded until nightly's
-     full pass, which checks every entry; what stays outside the module rule is a file a story
-     reaches only at run time, not through a module specifier. A story whose source this pass was
-     refused a reading of (the rules below) fails the run for it and gives no mount credit as well.
+     `import()` or `require()` with a string literal (an `import()` or `require()` whose argument is
+     not a plain string literal, in the story file or a file it reaches, selects it on any change in the package), a
+     source file the entry recorded as rendered changed, or the entry differing from the manifest at
+     the diff base. A `clip` that a file outside all five decides waits for nightly's full pass,
+     which checks every entry; the known shapes that stay outside, not an exhaustive list, are a file
+     reached only at run time and not through a module specifier (a hook's side effect, a
+     stylesheet's `@import`, a `new URL(…, import.meta.url)`, a file a plugin injects). A story whose
+     source this pass was refused a reading of (the rules below) fails the run for it and gives no
+     mount credit as well.
    - **A story's binding, and the binding its default export names, may appear only in their own
      declaration and in an export** (`export default meta`, `export { meta as default }`,
      `export { X }`). Any other identifier reference to either, anywhere in the file, fails the run

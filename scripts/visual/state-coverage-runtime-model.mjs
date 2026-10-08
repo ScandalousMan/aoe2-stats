@@ -207,23 +207,16 @@ export function findFixtureProblem(index) {
 // Returns `{ stories, rules }`: the stories in input order, and for each id the rules that selected it
 // (`story-files`, `files`, `manifest-entry`).
 //
-// What this cannot see, and nightly (which checks every entry) does — the gap, stated exactly: a file
-// a story reaches only at run time, not through a module specifier that its story file, or a file the
-// walk of (a) reaches, names. A file named by a specifier is selected by (a) whether or not it renders
-// a stamped element in the story's SETTLED state (`files` is recorded once the story has settled,
-// after `play()`): a hook, a `lib` helper, a component whose elements a `play()` removes (the idle
-// state of `composite-uploadcontrol--real-selection-then-success` renders `Button` and the play clicks
-// it away, so the entry records UploadControl and Callout only, but its component imports `Button`).
-// What stays outside:
-//   - a hook's side effect, or any state a module sets at run time that a story reads without
-//     importing the module that set it;
-//   - tokens or CSS reached other than through a specifier (a stylesheet's own `@import` is not read:
-//     the walk stops at a CSS file); tokens are a global-reach path, and they change paint, never which
-//     element exists, who wrote it or who placed it;
-//   - a file a plugin or the bundler configuration injects (`.storybook/` is a global-reach path, so
-//     (a) selects every story for it);
-//   - a file the entry did not record yet and no specifier reaches — the entry lists no such file until
-//     it is rewritten.
+// A file named by a specifier is selected by (a) whether or not it renders a stamped element in the
+// story's SETTLED state (`files` is recorded once the story has settled, after `play()`): a hook, a
+// `lib` helper, a component whose elements a `play()` removes (the idle state of
+// `composite-uploadcontrol--real-selection-then-success` renders `Button` and the play clicks it away,
+// so the entry records UploadControl and Callout only, but its component imports `Button`).
+// Known shapes that nothing here selects, and nightly (which checks every entry) does; not an
+// exhaustive list: a file a story reaches only at run time and not through a module specifier its
+// story file or a reached file names (a hook's side effect, state a module sets that a story reads
+// without importing it, a stylesheet's own `@import`, a `new URL('…', import.meta.url)` reach, a file a
+// plugin or the bundler configuration injects).
 export function selectRuntimeStories({ stories, manifest, baseManifest, diff }) {
   const diffFiles = new Set(diff)
   const byDiff = new Set(selectChangedStories(stories, diff).stories.map((s) => s.id))

@@ -119,9 +119,10 @@ export function fileAtBase(repoPath, options = {}) {
   return gitOrFail(['show', `${mergeBase}:${repoPath}`], `"${base}"`, voice)
 }
 
-// The extensions Vite tries, in its order, after the specifier as written; then the same four on
-// `<specifier>/index`.
-const RESOLVE_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx']
+// The extensions a specifier without one may name, after the specifier as written; then the same on
+// `<specifier>/index`. The order is irrelevant: EVERY candidate that exists is followed (below), so
+// the walk never has to know which of `helper.js` and `helper.ts` the bundler loads.
+const RESOLVE_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.mts', '.mjs', '.cts', '.cjs', '.json']
 // A file the walk parses for further specifiers. A resolved file of any other kind (`.json`, `.css`,
 // an image) is a leaf: a diff that touches it selects its importers, but it names no module.
 const CODE_FILE = /\.[cm]?[jt]sx?$/
@@ -141,26 +142,36 @@ const isFile = (file) => {
   }
 }
 
-// The file a relative specifier names, as an absolute path, or `null`: as written, then with each
-// extension, then as a directory's `index`. A bare specifier (a package, an alias) and a specifier that
-// resolves to nothing, or outside `dsDir` or into `node_modules`, are `null`: not walked.
+// Every file a relative specifier can name that exists, as absolute paths (possibly none): as written,
+// then with each extension, then as a directory's `index`; a specifier ending in `/` names a directory
+// and tries the `index` candidates only. Each existing candidate is returned, not the first: over-
+// selecting is the safe direction, so which one a bundler would load (`helper.js` or `helper.ts`, a
+// file or a directory index of the same name) is a question the walk never needs to answer, and its
+// extension order is irrelevant. A bare specifier (a package, an alias), one that resolves to nothing,
+// and a candidate outside `dsDir` or inside `node_modules` yield nothing: not walked.
 function resolveRelativeSpecifier(fromFile, rawSpecifier, dsDir) {
   const specifier = rawSpecifier.replace(/[?#].*$/, '')
-  if (!specifier.startsWith('./') && !specifier.startsWith('../')) return null
+  if (!specifier.startsWith('./') && !specifier.startsWith('../')) return []
   const base = path.resolve(path.dirname(fromFile), specifier)
-  const emitted = EMITTED_EXTENSION[path.extname(base)] ?? []
-  const stem = base.slice(0, base.length - path.extname(base).length)
-  const candidates = [
-    base,
-    ...RESOLVE_EXTENSIONS.map((ext) => base + ext),
-    ...emitted.map((ext) => stem + ext),
-    ...RESOLVE_EXTENSIONS.map((ext) => path.join(base, `index${ext}`)),
-  ]
-  const found = candidates.find(isFile)
-  if (!found) return null
-  const rel = path.relative(dsDir, found)
-  if (rel.startsWith('..') || path.isAbsolute(rel)) return null
-  return rel.split(path.sep).includes('node_modules') ? null : found
+  const indexes = RESOLVE_EXTENSIONS.map((ext) => path.join(base, `index${ext}`))
+  let candidates
+  if (specifier.endsWith('/')) {
+    candidates = indexes
+  } else {
+    const emitted = EMITTED_EXTENSION[path.extname(base)] ?? []
+    const stem = base.slice(0, base.length - path.extname(base).length)
+    candidates = [
+      base,
+      ...RESOLVE_EXTENSIONS.map((ext) => base + ext),
+      ...emitted.map((ext) => stem + ext),
+      ...indexes,
+    ]
+  }
+  return candidates.filter(isFile).filter((file) => {
+    const rel = path.relative(dsDir, file)
+    if (rel.startsWith('..') || path.isAbsolute(rel)) return false
+    return !rel.split(path.sep).includes('node_modules')
+  })
 }
 
 // What one file names: the files its relative specifiers resolve to, and whether it holds an
@@ -180,8 +191,7 @@ function readImports(file, dsDir, cache) {
   const sourceFile = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true)
   result.opaque = findNonLiteralSpecifiers(sourceFile).length > 0
   for (const specifier of collectModuleSpecifiers(sourceFile)) {
-    const resolved = resolveRelativeSpecifier(file, specifier, dsDir)
-    if (resolved) result.resolved.push(resolved)
+    result.resolved.push(...resolveRelativeSpecifier(file, specifier, dsDir))
   }
   return result
 }
@@ -220,14 +230,18 @@ function storyReachesTouched(storyFile, touched, dsDir, cache) {
 // specifiers of the story file and of each file it reaches are read with the TypeScript parser
 // (`module-specifiers.mjs`, the reader the checker uses): a static `import`, an `export … from`, an
 // `import()` and a `require()` with a plain string literal, type-only included. A relative specifier
-// resolves against the importing file as Vite does (as written, then `.ts`, `.tsx`, `.js`, `.jsx`,
-// then `index` of each); a bare or unresolvable one is ignored, and the walk stays inside the package.
+// resolves against the importing file; every file it can name is followed (T709: `.ts`, `.tsx`, `.js`,
+// `.jsx`, `.mts`, `.mjs`, `.cts`, `.cjs`, `.json`, then `index` of each), so which one a bundler loads
+// does not matter; a bare or unresolvable one is ignored, and the walk stays inside the package.
 // A clip, a tag or a force that a story file takes from `../Panel/story-parameters.ts` is thus
-// selected when that module changes, where before only the story's directory was. Over-selecting is
-// the safe direction, so a story file, or a file it reaches, with an `import()` or `require()` whose
-// specifier is not a plain string literal is selected on ANY diff inside the package: what it loads is
-// not readable. What stays outside the rule: a file a story reaches only at run time, not through a
-// module specifier — a hook's side effect, tokens or CSS, a file whose elements a `play()` removes.
+// selected when that module changes, where before only the story's directory was. A file a specifier
+// names is selected whatever it renders in the story. Over-selecting is the safe direction, so a story
+// file, or a file it reaches, with an `import()` or `require()` whose argument is not a plain string
+// literal is selected on ANY diff inside the package: what it loads is not readable.
+// Known shapes that stay outside the rule, not an exhaustive list: a file a story reaches only at run
+// time and not through a module specifier its story file or a reached file names (a hook's side
+// effect, state a module sets that a story reads without importing it, a stylesheet's own `@import`,
+// a `new URL('…', import.meta.url)` reach, a file a plugin or the bundler configuration injects).
 // `selectRuntimeStories` (the runtime pass) and `pnpm test:visual --changed` both call this one function.
 //
 // `diff` is repository-rooted, as `changedFiles()` reports it; `dsDir` is the package directory the

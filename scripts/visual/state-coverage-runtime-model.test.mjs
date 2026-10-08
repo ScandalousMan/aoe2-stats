@@ -462,8 +462,14 @@ test('selection, against the committed manifest: a change to a test file alone s
   )
   const byFiles = [...picked.rules].filter(([, why]) => why.includes('files'))
   assert.deepEqual(byFiles, [])
-  // What it does select is (a)'s: the stories of that directory — nothing else.
+  // What it does select is (a)'s: the stories of that directory, by the `story-files` rule alone. No
+  // test file is imported by a story file, so the import walk adds none from another directory.
   assert.ok(picked.stories.every((s) => picked.rules.get(s.id).join() === 'story-files'))
+  assert.ok(picked.stories.length > 0)
+  assert.deepEqual(
+    [...new Set(picked.stories.map((s) => path.posix.dirname(s.importPath.replace(/^\.\//, ''))))],
+    ['src/primitives/Button'],
+  )
   assert.ok(picked.stories.length < 40, `selected ${picked.stories.length}`)
   // A docs-only diff selects nothing at all.
   assert.deepEqual(select(['docs/data-sources.md'], manifest, manifest, stories).stories, [])

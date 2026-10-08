@@ -24,10 +24,13 @@
 //   (d) every story whose committed entry differs from the manifest at the diff base (a manifest absent
 //       there means every entry differs), so a pull request that edits the manifest by hand has
 //       those entries re-checked in the browser.
-// The rules live in `selectRuntimeStories` (`state-coverage-runtime-model.mjs`). What they cannot see,
-// and nightly (every entry) does: a file a story reaches only at run time, not through a module
-// specifier — a hook's side effect, a stylesheet's own `@import`, a file a plugin injects. A file a
-// specifier names is selected by (a) even when a `play()` removes the elements it rendered.
+// The rules live in `selectRuntimeStories` (`state-coverage-runtime-model.mjs`). A file a specifier
+// names is selected by (a) even when a `play()` removes the elements it rendered. Known shapes that
+// nothing here selects, and nightly (every entry) does; not an exhaustive list: a file a story reaches
+// only at run time and not through a module specifier its story file or a reached file names (a hook's
+// side effect, state a module sets that a story reads without importing it, a stylesheet's own
+// `@import`, a `new URL('…', import.meta.url)` reach, a file a plugin or the bundler configuration
+// injects).
 //
 // Fails closed, before any browser starts: an unknown argument (a typo, or two flags joined in one
 // token) names itself and exits; a built index with no published story, and one with published stories

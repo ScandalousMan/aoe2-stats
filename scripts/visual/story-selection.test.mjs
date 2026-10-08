@@ -31,7 +31,7 @@ test('a change under a global-reach prefix selects every story, fixtures include
   }
 })
 
-test('otherwise a story is selected by its own directory or by a module its story file imports, and by nothing else', () => {
+test('otherwise a story is selected by its own directory, by a module its story file imports, or by an opaque specifier it holds', () => {
   // `Plants.stories.tsx` (a real file) imports `src/primitives/Button`, so it follows Button's change
   // although it lives in another directory (T707); the Menu story imports no Button file.
   assert.deepEqual(
@@ -176,6 +176,7 @@ test('T707: every form of module specifier is followed, a bare or unresolvable o
         "export { r } from '../../reexport/value'",
         "const lazy = () => import('../../lazy/chunk.js')",
         "const c = require('../../common/cjs')",
+        "const d = require('../../common/plain')",
         "import idx from '../../folder'",
         "import tokens from '../../data/tokens.json'",
         "import React from 'react'",
@@ -187,6 +188,7 @@ test('T707: every form of module specifier is followed, a bare or unresolvable o
       'src/reexport/value.tsx': 'export const r = 1\n',
       'src/lazy/chunk.ts': 'export const k = 1\n',
       'src/common/cjs.cjs': 'module.exports = {}\n',
+      'src/common/plain.ts': 'export const p = 1\n',
       'src/folder/index.jsx': 'export default 1\n',
       'src/data/tokens.json': '{}\n',
       // A file outside the package is never walked, so its opaque import() selects nothing.
@@ -198,6 +200,8 @@ test('T707: every form of module specifier is followed, a bare or unresolvable o
         'src/types/type-only.ts',
         'src/reexport/value.tsx',
         'src/lazy/chunk.ts',
+        'src/common/cjs.cjs',
+        'src/common/plain.ts',
         'src/folder/index.jsx',
         'src/data/tokens.json',
       ]) {
@@ -205,6 +209,107 @@ test('T707: every form of module specifier is followed, a bare or unresolvable o
       }
       assert.deepEqual(select('apps/web/src/main.tsx'), [])
       assert.deepEqual(select(`${PKG}src/nowhere/missing.ts`), [])
+    },
+  )
+})
+
+// ---- T709: every candidate a specifier can name is followed, not the first that exists ----------------
+
+test('T709 plant 1: with helper.js beside helper.ts, a diff on either selects the importing story', () => {
+  withTree(
+    {
+      'src/composites/Card/Card.stories.tsx':
+        "import { h } from '../Panel/helper'\nexport default {}\n",
+      'src/composites/Panel/helper.ts': 'export const h = 1\n',
+      'src/composites/Panel/helper.js': 'export const h = 1\n',
+      'src/primitives/Menu/Menu.stories.tsx': 'export default {}\n',
+    },
+    (select) => {
+      assert.deepEqual(select(`${PKG}src/composites/Panel/helper.js`), [CARD])
+      assert.deepEqual(select(`${PKG}src/composites/Panel/helper.ts`), [CARD])
+    },
+  )
+})
+
+test('T709 plant 2: a specifier ending in a slash names the directory index, beside a file of the same name', () => {
+  withTree(
+    {
+      'src/composites/Card/Card.stories.tsx': "import { P } from '../Panel/'\nexport default {}\n",
+      'src/composites/Panel.tsx': 'export const P = 1\n',
+      'src/composites/Panel/index.tsx': 'export const P = 1\n',
+      'src/primitives/Menu/Menu.stories.tsx': 'export default {}\n',
+    },
+    (select) => {
+      assert.deepEqual(select(`${PKG}src/composites/Panel/index.tsx`), [CARD])
+    },
+  )
+  // Contrast: without the slash both are candidates, so the file beside the directory is followed too.
+  withTree(
+    {
+      'src/composites/Card/Card.stories.tsx': "import { P } from '../Panel'\nexport default {}\n",
+      'src/composites/Panel.tsx': 'export const P = 1\n',
+      'src/composites/Panel/index.tsx': 'export const P = 1\n',
+    },
+    (select) => {
+      assert.deepEqual(select(`${PKG}src/composites/Panel.tsx`), [CARD])
+      assert.deepEqual(select(`${PKG}src/composites/Panel/index.tsx`), [CARD])
+    },
+  )
+  // And the trailing slash names the index only: the file beside the directory is not a candidate.
+  withTree(
+    {
+      'src/composites/Card/Card.stories.tsx': "import { P } from '../Panel/'\nexport default {}\n",
+      'src/composites/Panel.tsx': 'export const P = 1\n',
+      'src/composites/Panel/index.tsx': 'export const P = 1\n',
+    },
+    (select) => {
+      assert.deepEqual(select(`${PKG}src/composites/Panel.tsx`), [])
+    },
+  )
+})
+
+test('T709 plant 3: an extensionless specifier resolves to a .mjs, .mts, .cjs and .cts file', () => {
+  for (const ext of ['.mjs', '.mts', '.cjs', '.cts']) {
+    withTree(
+      {
+        'src/composites/Card/Card.stories.tsx':
+          "import { h } from '../../shared/helper'\nexport default {}\n",
+        [`src/shared/helper${ext}`]: 'export const h = 1\n',
+        'src/primitives/Menu/Menu.stories.tsx': 'export default {}\n',
+      },
+      (select) => {
+        assert.deepEqual(select(`${PKG}src/shared/helper${ext}`), [CARD], ext)
+      },
+    )
+  }
+})
+
+test('T709 plant 4: an extensionless specifier resolves to a .json file, which is a leaf', () => {
+  withTree(
+    {
+      'src/composites/Card/Card.stories.tsx':
+        "import data from '../../shared/data'\nexport default {}\n",
+      'src/shared/data.json': '{"import": "../nowhere"}\n',
+      'src/primitives/Menu/Menu.stories.tsx': 'export default {}\n',
+    },
+    (select) => {
+      assert.deepEqual(select(`${PKG}src/shared/data.json`), [CARD])
+      assert.deepEqual(select(`${PKG}src/shared/other.json`), [])
+    },
+  )
+})
+
+test('T709: an emitted extension (.mjs, .cjs) names the .mts and .cts source beside it', () => {
+  withTree(
+    {
+      'src/composites/Card/Card.stories.tsx':
+        "import { a } from '../../shared/a.mjs'\nimport { b } from '../../shared/b.cjs'\nexport default {}\n",
+      'src/shared/a.mts': 'export const a = 1\n',
+      'src/shared/b.cts': 'export const b = 1\n',
+    },
+    (select) => {
+      assert.deepEqual(select(`${PKG}src/shared/a.mts`), [CARD])
+      assert.deepEqual(select(`${PKG}src/shared/b.cts`), [CARD])
     },
   )
 })

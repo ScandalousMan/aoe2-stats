@@ -488,10 +488,12 @@ jobs:
       # rename lists both its paths), and every story whose entry differs from the manifest at the
       # diff base (so a hand-edited manifest is re-checked in the browser). Its rewrite command takes
       # the same selection.
-      # What it cannot see, and nightly (every entry) does: a file a story reaches only at run time,
-      # not through a module specifier its story file (or a file it reaches) names: a hook's side
-      # effect, a stylesheet's own `@import`, a file a plugin injects. A file a specifier names is
-      # selected even when a `play()` removes the elements it rendered before the story settles.
+      # A file a specifier names is selected even when a `play()` removes the elements it rendered
+      # before the story settles. Known shapes that nothing here selects, and nightly (every entry)
+      # does; not an exhaustive list: a file a story reaches only at run time and not through a module
+      # specifier its story file or a reached file names (a hook's side effect, state a module sets
+      # that a story reads without importing it, a stylesheet's own `@import`, a
+      # `new URL('…', import.meta.url)` reach, a file a plugin or the bundler configuration injects).
       - run: node scripts/visual/state-coverage-runtime.mjs --changed
       # The plants (`packages/design-system/.storybook/fixtures/`) on every run, whatever the diff
       # selects: each asserts what the browser does with a shape the static check guessed wrong,
