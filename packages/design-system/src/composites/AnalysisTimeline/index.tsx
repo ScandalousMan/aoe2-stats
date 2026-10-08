@@ -204,7 +204,10 @@ function ResearchList({ items }: { items: ResearchEventData[] }) {
 }
 
 // §9: "each list ... is an <ol> — order is the fact being shown". `mt-4` on every instance gives
-// both "SummaryStats to AgeUpList" and "between lists" the same §7 step (space-4).
+// both "SummaryStats to AgeUpList" and "between lists" the same §7 step (space-4). §6: list values
+// are `text-primary`; set once on the `<ol>` so the connective copy ("ordered —", "—"), every
+// `TimeValue` and the training count inherit a token rather than the page's unset ink (dark on dark
+// in the dark theme). `UnresolvedIdentifier` overrides it with `type-identifier`'s `text-secondary`.
 function ListSection({
   labelId,
   label,
@@ -219,7 +222,10 @@ function ListSection({
       <p id={labelId} className="font-sans text-sm font-semibold text-text-secondary">
         {label}
       </p>
-      <ol aria-labelledby={labelId} className="mt-2 flex flex-col gap-1 font-sans text-sm">
+      <ol
+        aria-labelledby={labelId}
+        className="mt-2 flex flex-col gap-1 font-sans text-sm text-text-primary"
+      >
         {children}
       </ol>
     </div>

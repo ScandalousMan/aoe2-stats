@@ -228,14 +228,83 @@ def test_main_apply_writes_the_default_manifest(
     import scripts.ops.import_knowledge_pack as module
 
     checkout = _write_checkout(tmp_path / "checkout")
-    pack_dir = tmp_path / "pack"
-    monkeypatch.setattr(module, "_PACK_DIR", pack_dir)
+    packs_dir = tmp_path / "packs"
+    monkeypatch.setattr(module, "_PACKS_DIR", packs_dir)
+    pack_dir = packs_dir / "aoe2techtree"
 
     exit_code = main(["--source-checkout", str(checkout), "--commit", "deadbeef", "--apply"])
 
     assert exit_code == 0
     assert (pack_dir / "data.json").is_file()
     assert (pack_dir / "MANIFEST.json").is_file()
+
+
+def test_main_apply_writes_a_second_pack_beside_the_first_and_leaves_it_alone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """T707: a newer revision is vendored beside the first, never over it."""
+    import scripts.ops.import_knowledge_pack as module
+
+    checkout = _write_checkout(tmp_path / "checkout")
+    packs_dir = tmp_path / "packs"
+    monkeypatch.setattr(module, "_PACKS_DIR", packs_dir)
+    assert main(["--source-checkout", str(checkout), "--commit", "aaaa", "--apply"]) == 0
+    first_manifest = (packs_dir / "aoe2techtree" / "MANIFEST.json").read_bytes()
+
+    exit_code = main(
+        [
+            "--source-checkout",
+            str(checkout),
+            "--commit",
+            "bbbb",
+            "--pack-name",
+            "aoe2techtree-bbbb",
+            "--apply",
+        ]
+    )
+
+    assert exit_code == 0
+    assert (packs_dir / "aoe2techtree-bbbb" / "data.json").is_file()
+    assert (
+        json.loads((packs_dir / "aoe2techtree-bbbb" / "MANIFEST.json").read_text())["commit"]
+        == "bbbb"
+    )
+    assert (packs_dir / "aoe2techtree" / "MANIFEST.json").read_bytes() == first_manifest
+
+
+def test_main_refuses_to_overwrite_a_pack_pinned_at_another_commit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import scripts.ops.import_knowledge_pack as module
+
+    checkout = _write_checkout(tmp_path / "checkout")
+    packs_dir = tmp_path / "packs"
+    monkeypatch.setattr(module, "_PACKS_DIR", packs_dir)
+    assert main(["--source-checkout", str(checkout), "--commit", "aaaa", "--apply"]) == 0
+    before = (packs_dir / "aoe2techtree" / "MANIFEST.json").read_bytes()
+
+    exit_code = main(["--source-checkout", str(checkout), "--commit", "bbbb", "--apply"])
+
+    assert exit_code == 1
+    assert (packs_dir / "aoe2techtree" / "MANIFEST.json").read_bytes() == before
+
+
+@pytest.mark.parametrize("bad_name", ["../escape", "a/b", "..", ""])
+def test_main_refuses_a_pack_name_that_is_not_one_directory_segment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, bad_name: str
+) -> None:
+    import scripts.ops.import_knowledge_pack as module
+
+    checkout = _write_checkout(tmp_path / "checkout")
+    packs_dir = tmp_path / "packs"
+    monkeypatch.setattr(module, "_PACKS_DIR", packs_dir)
+
+    exit_code = main(
+        ["--source-checkout", str(checkout), "--commit", "aaaa", "--pack-name", bad_name, "--apply"]
+    )
+
+    assert exit_code == 1
+    assert not packs_dir.exists()
 
 
 # -------------------------------------------------------------------------- no-network guarantee

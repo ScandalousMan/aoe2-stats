@@ -13,10 +13,22 @@ commit was made (2026-06-03), and the three builds shipped after it and never im
 be wrong in one of them", and that a living fact in `docs/` "is trustworthy only because a test
 asserts it" — nothing asserted any of the above, across seven files, until this check.
 
+**More than one pack (T707).** A snapshot must stay re-derivable from the pack revision it was
+imported from, so a newer revision is vendored *beside* the first, never over it: every directory
+under `packages/knowledge/packs/` is a pinned pack and must hold a `MANIFEST.json` (a directory
+without one is refused, not skipped), each pinned by its own `commit`, no two by the same one, and
+each named by some snapshot's `source_version` (a pack nothing is derived from is refused). For each
+pack its `LICENCE.md` and its row in `docs/asset-packs.md` must state that commit, and
+`docs/data-sources.md` must state every pack's commit and no other 40-hex commit. For each snapshot,
+`[snapshot].source_version` must be the commit of **some** vendored pack: a snapshot whose
+`source_version` names no vendored pack cannot be re-derived from anything in the repository, and is
+refused. The four derived measurements below stay the 180059 carry-forward's.
+
 **Source of truth.** For the sha: `MANIFEST.json`, because `import_knowledge_pack.py` writes it
 from the operator's own `--commit` argument and never verifies it against the checkout's git
 history (see that script's own docstring) — it is the one file in the set that is machine-written,
-every other occurrence is prose a person retyped by hand and could mistype. For the four derived
+every other occurrence is prose a person retyped by hand and could mistype (per pack, since T707).
+For the four derived
 measurements: `aoe2techtree-180059/snapshot.toml`'s `[validation.carry_forward]` table, the one
 place research actually performed the reading (T642, research.md D3/D4) and recorded it
 structurally rather than as a restatement — `docs/data-sources.md` §6 must agree with it.
@@ -52,29 +64,19 @@ import argparse
 import json
 import re
 import tomllib
+from dataclasses import dataclass
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 
-_PACK_DIR = REPO / "packages" / "knowledge" / "packs" / "aoe2techtree"
+_PACKS_DIR = REPO / "packages" / "knowledge" / "packs"
 _SNAPSHOTS_DIR = REPO / "packages" / "knowledge" / "snapshots"
 
-#: `MANIFEST.json` is this check's source of truth for the sha — see the module docstring.
-MANIFEST_PATH = _PACK_DIR / "MANIFEST.json"
-LICENCE_PATH = _PACK_DIR / "LICENCE.md"
 DATA_SOURCES_PATH = REPO / "docs" / "data-sources.md"
 ASSET_PACKS_DOCS_PATH = REPO / "docs" / "asset-packs.md"
 
-#: Every `aoe2techtree-*` snapshot's `snapshot.toml`, whose `[snapshot].source_version` must agree
-#: with `MANIFEST.json`'s `commit`.
-SNAPSHOT_TOML_PATHS: tuple[Path, ...] = (
-    _SNAPSHOTS_DIR / "aoe2techtree-180059" / "snapshot.toml",
-    _SNAPSHOTS_DIR / "aoe2techtree-177723-test" / "snapshot.toml",
-    _SNAPSHOTS_DIR / "aoe2techtree-test-stub" / "snapshot.toml",
-)
-
 #: The one promoted snapshot whose `[validation.carry_forward]` table is the derived measurements'
-#: source of truth — see the module docstring's "Source of truth" section.
+#: source of truth - see the module docstring's "Source of truth" section.
 CANONICAL_CARRY_FORWARD_SNAPSHOT_PATH = _SNAPSHOTS_DIR / "aoe2techtree-180059" / "snapshot.toml"
 
 _SHA_IN_BACKTICKS_RE = re.compile(r"`([0-9a-f]{40})`")
@@ -94,6 +96,51 @@ def sha_in_backticks(text: str) -> str | None:
     `docs/asset-packs.md`) uses."""
     match = _SHA_IN_BACKTICKS_RE.search(text)
     return match.group(1) if match else None
+
+
+def shas_in_backticks(text: str) -> list[str]:
+    """Every 40-hex-character commit sha wrapped in backticks in `text`, in order of appearance
+    (with repeats) - the shape a document that states more than one pack's commit needs."""
+    return _SHA_IN_BACKTICKS_RE.findall(text)
+
+
+@dataclass(frozen=True)
+class VendoredPack:
+    """One directory under `packages/knowledge/packs/`: the pack's directory name, the commit its
+    `MANIFEST.json` pins (`None` when the manifest is absent or unreadable), its `LICENCE.md`, and
+    whether the manifest file exists at all."""
+
+    name: str
+    commit: str | None
+    licence_path: Path
+    has_manifest: bool = True
+
+
+def vendored_packs(packs_dir: Path = _PACKS_DIR) -> tuple[VendoredPack, ...]:
+    """Every directory under `packs_dir`, sorted by name. A directory without a
+    `MANIFEST.json` is still listed (`has_manifest` false): it is a pack this check cannot pin, and
+    `check_commit_agreement` refuses it rather than skipping it - a skipped directory is a pack
+    nothing verifies."""
+    if not packs_dir.is_dir():
+        return ()
+    return tuple(
+        VendoredPack(
+            name=entry.name,
+            commit=manifest_commit(entry / "MANIFEST.json"),
+            licence_path=entry / "LICENCE.md",
+            has_manifest=(entry / "MANIFEST.json").is_file(),
+        )
+        for entry in sorted(packs_dir.iterdir(), key=lambda entry: entry.name)
+        if entry.is_dir()
+    )
+
+
+def snapshot_toml_files(snapshots_dir: Path = _SNAPSHOTS_DIR) -> tuple[Path, ...]:
+    """Every `snapshot.toml` one level under `snapshots_dir` - found by listing, so a snapshot
+    added later is checked without anyone remembering to register it here."""
+    if not snapshots_dir.is_dir():
+        return ()
+    return tuple(sorted(snapshots_dir.glob("*/snapshot.toml")))
 
 
 def manifest_commit(manifest_path: Path) -> str | None:
@@ -166,32 +213,99 @@ def canonical_derived_measurements(snapshot_toml_path: Path) -> dict[str, object
 
 def check_commit_agreement(
     *,
-    manifest_path: Path,
-    licence_path: Path,
+    packs: tuple[VendoredPack, ...],
     data_sources_path: Path,
     asset_packs_docs_path: Path,
     snapshot_toml_paths: tuple[Path, ...],
 ) -> list[str]:
-    """Every stated sha against `manifest_commit(manifest_path)`, the source of truth. One failure
-    per file that is missing the sha entirely, and one per file whose sha disagrees."""
-    canonical = manifest_commit(manifest_path)
+    """Every stated sha against the vendored packs' manifests, the source of truth.
+
+    Per pack: its `LICENCE.md` and its row in `asset-packs.md` state its commit. Across packs:
+    `data-sources.md` states every pack's commit and no 40-hex commit that is not one of them (a
+    stale one). Per snapshot: `[snapshot].source_version` is the commit of some vendored pack, and
+    conversely every pack is named by some snapshot (no orphan). A pack directory with no
+    `MANIFEST.json`, and two packs pinning one commit, are refused. One failure per file, pack or
+    snapshot that is missing the sha, or disagrees."""
+    if not packs:
+        return ["packages/knowledge/packs: no vendored pack - nothing to check"]
     failures: list[str] = []
-    if canonical is None:
-        return [
-            f"{_rel(manifest_path)}: no readable 'commit' field — nothing to check the rest against"
-        ]
+    commits: dict[str, str] = {}
+    for pack in packs:
+        if not pack.has_manifest:
+            failures.append(
+                f"{pack.name}: no MANIFEST.json - a pack directory with no manifest pins nothing, "
+                "so nothing verifies it"
+            )
+        elif pack.commit is None:
+            failures.append(
+                f"{pack.name}/MANIFEST.json: no readable 'commit' field - "
+                "nothing to check the rest against"
+            )
+        elif pack.commit in commits:
+            failures.append(
+                f"packs {commits[pack.commit]!r} and {pack.name!r} both pin `{pack.commit}` - "
+                "one revision is vendored once, and a pack is found by its commit"
+            )
+        else:
+            commits[pack.commit] = pack.name
 
-    prose_files = {
-        licence_path: sha_in_backticks(read(licence_path)),
-        data_sources_path: sha_in_backticks(read(data_sources_path)),
-        asset_packs_docs_path: sha_in_backticks(read(asset_packs_docs_path)),
-    }
-    for path, found in prose_files.items():
-        failures.extend(_agree(path, found, canonical, what="the pinned commit sha"))
+    asset_packs_text = read(asset_packs_docs_path)
+    for pack in packs:
+        if pack.commit is None:
+            continue
+        failures.extend(
+            _agree(
+                pack.licence_path,
+                sha_in_backticks(read(pack.licence_path)),
+                pack.commit,
+                what="the pinned commit sha",
+            )
+        )
+        row = _pack_row(asset_packs_text, pack.name)
+        if row is None:
+            failures.append(f"{_rel(asset_packs_docs_path)}: no row for pack {pack.name!r}")
+        else:
+            failures.extend(
+                _agree(
+                    asset_packs_docs_path,
+                    sha_in_backticks(row),
+                    pack.commit,
+                    what=f"the pinned commit sha of pack {pack.name!r}",
+                )
+            )
 
+    data_sources_shas = shas_in_backticks(read(data_sources_path))
+    for commit, name in commits.items():
+        if commit not in data_sources_shas:
+            failures.append(
+                f"{_rel(data_sources_path)}: does not state pack {name!r}'s pinned commit "
+                f"`{commit}` (from its MANIFEST.json)"
+            )
+    for stale in sorted(set(data_sources_shas) - set(commits)):
+        failures.append(
+            f"{_rel(data_sources_path)}: states commit `{stale}`, which no vendored pack pins"
+        )
+
+    named: set[str] = set()
     for snapshot_path in snapshot_toml_paths:
         found = snapshot_source_version(snapshot_path)
-        failures.extend(_agree(snapshot_path, found, canonical, what="[snapshot].source_version"))
+        if found is not None:
+            named.add(found)
+        if found is None:
+            failures.append(f"{_rel(snapshot_path)}: no readable [snapshot].source_version")
+        elif found not in commits:
+            failures.append(
+                f"{_rel(snapshot_path)}: [snapshot].source_version is `{found}`, which names no "
+                "vendored pack - the snapshot cannot be re-derived from anything in the "
+                f"repository (vendored: {', '.join(f'`{c}`' for c in sorted(commits))})"
+            )
+
+    for commit, name in commits.items():
+        if commit not in named:
+            failures.append(
+                f"packages/knowledge/packs/{name}: pins `{commit}`, which no snapshot's "
+                "[snapshot].source_version names - an orphan pack that nothing is derived from"
+            )
 
     return failures
 
@@ -255,21 +369,20 @@ def check_derived_measurements_agreement(
 
 def check_pinned_source_commit(
     *,
-    manifest_path: Path = MANIFEST_PATH,
-    licence_path: Path = LICENCE_PATH,
+    packs_dir: Path = _PACKS_DIR,
     data_sources_path: Path = DATA_SOURCES_PATH,
     asset_packs_docs_path: Path = ASSET_PACKS_DOCS_PATH,
-    snapshot_toml_paths: tuple[Path, ...] = SNAPSHOT_TOML_PATHS,
+    snapshots_dir: Path = _SNAPSHOTS_DIR,
     canonical_snapshot_path: Path = CANONICAL_CARRY_FORWARD_SNAPSHOT_PATH,
 ) -> list[str]:
-    """Both halves of the gate, concatenated: the sha across every file that states it, and the
-    four derived measurements against their one prose restatement in `docs/data-sources.md`."""
+    """Both halves of the gate, concatenated: the sha across every file that states it, for every
+    vendored pack and every snapshot, and the four derived measurements against their one prose
+    restatement in `docs/data-sources.md`."""
     failures = check_commit_agreement(
-        manifest_path=manifest_path,
-        licence_path=licence_path,
+        packs=vendored_packs(packs_dir),
         data_sources_path=data_sources_path,
         asset_packs_docs_path=asset_packs_docs_path,
-        snapshot_toml_paths=snapshot_toml_paths,
+        snapshot_toml_paths=snapshot_toml_files(snapshots_dir),
     )
     failures.extend(
         check_derived_measurements_agreement(
@@ -281,6 +394,15 @@ def check_pinned_source_commit(
 
 
 # --------------------------------------------------------------------------------------- helpers
+
+
+def _pack_row(markdown: str, pack_name: str) -> str | None:
+    """The first table row whose first cell is exactly `pack_name`, or `None`."""
+    for line in markdown.splitlines():
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if line.strip().startswith("|") and cells and cells[0] == pack_name:
+            return line
+    return None
 
 
 def _agree(path: Path, found: str | None, canonical: str, *, what: str) -> list[str]:

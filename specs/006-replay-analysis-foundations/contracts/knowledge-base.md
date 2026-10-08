@@ -7,7 +7,8 @@
 
 ```text
 packages/knowledge/
-├── packs/aoe2techtree/        vendored source files at one pinned commit + LICENCE.md
+├── packs/<name>/              one vendored pack per pinned revision: source files at one commit
+│                              + MANIFEST.json + LICENCE.md
 └── snapshots/<label>/         one directory per snapshot, written once — under a size budget
     ├── snapshot.toml          identity, validation record, civilisations modelled
     ├── rules.json             normalised entities — the queryable body
@@ -37,6 +38,15 @@ reads a local checkout of the source at a stated commit and writes the pack. A s
 normalises a pack into `rules.json`. Neither step touches the network; the script's header carries
 the same warning `scripts/ops/sync_map_thumbnails.py` does, and states that automating the download
 is the moment a provider becomes mandatory (FR-032).
+
+**Several packs, one per pinned revision; a newer one goes beside, never over.** A promoted snapshot
+is immutable (FR-025) and must stay re-derivable from the pack it was imported from, so a newer
+source revision is vendored in a new directory next to the existing ones and the older pack is never
+replaced. A snapshot finds the pack it was derived from by `source_version`, the `commit` that
+pack's `MANIFEST.json` pins, not by a directory name: the normaliser takes the pack's name as a
+required argument and the re-derivation test resolves it from each snapshot's `source_version`.
+`scripts/checks/pinned_source_commit.py` refuses a pack directory with no `MANIFEST.json`, two packs
+pinning one commit, and a pack no snapshot's `source_version` names.
 
 **The format check will reach the pack, and must not.** The workspace's `format:check` globs every
 JSON file under `packages/` and ignores only what `.gitignore` names — a `.prettierignore` is not
@@ -156,8 +166,8 @@ recording resolves.
 
 ## Licence gate (FR-031, FR-033)
 
-`packs/aoe2techtree/LICENCE.md` carries the five fields `scripts/checks/asset_packs.py` enforces,
-named exactly as it matches them: `Source`, `Licence`, `Permitted usage`, `Ruling`, `Checked`. The
+Each pack's `packs/<name>/LICENCE.md` (there are several, one per pinned revision) carries the five
+fields `scripts/checks/asset_packs.py` enforces, named exactly as it matches them: `Source`, `Licence`, `Permitted usage`, `Ruling`, `Checked`. The
 ruling leads with **COPY IN**, the one verdict besides READ ONLY the gate accepts once the change
 that adds the roots has taught it to refuse a third — today it tests for READ ONLY alone.
 

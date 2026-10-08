@@ -1634,6 +1634,80 @@ T671 and T672 ship together; T673 follows once T672 is deployed.
       match has no source to fall back on. The earliest affected recording is not measured; the
       earliest sampled is from 2026-09-27, and 0.1.22 shipped on 2026-09-22
 
+- [ ] T706 Unstick an analysis whose lease expired (filed 2026-10-08; decided by the user the same
+      day). Match 511523321's row stayed `running` from the 2026-10-05 crash until a manual
+      `POST`: `GET /api/matches/{game_id}` serves `running` without reading `lease_expires_at`,
+      the match page polls while `running` and never sends the `POST` that would re-claim it, so
+      003's "the next person to open the match takes it" was never implemented. The data model
+      already defines `running` as a lease held and unexpired. **Server**: serve a `running` row
+      whose lease has expired as `queued` in the `analysis` object. **Client**: on `queued`, the
+      match page sends `POST /api/analyze` once per page view, not on every poll. **Limit**: a
+      `POST` for a match whose analysis row exists in `queued` or `running` does not count
+      against the per-user daily limit (FR-040): it re-claims or joins, it starts nothing new;
+      every admission gate still applies. Tests, each red before: an expired-lease row is served
+      `queued`, a live one `running`; the page sends exactly one `POST` across several `queued`
+      polls and none while `running`; a re-claim or join leaves the counter unchanged while a
+      first request still increments it. Update `packages/design-system/specs/analysis-timeline.md`
+      §5 if it describes the polling, keeping that file's line count (its lines are cited)
+- [x] T707 Promote a knowledge snapshot for build 185872. Knowledge snapshots existed for build
+      180059 only (`packages/knowledge/snapshots/`). Delivered (amended 2026-10-08 after #126's
+      review): the snapshot is promoted from aoe2techtree commit 3bb43b1, a direct import
+      (research.md D3), vendored as a second pack beside the first; it models no civilisation, and
+      names resolve through `query.name` for build 185872. An analysis still shows identifiers:
+      putting names on the page is T709
+- [x] T708 Give `AnalysisTimeline`'s event lists a text colour. In
+      `packages/design-system/src/composites/AnalysisTimeline/index.tsx` only a resolved name
+      carries `text-text-primary`; the surrounding text, the times and an unresolved identifier
+      inherit no token, and in the dark theme they render dark on dark (seen in production on
+      match 511523321, 2026-10-08). Set the list's colour from a design-system token, check the
+      unresolved-identifier style against the contrast table, and record that no baseline can
+      move: Storybook's preview wraps every story in the primary ink, so the stories never showed
+      the defect (#126's visual job: 478 passed, none moved); the unit test is the guard (T710)
+- [ ] T709 Show names on the analysis page. Found closing T707 (2026-10-08): no stage maps an id to
+      a name for any build — the stored document carries ids only, and
+      `apps/web/src/features/analysis/mappers.ts` renders every technology, unit and building
+      unresolved under 003's FR-043a ("until such a table ships"). The knowledge snapshots are that
+      table. Resolve names from the snapshot the document's own identity names (never the nearest
+      one, FR-027), serve them beside the stored document from `GET
+      /api/matches/{game_id}/analysis` without changing the stored bytes or its digest, and render
+      them; an id the snapshot does not name stays unresolved as today. Tests: a build 185872 and
+      a build 180059 document each show Feudal Age, Castle Age and House; an id outside the
+      snapshot stays unresolved; the stored object is byte-identical before and after
+- [x] T707a Close #126's review (`reviewer` REJECT 2026-10-08 on T707). **Frozen prose first**:
+      `packages/knowledge/snapshots/aoe2techtree-185872/effects.toml`'s header is covered by the
+      digest and says the snapshot resolves the labels an analysis shows and a
+      civilisation-neutral baseline; neither holds (T709; every rule query refuses an unmodelled
+      civilisation). Reword it to what holds and recompute the digest (no analysis names this
+      snapshot yet), and the same false cause in `snapshot.toml`'s header and both new test
+      docstrings. **Validation record**: name the publisher's release date (2026-09-22) and the
+      commit's authored (2026-09-11) and committed dates in `checked_against`, and add to
+      `not_checked` that the data matching the released build was not verified and that no FR-030
+      value validation was done. **Re-derivation**: parametrise the re-derivation test over every
+      promoted snapshot the loader finds (the stub excepted), resolving its pack from
+      `source_version` through each `MANIFEST.json`, rather than a hand-kept list. **Pack checks**:
+      fail on a pack directory with no `MANIFEST.json`, on two packs pinning one commit, and on a
+      pack no snapshot's `source_version` names; correct the budget comment, which claims to
+      exclude a third copy it admits. **Docs**: `docs/data-sources.md` §6 says only what is true
+      today (names resolve through the query, not on the page; the six modelled civilisations as
+      T652m corrected them; 180059 is no longer the only fixtures' build), with the 2026-10-08
+      assessment date on the second pack's claims; amend `specs/006-replay-analysis-foundations/contracts/knowledge-base.md`'s on-disk
+      and licence-gate sections by hand: a newer revision goes beside, never over, and a pack is
+      found by `source_version`. `normalise_pack`'s pack name has no default. Plants, each red
+      before: a snapshot naming pack A's commit but derived from pack B; a pack directory without
+      a manifest; a duplicate pin; an orphan pack. Third review (2026-10-09): the digest-covered
+      header carried two clauses that turn false on deploy ("no published analysis names this
+      snapshot", "no page shows a name"); both are cut and the digest recomputed, the same claim is
+      dated in `snapshot.toml` and both test docstrings, and the contract says a snapshot finds its
+      pack by `source_version` rather than that every lookup does
+- [ ] T710 Make the visual tests able to see a missing text token. Found closing T708
+      (2026-10-08): `packages/design-system/.storybook/preview.tsx` wraps every story in
+      `text-text-primary`, so a component whose text carries no token of its own renders correctly
+      in every story and baseline, and wrong wherever the application does not supply that ink —
+      `AnalysisTimeline`'s lists did, on the match page, in production. Either stop the preview
+      supplying ink, so a story shows what the component itself declares, or add a check that
+      refuses text without a token; decide which, list every component the change exposes, and
+      say which baselines move
+
 ---
 
 ## Dependencies and execution order

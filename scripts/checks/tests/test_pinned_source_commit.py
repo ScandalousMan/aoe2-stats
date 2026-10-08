@@ -1,6 +1,7 @@
 """Tests for `scripts/checks/pinned_source_commit.py` (T652h), the gate born from a review finding
 that the aoe2techtree pinned commit — and the four measurements read from its own history — are
-copied by hand into seven files with nothing asserting they agree.
+copied by hand into seven files with nothing asserting they agree, extended by T707 to N vendored
+packs (a newer revision sits beside the first, each pinned by its own `MANIFEST.json`).
 
 Every fixture below is synthetic — a `tmp_path` tree this file builds and controls, mirroring the
 real `MANIFEST.json`, `LICENCE.md`, `docs/data-sources.md`, `docs/asset-packs.md` and the three
@@ -22,11 +23,15 @@ from scripts.checks.pinned_source_commit import (
     check_pinned_source_commit,
     manifest_commit,
     sha_in_backticks,
+    shas_in_backticks,
     snapshot_source_version,
+    vendored_packs,
 )
 
 _SHA = "b9d494df6921d4080df69b22f9dbb7a4d1dcd9f0"
 _OTHER_SHA = "1111111111111111111111111111111111111111"
+_SECOND_SHA = "3bb43b1439eef88dfe7fe892d7f7dc41ac9dd76f"
+_SECOND_PACK = "aoe2techtree-3bb43b1"
 
 
 def _write(path: Path, text: str) -> None:
@@ -49,18 +54,23 @@ def _data_sources_text(
     evidence_commit: str = "daf5fa18de",
     date: str = "2026-06-03",
     intervening_builds: tuple[int, ...] = (178524, 179158, 180059),
+    extra_shas: tuple[str, ...] = (_SECOND_SHA,),
 ) -> str:
     intervening = ", ".join(str(build_number) for build_number in intervening_builds)
     return (
         f"- **Version identifier**: the pinned commit `{commit}` (2026-06-21). The pinned "
         f'commit\'s own newest "Implement DE Update" commit is `{evidence_commit}` ({date}), '
         f"implementing build {build} — followed by builds {intervening}, none of which it "
-        "implements.\n"
+        "implements. Also pinned: " + ", ".join(f"`{sha}`" for sha in extra_shas) + ".\n"
     )
 
 
-def _asset_packs_text(commit: str = _SHA) -> str:
-    return f"| aoe2techtree | commit `{commit}` | MIT | ... |\n"
+def _asset_packs_text(commit: str = _SHA, second_commit: str = _SECOND_SHA) -> str:
+    return (
+        "| Pack | Source | Licence |\n| --- | --- | --- |\n"
+        f"| aoe2techtree | commit `{commit}` | MIT | ... |\n"
+        f"| {_SECOND_PACK} | commit `{second_commit}` | MIT | ... |\n"
+    )
 
 
 def _snapshot_toml_text(*, source_version: str = _SHA, with_carry_forward: bool = False) -> str:
@@ -91,24 +101,31 @@ def _write_full_tree(
     *,
     manifest_commit_value: str = _SHA,
     licence_commit_value: str = _SHA,
+    second_manifest_commit_value: str = _SECOND_SHA,
+    second_licence_commit_value: str = _SECOND_SHA,
     data_sources_kwargs: dict[str, object] | None = None,
     asset_packs_commit_value: str = _SHA,
+    asset_packs_second_commit_value: str = _SECOND_SHA,
     snapshot_source_versions: dict[str, str] | None = None,
     canonical_has_carry_forward: bool = True,
 ) -> dict[str, Path]:
-    manifest_path = tmp_path / "MANIFEST.json"
-    licence_path = tmp_path / "LICENCE.md"
+    packs_dir = tmp_path / "packs"
+    snapshots_dir = tmp_path / "snapshots"
     data_sources_path = tmp_path / "data-sources.md"
     asset_packs_docs_path = tmp_path / "asset-packs.md"
-    canonical_snapshot_path = tmp_path / "aoe2techtree-180059" / "snapshot.toml"
-    sibling_snapshot_path = tmp_path / "aoe2techtree-177723-test" / "snapshot.toml"
-    stub_snapshot_path = tmp_path / "aoe2techtree-test-stub" / "snapshot.toml"
+
+    _write(packs_dir / "aoe2techtree" / "MANIFEST.json", _manifest_text(manifest_commit_value))
+    _write(packs_dir / "aoe2techtree" / "LICENCE.md", _licence_text(licence_commit_value))
+    _write(packs_dir / _SECOND_PACK / "MANIFEST.json", _manifest_text(second_manifest_commit_value))
+    _write(packs_dir / _SECOND_PACK / "LICENCE.md", _licence_text(second_licence_commit_value))
+    _write(data_sources_path, _data_sources_text(**(data_sources_kwargs or {})))
+    _write(
+        asset_packs_docs_path,
+        _asset_packs_text(asset_packs_commit_value, asset_packs_second_commit_value),
+    )
 
     versions = snapshot_source_versions or {}
-    _write(manifest_path, _manifest_text(manifest_commit_value))
-    _write(licence_path, _licence_text(licence_commit_value))
-    _write(data_sources_path, _data_sources_text(**(data_sources_kwargs or {})))
-    _write(asset_packs_docs_path, _asset_packs_text(asset_packs_commit_value))
+    canonical_snapshot_path = snapshots_dir / "aoe2techtree-180059" / "snapshot.toml"
     _write(
         canonical_snapshot_path,
         _snapshot_toml_text(
@@ -117,22 +134,44 @@ def _write_full_tree(
         ),
     )
     _write(
-        sibling_snapshot_path,
+        snapshots_dir / "aoe2techtree-177723-test" / "snapshot.toml",
         _snapshot_toml_text(source_version=versions.get("sibling", _SHA)),
     )
     _write(
-        stub_snapshot_path,
+        snapshots_dir / "aoe2techtree-185872" / "snapshot.toml",
+        _snapshot_toml_text(source_version=versions.get("second", _SECOND_SHA)),
+    )
+    _write(
+        snapshots_dir / "aoe2techtree-test-stub" / "snapshot.toml",
         _snapshot_toml_text(source_version=versions.get("stub", _SHA)),
     )
 
     return {
-        "manifest_path": manifest_path,
-        "licence_path": licence_path,
+        "packs_dir": packs_dir,
+        "snapshots_dir": snapshots_dir,
         "data_sources_path": data_sources_path,
         "asset_packs_docs_path": asset_packs_docs_path,
-        "snapshot_toml_paths": (canonical_snapshot_path, sibling_snapshot_path, stub_snapshot_path),
         "canonical_snapshot_path": canonical_snapshot_path,
     }
+
+
+def _check(paths: dict[str, Path]) -> list[str]:
+    return check_pinned_source_commit(
+        packs_dir=paths["packs_dir"],
+        data_sources_path=paths["data_sources_path"],
+        asset_packs_docs_path=paths["asset_packs_docs_path"],
+        snapshots_dir=paths["snapshots_dir"],
+        canonical_snapshot_path=paths["canonical_snapshot_path"],
+    )
+
+
+def _agreement(paths: dict[str, Path]) -> list[str]:
+    return check_commit_agreement(
+        packs=vendored_packs(paths["packs_dir"]),
+        data_sources_path=paths["data_sources_path"],
+        asset_packs_docs_path=paths["asset_packs_docs_path"],
+        snapshot_toml_paths=tuple(sorted(paths["snapshots_dir"].glob("*/snapshot.toml"))),
+    )
 
 
 # --------------------------------------------------------------------------------- unit-level
@@ -186,22 +225,100 @@ def test_canonical_derived_measurements_is_none_without_a_carry_forward_table(
 
 
 def test_check_pinned_source_commit_is_clean_when_everything_agrees(tmp_path: Path) -> None:
-    """The passing case: every file states the same sha, and docs/data-sources.md restates the
-    same four derived measurements the canonical snapshot's [validation.carry_forward] records."""
-    paths = _write_full_tree(tmp_path)
+    """The passing case: two packs, each file states its own pack's sha, every snapshot's
+    source_version names a vendored pack, and docs/data-sources.md restates the same four derived
+    measurements the canonical snapshot's [validation.carry_forward] records."""
+    assert _check(_write_full_tree(tmp_path)) == []
 
-    failures = check_pinned_source_commit(
-        manifest_path=paths["manifest_path"],
-        licence_path=paths["licence_path"],
-        data_sources_path=paths["data_sources_path"],
-        asset_packs_docs_path=paths["asset_packs_docs_path"],
-        snapshot_toml_paths=paths["snapshot_toml_paths"],
-        canonical_snapshot_path=paths["canonical_snapshot_path"],
-    )
-    assert failures == []
+
+def test_shas_in_backticks_reads_every_forty_hex_run() -> None:
+    assert shas_in_backticks(f"`{_SHA}` and `{_SECOND_SHA}` and `abc`") == [_SHA, _SECOND_SHA]
+
+
+def test_vendored_packs_lists_every_directory_manifest_or_not(tmp_path: Path) -> None:
+    """A directory without a `MANIFEST.json` is listed, flagged, not skipped: skipping it is how a
+    pack escapes every check below (T707a)."""
+    paths = _write_full_tree(tmp_path)
+    _write(paths["packs_dir"] / "not-a-pack" / "README.md", "no manifest")
+
+    packs = vendored_packs(paths["packs_dir"])
+
+    assert [(pack.name, pack.commit, pack.has_manifest) for pack in packs] == [
+        ("aoe2techtree", _SHA, True),
+        (_SECOND_PACK, _SECOND_SHA, True),
+        ("not-a-pack", None, False),
+    ]
 
 
 # ----------------------------------------------------------------------------- disagreeing cases
+
+
+def test_check_commit_agreement_refuses_a_snapshot_whose_source_version_names_no_vendored_pack(
+    tmp_path: Path,
+) -> None:
+    """T707: a snapshot imported from a revision no pack in the repository holds cannot be
+    re-derived from anything, so it is refused - the failure names the snapshot and the commit."""
+    paths = _write_full_tree(tmp_path, snapshot_source_versions={"second": _OTHER_SHA})
+
+    failures = _agreement(paths)
+
+    # Two faults, one cause: the snapshot names no pack, and the pack it used to name is now an
+    # orphan.
+    assert len(failures) == 2
+    assert "aoe2techtree-185872" in failures[0]
+    assert _OTHER_SHA in failures[0]
+    assert "names no vendored pack" in failures[0]
+    assert _SECOND_PACK in failures[1]
+    assert "orphan" in failures[1]
+
+
+def test_check_commit_agreement_refuses_a_pack_directory_without_a_manifest(
+    tmp_path: Path,
+) -> None:
+    """T707a plant: a directory under `packs/` with no `MANIFEST.json` was skipped, so a pack
+    nothing pinned or verified could sit there unseen."""
+    paths = _write_full_tree(tmp_path)
+    _write(paths["packs_dir"] / "stray-pack" / "data.json", "{}")
+
+    failures = _agreement(paths)
+
+    assert len(failures) == 1
+    assert "stray-pack" in failures[0]
+    assert "no MANIFEST.json" in failures[0]
+
+
+def test_check_commit_agreement_refuses_two_packs_pinning_one_commit(tmp_path: Path) -> None:
+    """T707a plant: the second pack's manifest copies the first's commit. A pack is found by its
+    commit, so two packs pinning one is ambiguous - and the dictionary the check keeps used to
+    overwrite the first silently."""
+    paths = _write_full_tree(tmp_path, second_manifest_commit_value=_SHA)
+
+    failures = _agreement(paths)
+
+    assert any(
+        "aoe2techtree" in failure and _SECOND_PACK in failure and "both pin" in failure
+        for failure in failures
+    ), failures
+
+
+def test_check_commit_agreement_refuses_a_pack_no_snapshot_names(tmp_path: Path) -> None:
+    """T707a plant: a pack whose commit no snapshot's `source_version` carries is derived from by
+    nothing, yet vendored (and budgeted) all the same."""
+    paths = _write_full_tree(tmp_path, snapshot_source_versions={"second": _SHA})
+
+    failures = _agreement(paths)
+
+    assert len(failures) == 1
+    assert _SECOND_PACK in failures[0]
+    assert _SECOND_SHA in failures[0]
+    assert "orphan" in failures[0]
+
+
+def test_a_snapshot_may_name_either_vendored_pack(tmp_path: Path) -> None:
+    paths = _write_full_tree(
+        tmp_path, snapshot_source_versions={"sibling": _SECOND_SHA, "second": _SHA}
+    )
+    assert _agreement(paths) == []
 
 
 def test_check_commit_agreement_catches_a_disagreeing_licence(tmp_path: Path) -> None:
@@ -209,38 +326,89 @@ def test_check_commit_agreement_catches_a_disagreeing_licence(tmp_path: Path) ->
     MANIFEST.json's own value, and the failure names that one file."""
     paths = _write_full_tree(tmp_path, licence_commit_value=_OTHER_SHA)
 
-    failures = check_commit_agreement(
-        manifest_path=paths["manifest_path"],
-        licence_path=paths["licence_path"],
-        data_sources_path=paths["data_sources_path"],
-        asset_packs_docs_path=paths["asset_packs_docs_path"],
-        snapshot_toml_paths=paths["snapshot_toml_paths"],
-    )
+    failures = _agreement(paths)
+
     assert len(failures) == 1
-    assert "LICENCE.md" in failures[0]
+    assert "aoe2techtree/LICENCE.md" in failures[0]
     assert _OTHER_SHA in failures[0]
     assert _SHA in failures[0]
 
 
+def test_check_commit_agreement_catches_the_second_packs_disagreeing_licence(
+    tmp_path: Path,
+) -> None:
+    paths = _write_full_tree(tmp_path, second_licence_commit_value=_SHA)
+
+    failures = _agreement(paths)
+
+    assert len(failures) == 1
+    assert f"{_SECOND_PACK}/LICENCE.md" in failures[0]
+
+
+def test_check_commit_agreement_catches_a_disagreeing_asset_packs_row(tmp_path: Path) -> None:
+    """Each pack's own row is held to its own commit: the second pack's row carrying the first
+    pack's sha (a copy-paste) is caught even though that sha appears elsewhere in the file."""
+    paths = _write_full_tree(tmp_path, asset_packs_second_commit_value=_SHA)
+
+    failures = _agreement(paths)
+
+    assert len(failures) == 1
+    assert "asset-packs.md" in failures[0]
+    assert _SECOND_PACK in failures[0]
+
+
+def test_check_commit_agreement_catches_a_pack_with_no_asset_packs_row(tmp_path: Path) -> None:
+    paths = _write_full_tree(tmp_path)
+    text = paths["asset_packs_docs_path"].read_text(encoding="utf-8")
+    paths["asset_packs_docs_path"].write_text(
+        "\n".join(line for line in text.splitlines() if _SECOND_PACK not in line) + "\n",
+        encoding="utf-8",
+    )
+
+    failures = _agreement(paths)
+
+    assert len(failures) == 1
+    assert _SECOND_PACK in failures[0]
+
+
+def test_check_commit_agreement_catches_a_pack_data_sources_does_not_state(
+    tmp_path: Path,
+) -> None:
+    paths = _write_full_tree(tmp_path, data_sources_kwargs={"extra_shas": ()})
+
+    failures = _agreement(paths)
+
+    assert len(failures) == 1
+    assert "data-sources.md" in failures[0]
+    assert _SECOND_SHA in failures[0]
+
+
+def test_check_commit_agreement_catches_a_stale_sha_in_data_sources(tmp_path: Path) -> None:
+    paths = _write_full_tree(
+        tmp_path, data_sources_kwargs={"extra_shas": (_SECOND_SHA, _OTHER_SHA)}
+    )
+
+    failures = _agreement(paths)
+
+    assert len(failures) == 1
+    assert _OTHER_SHA in failures[0]
+    assert "no vendored pack pins" in failures[0]
+
+
 def test_check_commit_agreement_catches_a_disagreeing_snapshot(tmp_path: Path) -> None:
-    """A snapshot's own `[snapshot].source_version` disagreeing is caught individually — the
-    sibling and stub snapshots stay clean, matching `asset_packs.py`'s convention of one failure
-    per disagreeing thing, not one failure once anything anywhere disagrees."""
+    """A snapshot's own `[snapshot].source_version` disagreeing is caught individually - the
+    others stay clean, matching `asset_packs.py`'s convention of one failure per disagreeing
+    thing, not one failure once anything anywhere disagrees."""
     paths = _write_full_tree(tmp_path, snapshot_source_versions={"sibling": _OTHER_SHA})
 
-    failures = check_commit_agreement(
-        manifest_path=paths["manifest_path"],
-        licence_path=paths["licence_path"],
-        data_sources_path=paths["data_sources_path"],
-        asset_packs_docs_path=paths["asset_packs_docs_path"],
-        snapshot_toml_paths=paths["snapshot_toml_paths"],
-    )
+    failures = _agreement(paths)
+
     assert len(failures) == 1
     assert "aoe2techtree-177723-test" in failures[0]
 
 
 def test_check_commit_agreement_catches_every_disagreeing_file_at_once(tmp_path: Path) -> None:
-    """Two independently disagreeing files produce two failures, not one — the check does not stop
+    """Two independently disagreeing files produce two failures, not one - the check does not stop
     at the first mismatch it finds."""
     paths = _write_full_tree(
         tmp_path,
@@ -248,17 +416,32 @@ def test_check_commit_agreement_catches_every_disagreeing_file_at_once(tmp_path:
         asset_packs_commit_value=_OTHER_SHA,
     )
 
-    failures = check_commit_agreement(
-        manifest_path=paths["manifest_path"],
-        licence_path=paths["licence_path"],
-        data_sources_path=paths["data_sources_path"],
-        asset_packs_docs_path=paths["asset_packs_docs_path"],
-        snapshot_toml_paths=paths["snapshot_toml_paths"],
-    )
+    failures = _agreement(paths)
+
     assert len(failures) == 2
     joined = "\n".join(failures)
     assert "LICENCE.md" in joined
     assert "asset-packs.md" in joined
+
+
+def test_check_commit_agreement_reports_an_unreadable_manifest(tmp_path: Path) -> None:
+    paths = _write_full_tree(tmp_path)
+    (paths["packs_dir"] / _SECOND_PACK / "MANIFEST.json").write_text("{not json", encoding="utf-8")
+
+    failures = _agreement(paths)
+
+    assert any(f"{_SECOND_PACK}/MANIFEST.json" in failure for failure in failures)
+
+
+def test_check_commit_agreement_reports_no_vendored_pack_at_all(tmp_path: Path) -> None:
+    failures = check_commit_agreement(
+        packs=vendored_packs(tmp_path / "absent"),
+        data_sources_path=tmp_path / "ds.md",
+        asset_packs_docs_path=tmp_path / "ap.md",
+        snapshot_toml_paths=(),
+    )
+    assert len(failures) == 1
+    assert "no vendored pack" in failures[0]
 
 
 def test_check_derived_measurements_agreement_catches_a_stale_build_number(tmp_path: Path) -> None:

@@ -1,0 +1,20 @@
+# Source disagreements (FR-028).
+#
+# This normaliser checks the one place the vendored pack itself carries two readings of the same
+# civilisation-neutral fact: a technology id named by both the base Tech table and the
+# unit_upgrades table (ids 34 and 35 in this pack revision, "War Galley" and its neighbour) is
+# compared field by field. Both agree completely in this revision, so there is nothing to record
+# here — "checked, found consistent", not "not checked".
+#
+# Per-civilisation tree files are a different kind of reading and are deliberately not compared
+# here: where they disagree (e.g. Burgundians' and Armenians' well-attested early-technology
+# bonuses showing up as a lone civilisation's tree naming an earlier age than every other
+# civilisation's tree for the same technology), that is genuine civilisation-specific game data —
+# exactly what a hand-transcribed effect (T644) exists to model — not an error in the pack. Filing
+# it here would misfile a bonus as a data defect. rules.json takes the cross-civilisation majority
+# as its civilisation-neutral baseline instead, silently.
+#
+# The writer that would populate this file (aoe2stats_knowledge.normalise.disagreements_toml_text)
+# is exercised against a synthetic, injected conflict in
+# packages/knowledge/tests/test_normalise.py, so the mechanism is proven working even though
+# nothing in this one vendored source currently trips it.
