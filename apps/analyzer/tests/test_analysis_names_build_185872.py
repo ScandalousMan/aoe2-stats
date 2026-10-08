@@ -4,9 +4,9 @@ resolves the identifiers the document carries.
 Match 511523321 (game build 185872, `tests/fixtures/replays/README.md`) was analysed in production
 on 2026-10-08 with only a build 180059 snapshot installed, so the analysis named no knowledge
 snapshot. Built here from the committed recording and the real adapter, exactly as
-`test_document_build.py` does for the first recording. The stored document still carries
-identifiers only and the page still shows them (T709): this file proves the snapshot can name them,
-not that anything does.
+`test_document_build.py` does for the first recording. As of 2026-10-08 the stored document carried
+identifiers only and the page showed them (T709): this file proves the snapshot can name them, not
+that anything does.
 """
 
 from __future__ import annotations

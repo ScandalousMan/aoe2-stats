@@ -42,8 +42,8 @@ is the moment a provider becomes mandatory (FR-032).
 **Several packs, one per pinned revision; a newer one goes beside, never over.** A promoted snapshot
 is immutable (FR-025) and must stay re-derivable from the pack it was imported from, so a newer
 source revision is vendored in a new directory next to the existing ones and the older pack is never
-replaced. A pack is found by `source_version`, the `commit` its `MANIFEST.json` pins, and never by
-its directory name, which is a label as a snapshot's is: the normaliser takes the pack's name as a
+replaced. A snapshot finds the pack it was derived from by `source_version`, the `commit` that
+pack's `MANIFEST.json` pins, not by a directory name: the normaliser takes the pack's name as a
 required argument and the re-derivation test resolves it from each snapshot's `source_version`.
 `scripts/checks/pinned_source_commit.py` refuses a pack directory with no `MANIFEST.json`, two packs
 pinning one commit, and a pack no snapshot's `source_version` names.

@@ -1694,7 +1694,11 @@ T671 and T672 ship together; T673 follows once T672 is deployed.
       and licence-gate sections by hand: a newer revision goes beside, never over, and a pack is
       found by `source_version`. `normalise_pack`'s pack name has no default. Plants, each red
       before: a snapshot naming pack A's commit but derived from pack B; a pack directory without
-      a manifest; a duplicate pin; an orphan pack
+      a manifest; a duplicate pin; an orphan pack. Third review (2026-10-09): the digest-covered
+      header carried two clauses that turn false on deploy ("no published analysis names this
+      snapshot", "no page shows a name"); both are cut and the digest recomputed, the same claim is
+      dated in `snapshot.toml` and both test docstrings, and the contract says a snapshot finds its
+      pack by `source_version` rather than that every lookup does
 - [ ] T710 Make the visual tests able to see a missing text token. Found closing T708
       (2026-10-08): `packages/design-system/.storybook/preview.tsx` wraps every story in
       `text-text-primary`, so a component whose text carries no token of its own renders correctly

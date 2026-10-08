@@ -1,8 +1,8 @@
 # The knowledge snapshot for game build 185872 (T707). `query.name` resolves Feudal Age, Castle Age,
 # House and the rest against it, where before it a build 185872 recording's identifiers had no
-# snapshot to resolve against. No analysis page shows a name for any build yet (T709): the
-# analysis of match 511523321 showed `Technology ID 101` / `Building ID 70` before this snapshot
-# and still does, and no published analysis names this snapshot.
+# snapshot to resolve against. As of 2026-10-08, before this snapshot was deployed, no analysis
+# page showed a name for any build (T709): the analysis of match 511523321 showed
+# `Technology ID 101` / `Building ID 70`.
 #
 # **This is a direct import (research.md D3), not a carry-forward (D4).** Unlike
 # `aoe2techtree-180059`, the source has a revision for this build: `SiegeEngineers/aoe2techtree`
@@ -20,7 +20,7 @@
 source = "aoe2techtree"
 source_version = "3bb43b1439eef88dfe7fe892d7f7dc41ac9dd76f"
 describes_build = 185872
-digest = "sha256:5711236e73d189c38d5bdc1e8a6234ca24750e05a19806dcf0d0f55fa188d8e6"
+digest = "sha256:e4954ca238a515907915eb21cdb36f20af2f98c1bc038359789512e2dc00d9f0"
 promoted = true
 civilisations_modelled = []
 

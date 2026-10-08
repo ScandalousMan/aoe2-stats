@@ -5,7 +5,7 @@ the analysis named no knowledge snapshot because only build 180059 had a promote
 `snapshot_for(185872)` answered a `no-snapshot-for-build` gap. This file is what stays true once
 `aoe2techtree-185872` exists: `query.name` resolves, from the snapshot imported from the pack
 revision whose commit names the build, and nothing the snapshot does not model is invented for it.
-It does not say an analysis shows those names: none does, for any build (T709).
+It does not say an analysis shows those names: as of 2026-10-08 none did, for any build (T709).
 """
 
 from __future__ import annotations
