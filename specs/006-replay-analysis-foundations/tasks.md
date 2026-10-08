@@ -1726,6 +1726,18 @@ T671 and T672 ship together; T673 follows once T672 is deployed.
       "over-counts, never under-counts" and "bounded" to what holds (a takeover re-fetches; the
       narrow overlap of a live run publishing before an uncounted request can recompute), and
       make the uncounted-path admission test exercise all three gates or name the one it proves
+- [ ] T706b Close #127's second review (`reviewer` REJECT 2026-10-09 on T706a; every earlier
+      finding closed). **Honest copy for an exhausted row**: a row the attempts bound ends `failed`
+      is shown "The recorded game could not be parsed", which is false when the attempts were spent
+      on source throttles or outages that never fetched it. Give `AttemptsExhausted` its own copy in
+      `AnalysisTimeline`'s failed state, keyed on the error class, that claims no parse; keep
+      `packages/design-system/specs/analysis-timeline.md`'s line count (its lines are cited); correct
+      `apps/api/src/aoe2stats_api/routers/matches.py`'s failed-reason docstring, which says a
+      `failed` row carries the recording's own parse failure. Test that the exhausted copy shows and
+      the parse sentence does not. **Polling after a refused takeover**: the page stops polling
+      whenever a takeover was refused, whatever the state; stop only while the state is `queued`, so
+      a row another viewer takes over (`running`) is polled again, and correct the comment that says
+      the row stays `queued`. Test: refusal, then `running`, then polling resumes
 
 ---
 
