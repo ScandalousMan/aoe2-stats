@@ -1649,12 +1649,13 @@ T671 and T672 ship together; T673 follows once T672 is deployed.
       polls and none while `running`; a re-claim or join leaves the counter unchanged while a
       first request still increments it. Update `packages/design-system/specs/analysis-timeline.md`
       §5 if it describes the polling, keeping that file's line count (its lines are cited)
-- [x] T707 Name what a build 185872 analysis shows. Knowledge snapshots exist for build 180059 only
-      (`packages/knowledge/snapshots/`), so an analysis of a build 185872 recording resolves no
-      name and shows identifiers (`Technology ID 101`, `Building ID 70`). Promote a snapshot for
-      build 185872 from the same source and by the same procedure as the 180059 one, with its
-      provenance, and test that a build 185872 analysis resolves the age-up and building names
-- [x] T708 Give `AnalysisTimeline`'s event lists a text colour. In
+- [x] T707 Promote a knowledge snapshot for build 185872. Knowledge snapshots existed for build
+      180059 only (`packages/knowledge/snapshots/`). Delivered (amended 2026-10-08 after #126's
+      review): the snapshot is promoted from aoe2techtree commit 3bb43b1, a direct import
+      (research.md D3), vendored as a second pack beside the first; it models no civilisation, and
+      names resolve through `query.name` for build 185872. An analysis still shows identifiers:
+      putting names on the page is T709
+- [ ] T708 Give `AnalysisTimeline`'s event lists a text colour. In
       `packages/design-system/src/composites/AnalysisTimeline/index.tsx` only a resolved name
       carries `text-text-primary`; the surrounding text, the times and an unresolved identifier
       inherit no token, and in the dark theme they render dark on dark (seen in production on
@@ -1671,6 +1672,28 @@ T671 and T672 ship together; T673 follows once T672 is deployed.
       them; an id the snapshot does not name stays unresolved as today. Tests: a build 185872 and
       a build 180059 document each show Feudal Age, Castle Age and House; an id outside the
       snapshot stays unresolved; the stored object is byte-identical before and after
+- [ ] T707a Close #126's review (`reviewer` REJECT 2026-10-08 on T707). **Frozen prose first**:
+      `packages/knowledge/snapshots/aoe2techtree-185872/effects.toml`'s header is covered by the
+      digest and says the snapshot resolves the labels an analysis shows and a
+      civilisation-neutral baseline; neither holds (T709; every rule query refuses an unmodelled
+      civilisation). Reword it to what holds and recompute the digest (no analysis names this
+      snapshot yet), and the same false cause in `snapshot.toml`'s header and both new test
+      docstrings. **Validation record**: name the publisher's release date (2026-09-22) and the
+      commit's authored (2026-09-11) and committed dates in `checked_against`, and add to
+      `not_checked` that the data matching the released build was not verified and that no FR-030
+      value validation was done. **Re-derivation**: parametrise the re-derivation test over every
+      promoted snapshot the loader finds (the stub excepted), resolving its pack from
+      `source_version` through each `MANIFEST.json`, rather than a hand-kept list. **Pack checks**:
+      fail on a pack directory with no `MANIFEST.json`, on two packs pinning one commit, and on a
+      pack no snapshot's `source_version` names; correct the budget comment, which claims to
+      exclude a third copy it admits. **Docs**: `docs/data-sources.md` §6 says only what is true
+      today (names resolve through the query, not on the page; the six modelled civilisations as
+      T652m corrected them; 180059 is no longer the only fixtures' build), with the 2026-10-08
+      assessment date on the second pack's claims; amend `specs/006-replay-analysis-foundations/contracts/knowledge-base.md`'s on-disk
+      and licence-gate sections by hand: a newer revision goes beside, never over, and a pack is
+      found by `source_version`. `normalise_pack`'s pack name has no default. Plants, each red
+      before: a snapshot naming pack A's commit but derived from pack B; a pack directory without
+      a manifest; a duplicate pin; an orphan pack
 
 ---
 
