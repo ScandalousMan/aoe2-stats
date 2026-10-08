@@ -110,7 +110,7 @@ from aoe2stats_providers.base import (
     RawProfile,
 )
 from aoe2stats_providers.companion.provider import CompanionEnrichmentProvider
-from aoe2stats_providers.relic.matches import RelicMatchHistoryProvider
+from aoe2stats_providers.relic.matches import RecentHistory, RelicMatchHistoryProvider
 from aoe2stats_providers.relic.profile import RelicProfileProvider
 from aoe2stats_providers.wiring import (
     CircuitBreaker,
@@ -200,10 +200,12 @@ class _IdentityFetch:
     avatar_results: list[PlayerSearchResult]
 
 
-async def _fetch_third_party_history(db_session: AsyncSession, profile_id: int) -> list[RawMatch]:
+async def _fetch_third_party_history(db_session: AsyncSession, profile_id: int) -> RecentHistory:
     """FR-007/FR-011, "read from the source on demand" (`spec.md`'s own Assumptions): fetch
-    `profile_id`'s recent matches live from Relic. **Fetch only (T459)** — persistence happens
-    once, for history and identity together, in `_persist_on_view_refresh`, through
+    `profile_id`'s recent matches live from Relic, together with the identity block that rides the
+    same response, in one `getRecentMatchHistory` request (T459c,
+    `RelicMatchHistoryProvider.recent_matches_and_profiles`). **Fetch only (T459)** — persistence
+    happens once, for history and identity together, in `_persist_on_view_refresh`, through
     `discover.persist_matches_and_profiles` (the path `aoe2stats_ingester.discover.DiscoverStage`
     uses for a consenting user's own history, which also enforces the one global lock order every
     writer of `aoe_profiles` follows). Not a whole `DiscoverStage`, which also refreshes ratings
@@ -211,7 +213,8 @@ async def _fetch_third_party_history(db_session: AsyncSession, profile_id: int) 
     route may do: FR-012 forbids beginning capture for a third party at all.
 
     A source outage does not fail the request: any failure of this fetch is swallowed, an empty
-    list comes back, and the route falls back to whatever this service already knows about
+    `RecentHistory` comes back (no matches and no identity block, since one request carried both),
+    and the route falls back to whatever this service already knows about
     `profile_id`, the same honesty discipline `search.py` already applies for FR-004d. Deliberately
     broader than `ProviderError` alone: this call is the one place in the codebase where a live
     Relic fetch is *optional* — every other caller of `RelicMatchHistoryProvider`/
@@ -223,11 +226,11 @@ async def _fetch_third_party_history(db_session: AsyncSession, profile_id: int) 
     """
     provider = _build_match_history_provider(db_session)
     try:
-        return await provider.recent_matches([profile_id])
+        return await provider.recent_matches_and_profiles([profile_id])
     except Exception:
         # See the docstring above: broader than `ProviderError` on purpose, because this fetch is
         # optional and its failure, however it is shaped, must never turn into a failed read.
-        return []
+        return RecentHistory(matches=[], profiles=[])
 
 
 async def _fetch_profile_ratings(
@@ -265,7 +268,12 @@ async def _fetch_profile_ratings(
         return []
 
 
-async def _fetch_profile_identity(db_session: AsyncSession, profile_id: int) -> _IdentityFetch:
+async def _fetch_profile_identity(
+    db_session: AsyncSession,
+    profile_id: int,
+    *,
+    identity_block: list[RawProfile] | None = None,
+) -> _IdentityFetch:
     """T453/T454, FR-017/FR-018: the shared on-view identity fetch both `GET /api/players/
     {profile_id}` (the summary route, which makes no other provider call) and `GET /api/players/
     {profile_id}/matches` trigger, alongside `_fetch_third_party_history` above. **Fetch only
@@ -275,7 +283,9 @@ async def _fetch_profile_identity(db_session: AsyncSession, profile_id: int) -> 
     Three independent, separately-degrading steps:
 
     1. **Alias/country**, from Relic's `getRecentMatchHistory` identity block (T451's own
-       `RelicMatchHistoryProvider.recent_profiles`). Persisted through
+       `RelicMatchHistoryProvider.recent_profiles`), or from `identity_block` when the caller
+       already holds that block from the response it fetched history from (T459c) — then this
+       step makes no request. Persisted through
        `discover.persist_matches_and_profiles` — every profile the block covers, not only
        `profile_id` — since an opponent's real name rides the same response for free, without a
        call of its own (T453's task text).
@@ -301,13 +311,17 @@ async def _fetch_profile_identity(db_session: AsyncSession, profile_id: int) -> 
     Reads public identity and standing only: no `replay_captures` row, no capture enqueue, for any
     profile either source covers (FR-012 unchanged).
     """
-    relic_provider = _build_match_history_provider(db_session)
-    try:
-        raw_profiles = list(await relic_provider.recent_profiles([profile_id]))
-    except Exception:
-        # See the docstring above: this fetch is optional, and its failure — however it is
-        # shaped — must never turn into a failed view.
-        raw_profiles = []
+    raw_profiles: list[RawProfile]
+    if identity_block is not None:
+        raw_profiles = identity_block
+    else:
+        relic_provider = _build_match_history_provider(db_session)
+        try:
+            raw_profiles = list(await relic_provider.recent_profiles([profile_id]))
+        except Exception:
+            # See the docstring above: this fetch is optional, and its failure — however it is
+            # shaped — must never turn into a failed view.
+            raw_profiles = []
 
     subject_alias: str | None = None
     for raw_profile in raw_profiles:
@@ -744,7 +758,10 @@ async def get_player_match_history(
     above — the identity refresh this route already shares with `GET /api/players/{profile_id}`
     (see that function's own docstring) — so a match history read through this route also carries
     a chance to learn the subject's own real alias/country/avatar hash, and every opponent
-    Relic's response names along the way, not only the matches themselves.
+    Relic's response names along the way, not only the matches themselves. **T459c:** the
+    identity block is read from the response `_fetch_third_party_history` already fetched, so this
+    route makes one `getRecentMatchHistory` request, not two; when that request fails, both the
+    matches and the identity block are unavailable and the route answers from storage.
 
     **Colour enrichment (T450, FR-003; reordered by T459a).** `fetch_colour_fills`
     (`routers/matches.py`, imported above) is called here once, batched over the stored page's
@@ -788,8 +805,11 @@ async def get_player_match_history(
     # T459 / T459a: every network call first (history, identity, companion's colours), then one
     # persist of the union — never history persisted, then identity, then colours, which would
     # write the same rows several times in several orders and hold their locks across a call.
-    raw_matches = await _fetch_third_party_history(db_session, profile_id)
-    identity = await _fetch_profile_identity(db_session, profile_id)
+    history = await _fetch_third_party_history(db_session, profile_id)
+    raw_matches = history.matches
+    identity = await _fetch_profile_identity(
+        db_session, profile_id, identity_block=history.profiles
+    )
     # T450 / T409: batched over every candidate game id at once, never one call per match; this
     # route's own `profile_id` is companion's required query parameter.
     candidates = _matches_that_can_be_served(raw_matches, stored_page, limit)

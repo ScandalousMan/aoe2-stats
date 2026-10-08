@@ -193,6 +193,15 @@ class Settings(BaseSettings):
         alias="ANALYSIS_RECOMPUTE_RETRY_SECONDS", gt=0, le=86_400
     )
 
+    # --- Request unit of work ---------------------------------------------------------------------
+    # T459b: how long a request's transaction may sit idle before the database terminates it and
+    # releases its row locks - see .env.example for the value and why it is above the platform's
+    # function limit. `gt=0` because Postgres reads 0 as "never terminate", which would turn the
+    # bound off without a word; `le=3600` so a stray extra digit cannot quietly make it an hour.
+    request_idle_in_transaction_timeout_seconds: int = Field(
+        alias="REQUEST_IDLE_IN_TRANSACTION_TIMEOUT_SECONDS", gt=0, le=3_600
+    )
+
 
 class ConfigurationError(Exception):
     """`Settings` could not be built from the environment: the key names it could not resolve,

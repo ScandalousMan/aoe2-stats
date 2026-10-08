@@ -47,6 +47,7 @@ REQUIRED_ENV: dict[str, str] = {
     "ANALYSIS_LEASE_SECONDS": "300",
     "ANALYSIS_MAX_RAW_BYTES": "25165824",
     "ANALYSIS_RECOMPUTE_RETRY_SECONDS": "3600",
+    "REQUEST_IDLE_IN_TRANSACTION_TIMEOUT_SECONDS": "15",
 }
 
 
@@ -333,3 +334,45 @@ def test_an_unset_recompute_retry_window_is_a_startup_error_like_every_other_key
         get_settings()
 
     assert raised.value.keys == ["ANALYSIS_RECOMPUTE_RETRY_SECONDS"]
+
+
+# --- T459b: the request idle-in-transaction bound is configuration, validated at startup ----------
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "3601", "fifteen", "1.5", ""])
+def test_request_idle_timeout_outside_its_bounds_is_rejected_naming_the_key(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    """Zero is Postgres's "never terminate", which would silently remove the bound the key exists
+    to set; past an hour is a typo, not a bound."""
+    _set_all(monkeypatch, {"REQUEST_IDLE_IN_TRANSACTION_TIMEOUT_SECONDS": value})
+
+    with pytest.raises(ConfigurationError) as raised:
+        get_settings()
+
+    assert raised.value.keys == ["REQUEST_IDLE_IN_TRANSACTION_TIMEOUT_SECONDS"]
+
+
+@pytest.mark.parametrize("value", [1, 15, 3_600])
+def test_request_idle_timeout_accepts_its_whole_range(
+    monkeypatch: pytest.MonkeyPatch, value: int
+) -> None:
+    _set_all(monkeypatch, {"REQUEST_IDLE_IN_TRANSACTION_TIMEOUT_SECONDS": str(value)})
+
+    assert get_settings().request_idle_in_transaction_timeout_seconds == value
+
+
+def test_an_unset_request_idle_timeout_is_a_startup_error_like_every_other_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No Python-side default (module docstring of `settings.py`): a deployment target that does
+    not set it fails at startup, and the build's `config-preflight` check fails first."""
+    values = dict(REQUIRED_ENV)
+    del values["REQUEST_IDLE_IN_TRANSACTION_TIMEOUT_SECONDS"]
+    for key, value in values.items():
+        monkeypatch.setenv(key, value)
+
+    with pytest.raises(ConfigurationError) as raised:
+        get_settings()
+
+    assert raised.value.keys == ["REQUEST_IDLE_IN_TRANSACTION_TIMEOUT_SECONDS"]

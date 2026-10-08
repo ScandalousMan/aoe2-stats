@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
+from datetime import timedelta
 from functools import lru_cache
 from typing import Annotated, Any, cast
 
@@ -61,8 +62,17 @@ def get_session_factory() -> async_sessionmaker[AsyncSession]:
 
 
 async def get_session() -> AsyncIterator[AsyncSession]:
-    """One request, one unit of work: commit on success, roll back and re-raise on failure."""
-    async with session_scope(get_session_factory()) as session:
+    """One request, one unit of work: commit on success, roll back and re-raise on failure.
+
+    Every transaction of *this* session is bounded by `REQUEST_IDLE_IN_TRANSACTION_TIMEOUT_SECONDS`
+    (T459b): a function the platform kills mid-request leaves its transaction open on the server,
+    and the server ends it - and releases its row locks - once it has sat idle that long. A
+    session a route opens for itself - the audit sessions in `routers/auth.py`,
+    `routers/players.py`, `routers/matches.py` and `routers/replays.py` - is a separate unit of
+    work this does not bound.
+    """
+    timeout = timedelta(seconds=get_settings().request_idle_in_transaction_timeout_seconds)
+    async with session_scope(get_session_factory(), idle_in_transaction_timeout=timeout) as session:
         yield session
 
 

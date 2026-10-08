@@ -347,3 +347,59 @@ async def test_recent_profiles_returns_empty_set_when_profiles_key_is_absent() -
     assert profiles == []
     assert len(recorder.calls) == 1
     assert recorder.calls[0].status_code == 200
+
+
+# --- recent_matches_and_profiles: both from one request (T459c) ----------------------------------
+
+
+async def test_recent_matches_and_profiles_equals_the_two_methods_from_one_request() -> None:
+    """Over the committed fixture the combined method returns the same matches and the same
+    profiles as `recent_matches` and `recent_profiles` do, and sends one request where those two
+    send two. The one rate-limiter token and one `provider_calls` row follow from the request
+    count: both go through the same `_request`.
+    """
+    body = _load("get_recent_match_history.json")
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json=body)
+
+    separate, separate_recorder = _provider(handler)
+    expected_matches = await separate.recent_matches([196240])
+    expected_profiles = await separate.recent_profiles([196240])
+    assert len(requests) == 2
+    assert len(separate_recorder.calls) == 2
+
+    requests.clear()
+    combined, recorder = _provider(handler)
+    history = await combined.recent_matches_and_profiles([196240])
+
+    assert history.matches == expected_matches
+    assert history.profiles == expected_profiles
+    assert history.matches and history.profiles
+    assert len(requests) == 1
+    assert json.loads(requests[0].url.params["profile_ids"]) == [196240]
+    assert len(recorder.calls) == 1
+    assert recorder.calls[0].status_code == 200
+
+
+async def test_recent_matches_and_profiles_batches_and_keeps_the_entry_level_skips() -> None:
+    """More than ten profiles still split across calls of at most ten, and an unfinished entry is
+    skipped and recorded exactly as in `recent_matches`."""
+    body = _load("get_recent_match_history.json")
+    body["matchHistoryStats"][0] = {**body["matchHistoryStats"][0], "completiontime": 0}
+    sizes: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sizes.append(len(json.loads(request.url.params["profile_ids"])))
+        return httpx.Response(200, json=body)
+
+    provider, recorder = _provider(handler)
+
+    history = await provider.recent_matches_and_profiles(list(range(1, 24)))
+
+    assert sizes == [10, 10, 3]
+    assert len(history.matches) == 3 * (len(body["matchHistoryStats"]) - 1)
+    skips = [call for call in recorder.calls if "unfinished" in call.endpoint]
+    assert len(skips) == 3

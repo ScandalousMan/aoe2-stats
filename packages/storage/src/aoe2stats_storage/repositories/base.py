@@ -27,13 +27,17 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
+from datetime import timedelta
 
+from sqlalchemy import event
+from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
+from sqlalchemy.orm import Session, SessionTransaction
 from sqlalchemy.pool import NullPool
 
 # `psycopg` 3's own escape hatch for pgbouncer-style transaction pooling (research §4): `None`
@@ -70,9 +74,38 @@ def build_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSessio
     return async_sessionmaker(bind=engine, expire_on_commit=False)
 
 
+_SET_IDLE_TIMEOUT = "SELECT set_config('idle_in_transaction_session_timeout', %s, true)"
+
+
+def _bound_idle_transactions(session: AsyncSession, timeout: timedelta) -> None:
+    """Make every transaction `session` opens carry `idle_in_transaction_session_timeout`.
+
+    `set_config(..., true)` is `SET LOCAL`: the value lives for the transaction and is discarded
+    at its commit or rollback, so it is never a property of the connection. That is what makes it
+    safe in front of Neon's pooler (PgBouncer in transaction mode, which hands a different backend
+    to each transaction and does not carry session state between them) and what keeps it out of
+    the connection string, where a pooler would reject an unknown startup parameter. It is set from
+    `after_begin`, which runs at the start of *every* transaction the session opens - a unit of
+    work that commits and carries on is bounded again. The hook also fires when the session opens
+    a savepoint (`begin_nested`); it returns without setting anything then, because the savepoint
+    belongs to a transaction that already carries the value, and a savepoint's rollback does not
+    revert a `SET LOCAL` made before it.
+    """
+    milliseconds = str(int(timeout.total_seconds() * 1000))
+
+    def _apply(_session: Session, transaction: SessionTransaction, connection: Connection) -> None:
+        if transaction.nested:
+            return
+        connection.exec_driver_sql(_SET_IDLE_TIMEOUT, (milliseconds,))
+
+    event.listen(session.sync_session, "after_begin", _apply)
+
+
 @asynccontextmanager
 async def session_scope(
     session_factory: Callable[[], AsyncSession],
+    *,
+    idle_in_transaction_timeout: timedelta | None = None,
 ) -> AsyncIterator[AsyncSession]:
     """One unit of work over one session: commit on success, roll back and re-raise on failure.
 
@@ -81,8 +114,16 @@ async def session_scope(
     how often a "unit of work" happens; this only decides what one looks like. The session itself
     is always closed on the way out, since `AsyncSession.__aexit__` does that regardless of which
     branch below ran.
+
+    `idle_in_transaction_timeout` (T459b) asks the server to terminate a transaction of this unit
+    of work that sits idle longer than that, releasing its row locks. It is for a unit of work
+    whose host can be killed from outside - the API's request - so a killed process cannot leave
+    its locks held indefinitely. The default, `None`, leaves the server's own setting alone, which
+    is what the ingester's long transactions need.
     """
     async with session_factory() as session:
+        if idle_in_transaction_timeout is not None:
+            _bound_idle_transactions(session, idle_in_transaction_timeout)
         try:
             yield session
             await session.commit()

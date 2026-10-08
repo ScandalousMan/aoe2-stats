@@ -616,9 +616,10 @@ class CaptureDrain:
         `attempted_ids`) — see that method's docstring for why a row reverted to `pending` this
         same cycle must not be immediately reclaimed by it again.
 
-        **The archival gate (T089a).** `discover.py`'s `_archiving_profile_ids()` keeps a linked
-        user's Art. 21 objection (`users.archival_objected_at IS NOT NULL`) from ever enqueueing a
-        *new* `replay_captures` row, but a row enqueued while archival was still active stays
+        **The archival gate (T089a).** `discover.py`'s `_archiving_profile_ids()` and
+        `_enqueue_capture`'s own link check keep a linked user's Art. 21 objection
+        (`users.archival_objected_at IS NOT NULL`) from enqueueing a *new* `replay_captures` row
+        once it has committed, but a row enqueued while archival was still active stays
         `pending` right through the objection — the queue between discovery and this claim can be
         days deep. Left alone, this claim's own status/`next_attempt_at` predicate has no archival
         clause of any kind and would download and store it anyway on the very next cycle, which is

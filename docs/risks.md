@@ -34,6 +34,12 @@ cannot be recreated by anyone, at any price.
 - **2026-08-19 — R4.** aoe2companion returned 403 from CI while the identical request succeeded from
   a residential connection. Intermittent bot protection. Its contract check is now non-blocking, so
   the nightly does not cry wolf over a source the application survives without.
+- **2026-10-05 — residual of the 2026-10-04 on-view refresh outage (004 T459, T459b).** The refresh
+  sets `lock_timeout` to 3 s, which bounds each lock wait, not the refresh: one statement blocked by
+  several holders in turn waits up to 3 s for each, so it can still run past the API function's
+  10 s limit. Read from the code, not measured. A function killed that way is bounded afterwards:
+  its open transaction is ended by the server after
+  `REQUEST_IDLE_IN_TRANSACTION_TIMEOUT_SECONDS`, which releases its row locks.
 
 ## Verification checklist
 
