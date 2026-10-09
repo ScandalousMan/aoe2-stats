@@ -333,7 +333,7 @@ describe('AnalysisTimeline', () => {
       render(<AnalysisTimeline state="failed" errorClass="AttemptsExhausted" />)
       expect(screen.getByText('This match could not be analysed')).toBeInTheDocument()
       expect(
-        screen.getByText('The analysis was interrupted several times and is not retried.'),
+        screen.getByText('The analysis was interrupted and is not retried.'),
       ).toBeInTheDocument()
       expect(screen.queryByText(/could not be parsed/)).not.toBeInTheDocument()
       expect(screen.getByText('Error: AttemptsExhausted')).toBeInTheDocument()
@@ -344,7 +344,7 @@ describe('AnalysisTimeline', () => {
     it('keeps the parse sentence for any other class, and for none', () => {
       const { rerender } = render(<AnalysisTimeline state="failed" errorClass="EngineParseError" />)
       expect(screen.getByText('The recorded game could not be parsed.')).toBeInTheDocument()
-      expect(screen.queryByText(/interrupted several times/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/interrupted/)).not.toBeInTheDocument()
 
       rerender(<AnalysisTimeline state="failed" />)
       expect(screen.getByText('The recorded game could not be parsed.')).toBeInTheDocument()

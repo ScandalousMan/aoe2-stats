@@ -269,7 +269,7 @@ irreversible" does not) and the one retry button among the three. Clicking it fi
 shows the same notice, not a different one for "refused again."
 
 `failed`'s `error_class` is the failure class `apps/analyzer` recorded (constitution V, FR-036), never the traceback, and the API carries it as `analysis.error_class`. `AttemptsExhausted` is the one class that is not a parse failure
-(the attempts bound ended the row, T706a, and the attempts may have been spent on source throttles or outages): its body is "The analysis was interrupted several times and is not retried." — heading kept, the "Error:" line kept,
+(the attempts bound ended the row, T706a, and the attempts may have been spent on source throttles or outages): its body is "The analysis was interrupted and is not retried." — heading kept, the "Error:" line kept,
 no claim about parsing, and no attempt count (the bound is configuration, not copy). Every other class, and an absent one, keeps the parse sentence above.
 
 ## 4. Variants and sizes

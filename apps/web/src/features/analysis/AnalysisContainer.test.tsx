@@ -264,7 +264,7 @@ describe('AnalysisContainer', () => {
     renderAnalysis()
 
     expect(
-      await screen.findByText('The analysis was interrupted several times and is not retried.'),
+      await screen.findByText('The analysis was interrupted and is not retried.'),
     ).toBeInTheDocument()
     expect(screen.queryByText(/could not be parsed/)).not.toBeInTheDocument()
     expect(screen.getByText('Error: AttemptsExhausted')).toBeInTheDocument()

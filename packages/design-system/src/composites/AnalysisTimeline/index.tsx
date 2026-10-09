@@ -382,7 +382,7 @@ const FAILURE_COPY: Record<
  * ends a row with this class when the attempts bound is spent (`claim.py`'s `ATTEMPTS_EXHAUSTED`),
  * and those attempts may have been lost to a throttled or unavailable source before any parse. */
 const ATTEMPTS_EXHAUSTED_ERROR_CLASS = 'AttemptsExhausted'
-const ATTEMPTS_EXHAUSTED_BODY = 'The analysis was interrupted several times and is not retried.'
+const ATTEMPTS_EXHAUSTED_BODY = 'The analysis was interrupted and is not retried.'
 
 function AnalysisFailureNotice({
   state,
