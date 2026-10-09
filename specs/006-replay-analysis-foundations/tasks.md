@@ -1738,6 +1738,15 @@ T671 and T672 ship together; T673 follows once T672 is deployed.
       whenever a takeover was refused, whatever the state; stop only while the state is `queued`, so
       a row another viewer takes over (`running`) is polled again, and correct the comment that says
       the row stays `queued`. Test: refusal, then `running`, then polling resumes
+- [ ] T706c Close #127's third review (`reviewer` REJECT 2026-10-09 on T706b; every earlier finding
+      closed). The web client now requires `analysis.error_class`, and the visual suite's match-page
+      fixture (`tests/visual/fixtures/suite-scenarios.ts`, `analysisSummary()`) builds the object
+      without it, so every stubbed match page renders its load-error branch and the PR's visual job
+      is red. Add the field to that fixture and to every other analysis-object fixture under
+      `tests/` and `apps/web`, and run the visual suite on the changed stories and routes, with no
+      baseline moving. The exhausted copy says "several times", which a configured maximum of 1
+      makes false: say it was interrupted and is not retried, with no count, keeping
+      `packages/design-system/specs/analysis-timeline.md`'s line count
 
 ---
 
