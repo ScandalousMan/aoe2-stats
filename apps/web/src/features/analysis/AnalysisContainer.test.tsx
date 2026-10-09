@@ -37,6 +37,7 @@ interface FakeMatchDetail {
     point_of_view_profile_id: number | null
     result_path: string
     reason: string | null
+    error_class: string | null
   }
 }
 
@@ -99,6 +100,7 @@ function baseDetail(overrides: Partial<FakeMatchDetail['analysis']> = {}): FakeM
       point_of_view_profile_id: null,
       result_path: '/api/matches/500546441/analysis',
       reason: null,
+      error_class: null,
       ...overrides,
     },
   }
@@ -179,7 +181,7 @@ function renderAnalysis(gameId = '500546441') {
   function wrapper({ children }: { children: ReactNode }) {
     return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   }
-  return render(<AnalysisContainer gameId={gameId} />, { wrapper })
+  return { ...render(<AnalysisContainer gameId={gameId} />, { wrapper }), queryClient }
 }
 
 describe('AnalysisContainer', () => {
@@ -253,6 +255,29 @@ describe('AnalysisContainer', () => {
     expect(await screen.findByText('This match could not be analysed')).toBeInTheDocument()
     expect(screen.queryByText('Match analysis')).not.toBeInTheDocument()
     expect(screen.queryByRole('button')).not.toBeInTheDocument()
+  })
+
+  it('words an exhausted failure by its error class, claiming no parse (T706b)', async () => {
+    installFakeApi({
+      detail: () => jsonResponse(baseDetail({ state: 'failed', error_class: 'AttemptsExhausted' })),
+    })
+    renderAnalysis()
+
+    expect(
+      await screen.findByText('The analysis was interrupted several times and is not retried.'),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/could not be parsed/)).not.toBeInTheDocument()
+    expect(screen.getByText('Error: AttemptsExhausted')).toBeInTheDocument()
+  })
+
+  it('keeps the parse sentence for a failure of any other class (T706b)', async () => {
+    installFakeApi({
+      detail: () => jsonResponse(baseDetail({ state: 'failed', error_class: 'EngineParseError' })),
+    })
+    renderAnalysis()
+
+    expect(await screen.findByText('The recorded game could not be parsed.')).toBeInTheDocument()
+    expect(screen.getByText('Error: EngineParseError')).toBeInTheDocument()
   })
 
   it('renders the unavailable notice with no action offered (FR-034)', async () => {
@@ -475,6 +500,49 @@ describe('AnalysisContainer', () => {
       ).toHaveLength(1)
       expect(fetchMock.mock.calls.filter(([input]) => input === '/api/analyze')).toHaveLength(1)
       expect(screen.queryByText('Waiting to start…')).not.toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('polls again once a refused-takeover row is read as "running" - another viewer took it over (T706b)', async () => {
+    vi.useFakeTimers()
+    try {
+      const refusal = 'Analysis is paused. Try again shortly.'
+      let state = 'queued'
+      const fetchMock = installFakeApi({
+        detail: () => jsonResponse(baseDetail({ state })),
+        analyze: () =>
+          jsonResponse({ error: { code: 'capture_deadline_contention', message: refusal } }, 409),
+      })
+      const detailCalls = () =>
+        fetchMock.mock.calls.filter(([input]) => input === '/api/matches/500546441').length
+      const { queryClient } = renderAnalysis()
+
+      await act(async () => {
+        await vi.waitFor(() => expect(screen.getByText('Waiting to start…')).toBeInTheDocument())
+      })
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(15_000)
+      })
+      expect(screen.getByText(refusal)).toBeInTheDocument()
+      expect(detailCalls()).toBe(1)
+
+      // Not a poll: whatever refetches next (a window focus, here an invalidation) finds the row
+      // taken over elsewhere.
+      state = 'running'
+      await act(async () => {
+        void queryClient.invalidateQueries({ queryKey: ['matches', 'detail', 500_546_441] })
+        await vi.waitFor(() =>
+          expect(screen.getByText('Analysing this match…')).toBeInTheDocument(),
+        )
+      })
+      expect(detailCalls()).toBe(2)
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5000)
+      })
+      expect(detailCalls()).toBe(3)
     } finally {
       vi.useRealTimers()
     }

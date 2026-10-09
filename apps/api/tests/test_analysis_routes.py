@@ -464,6 +464,8 @@ async def test_analysis_object_appears_on_match_detail_in_every_state(
         assert analysis["reason"], f"{expected_state} must carry a reason (contracts/http-api.md)"
     else:
         assert analysis["reason"] is None
+    # T706b: the failure class is what lets a client word a failure honestly; only `failed` has one.
+    assert analysis["error_class"] == ("EngineParseError" if expected_state == "failed" else None)
     if expected_state != "published":
         assert analysis["stale"] is False, "stale is only ever true for a published analysis"
 

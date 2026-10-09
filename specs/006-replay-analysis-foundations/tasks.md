@@ -1726,7 +1726,7 @@ T671 and T672 ship together; T673 follows once T672 is deployed.
       "over-counts, never under-counts" and "bounded" to what holds (a takeover re-fetches; the
       narrow overlap of a live run publishing before an uncounted request can recompute), and
       make the uncounted-path admission test exercise all three gates or name the one it proves
-- [ ] T706b Close #127's second review (`reviewer` REJECT 2026-10-09 on T706a; every earlier
+- [x] T706b Close #127's second review (`reviewer` REJECT 2026-10-09 on T706a; every earlier
       finding closed). **Honest copy for an exhausted row**: a row the attempts bound ends `failed`
       is shown "The recorded game could not be parsed", which is false when the attempts were spent
       on source throttles or outages that never fetched it. Give `AttemptsExhausted` its own copy in

@@ -732,9 +732,13 @@ _ANALYSIS_REFUSED_REASON = (
 
 
 def _analysis_failed_reason(error_message: str | None) -> str:
-    """FR-036: `failed` carries the recording's own parse failure, in `error_message` — shown
-    verbatim rather than a generic message, since it is the one state whose reason a stored row
-    actually explains rather than a fixed policy text."""
+    """FR-036: `failed` carries the stored row's own `error_message` in `reason`, verbatim rather
+    than a generic message, since it is the one state whose reason a stored row actually explains
+    rather than a fixed policy text. What that message describes depends on who ended the row: a
+    parse failure the engine recorded, or `AttemptsExhausted` (T706a) - a recording whose
+    invocations were interrupted `max_attempts` times, for whatever reason (a throttled or
+    unavailable source included), which says nothing about the recording's bytes. `error_class`
+    (`_analysis_json`) is what tells a client which."""
     if error_message:
         return f"The recording could not be analysed: {error_message}"
     return "The recording could not be analysed."
@@ -748,6 +752,13 @@ def _analysis_reason(row: MatchAnalysis) -> str | None:
     if row.state is MatchAnalysisState.REFUSED:
         return _ANALYSIS_REFUSED_REASON
     return None
+
+
+def _analysis_error_class(row: MatchAnalysis) -> str | None:
+    """The failure class of a `failed` row (FR-036), never the traceback; `None` in every other
+    state, including a `running` row served as `queued` because its lease expired - the class of
+    a row that did not fail is not a fact about it."""
+    return row.error_class if row.state is MatchAnalysisState.FAILED else None
 
 
 async def _retained_row(
@@ -793,7 +804,11 @@ def _analysis_json(
     is claimable in fact, so the object says `queued` - waiting for someone to take it - and the
     match page, which POSTs once on `queued`, is what takes it (003: "the next person to open the
     match takes it"). The stored state is not touched; this is a read. `now` is passed in, never
-    read here, and is required for the same reason `retained` is."""
+    read here, and is required for the same reason `retained` is.
+
+    **`error_class` (T706b)** is the stored failure class of a `failed` row and `None` otherwise: a
+    client that must word a failure honestly (an exhausted row never reached a parse) keys on the
+    class, not on the free text in `reason`."""
     result_path = f"/api/matches/{game_id}/analysis"
     if row is None:
         return {
@@ -803,6 +818,7 @@ def _analysis_json(
             "point_of_view_profile_id": None,
             "result_path": result_path,
             "reason": None,
+            "error_class": None,
         }
     state = MatchAnalysisState.QUEUED if row.lease_has_expired(now) else row.state
     return {
@@ -812,6 +828,7 @@ def _analysis_json(
         "point_of_view_profile_id": row.point_of_view_profile_id,
         "result_path": result_path,
         "reason": _analysis_reason(row),
+        "error_class": _analysis_error_class(row),
     }
 
 

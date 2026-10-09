@@ -21,6 +21,7 @@ function validSummary() {
     point_of_view_profile_id: 196_240,
     result_path: '/api/matches/500546441/analysis',
     reason: null,
+    error_class: null,
   }
 }
 
@@ -78,8 +79,24 @@ describe('assertAnalysisSummary', () => {
         point_of_view_profile_id: null,
         result_path: '/api/matches/1/analysis',
         reason: null,
+        error_class: null,
       }),
     ).not.toThrow()
+  })
+
+  it('accepts a string error_class and rejects a missing or non-string one (T706b)', () => {
+    expect(() =>
+      assertAnalysisSummary({
+        ...validSummary(),
+        state: 'failed',
+        error_class: 'EngineParseError',
+      }),
+    ).not.toThrow()
+    const { error_class: _omitted, ...withoutErrorClass } = validSummary()
+    expect(() => assertAnalysisSummary(withoutErrorClass)).toThrow(AnalysisResponseShapeError)
+    expect(() => assertAnalysisSummary({ ...validSummary(), error_class: 7 })).toThrow(
+      AnalysisResponseShapeError,
+    )
   })
 
   it('rejects a body that is not an object', () => {
