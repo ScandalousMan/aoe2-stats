@@ -172,3 +172,21 @@ export const ClipOnlyInDarkWhileStorageFlagAbsent: Story = {
     },
   ],
 }
+
+// T710 (L4): a clip written by a handler the story's own force triggers. `stories.spec.ts` applies the
+// force (`applyForceState`) before it reads the clip, so the capture shows the clip the hover wrote; the
+// runtime pass applies the force before it reads the clip as well (`probeSettledStory`), and records it.
+export const ClipFromForceHandler: Story = {
+  parameters: { visualForceState: { state: 'hover', role: 'button', name: 'Go' } },
+  render: (_args, { parameters }) => (
+    <Button
+      variant="primary"
+      size="md"
+      onMouseEnter={() => {
+        parameters.visualCaptureClip = clip()
+      }}
+    >
+      Go
+    </Button>
+  ),
+}

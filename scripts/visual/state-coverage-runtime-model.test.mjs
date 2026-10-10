@@ -218,6 +218,21 @@ test('serializeManifest reads back as the same value', () => {
   assert.deepEqual(JSON.parse(serializeManifest({})), {})
 })
 
+test('serializeManifest keeps an entry’s oneThemeFiles after files, and writes none for an entry without it', () => {
+  const withOne = { ...entryOf(A), oneThemeFiles: ['b.tsx'] }
+  const text = serializeManifest({ [A.id]: withOne, [B.id]: entryOf(B) })
+  const read = JSON.parse(text)
+  assert.deepEqual(read[A.id].oneThemeFiles, ['b.tsx'])
+  assert.deepEqual(Object.keys(read[A.id]), [
+    'importPath',
+    'exportName',
+    'files',
+    'oneThemeFiles',
+    'widths',
+  ])
+  assert.deepEqual(Object.keys(read[B.id]), ['importPath', 'exportName', 'files', 'widths'])
+})
+
 // ---- B1: `--changed` selects by what an entry RECORDED it rendered ---------------------------------
 //
 // Each entry carries `files`: the sorted unique repository-rooted paths of every stamped file that
@@ -230,7 +245,10 @@ const BUTTON_DIFF = [BUTTON_FILE]
 const MANIFEST_DIFF = [MANIFEST_PATH]
 const ROW_FILE = 'packages/design-system/src/composites/Row/index.tsx'
 const ROW_DIFF = [ROW_FILE]
-const MENU_FILE = 'packages/design-system/src/primitives/Menu/index.tsx'
+// A file the preview does not reach through module specifiers (T710: a diff on one the preview reaches,
+// `Menu`'s among them, selects every story, so it could not show a selection made by `files` alone).
+const TABLE_FILE = 'packages/design-system/src/composites/Table/index.tsx'
+const PREVIEW_REACHED_FILE = 'packages/design-system/src/primitives/Menu/index.tsx'
 
 // Stories whose own directory no diff below touches, so selection (a) — what `selectChangedStories`
 // picks — never reaches them: whatever is selected is selected by an entry's own `files`.
@@ -250,8 +268,8 @@ const entryWith = (s, files, rec = { mounts: [] }) => ({
 })
 const base = () => ({
   [S_ROW.id]: entryWith(S_ROW, [ROW_FILE]),
-  [S_MENU.id]: entryWith(S_MENU, [MENU_FILE]),
-  [S_BOTH.id]: entryWith(S_BOTH, [MENU_FILE, ROW_FILE]),
+  [S_MENU.id]: entryWith(S_MENU, [TABLE_FILE]),
+  [S_BOTH.id]: entryWith(S_BOTH, [TABLE_FILE, ROW_FILE]),
   [S_NONE.id]: entryWith(S_NONE, []),
 })
 const select = (diff, manifest = base(), baseManifest = manifest, stories = ALL) =>
@@ -271,6 +289,35 @@ test('buildEntry records `files` as the sorted union across widths, and keeps it
   assert.deepEqual(buildEntry(A, { 375: { mounts: [] } }).files, [])
 })
 
+test('buildEntry unions `oneThemeFiles` across widths into the entry, keeps it out of the per-width records, and writes the key only when it is not empty', () => {
+  const entry = buildEntry(A, {
+    375: { mounts: [], files: ['a.tsx', 'b.tsx'], oneThemeFiles: ['b.tsx'] },
+    768: { mounts: [], files: ['a.tsx'] },
+    1280: { mounts: [], files: ['a.tsx', 'c.tsx'], oneThemeFiles: ['c.tsx'] },
+  })
+  assert.deepEqual(entry.oneThemeFiles, ['b.tsx', 'c.tsx'])
+  assert.deepEqual(Object.keys(entry), [
+    'importPath',
+    'exportName',
+    'files',
+    'oneThemeFiles',
+    'widths',
+  ])
+  assert.deepEqual(entry.widths['375'], { mounts: [] })
+  // The contrast: no width names one, so the entry has no such key and is byte-identical to today's.
+  const plain = buildEntry(A, { 375: { mounts: [], files: ['a.tsx'] } })
+  assert.deepEqual(Object.keys(plain), ['importPath', 'exportName', 'files', 'widths'])
+})
+
+test('buildEntry keeps `focusDiffersByTheme` in the per-width record, where the checker reads it', () => {
+  const entry = buildEntry(A, {
+    375: { mounts: [], focus: null, focusDiffersByTheme: true },
+    768: { mounts: [] },
+  })
+  assert.deepEqual(entry.widths['375'], { mounts: [], focus: null, focusDiffersByTheme: true })
+  assert.deepEqual(entry.widths['768'], { mounts: [] })
+})
+
 test('selection (a): what selectChangedStories selects today is still selected', () => {
   const own = story('own--one', './src/composites/Row/Row.stories.tsx', 'One')
   const manifest = { ...base(), [own.id]: entryWith(own, []) }
@@ -287,8 +334,13 @@ test('selection (a): what selectChangedStories selects today is still selected',
 
 test('selection (b): an entry whose recorded files name a file in the diff is selected, and no other', () => {
   assert.deepEqual(selectIds(ROW_DIFF).sort(), [S_BOTH.id, S_ROW.id].sort())
-  assert.deepEqual(selectIds([MENU_FILE]).sort(), [S_BOTH.id, S_MENU.id].sort())
+  assert.deepEqual(selectIds([TABLE_FILE]).sort(), [S_BOTH.id, S_MENU.id].sort())
   assert.deepEqual(select(ROW_DIFF).rules.get(S_ROW.id), ['files'])
+})
+
+test('selection (a), T710: a file the preview reaches selects every story, whatever the entries recorded', () => {
+  assert.deepEqual(selectIds([PREVIEW_REACHED_FILE]).sort(), ALL.map((s) => s.id).sort())
+  assert.deepEqual(selectIds([TABLE_FILE]).sort(), [S_BOTH.id, S_MENU.id].sort())
 })
 
 test('selection (b): the file is matched whole, never by a prefix, a suffix or a directory of another path', () => {

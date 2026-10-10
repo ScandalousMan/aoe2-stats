@@ -16,8 +16,9 @@
 // Selection: every story of the built index (fixtures included — a plant's entry is the point), or
 // `--plants` (the fixture stories alone), or `--changed`: the union, for check and for write alike, of
 //   (a) what `pnpm test:visual --changed` selects (`scripts/visual/story-selection.mjs`): a story's own
-//       directory, a global-reach path, or (T707) a module the story file imports, transitively,
-//       through a module specifier;
+//       directory, a global-reach path, a file the preview reaches through module specifiers (T710:
+//       every story), or (T707) a module the story file imports, transitively, through a module
+//       specifier;
 //   (b) every story whose committed entry RECORDED, in its `files`, a source file the diff touches —
 //       the stamped files that rendered an element in that story, portals included (a rename lists both
 //       its paths, `--no-renames`);
@@ -200,7 +201,7 @@ function main() {
   log(
     selected.length === 0
       ? 'nothing selected — running only the plant-coverage check.'
-      : `running ${selected.length} stor${selected.length === 1 ? 'y' : 'ies'} x ${REVIEW_WIDTHS.length} widths (light theme; the clip read in dark too).`,
+      : `running ${selected.length} stor${selected.length === 1 ? 'y' : 'ies'} x ${REVIEW_WIDTHS.length} widths (each settled in the light and the dark theme).`,
   )
 
   const tmpDir = mkdtempSync(path.join(tmpdir(), 'aoe2-state-coverage-runtime-'))

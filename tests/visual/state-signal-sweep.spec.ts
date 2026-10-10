@@ -88,6 +88,7 @@ import path from 'node:path'
 import { createRequire } from 'node:module'
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import { PNG } from 'pngjs'
+import { FULL_PAGE_TAG } from '../../scripts/visual/story-index.mjs'
 import {
   applyForceState,
   gotoAndWaitForStorySettled,
@@ -128,7 +129,7 @@ if (existsSync(storybookIndexPath)) {
   }
 }
 function isFullPage(id: string): boolean {
-  return (tagsById.get(id) ?? []).includes('visual-full-page')
+  return (tagsById.get(id) ?? []).includes(FULL_PAGE_TAG)
 }
 
 // `playwright-core` bundles `pixelmatch` internally and only ever exposes it through this path

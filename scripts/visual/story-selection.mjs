@@ -217,6 +217,30 @@ function storyReachesTouched(storyFile, touched, dsDir, cache) {
   return false
 }
 
+// Every file reachable from `starts` through module specifiers, the same reader and the same
+// "follow every candidate" resolution `storyReachesTouched` uses, and whether any file reached holds a
+// specifier it cannot read.
+function reachOf(starts, dsDir, cache) {
+  const visited = new Set()
+  const pending = [...starts]
+  let opaque = false
+  while (pending.length > 0) {
+    const file = pending.pop()
+    if (visited.has(file)) continue
+    visited.add(file)
+    const read = readImports(file, dsDir, cache)
+    if (read.opaque) opaque = true
+    pending.push(...read.resolved)
+  }
+  return { visited, opaque }
+}
+
+// The preview's own module (`.storybook/preview.tsx`, whatever extension it has) as the walk starts:
+// every file a `preview` specifier in `.storybook` can name.
+function previewModules(dsDir) {
+  return resolveRelativeSpecifier(path.join(dsDir, '.storybook', 'index.mjs'), './preview', dsDir)
+}
+
 // The stories a diff affects. A change under any `GLOBAL_REACH_PREFIXES` path repaints (or can
 // repaint) every story — a token, the preview decorator, a shared `lib` helper, the public
 // surface, or the harness itself — so it selects the full story set rather than narrowing to a
@@ -241,6 +265,8 @@ function storyReachesTouched(storyFile, touched, dsDir, cache) {
 // names is selected whatever it renders in the story. Over-selecting is the safe direction, so a story
 // file, or a file it reaches, with an `import()` or `require()` whose argument is not a plain string
 // literal is selected on ANY diff inside the package: what it loads is not readable.
+// T710: and every story when the diff touches a file the PREVIEW reaches through module specifiers
+// (`reachOf` from `.storybook/preview.tsx`), since the preview's imports run for every story.
 // Known shapes that stay outside the rule, not an exhaustive list: a file a story reaches only at run
 // time and not through a module specifier its story file or a reached file names (a hook's side
 // effect, state a module sets that a story reads without importing it, a stylesheet's own `@import`,
@@ -258,10 +284,22 @@ export function selectChangedStories(stories, diff, dsDir = designSystemDir) {
   const touchedInPackage = diff
     .filter((f) => f.startsWith(PACKAGE_PREFIX))
     .map((f) => f.slice(PACKAGE_PREFIX.length))
+  const importCache = new Map()
+  // T710: the preview imports primitives (`Button`, `Field`, `Link`, `Menu` at the time of writing) whose
+  // module graphs run their top-level code for every story, a story that does not import them
+  // included. A diff on a file the preview reaches through module specifiers repaints, or can change
+  // what any story records, so it selects every story; so does any diff inside the package when a file
+  // the preview reaches holds a specifier it cannot read. The walk is `storyReachesTouched`'s, from the
+  // preview once instead of from each story.
+  if (touchedInPackage.length > 0) {
+    const { visited, opaque } = reachOf(previewModules(dsDir), dsDir, importCache)
+    if (opaque || touchedInPackage.some((f) => visited.has(path.join(dsDir, f)))) {
+      return { stories, globallyAffected: true }
+    }
+  }
   const touchedDesignSystemDirs = new Set(touchedInPackage.map((f) => path.posix.dirname(f)))
   const touchedStoryFiles = new Set(touchedInPackage.filter((f) => storyGlob.test(f)))
   const touchedAbsolute = new Set(touchedInPackage.map((f) => path.join(dsDir, f)))
-  const importCache = new Map()
   // The built index lists one entry per story, a dozen to a file: walk each story file once.
   const reachesByFile = new Map()
   const reachesTouched = (importPath) => {
