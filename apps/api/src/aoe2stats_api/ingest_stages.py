@@ -16,8 +16,11 @@ so `run_once` itself stays the one authority over ordering, budget and the `inge
 `max_captures_per_user_per_run`/`quota_exempt_days` are always supplied to `CaptureDrain` together
 — its own constructor guard rejects one without the other — because that exact pair going missing
 once already made FR-044's fairness cap inert in production (fixed once already, in f0c9a6e and
-e8d9a4e). This module is the one place production ever constructs a `CaptureDrain`, so it is the
-one place that regression can happen again; it must not.
+e8d9a4e). This module is the one place the ingest cycle's `CaptureDrain` is built, so it is the
+one place that regression can happen again; it must not. It is not the only construction of a
+`CaptureDrain`: `scripts/ops/revalidate_quarantined.py` builds a second, with a replay provider
+that refuses every call, for `CaptureDrain.revalidate_quarantined` alone. That drain is never run
+as a stage, so no fairness cap applies to it and none is wired.
 
 **The replay engine is imported lazily, inside `build_ingest_stages`, never at this module's own
 top level.** Both entrypoints reach this module only from inside their own request handler —
@@ -208,8 +211,8 @@ def _build_call_sink(
 def build_ingest_stages(settings: Settings) -> tuple[Stage, ...]:
     """`(DiscoverStage, ReconcileStage, CaptureDrain)`, in that order — the whole cycle `run.py`
     drains stage by stage (discover, reconcile, drain), every collaborator built from `settings`
-    alone. See the module docstring for why this is the one place production ever constructs any
-    of the three.
+    alone. See the module docstring for why this is the one place the ingest cycle's three stages
+    are built.
     """
     # Lazy: see the module docstring's paragraph on why the engine is never imported at this
     # module's own top level.
