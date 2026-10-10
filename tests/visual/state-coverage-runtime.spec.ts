@@ -306,7 +306,8 @@ Object.assign(PLANTS, {
     expect(r.force).toMatchObject({ count: 1, differsByTheme: true })
     expect(r.mounts).toEqual([button('primary', 'md')])
   },
-  // One element in each theme, a different one: only the element differs, and it is refused all the same.
+  // One element in each theme, a different one: the counts agree, the stamp and the placing instance
+  // differ, and the force carries the flag all the same.
   [`${THEME_PLANT}force-element-differs-in-dark`]: (r: WidthRecord) => {
     expect(r.force).toMatchObject({ count: 1, differsByTheme: true })
     expect(r.force?.stamp).toMatch(stampIn('Button'))
@@ -320,13 +321,17 @@ Object.assign(PLANTS, {
     expect(r.force).not.toHaveProperty('differsByTheme')
     expect(r.mounts).toEqual([button('primary', 'md')])
   },
+  // The focus is held in the light theme only: no focus in the record, and the flag the checker answers
+  // by withholding the Rest credit of the story's own mounts.
   [`${THEME_PLANT}focus-in-light-only`]: (r: WidthRecord) => {
     expect(r.focus).toBeNull()
+    expect(r.focusDiffersByTheme).toBe(true)
     expect(r.mounts).toEqual([button('primary', 'md')])
   },
   [`${THEME_PLANT}focus-in-both-themes`]: (r: WidthRecord) => {
     expect(r.focus?.stamp).toMatch(stampIn('Button'))
     expect(r.focus?.placedBy).toEqual(button('primary', 'md'))
+    expect(r).not.toHaveProperty('focusDiffersByTheme')
   },
 })
 

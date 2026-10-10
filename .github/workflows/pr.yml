@@ -482,12 +482,13 @@ jobs:
       # same reason as the line above (a browser pass over every story on each pull request is the
       # factory constitution VII and FR-061 keep for nightly), but not by the same rule: the
       # selection is the union of what `--changed` above selects (a story's own directory, a
-      # global-reach path, or, T707, a module the story file imports transitively through a module
-      # specifier), every story whose committed entry RECORDED a source file the diff touches
-      # (`files`: the stamped files that rendered an element in that story, portals included; a
-      # rename lists both its paths), and every story whose entry differs from the manifest at the
-      # diff base (so a hand-edited manifest is re-checked in the browser). Its rewrite command takes
-      # the same selection.
+      # global-reach path, a file the preview reaches through module specifiers (T710: every story),
+      # or, T707, a module the story file imports transitively through a module specifier), every
+      # story whose committed entry RECORDED a source file the diff touches (`files`: the stamped
+      # files that rendered an element in that story, portals included; a rename lists both its
+      # paths), and every story whose entry differs from the manifest at the diff base (so a
+      # hand-edited manifest is re-checked in the browser). Its rewrite command takes the same
+      # selection.
       # A file a specifier names is selected even when a `play()` removes the elements it rendered
       # before the story settles. Known shapes that nothing here selects, and nightly (every entry)
       # does; not an exhaustive list: a file a story reaches only at run time and not through a module

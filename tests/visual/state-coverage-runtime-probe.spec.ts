@@ -430,6 +430,35 @@ test('combineThemeRecords: clip is the disjunction, files the union, fullPage th
   expect(combineThemeRecords(themed(), themed()).clip).toBe(false)
 })
 
+test('combineThemeRecords: a file exactly one theme rendered is in files and in oneThemeFiles, in either direction; a file both render is in files alone', () => {
+  const lightOnly = combineThemeRecords(
+    themed({ files: ['both.tsx', 'light.tsx'] }),
+    themed({ files: ['both.tsx'] }),
+  )
+  expect(lightOnly).toMatchObject({
+    files: ['both.tsx', 'light.tsx'],
+    oneThemeFiles: ['light.tsx'],
+  })
+  const darkOnly = combineThemeRecords(
+    themed({ files: ['both.tsx'] }),
+    themed({ files: ['both.tsx', 'dark.tsx'] }),
+  )
+  expect(darkOnly).toMatchObject({ files: ['both.tsx', 'dark.tsx'], oneThemeFiles: ['dark.tsx'] })
+  const each = combineThemeRecords(
+    themed({ files: ['b.tsx', 'a.tsx'] }),
+    themed({ files: ['c.tsx', 'a.tsx'] }),
+  )
+  expect(each.oneThemeFiles).toEqual(['b.tsx', 'c.tsx'])
+  // The contrast: the same files in both themes write no such key, so a story both render alike is
+  // unchanged in the manifest.
+  const alike = combineThemeRecords(
+    themed({ files: ['a.tsx', 'b.tsx'] }),
+    themed({ files: ['a.tsx', 'b.tsx'] }),
+  )
+  expect(alike).not.toHaveProperty('oneThemeFiles')
+  expect(combineThemeRecords(themed(), themed())).not.toHaveProperty('oneThemeFiles')
+})
+
 test('combineThemeRecords: a force the themes answer alike is the ordinary record, one they answer differently is flagged, whichever differs', () => {
   const answer = { count: 1, stamp: BUTTON_FILE, placedBy: btn('primary', 'md') }
   const same = combineThemeRecords(themed({ force: answer }), themed({ force: { ...answer } }))
@@ -463,6 +492,29 @@ test('combineThemeRecords: a focus is credited only when both themes agree on it
   expect(combineThemeRecords(themed({ focus: null }), themed({ focus: null })).focus).toBeNull()
   // No `play()` in either theme: no focus key at all.
   expect(combineThemeRecords(themed(), themed())).not.toHaveProperty('focus')
+})
+
+test('combineThemeRecords: a focus the themes disagree on writes focusDiffersByTheme, one they agree on (a focus or none) does not', () => {
+  const focus = { stamp: BUTTON_FILE, placedBy: btn('ghost', 'md') }
+  const other = { stamp: BUTTON_FILE, placedBy: btn('primary', 'md') }
+  // Held in one theme only, in either direction, held in different elements, and a `play()` in one theme.
+  for (const [light, dark] of [
+    [{ focus }, { focus: null }],
+    [{ focus: null }, { focus }],
+    [{ focus }, { focus: other }],
+    [{ focus }, {}],
+    [{}, { focus }],
+  ] as const) {
+    const joined = combineThemeRecords(themed(light), themed(dark))
+    expect(joined.focus).toBeNull()
+    expect(joined.focusDiffersByTheme).toBe(true)
+  }
+  // The contrast: both agree on a focus, on no focus, or have no `play()`.
+  for (const both of [{ focus }, { focus: null }, {}] as const) {
+    expect(combineThemeRecords(themed(both), themed({ ...both }))).not.toHaveProperty(
+      'focusDiffersByTheme',
+    )
+  }
 })
 
 function stubPage(url: string, evaluate: () => Promise<void>) {

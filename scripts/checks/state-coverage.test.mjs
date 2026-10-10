@@ -8797,3 +8797,181 @@ test('T703: the static clip and project-level readers are gone, not kept beside 
     assert.equal(source.includes(gone), false, `${gone} is still in state-coverage.mjs`)
   }
 })
+
+// ---- T711: what the theme join leaves for the checker to refuse ----------------------------------------
+//
+// `combineThemeRecords` (`tests/visual/state-coverage-runtime.ts`) joins the light and the dark settle
+// of a width. `files` is the union, and the files exactly one theme rendered are named in the entry's
+// `oneThemeFiles`; a width whose themes disagree on the focus is written `focus: null` beside
+// `focusDiffersByTheme: true`. Each is the checker's to answer by REFUSING a credit.
+
+const TOOLTIP_DIR = 'primitives/Tooltip'
+const TOOLTIP_FILE = `${STAMP_ROOT}${TOOLTIP_DIR}/index.tsx`
+const TOOLTIP_INDEX = `export function Tooltip({ pinned }) {
+  return <button className={pinned ? 'border-border-strong' : 'border-transparent'}>Go</button>
+}
+`
+const TOOLTIP_STORIES = `${TOOLTIP_DIR}/Tooltip.stories.tsx`
+const TOOLTIP_CLICK_STORY = `export const Pinned = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    await userEvent.click(canvas.getByRole('button'))
+  },
+}
+`
+function tooltipClickRun(entryExtras) {
+  const filesByPath = new Map([
+    [srcFile(`${TOOLTIP_DIR}/index.tsx`), TOOLTIP_INDEX],
+    [
+      srcFile(TOOLTIP_STORIES),
+      `import { Tooltip } from './index'\nconst meta = { component: Tooltip }\nexport default meta\n${TOOLTIP_CLICK_STORY}`,
+    ],
+  ])
+  return computeStateCoverage({
+    componentDirs: [{ segment: 'primitives', name: 'Tooltip' }],
+    filesByPath,
+    manifest: {
+      'tooltip--pinned': {
+        ...manifestEntry(`src/${TOOLTIP_STORIES}`, 'Pinned', { mounts: [] }, [TOOLTIP_FILE]),
+        ...entryExtras,
+      },
+    },
+  })
+}
+const activeCreditOf = (computed) =>
+  creditsOf(computed, 'Pinned').filter((cell) => cell.endsWith('|active'))
+
+// The join writes the same `oneThemeFiles` whichever theme alone stamped the file (the probe spec's
+// join tests prove both directions), so one plant stands for each.
+test("T711 (M1) plant: a play() click whose element's file exactly one theme rendered credits no active cell, at record 1 or in the Tooltip matrix", () => {
+  assert.deepEqual(activeCreditOf(tooltipClickRun({ oneThemeFiles: [TOOLTIP_FILE] })), [])
+})
+
+test('T711 (M1) contrast: a file both themes rendered credits the click as before, and so does one-theme-only naming a different file', () => {
+  const expected = [`Tooltip|button @ ${TOOLTIP_FILE}:2|active`, `record1|${TOOLTIP_FILE}:2|active`]
+  assert.deepEqual(activeCreditOf(tooltipClickRun({})), expected)
+  assert.deepEqual(activeCreditOf(tooltipClickRun({ oneThemeFiles: [] })), expected)
+  assert.deepEqual(
+    activeCreditOf(tooltipClickRun({ oneThemeFiles: [`${STAMP_ROOT}primitives/Other/index.tsx`] })),
+    expected,
+  )
+})
+
+test('T711 (M1) buildElementMatrix: a story whose oneThemeFiles names the element’s file credits no click, one that does not name it does', () => {
+  const elements = [
+    elementFixture({
+      activeStateConditional: { identifier: 'pinned', whenTrue: "'a'", whenFalse: "'b'" },
+    }),
+  ]
+  const story = (oneThemeFiles) => ({
+    exportName: 'Pinned',
+    forced: null,
+    playClick: { role: 'button', name: null },
+    argsLiterals: new Set(),
+    files: ['Tooltip/index.tsx'],
+    oneThemeFiles,
+  })
+  assert.deepEqual(buildElementMatrix(elements, [story(['Tooltip/index.tsx'])])[0].active, ['none'])
+  assert.deepEqual(buildElementMatrix(elements, [story(['Other/index.tsx'])])[0].active, ['Pinned'])
+  assert.deepEqual(buildElementMatrix(elements, [story([])])[0].active, ['Pinned'])
+  assert.deepEqual(buildElementMatrix(elements, [story(undefined)])[0].active, ['Pinned'])
+})
+
+test('T711 (M1, M2) entryShapeProblem: oneThemeFiles is an array of strings or absent, focusDiffersByTheme is true or absent', () => {
+  const entryWith = (extras, recordExtras = {}) => ({
+    files: [],
+    ...extras,
+    widths: atEveryWidth({ mounts: [], ...recordExtras }),
+  })
+  for (const bad of ['a.tsx', [1], [null], {}, null, true]) {
+    assert.match(
+      entryShapeProblem(entryWith({ oneThemeFiles: bad }), { forced: false }),
+      /`oneThemeFiles` is not an array of strings/,
+      JSON.stringify(bad),
+    )
+  }
+  assert.equal(entryShapeProblem(entryWith({ oneThemeFiles: ['a.tsx'] }), { forced: false }), null)
+  assert.equal(entryShapeProblem(entryWith({ oneThemeFiles: [] }), { forced: false }), null)
+  assert.equal(entryShapeProblem(entryWith({}), { forced: false }), null)
+  for (const bad of [false, 'true', 1, null]) {
+    assert.match(
+      entryShapeProblem(entryWith({}, { focus: null, focusDiffersByTheme: bad }), {
+        forced: false,
+      }),
+      /`focusDiffersByTheme` that is not `true`/,
+      JSON.stringify(bad),
+    )
+  }
+  assert.equal(
+    entryShapeProblem(entryWith({}, { focus: null, focusDiffersByTheme: true }), { forced: false }),
+    null,
+  )
+  assert.equal(entryShapeProblem(entryWith({}, { focus: null }), { forced: false }), null)
+})
+
+test('T711 (M1) malformed oneThemeFiles in the manifest is a malformed entry naming the story, credited nowhere', () => {
+  const computed = tooltipClickRun({ oneThemeFiles: 'x' })
+  assert.deepEqual(problemsOf(computed), [['malformed-entry', `src/${TOOLTIP_STORIES}:Pinned`]])
+  assert.deepEqual(activeCreditOf(computed), [])
+})
+
+// (M2) A focus the two themes disagree on is `focus: null` with `focusDiffersByTheme`: the placing
+// instance has no focus role, so without the flag the story's own mount would read as an ordinary Rest.
+const FOCUSED_BUTTON = placedInstance('Button', 'secondary', 'md')
+const focusStory = `export const ZzFocus = { play: async ({ canvasElement }) => { within(canvasElement).getByRole('button').focus() } }\n`
+const focusRunWith = (extras) =>
+  miniRun(focusStory, {
+    'zz-focus': miniEntry('ZzFocus', { ...miniRecord([FOCUSED_BUTTON]), ...extras }),
+  })
+
+// The join writes the same record whichever theme held the focus (`focus: null` and the flag), so the
+// plants differ in WHERE the flag is: at every width, or at one only.
+for (const [name, flagAt] of [
+  ['at every captured width', WIDTHS],
+  ['at the narrowest width only', [WIDTHS[0]]],
+]) {
+  test(`T711 (M2) plant: a focus the two themes disagree on ${name} credits no Rest for the story's own mount`, () => {
+    const widths = atEveryWidth(miniRecord([FOCUSED_BUTTON]))
+    for (const w of flagAt) widths[w] = { ...widths[w], focus: null, focusDiffersByTheme: true }
+    const computed = miniRun(focusStory, {
+      'zz-focus': {
+        ...miniEntry('ZzFocus', miniRecord([FOCUSED_BUTTON])),
+        widths,
+      },
+    })
+    assert.deepEqual(computed.manifestProblems, [])
+    assert.deepEqual(creditsOf(computed, 'ZzFocus'), [])
+  })
+}
+
+test('T711 (M2) contrast: both themes agree on no focus or have no play(), Rest is credited as before; both agree on a focus, the focused instance gets no Rest as before', () => {
+  const none = focusRunWith({ focus: null })
+  assert.deepEqual(creditsOf(none, 'ZzFocus'), ['Button|secondary|md|rest'])
+  const noPlay = miniRun(`export const ZzFocus = {}\n`, {
+    'zz-focus': miniEntry('ZzFocus', miniRecord([FOCUSED_BUTTON])),
+  })
+  assert.deepEqual(creditsOf(noPlay, 'ZzFocus'), ['Button|secondary|md|rest'])
+  const agreed = focusRunWith({ focus: { stamp: MINI_BUTTON_STAMP, placedBy: FOCUSED_BUTTON } })
+  assert.deepEqual(creditsOf(agreed, 'ZzFocus'), [])
+})
+
+// (L) A default export whose `parameters` is an identifier keeps its credit, a story-level one is refused.
+test('T711 (L) a default export whose parameters is an identifier keeps its credit, a story-level identifier parameters is refused as unreadable-parameters', () => {
+  const stories = `const shared = {}\n${DISABLED_BUTTON_STORY('ZzA')}`
+  const meta = run(`{ component: Card, parameters: shared }`, stories)
+  assert.deepEqual(problemsOf(meta), [])
+  assert.deepEqual(creditsOf(meta, 'ZzA'), CREDITED)
+  const story = cardRun({
+    stories: `const shared = {}\nexport const ZzA = { parameters: shared, render: () => <Button disabled>Go</Button> }\n`,
+    manifest: { 'zz-a': cardEntry('ZzA', { mounts: [disabledMount] }) },
+  })
+  assert.deepEqual(problemsOf(story), [['unreadable-parameters', `${CARD_STORIES_LOCATION}:ZzA`]])
+  assert.deepEqual(creditsOf(story, 'ZzA'), [])
+  function run(metaSource, storiesSource) {
+    return cardRun({
+      stories: storiesSource,
+      meta: metaSource,
+      manifest: { 'zz-a': cardEntry('ZzA', { mounts: [disabledMount] }) },
+    })
+  }
+})

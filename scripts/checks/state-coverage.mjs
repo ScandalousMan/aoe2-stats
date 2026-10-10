@@ -2750,9 +2750,12 @@ function stampProblem(stamp, where) {
 // What is wrong with an entry's `files`, or `null`: an array of strings, present (T698). It is read
 // for the overlay verdict, which credits mounts, so an entry that carries none cannot be told from
 // one that renders nothing fixed, and a value that is not an array would throw where it is read.
+const isStringArray = (value) =>
+  Array.isArray(value) && value.every((item) => typeof item === 'string')
+
 export function filesProblem(entry) {
   const files = entry?.files
-  if (Array.isArray(files) && files.every((file) => typeof file === 'string')) return null
+  if (isStringArray(files)) return null
   return `its \`files\` is not an array of strings (${show(files)})`
 }
 
@@ -2784,12 +2787,20 @@ function unstampedPlacedProblem(record, where) {
 //     is not one) nor a `file:line` string (`stampProblem`: an empty string is neither), or whose
 //     `placedBy` is neither null nor a well-formed instance, or whose `stamp` is null while its
 //     `placedBy` is not; and a force record whose `differsByTheme` (the light and the dark render
-//     disagree, T710) is present and not `true`;
-//     (An entry's `files` is checked by `filesProblem`, which the story path runs first: it is the one
-//     field read outside this function's widths, so a value that is not an array of strings must be
-//     named before any of it is read.)
+//     disagree on the match count, stamp or placing instance, or only one carries the force, T710) is
+//     present and not `true`;
+//     (An entry's `files` is checked by `filesProblem`, which the story path runs first: it is read
+//     outside this function's widths, so a value that is not an array of strings must be named before
+//     any of it is read.)
+//   - the entry's `oneThemeFiles` (the files exactly one of the two themes rendered, T711) is, when
+//     present, an array of strings, and a width's `focusDiffersByTheme` (the two themes disagree on the
+//     focus, T711) is, when present, `true`;
 // `knownAxisValues` is `readAxisValues` per primitive; absent, an axis value is not checked against it.
 export function entryShapeProblem(entry, { forced, knownAxisValues } = {}) {
+  const oneTheme = entry?.oneThemeFiles
+  if (oneTheme !== undefined && !isStringArray(oneTheme)) {
+    return `its \`oneThemeFiles\` is not an array of strings (${show(oneTheme)}); the pass writes it only as one, and only when it is not empty`
+  }
   const recorded = Object.keys(entry?.widths ?? {})
   const missing = CAPTURED_WIDTHS.filter((w) => !recorded.includes(w))
   const extra = recorded.filter((w) => !CAPTURED_WIDTHS.includes(w))
@@ -2813,6 +2824,9 @@ export function entryShapeProblem(entry, { forced, knownAxisValues } = {}) {
     }
     // The capture frame (T703): booleans the browser pass writes. An entry without them predates the
     // record, and a mount credit read from nothing would be a credit for a frame nobody observed.
+    if (record.focusDiffersByTheme !== undefined && record.focusDiffersByTheme !== true) {
+      return `${at} has a \`focusDiffersByTheme\` that is not \`true\` (${show(record.focusDiffersByTheme)}); the pass writes it only as \`true\``
+    }
     for (const field of ['clip', 'fullPage']) {
       if (typeof record[field] !== 'boolean') {
         return `${at} has \`${field}\` that is not a boolean (${show(record[field])}), so the capture frame it shows is not recorded`
@@ -2887,12 +2901,13 @@ export function resolveRuntimeForce(entry, { recordOneKeys, knownAxisValues }) {
       refusal: `the manifest records no force target at ${label(unrecorded)}, so it predates this story's visualForceState — rewrite it with \`${REWRITE_COMMAND}\``,
     }
   }
-  // The light and the dark render of the story disagree on the force (T710, `combineThemeRecords`): the
-  // record carries one theme's answer and this flag, and neither theme's answer is the capture's.
+  // The light and the dark render of the story disagree on the force (T710, `combineThemeRecords`) in
+  // match count, stamp or placing instance, or only one carries it: the record carries one theme's
+  // answer and this flag, and neither theme's answer is the capture's.
   const themed = widths.filter(([, record]) => record.force.differsByTheme === true)
   if (themed.length > 0) {
     return {
-      refusal: `the light and the dark render disagree on the force at ${label(themed)} (a different match count, located element or placing instance, or a force only one theme carries): the capture shows both themes, so neither answer is credited`,
+      refusal: `the light and the dark render disagree on the force at ${label(themed)} (a different match count, stamp or placing instance, or a force only one theme carries): the capture shows both themes, so neither answer is credited`,
     }
   }
   const none = widths.filter(([, record]) => record.force.count === 0)
@@ -3503,7 +3518,10 @@ export function computeStateCoverage({
       // source (T703). The manifest records which instances a story mounts, and, per width, whether a
       // `visualCaptureClip` applied (`readCaptureClip` on the settled story, so a clip written from
       // `play`, a loader or a decorator, through the `story` annotation, a `__proto__` key, the preview
-      // or `Object.prototype` is in it) and whether the built index tags the frame `visual-full-page`.
+      // or `Object.prototype` is in it when the browser applied it; the tests of the shapes through the
+      // preview, a module importing it or a `config.tsx` feed this check a hand-written record, so no
+      // browser has shown that those shapes clip) and whether the built index tags the frame
+      // `visual-full-page`.
       //   - a clip at ANY captured width: the story is screenshotted through that clip alone, so it gives
       //     no mount credit (the record does not say whether a mount lies inside the clipped rect);
       //   - no clip, and not full-page at some width: a screenshot of the root element's box
@@ -3532,9 +3550,17 @@ export function computeStateCoverage({
         tagsUnreadable
       // `files` is read only once it is known to be an array of strings (`filesProblem`).
       const entryFiles = filesProblem(entry) ? [] : entry.files
+      // `oneThemeFiles` (T711) is read only once `entryShapeProblem` has found it well-formed.
+      const entryOneThemeFiles = shapeProblem ? [] : (entry.oneThemeFiles ?? [])
       const mayRenderOutsideRoot =
         !clipped && !fullPage && entryFiles.some((file) => overlayFiles.has(file))
       const mountCredit = !shapeProblem && !sourceUnread && !clipped && !mayRenderOutsideRoot
+      // The two themes disagree on the focus at some width (T711, `combineThemeRecords`): one capture
+      // shows an element focused that the record names none for, so the Rest credit of this story's own
+      // mounts is withheld at every width, the placing instance and any other alike. The Disabled
+      // credit does not read the focus and is unchanged.
+      const focusDisagrees = widthRecords.some((record) => record.focusDiffersByTheme === true)
+      const restCredit = mountCredit && !focusDisagrees
       let verdict = null
       if (shapeProblem) {
         verdict = { refusal: `the manifest entry is malformed (${shapeProblem})` }
@@ -3552,7 +3578,9 @@ export function computeStateCoverage({
       const common = {
         argsLiterals: new Set(storyArgsStringLiterals(metaObj, node, constNodeMap)),
         playClick,
-        files: entryFiles,
+        // A malformed entry cannot say which files exactly one theme rendered, so no click credit reads its files.
+        files: shapeProblem ? [] : entryFiles,
+        oneThemeFiles: entryOneThemeFiles,
       }
       pushStateEntry(homeKey, {
         ...common,
@@ -3598,7 +3626,7 @@ export function computeStateCoverage({
           disabled: mountCredit && (mount.disabledAt ?? []).length > 0,
           forced: role === 'force' ? forced : null,
           playFocus: role === 'focus',
-          rest: mountCredit && role === null && mount.component === ownTracked && !forced,
+          rest: restCredit && role === null && mount.component === ownTracked && !forced,
         })
       }
       for (const mount of shapeProblem ? [] : stableMounts(entry)) {
@@ -3617,7 +3645,7 @@ export function computeStateCoverage({
           focusUsed = true
         }
         const credited = role !== null || (mountCredit && (mount.disabledAt ?? []).length > 0)
-        if (credited || (mountCredit && mount.component === ownTracked && !forced)) {
+        if (credited || (restCredit && mount.component === ownTracked && !forced)) {
           pushInstance(mount, row, role)
         }
       }
@@ -3866,7 +3894,9 @@ function resolveClickMatch({ candidate, pool, name, argsLiterals }) {
 //     (`entry.focusStamp`) — never a cover, the script cannot tell a `:focus-visible` frame from the
 //     one a preceding story captured (T594's amendment);
 //   - a `play()` click credits an `activeStateConditional` element statically (`entry.playClick`),
-//     only when the story's rendered files include the element's own file.
+//     only when the story's rendered files include the element's own file and that file is not in the
+//     entry's `oneThemeFiles` (T711): the capture shows both themes, and an element of a file only one
+//     of them rendered is not on the other's frame.
 function buildElementCells(el, elements, storyObjectsAsEntered) {
   const storyObjectsWithMeta = asPrinted(storyObjectsAsEntered)
   const impliedRole = impliedRoleOf(el)
@@ -3882,6 +3912,7 @@ function buildElementCells(el, elements, storyObjectsAsEntered) {
     playClick,
     argsLiterals,
     files,
+    oneThemeFiles,
   } of storyObjectsWithMeta) {
     if (forced) {
       if (credit?.stamp === key) cells[forced.state].push(exportName)
@@ -3900,6 +3931,7 @@ function buildElementCells(el, elements, storyObjectsAsEntered) {
       (playClick.role === impliedRole || playClick.role === 'unresolved') &&
       Array.isArray(files) &&
       files.includes(el.file) &&
+      !(oneThemeFiles ?? []).includes(el.file) &&
       !el.ariaHidden
     ) {
       const verdict = resolveClickMatch({
@@ -4161,7 +4193,7 @@ export const REGION_LEGEND = [
   "row's variant and size. A force on an element whose stamp is in the placing instance's `disabledAt`",
   '(the host elements it placed that the browser reports `:disabled` or `aria-disabled="true"`) is',
   'refused, and so is a force the light and the dark render of the story answer differently (a',
-  'different match count, element or placing instance).',
+  'different match count, stamp or placing instance, or a force only one theme carries).',
   "The Disabled column of every matrix, and a primitive's own stories' Rest column, come from",
   'the primitive instances a story mounts, as rendered, and from nothing else: a `disabled` or `loading`',
   "written at a call site, and a `disabled: true` in a story's `args`, credit no Disabled cell. The",

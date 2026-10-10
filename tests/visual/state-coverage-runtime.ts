@@ -77,9 +77,10 @@ export interface ElementRecord {
 export interface ForceRecord extends ElementRecord {
   count: number
   // Present, and `true`, only when the light and the dark render disagree on the force (a target that
-  // resolves to a different count, element or placing instance in one theme, or a force one theme
-  // carries and the other does not): `combineThemeRecords` writes the light render's answer beside it,
-  // and the manifest's reader refuses the force whatever else the record says (T710).
+  // resolves to a different count, stamp or placing instance in one theme, or a force one theme
+  // carries and the other does not): `combineThemeRecords` writes the answer of the first theme that
+  // has one (`light.force ?? dark.force`) beside it, and the manifest's reader refuses the force
+  // whatever else the record says (T710).
   differsByTheme?: true
 }
 
@@ -102,13 +103,23 @@ export interface ForceRecord extends ElementRecord {
 //   - `mounts` and `focus` are what BOTH renders show, the credit's safe direction: `mounts` is the
 //     multiset intersection of the two themes' instances (an instance is the same only when its
 //     component, axes and `disabledAt` are), so an element only one theme mounts, a `<Button disabled>`
-//     the dark render lacks included, is not credited. `focus` is the light render's when the two
-//     agree and `null` when they do not or when only one theme has a `play()`.
-//   - `force` is the light render's answer when the two agree and the same one with `differsByTheme`
-//     when they do not; a force the two themes locate differently is refused, not credited from either.
-//   - `files` is the UNION of the two themes' stamped files, the other direction: it decides which
-//     stories a diff re-checks and whether the story may render outside its root, and over-selecting and
-//     over-refusing are its safe errors.
+//     the dark render lacks included, is not in it. `focus` is the light render's when the two agree and
+//     `null` when they do not or when only one theme has a `play()`; that disagreement also
+//     writes `focusDiffersByTheme: true` (T711), which the manifest's reader answers by withholding the
+//     Rest credit of the story's own mounts at that width: with `focus` `null`, the placing instance
+//     would lose its focus role and the mount would read as an ordinary Rest, though one capture shows
+//     that element focused.
+//   - `force` is `light.force ?? dark.force`: the light render's answer when it has one, the dark one's
+//     when only it does. It carries `differsByTheme` when the two differ in count, stamp or placing
+//     instance, or when only one theme has a force; the manifest's reader then refuses the force, and
+//     credits neither theme's answer.
+//   - `files` is the UNION of the two themes' stamped files. It decides which stories a diff re-checks
+//     and whether the story may render outside its root (the overlay refusal): there a file only one
+//     theme renders selects, and refuses, as one both render. `oneThemeFiles` (T711), written only when
+//     not empty, names the files exactly one theme rendered, and `buildEntry` unions it across widths
+//     into the entry's own `oneThemeFiles`; the manifest's reader (`buildElementCells`) credits a
+//     `play()` click's `active` cell only from a file that is not in it. A reader that credits from
+//     `files` and does not read `oneThemeFiles` credits from a file one theme alone rendered.
 //   - `fullPage` is whether the capture takes the whole page when no clip applies, from the built
 //     index's tags, the one place the capture reads it (`isFullPageEntry`, `story-index.mjs`); it does
 //     not depend on the theme. A clip wins over the tag, as it does in the capture.
@@ -123,8 +134,14 @@ export interface WidthRecord {
   mounts: Instance[]
   // The sorted unique repository-rooted source files that rendered a stamped element in the story's
   // document at this width. `buildEntry` (`scripts/visual/state-coverage-runtime-model.mjs`) unions it
-  // across widths into the entry's own `files` and keeps it out of the per-width record.
+  // across widths into the entry's own `files` and keeps it out of the per-width record, as it does
+  // `oneThemeFiles`.
   files: string[]
+  // The sorted unique files of `files` that exactly one of the two themes rendered; written only when
+  // not empty, so a story both themes render alike carries no such key (T711).
+  oneThemeFiles?: string[]
+  // Present, and `true`, only when the light and the dark render disagree on `focus` (T711).
+  focusDiffersByTheme?: true
 }
 
 export interface InspectOptions {
@@ -501,6 +518,15 @@ export function combineThemeRecords(light: WidthRecord, dark: WidthRecord): Widt
     mounts: intersectMounts(light.mounts, dark.mounts),
     files: [...new Set([...light.files, ...dark.files])].sort(),
   }
+  const inDark = new Set(dark.files)
+  const inLight = new Set(light.files)
+  const oneTheme = [
+    ...new Set([
+      ...light.files.filter((file) => !inDark.has(file)),
+      ...dark.files.filter((file) => !inLight.has(file)),
+    ]),
+  ].sort()
+  if (oneTheme.length > 0) record.oneThemeFiles = oneTheme
   const answered = light.force ?? dark.force
   if (answered) {
     const agree =
@@ -510,12 +536,12 @@ export function combineThemeRecords(light: WidthRecord, dark: WidthRecord): Widt
     record.force = agree ? light.force : { ...answered, differsByTheme: true }
   }
   if (light.focus !== undefined || dark.focus !== undefined) {
-    record.focus =
+    const agree =
       light.focus !== undefined &&
       dark.focus !== undefined &&
       JSON.stringify(light.focus) === JSON.stringify(dark.focus)
-        ? light.focus
-        : null
+    record.focus = agree ? light.focus : null
+    if (!agree) record.focusDiffersByTheme = true
   }
   return record
 }

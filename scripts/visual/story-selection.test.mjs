@@ -162,13 +162,14 @@ test('T707 contrast: a diff on a module no story reaches selects nothing beyond 
 })
 
 // T710: the preview's imports run for every story. The scratch preview imports a primitive, which
-// imports a helper; no story file imports either.
+// imports a helper in `src/shared/`, a directory with no story and under no global-reach prefix; no
+// story file imports either.
 const PREVIEW_TREE = {
   '.storybook/preview.tsx':
     "import { Button } from '../src/primitives/Button'\nexport default {}\n",
   'src/primitives/Button/index.tsx':
-    "import { top } from '../../lib/top-level'\nexport const Button = top\n",
-  'src/lib/top-level.ts': 'export const top = 1\n',
+    "import { reached } from '../../shared/reached'\nexport const Button = reached\n",
+  'src/shared/reached.ts': 'export const reached = 1\n',
   'src/shared/orphan.ts': 'export const o = 1\n',
   'src/composites/Card/Card.stories.tsx': 'export default {}\n',
   'src/composites/Panel/Panel.stories.tsx': 'export default {}\n',
@@ -176,11 +177,18 @@ const PREVIEW_TREE = {
 
 test('T710 plant: a diff on a module only the preview’s primitives reach selects every story', () => {
   withTree(PREVIEW_TREE, (select) => {
-    // `lib/top-level.ts` is reached by `Button`, which the preview imports, and by no story file; the
-    // directory rule alone would select nothing.
-    assert.deepEqual(select(`${PKG}src/lib/top-level.ts`), [CARD, PANEL])
+    // `shared/reached.ts` is reached by `Button`, which the preview imports, and by no story file; no
+    // global-reach prefix covers it and no story sits in its directory.
+    assert.deepEqual(select(`${PKG}src/shared/reached.ts`), [CARD, PANEL])
     // The primitive's own file, a story-less directory, is the same.
     assert.deepEqual(select(`${PKG}src/primitives/Button/index.tsx`), [CARD, PANEL])
+  })
+})
+
+test('T711 contrast: the same helper, with a preview that does not import the primitive, selects nothing, so only the preview walk selects it', () => {
+  withTree({ ...PREVIEW_TREE, '.storybook/preview.tsx': 'export default {}\n' }, (select) => {
+    assert.deepEqual(select(`${PKG}src/shared/reached.ts`), [])
+    assert.deepEqual(select(`${PKG}src/primitives/Button/index.tsx`), [])
   })
 })
 
@@ -197,7 +205,7 @@ test('T710: a specifier the preview’s reach holds and cannot be read selects e
   withTree(
     {
       ...PREVIEW_TREE,
-      'src/lib/top-level.ts': 'export const top = (name: string) => import(name)\n',
+      'src/shared/reached.ts': 'export const reached = (name: string) => import(name)\n',
     },
     (select) => {
       assert.deepEqual(select(`${PKG}src/shared/orphan.ts`), [CARD, PANEL])

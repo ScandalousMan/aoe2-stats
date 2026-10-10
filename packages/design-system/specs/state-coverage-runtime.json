@@ -18379,19 +18379,22 @@
         "clip": false,
         "fullPage": false,
         "mounts": [{ "component": "Button", "variant": "primary", "size": "md", "disabledAt": [] }],
-        "focus": null
+        "focus": null,
+        "focusDiffersByTheme": true
       },
       "768": {
         "clip": false,
         "fullPage": false,
         "mounts": [{ "component": "Button", "variant": "primary", "size": "md", "disabledAt": [] }],
-        "focus": null
+        "focus": null,
+        "focusDiffersByTheme": true
       },
       "1280": {
         "clip": false,
         "fullPage": false,
         "mounts": [{ "component": "Button", "variant": "primary", "size": "md", "disabledAt": [] }],
-        "focus": null
+        "focus": null,
+        "focusDiffersByTheme": true
       }
     }
   },
@@ -18454,6 +18457,7 @@
     "importPath": "./.storybook/fixtures/ThemePlants.stories.tsx",
     "exportName": "ForceElementDiffersInDark",
     "files": ["packages/design-system/src/primitives/Button/index.tsx"],
+    "oneThemeFiles": ["packages/design-system/src/primitives/Button/index.tsx"],
     "widths": {
       "375": {
         "clip": false,

@@ -69,7 +69,8 @@ export const ForceCountDiffersInDark: Story = {
 }
 
 // A force that finds exactly one element in each theme, a different one: the `Button` in light, a raw
-// `<button>` the story writes in dark. Both counts are one, so only the element differs.
+// `<button>` the story writes in dark. Both counts are one; the stamp and the placing instance are what
+// the two records differ in.
 export const ForceElementDiffersInDark: Story = {
   parameters: { visualForceState: { state: 'hover', role: 'button', name: 'Go' } },
   render: (_args, { globals }) =>
@@ -84,7 +85,8 @@ export const ForceSameInBothThemes: Story = {
 }
 
 // A `play()` that moves focus to the `Button` in the light theme only: the dark render shows no focus,
-// so none is credited.
+// so the record holds no focus (`focus: null`) and carries `focusDiffersByTheme`, on which the checker
+// withholds the Rest credit of the story's own mounts.
 export const FocusInLightOnly: Story = {
   play: ({ canvasElement, globals }) => {
     if (globals.theme === 'light') canvasElement.querySelector('button')?.focus()
@@ -92,7 +94,7 @@ export const FocusInLightOnly: Story = {
   render: () => go,
 }
 
-// The contrast: the same focus in both themes is credited.
+// The contrast: the same focus in both themes is in the record, with no `focusDiffersByTheme`.
 export const FocusInBothThemes: Story = {
   play: ({ canvasElement }) => {
     canvasElement.querySelector('button')?.focus()

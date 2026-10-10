@@ -13,8 +13,10 @@
 //
 // An entry also carries `files`: the sorted unique repository-rooted paths of every stamped source file
 // that rendered an element in the story's document (portals included — a story renders alone in its
-// page), unioned across widths. It is what `selectRuntimeStories` reads, and the whole of what it
-// reads: a diff selects the entries that recorded a file it touches.
+// page), unioned across widths. `selectRuntimeStories` reads it: a diff selects the entries that
+// recorded a file it touches. When it is not empty, an entry also carries `oneThemeFiles` (T711): the
+// files of `files` that exactly one of the two themes rendered, which the checker reads and selection
+// does not.
 //
 // An instance is an object, `{ component, variant, size, disabledAt }` in that key order, so a reader
 // (T694) decodes it in Node without reading `preview.tsx`: `variant` and `size` are `null` when the
@@ -36,22 +38,28 @@ export const REWRITE_COMMAND = `${PASS_COMMAND} --write`
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 
 // One manifest entry for one index story, from what the browser recorded at each width. Each width's
-// record may carry `files` (the stamped files that width rendered); they are unioned into the entry's
-// own sorted `files` and kept out of the per-width records.
+// record may carry `files` (the stamped files that width rendered) and `oneThemeFiles` (those of them
+// exactly one of the two themes rendered, T711); each is unioned into the entry's own sorted field and
+// kept out of the per-width records. `oneThemeFiles` is per entry, not per width, so that a file one
+// theme alone rendered at ANY width refuses the click credit the checker reads it for, and the key is
+// written only when it is not empty, so an entry both themes render alike is unchanged.
 export function buildEntry(story, widthRecords) {
   const files = new Set()
+  const oneTheme = new Set()
   const widths = {}
   for (const [width, record] of Object.entries(widthRecords).sort(
     ([a], [b]) => Number(a) - Number(b),
   )) {
-    const { files: rendered = [], ...rest } = record
+    const { files: rendered = [], oneThemeFiles = [], ...rest } = record
     for (const file of rendered) files.add(file)
+    for (const file of oneThemeFiles) oneTheme.add(file)
     widths[String(width)] = rest
   }
   return {
     importPath: story.importPath,
     exportName: story.exportName,
     files: [...files].sort(),
+    ...(oneTheme.size > 0 ? { oneThemeFiles: [...oneTheme].sort() } : {}),
     widths,
   }
 }
@@ -301,6 +309,9 @@ export function serializeManifest(manifest) {
     lines.push(`"importPath": ${JSON.stringify(entry.importPath)},`)
     lines.push(`"exportName": ${JSON.stringify(entry.exportName)},`)
     lines.push(`"files": ${JSON.stringify(entry.files ?? [])},`)
+    if ((entry.oneThemeFiles ?? []).length > 0) {
+      lines.push(`"oneThemeFiles": ${JSON.stringify(entry.oneThemeFiles)},`)
+    }
     lines.push('"widths": {')
     const widths = Object.keys(entry.widths)
     widths.forEach((width, j) => {
