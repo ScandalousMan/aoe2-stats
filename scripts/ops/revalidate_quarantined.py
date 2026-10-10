@@ -3,12 +3,13 @@
 (T673, feature 006 Phase 7).
 
 **The gap this closes.** `aoe2rec-py` 0.1.21 panicked on the one recording measured as game build
-185872 (`docs/risks.md`), so its capture was stored, checksummed and then marked `quarantined` with
-the object kept (constitution IV); T672 pinned 0.1.24, which reads that recording. Whether any other
-capture carries the engine's failure text is not measured: the dry run's report is how it becomes
-so. This command gives each such row a second validation from the bytes already committed. It does
-not read the source, and where the source's retention window sits is `docs/data-sources.md`'s to
-say, not this file's.
+185872 (`docs/risks.md`); T672 pinned 0.1.24, which reads that recording. Capture validation calls
+the same parser, so a recording the engine could not read would have ended `quarantined` with its
+object kept (constitution IV); `docs/risks.md` gives that as what the code implies, not as an
+observation. Whether any capture carries the engine's failure text is not measured: the dry run's
+report is how it becomes so. This command gives each such row a second validation from the bytes
+already committed. It does not read the source, and where the source's retention window sits is
+`docs/data-sources.md`'s to say, not this file's.
 
 **What it does, per row** (`CaptureDrain.revalidate_quarantined`, `apps/ingester/src/
 aoe2stats_ingester/capture.py`, which owns the selection and says exactly why): read the committed
@@ -21,20 +22,33 @@ original capture) or leave it `quarantined` with the new engine verdict.
 it is ever called. It never writes, replaces or deletes an object: only `get` is called on the
 store. It never selects an integrity quarantine (`reclaim could not read back ...`, `reclaim
 checksum mismatch ...`), a timeout or a `MalformedArchiveError`: the selection is the engine's own
-failure text, and nothing else. It never selects a capture whose owner has objected to archival
-(constitution IX): the same predicate the capture claim applies. It raises no `validation_failed`
+failure text, and nothing else. It takes a capture only when its profile has an active link
+(`profile_links.unlinked_at IS NULL`) whose user has not objected (`users.archival_objected_at IS
+NULL`, constitution IX), and checks that twice: when the page is selected and again inside each
+write, because a user can object or unlink while a page is being validated. A profile with no
+active link is not taken, even if its former owner never objected; that is the same set as
+`archiving_links` in `apps/ingester/src/aoe2stats_ingester/discover.py`, and stricter than the
+capture claim, which excludes only a found objection. Whether such a capture is ever re-validated
+is left to the user; the row and its object stay as they are. It raises no `validation_failed`
 alert; the row raised one when it was first quarantined.
 
 **Outcomes** (one line per row): `stored`, `still_quarantined` (a new engine verdict, written),
 `inconclusive` (validation failed for a reason that is not the engine's verdict, e.g. the
 wall-clock cap: nothing is written, the reason is printed, and the row is selected again next run),
 `integrity_failure` (the object is missing or no longer matches the row's `zip_sha256`: nothing is
-written) and `changed_elsewhere` (another process moved the row first: nothing is written).
+written), `changed_elsewhere` (another process moved the row first: nothing is written) and
+`ownership_changed` (the row is still quarantined but its profile no longer has an active link
+whose user has not objected: nothing is written).
 
-**Dry run first.** `--dry-run` lists the selection (game, profile, recording date) without reading
-a byte of any object or writing a row, and counts the `quarantined` rows it does not select,
-grouped by reason class (the exception class before the first colon, the reclaim texts, the
-wall-clock cap; counts only, never a reason's text or an object key).
+A database error on a row's write stops the run at that row: the report of the rows already
+written is printed, with the error's class (never its text), and the exit code is 1.
+
+**Dry run first.** `--dry-run` reads the database, reads no object and writes nothing. It lists the
+selection (game, profile, recording date) and counts the `quarantined` rows it does not select,
+grouped by reason class: an exception class name (an identifier ending in `Error` or `Exception`,
+before the first colon), the reclaim texts, the wall-clock cap, or `other`; an engine row outside
+the selection is labelled `(archival objected)`, `(no committed object)` or `(no active link)`.
+Counts only, never a reason's text or an object key.
 
 **Bounded and resumable.** At most `--limit` rows per run (default 25: a validation can take up to
 its 30 s wall-clock cap, and this runs from a terminal). When more remain, the report prints the
@@ -69,8 +83,8 @@ Usage:
 Exit: 0 when the run completed and no row had an integrity failure; 1 when the invocation is
 refused (a missing or invalid environment variable, an `--after` that is not `<timestamp with
 offset>,<capture id>`, a `--limit` below 1), when a row's object was missing or did not match its
-checksum (after the report is printed), or when the object store failed in any other way (the run
-stops there, after the report, with that row unwritten).
+checksum (after the report is printed), when the object store failed in any other way, or when a
+database write failed (the run stops there, after the report, with that row unwritten).
 """
 
 from __future__ import annotations
@@ -137,9 +151,12 @@ class SettingsError(Exception):
 
 
 def settings_from_environment(environ: Mapping[str, str]) -> Settings:
-    """The application's own `Settings`, validated as the application validates it. Raises
-    `SettingsError` naming the missing or invalid keys (`missing_or_invalid_keys` reads aliases,
-    never the input values, which carry credentials)."""
+    """The application's own `Settings`, validated as the application validates it. `environ` is
+    passed as keyword values, and `Settings` reads the process environment as well (no dotenv
+    file): a key missing from `environ` is taken from the process environment if it is set there,
+    and the mapping wins when both name it. Raises `SettingsError` naming the missing or invalid
+    keys (`missing_or_invalid_keys` reads aliases, never the input values, which carry
+    credentials)."""
     try:
         return Settings(**dict(environ))  # type: ignore[arg-type]  # keyed by the env aliases
     except ValidationError as exc:
@@ -219,7 +236,7 @@ def build_arg_parser(*, exit_on_error: bool = True) -> argparse.ArgumentParser:
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="list the selection without reading any object or writing any row",
+        help="list the selection: reads the database, reads no object, writes nothing",
     )
     parser.add_argument(
         "--limit",
@@ -262,8 +279,15 @@ def format_report(report: RevalidationReport, *, dry_run: bool) -> list[str]:
             f"revalidate-quarantined: STOPPED: the object store failed with {report.aborted_by}. "
             "The row it failed on was not written and no later row was examined."
         )
+    if report.write_failed_by is not None:
+        lines.append(
+            f"revalidate-quarantined: STOPPED: a database write failed with "
+            f"{report.write_failed_by}. The rows listed above were written; the row it failed on "
+            "was not confirmed written and no later row was examined."
+        )
     cursor = report.cursor
-    if report.truncated and cursor is not None and report.aborted_by is None:
+    stopped = report.aborted_by is not None or report.write_failed_by is not None
+    if report.truncated and cursor is not None and not stopped:
         lines.append(
             "revalidate-quarantined: more candidates remain; continue with "
             f"--after {cursor[0].isoformat()},{cursor[1]}"
@@ -276,15 +300,20 @@ def format_report(report: RevalidationReport, *, dry_run: bool) -> list[str]:
         )
         lines.extend(f"  {count:>5}  {label}" for label, count in report.unselected_by_reason)
     if dry_run:
-        lines.append("revalidate-quarantined: dry run, nothing was read or written.")
+        lines.append(
+            "revalidate-quarantined: dry run, the database was read; no object was read "
+            "and nothing was written."
+        )
     return lines
 
 
 def exit_code(report: RevalidationReport) -> int:
-    """1 when the run found an integrity failure or the store failed; the report is already
-    printed, because what was found is what the operator needs."""
+    """1 when the report holds an integrity failure, the store failed or a database write failed;
+    the report is already printed, because what was found is what the operator needs. An integrity
+    failure is in the report only if its row was on the page that ran."""
     integrity = any(o.outcome == "integrity_failure" for o in report.outcomes)
-    return 1 if integrity or report.aborted_by is not None else 0
+    stopped = report.aborted_by is not None or report.write_failed_by is not None
+    return 1 if integrity or stopped else 0
 
 
 async def _run(

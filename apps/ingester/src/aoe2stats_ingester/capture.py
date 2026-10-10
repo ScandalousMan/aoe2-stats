@@ -63,8 +63,10 @@ could not parse a recording keeps its object (constitution IV), so a later engin
 second chance without touching the source: `CaptureDrain.revalidate_quarantined` reads the committed
 object back, checks it against the row's own `zip_sha256` and runs it through the same barrier.
 It is selected by the engine's own failure text (`_engine_failure_reason`), never an integrity
-quarantine, and never for a capture whose owner has objected to archival (`_objecting_owner_exists`,
-the predicate the claim above uses). It never reads from the provider, never writes or deletes an
+quarantine, and only for a capture whose profile has an active link whose user has not objected to
+archival (`_owner_is_archiving`, which is `discover.archiving_links`'s set). That is checked twice:
+when the page is selected, and again inside the `WHERE` of each write, because a user can object or
+unlink while a page is being validated. It never reads from the provider, never writes or deletes an
 object, and raises no alert: the row already raised its `validation_failed` when it was first
 quarantined. A row is rewritten only with a reason the selection would still match; any other
 outcome leaves it untouched and is reported. See that method.
@@ -169,11 +171,13 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Literal, Protocol
 
 from sqlalchemy import ColumnElement, and_, false, func, literal, or_, select, tuple_, update
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from aoe2stats_core.alerting import AlertRecord, AlertSink, raise_alert
 from aoe2stats_core.replay.validation import ReplayValidationResult, ReplayValidator
 from aoe2stats_ingester.budget import Budget
+from aoe2stats_ingester.discover import archiving_links
 from aoe2stats_ingester.quota import apply_quota
 from aoe2stats_ingester.ratelimit import drain_with_rate_limit_guard
 from aoe2stats_providers.base import (
@@ -225,6 +229,13 @@ _REASON_HEAD_CHARS = 120
 #: Why `revalidate_quarantined` reported a row as `changed_elsewhere`: its guarded write matched no
 #: row because the status was no longer `quarantined`.
 _CHANGED_ELSEWHERE = "the row was no longer quarantined when the result was written"
+
+#: Why it reported a row as `ownership_changed`: the status was still `quarantined`, so the
+#: ownership predicate in the write's `WHERE` is what refused it.
+_OWNERSHIP_CHANGED = (
+    "the profile no longer has an active link whose user has not objected "
+    "when the result was written"
+)
 
 #: `alerts.kind` for `_classify_not_found`'s `expired` conclusion (`AlertKind.EXPIRED_CAPTURE` in
 #: `packages/storage/src/aoe2stats_storage/models.py`, named as a plain string for the same reason
@@ -331,10 +342,12 @@ def _is_engine_failure_reason(reason: str) -> bool:
 def _objecting_owner_exists() -> ColumnElement[bool]:
     """Correlated `EXISTS`, against the enclosing query's `replay_captures.profile_id`: the
     *currently active* link's owner has objected to archival (`profile_links.unlinked_at IS NULL
-    AND users.archival_objected_at IS NOT NULL`, constitution IX, FR-035). The one definition of
-    "objecting": `CaptureDrain._claim_batch` excludes exactly the rows it matches, and
-    `revalidate_quarantined`'s selection does too, so the two cannot diverge. Only a *found*
-    objection matches; a capture with no active link on record is not objecting.
+    AND users.archival_objected_at IS NOT NULL`, constitution IX, FR-035). The claim's definition
+    of "objecting": `CaptureDrain._claim_batch` excludes exactly the rows it matches, and
+    `_count_unselected` uses it to label them. It is not the only definition in the package:
+    `discover.archiving_links` holds the inverse one (active link, user not objected), which is
+    what `_owner_is_archiving` reuses. Only a *found* objection matches; a capture with no active
+    link on record is not objecting, which is why the re-validation does not rely on this alone.
     """
     return (
         select(ProfileLink.profile_id)
@@ -346,29 +359,51 @@ def _objecting_owner_exists() -> ColumnElement[bool]:
     )
 
 
+def _owner_is_archiving() -> ColumnElement[bool]:
+    """The ownership predicate of `revalidate_quarantined`, selection and both writes alike: the
+    capture's profile has an active link (`profile_links.unlinked_at IS NULL`) held by a user who
+    has not objected (`users.archival_objected_at IS NULL`). That is `discover.archiving_links`'s
+    set, reused rather than copied. A profile has at most one active link
+    (`ix_profile_links_profile_id_active`), so this is the owner's current state.
+
+    Stricter than the claim's `_objecting_owner_exists`, which excludes only a *found* objection:
+    a profile with no active link (an objector who has since unlinked it, or one nobody holds) is
+    not taken here. A quarantined capture is not an archived one (001's spec), so the carve-out
+    for recordings archived before an objection does not cover it. Until the user rules on a
+    capture without an active owner, it is left as it is, with its object.
+    """
+    return ReplayCapture.profile_id.in_(archiving_links())
+
+
 def _revalidation_selection() -> ColumnElement[bool]:
     """The rows `revalidate_quarantined` re-validates: `quarantined`, holding an object and its
-    checksum, with the engine's own failure text, whose owner has not objected. A quarantined
-    capture is not an archived one (001's spec), so the carve-out for recordings archived before
-    an objection does not cover it."""
+    checksum, with the engine's own failure text, whose profile has an active link whose user has
+    not objected (`_owner_is_archiving`)."""
     return and_(
         ReplayCapture.status == CaptureStatus.QUARANTINED,
         ReplayCapture.object_key.is_not(None),
         ReplayCapture.zip_sha256.is_not(None),
         _engine_failure_reason(),
-        ~_objecting_owner_exists(),
+        _owner_is_archiving(),
     )
 
 
-_REASON_CLASS_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_.]*")
+_REASON_HEAD_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_.]*")
+_CLASS_NAME_SUFFIXES = ("Error", "Exception")
 
 
-def _reason_class(reason: str | None, *, has_object: bool, objecting: bool) -> str:
+def _reason_class(reason: str | None, *, has_object: bool, objecting: bool, archiving: bool) -> str:
     """The class a quarantined row outside the selection is counted under in a dry run: a label,
-    never a value. The text before the first colon is the exception class the barrier wrote; the
-    cap and the two reclaim texts are recognised by their fixed words first, because the second
-    and third carry an object key before their first colon. Free text that is not a bare
-    identifier is `other`.
+    never a value. A closed vocabulary, so that a free-text reason can never become a label:
+
+    - the fixed labels: `no reason recorded`, the two reclaim prefixes, `wall-clock cap`;
+    - the head of the reason (the text before the first colon) when it is an identifier ending in
+      `Error` or `Exception`, which is how the barrier writes a class name;
+    - `other` for everything else, including an identifier that is not a class name.
+
+    An engine failure row outside the selection gets its reason: `(archival objected)`
+    (an active owner objected), `(no committed object)` or `(no active link)` (nobody holds the
+    profile now, whether or not a former owner objected), tested in that order.
     """
     if not reason:
         return "no reason recorded"
@@ -379,12 +414,17 @@ def _reason_class(reason: str | None, *, has_object: bool, objecting: bool) -> s
     if reason.startswith(_CAP_REASON_PREFIX) and reason.endswith(_CAP_REASON_SUFFIX):
         return "wall-clock cap"
     head = reason.partition(":")[0]
-    label = head if _REASON_CLASS_PATTERN.fullmatch(head) else "other"
+    is_class_name = _REASON_HEAD_PATTERN.fullmatch(head) is not None and head.endswith(
+        _CLASS_NAME_SUFFIXES
+    )
+    label = head if is_class_name else "other"
     if label in _ENGINE_FAILURE_CLASSES and _is_engine_failure_reason(reason):
         if objecting:
             return f"{label} (archival objected)"
         if not has_object:
             return f"{label} (no committed object)"
+        if not archiving:
+            return f"{label} (no active link)"
     return label
 
 
@@ -398,7 +438,10 @@ def _reason_class(reason: str | None, *, has_object: bool, objecting: bool) -> s
 #:   it; nothing was written and `reason` is reported;
 #: - `integrity_failure`: the object is missing or no longer matches the row's `zip_sha256`;
 #:   nothing was written;
-#: - `changed_elsewhere`: another process moved the row first; nothing was written.
+#: - `changed_elsewhere`: another process moved the row first; nothing was written;
+#: - `ownership_changed`: the row is still `quarantined` but its profile no longer has an active
+#:   link whose user has not objected (the owner objected or unlinked while the page was being
+#:   validated), so the guarded write refused it; nothing was written.
 RevalidationOutcomeKind = Literal[
     "selected",
     "stored",
@@ -406,6 +449,7 @@ RevalidationOutcomeKind = Literal[
     "inconclusive",
     "integrity_failure",
     "changed_elsewhere",
+    "ownership_changed",
 ]
 
 
@@ -441,6 +485,11 @@ class RevalidationReport:
     #: a missing object and a checksum mismatch are per-row outcomes; anything else the store
     #: raises says nothing about the row, so the run stops with that row unwritten.
     aborted_by: str | None = None
+    #: The class name (never its text) of the database error that stopped the run on one row's
+    #: write, else `None`. `outcomes` holds the rows written before it, whose count is otherwise
+    #: unrecoverable because they are no longer selected; the failing row is not among them, and
+    #: no later row was examined.
+    write_failed_by: str | None = None
 
     @property
     def cursor(self) -> RevalidationCursor | None:
@@ -1060,10 +1109,13 @@ class CaptureDrain:
         **Selection** (`_revalidation_selection`): `status = quarantined`, `object_key` and
         `zip_sha256` both set, `last_error` equal to the engine's own failure text
         (`_engine_failure_reason`: an `EngineParseError` or a `PanicException`, as
-        `_validate_with_barrier` writes them), and the capture's owner has not objected to
-        archival (`_objecting_owner_exists`, the claim's own predicate: a quarantined capture is
-        not an archived one, so 001's carve-out for what was archived before an objection does not
-        reach it). An integrity quarantine, a timeout and a `MalformedArchiveError` are outside it.
+        `_validate_with_barrier` writes them), and the capture's profile has an active link whose
+        user has not objected (`_owner_is_archiving`; a quarantined capture is not an archived
+        one, so 001's carve-out for what was archived before an objection does not reach it). That
+        is checked when the page is selected and again in each write's `WHERE`. A profile with no
+        active link is not taken, even if its former owner never objected: until the user rules on
+        such a capture it is left as it is, and the dry run counts it. An integrity quarantine, a
+        timeout and a `MalformedArchiveError` are outside the selection.
         Ordered by `(matches.completed_at, capture id)`, oldest recording first: an ordering, and
         nothing more is claimed for it. At most `limit` rows; `after` is the report's `cursor`, a
         `(completed_at, id)` pair compared exclusively as a row against that same key. The id is
@@ -1087,13 +1139,20 @@ class CaptureDrain:
           replace the engine's text with one the selection does not match, and the row would not
           be offered again.
 
-        Both writes are guarded on the row still being `quarantined`: one that another process
-        changed meanwhile is `changed_elsewhere`, unwritten. A stored row is no longer selected; a
-        row that fails again with an engine verdict is rewritten with that verdict, and one that
-        ends `inconclusive` or `integrity_failure` is exactly as it was and is selected next run.
+        Both writes (the stored write and the quarantine write) are guarded in their own `WHERE`
+        on the row still being `quarantined` and on `_owner_is_archiving`. A row another process
+        changed meanwhile is `changed_elsewhere`; one whose owner objected or unlinked meanwhile is
+        `ownership_changed`; both are unwritten. A database error on a write stops the run at that
+        row (`write_failed_by`, the error's class only), with the report of the rows already
+        written, since those are no longer selected and their count could not be recovered
+        otherwise. A stored row is no longer selected; a row that fails again with an engine
+        verdict is rewritten with that verdict, and one that ends `inconclusive`,
+        `integrity_failure` or `ownership_changed` is exactly as it was (the last is selected next
+        run only if its profile is again owned by a user who has not objected).
 
-        `dry_run` lists the selection (outcome `selected`) without reading, validating or writing,
-        and counts the `quarantined` rows outside it by `_reason_class` (`unselected_by_reason`).
+        `dry_run` reads the database only: it lists the selection (outcome `selected`), reads no
+        object, validates nothing and writes nothing, and counts the `quarantined` rows outside it
+        by `_reason_class` (`unselected_by_reason`).
         """
         if limit < 1:
             raise ValueError("limit must be at least 1")
@@ -1128,6 +1187,7 @@ class CaptureDrain:
 
         outcomes: list[RevalidationOutcome] = []
         aborted_by: str | None = None
+        write_failed_by: str | None = None
         for capture, completed_at in candidates:
             assert capture.object_key is not None and capture.zip_sha256 is not None
             outcome: RevalidationOutcomeKind
@@ -1141,6 +1201,13 @@ class CaptureDrain:
                     )
                 except _StoreTransportError as exc:
                     aborted_by = str(exc)
+                    break
+                except SQLAlchemyError as exc:
+                    # Only the row's write (or the read that classifies a refused one) reaches
+                    # the database here. Stop at this row and keep the report so far: the rows
+                    # written before it are no longer selected, so their count would be lost
+                    # with the exception. The class name only; the text carries SQL.
+                    write_failed_by = type(exc).__name__
                     break
             outcomes.append(
                 RevalidationOutcome(
@@ -1159,6 +1226,7 @@ class CaptureDrain:
             last_capture_id=outcomes[-1].capture_id if outcomes else None,
             unselected_by_reason=unselected,
             aborted_by=aborted_by,
+            write_failed_by=write_failed_by,
         )
 
     async def _count_unselected(self, session: AsyncSession) -> tuple[tuple[str, int], ...]:
@@ -1173,11 +1241,17 @@ class CaptureDrain:
                 func.left(ReplayCapture.last_error, _REASON_HEAD_CHARS),
                 ReplayCapture.object_key.is_not(None) & ReplayCapture.zip_sha256.is_not(None),
                 _objecting_owner_exists(),
+                _owner_is_archiving(),
             ).where(ReplayCapture.status == CaptureStatus.QUARANTINED, outside)
         )
         counts: dict[str, int] = {}
-        for head, has_object, objecting in rows.all():
-            label = _reason_class(head, has_object=bool(has_object), objecting=bool(objecting))
+        for head, has_object, objecting, archiving in rows.all():
+            label = _reason_class(
+                head,
+                has_object=bool(has_object),
+                objecting=bool(objecting),
+                archiving=bool(archiving),
+            )
             counts[label] = counts.get(label, 0) + 1
         return tuple(sorted(counts.items()))
 
@@ -1195,19 +1269,39 @@ class CaptureDrain:
         )
         if result is not None:
             written = await self._mark_stored(
-                capture_id, result, only_if_status=CaptureStatus.QUARANTINED
+                capture_id,
+                result,
+                only_if_status=CaptureStatus.QUARANTINED,
+                only_if_archiving=True,
             )
-            return ("stored", None) if written else ("changed_elsewhere", _CHANGED_ELSEWHERE)
+            if written:
+                return "stored", None
+            return await self._why_not_written(capture_id)
 
         reason = error or "validation failed for an unspecified reason"
         if not _is_engine_failure_reason(reason):
             return "inconclusive", reason
         written = await self._mark_quarantined(
-            capture_id, reason, only_if_status=CaptureStatus.QUARANTINED
+            capture_id,
+            reason,
+            only_if_status=CaptureStatus.QUARANTINED,
+            only_if_archiving=True,
         )
-        return (
-            ("still_quarantined", reason) if written else ("changed_elsewhere", _CHANGED_ELSEWHERE)
-        )
+        if written:
+            return "still_quarantined", reason
+        return await self._why_not_written(capture_id)
+
+    async def _why_not_written(self, capture_id: uuid.UUID) -> tuple[RevalidationOutcomeKind, str]:
+        """A guarded write matched no row: say which guard refused it. A row no longer
+        `quarantined` was moved by another process (`changed_elsewhere`); one still `quarantined`
+        can only have been refused by the ownership predicate (`ownership_changed`)."""
+        async with self._session_factory() as session:
+            status = await session.scalar(
+                select(ReplayCapture.status).where(ReplayCapture.id == capture_id)
+            )
+        if status == CaptureStatus.QUARANTINED:
+            return "ownership_changed", _OWNERSHIP_CHANGED
+        return "changed_elsewhere", _CHANGED_ELSEWHERE
 
     async def _quarantine(
         self, capture_id: uuid.UUID, reason: str, *, game_id: int, profile_id: int
@@ -1346,10 +1440,13 @@ class CaptureDrain:
         result: ReplayValidationResult | None,
         *,
         only_if_status: CaptureStatus | None = None,
+        only_if_archiving: bool = False,
     ) -> bool:
         """Mark `stored`. `only_if_status` guards the write on the row's current status (T673's
-        re-validation, which must not overwrite a row another process moved); returns whether a
-        row was written. Unguarded, it matches the id alone, as before."""
+        re-validation, which must not overwrite a row another process moved);
+        `only_if_archiving` adds `_owner_is_archiving` to the same `WHERE`, so a user who objected
+        or unlinked after the page was selected is not written. Returns whether a row was
+        written. Unguarded, it matches the id alone, as before."""
         values: dict[str, Any] = {
             "status": CaptureStatus.STORED,
             "stored_at": datetime.now(UTC),
@@ -1363,6 +1460,8 @@ class CaptureDrain:
         statement = update(ReplayCapture).where(ReplayCapture.id == capture_id).values(**values)
         if only_if_status is not None:
             statement = statement.where(ReplayCapture.status == only_if_status)
+        if only_if_archiving:
+            statement = statement.where(_owner_is_archiving())
         async with self._session_factory() as session:
             outcome = await session.execute(statement)
             await session.commit()
@@ -1374,8 +1473,9 @@ class CaptureDrain:
         reason: str,
         *,
         only_if_status: CaptureStatus | None = None,
+        only_if_archiving: bool = False,
     ) -> bool:
-        """Mark `quarantined` with `reason`; `only_if_status` and the return as `_mark_stored`."""
+        """Mark `quarantined` with `reason`; both guards and the return as `_mark_stored`."""
         statement = (
             update(ReplayCapture)
             .where(ReplayCapture.id == capture_id)
@@ -1383,6 +1483,8 @@ class CaptureDrain:
         )
         if only_if_status is not None:
             statement = statement.where(ReplayCapture.status == only_if_status)
+        if only_if_archiving:
+            statement = statement.where(_owner_is_archiving())
         async with self._session_factory() as session:
             outcome = await session.execute(statement)
             await session.commit()

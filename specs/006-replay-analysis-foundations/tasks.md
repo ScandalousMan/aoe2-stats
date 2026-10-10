@@ -1669,7 +1669,7 @@ T671 and T672 ship together; T673 follows once T672 is deployed.
       audit red (`scripts/checks/capture_audit.py` measures `stored_at` against the recording), and
       whether timeout quarantines are reopened (001's plan calls the cap an engine failure), which
       waits on the dry run's count
-- [ ] T673b Close #129's second review (`reviewer` REJECT 2026-10-10 on T673a; eviction, the
+- [x] T673b Close #129's second review (`reviewer` REJECT 2026-10-10 on T673a; eviction, the
       quarantine guard, integrity versus transport and the two corrected claims are closed).
       **Objection at write time:** the objection is read once, when the page is selected, and both
       guarded writes filter on status alone, so a user who objects while a page is being validated

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import os
 import re
 import sys
 import uuid
@@ -28,7 +29,10 @@ from aoe2stats_storage.models import (
     CaptureSource,
     CaptureStatus,
     Match,
+    ProfileLink,
     ReplayCapture,
+    SteamIdentity,
+    User,
 )
 from aoe2stats_storage.objects import ObjectNotFound
 
@@ -40,6 +44,7 @@ from scripts.ops.revalidate_quarantined import (
     SettingsError,
     _NoReplayProvider,
     build_arg_parser,
+    exit_code,
     format_report,
     main,
     object_store_from_settings,
@@ -108,6 +113,29 @@ class _Opens:
         )
 
 
+async def _link(session: AsyncSession, profile_id: int) -> None:
+    """An active link held by a user who has not objected: a capture needs one to be selected."""
+    now = datetime.now(UTC)
+    user_id = uuid.uuid4()
+    steam_id64 = f"76561198{profile_id:010d}"
+    session.add(User(id=user_id, created_at=now, allowlisted_at=now, archival_objected_at=None))
+    session.add(
+        SteamIdentity(steam_id64=steam_id64, user_id=user_id, verified_at=now, last_sign_in_at=now)
+    )
+    await session.flush()
+    session.add(
+        ProfileLink(
+            id=uuid.uuid4(),
+            user_id=user_id,
+            profile_id=profile_id,
+            steam_id64=steam_id64,
+            is_primary=True,
+            linked_at=now,
+        )
+    )
+    await session.commit()
+
+
 async def _seed(session: AsyncSession, store: _GetOnlyStore, game_id: int) -> uuid.UUID:
     completed_at = datetime.now(UTC) - timedelta(days=4)
     key = f"replays/{game_id}.zip"
@@ -139,6 +167,7 @@ async def _seed(session: AsyncSession, store: _GetOnlyStore, game_id: int) -> uu
         )
     )
     await session.commit()
+    await _link(session, game_id + 7)
     return capture_id
 
 
@@ -203,8 +232,16 @@ def test_a_missing_application_key_is_named_and_no_value_is_printed() -> None:
     assert not any(value in str(caught.value) for value in _SECRETS.values())
 
 
+@pytest.fixture
+def no_ambient_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`Settings` reads the process environment as well as the mapping it is given, so a test that
+    expects a refusal must not inherit a developer's or CI's variables: clear all of them."""
+    for key in list(os.environ):
+        monkeypatch.delenv(key)
+
+
 def test_a_real_run_with_an_s3_endpoint_that_carries_a_bucket_path_is_refused_by_settings(
-    capsys: pytest.CaptureFixture[str],
+    capsys: pytest.CaptureFixture[str], no_ambient_environment: None
 ) -> None:
     """The application's own validator, not a copy of it: `Settings` rejects the account host
     with the bucket appended, which the object store would answer as a riddle on first use."""
@@ -226,7 +263,7 @@ def test_a_dry_run_without_a_database_url_is_refused(capsys: pytest.CaptureFixtu
 
 
 def test_a_real_run_without_the_applications_environment_is_refused_and_names_the_keys(
-    capsys: pytest.CaptureFixture[str],
+    capsys: pytest.CaptureFixture[str], no_ambient_environment: None
 ) -> None:
     environ = {"DATABASE_URL": "postgresql+psycopg://u:p@127.0.0.1:1/none"}
     assert main([], environ=environ, make_object_store=_must_not_be_called) == 1
@@ -324,6 +361,8 @@ async def test_the_printed_continuation_value_parses_and_resumes_at_the_right_ro
             )
         )
     await db_session.commit()
+    for index in range(len(ids)):
+        await _link(db_session, 8_100_010 + index)
 
     examined: list[uuid.UUID] = []
     argv: list[str] = []
@@ -373,7 +412,7 @@ def test_a_reason_with_terminal_escape_codes_is_printed_as_one_safe_line() -> No
     )
 
 
-def test_the_report_counts_the_unselected_rows_by_label_and_a_stop_is_named() -> None:
+def test_the_report_counts_the_unselected_rows_by_label() -> None:
     from aoe2stats_ingester.capture import RevalidationReport
 
     report = RevalidationReport(
@@ -381,7 +420,6 @@ def test_the_report_counts_the_unselected_rows_by_label_and_a_stop_is_named() ->
         truncated=False,
         last_completed_at=None,
         unselected_by_reason=(("PanicException (archival objected)", 2), ("wall-clock cap", 1)),
-        aborted_by="ClientError",
     )
 
     lines = format_report(report, dry_run=True)
@@ -390,8 +428,43 @@ def test_the_report_counts_the_unselected_rows_by_label_and_a_stop_is_named() ->
     assert any(
         line.endswith("PanicException (archival objected)") and "2" in line for line in lines
     )
-    assert any("STOPPED" in line and "ClientError" in line for line in lines)
+    assert exit_code(report) == 0
+
+
+@pytest.mark.parametrize(
+    ("stop", "needle"),
+    [
+        pytest.param({"aborted_by": "ClientError"}, "the object store failed", id="store"),
+        pytest.param({"write_failed_by": "OperationalError"}, "a database write failed", id="db"),
+    ],
+)
+def test_a_stopped_run_names_the_error_class_prints_no_continuation_and_exits_non_zero(
+    stop: dict[str, str], needle: str
+) -> None:
+    """A truncated report with a cursor prints `--after`; a stopped one must not print a
+    continuation, because the row it stopped on was not written and the operator has to deal with
+    the stop first. Contrast: the same report, not stopped, does print it."""
+    from aoe2stats_ingester.capture import RevalidationOutcome, RevalidationReport
+
+    when = datetime(2026, 9, 27, tzinfo=UTC)
+    outcomes = (RevalidationOutcome(uuid.uuid4(), 1, 2, when, "stored"),)
+    common: dict[str, Any] = {
+        "outcomes": outcomes,
+        "truncated": True,
+        "last_completed_at": when,
+        "last_capture_id": uuid.UUID(int=9),
+    }
+
+    stopped = RevalidationReport(**common, **stop)
+    lines = format_report(stopped, dry_run=False)
+    assert any("STOPPED" in line and needle in line for line in lines)
+    assert any(next(iter(stop.values())) in line for line in lines)
     assert not any("--after" in line for line in lines)
+    assert exit_code(stopped) == 1
+
+    running = RevalidationReport(**common)
+    assert any("--after" in line for line in format_report(running, dry_run=False))
+    assert exit_code(running) == 0
 
 
 # --- The entry point, end to end (level: `main`) ---------------------------------------------
@@ -446,7 +519,7 @@ async def test_main_drives_a_successful_dry_run_and_then_a_real_run(
     assert dry == 0
     assert "selected" in out and "game 800100" in out
     assert "1 other quarantined row(s)" in out and "reclaim checksum mismatch" in out
-    assert "dry run, nothing was read or written" in out
+    assert "dry run, the database was read; no object was read and nothing was written" in out
     assert (run.stores_built, run.validators_built) == (0, 0)
     assert "aoe2stats_replay_engine.aoe2rec" not in sys.modules
     assert store.gets == []
@@ -522,3 +595,48 @@ async def test_main_stops_non_zero_on_a_store_error_and_prints_its_class_never_i
     assert "STOPPED" in out and "ConnectionError" in out
     assert "secret-path" not in out
     assert await _snapshot(db_session, capture_id) == before
+
+
+async def test_main_stops_non_zero_on_a_failed_write_and_reports_the_rows_already_written(
+    db_session: AsyncSession,
+    database_url: str,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Level: `main`. The second row's write fails; the first was written and is no longer
+    selected, so the report must still say so. The error's text (it carries SQL) never prints."""
+    from sqlalchemy.exc import OperationalError
+
+    from aoe2stats_ingester.capture import CaptureDrain
+
+    store = _GetOnlyStore({})
+    first = await _seed(db_session, store, 800_130)
+    second = await _seed(db_session, store, 800_131)
+    real = CaptureDrain._mark_stored
+    calls = {"n": 0}
+
+    async def _second_write_fails(self: Any, *args: Any, **kwargs: Any) -> bool:
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise OperationalError("UPDATE secret_table SET x = 'secret-value'", {}, Exception("x"))
+        return await real(self, *args, **kwargs)  # type: ignore[no-any-return]
+
+    monkeypatch.setattr(CaptureDrain, "_mark_stored", _second_write_fails)
+    before = await _snapshot(db_session, second)
+    run = _ConfiguredByTheRun(store)
+
+    code = await asyncio.to_thread(
+        main,
+        ["--limit", "5"],
+        _application_environment(database_url),
+        make_object_store=run.make_object_store,
+        make_validator=run.make_validator,
+    )
+
+    out = capsys.readouterr().out
+    assert code == 1
+    assert "1 row(s) examined (stored=1)" in out
+    assert "STOPPED" in out and "OperationalError" in out
+    assert "secret" not in out
+    assert (await _snapshot(db_session, first))[0] == CaptureStatus.STORED
+    assert await _snapshot(db_session, second) == before

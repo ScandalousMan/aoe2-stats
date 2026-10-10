@@ -1,9 +1,10 @@
 """T673: re-validate the captures that ended `quarantined` because the engine could not parse them.
 
-Context (feature 006, Phase 7): `aoe2rec-py` 0.1.21 panicked on recordings of game build 185872, so
-their captures ended `quarantined` with the object kept (constitution IV). 0.1.24 reads them (T672);
-`CaptureDrain.revalidate_quarantined` reads each committed object back, checks it against the row's
-own `zip_sha256`, and runs it through the same containment barrier the capture path uses.
+Context (feature 006, Phase 7): `aoe2rec-py` 0.1.21 panicked on the one recording measured as game
+build 185872 (`docs/risks.md`); a capture the engine cannot parse ends `quarantined` with the object
+kept (constitution IV). 0.1.24 reads that recording (T672); `CaptureDrain.revalidate_quarantined`
+reads each committed object back, checks it against the row's own `zip_sha256`, and runs it through
+the same containment barrier the capture path uses.
 
 What every test below pins, with its contrast case (the boundary and the thing just across it):
 
@@ -22,6 +23,10 @@ What every test below pins, with its contrast case (the boundary and the thing j
 - **Ordered, bounded, resumable.** Oldest recording first (an ordering, nothing more), at most
   `limit` rows, resumable with `after`, the full `(completed_at, id)` cursor; a second run rewrites
   a row only with the engine's verdict.
+- **Only a capture with an active, non-objecting owner is taken (T673b),** at selection and again
+  in each guarded write's own `WHERE`: the stored write and the quarantine write are tested
+  separately. A row a write refuses is an outcome of its own, `ownership_changed`.
+- **A database error on a write stops the run at that row** and returns the report so far.
 """
 
 from __future__ import annotations
@@ -32,7 +37,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from aoe2stats_core.replay.validation import (
@@ -183,11 +188,15 @@ async def _seed(
     stored_object: bytes | None = _GOOD,
     recorded_sha256: bytes | None = None,
     with_object_key: bool = True,
+    sha256_null: bool = False,
+    linked: bool = True,
 ) -> uuid.UUID:
     """One capture row plus, when `stored_object` is not None, the object under its key.
 
     `recorded_sha256` is the content the *row* believes it holds (default: `content`), so a test
-    can make the object drift from the row's own record."""
+    can make the object drift from the row's own record. `sha256_null` keeps `object_key` and
+    clears the checksum. `linked` gives the profile an active link whose user has not objected,
+    which a capture needs to be selected (T673b); pass `False` to seed the link by hand."""
     profile_id = game_id + 1_000_000
     completed_at = completed_at or (datetime.now(UTC) - timedelta(days=5))
     key = replay_object_key(game_id, profile_id)
@@ -215,13 +224,15 @@ async def _seed(
             object_key=key if with_object_key else None,
             zip_bytes=len(content),
             zip_sha256=hashlib.sha256(recorded_sha256 or content).hexdigest()
-            if with_object_key
+            if with_object_key and not sha256_null
             else None,
             last_error=last_error,
             attempts=1,
         )
     )
     await db_session.commit()
+    if linked:
+        await _link_profile(db_session, profile_id, objected=False)
     return capture_id
 
 
@@ -248,7 +259,7 @@ def _snapshot(row: ReplayCapture) -> tuple[Any, ...]:
     )
 
 
-# --- (a) now validates -> stored, exactly as the normal path ---------------------------------
+# --- (a) now validates -> stored, as the normal path stores it (but `stored_at` is now) -------
 
 
 @pytest.mark.parametrize("reason", [_PANIC_REASON, _PARSE_REASON])
@@ -298,7 +309,8 @@ async def test_an_engine_failure_row_whose_object_now_validates_ends_stored_like
     assert row.last_error is None
     assert row.stored_at is not None
     assert row.http_status == 200
-    # `validated_by` and the inner fields are set exactly as the normal path sets them.
+    # `validated_by` and the inner fields are set as the normal path sets them; `stored_at` is the
+    # time of this re-validation, so it is not compared with the sibling's.
     assert row.validated_by == normal_values[0] == f"aoe2rec-py@{_ENGINE_VERSION}"
     assert (row.inner_filename, row.inner_bytes) == normal_values[1:]
     # The row's own record of the object is untouched.
@@ -601,7 +613,7 @@ async def test_a_quarantined_row_with_no_committed_object_is_not_selected(
     assert _snapshot(await _row(db_session, capture_id)) == before
 
 
-# --- ordering, bound, resumption, idempotence, dry run ---------------------------------------
+# --- ordering, bound, resumption, repeat runs, dry run ---------------------------------------
 
 
 async def test_the_selection_is_oldest_recording_first_bounded_and_resumable(
@@ -751,6 +763,7 @@ async def _seed_shared_match(
     completed_at: datetime,
     last_error: str = _PARSE_REASON,
     content: bytes = _BAD,
+    linked: bool = True,
 ) -> None:
     """One match, several tracked profiles: one engine-failure quarantined capture per id in
     `capture_ids`, all carrying the match's single `completed_at` (`uq_replay_captures_game_id_
@@ -787,6 +800,9 @@ async def _seed_shared_match(
             )
         )
     await db_session.commit()
+    if linked:
+        for index in range(len(capture_ids)):
+            await _link_profile(db_session, game_id * 100 + index, objected=False)
 
 
 def _id(n: int) -> uuid.UUID:
@@ -1082,10 +1098,14 @@ async def _link_profile(
     *,
     objected: bool,
     unlinked: bool = False,
-) -> None:
+    second_user: bool = False,
+) -> uuid.UUID:
+    """A user (with a Steam identity) linked to `profile_id`; returns the user's id.
+    `second_user` gives the identity a different Steam id, for a profile linked twice over time
+    (the first link ended with `unlinked=True`)."""
     now = datetime.now(UTC)
     user_id = uuid.uuid4()
-    steam_id64 = f"76561198{profile_id:010d}"
+    steam_id64 = f"{'76561199' if second_user else '76561198'}{profile_id:010d}"
     db_session.add(
         User(
             id=user_id,
@@ -1110,39 +1130,50 @@ async def _link_profile(
         )
     )
     await db_session.commit()
+    return user_id
 
 
 async def test_an_objecting_users_capture_is_not_selected_but_another_profile_of_the_match_is(
     db_session: AsyncSession,
     session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
-    """Level: the selection query (constitution IX; 001's quarantined-is-not-archived). Two
-    tracked profiles captured one match; one owner has objected since. Only theirs is out."""
+    """Level: the selection query (constitution IX; 001's quarantined-is-not-archived). Four
+    tracked profiles captured one match. Only a profile with an active link whose user has not
+    objected is taken: an active objector is out, an objector who has since unlinked is out (their
+    profile has no active link), a profile with no link at all is out, and a profile relinked by a
+    second user who has not objected is in, as is the plain consenting one."""
     store = _RecordingObjectStore()
     await _seed_shared_match(
         db_session,
         store,
         game_id=710_100,
-        capture_ids=[_id(1), _id(2), _id(3)],
+        capture_ids=[_id(1), _id(2), _id(3), _id(4), _id(5)],
         completed_at=_SHARED_AT,
         content=_GOOD,
+        linked=False,
     )
-    objecting, consenting, unlinked_objector = (710_100 * 100 + i for i in range(3))
+    objecting, consenting, unlinked_objector, _never_linked, relinked = (
+        710_100 * 100 + i for i in range(5)
+    )
     await _link_profile(db_session, objecting, objected=True)
     await _link_profile(db_session, consenting, objected=False)
-    # An objection by a user whose link has since ended does not bind the profile's new owner.
     await _link_profile(db_session, unlinked_objector, objected=True, unlinked=True)
-    before = _snapshot(await _row(db_session, _id(1)))
+    # The objector unlinked and a second user, who has not objected, took the profile over.
+    await _link_profile(db_session, relinked, objected=True, unlinked=True)
+    await _link_profile(db_session, relinked, objected=False, second_user=True)
+    out = {i: _snapshot(await _row(db_session, _id(i))) for i in (1, 3, 4)}
     validator = _Validator()
 
     report = await _drain(
         session_factory, store=store, provider=_RecordingReplayProvider(), validator=validator
     ).revalidate_quarantined(limit=10)
 
-    assert {o.capture_id for o in report.outcomes} == {_id(2), _id(3)}
+    assert {o.capture_id for o in report.outcomes} == {_id(2), _id(5)}
     assert validator.calls == 2
-    assert _snapshot(await _row(db_session, _id(1))) == before
+    for index, snapshot in out.items():
+        assert _snapshot(await _row(db_session, _id(index))) == snapshot
     assert (await _row(db_session, _id(2))).status == CaptureStatus.STORED
+    assert (await _row(db_session, _id(5))).status == CaptureStatus.STORED
 
 
 async def test_an_objecting_users_capture_is_not_offered_by_a_dry_run_either(
@@ -1151,7 +1182,12 @@ async def test_an_objecting_users_capture_is_not_offered_by_a_dry_run_either(
 ) -> None:
     store = _RecordingObjectStore()
     await _seed_shared_match(
-        db_session, store, game_id=710_101, capture_ids=[_id(1)], completed_at=_SHARED_AT
+        db_session,
+        store,
+        game_id=710_101,
+        capture_ids=[_id(1)],
+        completed_at=_SHARED_AT,
+        linked=False,
     )
     await _link_profile(db_session, 710_101 * 100, objected=True)
 
@@ -1162,16 +1198,20 @@ async def test_an_objecting_users_capture_is_not_offered_by_a_dry_run_either(
     assert report.outcomes == ()
 
 
-def test_the_selection_and_the_capture_claim_share_one_objection_predicate() -> None:
-    """Level: the code. One function builds the `EXISTS`; `_claim_batch` and the re-validation
-    selection both call it, so the two cannot diverge."""
+def test_the_claim_keeps_its_own_predicate_and_the_revalidation_uses_the_archiving_set() -> None:
+    """Level: the code. The claim still excludes a *found* objection (`_objecting_owner_exists`;
+    T673b does not change the claim path), while the re-validation's selection and both of its
+    guarded writes use `_owner_is_archiving`, which is `discover.archiving_links`'s set."""
     import inspect
 
     from aoe2stats_ingester import capture
 
-    assert hasattr(capture, "_objecting_owner_exists")
     assert "_objecting_owner_exists()" in inspect.getsource(capture.CaptureDrain._claim_batch)
-    assert "_objecting_owner_exists()" in inspect.getsource(capture._revalidation_selection)
+    assert "_owner_is_archiving" not in inspect.getsource(capture.CaptureDrain._claim_batch)
+    assert "archiving_links()" in inspect.getsource(capture._owner_is_archiving)
+    assert "_owner_is_archiving()" in inspect.getsource(capture._revalidation_selection)
+    assert "_owner_is_archiving()" in inspect.getsource(capture.CaptureDrain._mark_stored)
+    assert "_owner_is_archiving()" in inspect.getsource(capture.CaptureDrain._mark_quarantined)
 
 
 # --- Guard (level: the write guards) ---------------------------------------------------------
@@ -1318,12 +1358,13 @@ async def test_a_dry_run_counts_the_quarantined_rows_outside_the_selection_by_re
         (710_407, {"last_error": None}),
         (710_408, {"last_error": "something else entirely, with 'quoted values'"}),
         (710_409, {"last_error": "OtherClass: some text"}),
+        (710_412, {"last_error": "ValueError: not an engine class"}),
         (710_410, {"status": CaptureStatus.STORED, "last_error": None}),  # not quarantined
     ]
     for game_id, kwargs in seeded:
         await _seed(db_session, store, game_id=game_id, **kwargs)
     # A selected-by-text row whose owner has objected is outside the selection too.
-    await _seed(db_session, store, game_id=710_411)
+    await _seed(db_session, store, game_id=710_411, linked=False)
     await _link_profile(db_session, 710_411 + 1_000_000, objected=True)
     before = {
         c: _snapshot(await _row(db_session, c))
@@ -1344,8 +1385,8 @@ async def test_a_dry_run_counts_the_quarantined_rows_outside_the_selection_by_re
         "wall-clock cap": 1,
         "MalformedArchiveError": 1,
         "no reason recorded": 1,
-        "other": 1,
-        "OtherClass": 1,
+        "other": 2,  # free text, and an identifier that is not a class name (`OtherClass`)
+        "ValueError": 1,
     }
     # Counts only: no object key and no free text from any reason reaches the report.
     rendered = repr(report.unselected_by_reason)
@@ -1370,3 +1411,289 @@ async def test_a_real_run_does_not_count_unselected_rows(
     ).revalidate_quarantined(limit=10)
 
     assert report.unselected_by_reason is None
+
+
+# === T673b: remediation of #129's second review ================================================
+#
+# Each test names its level: the selection query, a guarded write (the stored write or the
+# quarantine write, which are separate statements with separate guards), or the report.
+
+
+async def _object_to_archival(
+    session_factory: async_sessionmaker[AsyncSession], profile_id: int
+) -> None:
+    """The profile's active owner records an Art. 21 objection (`users.archival_objected_at`)."""
+    async with session_factory() as session:
+        await session.execute(
+            update(User)
+            .where(
+                User.id.in_(
+                    select(ProfileLink.user_id).where(
+                        ProfileLink.profile_id == profile_id, ProfileLink.unlinked_at.is_(None)
+                    )
+                )
+            )
+            .values(archival_objected_at=datetime.now(UTC))
+        )
+        await session.commit()
+
+
+async def _unlink(session_factory: async_sessionmaker[AsyncSession], profile_id: int) -> None:
+    """The profile's active owner unlinks it (`profile_links.unlinked_at`)."""
+    async with session_factory() as session:
+        await session.execute(
+            update(ProfileLink)
+            .where(ProfileLink.profile_id == profile_id, ProfileLink.unlinked_at.is_(None))
+            .values(unlinked_at=datetime.now(UTC))
+        )
+        await session.commit()
+
+
+class _ChangesOwnershipDuringValidation(_Validator):
+    """While the bytes of one chosen row are being validated, that row's owner objects (or
+    unlinks); every other row validates untouched. `fails` makes every validation end in an
+    engine verdict instead of a result."""
+
+    def __init__(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        *,
+        victim_bytes: bytes,
+        victim_profile_id: int,
+        event: str,
+        fails: bool,
+    ) -> None:
+        super().__init__()
+        self._session_factory = session_factory
+        self._victim_bytes = victim_bytes
+        self._victim_profile_id = victim_profile_id
+        self._event = event
+        self._fails = fails
+
+    def validate(self, zip_bytes: bytes) -> ReplayValidationResult:
+        import asyncio
+
+        self.calls += 1
+        if zip_bytes == self._victim_bytes:
+            # The barrier runs this in a worker thread, so a private loop is safe here.
+            change = _object_to_archival if self._event == "objects" else _unlink
+            asyncio.run(change(self._session_factory, self._victim_profile_id))
+        if self._fails:
+            raise EngineParseError("aoe2rec-py rejected the replay: still bad")
+        return ReplayValidationResult(
+            inner_filename="AgeIIDE_Replay_1.aoe2record",
+            inner_bytes=4242,
+            engine_name="aoe2rec-py",
+            engine_version=_ENGINE_VERSION,
+        )
+
+
+_VICTIM = b"recording-of-the-user-who-changes-their-mind"
+_BYSTANDER = b"recording-of-a-user-who-does-not"
+
+
+@pytest.mark.parametrize("event", ["objects", "unlinks"])
+@pytest.mark.parametrize("fails", [False, True], ids=["stored-write", "quarantine-write"])
+async def test_a_user_who_objects_or_unlinks_during_validation_is_not_written_but_the_page_goes_on(
+    event: str,
+    fails: bool,
+    db_session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """Level: the guarded write, both statements. `fails=False` drives the stored write (the
+    validation succeeds), `fails=True` the quarantine write (it ends in an engine verdict). The
+    ownership was checked when the page was selected; it must hold again at the write. Contrast,
+    on the same page: the row whose owner did not change is written."""
+    store = _RecordingObjectStore()
+    now = datetime.now(UTC)
+    victim = await _seed(
+        db_session,
+        store,
+        game_id=720_001,
+        content=_VICTIM,
+        stored_object=_VICTIM,
+        completed_at=now - timedelta(days=9),
+    )
+    bystander = await _seed(
+        db_session,
+        store,
+        game_id=720_002,
+        content=_BYSTANDER,
+        stored_object=_BYSTANDER,
+        completed_at=now - timedelta(days=8),
+    )
+    victim_before = _snapshot(await _row(db_session, victim))
+    validator = _ChangesOwnershipDuringValidation(
+        session_factory,
+        victim_bytes=_VICTIM,
+        victim_profile_id=720_001 + 1_000_000,
+        event=event,
+        fails=fails,
+    )
+
+    report = await _drain(
+        session_factory, store=store, provider=_RecordingReplayProvider(), validator=validator
+    ).revalidate_quarantined(limit=10)
+
+    assert validator.calls == 2
+    # The refused row is an outcome of its own, and nothing about it was written.
+    assert {o.capture_id: o.outcome for o in report.outcomes} == {
+        victim: "ownership_changed",
+        bystander: "still_quarantined" if fails else "stored",
+    }
+    assert _snapshot(await _row(db_session, victim)) == victim_before
+    written = await _row(db_session, bystander)
+    assert written.status == (CaptureStatus.QUARANTINED if fails else CaptureStatus.STORED)
+    if fails:
+        assert written.last_error == "EngineParseError: aoe2rec-py rejected the replay: still bad"
+    else:
+        assert written.validated_by == f"aoe2rec-py@{_ENGINE_VERSION}"
+
+
+async def test_a_profile_with_no_active_link_is_counted_under_its_own_label_and_not_selected(
+    db_session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """Level: the selection and the dry run's report. A profile nobody holds is not taken (the
+    row and its object stay as they are); the dry run counts it under its own label, apart from
+    an objector's. Contrast: an engine-failure row with a consenting owner is selected."""
+    store = _RecordingObjectStore()
+    now = datetime.now(UTC)
+    await _seed(db_session, store, game_id=720_100, completed_at=now - timedelta(days=9))
+    orphan = await _seed(
+        db_session, store, game_id=720_101, linked=False, completed_at=now - timedelta(days=8)
+    )
+    left = await _seed(
+        db_session, store, game_id=720_102, linked=False, completed_at=now - timedelta(days=7)
+    )
+    await _link_profile(db_session, 720_102 + 1_000_000, objected=True, unlinked=True)
+    objector = await _seed(
+        db_session, store, game_id=720_103, linked=False, completed_at=now - timedelta(days=6)
+    )
+    await _link_profile(db_session, 720_103 + 1_000_000, objected=True)
+    before = {c: _snapshot(await _row(db_session, c)) for c in (orphan, left, objector)}
+
+    report = await _drain(
+        session_factory, store=store, provider=_RecordingReplayProvider(), validator=_Validator()
+    ).revalidate_quarantined(limit=10, dry_run=True)
+
+    assert [o.game_id for o in report.outcomes] == [720_100]
+    assert report.unselected_by_reason is not None
+    assert dict(report.unselected_by_reason) == {
+        "PanicException (no active link)": 2,
+        "PanicException (archival objected)": 1,
+    }
+    assert {c: _snapshot(await _row(db_session, c)) for c in before} == before
+    assert store.gets == []
+
+
+async def test_a_row_whose_object_key_is_set_but_checksum_is_null_is_not_selected(
+    db_session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """Level: the selection's checksum clause on its own (the earlier test nulls both columns, so
+    dropping this clause alone passed). Contrast: the same row with its checksum is selected."""
+    store = _RecordingObjectStore()
+    now = datetime.now(UTC)
+    no_checksum = await _seed(
+        db_session, store, game_id=720_200, sha256_null=True, completed_at=now - timedelta(days=9)
+    )
+    with_checksum = await _seed(
+        db_session, store, game_id=720_201, completed_at=now - timedelta(days=8)
+    )
+    before = _snapshot(await _row(db_session, no_checksum))
+
+    report = await _drain(
+        session_factory, store=store, provider=_RecordingReplayProvider(), validator=_Validator()
+    ).revalidate_quarantined(limit=10)
+
+    assert [o.capture_id for o in report.outcomes] == [with_checksum]
+    assert _snapshot(await _row(db_session, no_checksum)) == before
+
+
+# --- A database error on one row's write (level: the report) ---------------------------------
+
+
+@pytest.mark.parametrize("fails", [False, True], ids=["stored-write", "quarantine-write"])
+async def test_a_write_that_fails_on_the_nth_row_stops_there_and_returns_the_report_so_far(
+    fails: bool,
+    db_session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Level: the report. Rows written before the failure are no longer selected, so a report
+    discarded with the exception would lose their count for good. The run stops at the failing
+    row, names the error's class (never its text), and the rows after it are not examined."""
+    from sqlalchemy.exc import OperationalError
+
+    from aoe2stats_ingester.capture import CaptureDrain
+
+    store = _RecordingObjectStore()
+    now = datetime.now(UTC)
+    ids = [
+        await _seed(
+            db_session,
+            store,
+            game_id=720_300 + n,
+            content=_GOOD if not fails else _BAD,
+            stored_object=_GOOD if not fails else _BAD,
+            completed_at=now - timedelta(days=9 - n),
+        )
+        for n in range(4)
+    ]
+    method = "_mark_quarantined" if fails else "_mark_stored"
+    real = getattr(CaptureDrain, method)
+    calls = {"n": 0}
+
+    async def _third_write_fails(self: Any, *args: Any, **kwargs: Any) -> bool:
+        calls["n"] += 1
+        if calls["n"] == 3:
+            raise OperationalError("UPDATE secret_table SET x = 'secret-value'", {}, Exception("x"))
+        return await real(self, *args, **kwargs)  # type: ignore[no-any-return]
+
+    monkeypatch.setattr(CaptureDrain, method, _third_write_fails)
+    before_failed = _snapshot(await _row(db_session, ids[2]))
+    before_after = _snapshot(await _row(db_session, ids[3]))
+    validator = _Validator()
+
+    report = await _drain(
+        session_factory, store=store, provider=_RecordingReplayProvider(), validator=validator
+    ).revalidate_quarantined(limit=10)
+
+    written = "still_quarantined" if fails else "stored"
+    assert [(o.capture_id, o.outcome) for o in report.outcomes] == [
+        (ids[0], written),
+        (ids[1], written),
+    ]
+    assert report.write_failed_by == "OperationalError"
+    assert report.aborted_by is None
+    assert "secret" not in repr(report)
+    assert report.cursor is not None and report.cursor[1] == ids[1]
+    assert validator.calls == 3  # the fourth row was never examined
+    assert _snapshot(await _row(db_session, ids[2])) == before_failed
+    assert _snapshot(await _row(db_session, ids[3])) == before_after
+    # The first two were written for real; the count of them is what the report preserves.
+    if not fails:
+        assert (await _row(db_session, ids[0])).status == CaptureStatus.STORED
+        assert (await _row(db_session, ids[1])).status == CaptureStatus.STORED
+
+
+# --- Reason labels (level: the dry run's grouping) -------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("head", "label"),
+    [
+        pytest.param("ValueError: x", "ValueError", id="class-ending-in-Error-keeps-its-label"),
+        pytest.param("pyo3_runtime.PanicException: x", "pyo3_runtime.PanicException", id="dotted"),
+        pytest.param("SomethingException", "SomethingException", id="bare-class-name"),
+        pytest.param("SecretProject12345: x", "other", id="identifier-not-a-class-name"),
+        pytest.param("hunter2", "other", id="bare-identifier"),
+        pytest.param("OtherClass: some text", "other", id="class-like-without-the-suffix"),
+        pytest.param("Error handling: x", "other", id="not-an-identifier"),
+    ],
+)
+def test_a_reason_label_is_a_closed_vocabulary(head: str, label: str) -> None:
+    from aoe2stats_ingester.capture import _reason_class
+
+    assert _reason_class(head, has_object=True, objecting=False, archiving=True) == label

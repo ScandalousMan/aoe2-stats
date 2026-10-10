@@ -19,8 +19,14 @@ production, by hand.
 - It never downloads from the replay source, and it never writes, replaces or deletes an object:
   the store is only ever read.
 - It never selects an integrity quarantine (`reclaim could not read back ...`, `reclaim checksum
-mismatch ...`), a timeout, a `MalformedArchiveError`, or a capture whose owner has objected to
-  archival (constitution IX).
+  mismatch ...`), a timeout or a `MalformedArchiveError`.
+- It takes a capture only when its profile has an active link (`profile_links.unlinked_at IS
+  NULL`) whose user has not objected to archival (`users.archival_objected_at IS NULL`,
+  constitution IX). It checks that when the page is selected and again inside each write, because
+  a user can object or unlink while a page is being validated. A profile with no active link is
+  not taken, even if its former owner never objected; the dry run counts it as `(no active link)`.
+  Whether such a capture is ever re-validated is left to the user: the row and its object stay as
+  they are.
 - It raises no alert. The row raised its `validation_failed` when it was first quarantined.
 
 ## Outcomes
@@ -35,21 +41,32 @@ One line per row examined:
 | `inconclusive`      | Validation failed for a reason that is not the engine's verdict (the wall-clock cap, any other class).    | no; selected again on the next run             |
 | `integrity_failure` | The object is missing or no longer matches the row's `zip_sha256`. Evidence for a human, constitution IV. | no; the run ends **non-zero** after the report |
 | `changed_elsewhere` | Another process moved the row between selection and write.                                                | no                                             |
+| `ownership_changed` | The row is still `quarantined`, but its profile no longer has an active link whose user has not objected. | no                                             |
 
 If the object store fails in any other way (an outage, a denied request, a missing bucket) the run
 **stops** at that row, prints `STOPPED` and the error's class (never its text), writes nothing for
-that row, and exits non-zero. Re-run once the store is reachable.
+that row, and exits non-zero. Re-run once the store is reachable. If every row of a page is an
+`integrity_failure`, check the bucket name (`S3_BUCKET`) first: a wrong bucket answers "no such
+object" for every key, which is indistinguishable from objects that are really missing.
 
-Exit codes: `0` when the run completed with no integrity failure; `1` when the invocation was
-refused, when any row had an integrity failure (after the report), or when the store failed.
+A database error on a row's write also **stops** the run at that row. The report of the rows
+already written is printed first (they are no longer selected, so it is the only record of their
+count), then `STOPPED` and the error's class, never its text; the exit code is non-zero.
+
+Exit codes: `0` when the run completed with no integrity failure on its page; `1` when the
+invocation was refused, when a row **on the page that ran** had an integrity failure (after the
+report), or when the store or a database write failed. A row beyond `--limit`, or before `--after`,
+is not on the page, so a run that does not include an integrity failure does not exit non-zero for
+it.
 
 ## The dry run counts what it does not select
 
 `--dry-run` lists the selection and also counts every other `quarantined` row, grouped by reason
-class: the exception class before the first colon, the two `reclaim ...` texts, the wall-clock cap,
-`PanicException (archival objected)` or `(no committed object)` for engine rows the selection
-excludes, `other`, and `no reason recorded`. Counts and labels only; never a reason's text or an
-object key. Paste that block into the write-up this run belongs to: it is the measurement
+class: an exception class name (an identifier ending in `Error` or `Exception`, taken from before
+the first colon), the two `reclaim ...` texts, the wall-clock cap, `PanicException (archival
+objected)`, `(no committed object)` or `(no active link)` for engine rows the selection excludes,
+`other` for any other text, and `no reason recorded`. Counts and labels only; never a reason's
+text or an object key. A dry run reads the database, reads no object and writes nothing. Paste that block into the write-up this run belongs to: it is the measurement
 `docs/risks.md` still lacks.
 
 Two decisions this command does not make, and the dry run's count is what they wait on:
@@ -85,7 +102,9 @@ handing out `postgresql://` instead of `postgresql+psycopg://`, zsh globbing the
 1. Open a fresh shell at the repository root, and set the environment. The database and bucket
    secrets are prompted; the tuning keys come from `.env.example`'s own values; the three
    application secrets this command never uses (`APP_SECRET_KEY`, `CRON_SECRET`, `STEAM_API_KEY`)
-   are validated for presence only, so they get throwaway values and no real secret is entered:
+   are validated by `Settings` (`CRON_SECRET` must be at least 32 characters, so the command below
+   generates 32 hex characters; the other two must be non-empty), so they get throwaway values and
+   no real secret is entered:
 
    ```sh
    while IFS='=' read -r key value; do case "$key" in DATABASE_URL|S3_*|APP_SECRET_KEY|CRON_SECRET|STEAM_API_KEY) ;; *) export "$key=$value" ;; esac; done < <(grep -E '^[A-Z][A-Z0-9_]*=' .env.example)
@@ -98,8 +117,8 @@ handing out `postgresql://` instead of `postgresql+psycopg://`, zsh globbing the
 
    Use the bucket name your deployment uses if it is not the template's.
 
-2. **Dry run.** Prints the selection and the counts of what is not selected; reads and writes
-   nothing:
+2. **Dry run.** Prints the selection and the counts of what is not selected; it reads the
+   database, reads no object and writes nothing:
 
    ```sh
    uv run python scripts/ops/revalidate_quarantined.py --dry-run --limit 1000
@@ -124,12 +143,17 @@ handing out `postgresql://` instead of `postgresql+psycopg://`, zsh globbing the
      --after 2026-09-30T12:00:00+00:00,3f2b8c1e-5a4d-4e6f-9a0b-1c2d3e4f5a6b
    ```
 
-   Rows that ended `inconclusive` or `integrity_failure` are not changed, so a bare re-run offers
-   them again from the oldest; `--after` is what moves past them.
+   Rows that ended `inconclusive` or `integrity_failure` are unchanged, and a `still_quarantined`
+   row keeps an engine verdict as its reason, so all three are selected again: a bare re-run starts
+   from the oldest row and offers them again, and `--after` is what moves past them.
 
 5. Investigate every `integrity_failure` before anything else (constitution I: acknowledge only
-   after investigating). The command does not touch those rows and will exit non-zero for them on
-   every run until they are resolved by a human.
+   after investigating). The command does not touch those rows and exits non-zero on every
+   run whose page includes one, until a human resolves it.
 6. Report the dry run's count and the real run's outcome totals back to the task (T673 stays open
-   until it has them), then close the shell, or `unset DATABASE_URL S3_ACCESS_KEY_ID
-S3_SECRET_ACCESS_KEY`, so the credentials do not linger.
+   until it has them), then close the shell, or clear the credentials from it. `RAW` is the
+   variable that held the pasted database URL:
+
+   ```sh
+   unset RAW DATABASE_URL S3_ACCESS_KEY_ID S3_SECRET_ACCESS_KEY
+   ```
