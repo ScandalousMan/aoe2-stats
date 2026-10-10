@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
-import { useEffect, useRef, useState } from 'react'
-import { AnalysisTimeline, Button } from 'design-system'
-import { isApiErrorCode } from '../../lib/api'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { AnalysisTimeline, Button, Callout } from 'design-system'
+import { ApiRequestError, isApiErrorCode } from '../../lib/api'
 import { matchDetailQueryOptions } from '../matches/api'
 import { formatPlayedAtAbsolute } from '../matches/format'
 import { parseGameId } from '../replays/gameId'
@@ -39,6 +39,23 @@ export interface AnalysisContainerProps {
   gameId: string
 }
 
+/** What the page says when the automatic `POST /api/analyze` on a `queued` analysis is refused. */
+const TAKEOVER_FALLBACK_MESSAGE = "We could not ask for this match's analysis to continue."
+
+/** The API's own sentence for a refusal it authored (an admission gate, a sign-in), which is
+ * written for the person reading it; a request that never reached the server, or an answer with no
+ * envelope, has no sentence worth showing and gets the fixed one. */
+function takeoverRefusalMessage(error: unknown): string {
+  if (
+    error instanceof ApiRequestError &&
+    error.code !== 'network_error' &&
+    error.code !== 'unknown_error'
+  ) {
+    return error.message
+  }
+  return TAKEOVER_FALLBACK_MESSAGE
+}
+
 /** Safely reads `extractAnalysisSummary` off a `query.state.data` value inside `refetchInterval`
  * (called by `@tanstack/react-query` outside this component's own render, on data it has not
  * necessarily validated yet) — `undefined` for anything that is not yet a valid summary, which
@@ -64,10 +81,30 @@ export function AnalysisContainer({ gameId }: AnalysisContainerProps) {
   const [optimisticRunning, setOptimisticRunning] = useState(false)
   const clickedAtRef = useRef<number | null>(null)
 
+  // T706a: set when the page's automatic `POST /api/analyze` on a `queued` analysis is refused
+  // (an admission gate's 409, a 401, a network failure). A refused request takes nothing over, so
+  // the row is still `queued` as far as this page can tell and polling on would show "Waiting to
+  // start" for as long as the tab is open: while the state is `queued`, polling stops and the
+  // refusal is shown instead. That is all the refusal holds back (T706b): the row can leave
+  // `queued` without this page's help - another viewer takes it over, or a refetch (a window
+  // focus) reads it differently - and from then on the state is polled as usual. The refusal stays
+  // recorded, and is shown again if the row returns to `queued`, because this page view sends no
+  // second automatic request. Keyed to the match so it cannot outlive a navigation to another.
+  const [takeoverRefusal, setTakeoverRefusal] = useState<{
+    gameId: number
+    message: string
+  } | null>(null)
+  const refusedTakeover = takeoverRefusal?.gameId === numericGameId ? takeoverRefusal : null
+
   const matchQuery = useQuery({
     ...matchDetailQueryOptions(numericGameId ?? -1),
     refetchInterval: (query) => {
       const state = safeAnalysisState(query.state.data)
+      // Stops only for the state the refusal is about (`queued`): a row that has since become
+      // `running` (taken over elsewhere) or anything else is polled by the rules below.
+      if (refusedTakeover && state === 'queued') {
+        return false
+      }
       return optimisticRunning || state === 'queued' || state === 'running'
         ? POLL_INTERVAL_MS
         : false
@@ -98,6 +135,34 @@ export function AnalysisContainer({ gameId }: AnalysisContainerProps) {
     ? 'running'
     : summary?.state
 
+  // T706: a `queued` analysis is one nobody holds - the server serves a `running` row whose lease
+  // expired as `queued` - and nothing else will take it, so the page asks once. One `POST
+  // /api/analyze` per page view and per match, never one per poll, and never while `running`
+  // (a live lease is held by someone else). The same ref records the click's own POST, so a poll
+  // that still reads `queued` while that request is in flight does not send a second one. A
+  // rejection is not read back through the polls - a refused request changes nothing on the row,
+  // so a poll cannot tell - so it is kept and shown while the row reads `queued`, polling stops
+  // there, and only the person's "Try again" sends it again.
+  const requestedForGameIdRef = useRef<number | null>(null)
+  const serverState = summary?.state
+
+  const takeOver = useCallback((gameIdToTake: number) => {
+    void requestAnalysis(gameIdToTake).catch((error: unknown) => {
+      setTakeoverRefusal({ gameId: gameIdToTake, message: takeoverRefusalMessage(error) })
+    })
+  }, [])
+
+  useEffect(() => {
+    if (numericGameId === null || serverState !== 'queued') {
+      return
+    }
+    if (requestedForGameIdRef.current === numericGameId) {
+      return
+    }
+    requestedForGameIdRef.current = numericGameId
+    takeOver(numericGameId)
+  }, [numericGameId, serverState, takeOver])
+
   const documentQuery = useQuery({
     ...analysisDocumentQueryOptions(numericGameId ?? -1),
     enabled: numericGameId !== null && effectiveState === 'published',
@@ -108,9 +173,10 @@ export function AnalysisContainer({ gameId }: AnalysisContainerProps) {
       return
     }
     clickedAtRef.current = Date.now()
+    requestedForGameIdRef.current = numericGameId
     setOptimisticRunning(true)
     // Fire-and-forget (this function's own docstring, `api.ts`) — a rejection here (a rate limit,
-    // the cap) is read back through the next poll, never through this promise.
+    // the cap) is not shown by this promise; the next poll shows the state the row is really in.
     void requestAnalysis(numericGameId).catch(() => {})
   }
 
@@ -133,6 +199,30 @@ export function AnalysisContainer({ gameId }: AnalysisContainerProps) {
 
   if (matchQuery.isError || summaryShapeError || !summary) {
     return <AnalysisTimeline error onRetryLoad={() => void matchQuery.refetch()} />
+  }
+
+  if (refusedTakeover && effectiveState === 'queued') {
+    // No new design-system state: the refusal is the API's own sentence in a `Callout`, with the
+    // same "Try again" the load-error variant of `AnalysisTimeline` offers (T706a).
+    return (
+      <Callout
+        tone="warning"
+        headingLevel={3}
+        heading={refusedTakeover.message}
+        actions={
+          <Button
+            variant="primary"
+            size="lg"
+            onClick={() => {
+              setTakeoverRefusal(null)
+              takeOver(refusedTakeover.gameId)
+            }}
+          >
+            Try again
+          </Button>
+        }
+      />
+    )
   }
 
   if (effectiveState === 'absent') {
@@ -173,5 +263,13 @@ export function AnalysisContainer({ gameId }: AnalysisContainerProps) {
   // `queued` | `running` | `failed` | `unavailable` | `refused` — `AnalysisTimeline`'s remaining
   // five states. `onRequestAnalysis` is read only by `refused` (`analysis-timeline.md` §3.5); the
   // other four render no button, so passing it unconditionally is exactly as inert as it is above.
-  return <AnalysisTimeline state={effectiveState} onRequestAnalysis={handleRequestAnalysis} />
+  // `errorClass` is read only by `failed` (`analysis-timeline.md` §3.5), where it words the notice
+  // and is shown; the server sends `null` in every other state, so it is passed through as it is.
+  return (
+    <AnalysisTimeline
+      state={effectiveState}
+      errorClass={summary.error_class ?? undefined}
+      onRequestAnalysis={handleRequestAnalysis}
+    />
+  )
 }

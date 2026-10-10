@@ -37,6 +37,7 @@ interface FakeMatchDetail {
     point_of_view_profile_id: number | null
     result_path: string
     reason: string | null
+    error_class: string | null
   }
 }
 
@@ -99,6 +100,7 @@ function baseDetail(overrides: Partial<FakeMatchDetail['analysis']> = {}): FakeM
       point_of_view_profile_id: null,
       result_path: '/api/matches/500546441/analysis',
       reason: null,
+      error_class: null,
       ...overrides,
     },
   }
@@ -179,7 +181,7 @@ function renderAnalysis(gameId = '500546441') {
   function wrapper({ children }: { children: ReactNode }) {
     return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   }
-  return render(<AnalysisContainer gameId={gameId} />, { wrapper })
+  return { ...render(<AnalysisContainer gameId={gameId} />, { wrapper }), queryClient }
 }
 
 describe('AnalysisContainer', () => {
@@ -253,6 +255,29 @@ describe('AnalysisContainer', () => {
     expect(await screen.findByText('This match could not be analysed')).toBeInTheDocument()
     expect(screen.queryByText('Match analysis')).not.toBeInTheDocument()
     expect(screen.queryByRole('button')).not.toBeInTheDocument()
+  })
+
+  it('words an exhausted failure by its error class, claiming no parse (T706b)', async () => {
+    installFakeApi({
+      detail: () => jsonResponse(baseDetail({ state: 'failed', error_class: 'AttemptsExhausted' })),
+    })
+    renderAnalysis()
+
+    expect(
+      await screen.findByText('The analysis was interrupted and is not retried.'),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/could not be parsed/)).not.toBeInTheDocument()
+    expect(screen.getByText('Error: AttemptsExhausted')).toBeInTheDocument()
+  })
+
+  it('keeps the parse sentence for a failure of any other class (T706b)', async () => {
+    installFakeApi({
+      detail: () => jsonResponse(baseDetail({ state: 'failed', error_class: 'EngineParseError' })),
+    })
+    renderAnalysis()
+
+    expect(await screen.findByText('The recorded game could not be parsed.')).toBeInTheDocument()
+    expect(screen.getByText('Error: EngineParseError')).toBeInTheDocument()
   })
 
   it('renders the unavailable notice with no action offered (FR-034)', async () => {
@@ -356,6 +381,207 @@ describe('AnalysisContainer', () => {
         ([input]) => input === '/api/matches/500546441',
       ).length
       expect(matchDetailCallsFinal).toBe(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('sends exactly one POST /api/analyze across several "queued" polls (T706)', async () => {
+    vi.useFakeTimers()
+    try {
+      const fetchMock = installFakeApi({
+        detail: () => jsonResponse(baseDetail({ state: 'queued' })),
+      })
+      renderAnalysis()
+
+      await act(async () => {
+        await vi.waitFor(() => expect(screen.getByText('Waiting to start…')).toBeInTheDocument())
+      })
+      for (let poll = 0; poll < 3; poll += 1) {
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(5000)
+        })
+      }
+
+      const detailCalls = fetchMock.mock.calls.filter(
+        ([input]) => input === '/api/matches/500546441',
+      ).length
+      const postCalls = fetchMock.mock.calls.filter(
+        ([input, init]) => input === '/api/analyze' && init?.method === 'POST',
+      )
+      expect(detailCalls).toBe(4)
+      expect(postCalls).toHaveLength(1)
+      expect(postCalls[0]?.[1]?.body).toBe(JSON.stringify({ game_id: 500_546_441 }))
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('sends no POST /api/analyze while the analysis is "running" (T706)', async () => {
+    vi.useFakeTimers()
+    try {
+      const fetchMock = installFakeApi({
+        detail: () => jsonResponse(baseDetail({ state: 'running' })),
+      })
+      renderAnalysis()
+
+      await act(async () => {
+        await vi.waitFor(() =>
+          expect(screen.getByText('Analysing this match…')).toBeInTheDocument(),
+        )
+      })
+      for (let poll = 0; poll < 3; poll += 1) {
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(5000)
+        })
+      }
+
+      expect(fetchMock.mock.calls.filter(([input]) => input === '/api/analyze')).toHaveLength(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('does not send a second POST for a "queued" poll after the user already requested it (T706)', async () => {
+    vi.useFakeTimers()
+    try {
+      let call = 0
+      const fetchMock = installFakeApi({
+        detail: () => {
+          call += 1
+          return jsonResponse(baseDetail({ state: call === 1 ? 'absent' : 'queued' }))
+        },
+      })
+      renderAnalysis()
+
+      await act(async () => {
+        await vi.waitFor(() =>
+          expect(screen.getByRole('button', { name: 'Request analysis' })).toBeInTheDocument(),
+        )
+      })
+      fireEvent.click(screen.getByRole('button', { name: 'Request analysis' }))
+      for (let poll = 0; poll < 3; poll += 1) {
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(5000)
+        })
+      }
+
+      expect(fetchMock.mock.calls.filter(([input]) => input === '/api/analyze')).toHaveLength(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('stops polling and shows the API message when the automatic POST on "queued" is refused (T706a)', async () => {
+    vi.useFakeTimers()
+    try {
+      const refusal =
+        'Analysis is paused while replay capture has unstored recordings inside their deadline window. Try again shortly.'
+      const fetchMock = installFakeApi({
+        detail: () => jsonResponse(baseDetail({ state: 'queued' })),
+        analyze: () =>
+          jsonResponse({ error: { code: 'capture_deadline_contention', message: refusal } }, 409),
+      })
+      renderAnalysis()
+
+      await act(async () => {
+        await vi.waitFor(() => expect(screen.getByText('Waiting to start…')).toBeInTheDocument())
+      })
+      for (let poll = 0; poll < 3; poll += 1) {
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(5000)
+        })
+      }
+
+      expect(screen.getByText(refusal)).toBeInTheDocument()
+
+      expect(
+        fetchMock.mock.calls.filter(([input]) => input === '/api/matches/500546441'),
+      ).toHaveLength(1)
+      expect(fetchMock.mock.calls.filter(([input]) => input === '/api/analyze')).toHaveLength(1)
+      expect(screen.queryByText('Waiting to start…')).not.toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('polls again once a refused-takeover row is read as "running" - another viewer took it over (T706b)', async () => {
+    vi.useFakeTimers()
+    try {
+      const refusal = 'Analysis is paused. Try again shortly.'
+      let state = 'queued'
+      const fetchMock = installFakeApi({
+        detail: () => jsonResponse(baseDetail({ state })),
+        analyze: () =>
+          jsonResponse({ error: { code: 'capture_deadline_contention', message: refusal } }, 409),
+      })
+      const detailCalls = () =>
+        fetchMock.mock.calls.filter(([input]) => input === '/api/matches/500546441').length
+      const { queryClient } = renderAnalysis()
+
+      await act(async () => {
+        await vi.waitFor(() => expect(screen.getByText('Waiting to start…')).toBeInTheDocument())
+      })
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(15_000)
+      })
+      expect(screen.getByText(refusal)).toBeInTheDocument()
+      expect(detailCalls()).toBe(1)
+
+      // Not a poll: whatever refetches next (a window focus, here an invalidation) finds the row
+      // taken over elsewhere.
+      state = 'running'
+      await act(async () => {
+        void queryClient.invalidateQueries({ queryKey: ['matches', 'detail', 500_546_441] })
+        await vi.waitFor(() =>
+          expect(screen.getByText('Analysing this match…')).toBeInTheDocument(),
+        )
+      })
+      expect(detailCalls()).toBe(2)
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5000)
+      })
+      expect(detailCalls()).toBe(3)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('shows a fixed message when the automatic POST never reaches the server, and "Try again" sends it once more (T706a)', async () => {
+    vi.useFakeTimers()
+    try {
+      let attempts = 0
+      const fetchMock = installFakeApi({
+        detail: () => jsonResponse(baseDetail({ state: 'queued' })),
+        analyze: () => {
+          attempts += 1
+          if (attempts === 1) {
+            throw new TypeError('Failed to fetch')
+          }
+          return jsonResponse(baseDetail({ state: 'running' }).analysis)
+        },
+      })
+      renderAnalysis()
+
+      await act(async () => {
+        await vi.waitFor(() => expect(screen.getByText('Waiting to start…')).toBeInTheDocument())
+      })
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      expect(
+        screen.getByText("We could not ask for this match's analysis to continue."),
+      ).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5000)
+      })
+
+      expect(fetchMock.mock.calls.filter(([input]) => input === '/api/analyze')).toHaveLength(2)
+      expect(
+        screen.queryByText("We could not ask for this match's analysis to continue."),
+      ).not.toBeInTheDocument()
     } finally {
       vi.useRealTimers()
     }

@@ -22,6 +22,12 @@
 // from success. So the extracted list is held against `.env.example`'s keys first, in both
 // directions, and any disagreement is a failure of this check rather than a smaller check.
 //
+// A third assertion (T706a): the analysis claim's lease, `ANALYSIS_LEASE_SECONDS`, is not below the
+// `maxDuration` `vercel.json` gives `api/analyze.py`. A shorter lease reads as expired while the
+// function may still be working, and the match page then takes a live run over: a second fetch, a
+// second parse and two publishes. `--contract` holds `.env.example`'s value to it; the build holds
+// the value the deployment will actually run with.
+//
 // Usage:  node scripts/checks/config-preflight.mjs [--contract]
 //         --contract  run the two-source agreement only, skipping the environment assertion.
 //                     For CI, which can see the repository and not the deployment target.
@@ -37,6 +43,7 @@ import { fileURLToPath } from 'node:url'
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const settingsPath = path.join(rootDir, 'apps', 'api', 'src', 'aoe2stats_api', 'settings.py')
 const envExamplePath = path.join(rootDir, '.env.example')
+const vercelConfigPath = path.join(rootDir, 'vercel.json')
 
 const contractOnly = process.argv.includes('--contract')
 
@@ -105,7 +112,41 @@ log(
   `${declared.size} configuration keys declared, and .env.example documents the same ${declared.size}`,
 )
 
+const LEASE_KEY = 'ANALYSIS_LEASE_SECONDS'
+const ANALYZE_FUNCTION = 'api/analyze.py'
+
+function analyzeMaxDuration() {
+  const config = JSON.parse(readFileSync(vercelConfigPath, 'utf8'))
+  const value = config.functions?.[ANALYZE_FUNCTION]?.maxDuration
+  if (!Number.isInteger(value) || value <= 0) {
+    fail(`vercel.json gives ${ANALYZE_FUNCTION} no positive integer maxDuration`)
+    return undefined
+  }
+  return value
+}
+
+// Names and numbers only: a duration is not a secret, and the output lands in a build log.
+function assertLeaseOutlastsTheFunction(source, rawValue) {
+  const maxDuration = analyzeMaxDuration()
+  if (maxDuration === undefined) return
+  const lease = Number(rawValue)
+  if (!Number.isInteger(lease) || lease < maxDuration) {
+    fail(
+      `${LEASE_KEY} (${source}) is ${JSON.stringify(rawValue)}, below the ${maxDuration} s` +
+        ` maxDuration of ${ANALYZE_FUNCTION}: a live run would read as expired and be taken over`,
+    )
+  }
+}
+
+function exampleValue(key) {
+  const match = readFileSync(envExamplePath, 'utf8').match(new RegExp(`^${key}=(.*)$`, 'm'))
+  return match ? match[1].trim() : undefined
+}
+
 if (contractOnly) {
+  assertLeaseOutlastsTheFunction('.env.example', exampleValue(LEASE_KEY))
+  if (process.exitCode === 1) process.exit(1)
+  log(`${LEASE_KEY} in .env.example is not below ${ANALYZE_FUNCTION}'s maxDuration`)
   log('--contract: the environment assertion is skipped')
   process.exit(0)
 }
@@ -141,6 +182,10 @@ if (missing.length > 0) {
 }
 if (empty.length > 0) {
   fail(`set but empty in this build's environment: ${empty.join(', ')}`)
+}
+
+if (!missing.includes(LEASE_KEY) && !allowedAbsent.has(LEASE_KEY) && !empty.includes(LEASE_KEY)) {
+  assertLeaseOutlastsTheFunction("this build's environment", process.env[LEASE_KEY])
 }
 
 if (process.exitCode === 1) {

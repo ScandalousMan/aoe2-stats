@@ -378,6 +378,12 @@ const FAILURE_COPY: Record<
   },
 }
 
+/** The one `failed` class that is not a parse failure (`analysis-timeline.md` §3.5): the analyzer
+ * ends a row with this class when the attempts bound is spent (`claim.py`'s `ATTEMPTS_EXHAUSTED`),
+ * and those attempts may have been lost to a throttled or unavailable source before any parse. */
+const ATTEMPTS_EXHAUSTED_ERROR_CLASS = 'AttemptsExhausted'
+const ATTEMPTS_EXHAUSTED_BODY = 'The analysis was interrupted and is not retried.'
+
 function AnalysisFailureNotice({
   state,
   errorClass,
@@ -392,6 +398,10 @@ function AnalysisFailureNotice({
   className?: string
 }) {
   const copy = FAILURE_COPY[state]
+  const body =
+    state === 'failed' && errorClass === ATTEMPTS_EXHAUSTED_ERROR_CLASS
+      ? ATTEMPTS_EXHAUSTED_BODY
+      : copy.body
   // `Callout`'s own tone-to-role mapping (`shared-primitives.md`, `Callout.test.tsx`) gives
   // `role="alert"` to `danger` (`failed`, `unavailable`) and `role="status"` to `warning`
   // (`refused`) — the mapping every other spec in `specs/` cites and the one actually implemented.
@@ -418,7 +428,7 @@ function AnalysisFailureNotice({
         ) : undefined
       }
     >
-      <p>{copy.body}</p>
+      <p>{body}</p>
       {/* A raw error class — `machine` (research D7, FR-007): character-level legibility, no
        * `tabular-nums`, because a digit run inside an error class carries no comparable value. */}
       {state === 'failed' && errorClass && (

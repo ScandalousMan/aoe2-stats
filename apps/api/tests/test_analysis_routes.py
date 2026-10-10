@@ -464,8 +464,56 @@ async def test_analysis_object_appears_on_match_detail_in_every_state(
         assert analysis["reason"], f"{expected_state} must carry a reason (contracts/http-api.md)"
     else:
         assert analysis["reason"] is None
+    # T706b: the failure class is what lets a client word a failure honestly; only `failed` has one.
+    assert analysis["error_class"] == ("EngineParseError" if expected_state == "failed" else None)
     if expected_state != "published":
         assert analysis["stale"] is False, "stale is only ever true for a published analysis"
+
+
+# ================================================================================================
+# T706 — `running` is a lease: an expired one is served `queued`
+# ================================================================================================
+
+_LEASE_GAME_ID_BASE = 930_700_000
+
+
+@pytest.mark.parametrize(
+    "case_id,lease_offset,expected_state",
+    [
+        ("live", timedelta(seconds=300), "running"),
+        ("expired", timedelta(seconds=-1), "queued"),
+        ("no_lease", None, "running"),
+    ],
+)
+async def test_a_running_row_is_served_queued_only_once_its_lease_has_expired(
+    client: TestClient,
+    db_session: AsyncSession,
+    case_id: str,
+    lease_offset: timedelta | None,
+    expected_state: str,
+) -> None:
+    """The contrast pair (live -> `running`, expired -> `queued`) plus the row the claim does not
+    take either (no lease: stays `running`, so a POST is never offered for a re-claim that cannot
+    happen). The stored state is `running` in all three."""
+    game_id = _LEASE_GAME_ID_BASE + {"live": 1, "expired": 2, "no_lease": 3}[case_id]
+    caller = await _seed_user(db_session)
+    await _sign_in(client, db_session, caller)
+    await _seed_two_participant_match(db_session, game_id=game_id)
+    row = await _seed_analysis(
+        db_session,
+        game_id=game_id,
+        state=MatchAnalysisState.RUNNING,
+        point_of_view_profile_id=_PARTICIPANT_A,
+    )
+    row.lease_expires_at = None if lease_offset is None else datetime.now(UTC) + lease_offset
+    await db_session.commit()
+
+    response = client.get(f"/api/matches/{game_id}")
+
+    assert response.status_code == 200, f"Got {response.status_code}: {response.text}"
+    assert response.json()["analysis"]["state"] == expected_state
+    await db_session.refresh(row)
+    assert row.state is MatchAnalysisState.RUNNING, "serving it queued must not write the row"
 
 
 # ================================================================================================

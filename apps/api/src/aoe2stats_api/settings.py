@@ -176,8 +176,16 @@ class Settings(BaseSettings):
     analysis_retention_cap_bytes: int = Field(alias="ANALYSIS_RETENTION_CAP_BYTES")
     # The interruptible unit of analysis work, as INGEST_RUN_BUDGET_SECONDS is for ingestion.
     analysis_run_budget_seconds: int = Field(alias="ANALYSIS_RUN_BUDGET_SECONDS")
-    # How long an analysis claim survives an invocation that died.
+    # How long an analysis claim survives an invocation that died. Read by `api/analyze.py` and
+    # handed to `run_once` as the claim's lease; `scripts/checks/config-preflight.mjs` holds it at
+    # or above that function's `maxDuration` in `vercel.json`.
     analysis_lease_seconds: int = Field(alias="ANALYSIS_LEASE_SECONDS")
+    # T706a: how many times one match's analysis may be claimed before the next claim ends it
+    # `failed` instead. Positive: zero would refuse every first analysis. At most 10: each claim
+    # that is not the last one fetched the recording from the source again, so the bound is also a
+    # bound on the budget capture depends on (constitution I), and a stray extra digit must not
+    # quietly lift it.
+    analysis_max_attempts: int = Field(alias="ANALYSIS_MAX_ATTEMPTS", gt=0, le=10)
     # R3's memory bound: the raw recording size, in bytes, above which a recording is refused
     # before it is parsed.
     analysis_max_raw_bytes: int = Field(alias="ANALYSIS_MAX_RAW_BYTES")

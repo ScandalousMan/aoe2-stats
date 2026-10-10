@@ -41,6 +41,8 @@ export interface ApiAnalysisSummary {
   point_of_view_profile_id: number | null
   result_path: string
   reason: string | null
+  /** T706b: the stored failure class of a `failed` row, `null` in every other state. */
+  error_class: string | null
 }
 
 /** Thrown when the `analysis` object on `GET /api/matches/{game_id}`, or the document `GET
@@ -92,6 +94,9 @@ export function assertAnalysisSummary(
   }
   if (!isNullableString(summary.reason)) {
     throw new AnalysisResponseShapeError(`"${path}.reason" was not string|null`)
+  }
+  if (!isNullableString(summary.error_class)) {
+    throw new AnalysisResponseShapeError(`"${path}.error_class" was not string|null`)
   }
 }
 

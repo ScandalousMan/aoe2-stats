@@ -1634,7 +1634,7 @@ T671 and T672 ship together; T673 follows once T672 is deployed.
       match has no source to fall back on. The earliest affected recording is not measured; the
       earliest sampled is from 2026-09-27, and 0.1.22 shipped on 2026-09-22
 
-- [ ] T706 Unstick an analysis whose lease expired (filed 2026-10-08; decided by the user the same
+- [x] T706 Unstick an analysis whose lease expired (filed 2026-10-08; decided by the user the same
       day). Match 511523321's row stayed `running` from the 2026-10-05 crash until a manual
       `POST`: `GET /api/matches/{game_id}` serves `running` without reading `lease_expires_at`,
       the match page polls while `running` and never sends the `POST` that would re-claim it, so
@@ -1707,6 +1707,46 @@ T671 and T672 ship together; T673 follows once T672 is deployed.
       supplying ink, so a story shows what the component itself declares, or add a check that
       refuses text without a token; decide which, list every component the change exposes, and
       say which baselines move
+- [x] T706a Close #127's review (`reviewer` REJECT 2026-10-08 on T706). **Lease shorter than the
+      run**: the claim's lease is the run budget (240 s) while the function may run 300 s, so a
+      live run reads expired for its last minute and T706's page now re-claims it: a second fetch,
+      a second parse, two publishes. Claim with the lease length the configuration already
+      declares for this (`.env.example`'s lease key, read by nothing today), and test that a
+      run's lease never expires while its function may still be running. **Retries without a
+      bound**: `attempts` is incremented and never read, so a recording that kills its
+      invocation every time is re-claimed, uncounted, on every page view, each time fetching from
+      the source. Enforce the bound 003's data model states: a claim that would exceed the
+      configured maximum ends the row `failed` with a fixed reason instead, read from a new
+      required setting, `ANALYSIS_MAX_ATTEMPTS` (no default, declared where every setting is,
+      `.env.example` sizing it).
+      Test the boundary. **Refused takeover**: when the page's automatic `POST` on `queued` is
+      refused (admission 409, 401, network), the page keeps polling with no message; show the
+      refusal and stop polling, with a test, and correct the comment that says it is read back
+      through the polls. **Prose**: cut "starts nothing new", "never a free analysis",
+      "over-counts, never under-counts" and "bounded" to what holds (a takeover re-fetches; the
+      narrow overlap of a live run publishing before an uncounted request can recompute), and
+      make the uncounted-path admission test exercise all three gates or name the one it proves
+- [x] T706b Close #127's second review (`reviewer` REJECT 2026-10-09 on T706a; every earlier
+      finding closed). **Honest copy for an exhausted row**: a row the attempts bound ends `failed`
+      is shown "The recorded game could not be parsed", which is false when the attempts were spent
+      on source throttles or outages that never fetched it. Give `AttemptsExhausted` its own copy in
+      `AnalysisTimeline`'s failed state, keyed on the error class, that claims no parse; keep
+      `packages/design-system/specs/analysis-timeline.md`'s line count (its lines are cited); correct
+      `apps/api/src/aoe2stats_api/routers/matches.py`'s failed-reason docstring, which says a
+      `failed` row carries the recording's own parse failure. Test that the exhausted copy shows and
+      the parse sentence does not. **Polling after a refused takeover**: the page stops polling
+      whenever a takeover was refused, whatever the state; stop only while the state is `queued`, so
+      a row another viewer takes over (`running`) is polled again, and correct the comment that says
+      the row stays `queued`. Test: refusal, then `running`, then polling resumes
+- [x] T706c Close #127's third review (`reviewer` REJECT 2026-10-09 on T706b; every earlier finding
+      closed). The web client now requires `analysis.error_class`, and the visual suite's match-page
+      fixture (`tests/visual/fixtures/suite-scenarios.ts`, `analysisSummary()`) builds the object
+      without it, so every stubbed match page renders its load-error branch and the PR's visual job
+      is red. Add the field to that fixture and to every other analysis-object fixture under
+      `tests/` and `apps/web`, and run the visual suite on the changed stories and routes, with no
+      baseline moving. The exhausted copy says "several times", which a configured maximum of 1
+      makes false: say it was interrupted and is not retried, with no count, keeping
+      `packages/design-system/specs/analysis-timeline.md`'s line count
 
 ---
 

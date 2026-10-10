@@ -308,6 +308,8 @@ function analysisSummary(state: AnalysisSummaryState, stale = false) {
     point_of_view_profile_id: state === 'absent' ? null : VIEWER_ID,
     result_path: `/api/matches/${SAMPLE_GAME_ID}/analysis`,
     reason: state === 'refused' ? 'analysis_cap_reached' : null,
+    // Required by `assertAnalysisSummary`; no scenario here is `failed`, so it is always null.
+    error_class: null,
   }
 }
 

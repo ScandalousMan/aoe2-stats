@@ -108,7 +108,9 @@ from aoe2stats_storage.repositories.knowledge_gaps import GapToRecord
 # collide with this file's own `session_factory`/`clean_database` parameter names under ruff's
 # F811, per that conftest's own docstring.
 
-_BUDGET_SECONDS = 300  # api/analyze.py's own maxDuration (contracts/http-api.md)
+_BUDGET_SECONDS = 240  # ANALYSIS_RUN_BUDGET_SECONDS: shorter than the lease by design (T706a)
+_LEASE_SECONDS = 300  # ANALYSIS_LEASE_SECONDS: not below api/analyze.py's maxDuration
+_MAX_ATTEMPTS = 3
 
 # Comfortably beyond any measured retention window (`docs/data-sources.md` §2) without restating
 # the figure itself — the point of this constant is "unambiguously expired", not a governed budget.
@@ -384,6 +386,8 @@ async def test_a_match_is_fetched_and_parsed_at_most_once_however_many_users_ask
         game_id,
         _BUDGET_SECONDS,
         requester,
+        lease_seconds=_LEASE_SECONDS,
+        max_attempts=_MAX_ATTEMPTS,
         session_factory=session_factory,
         replay_provider=provider,
         extractor=extractor,
@@ -394,6 +398,8 @@ async def test_a_match_is_fetched_and_parsed_at_most_once_however_many_users_ask
         game_id,
         _BUDGET_SECONDS,
         second_viewer,
+        lease_seconds=_LEASE_SECONDS,
+        max_attempts=_MAX_ATTEMPTS,
         session_factory=session_factory,
         replay_provider=provider,
         extractor=extractor,
@@ -438,6 +444,8 @@ async def test_the_stored_row_records_the_point_of_view_and_the_parser_version(
         game_id,
         _BUDGET_SECONDS,
         requester,
+        lease_seconds=_LEASE_SECONDS,
+        max_attempts=_MAX_ATTEMPTS,
         session_factory=session_factory,
         replay_provider=provider,
         extractor=extractor,
@@ -486,6 +494,8 @@ async def test_the_engine_deps_column_holds_the_record_the_document_carries(
         game_id,
         _BUDGET_SECONDS,
         requester,
+        lease_seconds=_LEASE_SECONDS,
+        max_attempts=_MAX_ATTEMPTS,
         session_factory=session_factory,
         replay_provider=provider,
         extractor=extractor,
@@ -538,6 +548,8 @@ async def test_a_parse_failure_leaves_the_api_and_the_ingester_untouched(
         game_id,
         _BUDGET_SECONDS,
         requester,
+        lease_seconds=_LEASE_SECONDS,
+        max_attempts=_MAX_ATTEMPTS,
         session_factory=session_factory,
         replay_provider=provider,
         extractor=extractor,
@@ -601,6 +613,8 @@ async def test_an_interrupted_run_leaves_no_unclaimable_row_and_the_next_request
         game_id,
         _BUDGET_SECONDS,
         resumer,
+        lease_seconds=_LEASE_SECONDS,
+        max_attempts=_MAX_ATTEMPTS,
         session_factory=session_factory,
         replay_provider=provider,
         extractor=extractor,
@@ -653,6 +667,8 @@ async def test_an_unparsable_recording_fails_on_the_first_attempt_and_is_never_r
         game_id,
         _BUDGET_SECONDS,
         requester,
+        lease_seconds=_LEASE_SECONDS,
+        max_attempts=_MAX_ATTEMPTS,
         session_factory=session_factory,
         replay_provider=provider,
         extractor=extractor,
@@ -671,6 +687,8 @@ async def test_an_unparsable_recording_fails_on_the_first_attempt_and_is_never_r
         game_id,
         _BUDGET_SECONDS,
         second_asker,
+        lease_seconds=_LEASE_SECONDS,
+        max_attempts=_MAX_ATTEMPTS,
         session_factory=session_factory,
         replay_provider=provider,
         extractor=extractor,
@@ -741,6 +759,8 @@ async def test_a_document_that_fails_validation_writes_no_object_and_the_row_fai
             game_id,
             _BUDGET_SECONDS,
             requester,
+            lease_seconds=_LEASE_SECONDS,
+            max_attempts=_MAX_ATTEMPTS,
             session_factory=session_factory,
             replay_provider=provider,
             extractor=extractor,
@@ -787,6 +807,8 @@ async def test_a_document_that_passes_validation_is_written_and_the_row_points_a
         game_id,
         _BUDGET_SECONDS,
         requester,
+        lease_seconds=_LEASE_SECONDS,
+        max_attempts=_MAX_ATTEMPTS,
         session_factory=session_factory,
         replay_provider=provider,
         extractor=extractor,
@@ -829,6 +851,8 @@ async def test_the_stored_object_is_exactly_the_canonical_serialisation_of_its_d
         game_id,
         _BUDGET_SECONDS,
         requester,
+        lease_seconds=_LEASE_SECONDS,
+        max_attempts=_MAX_ATTEMPTS,
         session_factory=session_factory,
         replay_provider=provider,
         extractor=_FakeExtractor(point_of_view_profile_id=profile_a),
@@ -874,6 +898,8 @@ async def test_a_never_analysed_match_past_the_window_is_unavailable_not_an_acti
         game_id,
         _BUDGET_SECONDS,
         requester,
+        lease_seconds=_LEASE_SECONDS,
+        max_attempts=_MAX_ATTEMPTS,
         session_factory=session_factory,
         replay_provider=provider,
         extractor=extractor,
@@ -961,6 +987,8 @@ async def test_recompute_after_an_engine_change_reaches_the_source_zero_times_an
         game_id,
         _BUDGET_SECONDS,
         recomputer,
+        lease_seconds=_LEASE_SECONDS,
+        max_attempts=_MAX_ATTEMPTS,
         session_factory=session_factory,
         replay_provider=refusing_provider,
         extractor=upgraded_extractor,
@@ -990,6 +1018,8 @@ async def test_recompute_after_an_engine_change_reaches_the_source_zero_times_an
         game_id,
         _BUDGET_SECONDS,
         recomputer,
+        lease_seconds=_LEASE_SECONDS,
+        max_attempts=_MAX_ATTEMPTS,
         session_factory=session_factory,
         replay_provider=refusing_provider,
         extractor=upgraded_extractor,
@@ -1033,6 +1063,8 @@ async def test_every_read_of_a_retained_recording_is_logged_on_first_analysis_an
         game_id,
         _BUDGET_SECONDS,
         first_requester,
+        lease_seconds=_LEASE_SECONDS,
+        max_attempts=_MAX_ATTEMPTS,
         session_factory=session_factory,
         replay_provider=provider,
         extractor=_FakeExtractor(
@@ -1057,6 +1089,8 @@ async def test_every_read_of_a_retained_recording_is_logged_on_first_analysis_an
         game_id,
         _BUDGET_SECONDS,
         second_requester,
+        lease_seconds=_LEASE_SECONDS,
+        max_attempts=_MAX_ATTEMPTS,
         session_factory=session_factory,
         replay_provider=_RefusingReplayProvider(),
         extractor=_FakeExtractor(
@@ -1114,6 +1148,8 @@ async def _publish_then_recompute_under(
         game_id,
         _BUDGET_SECONDS,
         requester,
+        lease_seconds=_LEASE_SECONDS,
+        max_attempts=_MAX_ATTEMPTS,
         session_factory=session_factory,
         replay_provider=provider,
         extractor=_FakeExtractor(
@@ -1136,6 +1172,8 @@ async def _publish_then_recompute_under(
         game_id,
         _BUDGET_SECONDS,
         requester,
+        lease_seconds=_LEASE_SECONDS,
+        max_attempts=_MAX_ATTEMPTS,
         session_factory=session_factory,
         replay_provider=_RefusingReplayProvider(),
         extractor=_FakeExtractor(
@@ -1254,6 +1292,8 @@ async def _first_analysis(
         game_id,
         _BUDGET_SECONDS,
         requester,
+        lease_seconds=_LEASE_SECONDS,
+        max_attempts=_MAX_ATTEMPTS,
         session_factory=session_factory,
         replay_provider=_FakeReplayProvider(
             ReplayBlob(content=b"raw bytes", filename="r.zip", content_type="application/zip"),
@@ -1487,6 +1527,8 @@ async def _publish_once(
         game_id,
         _BUDGET_SECONDS,
         requester,
+        lease_seconds=_LEASE_SECONDS,
+        max_attempts=_MAX_ATTEMPTS,
         session_factory=session_factory,
         replay_provider=_FakeReplayProvider(
             ReplayBlob(content=b"raw bytes", filename="r.zip", content_type="application/zip"),
@@ -1539,6 +1581,8 @@ async def _ask_again(
         published.game_id,
         _BUDGET_SECONDS,
         published.requester,
+        lease_seconds=_LEASE_SECONDS,
+        max_attempts=_MAX_ATTEMPTS,
         session_factory=session_factory,
         replay_provider=_RefusingReplayProvider(),
         extractor=extractor,
@@ -1849,6 +1893,8 @@ async def _assert_a_deployment_fault_stops_the_request_before_any_recompute(
             published.game_id,
             _BUDGET_SECONDS,
             published.requester,
+            lease_seconds=_LEASE_SECONDS,
+            max_attempts=_MAX_ATTEMPTS,
             session_factory=session_factory,
             replay_provider=_RefusingReplayProvider(),
             extractor=extractor,
@@ -2062,6 +2108,8 @@ async def _ask_to_recompute(
         published.game_id,
         _BUDGET_SECONDS,
         published.requester,
+        lease_seconds=_LEASE_SECONDS,
+        max_attempts=_MAX_ATTEMPTS,
         session_factory=session_factory,
         replay_provider=_RefusingReplayProvider(),
         extractor=extractor,
@@ -2161,6 +2209,8 @@ async def test_a_first_analysis_that_cannot_be_completed_ends_failed_and_is_neve
             game_id,
             _BUDGET_SECONDS,
             requester,
+            lease_seconds=_LEASE_SECONDS,
+            max_attempts=_MAX_ATTEMPTS,
             session_factory=session_factory,
             replay_provider=provider,
             extractor=cause.extractor(point_of_view_profile_id=profile_a, max_calls=1),
@@ -2284,6 +2334,8 @@ class _FirstRequest:
             self.game_id,
             _BUDGET_SECONDS,
             self.requester,
+            lease_seconds=_LEASE_SECONDS,
+            max_attempts=_MAX_ATTEMPTS,
             session_factory=self.session_factory,
             replay_provider=self.provider,
             extractor=extractor,
@@ -2753,7 +2805,7 @@ async def test_a_publish_between_the_read_and_the_write_is_not_unpublished_by_ma
                 requested_by_user_id=request.requester,
                 requested_at=now,
                 claimed_at=now,
-                lease_expires_at=now + timedelta(seconds=_BUDGET_SECONDS),
+                lease_expires_at=now + timedelta(seconds=_LEASE_SECONDS),
                 attempts=1,
             )
         )
@@ -2788,7 +2840,7 @@ async def test_a_publish_between_the_read_and_the_write_is_not_unpublished_by_ma
                 requested_by_user_id=request.requester,
                 requested_at=now,
                 claimed_at=now,
-                lease_expires_at=now + timedelta(seconds=_BUDGET_SECONDS),
+                lease_expires_at=now + timedelta(seconds=_LEASE_SECONDS),
                 attempts=1,
             )
         )
@@ -2823,7 +2875,7 @@ async def test_marking_unavailable_still_marks_a_running_row_with_every_field(
                 requested_by_user_id=request.requester,
                 requested_at=now,
                 claimed_at=now,
-                lease_expires_at=now + timedelta(seconds=_BUDGET_SECONDS),
+                lease_expires_at=now + timedelta(seconds=_LEASE_SECONDS),
                 attempts=1,
                 result_key="stale/key",
             )
@@ -2903,7 +2955,7 @@ async def test_marking_failed_still_fails_a_running_row(
                 requested_by_user_id=request.requester,
                 requested_at=now,
                 claimed_at=now,
-                lease_expires_at=now + timedelta(seconds=_BUDGET_SECONDS),
+                lease_expires_at=now + timedelta(seconds=_LEASE_SECONDS),
                 attempts=1,
             )
         )
@@ -2939,6 +2991,8 @@ async def test_a_first_analysis_the_source_no_longer_serves_is_still_unavailable
         request.game_id,
         _BUDGET_SECONDS,
         request.requester,
+        lease_seconds=_LEASE_SECONDS,
+        max_attempts=_MAX_ATTEMPTS,
         session_factory=session_factory,
         replay_provider=_Gone(),
         extractor=_BuildNamingExtractor(point_of_view_profile_id=request.profile_id, max_calls=0),
@@ -3132,3 +3186,117 @@ async def test_a_refused_gap_insert_is_still_reported_as_the_gap_rows(
     assert "gap" in row.error_message
     assert "row update" not in row.error_message
     assert await _gap_row_count(session_factory) == 0
+
+
+# --- T706a: the claim's lease is the configured lease, and the claims of one match are bounded ----
+
+
+class _InterruptedProvider:
+    """The invocation that dies mid-run: every fetch is counted and then raises, leaving the row
+    `running` under the lease the claim took (a transient error is left to propagate)."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def fetch_replay(self, game_id: int, profile_id: int) -> ReplayBlob | NotFound:
+        self.calls += 1
+        raise ConnectionError("the invocation was killed")
+
+
+async def _interrupted_request(
+    request: _FirstRequest, provider: _InterruptedProvider, *, lease_seconds: int = _LEASE_SECONDS
+) -> None:
+    with pytest.raises(ConnectionError):
+        await run_module.run_once(
+            request.game_id,
+            _BUDGET_SECONDS,
+            request.requester,
+            lease_seconds=lease_seconds,
+            max_attempts=_MAX_ATTEMPTS,
+            session_factory=request.session_factory,
+            replay_provider=provider,
+            extractor=_BuildNamingExtractor(point_of_view_profile_id=request.profile_id),
+            object_store=request.store,
+        )
+
+
+async def test_the_claim_takes_the_configured_lease_not_the_run_budget(
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+) -> None:
+    """T706a: the budget (240 s) is shorter than the function's `maxDuration` (300 s), so a lease
+    equal to it read as expired for the last minute of a run still allowed to work, and the page
+    took that run over. The lease is the configured one."""
+    request = await _a_first_request(session_factory, game_id=500_706_100)
+
+    await _interrupted_request(request, _InterruptedProvider(), lease_seconds=_LEASE_SECONDS)
+
+    row = await _get_analysis(session_factory, request.game_id)
+    assert row is not None
+    assert row.state == MatchAnalysisState.RUNNING
+    assert row.claimed_at is not None
+    assert row.lease_expires_at is not None
+    assert row.lease_expires_at - row.claimed_at == timedelta(seconds=_LEASE_SECONDS)
+    assert _LEASE_SECONDS > _BUDGET_SECONDS
+
+
+async def test_a_lease_shorter_than_the_run_budget_is_refused_before_anything_is_read(
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+) -> None:
+    request = await _a_first_request(session_factory, game_id=500_706_110)
+
+    with pytest.raises(ValueError, match="shorter than budget_seconds"):
+        await run_module.run_once(
+            request.game_id,
+            _BUDGET_SECONDS,
+            request.requester,
+            lease_seconds=_BUDGET_SECONDS - 1,
+            max_attempts=_MAX_ATTEMPTS,
+            session_factory=request.session_factory,
+            replay_provider=request.provider,
+            extractor=_BuildNamingExtractor(point_of_view_profile_id=request.profile_id),
+            object_store=request.store,
+        )
+
+    assert request.provider.calls == []
+    assert await _get_analysis(session_factory, request.game_id) is None
+
+
+async def test_the_claim_past_the_maximum_attempts_fails_the_match_and_fetches_nothing(
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+) -> None:
+    """T706a: a recording that kills its invocation every time is fetched `_MAX_ATTEMPTS` times
+    and no more. The next page view, with the lease expired, ends the row `failed` instead of
+    fetching again, and the page shows that reason."""
+    request = await _a_first_request(session_factory, game_id=500_706_120)
+    provider = _InterruptedProvider()
+
+    for attempt in range(1, _MAX_ATTEMPTS + 1):
+        await _interrupted_request(request, provider)
+        assert provider.calls == attempt
+        await _set_lease(session_factory, request.game_id, datetime.now(UTC) - timedelta(seconds=1))
+
+    await run_module.run_once(
+        request.game_id,
+        _BUDGET_SECONDS,
+        request.requester,
+        lease_seconds=_LEASE_SECONDS,
+        max_attempts=_MAX_ATTEMPTS,
+        session_factory=request.session_factory,
+        replay_provider=provider,
+        extractor=_BuildNamingExtractor(point_of_view_profile_id=request.profile_id),
+        object_store=request.store,
+    )
+
+    assert provider.calls == _MAX_ATTEMPTS
+    row = await _get_analysis(session_factory, request.game_id)
+    assert row is not None
+    assert row.state == MatchAnalysisState.FAILED
+    assert row.attempts == _MAX_ATTEMPTS
+    assert row.error_class == "AttemptsExhausted"
+    assert row.error_message == (
+        f"the analysis was interrupted {_MAX_ATTEMPTS} times and is not retried"
+    )
+    assert request.store.put_calls == []

@@ -35,6 +35,7 @@ from __future__ import annotations
 import dataclasses
 import logging
 import secrets
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from importlib import metadata
 from pathlib import Path
@@ -57,6 +58,7 @@ from aoe2stats_storage.models import (
     MatchAnalysis,
     MatchAnalysisState,
     MatchPlayer,
+    RateLimitCounter,
     ReplayCapture,
     RetainedRecording,
     User,
@@ -713,3 +715,237 @@ async def test_a_short_configured_window_lets_the_next_request_recompute_once_it
 
     assert third.status_code == 200
     assert await recompute_reads() == 2
+
+
+# ================================================================================================
+# T706: a request that joins or re-claims work already on the books is not counted (FR-040)
+# ================================================================================================
+
+
+async def _seed_fixture_analysis_row(
+    db_session: AsyncSession,
+    *,
+    state: MatchAnalysisState,
+    lease_offset: timedelta | None = None,
+) -> None:
+    now = datetime.now(UTC)
+    db_session.add(
+        MatchAnalysis(
+            game_id=_FIXTURE_GAME_ID,
+            state=state,
+            point_of_view_profile_id=_FIXTURE_PARTICIPANT_A,
+            requested_at=now - timedelta(hours=1),
+            claimed_at=now - timedelta(hours=1) if lease_offset is not None else None,
+            lease_expires_at=None if lease_offset is None else now + lease_offset,
+            attempts=1 if lease_offset is not None else 0,
+        )
+    )
+    await db_session.commit()
+
+
+async def _counted_requests(db_session: AsyncSession, user: User) -> int:
+    result = await db_session.execute(
+        select(RateLimitCounter.count).where(
+            RateLimitCounter.user_id == user.id, RateLimitCounter.bucket == "analysis_request"
+        )
+    )
+    return sum(result.scalars().all())
+
+
+async def test_a_first_request_increments_the_counter(
+    db_session: AsyncSession,
+    database_url: str,
+    clean_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The contrast for the cases below: no row yet means the request starts new work."""
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    _install_fake_aoems_upstream(monkeypatch, _reference_replay_bytes())
+    _install_fake_object_store(monkeypatch)
+    await _seed_fixture_match(db_session)
+    user = await _seed_user(db_session)
+
+    with _client() as client:
+        await _sign_in(client, db_session, user)
+        response = client.post("/api/analyze", json={"game_id": _FIXTURE_GAME_ID})
+
+    assert response.status_code == 200
+    assert await _counted_requests(db_session, user) == 1
+
+
+@pytest.mark.parametrize(
+    "case_id,state,lease_offset,expected_state",
+    [
+        ("queued", MatchAnalysisState.QUEUED, None, "published"),
+        ("running_expired", MatchAnalysisState.RUNNING, timedelta(seconds=-5), "published"),
+        ("running_live", MatchAnalysisState.RUNNING, timedelta(seconds=300), "running"),
+    ],
+)
+async def test_a_request_on_a_queued_or_running_row_does_not_count_against_the_limit(
+    db_session: AsyncSession,
+    database_url: str,
+    clean_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+    case_id: str,
+    state: MatchAnalysisState,
+    lease_offset: timedelta | None,
+    expected_state: str,
+) -> None:
+    """The limit is set to 0, so a counted request would answer 429: the 200 is the proof the
+    request was not counted, and the counter table is empty besides. A live `running` lease is
+    joined (the response says `running`, nothing is fetched); a `queued` row and an expired lease
+    are re-claimed and the analysis completes."""
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    monkeypatch.setenv("ANALYSIS_MAX_REQUESTS_PER_USER_PER_DAY", "0")
+    _install_fake_aoems_upstream(monkeypatch, _reference_replay_bytes())
+    _install_fake_object_store(monkeypatch)
+    await _seed_fixture_match(db_session)
+    await _seed_fixture_analysis_row(db_session, state=state, lease_offset=lease_offset)
+    user = await _seed_user(db_session)
+
+    with _client() as client:
+        await _sign_in(client, db_session, user)
+        response = client.post("/api/analyze", json={"game_id": _FIXTURE_GAME_ID})
+
+    assert response.status_code == 200, f"{case_id}: {response.text}"
+    assert response.json()["state"] == expected_state
+    assert await _counted_requests(db_session, user) == 0
+
+
+@pytest.mark.parametrize("state", [MatchAnalysisState.FAILED, MatchAnalysisState.REFUSED])
+async def test_a_request_on_a_terminal_row_still_counts_against_the_limit(
+    db_session: AsyncSession,
+    database_url: str,
+    clean_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+    state: MatchAnalysisState,
+) -> None:
+    """A retry of a failed or refused analysis starts new work, so a user at their limit is told
+    so - the same 429 an absent row gets."""
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    monkeypatch.setenv("ANALYSIS_MAX_REQUESTS_PER_USER_PER_DAY", "0")
+    _install_no_calls_allowed_upstream(monkeypatch)
+    await _seed_fixture_match(db_session)
+    await _seed_fixture_analysis_row(db_session, state=state)
+    user = await _seed_user(db_session)
+
+    with _client() as client:
+        await _sign_in(client, db_session, user)
+        response = client.post("/api/analyze", json={"game_id": _FIXTURE_GAME_ID})
+
+    assert response.status_code == 429
+    assert response.json()["error"]["code"] == "rate_limited"
+
+
+async def _close_no_gate(monkeypatch: pytest.MonkeyPatch, db_session: AsyncSession) -> None:
+    return None
+
+
+async def _close_the_source_budget(
+    monkeypatch: pytest.MonkeyPatch, db_session: AsyncSession
+) -> None:
+    monkeypatch.setenv("ANALYSIS_MAX_SOURCE_REQUESTS_PER_DAY", "0")
+
+
+async def _reach_the_retention_cap(
+    monkeypatch: pytest.MonkeyPatch, db_session: AsyncSession
+) -> None:
+    monkeypatch.setenv("ANALYSIS_RETENTION_CAP_BYTES", "0")
+
+
+async def _put_a_capture_in_its_deadline_window(
+    monkeypatch: pytest.MonkeyPatch, db_session: AsyncSession
+) -> None:
+    await _seed_capture_in_deadline_danger(db_session)
+
+
+@pytest.mark.parametrize(
+    "close_the_gate,code",
+    [
+        (_put_a_capture_in_its_deadline_window, "capture_deadline_contention"),
+        (_close_the_source_budget, "analysis_budget_exhausted"),
+        (_reach_the_retention_cap, "analysis_cap_reached"),
+    ],
+    ids=["capture_deadline_contention", "analysis_budget_exhausted", "analysis_cap_reached"],
+)
+async def test_an_uncounted_request_still_meets_every_admission_gate(
+    db_session: AsyncSession,
+    database_url: str,
+    clean_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+    close_the_gate: Callable[[pytest.MonkeyPatch, AsyncSession], Awaitable[None]],
+    code: str,
+) -> None:
+    """All three of R7's gates, on the uncounted path (a `queued` row): each refuses with its own
+    code, nothing is counted, nothing is fetched and the row is left as it was."""
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    _install_no_calls_allowed_upstream(monkeypatch)
+    await _seed_fixture_match(db_session)
+    await _seed_fixture_analysis_row(db_session, state=MatchAnalysisState.QUEUED)
+    await close_the_gate(monkeypatch, db_session)
+    user = await _seed_user(db_session)
+
+    with _client() as client:
+        await _sign_in(client, db_session, user)
+        response = client.post("/api/analyze", json={"game_id": _FIXTURE_GAME_ID})
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == code
+    assert await _counted_requests(db_session, user) == 0
+    row = await db_session.get(MatchAnalysis, _FIXTURE_GAME_ID)
+    assert row is not None
+    await db_session.refresh(row)
+    assert (row.state, row.attempts) == (MatchAnalysisState.QUEUED, 0)
+
+
+async def test_the_configured_lease_and_attempt_bound_reach_run_once_not_the_run_budget(
+    db_session: AsyncSession,
+    database_url: str,
+    clean_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """T706a: the claim's lease is `ANALYSIS_LEASE_SECONDS` and its bound `ANALYSIS_MAX_ATTEMPTS`;
+    the run budget is passed as the budget. Distinct values, so a swap cannot pass."""
+    import api.analyze as analyze_module
+
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    monkeypatch.setenv("ANALYSIS_RUN_BUDGET_SECONDS", "111")
+    monkeypatch.setenv("ANALYSIS_LEASE_SECONDS", "777")
+    monkeypatch.setenv("ANALYSIS_MAX_ATTEMPTS", "7")
+    _install_fake_aoems_upstream(monkeypatch, _reference_replay_bytes())
+    _install_fake_object_store(monkeypatch)
+    await _seed_fixture_match(db_session)
+    user = await _seed_user(db_session)
+    seen: dict[str, object] = {}
+
+    async def records(*args: object, **kwargs: object) -> None:
+        seen["budget"] = args[1]
+        seen.update(kwargs)
+
+    monkeypatch.setattr(analyze_module, "run_once", records)
+    with _client() as client:
+        await _sign_in(client, db_session, user)
+        client.post("/api/analyze", json={"game_id": _FIXTURE_GAME_ID})
+
+    assert seen["budget"] == 111
+    assert seen["lease_seconds"] == 777
+    assert seen["max_attempts"] == 7
+
+
+async def test_an_unreadable_body_is_refused_before_anything_is_counted(
+    db_session: AsyncSession,
+    database_url: str,
+    clean_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    _install_no_calls_allowed_upstream(monkeypatch)
+    user = await _seed_user(db_session)
+
+    with _client() as client:
+        await _sign_in(client, db_session, user)
+        response = client.post("/api/analyze", json={"game": 1})
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "invalid_request"
+    assert await _counted_requests(db_session, user) == 0
