@@ -4563,6 +4563,41 @@ test('resolveRuntimeForce: two matches are refused as strict-mode ambiguity, wit
   )
 })
 
+// T710: the light and the dark render disagree on the force (`combineThemeRecords`,
+// `tests/visual/state-coverage-runtime.ts`); the record carries the light answer and `differsByTheme`.
+test('resolveRuntimeForce: a force the light and dark themes locate differently is refused, naming the themes, even when the light answer would credit', () => {
+  const credited = {
+    count: 1,
+    stamp: `${STAMP_ROOT}primitives/Button/index.tsx:213`,
+    placedBy: null,
+  }
+  const verdict = resolveRuntimeForce(
+    { widths: forceWidths({ ...credited, differsByTheme: true }) },
+    { recordOneKeys },
+  )
+  assert.match(
+    verdict.refusal,
+    /^the light and the dark render disagree on the force at 375px, 768px, 1280px/,
+  )
+  assert.equal(verdict.stamp, undefined)
+  // The contrast: the same record without the flag is credited, so the flag is what refuses it.
+  const agreed = resolveRuntimeForce({ widths: forceWidths(credited) }, { recordOneKeys })
+  assert.equal(agreed.refusal, undefined)
+  assert.equal(agreed.stamp, credited.stamp)
+})
+
+test('entryShapeProblem: differsByTheme is true or absent, never another value', () => {
+  const widthsWith = (differsByTheme) => ({
+    widths: forceWidths({ count: 1, stamp: null, placedBy: null, differsByTheme }),
+  })
+  assert.match(
+    entryShapeProblem(widthsWith(false), { forced: true }),
+    /differsByTheme that is not `true`/,
+  )
+  assert.equal(entryShapeProblem(widthsWith(true), { forced: true }), null)
+  assert.equal(entryShapeProblem(widthsWith(undefined), { forced: true }), null)
+})
+
 test('resolveRuntimeForce: a stamp that differs across widths is refused, naming each width and its stamp', () => {
   const stampAt = (stamp) => ({ ...FRAME, mounts: [], force: { count: 1, stamp, placedBy: null } })
   const verdict = resolveRuntimeForce(
@@ -4761,7 +4796,7 @@ const BUTTON_FILE = `${STAMP_ROOT}primitives/Button/index.tsx`
 
 test('the committed manifest records every T693 plant the verdicts below assert on', () => {
   const { entries } = plantedRun()
-  assert.equal(Object.keys(entries).length, 26)
+  assert.equal(Object.keys(entries).length, 30)
   for (const [name, entry] of Object.entries(entries)) {
     assert.ok(entry.widths['1280'], name)
   }
@@ -8588,6 +8623,16 @@ for (const [name, shape] of Object.entries(T703_STORY_SHAPES)) {
 
 // Preview and module level: a clip that reaches every story from outside the story file. The record is
 // the same width record, whatever put the clip there, so each shape is one source and one record.
+// RECORD PLANTS (T710): for the three shapes in `RECORD_PLANT_ONLY` no browser has shown the shape clip
+// a story: the record's `clip: true` is written by fiat, and what the test asserts is what the check
+// does with that record (refuses the mount credit), not that the shape clips. Only the
+// `Object.prototype` getter has a browser plant (`ClipFromObjectPrototype`,
+// `packages/design-system/.storybook/fixtures/ClipPlants.stories.tsx`).
+const RECORD_PLANT_ONLY = new Set([
+  "the preview's parameters mutated from another module that imports it",
+  'a config.tsx beside main.ts loaded in place of a preview',
+  'the preview mutating its own default export through a namespace import of itself',
+])
 const CLEAN_PREVIEW = `const preview = { parameters: { layout: 'padded' } }\nexport default preview\n`
 const T703_MODULE_SHAPES = {
   "the preview's parameters mutated from another module that imports it": [
@@ -8617,7 +8662,10 @@ const T703_MODULE_SHAPES = {
   ],
 }
 for (const [name, modules] of Object.entries(T703_MODULE_SHAPES)) {
-  test(`T703 plant: ${name} is refused its mount credit from the record; contrast: a record that says no clip credits it`, () => {
+  const kind = RECORD_PLANT_ONLY.has(name)
+    ? 'T703 record plant (no browser has shown this shape clip)'
+    : 'T703 plant'
+  test(`${kind}: ${name} is refused its mount credit from the record; contrast: a record that says no clip credits it`, () => {
     const run = (clip) =>
       t703Run({ stories: T703_STORY(), modules: new Map(modules), record: { clip } })
     assert.deepEqual(creditsOf(run(true), 'ZzA'), [])
@@ -8649,9 +8697,10 @@ test('T703 plant: a clip at any one captured width refuses the credit, wherever 
   }
 })
 
-test('T703 contrast: a story with no clip keeps its credit, whatever its source says about parameters', () => {
-  // A source a reader of object literals refused as "may carry a clip" (a spread, a `parameters`
-  // read from an identifier), which the record shows has none.
+test('T703 contrast: a story with no clip keeps its credit when its parameters literal holds a spread or a clip the browser did not apply', () => {
+  // A source a reader of object literals refused as "may carry a clip" (a spread), which the record
+  // shows has none. A story-level `parameters` that is an identifier is not this case: it is refused
+  // as `unreadable-parameters` and gives no mount credit.
   const plain = t703Run({ stories: T703_STORY(), record: { clip: false } })
   assert.deepEqual(creditsOf(plain, 'ZzA'), T703_CREDITED)
   const spread = t703Run({

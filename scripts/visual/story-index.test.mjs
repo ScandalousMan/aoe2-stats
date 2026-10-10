@@ -17,7 +17,7 @@
 //     (T694), whose fixture entries it skips by the same tag — that task's test.
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { test } from 'node:test'
@@ -177,4 +177,31 @@ test('isFullPageEntry reads the built index tag and nothing else, and run.mjs bu
   const runSource = readFileSync(path.join(rootDir, 'scripts/visual/run.mjs'), 'utf8')
   assert.match(runSource, /fullPage: isFullPageEntry\(entry\)/)
   assert.equal(runSource.includes("'visual-full-page'"), false)
+})
+
+// T710 (L5): the tag is written once. Every reader that can import the constant does, so a literal of it
+// in a harness file is a second definition that a rename of the tag would leave behind. The files read
+// are the capture and sweep specs and helpers (`tests/visual/*.ts`) and the Node scripts of
+// `scripts/visual/` other than the definition and the tests; the inline script of
+// `.github/workflows/baselines.yml` cannot import and says so beside its literal.
+test('no harness file writes the full-page tag as a string literal', () => {
+  const files = [
+    ...readdirSync(path.join(rootDir, 'tests/visual'))
+      .filter((name) => name.endsWith('.ts'))
+      .map((name) => `tests/visual/${name}`),
+    ...readdirSync(path.join(rootDir, 'scripts/visual'))
+      .filter(
+        (name) =>
+          /\.(mjs|cjs)$/.test(name) && !name.endsWith('.test.mjs') && name !== 'story-index.mjs',
+      )
+      .map((name) => `scripts/visual/${name}`),
+  ]
+  assert.ok(files.length > 10, 'the scan found the harness files')
+  const literal = new RegExp(`['"]${FULL_PAGE_TAG}['"]`)
+  const offenders = files.filter((file) =>
+    literal.test(readFileSync(path.join(rootDir, file), 'utf8')),
+  )
+  assert.deepEqual(offenders, [])
+  // The contrast: the definition itself holds the literal, which is what the scan is looking for.
+  assert.match(readFileSync(path.join(rootDir, 'scripts/visual/story-index.mjs'), 'utf8'), literal)
 })

@@ -192,9 +192,10 @@ export function findFixtureProblem(index) {
 
 // The stories a diff leaves the runtime pass to re-check under `--changed`: the union of
 //   (a) what `pnpm test:visual --changed` selects (`selectChangedStories`): a story's own directory, a
-//       global-reach path, or (T707) a module the story file imports, transitively, through a module
-//       specifier — so a clip, a tag or a force a story takes from another component's directory
-//       re-checks the story when that module changes;
+//       global-reach path, a file the preview reaches through module specifiers (T710: every story),
+//       or (T707) a module the story file imports, transitively, through a module specifier — so a
+//       clip, a tag or a force a story takes from another component's directory re-checks the story
+//       when that module changes;
 //   (b) every story whose committed entry RECORDED, in `files`, a source file the diff touches — the
 //       stamped files that rendered an element in that story. Nothing else is read from the entry:
 //       a stamp the entry cites and a primitive it mounts are both in `files`, because the element

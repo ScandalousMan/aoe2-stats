@@ -2783,7 +2783,8 @@ function unstampedPlacedProblem(record, where) {
 //     whose `stamp` is neither the explicit `null` of an element no source file stamped (a missing key
 //     is not one) nor a `file:line` string (`stampProblem`: an empty string is neither), or whose
 //     `placedBy` is neither null nor a well-formed instance, or whose `stamp` is null while its
-//     `placedBy` is not;
+//     `placedBy` is not; and a force record whose `differsByTheme` (the light and the dark render
+//     disagree, T710) is present and not `true`;
 //     (An entry's `files` is checked by `filesProblem`, which the story path runs first: it is the one
 //     field read outside this function's widths, so a value that is not an array of strings must be
 //     named before any of it is read.)
@@ -2846,6 +2847,9 @@ export function entryShapeProblem(entry, { forced, knownAxisValues } = {}) {
       if (!(Number.isInteger(force.count) && force.count >= 0)) {
         return `${at} has a count that is not a non-negative integer (${show(force.count)})`
       }
+      if (force.differsByTheme !== undefined && force.differsByTheme !== true) {
+        return `${at} has a differsByTheme that is not \`true\` (${show(force.differsByTheme)}); the pass writes it only as \`true\``
+      }
       if (force.count !== 1) continue
       const forceStamp = stampProblem(force.stamp, at)
       if (forceStamp) return forceStamp
@@ -2881,6 +2885,14 @@ export function resolveRuntimeForce(entry, { recordOneKeys, knownAxisValues }) {
   if (unrecorded.length > 0) {
     return {
       refusal: `the manifest records no force target at ${label(unrecorded)}, so it predates this story's visualForceState — rewrite it with \`${REWRITE_COMMAND}\``,
+    }
+  }
+  // The light and the dark render of the story disagree on the force (T710, `combineThemeRecords`): the
+  // record carries one theme's answer and this flag, and neither theme's answer is the capture's.
+  const themed = widths.filter(([, record]) => record.force.differsByTheme === true)
+  if (themed.length > 0) {
+    return {
+      refusal: `the light and the dark render disagree on the force at ${label(themed)} (a different match count, located element or placing instance, or a force only one theme carries): the capture shows both themes, so neither answer is credited`,
     }
   }
   const none = widths.filter(([, record]) => record.force.count === 0)
@@ -4148,9 +4160,12 @@ export const REGION_LEGEND = [
   "element's `file:line`; a record-3 cell when the tracked primitive instance that placed it is at that",
   "row's variant and size. A force on an element whose stamp is in the placing instance's `disabledAt`",
   '(the host elements it placed that the browser reports `:disabled` or `aria-disabled="true"`) is',
-  "refused. The Disabled column of every matrix, and a primitive's own stories' Rest column, come from",
+  'refused, and so is a force the light and the dark render of the story answer differently (a',
+  'different match count, element or placing instance).',
+  "The Disabled column of every matrix, and a primitive's own stories' Rest column, come from",
   'the primitive instances a story mounts, as rendered, and from nothing else: a `disabled` or `loading`',
-  "written at a call site, and a `disabled: true` in a story's `args`, credit no Disabled cell. A story",
+  "written at a call site, and a `disabled: true` in a story's `args`, credit no Disabled cell. The",
+  'instances credited are the ones the light and the dark render both mount. A story',
   'gives no mount credit when the browser applied a `visualCaptureClip` to it in either theme at any',
   'captured width (the manifest records, per width, whether one applied, read from the settled story',
   'the capture itself reads, in the light theme and in the dark one, so a clip no object literal spells',

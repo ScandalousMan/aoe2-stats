@@ -16698,6 +16698,58 @@
       }
     }
   },
+  "state-coverage-fixture-clip-plants--clip-from-force-handler": {
+    "importPath": "./.storybook/fixtures/ClipPlants.stories.tsx",
+    "exportName": "ClipFromForceHandler",
+    "files": ["packages/design-system/src/primitives/Button/index.tsx"],
+    "widths": {
+      "375": {
+        "clip": true,
+        "fullPage": false,
+        "mounts": [{ "component": "Button", "variant": "primary", "size": "md", "disabledAt": [] }],
+        "force": {
+          "count": 1,
+          "stamp": "packages/design-system/src/primitives/Button/index.tsx:213",
+          "placedBy": {
+            "component": "Button",
+            "variant": "primary",
+            "size": "md",
+            "disabledAt": []
+          }
+        }
+      },
+      "768": {
+        "clip": true,
+        "fullPage": false,
+        "mounts": [{ "component": "Button", "variant": "primary", "size": "md", "disabledAt": [] }],
+        "force": {
+          "count": 1,
+          "stamp": "packages/design-system/src/primitives/Button/index.tsx:213",
+          "placedBy": {
+            "component": "Button",
+            "variant": "primary",
+            "size": "md",
+            "disabledAt": []
+          }
+        }
+      },
+      "1280": {
+        "clip": true,
+        "fullPage": false,
+        "mounts": [{ "component": "Button", "variant": "primary", "size": "md", "disabledAt": [] }],
+        "force": {
+          "count": 1,
+          "stamp": "packages/design-system/src/primitives/Button/index.tsx:213",
+          "placedBy": {
+            "component": "Button",
+            "variant": "primary",
+            "size": "md",
+            "disabledAt": []
+          }
+        }
+      }
+    }
+  },
   "state-coverage-fixture-clip-plants--clip-from-loader": {
     "importPath": "./.storybook/fixtures/ClipPlants.stories.tsx",
     "exportName": "ClipFromLoader",
@@ -16962,6 +17014,147 @@
         "clip": false,
         "fullPage": false,
         "mounts": [{ "component": "Button", "variant": "primary", "size": "md", "disabledAt": [] }]
+      }
+    }
+  },
+  "state-coverage-fixture-plants--active-on-leaving-link": {
+    "importPath": "./.storybook/fixtures/Plants.stories.tsx",
+    "exportName": "ActiveOnLeavingLink",
+    "files": ["packages/design-system/src/primitives/Link/index.tsx"],
+    "widths": {
+      "375": {
+        "clip": false,
+        "fullPage": false,
+        "mounts": [{ "component": "Link", "variant": "inline", "size": null, "disabledAt": [] }],
+        "force": {
+          "count": 1,
+          "stamp": "packages/design-system/src/primitives/Link/index.tsx:146",
+          "placedBy": { "component": "Link", "variant": "inline", "size": null, "disabledAt": [] }
+        }
+      },
+      "768": {
+        "clip": false,
+        "fullPage": false,
+        "mounts": [{ "component": "Link", "variant": "inline", "size": null, "disabledAt": [] }],
+        "force": {
+          "count": 1,
+          "stamp": "packages/design-system/src/primitives/Link/index.tsx:146",
+          "placedBy": { "component": "Link", "variant": "inline", "size": null, "disabledAt": [] }
+        }
+      },
+      "1280": {
+        "clip": false,
+        "fullPage": false,
+        "mounts": [{ "component": "Link", "variant": "inline", "size": null, "disabledAt": [] }],
+        "force": {
+          "count": 1,
+          "stamp": "packages/design-system/src/primitives/Link/index.tsx:146",
+          "placedBy": { "component": "Link", "variant": "inline", "size": null, "disabledAt": [] }
+        }
+      }
+    }
+  },
+  "state-coverage-fixture-plants--active-on-plain-button": {
+    "importPath": "./.storybook/fixtures/Plants.stories.tsx",
+    "exportName": "ActiveOnPlainButton",
+    "files": ["packages/design-system/src/primitives/Button/index.tsx"],
+    "widths": {
+      "375": {
+        "clip": false,
+        "fullPage": false,
+        "mounts": [{ "component": "Button", "variant": "primary", "size": "md", "disabledAt": [] }],
+        "force": {
+          "count": 1,
+          "stamp": "packages/design-system/src/primitives/Button/index.tsx:213",
+          "placedBy": {
+            "component": "Button",
+            "variant": "primary",
+            "size": "md",
+            "disabledAt": []
+          }
+        }
+      },
+      "768": {
+        "clip": false,
+        "fullPage": false,
+        "mounts": [{ "component": "Button", "variant": "primary", "size": "md", "disabledAt": [] }],
+        "force": {
+          "count": 1,
+          "stamp": "packages/design-system/src/primitives/Button/index.tsx:213",
+          "placedBy": {
+            "component": "Button",
+            "variant": "primary",
+            "size": "md",
+            "disabledAt": []
+          }
+        }
+      },
+      "1280": {
+        "clip": false,
+        "fullPage": false,
+        "mounts": [{ "component": "Button", "variant": "primary", "size": "md", "disabledAt": [] }],
+        "force": {
+          "count": 1,
+          "stamp": "packages/design-system/src/primitives/Button/index.tsx:213",
+          "placedBy": {
+            "component": "Button",
+            "variant": "primary",
+            "size": "md",
+            "disabledAt": []
+          }
+        }
+      }
+    }
+  },
+  "state-coverage-fixture-plants--active-on-submit-button": {
+    "importPath": "./.storybook/fixtures/Plants.stories.tsx",
+    "exportName": "ActiveOnSubmitButton",
+    "files": ["packages/design-system/src/primitives/Button/index.tsx"],
+    "widths": {
+      "375": {
+        "clip": false,
+        "fullPage": false,
+        "mounts": [{ "component": "Button", "variant": "primary", "size": "md", "disabledAt": [] }],
+        "force": {
+          "count": 1,
+          "stamp": "packages/design-system/src/primitives/Button/index.tsx:213",
+          "placedBy": {
+            "component": "Button",
+            "variant": "primary",
+            "size": "md",
+            "disabledAt": []
+          }
+        }
+      },
+      "768": {
+        "clip": false,
+        "fullPage": false,
+        "mounts": [{ "component": "Button", "variant": "primary", "size": "md", "disabledAt": [] }],
+        "force": {
+          "count": 1,
+          "stamp": "packages/design-system/src/primitives/Button/index.tsx:213",
+          "placedBy": {
+            "component": "Button",
+            "variant": "primary",
+            "size": "md",
+            "disabledAt": []
+          }
+        }
+      },
+      "1280": {
+        "clip": false,
+        "fullPage": false,
+        "mounts": [{ "component": "Button", "variant": "primary", "size": "md", "disabledAt": [] }],
+        "force": {
+          "count": 1,
+          "stamp": "packages/design-system/src/primitives/Button/index.tsx:213",
+          "placedBy": {
+            "component": "Button",
+            "variant": "primary",
+            "size": "md",
+            "disabledAt": []
+          }
+        }
       }
     }
   },
@@ -17410,6 +17603,43 @@
         "fullPage": false,
         "mounts": [{ "component": "Button", "variant": "primary", "size": "lg", "disabledAt": [] }],
         "force": { "count": 0, "stamp": null, "placedBy": null }
+      }
+    }
+  },
+  "state-coverage-fixture-plants--hover-on-leaving-link": {
+    "importPath": "./.storybook/fixtures/Plants.stories.tsx",
+    "exportName": "HoverOnLeavingLink",
+    "files": ["packages/design-system/src/primitives/Link/index.tsx"],
+    "widths": {
+      "375": {
+        "clip": false,
+        "fullPage": false,
+        "mounts": [{ "component": "Link", "variant": "inline", "size": null, "disabledAt": [] }],
+        "force": {
+          "count": 1,
+          "stamp": "packages/design-system/src/primitives/Link/index.tsx:146",
+          "placedBy": { "component": "Link", "variant": "inline", "size": null, "disabledAt": [] }
+        }
+      },
+      "768": {
+        "clip": false,
+        "fullPage": false,
+        "mounts": [{ "component": "Link", "variant": "inline", "size": null, "disabledAt": [] }],
+        "force": {
+          "count": 1,
+          "stamp": "packages/design-system/src/primitives/Link/index.tsx:146",
+          "placedBy": { "component": "Link", "variant": "inline", "size": null, "disabledAt": [] }
+        }
+      },
+      "1280": {
+        "clip": false,
+        "fullPage": false,
+        "mounts": [{ "component": "Link", "variant": "inline", "size": null, "disabledAt": [] }],
+        "force": {
+          "count": 1,
+          "stamp": "packages/design-system/src/primitives/Link/index.tsx:146",
+          "placedBy": { "component": "Link", "variant": "inline", "size": null, "disabledAt": [] }
+        }
       }
     }
   },
@@ -18020,6 +18250,310 @@
         "fullPage": false,
         "mounts": [{ "component": "Button", "variant": "primary", "size": "lg", "disabledAt": [] }],
         "force": { "count": 2, "stamp": null, "placedBy": null }
+      }
+    }
+  },
+  "state-coverage-fixture-theme-plants--disabled-button-in-both-themes": {
+    "importPath": "./.storybook/fixtures/ThemePlants.stories.tsx",
+    "exportName": "DisabledButtonInBothThemes",
+    "files": ["packages/design-system/src/primitives/Button/index.tsx"],
+    "widths": {
+      "375": {
+        "clip": false,
+        "fullPage": false,
+        "mounts": [
+          { "component": "Button", "variant": "primary", "size": "md", "disabledAt": [] },
+          {
+            "component": "Button",
+            "variant": "ghost",
+            "size": "lg",
+            "disabledAt": ["packages/design-system/src/primitives/Button/index.tsx:213"]
+          }
+        ]
+      },
+      "768": {
+        "clip": false,
+        "fullPage": false,
+        "mounts": [
+          { "component": "Button", "variant": "primary", "size": "md", "disabledAt": [] },
+          {
+            "component": "Button",
+            "variant": "ghost",
+            "size": "lg",
+            "disabledAt": ["packages/design-system/src/primitives/Button/index.tsx:213"]
+          }
+        ]
+      },
+      "1280": {
+        "clip": false,
+        "fullPage": false,
+        "mounts": [
+          { "component": "Button", "variant": "primary", "size": "md", "disabledAt": [] },
+          {
+            "component": "Button",
+            "variant": "ghost",
+            "size": "lg",
+            "disabledAt": ["packages/design-system/src/primitives/Button/index.tsx:213"]
+          }
+        ]
+      }
+    }
+  },
+  "state-coverage-fixture-theme-plants--disabled-button-in-light-only": {
+    "importPath": "./.storybook/fixtures/ThemePlants.stories.tsx",
+    "exportName": "DisabledButtonInLightOnly",
+    "files": ["packages/design-system/src/primitives/Button/index.tsx"],
+    "widths": {
+      "375": {
+        "clip": false,
+        "fullPage": false,
+        "mounts": [{ "component": "Button", "variant": "primary", "size": "md", "disabledAt": [] }]
+      },
+      "768": {
+        "clip": false,
+        "fullPage": false,
+        "mounts": [{ "component": "Button", "variant": "primary", "size": "md", "disabledAt": [] }]
+      },
+      "1280": {
+        "clip": false,
+        "fullPage": false,
+        "mounts": [{ "component": "Button", "variant": "primary", "size": "md", "disabledAt": [] }]
+      }
+    }
+  },
+  "state-coverage-fixture-theme-plants--focus-in-both-themes": {
+    "importPath": "./.storybook/fixtures/ThemePlants.stories.tsx",
+    "exportName": "FocusInBothThemes",
+    "files": ["packages/design-system/src/primitives/Button/index.tsx"],
+    "widths": {
+      "375": {
+        "clip": false,
+        "fullPage": false,
+        "mounts": [{ "component": "Button", "variant": "primary", "size": "md", "disabledAt": [] }],
+        "focus": {
+          "stamp": "packages/design-system/src/primitives/Button/index.tsx:213",
+          "placedBy": {
+            "component": "Button",
+            "variant": "primary",
+            "size": "md",
+            "disabledAt": []
+          }
+        }
+      },
+      "768": {
+        "clip": false,
+        "fullPage": false,
+        "mounts": [{ "component": "Button", "variant": "primary", "size": "md", "disabledAt": [] }],
+        "focus": {
+          "stamp": "packages/design-system/src/primitives/Button/index.tsx:213",
+          "placedBy": {
+            "component": "Button",
+            "variant": "primary",
+            "size": "md",
+            "disabledAt": []
+          }
+        }
+      },
+      "1280": {
+        "clip": false,
+        "fullPage": false,
+        "mounts": [{ "component": "Button", "variant": "primary", "size": "md", "disabledAt": [] }],
+        "focus": {
+          "stamp": "packages/design-system/src/primitives/Button/index.tsx:213",
+          "placedBy": {
+            "component": "Button",
+            "variant": "primary",
+            "size": "md",
+            "disabledAt": []
+          }
+        }
+      }
+    }
+  },
+  "state-coverage-fixture-theme-plants--focus-in-light-only": {
+    "importPath": "./.storybook/fixtures/ThemePlants.stories.tsx",
+    "exportName": "FocusInLightOnly",
+    "files": ["packages/design-system/src/primitives/Button/index.tsx"],
+    "widths": {
+      "375": {
+        "clip": false,
+        "fullPage": false,
+        "mounts": [{ "component": "Button", "variant": "primary", "size": "md", "disabledAt": [] }],
+        "focus": null
+      },
+      "768": {
+        "clip": false,
+        "fullPage": false,
+        "mounts": [{ "component": "Button", "variant": "primary", "size": "md", "disabledAt": [] }],
+        "focus": null
+      },
+      "1280": {
+        "clip": false,
+        "fullPage": false,
+        "mounts": [{ "component": "Button", "variant": "primary", "size": "md", "disabledAt": [] }],
+        "focus": null
+      }
+    }
+  },
+  "state-coverage-fixture-theme-plants--force-count-differs-in-dark": {
+    "importPath": "./.storybook/fixtures/ThemePlants.stories.tsx",
+    "exportName": "ForceCountDiffersInDark",
+    "files": ["packages/design-system/src/primitives/Button/index.tsx"],
+    "widths": {
+      "375": {
+        "clip": false,
+        "fullPage": false,
+        "mounts": [{ "component": "Button", "variant": "primary", "size": "md", "disabledAt": [] }],
+        "force": {
+          "count": 1,
+          "stamp": "packages/design-system/src/primitives/Button/index.tsx:213",
+          "placedBy": {
+            "component": "Button",
+            "variant": "primary",
+            "size": "md",
+            "disabledAt": []
+          },
+          "differsByTheme": true
+        }
+      },
+      "768": {
+        "clip": false,
+        "fullPage": false,
+        "mounts": [{ "component": "Button", "variant": "primary", "size": "md", "disabledAt": [] }],
+        "force": {
+          "count": 1,
+          "stamp": "packages/design-system/src/primitives/Button/index.tsx:213",
+          "placedBy": {
+            "component": "Button",
+            "variant": "primary",
+            "size": "md",
+            "disabledAt": []
+          },
+          "differsByTheme": true
+        }
+      },
+      "1280": {
+        "clip": false,
+        "fullPage": false,
+        "mounts": [{ "component": "Button", "variant": "primary", "size": "md", "disabledAt": [] }],
+        "force": {
+          "count": 1,
+          "stamp": "packages/design-system/src/primitives/Button/index.tsx:213",
+          "placedBy": {
+            "component": "Button",
+            "variant": "primary",
+            "size": "md",
+            "disabledAt": []
+          },
+          "differsByTheme": true
+        }
+      }
+    }
+  },
+  "state-coverage-fixture-theme-plants--force-element-differs-in-dark": {
+    "importPath": "./.storybook/fixtures/ThemePlants.stories.tsx",
+    "exportName": "ForceElementDiffersInDark",
+    "files": ["packages/design-system/src/primitives/Button/index.tsx"],
+    "widths": {
+      "375": {
+        "clip": false,
+        "fullPage": false,
+        "mounts": [],
+        "force": {
+          "count": 1,
+          "stamp": "packages/design-system/src/primitives/Button/index.tsx:213",
+          "placedBy": {
+            "component": "Button",
+            "variant": "primary",
+            "size": "md",
+            "disabledAt": []
+          },
+          "differsByTheme": true
+        }
+      },
+      "768": {
+        "clip": false,
+        "fullPage": false,
+        "mounts": [],
+        "force": {
+          "count": 1,
+          "stamp": "packages/design-system/src/primitives/Button/index.tsx:213",
+          "placedBy": {
+            "component": "Button",
+            "variant": "primary",
+            "size": "md",
+            "disabledAt": []
+          },
+          "differsByTheme": true
+        }
+      },
+      "1280": {
+        "clip": false,
+        "fullPage": false,
+        "mounts": [],
+        "force": {
+          "count": 1,
+          "stamp": "packages/design-system/src/primitives/Button/index.tsx:213",
+          "placedBy": {
+            "component": "Button",
+            "variant": "primary",
+            "size": "md",
+            "disabledAt": []
+          },
+          "differsByTheme": true
+        }
+      }
+    }
+  },
+  "state-coverage-fixture-theme-plants--force-same-in-both-themes": {
+    "importPath": "./.storybook/fixtures/ThemePlants.stories.tsx",
+    "exportName": "ForceSameInBothThemes",
+    "files": ["packages/design-system/src/primitives/Button/index.tsx"],
+    "widths": {
+      "375": {
+        "clip": false,
+        "fullPage": false,
+        "mounts": [{ "component": "Button", "variant": "primary", "size": "md", "disabledAt": [] }],
+        "force": {
+          "count": 1,
+          "stamp": "packages/design-system/src/primitives/Button/index.tsx:213",
+          "placedBy": {
+            "component": "Button",
+            "variant": "primary",
+            "size": "md",
+            "disabledAt": []
+          }
+        }
+      },
+      "768": {
+        "clip": false,
+        "fullPage": false,
+        "mounts": [{ "component": "Button", "variant": "primary", "size": "md", "disabledAt": [] }],
+        "force": {
+          "count": 1,
+          "stamp": "packages/design-system/src/primitives/Button/index.tsx:213",
+          "placedBy": {
+            "component": "Button",
+            "variant": "primary",
+            "size": "md",
+            "disabledAt": []
+          }
+        }
+      },
+      "1280": {
+        "clip": false,
+        "fullPage": false,
+        "mounts": [{ "component": "Button", "variant": "primary", "size": "md", "disabledAt": [] }],
+        "force": {
+          "count": 1,
+          "stamp": "packages/design-system/src/primitives/Button/index.tsx:213",
+          "placedBy": {
+            "component": "Button",
+            "variant": "primary",
+            "size": "md",
+            "disabledAt": []
+          }
+        }
       }
     }
   }

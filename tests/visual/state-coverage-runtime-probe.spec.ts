@@ -7,11 +7,13 @@ import { expect, test } from '@playwright/test'
 import { STAMP_ATTRIBUTE } from '../../packages/design-system/.storybook/source-stamp-attribute.cjs'
 import {
   checkPlantCoverage,
+  clearBrowserState,
+  combineThemeRecords,
   describeElement,
   describeFiles,
   describeMounts,
 } from './state-coverage-runtime'
-import type { Instance, TrackedRegistry } from './state-coverage-runtime'
+import type { Instance, TrackedRegistry, WidthRecord } from './state-coverage-runtime'
 
 function Button() {}
 function Field() {}
@@ -372,4 +374,124 @@ test('describeFiles: no stamped element is no file, and the attribute named is t
   expect(
     describeFiles(fakeDocumentRoot([BUTTON_FILE]), { ...opts, stampAttribute: 'data-x' }),
   ).toEqual([])
+})
+
+// ---- T710: the two themes' records joined, and the storage clear ----------------------------------
+
+const btn = (variant: string, size: string, disabledAt: string[] = []): Instance => ({
+  component: 'Button',
+  variant,
+  size,
+  disabledAt,
+})
+const themed = (overrides: Partial<WidthRecord> = {}): WidthRecord => ({
+  clip: false,
+  fullPage: false,
+  mounts: [],
+  files: [],
+  ...overrides,
+})
+
+test('combineThemeRecords: a mount only the light theme renders is not credited, a mount both render is', () => {
+  const both = btn('primary', 'md')
+  const lightOnly = btn('ghost', 'sm', [`${BUTTON_FILE}`])
+  expect(
+    combineThemeRecords(themed({ mounts: [both, lightOnly] }), themed({ mounts: [both] })).mounts,
+  ).toEqual([both])
+  // Dark-only is not credited either, and the contrast: identical renders keep every mount.
+  expect(
+    combineThemeRecords(themed({ mounts: [both] }), themed({ mounts: [both, lightOnly] })).mounts,
+  ).toEqual([both])
+  expect(
+    combineThemeRecords(
+      themed({ mounts: [both, lightOnly] }),
+      themed({ mounts: [both, lightOnly] }),
+    ).mounts,
+  ).toEqual([both, lightOnly])
+})
+
+test('combineThemeRecords: an instance is the same only with the same axes and disabledAt, and counts once per time both render it', () => {
+  const rest = btn('primary', 'md')
+  const off = btn('primary', 'md', [BUTTON_FILE])
+  expect(combineThemeRecords(themed({ mounts: [off] }), themed({ mounts: [rest] })).mounts).toEqual(
+    [],
+  )
+  expect(
+    combineThemeRecords(themed({ mounts: [rest, rest] }), themed({ mounts: [rest] })).mounts,
+  ).toEqual([rest])
+})
+
+test('combineThemeRecords: clip is the disjunction, files the union, fullPage the index tag', () => {
+  const joined = combineThemeRecords(
+    themed({ clip: false, fullPage: true, files: ['b.tsx', 'a.tsx'] }),
+    themed({ clip: true, fullPage: true, files: ['c.tsx', 'a.tsx'] }),
+  )
+  expect(joined).toMatchObject({ clip: true, fullPage: true, files: ['a.tsx', 'b.tsx', 'c.tsx'] })
+  expect(combineThemeRecords(themed(), themed()).clip).toBe(false)
+})
+
+test('combineThemeRecords: a force the themes answer alike is the ordinary record, one they answer differently is flagged, whichever differs', () => {
+  const answer = { count: 1, stamp: BUTTON_FILE, placedBy: btn('primary', 'md') }
+  const same = combineThemeRecords(themed({ force: answer }), themed({ force: { ...answer } }))
+  expect(same.force).toEqual(answer)
+  expect(same.force).not.toHaveProperty('differsByTheme')
+  const flagged = (dark: object | undefined) =>
+    combineThemeRecords(themed({ force: answer }), themed(dark ? { force: dark as never } : {}))
+      .force
+  // A count, a stamp, a placing instance, and a force only one theme carries.
+  expect(flagged({ ...answer, count: 2 })).toEqual({ ...answer, differsByTheme: true })
+  expect(flagged({ ...answer, stamp: null, placedBy: null })).toEqual({
+    ...answer,
+    differsByTheme: true,
+  })
+  expect(flagged({ ...answer, placedBy: btn('ghost', 'md') })).toEqual({
+    ...answer,
+    differsByTheme: true,
+  })
+  expect(flagged(undefined)).toEqual({ ...answer, differsByTheme: true })
+  // A story with no force in either theme has none.
+  expect(combineThemeRecords(themed(), themed())).not.toHaveProperty('force')
+})
+
+test('combineThemeRecords: a focus is credited only when both themes agree on it', () => {
+  const focus = { stamp: BUTTON_FILE, placedBy: btn('ghost', 'md') }
+  expect(combineThemeRecords(themed({ focus }), themed({ focus: { ...focus } })).focus).toEqual(
+    focus,
+  )
+  expect(combineThemeRecords(themed({ focus }), themed({ focus: null })).focus).toBeNull()
+  expect(combineThemeRecords(themed({ focus }), themed()).focus).toBeNull()
+  expect(combineThemeRecords(themed({ focus: null }), themed({ focus: null })).focus).toBeNull()
+  // No `play()` in either theme: no focus key at all.
+  expect(combineThemeRecords(themed(), themed())).not.toHaveProperty('focus')
+})
+
+function stubPage(url: string, evaluate: () => Promise<void>) {
+  const calls: string[] = []
+  const page = {
+    context: () => ({ clearCookies: async () => void calls.push('cookies') }),
+    url: () => url,
+    evaluate: async () => {
+      calls.push('storage')
+      await evaluate()
+    },
+  }
+  return { page: page as unknown as Parameters<typeof clearBrowserState>[0], calls }
+}
+
+test('clearBrowserState: about:blank is skipped after the cookies, any other storage error throws', async () => {
+  const blank = stubPage('about:blank', async () => {
+    throw new Error('SecurityError: localStorage is not available')
+  })
+  await clearBrowserState(blank.page)
+  expect(blank.calls).toEqual(['cookies'])
+
+  const failing = stubPage('http://localhost:6006/iframe.html', async () => {
+    throw new Error('SecurityError: the document is sandboxed')
+  })
+  await expect(clearBrowserState(failing.page)).rejects.toThrow('the document is sandboxed')
+
+  // The contrast: a page on the origin is cleared, cookies first.
+  const healthy = stubPage('http://localhost:6006/iframe.html', async () => {})
+  await clearBrowserState(healthy.page)
+  expect(healthy.calls).toEqual(['cookies', 'storage'])
 })

@@ -32,11 +32,18 @@ test('a change under a global-reach prefix selects every story, fixtures include
 })
 
 test('otherwise a story is selected by its own directory, by a module its story file imports, or by an opaque specifier it holds', () => {
-  // `Plants.stories.tsx` (a real file) imports `src/primitives/Button`, so it follows Button's change
-  // although it lives in another directory (T707); the Menu story imports no Button file.
+  // `Plants.stories.tsx` (a real file) imports `src/primitives/Callout`, so it follows Callout's change
+  // although it lives in another directory (T707); the Button story file reaches Callout as well, and
+  // the Menu story does not.
+  assert.deepEqual(
+    ids(selectChangedStories(stories, ['packages/design-system/src/primitives/Callout/index.tsx'])),
+    ['button--primary', 'plants--bare'],
+  )
+  // T710: `Button` is imported by the preview, whose imports run for every story, so its change
+  // selects every story, the Menu story included.
   assert.deepEqual(
     ids(selectChangedStories(stories, ['packages/design-system/src/primitives/Button/index.tsx'])),
-    ['button--primary', 'plants--bare'],
+    ['button--primary', 'menu--open', 'plants--bare'],
   )
   assert.deepEqual(
     ids(
@@ -150,6 +157,51 @@ test('T707 contrast: a diff on a module no story reaches selects nothing beyond 
     (select) => {
       assert.deepEqual(select(`${PKG}src/shared/orphan.ts`), [])
       assert.deepEqual(select(`${PKG}src/primitives/Menu/other.ts`), [MENU])
+    },
+  )
+})
+
+// T710: the preview's imports run for every story. The scratch preview imports a primitive, which
+// imports a helper; no story file imports either.
+const PREVIEW_TREE = {
+  '.storybook/preview.tsx':
+    "import { Button } from '../src/primitives/Button'\nexport default {}\n",
+  'src/primitives/Button/index.tsx':
+    "import { top } from '../../lib/top-level'\nexport const Button = top\n",
+  'src/lib/top-level.ts': 'export const top = 1\n',
+  'src/shared/orphan.ts': 'export const o = 1\n',
+  'src/composites/Card/Card.stories.tsx': 'export default {}\n',
+  'src/composites/Panel/Panel.stories.tsx': 'export default {}\n',
+}
+
+test('T710 plant: a diff on a module only the preview’s primitives reach selects every story', () => {
+  withTree(PREVIEW_TREE, (select) => {
+    // `lib/top-level.ts` is reached by `Button`, which the preview imports, and by no story file; the
+    // directory rule alone would select nothing.
+    assert.deepEqual(select(`${PKG}src/lib/top-level.ts`), [CARD, PANEL])
+    // The primitive's own file, a story-less directory, is the same.
+    assert.deepEqual(select(`${PKG}src/primitives/Button/index.tsx`), [CARD, PANEL])
+  })
+})
+
+test('T710 contrast: a diff on a module neither a story nor the preview reaches selects nothing extra', () => {
+  withTree(PREVIEW_TREE, (select) => {
+    assert.deepEqual(select(`${PKG}src/shared/orphan.ts`), [])
+    assert.deepEqual(select(`${PKG}src/composites/Card/other.ts`), [CARD])
+    // A diff outside the package touches nothing the preview reaches.
+    assert.deepEqual(select('docs/readme.md'), [])
+  })
+})
+
+test('T710: a specifier the preview’s reach holds and cannot be read selects every story on any diff inside the package, and on none outside it', () => {
+  withTree(
+    {
+      ...PREVIEW_TREE,
+      'src/lib/top-level.ts': 'export const top = (name: string) => import(name)\n',
+    },
+    (select) => {
+      assert.deepEqual(select(`${PKG}src/shared/orphan.ts`), [CARD, PANEL])
+      assert.deepEqual(select('docs/readme.md'), [])
     },
   )
 })

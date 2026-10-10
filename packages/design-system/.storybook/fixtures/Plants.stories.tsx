@@ -320,3 +320,46 @@ export const RawButtonPickedByName: Story = {
     </div>
   ),
 }
+
+// ---- :active on a control that navigates when the mouse is released (T710) -----------------------
+
+// The runtime pass presses the forced control with the real mouse (`applyForceState`, `active`) and must
+// release it before the next settle. A release over a link with an `href` that leaves the story, or over
+// a submit button in a form, is a click, so these plants are recorded like any other story: the pass
+// leaves the story before it releases the mouse. The two contrasts press a plain `Button` and hover a
+// link, which no release can navigate.
+const LEAVES_THE_STORY = '/state-coverage-plant-leaves-the-story.html'
+
+// An `<a href>` that leaves the story, pressed.
+export const ActiveOnLeavingLink: Story = {
+  parameters: { visualForceState: { state: 'active', role: 'link' } },
+  render: () => <Link href={LEAVES_THE_STORY}>Leave</Link>,
+}
+
+// A submit button of a form whose action leaves the story, pressed.
+export const ActiveOnSubmitButton: Story = {
+  parameters: { visualForceState: { state: 'active', role: 'button', name: 'Send' } },
+  render: () => (
+    <form action={LEAVES_THE_STORY} method="get">
+      <Button type="submit" variant="primary" size="md">
+        Send
+      </Button>
+    </form>
+  ),
+}
+
+// The contrast: a plain `Button`, pressed.
+export const ActiveOnPlainButton: Story = {
+  parameters: { visualForceState: { state: 'active', role: 'button', name: 'Go' } },
+  render: () => (
+    <Button variant="primary" size="md">
+      Go
+    </Button>
+  ),
+}
+
+// The contrast: the same leaving link, hovered.
+export const HoverOnLeavingLink: Story = {
+  parameters: { visualForceState: { state: 'hover', role: 'link' } },
+  render: () => <Link href={LEAVES_THE_STORY}>Leave</Link>,
+}

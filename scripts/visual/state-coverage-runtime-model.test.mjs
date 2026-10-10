@@ -230,7 +230,10 @@ const BUTTON_DIFF = [BUTTON_FILE]
 const MANIFEST_DIFF = [MANIFEST_PATH]
 const ROW_FILE = 'packages/design-system/src/composites/Row/index.tsx'
 const ROW_DIFF = [ROW_FILE]
-const MENU_FILE = 'packages/design-system/src/primitives/Menu/index.tsx'
+// A file the preview does not reach through module specifiers (T710: a diff on one the preview reaches,
+// `Menu`'s among them, selects every story, so it could not show a selection made by `files` alone).
+const MENU_FILE = 'packages/design-system/src/composites/Table/index.tsx'
+const PREVIEW_REACHED_FILE = 'packages/design-system/src/primitives/Menu/index.tsx'
 
 // Stories whose own directory no diff below touches, so selection (a) — what `selectChangedStories`
 // picks — never reaches them: whatever is selected is selected by an entry's own `files`.
@@ -289,6 +292,11 @@ test('selection (b): an entry whose recorded files name a file in the diff is se
   assert.deepEqual(selectIds(ROW_DIFF).sort(), [S_BOTH.id, S_ROW.id].sort())
   assert.deepEqual(selectIds([MENU_FILE]).sort(), [S_BOTH.id, S_MENU.id].sort())
   assert.deepEqual(select(ROW_DIFF).rules.get(S_ROW.id), ['files'])
+})
+
+test('selection (a), T710: a file the preview reaches selects every story, whatever the entries recorded', () => {
+  assert.deepEqual(selectIds([PREVIEW_REACHED_FILE]).sort(), ALL.map((s) => s.id).sort())
+  assert.deepEqual(selectIds([MENU_FILE]).sort(), [S_BOTH.id, S_MENU.id].sort())
 })
 
 test('selection (b): the file is matched whole, never by a prefix, a suffix or a directory of another path', () => {
