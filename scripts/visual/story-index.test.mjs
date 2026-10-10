@@ -17,7 +17,7 @@
 //     (T694), whose fixture entries it skips by the same tag — that task's test.
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { test } from 'node:test'
@@ -177,4 +177,94 @@ test('isFullPageEntry reads the built index tag and nothing else, and run.mjs bu
   const runSource = readFileSync(path.join(rootDir, 'scripts/visual/run.mjs'), 'utf8')
   assert.match(runSource, /fullPage: isFullPageEntry\(entry\)/)
   assert.equal(runSource.includes("'visual-full-page'"), false)
+})
+
+// T710 (L5), T711: the tag is written once. Every reader that can import the constant does, so a
+// literal of it in a harness file is a second definition that a rename of the tag would leave behind.
+// The files read are the capture and sweep specs and helpers (`tests/visual/*.ts` and
+// `tests/visual/fixtures/*.ts`) and the Node scripts of `scripts/visual/` other than the definition and
+// the tests; a single-quoted, double-quoted or template literal of the tag is a hit. The inline script
+// of `.github/workflows/baselines.yml` cannot import, and a comment above its unit list says so.
+function scanHarnessForTagLiteral(root) {
+  const tsIn = (dir) =>
+    readdirSync(path.join(root, dir), { withFileTypes: true })
+      .filter((entry) => entry.isFile() && entry.name.endsWith('.ts'))
+      .map((entry) => `${dir}/${entry.name}`)
+  const testFiles = [...tsIn('tests/visual'), ...tsIn('tests/visual/fixtures')]
+  const scriptFiles = readdirSync(path.join(root, 'scripts/visual'))
+    .filter(
+      (name) =>
+        /\.(mjs|cjs)$/.test(name) && !name.endsWith('.test.mjs') && name !== 'story-index.mjs',
+    )
+    .map((name) => `scripts/visual/${name}`)
+  // A line that is a comment from its first character is skipped: comments name the tag in backticks,
+  // and the scan reads code. A message that spells it between escaped backticks is not a literal of it.
+  const literal = new RegExp(`['"\`]${FULL_PAGE_TAG}['"\`]`)
+  const isCode = (line) => !/^\s*(\/\/|\/\*|\*)/.test(line)
+  const offenders = [...testFiles, ...scriptFiles].filter((file) =>
+    readFileSync(path.join(root, file), 'utf8')
+      .split('\n')
+      .filter(isCode)
+      .some((line) => literal.test(line)),
+  )
+  return { testFiles, scriptFiles, offenders, literal }
+}
+
+test('no harness file writes the full-page tag as a string literal', () => {
+  const { testFiles, scriptFiles, offenders, literal } = scanHarnessForTagLiteral(rootDir)
+  // Each of the two sets is found on its own: either half alone is more than a handful of files, so a
+  // glob that lost the other half still passes a total.
+  assert.ok(testFiles.length > 5, 'the scan found the specs and helpers under tests/visual')
+  assert.ok(
+    testFiles.some((file) => file.startsWith('tests/visual/fixtures/')),
+    'the scan found tests/visual/fixtures',
+  )
+  assert.ok(scriptFiles.length > 5, 'the scan found the Node scripts of scripts/visual')
+  assert.deepEqual(offenders, [])
+  // The contrast: the definition itself holds the literal, which is what the scan is looking for.
+  assert.match(readFileSync(path.join(rootDir, 'scripts/visual/story-index.mjs'), 'utf8'), literal)
+})
+
+test('the full-page tag scan flags a quoted, double-quoted and template literal in the specs, the fixtures and the scripts, and an empty directory finds no files', () => {
+  const scratch = mkdtempSync(path.join(tmpdir(), 'tag-literal-scan-'))
+  try {
+    const put = (file, text) => {
+      mkdirSync(path.dirname(path.join(scratch, file)), { recursive: true })
+      writeFileSync(path.join(scratch, file), text)
+    }
+    put('tests/visual/clean.ts', 'export const a = 1\n')
+    put('tests/visual/fixtures/clean.ts', 'export const b = 1\n')
+    put('scripts/visual/clean.mjs', 'export const c = 1\n')
+    // The contrast: the tag named in a comment or between escaped backticks is not a literal of it.
+    put(
+      'tests/visual/prose.ts',
+      `// the \`${FULL_PAGE_TAG}\` tag\n/*\n * \`${FULL_PAGE_TAG}\`\n */\nconst m = \`says \\\`${FULL_PAGE_TAG}\\\` here\`\n`,
+    )
+    assert.deepEqual(scanHarnessForTagLiteral(scratch).offenders, [])
+    for (const [file, text] of [
+      ['tests/visual/single.ts', `const t = '${FULL_PAGE_TAG}'\n`],
+      ['tests/visual/double.ts', `const t = "${FULL_PAGE_TAG}"\n`],
+      ['tests/visual/template.ts', `const t = \`${FULL_PAGE_TAG}\`\n`],
+      ['tests/visual/fixtures/template.ts', `const t = \`${FULL_PAGE_TAG}\`\n`],
+      ['scripts/visual/template.mjs', `const t = \`${FULL_PAGE_TAG}\`\n`],
+    ]) {
+      put(file, text)
+      assert.deepEqual(scanHarnessForTagLiteral(scratch).offenders, [file], file)
+      rmSync(path.join(scratch, file))
+    }
+    // A set with no file is empty, which the real scan's per-set assertions would refuse.
+    rmSync(path.join(scratch, 'tests/visual/fixtures/clean.ts'))
+    assert.deepEqual(scanHarnessForTagLiteral(scratch).testFiles, [
+      'tests/visual/clean.ts',
+      'tests/visual/prose.ts',
+    ])
+    assert.equal(
+      scanHarnessForTagLiteral(scratch).testFiles.some((f) =>
+        f.startsWith('tests/visual/fixtures/'),
+      ),
+      false,
+    )
+  } finally {
+    rmSync(scratch, { recursive: true, force: true })
+  }
 })

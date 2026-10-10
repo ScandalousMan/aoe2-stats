@@ -17,8 +17,11 @@ export const FIXTURE_TAG = 'state-coverage-fixture'
 
 // The tag that makes a story's capture the whole page rather than its root element's box
 // (`tests/visual/stories.spec.ts`). The capture reads it from the built index, never from a story's
-// source, so this is the one definition of "the frame is full-page": `run.mjs` builds its capture units
-// with it and the runtime pass (T703) records it beside the clip it observed.
+// source. `run.mjs` builds its capture units with this constant, the runtime pass (T703) records it
+// beside the clip it observed, and the state-signal sweep (T710) reads the built index's tags through it;
+// the inline script of `.github/workflows/baselines.yml` cannot import and writes the literal itself.
+// `story-index.test.mjs` fails on a quoted literal of it in `tests/visual/*.ts` or the other Node
+// scripts of `scripts/visual/`.
 export const FULL_PAGE_TAG = 'visual-full-page'
 
 // Every entry of a parsed `index.json`, whatever its type. `entries` is Storybook 10's key,

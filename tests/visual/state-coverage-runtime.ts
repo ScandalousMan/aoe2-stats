@@ -40,12 +40,12 @@
 import type { Locator, Page } from '@playwright/test'
 import { STAMP_ATTRIBUTE } from '../../packages/design-system/.storybook/source-stamp-attribute.cjs'
 import {
+  applyForceState,
   gotoAndWaitForStorySettled,
   locateTarget,
   readCaptureClip,
   readForceState,
 } from './story-render'
-import type { VisualForceState } from './story-render'
 
 export { STAMP_ATTRIBUTE }
 
@@ -76,28 +76,56 @@ export interface ElementRecord {
 
 export interface ForceRecord extends ElementRecord {
   count: number
+  // Present, and `true`, only when the light and the dark render disagree on the force (a target that
+  // resolves to a different count, stamp or placing instance in one theme, or a force one theme
+  // carries and the other does not): `combineThemeRecords` writes the answer of the first theme that
+  // has one (`light.force ?? dark.force`) beside it, and the manifest's reader refuses the force
+  // whatever else the record says (T710).
+  differsByTheme?: true
 }
 
 // One width's record of one story. `force` is present only for a story that carries a
 // `visualForceState`; `focus` only for a story with a `play()` function, `null` when nothing but the
 // document body holds focus once it has settled.
 //
-// `clip` and `fullPage` are the two facts about the capture frame the credit for a story's mounts
-// rests on (T703). `clip` is whether a `visualCaptureClip` applied in EITHER theme at this width
-// (T706, the disjunction of the two themes the capture runs): `readCaptureClip` (`story-render.ts`),
-// the reader `stories.spec.ts` captures through, run on the SETTLED story (after the loaders, the
-// decorators and the `play()` that may write to `parameters`) and read through the same
-// `story.parameters` object, its prototype chain included — so a clip that no object literal spells
-// reaches this record. `mounts`, `files`, `force` and `focus` are recorded from the light render
-// only: an element only the dark render mounts is not credited, and an element only the light render
-// mounts is credited though the dark capture does not show it (a decorator branching on
-// `context.globals.theme` can do either), an over-credit T710 records as open. Cookies, `localStorage`
-// and `sessionStorage` are cleared before each settle; IndexedDB, Cache Storage and `window.name` are
-// not, and nothing in the design system uses them. A capture unit starts in a fresh browser context
-// (`stories.spec.ts`), which clears all of them. `fullPage` is whether
-// the capture takes the whole page when no clip applies, from the built index's tags, the one place the
-// capture reads it (`isFullPageEntry`, `story-index.mjs`). A clip wins over the tag, as it does in the
-// capture.
+// Every field is the record of BOTH themes the capture runs (T706, T710): the story is settled at this
+// width in the light theme and again in the dark one, each settle through the same
+// `gotoAndWaitForStorySettled` and `probeSettledStory`, and `combineThemeRecords` joins the two.
+//   - `clip` is whether a `visualCaptureClip` applied in EITHER theme: the disjunction, because the
+//     capture runs both themes and a clip in one is a frame it shows. `readCaptureClip`
+//     (`story-render.ts`), the reader `stories.spec.ts` captures through, runs on the SETTLED story
+//     (after the loaders, the decorators and the `play()` that may write to `parameters`), through the
+//     same `story.parameters` object, its prototype chain included — so a clip that no object literal
+//     spells reaches this record. It is read after the force is applied, as the capture reads it (see
+//     `probeSettledStory` for the one difference).
+//     An `active` force is a pressed mouse that is released on `about:blank`, after the clip is read
+//     (`probeSettledStory` says in what order and why).
+//   - `mounts` and `focus` are what BOTH renders show, the credit's safe direction: `mounts` is the
+//     multiset intersection of the two themes' instances (an instance is the same only when its
+//     component, axes and `disabledAt` are), so an element only one theme mounts, a `<Button disabled>`
+//     the dark render lacks included, is not in it. `focus` is the light render's when the two agree and
+//     `null` when they do not or when only one theme has a `play()`; that disagreement also
+//     writes `focusDiffersByTheme: true` (T711), which the manifest's reader answers by withholding the
+//     Rest credit of the story's own mounts at that width: with `focus` `null`, the placing instance
+//     would lose its focus role and the mount would read as an ordinary Rest, though one capture shows
+//     that element focused.
+//   - `force` is `light.force ?? dark.force`: the light render's answer when it has one, the dark one's
+//     when only it does. It carries `differsByTheme` when the two differ in count, stamp or placing
+//     instance, or when only one theme has a force; the manifest's reader then refuses the force, and
+//     credits neither theme's answer.
+//   - `files` is the UNION of the two themes' stamped files. It decides which stories a diff re-checks
+//     and whether the story may render outside its root (the overlay refusal): there a file only one
+//     theme renders selects, and refuses, as one both render. `oneThemeFiles` (T711), written only when
+//     not empty, names the files exactly one theme rendered, and `buildEntry` unions it across widths
+//     into the entry's own `oneThemeFiles`; the manifest's reader (`buildElementCells`) credits a
+//     `play()` click's `active` cell only from a file that is not in it. A reader that credits from
+//     `files` and does not read `oneThemeFiles` credits from a file one theme alone rendered.
+//   - `fullPage` is whether the capture takes the whole page when no clip applies, from the built
+//     index's tags, the one place the capture reads it (`isFullPageEntry`, `story-index.mjs`); it does
+//     not depend on the theme. A clip wins over the tag, as it does in the capture.
+// Cookies, `localStorage` and `sessionStorage` are cleared before each settle; IndexedDB, Cache Storage
+// and `window.name` are not, and nothing in the design system uses them. A capture unit starts in a
+// fresh browser context (`stories.spec.ts`), which clears all of them.
 export interface WidthRecord {
   clip: boolean
   fullPage: boolean
@@ -106,8 +134,14 @@ export interface WidthRecord {
   mounts: Instance[]
   // The sorted unique repository-rooted source files that rendered a stamped element in the story's
   // document at this width. `buildEntry` (`scripts/visual/state-coverage-runtime-model.mjs`) unions it
-  // across widths into the entry's own `files` and keeps it out of the per-width record.
+  // across widths into the entry's own `files` and keeps it out of the per-width record, as it does
+  // `oneThemeFiles`.
   files: string[]
+  // The sorted unique files of `files` that exactly one of the two themes rendered; written only when
+  // not empty, so a story both themes render alike carries no such key (T711).
+  oneThemeFiles?: string[]
+  // Present, and `true`, only when the light and the dark render disagree on `focus` (T711).
+  focusDiffersByTheme?: true
 }
 
 export interface InspectOptions {
@@ -364,33 +398,49 @@ async function assertRegistryPresent(page: Page): Promise<void> {
   }
 }
 
-// One story at one width, already settled (`gotoAndWaitForStorySettled`): what a forced target
-// selects, what holds focus after `play()`, and every tracked primitive instance mounted. The force
-// is located, never applied — hover, press and focus change paint, not which element a role, a name
-// and an `nth` select nor which component placed it.
+// One story at one width in one theme, already settled (`gotoAndWaitForStorySettled`): what a forced
+// target selects, what holds focus after `play()`, every tracked primitive instance mounted, and the
+// capture clip. The force is located before it is applied — hover, press and focus change paint, not
+// which element a role, a name and an `nth` select nor which component placed it — and the mounts, the
+// files, the force and the focus are all read BEFORE it is applied.
+//
+// The clip is read last, after the force is applied (`applyForceState`, the capture's own driver, when
+// the target is exactly one element; with none or several the capture throws before any frame, so there
+// is nothing to apply), because `stories.spec.ts` reads it there: after `applyForceState` and, at the
+// designated width only, the axe scan. A handler the force triggers (an `onMouseEnter`, an `onFocus`)
+// can write `parameters.visualCaptureClip`, and the capture then shows it. The axe scan only reads the
+// DOM and is not repeated here; this is the one difference between the two read points.
+//
+// An `active` force leaves the mouse down on the control. It is released after the clip is read, on
+// `about:blank` and not over the story: the browser state is cleared first on the story's origin, the
+// page then goes to `about:blank`, and only then does the button come up. `hover` and `focus-visible`
+// hold no button, so nothing is released and the page stays on the story. `probeStory` therefore never
+// starts a settle with the mouse down.
 export async function probeSettledStory(
   page: Page,
   root: Locator,
   storyId: string,
-  forceState: VisualForceState | null,
   fullPage: boolean,
+  frame: { width: number; height: number },
 ): Promise<WidthRecord> {
   await assertRegistryPresent(page)
   const inspectOptions = (mode: 'element' | 'mounts' | 'files'): InspectOptions => ({
     mode,
     stampAttribute: STAMP_ATTRIBUTE,
   })
+  const forceState = await readForceState(page, storyId)
   const record: WidthRecord = {
-    // The capture's own test: `if (captureClip)`, so a falsy clip is no clip.
-    clip: Boolean(await readCaptureClip(page, storyId)),
+    clip: false,
     fullPage,
     mounts: (await root.evaluate(inspect, inspectOptions('mounts'))) as Instance[],
     files: (await root.evaluate(inspect, inspectOptions('files'))) as string[],
   }
 
+  let applicable = false
   if (forceState) {
     const target = locateTarget(root, forceState)
     const count = await target.count()
+    applicable = count === 1
     record.force =
       count === 1
         ? {
@@ -411,6 +461,88 @@ export async function probeSettledStory(
         ? ((await focused.evaluate(inspect, inspectOptions('element'))) as ElementRecord)
         : null
   }
+
+  let releaseMouse = false
+  if (forceState && applicable) {
+    ;({ releaseMouseAfterCapture: releaseMouse } = await applyForceState(page, root, forceState, {
+      ...frame,
+      fullPage,
+    }))
+  }
+  // The capture's own test: `if (captureClip)`, so a falsy clip is no clip.
+  record.clip = Boolean(await readCaptureClip(page, storyId))
+  if (releaseMouse) {
+    // The mouse is still down on the forced control and is released only on `about:blank`: a release
+    // over the control is a click, and over a link with an `href` or a submit button it starts a
+    // navigation that destroys the document the next `clearBrowserState` evaluates in. So the browser
+    // state is cleared first, on the story's origin (storage can only be cleared there), then the page
+    // leaves the story, then the button comes up over a document that holds no story: no click handler
+    // of the story runs and nothing navigates. `goto` resolves once the blank document is loaded, so
+    // there is no navigation left to race, and the mouse is up before this function returns.
+    await clearBrowserState(page)
+    await page.goto('about:blank')
+    await page.mouse.up()
+  }
+  return record
+}
+
+// The multiset intersection of two themes' mounted instances, in the first theme's order: an instance
+// counts once per time BOTH render it, identity being the whole instance (component, variant, size and
+// `disabledAt`), so a `<Button disabled>` one theme mounts and the other does not is in neither.
+function intersectMounts(light: Instance[], dark: Instance[]): Instance[] {
+  const keyOf = (mount: Instance) =>
+    JSON.stringify([mount.component, mount.variant, mount.size, [...mount.disabledAt].sort()])
+  const available = new Map<string, number>()
+  for (const mount of dark) {
+    const key = keyOf(mount)
+    available.set(key, (available.get(key) ?? 0) + 1)
+  }
+  const both: Instance[] = []
+  for (const mount of light) {
+    const key = keyOf(mount)
+    const left = available.get(key) ?? 0
+    if (left > 0) {
+      available.set(key, left - 1)
+      both.push(mount)
+    }
+  }
+  return both
+}
+
+// The one record of a width from the light and the dark settle of it (T710; `WidthRecord` says what
+// each field is). Pure, so the probe spec proves every rule against small literals with a contrast.
+export function combineThemeRecords(light: WidthRecord, dark: WidthRecord): WidthRecord {
+  const record: WidthRecord = {
+    clip: light.clip || dark.clip,
+    fullPage: light.fullPage,
+    mounts: intersectMounts(light.mounts, dark.mounts),
+    files: [...new Set([...light.files, ...dark.files])].sort(),
+  }
+  const inDark = new Set(dark.files)
+  const inLight = new Set(light.files)
+  const oneTheme = [
+    ...new Set([
+      ...light.files.filter((file) => !inDark.has(file)),
+      ...dark.files.filter((file) => !inLight.has(file)),
+    ]),
+  ].sort()
+  if (oneTheme.length > 0) record.oneThemeFiles = oneTheme
+  const answered = light.force ?? dark.force
+  if (answered) {
+    const agree =
+      light.force !== undefined &&
+      dark.force !== undefined &&
+      JSON.stringify(light.force) === JSON.stringify(dark.force)
+    record.force = agree ? light.force : { ...answered, differsByTheme: true }
+  }
+  if (light.focus !== undefined || dark.focus !== undefined) {
+    const agree =
+      light.focus !== undefined &&
+      dark.focus !== undefined &&
+      JSON.stringify(light.focus) === JSON.stringify(dark.focus)
+    record.focus = agree ? light.focus : null
+    if (!agree) record.focusDiffersByTheme = true
+  }
   return record
 }
 
@@ -422,30 +554,28 @@ export async function probeSettledStory(
 // settle (the design system's own `ThemeProvider` writes `localStorage`) would show it to the dark
 // settle the capture never sees it in.
 // Storage can only be cleared from a page on the right origin: a page that has not navigated yet is on
-// `about:blank`, where reading `localStorage` throws, and where nothing of this page's was written.
-async function clearBrowserState(page: Page): Promise<void> {
+// `about:blank`, where reading `localStorage` throws and where nothing of this page's was written, so
+// that one case is skipped. Any other failure of the clear throws: a clear that did not happen is a
+// settle that may start from the previous one's state, and the record must not be written from it.
+export async function clearBrowserState(page: Page): Promise<void> {
   await page.context().clearCookies()
-  try {
-    await page.evaluate(() => {
-      localStorage.clear()
-      sessionStorage.clear()
-    })
-  } catch {
-    // `about:blank` or an opaque origin: no storage of ours to clear.
-  }
+  if (page.url() === 'about:blank') return
+  await page.evaluate(() => {
+    localStorage.clear()
+    sessionStorage.clear()
+  })
 }
 
 // Navigates to a story at one width and settles it the way `stories.spec.ts` does, in both themes the
 // capture runs, each settle starting from cleared cookies, `localStorage` and `sessionStorage`
-// (`clearBrowserState`, T708; a capture unit's fresh context clears more). What is recorded per theme (T706, T708): `mounts`, `files`,
-// `force` and `focus` are recorded from the LIGHT render only, and `clip` from both. A render that
-// depends on the theme (a decorator, a loader or a `play()` branching on `context.globals.theme`) is
-// credited from the light render only: an element the dark render alone mounts is not credited, and an
-// element the light render alone mounts is credited though the dark capture does not show it, which
-// T710 records as an open over-credit. `clip` is the exception because the capture
-// reads it at each theme: the story is settled a second time at the same width in the DARK theme,
-// through the same `gotoAndWaitForStorySettled`, and `clip` is recorded true when either theme applied
-// one. `fullPage` comes from the built index and does not depend on the theme.
+// (`clearBrowserState`, T708; a capture unit's fresh context clears more). Each settle is probed the
+// same way (`probeSettledStory`) and the two are joined by `combineThemeRecords` (T710): the record
+// credits what both themes show, so a render that depends on the theme (a decorator, a loader or a
+// `play()` branching on `context.globals.theme`) credits the instances, the focus and the force both
+// renders agree on, and a force the two disagree on is refused. A settle that pressed a control with an
+// `active` force ends on `about:blank` with the mouse up (`probeSettledStory`); its storage was cleared
+// before the page left the story, so the `clearBrowserState` that opens the next settle finds
+// `about:blank` and skips, and every other settle is cleared on the story's origin as before.
 export async function probeStory(
   page: Page,
   storyId: string,
@@ -454,13 +584,11 @@ export async function probeStory(
 ): Promise<WidthRecord> {
   // The same height rule `stories.spec.ts` applies per unit (see the comment there).
   const height = width === 375 ? 900 : 720
-  await clearBrowserState(page)
-  const root = await gotoAndWaitForStorySettled(page, storyId, 'light', width, height)
-  const forceState = await readForceState(page, storyId)
-  const record = await probeSettledStory(page, root, storyId, forceState, fullPage)
-  await clearBrowserState(page)
-  await gotoAndWaitForStorySettled(page, storyId, 'dark', width, height)
-  // The capture's own test, `if (captureClip)`: a falsy clip is no clip.
-  const darkClip = Boolean(await readCaptureClip(page, storyId))
-  return { ...record, clip: record.clip || darkClip }
+  const records: WidthRecord[] = []
+  for (const theme of ['light', 'dark'] as const) {
+    await clearBrowserState(page)
+    const root = await gotoAndWaitForStorySettled(page, storyId, theme, width, height)
+    records.push(await probeSettledStory(page, root, storyId, fullPage, { width, height }))
+  }
+  return combineThemeRecords(records[0], records[1])
 }

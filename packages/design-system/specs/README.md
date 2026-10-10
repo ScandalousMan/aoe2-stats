@@ -1750,31 +1750,45 @@ hover:underline-offset-2` beside `active:underline-offset-4`, `src/screens/DataE
      the reader the capture takes its clip from, run on the settled story in the light theme and again
      in the dark theme, because decorators, loaders and `play` receive `context.globals` and the capture
      runs both themes, so a clip set in one theme only is a clip; the record is the disjunction of the
-     two. The mounts, the rendered files, the force and the focus are recorded from the light render
-     only: an element only the dark render mounts is not credited, and an element only the light
-     render mounts is credited though the dark capture does not show it, which T710 records as an
-     open over-credit. Cookies, `localStorage` and `sessionStorage` are cleared before each settle;
+     two. The other fields are recorded from both renders (T710, T711): the mounts and the focus are what
+     both themes show (the instances both render, counted once per time both do, and a focus the two
+     agree on); the force is refused when the two differ in match count, stamp or placing instance, or
+     when only one theme carries it, and the record then holds the answer of the light theme, or of the
+     dark one when only it has one, beside `differsByTheme`; the rendered files are the union of the
+     two. An instance only one theme mounts is not in the record's mounts. A file only one theme
+     rendered is in the union, so it selects the story and counts for the overlay refusal, and the
+     entry names it in `oneThemeFiles`, which a `play()` click's `active` credit reads: it credits no
+     `active` cell from an element of such a file. A focus the two themes disagree on at any width is
+     written `null` beside `focusDiffersByTheme`, and the story's own mounts then get no Rest credit
+     at any width. A force triggered by `hover`, `active`
+     or `focus-visible` is applied before the clip is read, as the capture does, so a clip a handler
+     of the force writes is in the record; the capture's axe scan, which only reads the DOM, is not
+     repeated. Cookies, `localStorage` and `sessionStorage` are cleared before each settle;
      IndexedDB, Cache Storage and `window.name` are not, and nothing in the design system uses them;
      a capture unit starts in a fresh browser context, which clears all of them. A clip that no object literal spells is in it (written from a
      `play`, a loader or a decorator of the story or of its meta, through the deprecated `story`
      annotation, under a `__proto__` key of the story object or of the default export, from the
-     preview or another module that imports it, or from a getter on `Object.prototype`). `fullPage` is
+     preview or another module that imports it, or from a getter on `Object.prototype`), when the
+     browser applied it; the tests of the shapes that go through the preview, a module importing it or
+     a `config.tsx` hand the check a record written by hand, so no browser has shown that those shapes
+     clip. `fullPage` is
      whether the built index tags the story `visual-full-page`, the one place the capture reads that
      from (`isFullPageEntry`, `scripts/visual/story-index.mjs`); a clip wins over the tag, as it does in
      the capture. A story gives no mount credit when `clip` is true at any captured width, nor when it
      has no clip, is not full-page and rendered a design-system file with an unprefixed `fixed` class;
      otherwise its mounts credit. The record does not say whether a mount lies inside a clipped rect,
-     so a clipped story credits none. A story with no clip keeps its credit whatever its source says
-     about `parameters`: a spread, an identifier or a clip literal the browser did not apply is no
-     clip. A `__proto__` key inside `parameters` is no clip either, because Storybook's merge of the
-     parameters copies own keys only, which the plant `ProtoInsideParametersNoClip` records. The
-     preview's project-level `parameters`, `config.tsx` beside `.storybook/main.ts` and every other
-     way a project annotation reaches a story are in the record or are not a clip; no source rule
-     reads them. `scripts/visual/state-coverage-runtime.mjs --keys` checks `fullPage` against the
+     so a clipped story credits none. A story with no clip keeps its credit when its `parameters`
+     literal holds a spread, or when the default export's `parameters` is an identifier: a clip
+     literal the browser did not apply is no clip. A story-level `parameters` that is an identifier is
+     refused as `unreadable-parameters` and gives no mount credit. A `__proto__` key inside `parameters` is no clip either, because Storybook's merge of the
+     parameters copies own keys only, which the plant `ProtoInsideParametersNoClip` records. A clip
+     from the preview's project-level `parameters` or a `config.tsx` beside `.storybook/main.ts` is in
+     the record when the browser applied it; no source rule reads either. `scripts/visual/state-coverage-runtime.mjs --keys` checks `fullPage` against the
      built index without a browser, and only a pass checks `clip`. That pass is diff-scoped on a pull
      request (T707): it re-checks, and rewrites, an entry only for a story selected by one of five
      rules, namely a file in the story's own directory changed, a global-reach path changed
-     (`GLOBAL_REACH_PREFIXES`, `scripts/visual/story-selection.mjs`), a module the story file imports
+     (`GLOBAL_REACH_PREFIXES`, `scripts/visual/story-selection.mjs`) or a file `.storybook/preview.tsx`
+     reaches through module specifiers changed (T710: its primitives run for every story), a module the story file imports
      changed, directly or through the modules it imports, by static `import`, `export … from`,
      `import()` or `require()` with a string literal (an `import()` or `require()` whose argument is
      not a plain string literal, in the story file or a file it reaches, selects it on any change in the package), a
@@ -1897,15 +1911,19 @@ hover:underline-offset-2` beside `active:underline-offset-4`, `src/screens/DataE
        tags or force;
      - a path alias that reaches a story module without the `.stories` suffix in its specifier (the
        import rule matches the suffix);
-     - a clip, a tag or a force that reaches a story through the story context (a `play`, a loader, a
+     - a tag or a force that reaches a story through the story context (a `play`, a loader, a
        `beforeEach` or a decorator that mutates `context.parameters`), the deprecated `story`
-       annotation or a `__proto__` key. A clip that arrives this way is in the record (T703); a force
-       that does is named when the manifest records a force target the source never declared
-       (`unreadable-force`), though a state it changes in place is not seen.
+       annotation or a `__proto__` key. A force that does is named when the manifest records a force
+       target the source never declared (`unreadable-force`), though a state it changes in place is
+       not seen. A clip is not a shape of this list: it is in the record (T703);
+     - project-level annotations: the source rules do not read `.storybook/preview.tsx` or a
+       `config.tsx`, so a `tags` (the fixture tag among them) set there, or by a module they import,
+       is unread; a clip set there is in the record.
 
    - **Every other forced story credits no cell and is reported with the true reason** — no element
      matched, more than one (Playwright's strict mode refuses it, so no frame can be captured), stamps
-     or placing instances that differ across widths, a stamp in no record-1 element and no placing
+     or placing instances that differ across widths, a force the light and dark render answer
+     differently (a different count, stamp or placing instance, or one theme alone), a stamp in no record-1 element and no placing
      primitive, an element no design-system file wrote — and the run fails on it exactly as it does on
      a lost frame. A story with no manifest entry fails the run, naming the story and the command that
      refreshes the manifest (`pnpm test:visual:state-coverage-runtime --write`).
@@ -2475,9 +2493,12 @@ forced element is the one element found at every captured width and its source s
 element's `file:line`; a record-3 cell when the tracked primitive instance that placed it is at that
 row's variant and size. A force on an element whose stamp is in the placing instance's `disabledAt`
 (the host elements it placed that the browser reports `:disabled` or `aria-disabled="true"`) is
-refused. The Disabled column of every matrix, and a primitive's own stories' Rest column, come from
+refused, and so is a force the light and the dark render of the story answer differently (a
+different match count, stamp or placing instance, or a force only one theme carries).
+The Disabled column of every matrix, and a primitive's own stories' Rest column, come from
 the primitive instances a story mounts, as rendered, and from nothing else: a `disabled` or `loading`
-written at a call site, and a `disabled: true` in a story's `args`, credit no Disabled cell. A story
+written at a call site, and a `disabled: true` in a story's `args`, credit no Disabled cell. The
+instances credited are the ones the light and the dark render both mount. A story
 gives no mount credit when the browser applied a `visualCaptureClip` to it in either theme at any
 captured width (the manifest records, per width, whether one applied, read from the settled story
 the capture itself reads, in the light theme and in the dark one, so a clip no object literal spells

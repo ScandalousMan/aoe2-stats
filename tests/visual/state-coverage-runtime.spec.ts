@@ -1,8 +1,8 @@
 // The runtime pass (T693, feature 005): settles stories in the built Storybook and records, per
-// review width, what a real browser does with each: the mounts, files, force and focus from the light
-// theme's render only, and the clip from both themes the capture runs (T706). Every settle starts with
-// cleared cookies and storages (T708). See `tests/visual/state-coverage-runtime.ts` for what is
-// recorded and why.
+// review width, what a real browser does with each, settled in both themes the capture runs: the clip
+// from either theme (T706), the mounts and the focus both themes show, the force when the two agree on
+// it and the files of either (T710). Every settle starts with cleared cookies and storages (T708). See
+// `tests/visual/state-coverage-runtime.ts` for what is recorded and why.
 //
 // Never run by hand and never part of `pnpm test:visual`: `scripts/visual/state-coverage-runtime.mjs`
 // selects the stories (all, `--changed`, or the plants alone), writes the work list to the file named
@@ -48,6 +48,7 @@ const stampIn = (component: string) => new RegExp(`^${DIR}/${component}/index\\.
 const PLANT = 'state-coverage-fixture-plants--'
 const CLIP_PLANT = 'state-coverage-fixture-clip-plants--'
 const CLIP_META_PLANT = 'state-coverage-fixture-clip-meta-decorator--'
+const THEME_PLANT = 'state-coverage-fixture-theme-plants--'
 
 const inst = (
   component: string,
@@ -205,6 +206,31 @@ const PLANTS: Record<string, (record: WidthRecord) => void> = {
     expect(r.mounts).toEqual([button('primary', 'lg')])
   },
 
+  // T710: `active` presses the forced control with the real mouse; the record exists, and credits the
+  // element as any other force does, whether or not releasing the mouse would navigate.
+  [`${PLANT}active-on-leaving-link`]: (r) => {
+    expect(r.force?.count).toBe(1)
+    expect(r.force?.stamp).toMatch(stampIn('Link'))
+    expect(r.force?.placedBy).toEqual(inst('Link', 'inline', null))
+    expect(r.mounts).toEqual([inst('Link', 'inline', null)])
+  },
+  [`${PLANT}active-on-submit-button`]: (r) => {
+    expect(r.force?.count).toBe(1)
+    expect(r.force?.stamp).toMatch(stampIn('Button'))
+    expect(r.force?.placedBy).toEqual(button('primary', 'md'))
+    expect(r.mounts).toEqual([button('primary', 'md')])
+  },
+  [`${PLANT}active-on-plain-button`]: (r) => {
+    expect(r.force?.count).toBe(1)
+    expect(r.force?.placedBy).toEqual(button('primary', 'md'))
+    expect(r.mounts).toEqual([button('primary', 'md')])
+  },
+  [`${PLANT}hover-on-leaving-link`]: (r) => {
+    expect(r.force?.count).toBe(1)
+    expect(r.force?.placedBy).toEqual(inst('Link', 'inline', null))
+    expect(r.mounts).toEqual([inst('Link', 'inline', null)])
+  },
+
   // T691: a guard that reads a spread.
   [`${PLANT}button-href-via-spread-constant`]: (r) => {
     expect(r.force).toEqual({ count: 0, stamp: null, placedBy: null })
@@ -254,6 +280,59 @@ Object.assign(PLANTS, {
   // cleared cookies and storages, as a capture unit's fresh context does, so the flag is absent.
   [`${CLIP_PLANT}clip-only-in-dark-while-storage-flag-absent`]: CLIPPED,
   [`${CLIP_META_PLANT}clip-from-meta-decorator`]: CLIPPED,
+  // T710: the force is applied before the clip is read, as the capture does, so a clip the force's own
+  // handler writes is recorded.
+  [`${CLIP_PLANT}clip-from-force-handler`]: CLIPPED,
+})
+
+// T710: what the browser must record for a story whose render depends on the theme. The capture shows
+// both themes, so a mount, a focus or a force only one of them has is not credited.
+Object.assign(PLANTS, {
+  // The light theme alone mounts a disabled Button: the intersection holds the Button both mount, and
+  // no instance whose `disabledAt` names an element.
+  [`${THEME_PLANT}disabled-button-in-light-only`]: (r: WidthRecord) => {
+    expect(r.clip).toBe(false)
+    expect(r.mounts).toEqual([button('primary', 'md')])
+  },
+  // The contrast: the disabled Button both themes mount is credited with its `disabledAt`.
+  [`${THEME_PLANT}disabled-button-in-both-themes`]: (r: WidthRecord) => {
+    expect(r.mounts).toHaveLength(2)
+    expect(r.mounts[0]).toEqual(button('primary', 'md'))
+    expect(r.mounts[1]).toMatchObject({ component: 'Button', variant: 'ghost', size: 'lg' })
+    expect(r.mounts[1].disabledAt).toEqual([expect.stringMatching(stampIn('Button'))])
+  },
+  // One element in light, two in dark: the record carries the light answer and refuses it.
+  [`${THEME_PLANT}force-count-differs-in-dark`]: (r: WidthRecord) => {
+    expect(r.force).toMatchObject({ count: 1, differsByTheme: true })
+    expect(r.mounts).toEqual([button('primary', 'md')])
+  },
+  // One element in each theme, a different one: the counts agree, the stamp and the placing instance
+  // differ, and the force carries the flag all the same.
+  [`${THEME_PLANT}force-element-differs-in-dark`]: (r: WidthRecord) => {
+    expect(r.force).toMatchObject({ count: 1, differsByTheme: true })
+    expect(r.force?.stamp).toMatch(stampIn('Button'))
+    expect(r.mounts).toEqual([])
+  },
+  // The contrast: the same answer in both themes is the ordinary record, with no flag.
+  [`${THEME_PLANT}force-same-in-both-themes`]: (r: WidthRecord) => {
+    expect(r.force?.count).toBe(1)
+    expect(r.force?.stamp).toMatch(stampIn('Button'))
+    expect(r.force?.placedBy).toEqual(button('primary', 'md'))
+    expect(r.force).not.toHaveProperty('differsByTheme')
+    expect(r.mounts).toEqual([button('primary', 'md')])
+  },
+  // The focus is held in the light theme only: no focus in the record, and the flag the checker answers
+  // by withholding the Rest credit of the story's own mounts.
+  [`${THEME_PLANT}focus-in-light-only`]: (r: WidthRecord) => {
+    expect(r.focus).toBeNull()
+    expect(r.focusDiffersByTheme).toBe(true)
+    expect(r.mounts).toEqual([button('primary', 'md')])
+  },
+  [`${THEME_PLANT}focus-in-both-themes`]: (r: WidthRecord) => {
+    expect(r.focus?.stamp).toMatch(stampIn('Button'))
+    expect(r.focus?.placedBy).toEqual(button('primary', 'md'))
+    expect(r).not.toHaveProperty('focusDiffersByTheme')
+  },
 })
 
 // The plants fail closed: a fixture story and its assertion exist together or the pass fails. Never
@@ -266,13 +345,18 @@ if (workPath) {
 
 for (const { id, widths, fullPage } of work.stories) {
   test(`${id} runtime record`, async ({ page }) => {
-    // The budget is a rule, not a measurement: 30 s per navigation (the per-unit default of
+    // The budget is a rule, not a measurement: 30 s per settle (the per-unit default of
     // `stories.spec.ts`, which `playwright.config.ts` does not override) times the settles, which are
-    // two per width, the light settle and the dark one T706 added for the clip. Two measurements,
-    // 2026-10-08, of the same six stories (the four foundations overviews, two PrivacyNotice stories):
-    // in a full pass with four workers in contention all six timed out at the 30 s default once the
-    // dark settle doubled the navigations; rerun alone with four workers they take 7.7 to 18.7 s with
-    // both settles.
+    // two per width, one per theme. A settle of the probe does what one capture unit does short of the
+    // screenshot and the axe scan, in the same page: the navigation, the in-page readers, and the
+    // force applied when the target is one element (T710, so the clip is read where the capture reads
+    // it); the dark settle is probed exactly as the light one is, so the budget is 2 x 30 s per width
+    // as it was when the dark settle only read the clip. Two measurements, 2026-10-08, of the same six
+    // stories (the four foundations overviews, two PrivacyNotice stories) before the force was applied
+    // and the dark settle probed: in a full pass with four workers in contention all six timed out at
+    // the 30 s default once the dark settle doubled the navigations; rerun alone with four workers they
+    // take 7.7 to 18.7 s with both settles. Those figures predate T710 and are not re-measured here;
+    // the lead's full pass is.
     test.setTimeout(widths.length * 2 * 30_000)
     await installSteamAvatarStub(page)
     const outFile = outDir ? path.join(outDir, `${id}.json`) : null
