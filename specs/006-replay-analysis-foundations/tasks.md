@@ -1625,7 +1625,7 @@ T671 and T672 ship together; T673 follows once T672 is deployed.
       skill and the adapter's and canonical stream's comments cite the fixtures README for
       `rec_owner` instead of restating its measurement. Third review: `_describe` names no class as
       the only one quoting foreign text, and ADR 0001's amendment names the one recording measured
-- [x] T673 Re-validate captures that ended `quarantined` because the engine could not parse them,
+- [ ] T673 Re-validate captures that ended `quarantined` because the engine could not parse them,
       once T672 is deployed: read the committed object, check it against the row's own
       `zip_sha256`, and run it through the capture barrier again, marking `stored` or leaving it
       `quarantined` with the new error. Never re-download, never modify or delete an object. Bound
@@ -1633,6 +1633,42 @@ T671 and T672 ship together; T673 follows once T672 is deployed.
       checksum mismatch) is never reopened. Urgent: 31 days after a recording, an analysis of its
       match has no source to fall back on. The earliest affected recording is not measured; the
       earliest sampled is from 2026-09-27, and 0.1.22 shipped on 2026-09-22
+- [ ] T673a Close #129's review (`reviewer` REJECT 2026-10-10 on T673). The command is written and
+      no capture has been re-validated, so T673 stays open until the operator run reports its count.
+      **Eviction:** a re-validation that fails for a reason that is not the engine's verdict (the
+      wall-clock cap, any class outside the selection) overwrites `last_error` with a text the
+      selection no longer matches, and the row is never offered again. Write a new reason only when
+      the selection would still match it; otherwise leave the row untouched and report the reason.
+      Red first: a row whose validation times out once is selected again on the next run; contrast,
+      a row that fails with a new engine error is rewritten. **Objection:** the selection
+      re-validates a capture whose user has objected to archival since (constitution IX; 001's spec
+      says a quarantined capture is not archived, so its carve-out for recordings already archived
+      does not cover it). Apply the claim's own objection predicate, shared rather than copied, and
+      test both sides: an objecting user's row is not selected, a non-objecting profile's row on the
+      same match is. **Guard:** test the quarantine write's status guard with a failing validation
+      while another writer stores the row; the existing test exercises the stored write only, and a
+      mutation dropping the other guard passed every test. **Integrity versus transport:** only a
+      missing object and a checksum mismatch are per-row outcomes; any other store error aborts the
+      run non-zero with no write, and the store is configured through the application's own settings
+      validation, not from raw environment values. An integrity failure found here ends the run
+      non-zero after the report. **The dry run counts what it does not select:** `quarantined` rows
+      outside the selection, grouped by reason class (the text before the first colon, the reclaim
+      texts, the cap), counts only, no values. **Tests:** the command test named for a dry run
+      asserts one; the cursor test asserts each field; one test drives the entry point through a
+      successful dry run and a real run. **Prose, cut to what is measured:** one recording is
+      measured as build 185872; "a row that fails again is still a candidate" and "idempotent" are
+      claimed only as far as the eviction fix makes them true; the retention window is cited from
+      `docs/data-sources.md`, never restated; oldest-first is an ordering and is not justified by
+      the analysis path, which reads `retained_recordings` and the source and never a capture's
+      object; "exactly as a normal capture" says that `stored_at` is the time of re-validation.
+      Correct `apps/api/src/aoe2stats_api/ingest_stages.py`'s claim to be the one place a drain is
+      built, and `packages/storage/src/aoe2stats_storage/models.py`'s comment that `last_error` is
+      never control flow. **Runbook:** `docs/runbooks/` gains the operator procedure, with secrets
+      read as `docs/runbooks/alert-acknowledgement.md` reads them, never inline on a command line.
+      Left to the user, not decided here: whether re-validated rows may turn the nightly capture
+      audit red (`scripts/checks/capture_audit.py` measures `stored_at` against the recording), and
+      whether timeout quarantines are reopened (001's plan calls the cap an engine failure), which
+      waits on the dry run's count
 
 - [x] T706 Unstick an analysis whose lease expired (filed 2026-10-08; decided by the user the same
       day). Match 511523321's row stayed `running` from the 2026-10-05 crash until a manual
