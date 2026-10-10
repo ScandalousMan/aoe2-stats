@@ -481,16 +481,19 @@ jobs:
       # says each forced story's target is, against the committed manifest. Scoped by story for the
       # same reason as the line above (a browser pass over every story on each pull request is the
       # factory constitution VII and FR-061 keep for nightly), but not by the same rule: the
-      # selection is the union of what `--changed` above selects (a story's own directory, or a
-      # global-reach path), every story whose committed entry RECORDED a source file the diff touches
+      # selection is the union of what `--changed` above selects (a story's own directory, a
+      # global-reach path, or, T707, a module the story file imports transitively through a module
+      # specifier), every story whose committed entry RECORDED a source file the diff touches
       # (`files`: the stamped files that rendered an element in that story, portals included; a
       # rename lists both its paths), and every story whose entry differs from the manifest at the
       # diff base (so a hand-edited manifest is re-checked in the browser). Its rewrite command takes
       # the same selection.
-      # What it cannot see, and nightly (every entry) does — exactly this and no more: a change in a
-      # file that renders no stamped element in the story's settled state (after `play()`): a hook, a
-      # lib helper outside a global-reach path, tokens or CSS (paint, never which element exists), and
-      # a file whose elements a `play()` removes before the story settles.
+      # A file a specifier names is selected even when a `play()` removes the elements it rendered
+      # before the story settles. Known shapes that nothing here selects, and nightly (every entry)
+      # does; not an exhaustive list: a file a story reaches only at run time and not through a module
+      # specifier its story file or a reached file names (a hook's side effect, state a module sets
+      # that a story reads without importing it, a stylesheet's own `@import`, a
+      # `new URL('…', import.meta.url)` reach, a file a plugin or the bundler configuration injects).
       - run: node scripts/visual/state-coverage-runtime.mjs --changed
       # The plants (`packages/design-system/.storybook/fixtures/`) on every run, whatever the diff
       # selects: each asserts what the browser does with a shape the static check guessed wrong,

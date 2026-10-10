@@ -25,7 +25,7 @@ import { spawnSync } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { BUILD_STORYBOOK_COMMAND } from './missing-index.mjs'
-import { importFile, isFixtureEntry, listStories } from './story-index.mjs'
+import { importFile, isFixtureEntry, isFullPageEntry, listStories } from './story-index.mjs'
 import { selectChangedStories } from './story-selection.mjs'
 
 export const MANIFEST_PATH = 'packages/design-system/specs/state-coverage-runtime.json'
@@ -87,6 +87,19 @@ export function findKeyProblems({ manifest, index }) {
         id,
         detail: `exportName is ${JSON.stringify(entry.exportName)}, the index says ${JSON.stringify(story.exportName)}`,
       })
+    }
+    // The frame's full-page half is the built index's tag, the capture's own source, so it is checked
+    // here without a browser (T703): a tag added or removed without a rewrite fails the keys. The clip
+    // half is a browser's observation and only a pass can check it.
+    const fullPage = isFullPageEntry(story)
+    for (const [width, record] of Object.entries(entry.widths ?? {})) {
+      if (record?.fullPage !== fullPage) {
+        problems.push({
+          kind: 'full-page',
+          id,
+          detail: `fullPage at ${width}px is ${JSON.stringify(record?.fullPage)}, the index ${fullPage ? 'tags' : 'does not tag'} the story \`visual-full-page\``,
+        })
+      }
     }
   }
   for (const id of Object.keys(manifest).sort()) {
@@ -178,8 +191,10 @@ export function findFixtureProblem(index) {
 // ---- Which entries a --changed run re-checks ------------------------------------------------------
 
 // The stories a diff leaves the runtime pass to re-check under `--changed`: the union of
-//   (a) what `pnpm test:visual --changed` selects (`selectChangedStories`, from the story's own
-//       directory or a global-reach path) — a story's own file, or its component's;
+//   (a) what `pnpm test:visual --changed` selects (`selectChangedStories`): a story's own directory, a
+//       global-reach path, or (T707) a module the story file imports, transitively, through a module
+//       specifier — so a clip, a tag or a force a story takes from another component's directory
+//       re-checks the story when that module changes;
 //   (b) every story whose committed entry RECORDED, in `files`, a source file the diff touches — the
 //       stamped files that rendered an element in that story. Nothing else is read from the entry:
 //       a stamp the entry cites and a primitive it mounts are both in `files`, because the element
@@ -192,18 +207,16 @@ export function findFixtureProblem(index) {
 // Returns `{ stories, rules }`: the stories in input order, and for each id the rules that selected it
 // (`story-files`, `files`, `manifest-entry`).
 //
-// What this cannot see, and nightly (which checks every entry) does — one gap, stated exactly: a
-// change in a file that renders no stamped element in the story's SETTLED state (`files` is recorded
-// once the story has settled, after `play()`). That is:
-//   - a hook, or a `lib` helper outside a global-reach path (`src/lib/` is one, so (a) selects every
-//     story for it);
-//   - tokens or CSS, which change paint and never which element exists, who wrote it or who placed it;
-//   - a file whose elements a `play()` removes before the story settles — the idle state of
-//     `composite-uploadcontrol--real-selection-then-success` renders `Button` and the play clicks it
-//     away, so the entry records UploadControl and Callout only, and a `Button` change that alters how
-//     that play ends selects nothing;
-//   - a file the entry did not record yet — a component a story starts rendering after a change — is
-//     the same gap: the entry lists no `Button` until it is rewritten.
+// A file named by a specifier is selected by (a) whether or not it renders a stamped element in the
+// story's SETTLED state (`files` is recorded once the story has settled, after `play()`): a hook, a
+// `lib` helper, a component whose elements a `play()` removes (the idle state of
+// `composite-uploadcontrol--real-selection-then-success` renders `Button` and the play clicks it away,
+// so the entry records UploadControl and Callout only, but its component imports `Button`).
+// Known shapes that nothing here selects, and nightly (which checks every entry) does; not an
+// exhaustive list: a file a story reaches only at run time and not through a module specifier its
+// story file or a reached file names (a hook's side effect, state a module sets that a story reads
+// without importing it, a stylesheet's own `@import`, a `new URL('…', import.meta.url)` reach, a file a
+// plugin or the bundler configuration injects).
 export function selectRuntimeStories({ stories, manifest, baseManifest, diff }) {
   const diffFiles = new Set(diff)
   const byDiff = new Set(selectChangedStories(stories, diff).stories.map((s) => s.id))

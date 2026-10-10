@@ -39,7 +39,12 @@
 // enabled `<a>`, so it is empty, which is the point of reading the DOM.
 import type { Locator, Page } from '@playwright/test'
 import { STAMP_ATTRIBUTE } from '../../packages/design-system/.storybook/source-stamp-attribute.cjs'
-import { gotoAndWaitForStorySettled, locateTarget, readForceState } from './story-render'
+import {
+  gotoAndWaitForStorySettled,
+  locateTarget,
+  readCaptureClip,
+  readForceState,
+} from './story-render'
 import type { VisualForceState } from './story-render'
 
 export { STAMP_ATTRIBUTE }
@@ -76,7 +81,26 @@ export interface ForceRecord extends ElementRecord {
 // One width's record of one story. `force` is present only for a story that carries a
 // `visualForceState`; `focus` only for a story with a `play()` function, `null` when nothing but the
 // document body holds focus once it has settled.
+//
+// `clip` and `fullPage` are the two facts about the capture frame the credit for a story's mounts
+// rests on (T703). `clip` is whether a `visualCaptureClip` applied in EITHER theme at this width
+// (T706, the disjunction of the two themes the capture runs): `readCaptureClip` (`story-render.ts`),
+// the reader `stories.spec.ts` captures through, run on the SETTLED story (after the loaders, the
+// decorators and the `play()` that may write to `parameters`) and read through the same
+// `story.parameters` object, its prototype chain included — so a clip that no object literal spells
+// reaches this record. `mounts`, `files`, `force` and `focus` are recorded from the light render
+// only: an element only the dark render mounts is not credited, and an element only the light render
+// mounts is credited though the dark capture does not show it (a decorator branching on
+// `context.globals.theme` can do either), an over-credit T710 records as open. Cookies, `localStorage`
+// and `sessionStorage` are cleared before each settle; IndexedDB, Cache Storage and `window.name` are
+// not, and nothing in the design system uses them. A capture unit starts in a fresh browser context
+// (`stories.spec.ts`), which clears all of them. `fullPage` is whether
+// the capture takes the whole page when no clip applies, from the built index's tags, the one place the
+// capture reads it (`isFullPageEntry`, `story-index.mjs`). A clip wins over the tag, as it does in the
+// capture.
 export interface WidthRecord {
+  clip: boolean
+  fullPage: boolean
   force?: ForceRecord
   focus?: ElementRecord | null
   mounts: Instance[]
@@ -349,6 +373,7 @@ export async function probeSettledStory(
   root: Locator,
   storyId: string,
   forceState: VisualForceState | null,
+  fullPage: boolean,
 ): Promise<WidthRecord> {
   await assertRegistryPresent(page)
   const inspectOptions = (mode: 'element' | 'mounts' | 'files'): InspectOptions => ({
@@ -356,6 +381,9 @@ export async function probeSettledStory(
     stampAttribute: STAMP_ATTRIBUTE,
   })
   const record: WidthRecord = {
+    // The capture's own test: `if (captureClip)`, so a falsy clip is no clip.
+    clip: Boolean(await readCaptureClip(page, storyId)),
+    fullPage,
     mounts: (await root.evaluate(inspect, inspectOptions('mounts'))) as Instance[],
     files: (await root.evaluate(inspect, inspectOptions('files'))) as string[],
   }
@@ -386,14 +414,53 @@ export async function probeSettledStory(
   return record
 }
 
-// Navigates to a story at one width in the light theme — the only theme the pass records: a theme
-// changes paint, never which element a role, a name and an `nth` select nor which component placed
-// it, and the capture suite still drives both themes through the same locator — settles it the way
-// `stories.spec.ts` does, and probes it.
-export async function probeStory(page: Page, storyId: string, width: number): Promise<WidthRecord> {
+// Clears what a previous settle of this page may have left for the next one: the context's cookies and
+// the `localStorage` and `sessionStorage` of the origin the page is on. IndexedDB, Cache Storage and
+// `window.name` are not cleared, and nothing in the design system uses them. `stories.spec.ts` gives
+// every capture unit a fresh browser context, which clears all of them, while this spec reuses one page
+// for every theme and width, so without this a decorator or loader that writes a flag in the light
+// settle (the design system's own `ThemeProvider` writes `localStorage`) would show it to the dark
+// settle the capture never sees it in.
+// Storage can only be cleared from a page on the right origin: a page that has not navigated yet is on
+// `about:blank`, where reading `localStorage` throws, and where nothing of this page's was written.
+async function clearBrowserState(page: Page): Promise<void> {
+  await page.context().clearCookies()
+  try {
+    await page.evaluate(() => {
+      localStorage.clear()
+      sessionStorage.clear()
+    })
+  } catch {
+    // `about:blank` or an opaque origin: no storage of ours to clear.
+  }
+}
+
+// Navigates to a story at one width and settles it the way `stories.spec.ts` does, in both themes the
+// capture runs, each settle starting from cleared cookies, `localStorage` and `sessionStorage`
+// (`clearBrowserState`, T708; a capture unit's fresh context clears more). What is recorded per theme (T706, T708): `mounts`, `files`,
+// `force` and `focus` are recorded from the LIGHT render only, and `clip` from both. A render that
+// depends on the theme (a decorator, a loader or a `play()` branching on `context.globals.theme`) is
+// credited from the light render only: an element the dark render alone mounts is not credited, and an
+// element the light render alone mounts is credited though the dark capture does not show it, which
+// T710 records as an open over-credit. `clip` is the exception because the capture
+// reads it at each theme: the story is settled a second time at the same width in the DARK theme,
+// through the same `gotoAndWaitForStorySettled`, and `clip` is recorded true when either theme applied
+// one. `fullPage` comes from the built index and does not depend on the theme.
+export async function probeStory(
+  page: Page,
+  storyId: string,
+  width: number,
+  fullPage: boolean,
+): Promise<WidthRecord> {
   // The same height rule `stories.spec.ts` applies per unit (see the comment there).
   const height = width === 375 ? 900 : 720
+  await clearBrowserState(page)
   const root = await gotoAndWaitForStorySettled(page, storyId, 'light', width, height)
   const forceState = await readForceState(page, storyId)
-  return probeSettledStory(page, root, storyId, forceState)
+  const record = await probeSettledStory(page, root, storyId, forceState, fullPage)
+  await clearBrowserState(page)
+  await gotoAndWaitForStorySettled(page, storyId, 'dark', width, height)
+  // The capture's own test, `if (captureClip)`: a falsy clip is no clip.
+  const darkClip = Boolean(await readCaptureClip(page, storyId))
+  return { ...record, clip: record.clip || darkClip }
 }

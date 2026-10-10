@@ -15,6 +15,12 @@
 
 export const FIXTURE_TAG = 'state-coverage-fixture'
 
+// The tag that makes a story's capture the whole page rather than its root element's box
+// (`tests/visual/stories.spec.ts`). The capture reads it from the built index, never from a story's
+// source, so this is the one definition of "the frame is full-page": `run.mjs` builds its capture units
+// with it and the runtime pass (T703) records it beside the clip it observed.
+export const FULL_PAGE_TAG = 'visual-full-page'
+
 // Every entry of a parsed `index.json`, whatever its type. `entries` is Storybook 10's key,
 // `stories` the older one some tooling still emits.
 export function indexEntries(index) {
@@ -28,6 +34,12 @@ export function isStoryEntry(entry) {
 
 export function isFixtureEntry(entry) {
   return (entry.tags ?? []).includes(FIXTURE_TAG)
+}
+
+// Whether the capture takes this index entry's whole page (when no `visualCaptureClip` applies: a clip
+// wins over the tag).
+export function isFullPageEntry(entry) {
+  return (entry.tags ?? []).includes(FULL_PAGE_TAG)
 }
 
 // The stories of an index, fixtures skipped unless the caller is the runtime pass.

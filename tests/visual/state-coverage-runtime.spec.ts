@@ -1,6 +1,8 @@
 // The runtime pass (T693, feature 005): settles stories in the built Storybook and records, per
-// review width in the light theme, what a real browser does with each — see
-// `tests/visual/state-coverage-runtime.ts` for what is recorded and why.
+// review width, what a real browser does with each: the mounts, files, force and focus from the light
+// theme's render only, and the clip from both themes the capture runs (T706). Every settle starts with
+// cleared cookies and storages (T708). See `tests/visual/state-coverage-runtime.ts` for what is
+// recorded and why.
 //
 // Never run by hand and never part of `pnpm test:visual`: `scripts/visual/state-coverage-runtime.mjs`
 // selects the stories (all, `--changed`, or the plants alone), writes the work list to the file named
@@ -25,6 +27,8 @@ import type { Instance, WidthRecord } from './state-coverage-runtime'
 interface WorkItem {
   id: string
   widths: number[]
+  // Whether the built index tags the story `visual-full-page` (`isFullPageEntry`): the capture's own source.
+  fullPage: boolean
 }
 // What the driver hands over: the stories to run, and every fixture story the built index lists —
 // whatever the selection — so the plants can be held to set equality with their assertions.
@@ -42,6 +46,8 @@ const work: Work = workPath
 const DIR = 'packages/design-system/src/primitives'
 const stampIn = (component: string) => new RegExp(`^${DIR}/${component}/index\\.tsx:\\d+$`)
 const PLANT = 'state-coverage-fixture-plants--'
+const CLIP_PLANT = 'state-coverage-fixture-clip-plants--'
+const CLIP_META_PLANT = 'state-coverage-fixture-clip-meta-decorator--'
 
 const inst = (
   component: string,
@@ -206,6 +212,50 @@ const PLANTS: Record<string, (record: WidthRecord) => void> = {
   },
 }
 
+// T703: what the browser must record for the capture frame of each clip plant. The shapes in the first
+// group put a clip on the settled `story.parameters` without writing it in an object literal of the
+// story; `clip: true` is the record `scripts/checks/state-coverage.mjs` refuses a mount credit from.
+// The contrasts record the other halves: no clip, and a full-page tag read from the built index.
+const CLIPPED = (r: WidthRecord) => {
+  expect(r.clip).toBe(true)
+  expect(r.fullPage).toBe(false)
+  expect(r.mounts).toEqual([button('primary', 'md')])
+}
+Object.assign(PLANTS, {
+  [`${CLIP_PLANT}no-clip`]: (r: WidthRecord) => {
+    expect(r.clip).toBe(false)
+    expect(r.fullPage).toBe(false)
+    expect(r.mounts).toEqual([button('primary', 'md')])
+  },
+  [`${CLIP_PLANT}full-page-tagged`]: (r: WidthRecord) => {
+    expect(r.clip).toBe(false)
+    expect(r.fullPage).toBe(true)
+    expect(r.mounts).toEqual([button('primary', 'md')])
+  },
+  [`${CLIP_PLANT}clip-from-play`]: CLIPPED,
+  [`${CLIP_PLANT}clip-from-loader`]: CLIPPED,
+  [`${CLIP_PLANT}clip-from-decorator`]: CLIPPED,
+  [`${CLIP_PLANT}clip-from-story-annotation`]: CLIPPED,
+  [`${CLIP_PLANT}clip-from-proto`]: CLIPPED,
+  // The same key one level down never reaches the capture: Storybook's merge of the parameters copies
+  // own keys only, so the record says no clip.
+  [`${CLIP_PLANT}proto-inside-parameters-no-clip`]: (r: WidthRecord) => {
+    expect(r.clip).toBe(false)
+    expect(r.fullPage).toBe(false)
+    expect(r.mounts).toEqual([button('primary', 'md')])
+  },
+  [`${CLIP_PLANT}clip-from-object-prototype`]: CLIPPED,
+  // T706: `clip` is the disjunction over the two themes the capture runs. The two dark-only shapes are
+  // recorded `clip: false` by a light-only probe; the light-only decorator is the contrast, `true` too.
+  [`${CLIP_PLANT}clip-only-in-dark`]: CLIPPED,
+  [`${CLIP_PLANT}clip-literal-deleted-unless-dark`]: CLIPPED,
+  [`${CLIP_PLANT}clip-only-in-light`]: CLIPPED,
+  // T708: the dark clip depends on a storage flag the light settle writes; every settle starts with
+  // cleared cookies and storages, as a capture unit's fresh context does, so the flag is absent.
+  [`${CLIP_PLANT}clip-only-in-dark-while-storage-flag-absent`]: CLIPPED,
+  [`${CLIP_META_PLANT}clip-from-meta-decorator`]: CLIPPED,
+})
+
 // The plants fail closed: a fixture story and its assertion exist together or the pass fails. Never
 // part of a run that has no work (the file declares no test then).
 if (workPath) {
@@ -214,8 +264,16 @@ if (workPath) {
   })
 }
 
-for (const { id, widths } of work.stories) {
+for (const { id, widths, fullPage } of work.stories) {
   test(`${id} runtime record`, async ({ page }) => {
+    // The budget is a rule, not a measurement: 30 s per navigation (the per-unit default of
+    // `stories.spec.ts`, which `playwright.config.ts` does not override) times the settles, which are
+    // two per width, the light settle and the dark one T706 added for the clip. Two measurements,
+    // 2026-10-08, of the same six stories (the four foundations overviews, two PrivacyNotice stories):
+    // in a full pass with four workers in contention all six timed out at the 30 s default once the
+    // dark settle doubled the navigations; rerun alone with four workers they take 7.7 to 18.7 s with
+    // both settles.
+    test.setTimeout(widths.length * 2 * 30_000)
     await installSteamAvatarStub(page)
     const outFile = outDir ? path.join(outDir, `${id}.json`) : null
     if (outDir) mkdirSync(outDir, { recursive: true })
@@ -228,8 +286,12 @@ for (const { id, widths } of work.stories) {
       }
       const records: Record<string, WidthRecord> = {}
       for (const width of widths) {
-        records[String(width)] = await probeStory(page, id, width)
+        records[String(width)] = await probeStory(page, id, width, fullPage)
         assertion?.(records[String(width)])
+        // Every fixture story outside the two clip plant files is a story with no clip.
+        if (isFixture && !id.startsWith(CLIP_PLANT) && !id.startsWith(CLIP_META_PLANT)) {
+          expect(records[String(width)].clip).toBe(false)
+        }
       }
       if (outFile) writeFileSync(outFile, JSON.stringify({ id, widths: records }))
     } catch (error) {
