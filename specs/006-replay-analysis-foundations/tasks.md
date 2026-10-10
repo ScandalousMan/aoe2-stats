@@ -1633,7 +1633,7 @@ T671 and T672 ship together; T673 follows once T672 is deployed.
       checksum mismatch) is never reopened. Urgent: 31 days after a recording, an analysis of its
       match has no source to fall back on. The earliest affected recording is not measured; the
       earliest sampled is from 2026-09-27, and 0.1.22 shipped on 2026-09-22
-- [ ] T673a Close #129's review (`reviewer` REJECT 2026-10-10 on T673). The command is written and
+- [x] T673a Close #129's review (`reviewer` REJECT 2026-10-10 on T673). The command is written and
       no capture has been re-validated, so T673 stays open until the operator run reports its count.
       **Eviction:** a re-validation that fails for a reason that is not the engine's verdict (the
       wall-clock cap, any class outside the selection) overwrites `last_error` with a text the
