@@ -58,6 +58,14 @@ believes it holds a specific blob, and a retry would silently paper over evidenc
 not — both instead fold into `quarantined`, the same terminal outcome every other kind of
 validation failure produces, with `last_error` explaining which of the two it was.
 
+**Re-validation of an engine-failure quarantine (T673).** A capture quarantined because the engine
+could not parse a recording keeps its object (constitution IV), so a later engine can be given a
+second chance without touching the source: `CaptureDrain.revalidate_quarantined` reads the committed
+object back, checks it against the row's own `zip_sha256` and runs it through the same barrier.
+It is selected by the engine's own failure text (`_engine_failure_reason`), never an integrity
+quarantine, never reads from the provider, never writes or deletes an object, and raises no alert:
+the row already raised its `validation_failed` when it was first quarantined. See that method.
+
 **The per-user fairness cap is wired in here, not reimplemented here** (T058's own gap: `quota.py`
 shipped `apply_quota` fully tested in isolation, but nothing in this module ever called it, so
 FR-044 enforced nothing in production). `apply_quota` is a pure, read-only filter over a run's
@@ -152,10 +160,11 @@ import asyncio
 import hashlib
 import uuid
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
-from sqlalchemy import and_, func, or_, select, update
+from sqlalchemy import ColumnElement, and_, func, literal, or_, select, tuple_, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from aoe2stats_core.alerting import AlertRecord, AlertSink, raise_alert
@@ -184,6 +193,23 @@ VALIDATION_FAILED_ALERT_KIND = "validation_failed"
 #: not garbage), so this is not the "a replay is gone" incident constitution I reserves severity 1
 #: for. The nightly audit (T061) fails only on an unacknowledged severity-1 row.
 VALIDATION_FAILED_ALERT_SEVERITY = 2
+
+#: The exact text shapes `_validate_with_barrier` writes for a failure that is the *engine's*
+#: judgement of a recording (T673), each `"<ExcClass>: <text>"` or the bare class when the text is
+#: empty. `EngineParseError` is `aoe2stats_core.replay.validation`'s wrapper for an ordinary
+#: exception the engine raised or a result it cannot use; `PanicException` is `pyo3_runtime`'s
+#: class for a native panic, which is what `aoe2rec-py` 0.1.21 raised on game build 185872
+#: (measured, T672a: `apps/analyzer/tests/test_engine_panic.py`).
+#:
+#: Deliberately absent: `MalformedArchiveError` (this repository's own archive rule; a newer engine
+#: cannot change it), the wall-clock cap text (it says nothing about the bytes, and a re-run would
+#: spend the cap again) and every `reclaim ...` text (an integrity quarantine, evidence a human
+#: must read; data-model.md's `quarantined` row).
+_ENGINE_FAILURE_CLASSES = ("EngineParseError", "PanicException")
+
+#: Why `revalidate_quarantined` left a row alone after validating it: its guarded write matched no
+#: row because the status was no longer `quarantined`.
+_CHANGED_ELSEWHERE = "the row was no longer quarantined when the result was written"
 
 #: `alerts.kind` for `_classify_not_found`'s `expired` conclusion (`AlertKind.EXPIRED_CAPTURE` in
 #: `packages/storage/src/aoe2stats_storage/models.py`, named as a plain string for the same reason
@@ -264,6 +290,60 @@ _ZERO_COUNTERS: Mapping[str, int] = {
     "failed_total": 0,
     "alerts_raised": 0,
 }
+
+
+def _engine_failure_reason() -> ColumnElement[bool]:
+    """SQL predicate: `replay_captures.last_error` is the engine's own failure text, i.e. exactly
+    `"<Class>"` or `"<Class>: ..."` for a class in `_ENGINE_FAILURE_CLASSES` and nothing else. A
+    prefix match on the class and its colon-space, never a substring: a reason that merely
+    mentions an engine class (`reclaim could not read back ...: EngineParseError: ...`) is an
+    integrity quarantine and must stay out.
+    """
+    clauses: list[ColumnElement[bool]] = []
+    for name in _ENGINE_FAILURE_CLASSES:
+        clauses.append(ReplayCapture.last_error == name)
+        clauses.append(ReplayCapture.last_error.startswith(f"{name}: ", autoescape=True))
+    return or_(*clauses)
+
+
+#: What happened to one row `revalidate_quarantined` looked at. `selected` is a dry run's only
+#: outcome; `left_alone` is an integrity failure on read-back (object missing or not matching the
+#: row's own checksum) or a row another process changed first: nothing was written.
+RevalidationOutcomeKind = Literal["selected", "stored", "still_quarantined", "left_alone"]
+
+
+#: The full ordering key of `revalidate_quarantined`: `(matches.completed_at, capture id)`.
+RevalidationCursor = tuple[datetime, uuid.UUID]
+
+
+@dataclass(frozen=True, slots=True)
+class RevalidationOutcome:
+    capture_id: uuid.UUID
+    game_id: int
+    profile_id: int
+    completed_at: datetime
+    outcome: RevalidationOutcomeKind
+    #: The new quarantine reason (`still_quarantined`) or why the row was left alone; else `None`.
+    reason: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class RevalidationReport:
+    outcomes: tuple[RevalidationOutcome, ...]
+    #: More candidates exist beyond `limit`; resume with `after=cursor`.
+    truncated: bool
+    #: `matches.completed_at` and capture id of the last row examined: together the cursor for
+    #: `after`. Both, because the ordering key is `(completed_at, id)` and two captures of one
+    #: match (two tracked profiles) share a `completed_at`: a timestamp alone would skip the rest.
+    last_completed_at: datetime | None
+    last_capture_id: uuid.UUID | None = None
+
+    @property
+    def cursor(self) -> RevalidationCursor | None:
+        """The `after` value that continues from the last row examined, or `None`."""
+        if self.last_completed_at is None or self.last_capture_id is None:
+            return None
+        return (self.last_completed_at, self.last_capture_id)
 
 
 class _ObjectPut(Protocol):
@@ -807,25 +887,11 @@ class CaptureDrain:
         and re-store a replay this row already believes it holds, without ever explaining why the
         bytes it already has do not check out.
         """
-        try:
-            content = await self._require_object_store().get(object_key)
-        except Exception as exc:
-            reason = (
-                f"reclaim could not read back {object_key!r} from the object store: "
-                f"{type(exc).__name__}: {exc}"
-            )
+        content, integrity_reason = await self._read_back_verified(object_key, expected_sha256)
+        if content is None:
+            assert integrity_reason is not None
             return await self._quarantine(
-                capture_id, reason, game_id=game_id, profile_id=profile_id
-            )
-
-        actual_sha256 = hashlib.sha256(content).hexdigest()
-        if actual_sha256 != expected_sha256:
-            reason = (
-                f"reclaim checksum mismatch for {object_key!r}: row records {expected_sha256}, "
-                f"object store holds {actual_sha256}"
-            )
-            return await self._quarantine(
-                capture_id, reason, game_id=game_id, profile_id=profile_id
+                capture_id, integrity_reason, game_id=game_id, profile_id=profile_id
             )
 
         result, error = await _validate_with_barrier(
@@ -837,6 +903,156 @@ class CaptureDrain:
 
         reason = error or "validation failed for an unspecified reason"
         return await self._quarantine(capture_id, reason, game_id=game_id, profile_id=profile_id)
+
+    async def _read_back_verified(
+        self, object_key: str, expected_sha256: str
+    ) -> tuple[bytes | None, str | None]:
+        """Read a committed object back and check it against the row's own `zip_sha256`.
+
+        Returns `(content, None)` when the bytes are present and hash to `expected_sha256`, and
+        `(None, reason)` for the two integrity failures: the object cannot be read (missing, or any
+        store error), or it hashes to something else. `reason` is the exact text a quarantine
+        records. Shared by the reclaim path, which quarantines on a failure, and by
+        `revalidate_quarantined`, which leaves the row alone (its reasons start `reclaim ...`, and
+        `_engine_failure_reason` never selects those). Only `get` is called on the store.
+        """
+        try:
+            content = await self._require_object_store().get(object_key)
+        except Exception as exc:
+            return None, (
+                f"reclaim could not read back {object_key!r} from the object store: "
+                f"{type(exc).__name__}: {exc}"
+            )
+        actual_sha256 = hashlib.sha256(content).hexdigest()
+        if actual_sha256 != expected_sha256:
+            return None, (
+                f"reclaim checksum mismatch for {object_key!r}: row records {expected_sha256}, "
+                f"object store holds {actual_sha256}"
+            )
+        return content, None
+
+    async def revalidate_quarantined(
+        self, *, limit: int, after: RevalidationCursor | None = None, dry_run: bool = False
+    ) -> RevalidationReport:
+        """T673: give captures that ended `quarantined` because the *engine* could not parse them
+        a second validation, from the bytes already committed. Never re-downloads (the replay
+        provider is not touched), never writes, replaces or deletes an object (`get` only), and
+        raises no alert.
+
+        **Selection.** `status = quarantined`, `object_key` and `zip_sha256` both set, and
+        `last_error` equal to the engine's own failure text (`_engine_failure_reason`: an
+        `EngineParseError` or a `PanicException`, as `_validate_with_barrier` writes them). An
+        integrity quarantine, a timeout and a `MalformedArchiveError` are outside it. Ordered by
+        `(matches.completed_at, capture id)`, oldest recording first: 31 days after a recording an
+        analysis of it has no source to fall back on, so the nearest to that window goes first.
+        At most `limit` rows; `after` is the report's `cursor`, a `(completed_at, id)` pair
+        compared exclusively as a row against that same key, and resumes where a truncated report
+        stopped, because a row that fails again is still a candidate and would otherwise starve
+        the rest. The id is part of the cursor because two captures of one match share its
+        `completed_at`: a timestamp alone would skip the ones a page cut between.
+
+        **Per row**, the reclaim path's own steps (`_read_back_verified`, then the same barrier):
+
+        - the object cannot be read, or does not hash to the row's `zip_sha256`: `left_alone`, no
+          write at all. The bytes are not the ones the row vouches for, so they are neither marked
+          `stored` nor given a new error;
+        - the barrier returns a result: `stored`, written by `_mark_stored` exactly as the normal
+          path writes it (`validated_by`, `inner_filename`, `inner_bytes`, `stored_at`);
+        - the barrier fails: `still_quarantined` with the *new* reason in `last_error` (same
+          row-level write as the normal path, `_mark_quarantined`), and no `validation_failed`
+          alert. The row raised one when it was first quarantined; nothing 001 or 006 asks for
+          re-raises it, and a maintenance command is not a capture outcome.
+
+        Both writes are guarded on the row still being `quarantined`: one that another process
+        changed meanwhile is `left_alone`. Idempotent: a stored row is no longer selected, and a
+        row that fails again is rewritten with the same content.
+
+        `dry_run` lists the selection (outcome `selected`) without reading, validating or writing.
+        """
+        if limit < 1:
+            raise ValueError("limit must be at least 1")
+
+        statement = (
+            select(ReplayCapture, Match.completed_at)
+            .join(Match, Match.game_id == ReplayCapture.game_id)
+            .where(
+                ReplayCapture.status == CaptureStatus.QUARANTINED,
+                ReplayCapture.object_key.is_not(None),
+                ReplayCapture.zip_sha256.is_not(None),
+                _engine_failure_reason(),
+            )
+            .order_by(Match.completed_at.asc(), ReplayCapture.id.asc())
+            .limit(limit + 1)
+        )
+        if after is not None:
+            # The whole ordering key, compared as a row: `completed_at` alone would skip every
+            # capture of a shared match (one `completed_at`, several profiles) that the previous
+            # page cut between. The id only breaks ties; a later `completed_at` with a smaller id
+            # is still after the cursor.
+            statement = statement.where(
+                tuple_(Match.completed_at, ReplayCapture.id)
+                > tuple_(
+                    literal(after[0], Match.completed_at.type),
+                    literal(after[1], ReplayCapture.id.type),
+                )
+            )
+        async with self._session_factory() as session:
+            candidates = [
+                (row, completed_at)
+                for row, completed_at in (await session.execute(statement)).all()
+            ]
+        truncated = len(candidates) > limit
+        candidates = candidates[:limit]
+
+        outcomes: list[RevalidationOutcome] = []
+        for capture, completed_at in candidates:
+            assert capture.object_key is not None and capture.zip_sha256 is not None
+            outcome: RevalidationOutcomeKind
+            reason: str | None = None
+            if dry_run:
+                outcome = "selected"
+            else:
+                outcome, reason = await self._revalidate_one(
+                    capture.id, capture.object_key, capture.zip_sha256
+                )
+            outcomes.append(
+                RevalidationOutcome(
+                    capture_id=capture.id,
+                    game_id=capture.game_id,
+                    profile_id=capture.profile_id,
+                    completed_at=completed_at,
+                    outcome=outcome,
+                    reason=reason,
+                )
+            )
+        return RevalidationReport(
+            outcomes=tuple(outcomes),
+            truncated=truncated,
+            last_completed_at=outcomes[-1].completed_at if outcomes else None,
+            last_capture_id=outcomes[-1].capture_id if outcomes else None,
+        )
+
+    async def _revalidate_one(
+        self, capture_id: uuid.UUID, object_key: str, expected_sha256: str
+    ) -> tuple[RevalidationOutcomeKind, str | None]:
+        content, integrity_reason = await self._read_back_verified(object_key, expected_sha256)
+        if content is None:
+            return "left_alone", integrity_reason
+
+        result, error = await _validate_with_barrier(
+            self._require_validator(), content, timeout_seconds=self._validation_timeout_seconds
+        )
+        if result is not None:
+            written = await self._mark_stored(
+                capture_id, result, only_if_status=CaptureStatus.QUARANTINED
+            )
+            return ("stored", None) if written else ("left_alone", _CHANGED_ELSEWHERE)
+
+        reason = error or "validation failed for an unspecified reason"
+        written = await self._mark_quarantined(
+            capture_id, reason, only_if_status=CaptureStatus.QUARANTINED
+        )
+        return ("still_quarantined", reason) if written else ("left_alone", _CHANGED_ELSEWHERE)
 
     async def _quarantine(
         self, capture_id: uuid.UUID, reason: str, *, game_id: int, profile_id: int
@@ -970,8 +1186,15 @@ class CaptureDrain:
             await session.commit()
 
     async def _mark_stored(
-        self, capture_id: uuid.UUID, result: ReplayValidationResult | None
-    ) -> None:
+        self,
+        capture_id: uuid.UUID,
+        result: ReplayValidationResult | None,
+        *,
+        only_if_status: CaptureStatus | None = None,
+    ) -> bool:
+        """Mark `stored`. `only_if_status` guards the write on the row's current status (T673's
+        re-validation, which must not overwrite a row another process moved); returns whether a
+        row was written. Unguarded, it matches the id alone, as before."""
         values: dict[str, Any] = {
             "status": CaptureStatus.STORED,
             "stored_at": datetime.now(UTC),
@@ -982,20 +1205,33 @@ class CaptureDrain:
             values["inner_filename"] = result.inner_filename
             values["inner_bytes"] = result.inner_bytes
             values["validated_by"] = f"{result.engine_name}@{result.engine_version}"
+        statement = update(ReplayCapture).where(ReplayCapture.id == capture_id).values(**values)
+        if only_if_status is not None:
+            statement = statement.where(ReplayCapture.status == only_if_status)
         async with self._session_factory() as session:
-            await session.execute(
-                update(ReplayCapture).where(ReplayCapture.id == capture_id).values(**values)
-            )
+            outcome = await session.execute(statement)
             await session.commit()
+        return bool(outcome.rowcount)  # type: ignore[attr-defined]
 
-    async def _mark_quarantined(self, capture_id: uuid.UUID, reason: str) -> None:
+    async def _mark_quarantined(
+        self,
+        capture_id: uuid.UUID,
+        reason: str,
+        *,
+        only_if_status: CaptureStatus | None = None,
+    ) -> bool:
+        """Mark `quarantined` with `reason`; `only_if_status` and the return as `_mark_stored`."""
+        statement = (
+            update(ReplayCapture)
+            .where(ReplayCapture.id == capture_id)
+            .values(status=CaptureStatus.QUARANTINED, last_error=reason)
+        )
+        if only_if_status is not None:
+            statement = statement.where(ReplayCapture.status == only_if_status)
         async with self._session_factory() as session:
-            await session.execute(
-                update(ReplayCapture)
-                .where(ReplayCapture.id == capture_id)
-                .values(status=CaptureStatus.QUARANTINED, last_error=reason)
-            )
+            outcome = await session.execute(statement)
             await session.commit()
+        return bool(outcome.rowcount)  # type: ignore[attr-defined]
 
     async def _revert_to_pending(self, capture_id: uuid.UUID, http_status: int) -> None:
         """A 404 `_classify_not_found` (T056) read as inconclusive — still inside the publication
