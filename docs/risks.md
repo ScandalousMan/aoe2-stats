@@ -30,8 +30,10 @@ cannot be recreated by anyone, at any price.
   `quarantined`, with their object kept; that is what the code implies, and it was not observed.
   T673's dry run against production on 2026-10-11 found no `quarantined` capture, for any reason,
   so nothing was re-validated. Read the same day: every capture row is `stored` or `expired`, none
-  was first seen after 2026-08-28, and none is for a match after 2026-05-02. Why nothing has been
-  discovered since is not measured.
+  was first seen after 2026-08-28, and none is for a match after 2026-05-02. The daily cycle polls
+  the one archiving profile, the source returns its matches, and none recorded for it is later than
+  2026-05-02: there has been nothing new to discover, and no match of the last 31 days lacks a
+  capture row.
 - **2026-08-19 — R4.** `aoe-api.reliclink.com` now serves a certificate for `*.worldsedgelink.com`,
   so every community document naming that host is stale. Recorded before it could cost anything.
 - **2026-08-19 — R4.** aoe2companion returned 403 from CI while the identical request succeeded from
