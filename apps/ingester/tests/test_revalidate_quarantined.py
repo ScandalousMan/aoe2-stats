@@ -25,12 +25,18 @@ What every test below pins, with its contrast case (the boundary and the thing j
   a row only with the engine's verdict.
 - **Only a capture with an active, non-objecting owner is taken (T673b),** at selection and again
   in each guarded write's own `WHERE`: the stored write and the quarantine write are tested
-  separately. A row a write refuses is an outcome of its own, `ownership_changed`.
-- **A database error on a write stops the run at that row** and returns the report so far.
+  separately. A write that matches no row is reported, not retried: `ownership_changed` when the
+  row is still `quarantined` on read-back, `changed_elsewhere` otherwise.
+- **A database error at a row's write step stops the run at that row** (the write itself, or
+  the read that tells why a write was refused) and returns the report of the rows examined before
+  it. Of the rows it wrote, only a `stored` one has left the selection.
+- **Nothing else that ends a page early returns a report.** A cancellation is not caught, at the
+  read-back or at the write, so an interrupted page returns none.
 """
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -189,14 +195,17 @@ async def _seed(
     recorded_sha256: bytes | None = None,
     with_object_key: bool = True,
     sha256_null: bool = False,
+    object_key_null: bool = False,
     linked: bool = True,
 ) -> uuid.UUID:
     """One capture row plus, when `stored_object` is not None, the object under its key.
 
     `recorded_sha256` is the content the *row* believes it holds (default: `content`), so a test
     can make the object drift from the row's own record. `sha256_null` keeps `object_key` and
-    clears the checksum. `linked` gives the profile an active link whose user has not objected,
-    which a capture needs to be selected (T673b); pass `False` to seed the link by hand."""
+    clears the checksum; `object_key_null` is its twin, keeping the checksum and clearing the key
+    (the object is still put in the store, under the key the row no longer names). `linked` gives
+    the profile an active link whose user has not objected, which a capture needs to be selected
+    (T673b); pass `False` to seed the link by hand."""
     profile_id = game_id + 1_000_000
     completed_at = completed_at or (datetime.now(UTC) - timedelta(days=5))
     key = replay_object_key(game_id, profile_id)
@@ -221,7 +230,7 @@ async def _seed(
             status=status,
             capture_deadline_at=completed_at + timedelta(days=21),
             source=CaptureSource.AUTOMATIC,
-            object_key=key if with_object_key else None,
+            object_key=key if with_object_key and not object_key_null else None,
             zip_bytes=len(content),
             zip_sha256=hashlib.sha256(recorded_sha256 or content).hexdigest()
             if with_object_key and not sha256_null
@@ -752,6 +761,11 @@ async def test_a_row_that_changed_between_selection_and_write_is_not_overwritten
     row = await _row(db_session, capture_id)
     assert row.validated_by == "someone-else@1"
     assert [o.outcome for o in report.outcomes] == ["changed_elsewhere"]
+    # The reason says what was observed (T673c): no row matched, and what a later read found.
+    # Nothing was written on this branch, so it must not say that anything was.
+    reason = report.outcomes[0].reason or ""
+    assert "matched no row" in reason and "no longer quarantined when read back" in reason
+    assert "written" not in reason
 
 
 async def _seed_shared_match(
@@ -950,6 +964,140 @@ async def test_a_row_at_the_cursors_timestamp_with_a_smaller_or_equal_id_is_not_
 
     # 5 and 7 were already examined (the cursor is exclusive); 9 was not.
     assert [o.capture_id for o in report.outcomes] == [_id(9)]
+
+
+# === T673c: branches and conditions that had no row of their own ==============================
+
+
+async def test_a_bare_engine_class_name_is_selected_and_a_bare_foreign_class_is_not(
+    db_session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """Level: the selection's text clause, the bare-class branch of each engine class. The
+    barrier writes the class name alone when the exception carries no message, which the first
+    lines check for `EngineParseError`; only a bare `PanicException` had a row, so the other
+    branch could be dropped. Contrast: a bare class name that is not the engine's is not
+    selected."""
+    from aoe2stats_ingester.capture import _validate_with_barrier
+
+    _, bare = await _validate_with_barrier(
+        _Validator(reject_with=EngineParseError()),  # type: ignore[arg-type]
+        b"x",
+        timeout_seconds=5.0,
+    )
+    assert bare == "EngineParseError"
+
+    store = _RecordingObjectStore()
+    now = datetime.now(UTC)
+    bare_parse = await _seed(
+        db_session, store, game_id=720_600, last_error=bare, completed_at=now - timedelta(days=9)
+    )
+    bare_panic = await _seed(
+        db_session,
+        store,
+        game_id=720_601,
+        last_error="PanicException",
+        completed_at=now - timedelta(days=8),
+    )
+    foreign = await _seed(
+        db_session,
+        store,
+        game_id=720_602,
+        last_error="ValueError",
+        completed_at=now - timedelta(days=7),
+    )
+    before = _snapshot(await _row(db_session, foreign))
+
+    report = await _drain(
+        session_factory, store=store, provider=_RecordingReplayProvider(), validator=_Validator()
+    ).revalidate_quarantined(limit=10)
+
+    assert [o.capture_id for o in report.outcomes] == [bare_parse, bare_panic]
+    assert _snapshot(await _row(db_session, foreign)) == before
+
+
+@pytest.mark.parametrize(
+    ("class_name", "outcome"),
+    [
+        ("EngineParseError", "still_quarantined"),
+        ("PanicException", "still_quarantined"),
+        ("ValueError", "inconclusive"),
+    ],
+)
+async def test_a_validation_that_fails_with_a_bare_engine_class_is_a_verdict_and_is_written(
+    class_name: str,
+    outcome: str,
+    db_session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """Level: the write's own reading of the new reason (`_is_engine_failure_reason`), the
+    bare-class branch of each engine class; neither had a row. An engine exception with no message
+    makes the barrier write the class name alone. That is an engine verdict the selection still
+    matches, so the row is rewritten with it (`still_quarantined`). Contrast: a bare class that is
+    not the engine's is `inconclusive` and the row is untouched."""
+
+    class PanicException(BaseException):
+        pass
+
+    raised: dict[str, BaseException] = {
+        "EngineParseError": EngineParseError(),
+        "PanicException": PanicException(),
+        "ValueError": ValueError(),
+    }
+    # Seeded with the other engine class's text, so a rewrite is visible on the row.
+    seeded_reason = _PANIC_REASON if class_name == "EngineParseError" else _PARSE_REASON
+    store = _RecordingObjectStore()
+    capture_id = await _seed(db_session, store, game_id=720_610, last_error=seeded_reason)
+    before = _snapshot(await _row(db_session, capture_id))
+
+    report = await _drain(
+        session_factory,
+        store=store,
+        provider=_RecordingReplayProvider(),
+        validator=_Validator(reject_with=raised[class_name]),  # type: ignore[arg-type]
+    ).revalidate_quarantined(limit=10)
+
+    assert [(o.outcome, o.reason) for o in report.outcomes] == [(outcome, class_name)]
+    row = await _row(db_session, capture_id)
+    if outcome == "still_quarantined":
+        assert row.status == CaptureStatus.QUARANTINED
+        assert row.last_error == class_name
+    else:
+        assert _snapshot(row) == before
+
+
+async def test_a_profile_its_non_objecting_user_unlinked_is_not_selected_and_is_counted(
+    db_session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """Level: the selection, the active-link condition on its own. Every other row the ownership
+    predicate keeps out either has an objecting user or no link at all, so at selection the
+    condition could be dropped; only the write pinned it. Here the user never objected and
+    unlinked the profile: not selected, and counted by the dry run under its own label. Contrast:
+    the same shape with the link still active is selected."""
+    store = _RecordingObjectStore()
+    now = datetime.now(UTC)
+    active = await _seed(
+        db_session, store, game_id=720_700, linked=False, completed_at=now - timedelta(days=9)
+    )
+    await _link_profile(db_session, 720_700 + 1_000_000, objected=False)
+    left = await _seed(
+        db_session, store, game_id=720_701, linked=False, completed_at=now - timedelta(days=8)
+    )
+    await _link_profile(db_session, 720_701 + 1_000_000, objected=False, unlinked=True)
+    before = _snapshot(await _row(db_session, left))
+    drain = _drain(
+        session_factory, store=store, provider=_RecordingReplayProvider(), validator=_Validator()
+    )
+
+    dry = await drain.revalidate_quarantined(limit=10, dry_run=True)
+    assert [o.capture_id for o in dry.outcomes] == [active]
+    assert dry.unselected_by_reason == (("PanicException (no active link)", 1),)
+
+    real = await drain.revalidate_quarantined(limit=10)
+    assert [(o.capture_id, o.outcome) for o in real.outcomes] == [(active, "stored")]
+    assert store.gets == [replay_object_key(720_700, 1_720_700)]
+    assert _snapshot(await _row(db_session, left)) == before
 
 
 # === T673a: remediation of #129's review ======================================================
@@ -1388,7 +1536,7 @@ async def test_a_dry_run_counts_the_quarantined_rows_outside_the_selection_by_re
         "other": 2,  # free text, and an identifier that is not a class name (`OtherClass`)
         "ValueError": 1,
     }
-    # Counts only: no object key and no free text from any reason reaches the report.
+    # No object key reaches the report, nor the free text of the reason counted under `other`.
     rendered = repr(report.unselected_by_reason)
     assert "replays/" not in rendered
     assert "quoted" not in rendered
@@ -1397,6 +1545,47 @@ async def test_a_dry_run_counts_the_quarantined_rows_outside_the_selection_by_re
         c: _snapshot(await _row(db_session, c))
         for c in (await db_session.scalars(select(ReplayCapture.id))).all()
     } == before
+
+
+async def test_a_dry_run_labels_a_row_missing_either_half_of_its_object_as_no_committed_object(
+    db_session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """Level: the dry run's labelling, each half of its "has an object" test on its own (T673c).
+    The counting test above nulls both columns on its one such row, so dropping either half
+    passed. Here one engine-failure row has the key and no checksum, another the checksum and no
+    key (a different engine class each, so a wrong count names its row), and both are counted as
+    `(no committed object)`. Contrast: two rows with both columns set, outside the selection for
+    another reason, keep their own labels, so labelling everything `(no committed object)` fails
+    too."""
+    store = _RecordingObjectStore()
+    now = datetime.now(UTC)
+    await _seed(db_session, store, game_id=720_500, completed_at=now - timedelta(days=9))
+    no_checksum = await _seed(db_session, store, game_id=720_501, sha256_null=True)
+    no_key = await _seed(
+        db_session, store, game_id=720_502, object_key_null=True, last_error=_PARSE_REASON
+    )
+    await _seed(db_session, store, game_id=720_503, linked=False)
+    await _seed(db_session, store, game_id=720_504, linked=False)
+    await _link_profile(db_session, 720_504 + 1_000_000, objected=True)
+    # The two shapes under test, read back: exactly one column is missing on each.
+    row = await _row(db_session, no_checksum)
+    assert row.object_key is not None and row.zip_sha256 is None
+    row = await _row(db_session, no_key)
+    assert row.object_key is None and row.zip_sha256 is not None
+
+    report = await _drain(
+        session_factory, store=store, provider=_RecordingReplayProvider(), validator=_Validator()
+    ).revalidate_quarantined(limit=10, dry_run=True)
+
+    assert [o.game_id for o in report.outcomes] == [720_500]
+    assert report.unselected_by_reason is not None
+    assert dict(report.unselected_by_reason) == {
+        "PanicException (no committed object)": 1,
+        "EngineParseError (no committed object)": 1,
+        "PanicException (no active link)": 1,
+        "PanicException (archival objected)": 1,
+    }
 
 
 async def test_a_real_run_does_not_count_unselected_rows(
@@ -1542,6 +1731,9 @@ async def test_a_user_who_objects_or_unlinks_during_validation_is_not_written_bu
         bystander: "still_quarantined" if fails else "stored",
     }
     assert _snapshot(await _row(db_session, victim)) == victim_before
+    reason = next(o.reason for o in report.outcomes if o.capture_id == victim) or ""
+    assert "matched no row" in reason and "still quarantined when read back" in reason
+    assert "written" not in reason
     written = await _row(db_session, bystander)
     assert written.status == (CaptureStatus.QUARANTINED if fails else CaptureStatus.STORED)
     if fails:
@@ -1611,7 +1803,38 @@ async def test_a_row_whose_object_key_is_set_but_checksum_is_null_is_not_selecte
     assert _snapshot(await _row(db_session, no_checksum)) == before
 
 
-# --- A database error on one row's write (level: the report) ---------------------------------
+async def test_a_row_whose_checksum_is_set_but_object_key_is_null_is_not_selected(
+    db_session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """Level: the selection's `object_key` clause on its own (T673c), the twin of the checksum row
+    above: the earlier test nulls both columns, so dropping this clause alone passed. Contrast: the
+    same row with its key is selected."""
+    store = _RecordingObjectStore()
+    now = datetime.now(UTC)
+    no_key = await _seed(
+        db_session,
+        store,
+        game_id=720_210,
+        object_key_null=True,
+        completed_at=now - timedelta(days=9),
+    )
+    with_key = await _seed(db_session, store, game_id=720_211, completed_at=now - timedelta(days=8))
+    seeded = await _row(db_session, no_key)
+    # The shape under test, read back: only the key is missing.
+    assert seeded.object_key is None and seeded.zip_sha256 is not None
+    before = _snapshot(seeded)
+
+    report = await _drain(
+        session_factory, store=store, provider=_RecordingReplayProvider(), validator=_Validator()
+    ).revalidate_quarantined(limit=10)
+
+    assert [o.capture_id for o in report.outcomes] == [with_key]
+    assert store.gets == [replay_object_key(720_211, 1_720_211)]
+    assert _snapshot(await _row(db_session, no_key)) == before
+
+
+# --- A database error at one row's write step (level: the report) ----------------------------
 
 
 @pytest.mark.parametrize("fails", [False, True], ids=["stored-write", "quarantine-write"])
@@ -1621,9 +1844,17 @@ async def test_a_write_that_fails_on_the_nth_row_stops_there_and_returns_the_rep
     session_factory: async_sessionmaker[AsyncSession],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Level: the report. Rows written before the failure are no longer selected, so a report
-    discarded with the exception would lose their count for good. The run stops at the failing
-    row, names the error's class (never its text), and the rows after it are not examined."""
+    """Level: the report. The run stops at the failing row, names the error's class (never its
+    text), returns the rows examined before it, and does not examine the rows after it.
+
+    Of the rows the run writes, only a `stored` one leaves the selection, which the dry run at
+    the end pins on both sides: after the stored-write case the two rows before the failure are
+    not selected again (so no later report would list them); after the quarantine-write case they
+    were rewritten with an engine verdict and are still selected.
+
+    The stand-in replaces the whole write and raises before any statement runs, so the failing
+    row's unchanged snapshot holds for this stand-in only: it says nothing about a row whose real
+    commit raises."""
     from sqlalchemy.exc import OperationalError
 
     from aoe2stats_ingester.capture import CaptureDrain
@@ -1672,10 +1903,156 @@ async def test_a_write_that_fails_on_the_nth_row_stops_there_and_returns_the_rep
     assert validator.calls == 3  # the fourth row was never examined
     assert _snapshot(await _row(db_session, ids[2])) == before_failed
     assert _snapshot(await _row(db_session, ids[3])) == before_after
-    # The first two were written for real; the count of them is what the report preserves.
+    # The first two were written for real.
     if not fails:
         assert (await _row(db_session, ids[0])).status == CaptureStatus.STORED
         assert (await _row(db_session, ids[1])).status == CaptureStatus.STORED
+    else:
+        expected_reason = "EngineParseError: aoe2rec-py rejected the replay: bad magic"
+        assert (await _row(db_session, ids[0])).last_error == expected_reason
+        assert (await _row(db_session, ids[1])).last_error == expected_reason
+    # What a re-run would be offered: a `stored` row has left the selection, a `still_quarantined`
+    # one has not. (A dry run writes nothing, so the stand-in is not reached again.)
+    again = await _drain(
+        session_factory, store=store, provider=_RecordingReplayProvider(), validator=_Validator()
+    ).revalidate_quarantined(limit=10, dry_run=True)
+    assert [o.capture_id for o in again.outcomes] == (ids if fails else ids[2:])
+    assert calls["n"] == 3
+
+
+@pytest.mark.parametrize("fails", [False, True], ids=["stored-write", "quarantine-write"])
+async def test_a_database_error_on_the_read_that_classifies_a_refused_write_stops_the_run_too(
+    fails: bool,
+    db_session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Level: the report (T673c). The database stop is not always a write that failed. Here the
+    second row's owner objects during validation, the real guarded write runs and matches no row,
+    and the read that tells why (`_why_not_written`, the only thing replaced) raises. No write
+    failed, and the run stops the same way: the error's class, the row examined before it, no
+    later row. `fails` picks which of the two writes was refused; each has its own call to that
+    read. Contrast: the test above, where the write itself raises."""
+    from sqlalchemy.exc import OperationalError
+
+    from aoe2stats_ingester.capture import CaptureDrain
+
+    store = _RecordingObjectStore()
+    now = datetime.now(UTC)
+    first = await _seed(
+        db_session,
+        store,
+        game_id=720_350,
+        content=_BYSTANDER,
+        stored_object=_BYSTANDER,
+        completed_at=now - timedelta(days=9),
+    )
+    refused = await _seed(
+        db_session,
+        store,
+        game_id=720_351,
+        content=_VICTIM,
+        stored_object=_VICTIM,
+        completed_at=now - timedelta(days=8),
+    )
+    later = await _seed(
+        db_session,
+        store,
+        game_id=720_352,
+        content=_BYSTANDER,
+        stored_object=_BYSTANDER,
+        completed_at=now - timedelta(days=7),
+    )
+    before_refused = _snapshot(await _row(db_session, refused))
+    before_later = _snapshot(await _row(db_session, later))
+    classified: list[uuid.UUID] = []
+
+    async def _the_classifying_read_fails(self: Any, capture_id: uuid.UUID) -> Any:
+        classified.append(capture_id)
+        raise OperationalError("SELECT status FROM secret_table", {}, Exception("x"))
+
+    monkeypatch.setattr(CaptureDrain, "_why_not_written", _the_classifying_read_fails)
+    validator = _ChangesOwnershipDuringValidation(
+        session_factory,
+        victim_bytes=_VICTIM,
+        victim_profile_id=720_351 + 1_000_000,
+        event="objects",
+        fails=fails,
+    )
+
+    report = await _drain(
+        session_factory, store=store, provider=_RecordingReplayProvider(), validator=validator
+    ).revalidate_quarantined(limit=10)
+
+    assert [(o.capture_id, o.outcome) for o in report.outcomes] == [
+        (first, "still_quarantined" if fails else "stored")
+    ]
+    assert report.write_failed_by == "OperationalError"
+    assert report.aborted_by is None
+    assert "secret" not in repr(report)
+    assert report.cursor is not None and report.cursor[1] == first
+    assert classified == [refused]  # the read was reached, so the real write had matched no row
+    assert validator.calls == 2  # the third row was never examined
+    assert _snapshot(await _row(db_session, refused)) == before_refused
+    assert _snapshot(await _row(db_session, later)) == before_later
+
+
+# --- An interrupted page (level: the loop's two handlers) ------------------------------------
+
+
+class _CancelledOnTheSecondGet(_RecordingObjectStore):
+    async def get(self, key: str) -> bytes:
+        if len(self.gets) == 1:
+            self.gets.append(key)
+            raise asyncio.CancelledError
+        return await super().get(key)
+
+
+@pytest.mark.parametrize("where", ["read-back", "write"])
+async def test_a_cancellation_is_not_caught_so_an_interrupted_page_returns_no_report(
+    where: str,
+    db_session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Level: the loop's two handlers (T673c). Only a store error and a database error return the
+    rows examined so far. A cancellation is neither, wherever it lands: it leaves the method, and
+    the first row, already `stored`, is in no report. Contrast: the store stop and the failed
+    write above, the same page with the same second-row failure, do return the first row.
+
+    The cancellation is raised by the stand-in, at the read-back or in place of the write, which
+    is where a cancelled task would raise it; no task is cancelled here."""
+    from aoe2stats_ingester.capture import CaptureDrain
+
+    store: _RecordingObjectStore = (
+        _CancelledOnTheSecondGet() if where == "read-back" else _RecordingObjectStore()
+    )
+    now = datetime.now(UTC)
+    first = await _seed(db_session, store, game_id=720_400, completed_at=now - timedelta(days=9))
+    second = await _seed(db_session, store, game_id=720_401, completed_at=now - timedelta(days=8))
+    before_second = _snapshot(await _row(db_session, second))
+    if where == "write":
+        real = CaptureDrain._mark_stored
+        calls = {"n": 0}
+
+        async def _second_write_is_cancelled(self: Any, *args: Any, **kwargs: Any) -> bool:
+            calls["n"] += 1
+            if calls["n"] == 2:
+                raise asyncio.CancelledError
+            return await real(self, *args, **kwargs)
+
+        monkeypatch.setattr(CaptureDrain, "_mark_stored", _second_write_is_cancelled)
+
+    with pytest.raises(asyncio.CancelledError):
+        await _drain(
+            session_factory,
+            store=store,
+            provider=_RecordingReplayProvider(),
+            validator=_Validator(),
+        ).revalidate_quarantined(limit=10)
+
+    assert (await _row(db_session, first)).status == CaptureStatus.STORED
+    assert _snapshot(await _row(db_session, second)) == before_second
 
 
 # --- Reason labels (level: the dry run's grouping) -------------------------------------------
@@ -1685,7 +2062,12 @@ async def test_a_write_that_fails_on_the_nth_row_stops_there_and_returns_the_rep
     ("head", "label"),
     [
         pytest.param("ValueError: x", "ValueError", id="class-ending-in-Error-keeps-its-label"),
-        pytest.param("pyo3_runtime.PanicException: x", "pyo3_runtime.PanicException", id="dotted"),
+        # No writer emits a dotted head (the barrier writes `type(exc).__name__`), so a dot is
+        # free text, whatever the head ends in (T673c).
+        pytest.param("pyo3_runtime.PanicException: x", "other", id="dotted"),
+        pytest.param("db.internal.example.TimeoutError", "other", id="dotted-bare-ending-in-Error"),
+        pytest.param("see.the.docs.Exception: x", "other", id="dotted-ending-in-Exception"),
+        pytest.param("PanicException: x", "PanicException", id="undotted-engine-class"),
         pytest.param("SomethingException", "SomethingException", id="bare-class-name"),
         pytest.param("SecretProject12345: x", "other", id="identifier-not-a-class-name"),
         pytest.param("hunter2", "other", id="bare-identifier"),

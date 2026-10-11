@@ -223,21 +223,25 @@ def test_the_object_store_is_built_from_the_applications_own_validated_settings(
     assert object_store_from_settings(settings) is not None
 
 
-def test_a_missing_application_key_is_named_and_no_value_is_printed() -> None:
-    environ = _application_environment("postgresql+psycopg://u:p@h/d")
-    del environ["S3_BUCKET"]
-    with pytest.raises(SettingsError) as caught:
-        settings_from_environment(environ)
-    assert "S3_BUCKET" in str(caught.value)
-    assert not any(value in str(caught.value) for value in _SECRETS.values())
-
-
 @pytest.fixture
 def no_ambient_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     """`Settings` reads the process environment as well as the mapping it is given, so a test that
     expects a refusal must not inherit a developer's or CI's variables: clear all of them."""
     for key in list(os.environ):
         monkeypatch.delenv(key)
+
+
+def test_a_missing_application_key_is_named_and_no_value_is_printed(
+    no_ambient_environment: None,
+) -> None:
+    """The mapping lacks the bucket name, and so must the process: the runbook's first step
+    exports it, and `Settings` would take it from there (T673c)."""
+    environ = _application_environment("postgresql+psycopg://u:p@h/d")
+    del environ["S3_BUCKET"]
+    with pytest.raises(SettingsError) as caught:
+        settings_from_environment(environ)
+    assert "S3_BUCKET" in str(caught.value)
+    assert not any(value in str(caught.value) for value in _SECRETS.values())
 
 
 def test_a_real_run_with_an_s3_endpoint_that_carries_a_bucket_path_is_refused_by_settings(
@@ -435,15 +439,17 @@ def test_the_report_counts_the_unselected_rows_by_label() -> None:
     ("stop", "needle"),
     [
         pytest.param({"aborted_by": "ClientError"}, "the object store failed", id="store"),
-        pytest.param({"write_failed_by": "OperationalError"}, "a database write failed", id="db"),
+        pytest.param(
+            {"write_failed_by": "OperationalError"}, "a database error stopped the run", id="db"
+        ),
     ],
 )
 def test_a_stopped_run_names_the_error_class_prints_no_continuation_and_exits_non_zero(
     stop: dict[str, str], needle: str
 ) -> None:
     """A truncated report with a cursor prints `--after`; a stopped one must not print a
-    continuation, because the row it stopped on was not written and the operator has to deal with
-    the stop first. Contrast: the same report, not stopped, does print it."""
+    continuation, because the row it stopped on is not in the report and the operator has to deal
+    with the stop first. Contrast: the same report, not stopped, does print it."""
     from aoe2stats_ingester.capture import RevalidationOutcome, RevalidationReport
 
     when = datetime(2026, 9, 27, tzinfo=UTC)
@@ -465,6 +471,54 @@ def test_a_stopped_run_names_the_error_class_prints_no_continuation_and_exits_no
     running = RevalidationReport(**common)
     assert any("--after" in line for line in format_report(running, dry_run=False))
     assert exit_code(running) == 0
+
+
+def test_a_database_stop_says_the_listed_rows_were_examined_not_that_they_were_written() -> None:
+    """Level: the report's text (T673c). The report lists every row examined before the database
+    error, whatever its outcome: here one `stored`, one `still_quarantined` and one `inconclusive`,
+    which was not written at all. So the stop line says "examined", and says nothing about what
+    was written, the failing row included (a commit that raises leaves its state unknown). It
+    names no write either: the error may have come from the read that tells why a write was
+    refused. Contrast: the store stop, which fails on a read before any write for its row, still
+    says that row was not written."""
+    from aoe2stats_ingester.capture import RevalidationOutcome, RevalidationReport
+
+    when = datetime(2026, 9, 27, tzinfo=UTC)
+    outcomes = (
+        RevalidationOutcome(uuid.UUID(int=1), 1, 2, when, "stored"),
+        RevalidationOutcome(uuid.UUID(int=2), 3, 4, when, "still_quarantined", "PanicException: x"),
+        RevalidationOutcome(uuid.UUID(int=3), 5, 6, when, "inconclusive", "wall-clock cap"),
+    )
+    common: dict[str, Any] = {
+        "outcomes": outcomes,
+        "truncated": False,
+        "last_completed_at": when,
+        "last_capture_id": uuid.UUID(int=3),
+    }
+
+    lines = format_report(
+        RevalidationReport(**common, write_failed_by="OperationalError"), dry_run=False
+    )
+
+    [stop] = [line for line in lines if "STOPPED" in line]
+    assert "a database error stopped the run: OperationalError" in stop
+    assert "write" not in stop
+    assert "The rows listed above were examined" in stop
+    assert "written" not in stop
+    assert "no later row was examined" in stop
+    assert any(
+        "3 row(s) examined (inconclusive=1, still_quarantined=1, stored=1)" in line
+        for line in lines
+    )
+
+    [store_stop] = [
+        line
+        for line in format_report(
+            RevalidationReport(**common, aborted_by="ClientError"), dry_run=False
+        )
+        if "STOPPED" in line
+    ]
+    assert "The row it failed on was not written" in store_stop
 
 
 # --- The entry point, end to end (level: `main`) ---------------------------------------------
@@ -567,6 +621,45 @@ async def test_main_ends_non_zero_after_the_report_when_an_object_failed_its_int
     assert await _snapshot(db_session, capture_id) == before
 
 
+class _CancelledOnTheSecondGet(_GetOnlyStore):
+    async def get(self, key: str) -> bytes:
+        if self.gets:
+            raise asyncio.CancelledError
+        return await super().get(key)
+
+
+async def test_main_prints_no_report_for_a_page_that_is_interrupted(
+    db_session: AsyncSession,
+    database_url: str,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Level: `main` (T673c). Only the store stop and the database stop print the rows examined
+    so far. A cancellation at the second row's read-back, which is where an interrupt would
+    surface (no task is cancelled here), leaves `main` with nothing printed: the first row is
+    `stored` and no line says so. Contrast: the two stop tests below, which print it."""
+    store = _CancelledOnTheSecondGet({})
+    first = await _seed(db_session, store, 800_140)
+    await _seed(db_session, store, 800_141)
+    run = _ConfiguredByTheRun(store)
+
+    def _call() -> object:
+        try:
+            return main(
+                ["--limit", "5"],
+                _application_environment(database_url),
+                make_object_store=run.make_object_store,
+                make_validator=run.make_validator,
+            )
+        except BaseException as exc:
+            return exc
+
+    result = await asyncio.to_thread(_call)
+
+    assert isinstance(result, asyncio.CancelledError)
+    assert capsys.readouterr().out == ""
+    assert (await _snapshot(db_session, first))[0] == CaptureStatus.STORED
+
+
 class _TransportDownStore(_GetOnlyStore):
     async def get(self, key: str) -> bytes:
         raise ConnectionError("https://account.example/secret-path is unreachable")
@@ -597,14 +690,20 @@ async def test_main_stops_non_zero_on_a_store_error_and_prints_its_class_never_i
     assert await _snapshot(db_session, capture_id) == before
 
 
-async def test_main_stops_non_zero_on_a_failed_write_and_reports_the_rows_already_written(
+async def test_main_stops_non_zero_on_a_failed_write_and_reports_the_rows_already_examined(
     db_session: AsyncSession,
     database_url: str,
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Level: `main`. The second row's write fails; the first was written and is no longer
-    selected, so the report must still say so. The error's text (it carries SQL) never prints."""
+    """Level: `main`. The second row's write fails; the report of the row examined before it is
+    still printed. That row is `stored` here, and of the rows the command writes only a `stored`
+    one leaves the selection, so a re-run would not list it again. The error's text (it carries
+    SQL) never prints.
+
+    The stand-in replaces the whole write and raises before any statement runs, so the last
+    assertion holds for this stand-in only: it says nothing about a row whose real commit
+    raises."""
     from sqlalchemy.exc import OperationalError
 
     from aoe2stats_ingester.capture import CaptureDrain
@@ -637,6 +736,7 @@ async def test_main_stops_non_zero_on_a_failed_write_and_reports_the_rows_alread
     assert code == 1
     assert "1 row(s) examined (stored=1)" in out
     assert "STOPPED" in out and "OperationalError" in out
+    assert "The rows listed above were examined" in out
     assert "secret" not in out
     assert (await _snapshot(db_session, first))[0] == CaptureStatus.STORED
     assert await _snapshot(db_session, second) == before

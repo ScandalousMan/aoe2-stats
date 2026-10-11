@@ -1715,7 +1715,7 @@ T671 and T672 ship together; T673 follows once T672 is deployed.
       to the user, not decided here: whether a capture whose profile has no active link, or whose
       objecting user has left, is ever re-validated; and the same gap in the claim path for a
       `pending` row, which predates this branch
-- [ ] T673c Close #129's third review (`reviewer` REJECT 2026-10-11 on T673b; no wrong write and no
+- [x] T673c Close #129's third review (`reviewer` REJECT 2026-10-11 on T673b; no wrong write and no
       constitution finding. Verified and not to be re-checked: the ownership predicate at selection
       and in both writes, the refused-write outcome, the cursor on a stopped run, the schema's one
       active link per profile, and T713's premises). **The stop report says "written" for rows it

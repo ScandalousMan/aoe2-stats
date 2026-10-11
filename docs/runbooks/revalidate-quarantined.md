@@ -25,8 +25,7 @@ production, by hand.
   constitution IX). It checks that when the page is selected and again inside each write, because
   a user can object or unlink while a page is being validated. A profile with no active link is
   not taken, even if its former owner never objected; the dry run counts it as `(no active link)`.
-  Whether such a capture is ever re-validated is left to the user: the row and its object stay as
-  they are.
+  Such a capture is not selected (T673): the row and its object stay as they are.
 - It raises no alert. The row raised its `validation_failed` when it was first quarantined.
 
 ## Outcomes
@@ -40,8 +39,8 @@ One line per row examined:
 | `still_quarantined` | The engine failed again with an engine verdict; the new reason is printed.                                | yes, new `last_error`                          |
 | `inconclusive`      | Validation failed for a reason that is not the engine's verdict (the wall-clock cap, any other class).    | no; selected again on the next run             |
 | `integrity_failure` | The object is missing or no longer matches the row's `zip_sha256`. Evidence for a human, constitution IV. | no; the run ends **non-zero** after the report |
-| `changed_elsewhere` | Another process moved the row between selection and write.                                                | no                                             |
-| `ownership_changed` | The row is still `quarantined`, but its profile no longer has an active link whose user has not objected. | no                                             |
+| `changed_elsewhere` | The write matched no row, and the row was no longer `quarantined` when read back.                         | no                                             |
+| `ownership_changed` | The write matched no row, and the row was still `quarantined` when read back.                             | no                                             |
 
 If the object store fails in any other way (an outage, a denied request, a missing bucket) the run
 **stops** at that row, prints `STOPPED` and the error's class (never its text), writes nothing for
@@ -49,25 +48,37 @@ that row, and exits non-zero. Re-run once the store is reachable. If every row o
 `integrity_failure`, check the bucket name (`S3_BUCKET`) first: a wrong bucket answers "no such
 object" for every key, which is indistinguishable from objects that are really missing.
 
-A database error on a row's write also **stops** the run at that row. The report of the rows
-already written is printed first (they are no longer selected, so it is the only record of their
-count), then `STOPPED` and the error's class, never its text; the exit code is non-zero.
+A database error at a row's write step (the write itself, or the read that tells why a write was
+refused) also **stops** the run at that row. The report of the rows examined before it is printed
+first, whatever their outcome, then `STOPPED` and the error's class, never its text; the exit code
+is non-zero. Re-run: the row it failed on is not in the report, it is offered again if it is still
+`quarantined` (and its profile still has an active link whose user has not objected), and the
+totals reported may be short by that one row. Of the rows the command writes, only a `stored` one
+leaves the selection; a `still_quarantined` row keeps an engine verdict, which the selection still
+matches.
+
+Only those two stops keep the report. An interrupted page loses its report: an interrupt in the
+middle of a page (Ctrl-C, a closed terminal), or any other error that ends the run early, prints
+no report for the rows that page had already examined. Let a page finish, and keep it short with
+`--limit`.
 
 Exit codes: `0` when the run completed with no integrity failure on its page; `1` when the
 invocation was refused, when a row **on the page that ran** had an integrity failure (after the
-report), or when the store or a database write failed. A row beyond `--limit`, or before `--after`,
-is not on the page, so a run that does not include an integrity failure does not exit non-zero for
-it.
+report), or when the store failed or a database error stopped the run. A row beyond `--limit`, or
+before `--after`, is not on the page, so a run that does not include an integrity failure does not
+exit non-zero for it.
 
 ## The dry run counts what it does not select
 
-`--dry-run` lists the selection and also counts every other `quarantined` row, grouped by reason
-class: an exception class name (an identifier ending in `Error` or `Exception`, taken from before
-the first colon), the two `reclaim ...` texts, the wall-clock cap, `PanicException (archival
-objected)`, `(no committed object)` or `(no active link)` for engine rows the selection excludes,
-`other` for any other text, and `no reason recorded`. Counts and labels only; never a reason's
-text or an object key. A dry run reads the database, reads no object and writes nothing. Paste that block into the write-up this run belongs to: it is the measurement
-`docs/risks.md` still lacks.
+`--dry-run` lists the selection and also counts every other `quarantined` row, grouped by label:
+the text before the first colon when it is an identifier ending in `Error` or `Exception` (ASCII
+letters, digits and underscores, no dot: the shape of an exception class name, and any reason whose
+head has that shape is counted under it), the two `reclaim ...` texts, the wall-clock cap, the
+engine's class followed by `(archival objected)`, `(no committed object)` or `(no active link)` for
+engine rows the selection excludes (`PanicException (archival objected)`, for one), `other` for any
+other text, and `no reason recorded`. For those rows it prints counts under the labels, and no
+object key. A dry run reads the database, reads no object and writes nothing. Paste that block into
+the write-up this run belongs to: it is the measurement `docs/risks.md` still lacks.
 
 Two decisions this command does not make, and the dry run's count is what they wait on:
 
@@ -127,7 +138,8 @@ handing out `postgresql://` instead of `postgresql+psycopg://`, zsh globbing the
    Read the whole report. Paste the "outside the selection" block into the write-up.
 
 3. **Real run**, a bounded page at a time. The default `--limit` is 25 because one validation can
-   take up to its 30 s wall-clock cap:
+   take up to its 30 s wall-clock cap. After a row that ended `inconclusive` on that cap, the
+   command prints its report and does not exit until the abandoned validation thread ends:
 
    ```sh
    uv run python scripts/ops/revalidate_quarantined.py --limit 25

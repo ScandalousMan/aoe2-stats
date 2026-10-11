@@ -68,8 +68,9 @@ archival (`_owner_is_archiving`, which is `discover.archiving_links`'s set). Tha
 when the page is selected, and again inside the `WHERE` of each write, because a user can object or
 unlink while a page is being validated. It never reads from the provider, never writes or deletes an
 object, and raises no alert: the row already raised its `validation_failed` when it was first
-quarantined. A row is rewritten only with a reason the selection would still match; any other
-outcome leaves it untouched and is reported. See that method.
+quarantined. A row that validates is marked `stored`; one that fails is rewritten only with a
+reason the selection would still match, and any other failure leaves it untouched and is reported.
+See that method.
 
 **The per-user fairness cap is wired in here, not reimplemented here** (T058's own gap: `quota.py`
 shipped `apply_quota` fully tested in isolation, but nothing in this module ever called it, so
@@ -223,18 +224,21 @@ _READ_BACK_REASON_PREFIX = "reclaim could not read back"
 _CHECKSUM_REASON_PREFIX = "reclaim checksum mismatch"
 
 #: How many leading characters of `last_error` the dry run's grouping reads. Long enough for the
-#: longest fixed prefix and any exception class name; the rest of a reason is never loaded.
+#: longest fixed prefix and for the wall-clock cap's text, which is matched at both ends. A reason
+#: no longer than this is read whole; a longer one is cut here.
 _REASON_HEAD_CHARS = 120
 
-#: Why `revalidate_quarantined` reported a row as `changed_elsewhere`: its guarded write matched no
-#: row because the status was no longer `quarantined`.
-_CHANGED_ELSEWHERE = "the row was no longer quarantined when the result was written"
+#: The reason `revalidate_quarantined` reports with `changed_elsewhere`, which is what it observed:
+#: the guarded write matched no row, and the status read afterwards was not `quarantined`. Printed
+#: in the report, never stored on a row.
+_CHANGED_ELSEWHERE = (
+    "the guarded write matched no row, and the row was no longer quarantined when read back"
+)
 
-#: Why it reported a row as `ownership_changed`: the status was still `quarantined`, so the
-#: ownership predicate in the write's `WHERE` is what refused it.
+#: The reason it reports with `ownership_changed`: the guarded write matched no row, and the
+#: status read afterwards was still `quarantined`. Printed in the report, never stored on a row.
 _OWNERSHIP_CHANGED = (
-    "the profile no longer has an active link whose user has not objected "
-    "when the result was written"
+    "the guarded write matched no row, and the row was still quarantined when read back"
 )
 
 #: `alerts.kind` for `_classify_not_found`'s `expired` conclusion (`AlertKind.EXPIRED_CAPTURE` in
@@ -369,8 +373,8 @@ def _owner_is_archiving() -> ColumnElement[bool]:
     Stricter than the claim's `_objecting_owner_exists`, which excludes only a *found* objection:
     a profile with no active link (an objector who has since unlinked it, or one nobody holds) is
     not taken here. A quarantined capture is not an archived one (001's spec), so the carve-out
-    for recordings archived before an objection does not cover it. Until the user rules on a
-    capture without an active owner, it is left as it is, with its object.
+    for recordings archived before an objection does not cover it. A capture without an active
+    owner is not selected (T673); the row and its object stay as they are.
     """
     return ReplayCapture.profile_id.in_(archiving_links())
 
@@ -388,18 +392,23 @@ def _revalidation_selection() -> ColumnElement[bool]:
     )
 
 
-_REASON_HEAD_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_.]*")
+_REASON_HEAD_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _CLASS_NAME_SUFFIXES = ("Error", "Exception")
 
 
 def _reason_class(reason: str | None, *, has_object: bool, objecting: bool, archiving: bool) -> str:
-    """The class a quarantined row outside the selection is counted under in a dry run: a label,
-    never a value. A closed vocabulary, so that a free-text reason can never become a label:
+    """The label a quarantined row outside the selection is counted under in a dry run. A label is
+    one of three things:
 
-    - the fixed labels: `no reason recorded`, the two reclaim prefixes, `wall-clock cap`;
-    - the head of the reason (the text before the first colon) when it is an identifier ending in
-      `Error` or `Exception`, which is how the barrier writes a class name;
-    - `other` for everything else, including an identifier that is not a class name.
+    - a fixed label: `no reason recorded`, the two reclaim prefixes, `wall-clock cap`;
+    - the head of the reason (the text before the first colon, or all of it when it has none)
+      when it is an identifier ending in `Error` or `Exception`: ASCII letters, digits and
+      underscores, no dot. `_validate_with_barrier` writes a class as `type(exc).__name__`, a
+      bare name with no module path;
+    - `other` for everything else, including an identifier without that ending and a dotted name.
+
+    The head is matched on its shape, not against a list of classes: a reason whose head has that
+    shape is counted under that head, whoever wrote it.
 
     An engine failure row outside the selection gets its reason: `(archival objected)`
     (an active owner objected), `(no committed object)` or `(no active link)` (nobody holds the
@@ -438,10 +447,10 @@ def _reason_class(reason: str | None, *, has_object: bool, objecting: bool, arch
 #:   it; nothing was written and `reason` is reported;
 #: - `integrity_failure`: the object is missing or no longer matches the row's `zip_sha256`;
 #:   nothing was written;
-#: - `changed_elsewhere`: another process moved the row first; nothing was written;
-#: - `ownership_changed`: the row is still `quarantined` but its profile no longer has an active
-#:   link whose user has not objected (the owner objected or unlinked while the page was being
-#:   validated), so the guarded write refused it; nothing was written.
+#: - `changed_elsewhere`: the guarded write matched no row, and the row was no longer
+#:   `quarantined` when read back;
+#: - `ownership_changed`: the guarded write matched no row, and the row was still `quarantined`
+#:   when read back.
 RevalidationOutcomeKind = Literal[
     "selected",
     "stored",
@@ -479,16 +488,18 @@ class RevalidationReport:
     last_completed_at: datetime | None
     last_capture_id: uuid.UUID | None = None
     #: A dry run only: how many `quarantined` rows lie outside the selection, by `_reason_class`.
-    #: Counts under labels, no values. `None` for a real run.
+    #: Counts under `_reason_class`'s labels. `None` for a real run.
     unselected_by_reason: tuple[tuple[str, int], ...] | None = None
     #: The class name (never its text) of the store error that stopped the run, else `None`. Only
     #: a missing object and a checksum mismatch are per-row outcomes; anything else the store
     #: raises says nothing about the row, so the run stops with that row unwritten.
     aborted_by: str | None = None
-    #: The class name (never its text) of the database error that stopped the run on one row's
-    #: write, else `None`. `outcomes` holds the rows written before it, whose count is otherwise
-    #: unrecoverable because they are no longer selected; the failing row is not among them, and
-    #: no later row was examined.
+    #: The class name (never its text) of the database error that stopped the run at one row,
+    #: else `None`. `revalidate_quarantined`'s **Stops** paragraph says which statements it
+    #: covers, and they are not all writes, whatever this field's name says. `outcomes` holds the
+    #: rows examined before it, whatever their outcome; the failing row is not among them, and no
+    #: later row was examined. Of the rows the run wrote, only a `stored` one has left the
+    #: selection.
     write_failed_by: str | None = None
 
     @property
@@ -868,7 +879,9 @@ class CaptureDrain:
         row's own `profile_id`, for the *currently active* link's owner having objected,
         `profile_links.unlinked_at IS NULL AND users.archival_objected_at IS NOT NULL`, joined the
         same way discovery joins it (`profile_links` to `users`), and shared with
-        `revalidate_quarantined`'s selection — and this claim excludes exactly the rows it matches.
+        `_count_unselected`, which labels a dry run's unselected rows with it, and with nothing
+        else: `revalidate_quarantined`'s selection and writes use a stricter predicate of their
+        own. This claim excludes exactly the rows it matches.
         Phrased as an exclusion, not `_archiving_profile_ids()`'s own inclusion, on purpose: that
         method's query only ever runs over profiles discovery already knows are linked, so "no
         active link" never arises there, but `replay_captures` carries rows with no such context at
@@ -1113,9 +1126,9 @@ class CaptureDrain:
         user has not objected (`_owner_is_archiving`; a quarantined capture is not an archived
         one, so 001's carve-out for what was archived before an objection does not reach it). That
         is checked when the page is selected and again in each write's `WHERE`. A profile with no
-        active link is not taken, even if its former owner never objected: until the user rules on
-        such a capture it is left as it is, and the dry run counts it. An integrity quarantine, a
-        timeout and a `MalformedArchiveError` are outside the selection.
+        active link is not taken, even if its former owner never objected: the row and its object
+        stay as they are, and the dry run counts it. An integrity quarantine, a timeout and a
+        `MalformedArchiveError` are outside the selection.
         Ordered by `(matches.completed_at, capture id)`, oldest recording first: an ordering, and
         nothing more is claimed for it. At most `limit` rows; `after` is the report's `cursor`, a
         `(completed_at, id)` pair compared exclusively as a row against that same key. The id is
@@ -1140,15 +1153,21 @@ class CaptureDrain:
           be offered again.
 
         Both writes (the stored write and the quarantine write) are guarded in their own `WHERE`
-        on the row still being `quarantined` and on `_owner_is_archiving`. A row another process
-        changed meanwhile is `changed_elsewhere`; one whose owner objected or unlinked meanwhile is
-        `ownership_changed`; both are unwritten. A database error on a write stops the run at that
-        row (`write_failed_by`, the error's class only), with the report of the rows already
-        written, since those are no longer selected and their count could not be recovered
-        otherwise. A stored row is no longer selected; a row that fails again with an engine
-        verdict is rewritten with that verdict, and one that ends `inconclusive`,
-        `integrity_failure` or `ownership_changed` is exactly as it was (the last is selected next
-        run only if its profile is again owned by a user who has not objected).
+        on the row still being `quarantined` and on `_owner_is_archiving`. When a guarded write
+        matches no row, the row's status is read back: no longer `quarantined` is
+        `changed_elsewhere`, still `quarantined` is `ownership_changed`; this run wrote nothing to
+        either. Of the rows this method writes, only a `stored` one leaves the selection: a row
+        that fails again with an engine verdict is rewritten with that verdict, which the
+        selection still matches, and this run wrote nothing to one that ends `inconclusive`,
+        `integrity_failure` or `ownership_changed`.
+
+        **Stops.** Two errors end the run early and still return the report of the rows examined
+        before them, whatever their outcome: a store error that is not an integrity outcome
+        (`aborted_by`), and a `SQLAlchemyError` raised while a row is written or a refused write is
+        classified (`write_failed_by`, the error's class only). The row either one stopped on is
+        not in the report. The loop catches nothing else: a cancellation (an interrupt in the
+        middle of a page), or any other exception that reaches it, leaves this method with no
+        report at all, the rows already examined included.
 
         `dry_run` reads the database only: it lists the selection (outcome `selected`), reads no
         object, validates nothing and writes nothing, and counts the `quarantined` rows outside it
@@ -1204,9 +1223,10 @@ class CaptureDrain:
                     break
                 except SQLAlchemyError as exc:
                     # Only the row's write (or the read that classifies a refused one) reaches
-                    # the database here. Stop at this row and keep the report so far: the rows
-                    # written before it are no longer selected, so their count would be lost
-                    # with the exception. The class name only; the text carries SQL.
+                    # the database here. Stop at this row and return the rows examined before
+                    # it, as the store stop does: one already marked `stored` is not selected
+                    # again, so no later report would list it. The class name only; the text
+                    # carries SQL. Only these two errors are caught; a cancellation is not.
                     write_failed_by = type(exc).__name__
                     break
             outcomes.append(
@@ -1230,9 +1250,10 @@ class CaptureDrain:
         )
 
     async def _count_unselected(self, session: AsyncSession) -> tuple[tuple[str, int], ...]:
-        """`quarantined` rows outside `_revalidation_selection`, counted by `_reason_class`. Only
-        the head of each `last_error` is read (a class name or a fixed prefix), never a whole
-        reason: an engine panic's text can run to a backtrace."""
+        """`quarantined` rows outside `_revalidation_selection`, counted by `_reason_class`. The
+        first `_REASON_HEAD_CHARS` characters of each `last_error` are read: the whole reason when
+        it is that short, and a cut one otherwise (an engine panic's text can run to a
+        backtrace)."""
         # `coalesce`: a NULL `last_error` makes the selection NULL, and NOT NULL is NULL, which
         # would drop exactly the rows with no reason from the count.
         outside = ~func.coalesce(_revalidation_selection(), false())
@@ -1292,9 +1313,9 @@ class CaptureDrain:
         return await self._why_not_written(capture_id)
 
     async def _why_not_written(self, capture_id: uuid.UUID) -> tuple[RevalidationOutcomeKind, str]:
-        """A guarded write matched no row: say which guard refused it. A row no longer
-        `quarantined` was moved by another process (`changed_elsewhere`); one still `quarantined`
-        can only have been refused by the ownership predicate (`ownership_changed`)."""
+        """A guarded write matched no row: read the row's status afterwards and report
+        `ownership_changed` when it is still `quarantined`, `changed_elsewhere` otherwise. The
+        read comes after the write, so it does not establish which guard refused it."""
         async with self._session_factory() as session:
             status = await session.scalar(
                 select(ReplayCapture.status).where(ReplayCapture.id == capture_id)

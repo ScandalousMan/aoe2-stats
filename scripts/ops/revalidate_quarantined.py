@@ -28,27 +28,32 @@ NULL`, constitution IX), and checks that twice: when the page is selected and ag
 write, because a user can object or unlink while a page is being validated. A profile with no
 active link is not taken, even if its former owner never objected; that is the same set as
 `archiving_links` in `apps/ingester/src/aoe2stats_ingester/discover.py`, and stricter than the
-capture claim, which excludes only a found objection. Whether such a capture is ever re-validated
-is left to the user; the row and its object stay as they are. It raises no `validation_failed`
-alert; the row raised one when it was first quarantined.
+capture claim, which excludes only a found objection. Such a capture is not selected (T673), and
+the row and its object stay as they are. It raises no `validation_failed` alert; the row raised
+one when it was first quarantined.
 
 **Outcomes** (one line per row): `stored`, `still_quarantined` (a new engine verdict, written),
 `inconclusive` (validation failed for a reason that is not the engine's verdict, e.g. the
 wall-clock cap: nothing is written, the reason is printed, and the row is selected again next run),
 `integrity_failure` (the object is missing or no longer matches the row's `zip_sha256`: nothing is
-written), `changed_elsewhere` (another process moved the row first: nothing is written) and
-`ownership_changed` (the row is still quarantined but its profile no longer has an active link
-whose user has not objected: nothing is written).
+written), `changed_elsewhere` (the write matched no row, and the row was no longer `quarantined`
+when read back) and `ownership_changed` (the write matched no row, and the row was still
+`quarantined` when read back).
 
-A database error on a row's write stops the run at that row: the report of the rows already
-written is printed, with the error's class (never its text), and the exit code is 1.
+Two errors stop the run at a row and still print the report of the rows examined before it,
+whatever their outcome, then the error's class (never its text), with exit code 1: a store error
+that is neither a missing object nor a checksum mismatch, and a database error at a row's write
+step (the write itself, or the read that tells why a write was refused).
+Of the rows this command writes, only a `stored` one leaves the selection; a `still_quarantined`
+row keeps an engine verdict, which the selection still matches. Nothing else keeps the report:
+anything else that ends a page early, an interrupt included, prints no report for it.
 
 **Dry run first.** `--dry-run` reads the database, reads no object and writes nothing. It lists the
 selection (game, profile, recording date) and counts the `quarantined` rows it does not select,
-grouped by reason class: an exception class name (an identifier ending in `Error` or `Exception`,
-before the first colon), the reclaim texts, the wall-clock cap, or `other`; an engine row outside
-the selection is labelled `(archival objected)`, `(no committed object)` or `(no active link)`.
-Counts only, never a reason's text or an object key.
+grouped by label: the text before the first colon when it is an identifier ending in `Error` or
+`Exception` (no dot), the reclaim texts, the wall-clock cap, `no reason recorded`, or `other`; an
+engine row outside the selection is labelled `(archival objected)`, `(no committed object)` or
+`(no active link)`. For those rows it prints counts under the labels, and no object key.
 
 **Bounded and resumable.** At most `--limit` rows per run (default 25: a validation can take up to
 its 30 s wall-clock cap, and this runs from a terminal). When more remain, the report prints the
@@ -84,7 +89,7 @@ Exit: 0 when the run completed and no row had an integrity failure; 1 when the i
 refused (a missing or invalid environment variable, an `--after` that is not `<timestamp with
 offset>,<capture id>`, a `--limit` below 1), when a row's object was missing or did not match its
 checksum (after the report is printed), when the object store failed in any other way, or when a
-database write failed (the run stops there, after the report, with that row unwritten).
+database error stopped the run (at that row, after the report of the rows before it is printed).
 """
 
 from __future__ import annotations
@@ -281,9 +286,9 @@ def format_report(report: RevalidationReport, *, dry_run: bool) -> list[str]:
         )
     if report.write_failed_by is not None:
         lines.append(
-            f"revalidate-quarantined: STOPPED: a database write failed with "
-            f"{report.write_failed_by}. The rows listed above were written; the row it failed on "
-            "was not confirmed written and no later row was examined."
+            f"revalidate-quarantined: STOPPED: a database error stopped the run: "
+            f"{report.write_failed_by}. The rows listed above were examined before it; the row "
+            "it failed on is not listed and no later row was examined."
         )
     cursor = report.cursor
     stopped = report.aborted_by is not None or report.write_failed_by is not None
@@ -308,9 +313,9 @@ def format_report(report: RevalidationReport, *, dry_run: bool) -> list[str]:
 
 
 def exit_code(report: RevalidationReport) -> int:
-    """1 when the report holds an integrity failure, the store failed or a database write failed;
-    the report is already printed, because what was found is what the operator needs. An integrity
-    failure is in the report only if its row was on the page that ran."""
+    """1 when the report holds an integrity failure, the store failed or a database error stopped
+    the run; the report is already printed, because what was found is what the operator needs. An
+    integrity failure is in the report only if its row was on the page that ran."""
     integrity = any(o.outcome == "integrity_failure" for o in report.outcomes)
     stopped = report.aborted_by is not None or report.write_failed_by is not None
     return 1 if integrity or stopped else 0
