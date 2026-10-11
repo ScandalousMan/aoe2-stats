@@ -1106,12 +1106,12 @@ class CaptureDrain:
 
     @staticmethod
     def _revalidation_missing_reason(object_key: str) -> str:
-        """`integrity_failure`'s reason for a missing object: printed, never stored."""
+        """`integrity_failure`'s reason for a missing object: reported, never stored."""
         return f"the object store answered that no object exists under {object_key!r}"
 
     @staticmethod
     def _revalidation_mismatch_reason(object_key: str, expected: str, actual: str) -> str:
-        """`integrity_failure`'s reason for a checksum mismatch: printed, never stored."""
+        """`integrity_failure`'s reason for a checksum mismatch: reported, never stored."""
         return (
             f"the object under {object_key!r} does not match the row's checksum: "
             f"row records {expected}, object store holds {actual}"

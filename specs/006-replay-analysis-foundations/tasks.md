@@ -1868,7 +1868,7 @@ carries what T673's dry run read.
       nothing, so say it is reported and never stored. **Left as they are:**
       `only_integrity_is_per_row` choosing wording as well as control flow, and the empty branch of
       `_stopped_row_text`.
-- [ ] T673f Follow-ups from #129's sixth review (`reviewer` APPROVE 2026-10-11, on T673e's delta
+- [x] T673f Follow-ups from #129's sixth review (`reviewer` APPROVE 2026-10-11, on T673e's delta
       alone; none blocks the merge or the operator's run). Sentences and one assertion, no
       executable statement. **Re-running after a stop:** under both stops
       `docs/runbooks/revalidate-quarantined.md` says the fix is "followed by a re-run without
