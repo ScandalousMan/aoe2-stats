@@ -290,8 +290,9 @@ def build_arg_parser(*, exit_on_error: bool = True) -> argparse.ArgumentParser:
 
 #: The two outcomes that write nothing and whose reason can differ from row to row (the object's
 #: key and checksums, or the validation's failure text; an `inconclusive` from the wall-clock cap
-#: and an exception with no message each report one fixed text, so it is "can", not "does"). The
-#: reason is stored nowhere, so a reason cut here is lost and they are printed whole.
+#: reports one fixed text, and an exception of one class with no message reports its bare class
+#: name, so it is "can", not "does"). The reason is stored nowhere, so a reason cut here is lost
+#: and they are printed whole.
 #: `changed_elsewhere` and `ownership_changed` write nothing either; what always holds for that
 #: pair is that its reason is one fixed text, the same for every row. A `still_quarantined` reason
 #: can differ from row to row too (or repeat an engine verdict), but the row holds it in full, so

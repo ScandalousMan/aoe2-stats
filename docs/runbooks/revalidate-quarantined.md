@@ -78,14 +78,14 @@ first row it writes, if a row past the stopped one reaches a write (an `inconclu
 `integrity_failure` row needs no write). A run whose rows all needed no write, like one that
 selected none (the stopped row was the last one selected, so it reports that it examined nothing),
 ends without a stop line, with the failure still there: it exits 0, or 1 if it listed an
-`integrity_failure`. A run that wrote nothing shows nothing about the failure. The thing to fix is
-the database, followed by a re-run of the first command that failure stopped, with the `--after`
+`integrity_failure`. A run that reached no write shows nothing about the failure. The thing to fix
+is the database, followed by a re-run of the first command that failure stopped, with the `--after`
 that command was given, if any. The re-run starts where that command started, so a row before the
 stop that is still in the selection is offered again: the re-run lists it when its page reaches it,
 and totals summed over the command and its re-run count it twice. A row that has entered the
 selection ahead of it since can push it past `--limit`. A run in between can list `inconclusive` and
 `integrity_failure` rows before it stops, since those need no write, and the re-run lists those
-again when its page reaches them.
+again, if they are still in the selection, when its page reaches them.
 
 Only those two stops keep the report. An interrupted page loses its report: an interrupt in the
 middle of a page (Ctrl-C, a closed terminal), or any other error that ends the run early, prints

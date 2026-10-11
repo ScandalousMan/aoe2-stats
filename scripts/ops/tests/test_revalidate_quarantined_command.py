@@ -371,22 +371,25 @@ def test_neither_after_text_offers_the_previous_runs_value_after_a_stop_and_both
     value a "more candidates remain" line prints is still the one to copy for a page."""
     out = _after_texts(capsys)[text]
 
-    assert _sentences_offering_a_printed_value_unqualified(out) == []
+    assert _clauses_saying_copy_or_printed_without_the_continuation_line(out) == []
     assert "more candidates remain" in out
     assert _RUNBOOK in out
 
 
-def _sentences_offering_a_printed_value_unqualified(text: str) -> list[str]:
-    """The sentences of `text` (split where the texts are built, on `. ` and `;`) that send the
-    operator to something a run printed or to copy, without naming the "more candidates remain"
-    line. After a stop that is the stop line's value, which excludes the stopped row; the one
-    printed value an operator may copy for a page is the continuation line's."""
-    sentences = re.split(r";\s+|\.\s+", " ".join(text.split()))
+def _clauses_saying_copy_or_printed_without_the_continuation_line(text: str) -> list[str]:
+    """The clauses of `text`, split where the texts are built (on `;` and on `. `), that say
+    "copy", "printed" or "prints" in any case without naming the "more candidates remain" line.
+    After a stop, a value a run printed is the stop line's, which excludes the stopped row; the one
+    printed value an operator may copy for a page is the continuation line's.
+
+    It finds no offer worded with "output" or "shows", and none joined to its qualifier by a comma
+    (the qualifier then sits in the same clause); it checks those three words, nothing wider."""
+    clauses = re.split(r";\s+|\.\s+", " ".join(text.split()))
     return [
-        sentence
-        for sentence in sentences
-        if re.search(r"\bcopy\b|\bprint(?:ed|s)\b", sentence)
-        and "more candidates remain" not in sentence
+        clause
+        for clause in clauses
+        if re.search(r"\bcopy\b|\bprint(?:ed|s)\b", clause, re.IGNORECASE)
+        and "more candidates remain" not in clause
     ]
 
 
@@ -397,19 +400,25 @@ def _sentences_offering_a_printed_value_unqualified(text: str) -> list[str]:
         "copy the value the last run printed",
         "use what the run printed; after a stop, see the runbook",
         "resume after this row. Copy the value printed above",
+        # The `copy` arm alone, at a clause's start, in a capital (no "printed" anywhere).
+        "resume here. Copy the stop line's value",
+        # The `prints` arm alone.
+        "give the value the stop line prints",
     ],
 )
-def test_the_sentence_check_finds_an_offer_of_a_printed_value_whatever_its_wording(
+def test_the_clause_check_finds_a_clause_saying_copy_printed_or_prints_in_any_case(
     offer: str,
 ) -> None:
-    """The check asserts the absence of a shape, not of one wording: "the last run printed" is
-    found as well as "the previous run printed"."""
-    assert _sentences_offering_a_printed_value_unqualified(offer) != []
+    """A clause with "copy", "printed" or "prints" in any case and without the "more candidates
+    remain" line is found: "the last run printed" as well as "the previous run printed", and a
+    "Copy" at a clause's start. An offer worded with "output" or "shows", or joined to its
+    qualifier by a comma, is not found."""
+    assert _clauses_saying_copy_or_printed_without_the_continuation_line(offer) != []
 
 
-def test_the_sentence_check_passes_the_continuation_lines_value_and_the_runbook_pointer() -> None:
+def test_the_clause_check_passes_the_continuation_lines_value_and_the_runbook_pointer() -> None:
     assert (
-        _sentences_offering_a_printed_value_unqualified(
+        _clauses_saying_copy_or_printed_without_the_continuation_line(
             "copy the value a 'more candidates remain' line printed; after a stop, "
             f"{_RUNBOOK} says which value to give"
         )
@@ -417,15 +426,28 @@ def test_the_sentence_check_passes_the_continuation_lines_value_and_the_runbook_
     )
 
 
-def test_the_runbook_path_survives_the_rendered_help_at_any_terminal_width(
+# argparse's help column starts 26 characters in from the terminal width: the formatter's width is
+# COLUMNS - 2, and the help text starts at column 24 (`max_help_position`, in force from COLUMNS
+# 46 up), so the text gets COLUMNS - 26 characters.
+_HELP_COLUMN_OFFSET = 26
+# The path is 39 characters long, so it fits a help line from COLUMNS = 26 + 39 = 65 up.
+_NARROWEST_WIDTH_THE_PATH_FITS = _HELP_COLUMN_OFFSET + len(_RUNBOOK)
+
+
+def test_the_runbook_path_survives_the_rendered_help_at_any_terminal_width_it_can_fit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """argparse wraps on hyphens, so `docs/runbooks/revalidate-` and `quarantined.md` landed on
     two lines of the rendered help while the raw help text, which the test above reads, was whole.
-    The path has to be whole in `format_help()`, which is what the operator reads. (Below about
-    66 columns the help column is narrower than the path, and any wrapping must cut it.)"""
+    The path has to be whole in `format_help()`, which is what the operator reads.
+
+    The sweep starts at 65 columns, measured: the path is whole at 65 and cut at 64. It follows
+    from two numbers: the help column is 26 narrower than the terminal (the formatter's width is
+    COLUMNS - 2 and the help text starts at column 24), and the path is 39 characters long. Below
+    65 columns the help column is narrower than the path, and any wrapping must cut it."""
+    assert _NARROWEST_WIDTH_THE_PATH_FITS == 65
     broken = []
-    for columns in range(70, 201):
+    for columns in range(_NARROWEST_WIDTH_THE_PATH_FITS, 201):
         monkeypatch.setenv("COLUMNS", str(columns))
         if _RUNBOOK not in build_arg_parser().format_help():
             broken.append(columns)
@@ -1278,7 +1300,10 @@ async def test_a_database_stop_followed_by_rows_that_need_no_write_does_not_stop
         calls["n"] += 1
         raise OperationalError("UPDATE t SET x = 1", {}, Exception("x"))
 
+    # The two writes a row can take: `stored` and `still_quarantined`. The counter at 1 after the
+    # first run means exactly one write was reached, the stopped row's.
     monkeypatch.setattr(CaptureDrain, "_mark_stored", _every_write_fails)
+    monkeypatch.setattr(CaptureDrain, "_mark_quarantined", _every_write_fails)
     run = _ConfiguredByTheRun(store)
     first = await asyncio.to_thread(
         main,

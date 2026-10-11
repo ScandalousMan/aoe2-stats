@@ -1980,7 +1980,7 @@ carries what T673's dry run read.
       needle:** `"previous run printed" not in out` passes against "the last run printed". Assert
       the absence of the shape, not of one wording: no sentence in either text offers a run's
       printed value without naming the "more candidates remain" line
-- [ ] T673j Close #133's second review (`reviewer` REJECT 2026-10-11 on T673i's delta alone; two
+- [x] T673j Close #133's second review (`reviewer` REJECT 2026-10-11 on T673i's delta alone; two
       tests that stay green without the behaviour they are named for, one runbook sentence false in
       the runbook's own vocabulary, and four that do not block; closed in #133 as the user chose for
       T673i). **The no-write test patches one write of two:** `_every_write_fails` in
