@@ -1906,6 +1906,38 @@ carries what T673's dry run read.
       the run found; put both properties in the head. **Two more "Printed":** the comments above
       the two refused-write reason constants in `apps/ingester/src/aoe2stats_ingester/capture.py`
       say "Printed in the report", and that module prints nothing. Say "Reported"
+- [ ] T673h Follow-ups from #132's second review (`reviewer` APPROVE 2026-10-11 on T673g; none
+      blocks the merge; filed by the user's decision the same day). The first two concern an
+      operator, and #132 changed neither sentence. Its own branch and pull request. **The `--after`
+      help after a stop:** the option's help and `_cursor`'s refusal text in
+      `scripts/ops/revalidate_quarantined.py` both say "copy the value the previous run printed".
+      After a stop, the only `--after` value the previous run printed is the stop line's, which
+      excludes the stopped row, where `docs/runbooks/revalidate-quarantined.md` names the `--after`
+      the first stopped command was given. Both texts are string literals, so this item is an
+      executable change and not a sentence: reword both so that neither offers the previous run's
+      value for the case of a stop, and name the runbook for that case. A test in
+      `scripts/ops/tests/test_revalidate_quarantined_command.py` that quotes either text moves with
+      it. **A stop at the last selected row:** under both stops the runbook says the next run stops
+      again while the failure lasts. Read on 2026-10-11 and not verified by a test: when the stopped
+      row is the last one selected, a run given the stop line's value selects no row, reports that
+      it examined nothing and exits 0, with the failure still there. Pin that with a test of the
+      command; it is expected to pass as written, so say in the hand-back what it was run against.
+      Then qualify both sentences: the next run stops again if a row lies past the stopped one, and
+      a run that examined nothing shows nothing about the failure. **The repeated rows:** T673g's
+      sentence under both stops says totals summed "over both runs" count a repeated row twice, and
+      that the row "is examined". Under the database stop a run in between can list `inconclusive`
+      and `integrity_failure` rows before it stops, and the re-run lists those again when its page
+      reaches them; and a row that enters the selection ahead of a repeated row can push it past
+      `--limit`. Name the two runs as the command and its re-run, say the row is offered again, and
+      say a row a run in between listed is listed again. **What separates the two whole-reason
+      outcomes:** `_WHOLE_REASON_OUTCOMES`'s comment separates them from the refused-write pair by
+      "carries what the run found", and the comment above the `changed_elsewhere` reason in
+      `apps/ingester/src/aoe2stats_ingester/capture.py` calls that reason "what it observed". The
+      difference is that a refused-write reason is one fixed text, the same for every row; say that.
+      "Shorter than the cut" is asserted by no test: assert it or cut it. **T673g's count:** its
+      entry and its commit say four outcomes write nothing, which counts a real run's; `selected`,
+      the dry run's outcome, writes nothing either. Amend the entry to say four of a real run's
+      outcomes, dated
 - [ ] T713 Stop the claim from taking a capture whose profile has no active link (filed 2026-10-11
       from T673b; decided by the user the same day). `CaptureDrain._claim_batch` in
       `apps/ingester/src/aoe2stats_ingester/capture.py` excludes a row only when
