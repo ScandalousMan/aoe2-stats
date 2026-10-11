@@ -740,3 +740,250 @@ async def test_main_stops_non_zero_on_a_failed_write_and_reports_the_rows_alread
     assert "secret" not in out
     assert (await _snapshot(db_session, first))[0] == CaptureStatus.STORED
     assert await _snapshot(db_session, second) == before
+
+
+# === T673d: remediation of #129's fourth review ================================================
+
+_REALISTIC_KEY = "replays/511523321/12345678.zip"
+
+
+async def test_a_checksum_mismatch_line_for_a_realistic_key_carries_both_checksums(
+    db_session: AsyncSession, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    """Level: the printed line. `integrity_failure` writes nothing, so its reason exists nowhere
+    else; it is printed whole. With an ordinary object key the reason is longer than the width a
+    stored reason is cut at, and the checksum the object store holds, the one that lets the
+    operator tell corruption from a wrong record, comes last."""
+    store = _GetOnlyStore({})
+    capture_id = await _seed(db_session, store, 800_200)
+    row = await db_session.get(ReplayCapture, capture_id)
+    assert row is not None
+    row.object_key = _REALISTIC_KEY
+    await db_session.commit()
+    store.objects[_REALISTIC_KEY] = b"drifted"
+
+    report = await revalidate(session_factory, object_store=store, validator=_Opens(), limit=5)
+
+    [line] = [
+        line
+        for line in format_report(report, dry_run=False)
+        if line.startswith("integrity_failure")
+    ]
+    recorded, held = hashlib.sha256(_BODY).hexdigest(), hashlib.sha256(b"drifted").hexdigest()
+    assert _REALISTIC_KEY in line
+    assert recorded in line and held in line
+    assert line.endswith(held)
+    assert len(report.outcomes[0].reason or "") > 160  # longer than the cut a stored reason gets
+
+
+def test_only_a_reason_that_is_stored_elsewhere_is_cut_and_the_two_that_are_not_are_whole() -> None:
+    """Contrast for the test above: a `still_quarantined` reason longer than the width is still
+    cut (the row holds it in full), while an `inconclusive` one, which is not written anywhere,
+    is printed whole. All of them stay one printable ASCII line."""
+    from aoe2stats_ingester.capture import RevalidationOutcome, RevalidationReport
+
+    when = datetime(2026, 9, 27, tzinfo=UTC)
+    long_reason = "EngineParseError: " + "y" * 400 + "\x1b[1m END"
+    outcomes = tuple(
+        RevalidationOutcome(uuid.UUID(int=n), n, n + 1, when, kind, long_reason)  # type: ignore[arg-type]
+        for n, kind in enumerate(("still_quarantined", "inconclusive", "integrity_failure"), 1)
+    )
+    report = RevalidationReport(
+        outcomes=outcomes, truncated=False, last_completed_at=when, last_capture_id=uuid.UUID(int=3)
+    )
+
+    cut, inconclusive, integrity, *_ = format_report(report, dry_run=False)
+
+    assert cut.endswith("...") and "END" not in cut
+    assert inconclusive.endswith("END") and integrity.endswith("END")
+    assert "\x1b" not in "".join([cut, inconclusive, integrity])
+    assert all("\n" not in line for line in (cut, inconclusive, integrity))
+
+
+def test_a_dry_runs_summary_says_selected_where_no_object_was_read() -> None:
+    from aoe2stats_ingester.capture import RevalidationOutcome, RevalidationReport
+
+    when = datetime(2026, 9, 27, tzinfo=UTC)
+    report = RevalidationReport(
+        outcomes=(RevalidationOutcome(uuid.UUID(int=1), 1, 2, when, "selected"),),
+        truncated=False,
+        last_completed_at=when,
+        last_capture_id=uuid.UUID(int=1),
+    )
+
+    dry = format_report(report, dry_run=True)
+    real = format_report(report, dry_run=False)
+
+    assert any("1 row(s) selected (selected=1)" in line for line in dry)
+    assert not any("examined" in line for line in dry)
+    assert any("1 row(s) examined (selected=1)" in line for line in real)
+
+
+def test_a_run_that_does_not_stop_prints_no_stop_line_and_a_stopped_one_no_continuation() -> None:
+    """Contrast for the two stop tests below: the same report without a stop has no `STOPPED`
+    line and names no stopped row; with a stop, the `--after` it prints starts past the stopped
+    row, and the "more candidates remain" continuation is not printed."""
+    from aoe2stats_ingester.capture import (
+        RevalidationOutcome,
+        RevalidationReport,
+        RevalidationStop,
+    )
+
+    when = datetime(2026, 9, 27, tzinfo=UTC)
+    common: dict[str, Any] = {
+        "outcomes": (RevalidationOutcome(uuid.UUID(int=1), 1, 2, when, "stored"),),
+        "truncated": True,
+        "last_completed_at": when,
+        "last_capture_id": uuid.UUID(int=1),
+    }
+    stop = RevalidationStop(uuid.UUID(int=2), 3, 4, when + timedelta(hours=1))
+
+    running = format_report(RevalidationReport(**common, stopped_row=None), dry_run=False)
+    assert not any("STOPPED" in line or "starts past" in line for line in running)
+    assert any("more candidates remain" in line for line in running)
+
+    for field in ("aborted_by", "write_failed_by"):
+        lines = format_report(
+            RevalidationReport(**common, stopped_row=stop, **{field: "SomeError"}), dry_run=False
+        )
+        [line] = [line for line in lines if "STOPPED" in line]
+        assert "game 3, profile 4, recorded 2026-09-27T01:00:00+00:00" in line
+        assert f"--after 2026-09-27T01:00:00+00:00,{uuid.UUID(int=2)} starts past" in line
+        assert not any("more candidates remain" in line for line in lines)
+
+
+class _FailsOnOneKey(_GetOnlyStore):
+    def __init__(self, objects: dict[str, bytes], *, fail_on: str) -> None:
+        super().__init__(objects)
+        self._fail_on = fail_on
+
+    async def get(self, key: str) -> bytes:
+        if key == self._fail_on:
+            self.gets.append(key)
+            raise ConnectionError("https://account.example/secret-path is unreachable")
+        return await super().get(key)
+
+
+async def _stopped_line_then_a_run_given_its_after_value(
+    db_session: AsyncSession,
+    database_url: str,
+    capsys: pytest.CaptureFixture[str],
+    *,
+    stopped_game: int,
+    behind_game: int,
+    stop_out: str,
+) -> None:
+    """The stop line must name the row it stopped at, and the `--after` value it prints must,
+    given to a run, leave that row out and select the one behind it."""
+    [line] = [line for line in stop_out.splitlines() if "STOPPED" in line]
+    completed_at = await db_session.scalar(
+        select(Match.completed_at).where(Match.game_id == stopped_game)
+    )
+    assert completed_at is not None
+    assert f"game {stopped_game}, profile {stopped_game + 7}, recorded " in line
+    assert completed_at.isoformat() in line
+    found = re.search(r"--after (\S+) starts past that row", line)
+    assert found is not None
+    value = found.group(1)
+    assert "secret" not in line
+
+    # Without the value the stopped row is selected again (selection is oldest first).
+    assert (
+        await asyncio.to_thread(main, ["--dry-run", "--limit", "5"], {"DATABASE_URL": database_url})
+        == 0
+    )
+    unrestricted = capsys.readouterr().out
+    assert f"game {stopped_game} " in unrestricted
+
+    assert (
+        await asyncio.to_thread(
+            main,
+            ["--dry-run", "--limit", "5", "--after", value],
+            {"DATABASE_URL": database_url},
+        )
+        == 0
+    )
+    resumed = capsys.readouterr().out
+    assert f"game {stopped_game} " not in resumed
+    assert f"game {behind_game} " in resumed
+    assert "STOPPED" not in resumed and "starts past" not in resumed
+
+
+async def test_a_store_stop_names_its_row_and_the_after_value_it_prints_starts_past_it(
+    db_session: AsyncSession,
+    database_url: str,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    store = _FailsOnOneKey({}, fail_on="replays/800301.zip")
+    await _seed(db_session, store, 800_300)
+    await _seed(db_session, store, 800_301)
+    await _seed(db_session, store, 800_302)
+    run = _ConfiguredByTheRun(store)
+
+    code = await asyncio.to_thread(
+        main,
+        ["--limit", "5"],
+        _application_environment(database_url),
+        make_object_store=run.make_object_store,
+        make_validator=run.make_validator,
+    )
+
+    out = capsys.readouterr().out
+    assert code == 1
+    assert "the object store failed with ConnectionError" in out
+    assert store.gets == ["replays/800300.zip", "replays/800301.zip"]
+    await _stopped_line_then_a_run_given_its_after_value(
+        db_session,
+        database_url,
+        capsys,
+        stopped_game=800_301,
+        behind_game=800_302,
+        stop_out=out,
+    )
+
+
+async def test_a_database_stop_names_its_row_and_the_after_value_it_prints_starts_past_it(
+    db_session: AsyncSession,
+    database_url: str,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from sqlalchemy.exc import OperationalError
+
+    from aoe2stats_ingester.capture import CaptureDrain
+
+    store = _GetOnlyStore({})
+    await _seed(db_session, store, 800_310)
+    await _seed(db_session, store, 800_311)
+    await _seed(db_session, store, 800_312)
+    real = CaptureDrain._mark_stored
+    calls = {"n": 0}
+
+    async def _second_write_fails(self: Any, *args: Any, **kwargs: Any) -> bool:
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise OperationalError("UPDATE secret_table SET x = 'secret-value'", {}, Exception("x"))
+        return await real(self, *args, **kwargs)  # type: ignore[no-any-return]
+
+    monkeypatch.setattr(CaptureDrain, "_mark_stored", _second_write_fails)
+    run = _ConfiguredByTheRun(store)
+
+    code = await asyncio.to_thread(
+        main,
+        ["--limit", "5"],
+        _application_environment(database_url),
+        make_object_store=run.make_object_store,
+        make_validator=run.make_validator,
+    )
+
+    out = capsys.readouterr().out
+    assert code == 1
+    assert "a database error stopped the run: OperationalError" in out
+    await _stopped_line_then_a_run_given_its_after_value(
+        db_session,
+        database_url,
+        capsys,
+        stopped_game=800_311,
+        behind_game=800_312,
+        stop_out=out,
+    )

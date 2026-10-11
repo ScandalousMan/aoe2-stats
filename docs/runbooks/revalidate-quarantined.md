@@ -37,16 +37,20 @@ One line per row examined:
 | `selected`          | Dry run only: the row is in the selection.                                                                | no                                             |
 | `stored`            | The object now validates.                                                                                 | yes, `stored`                                  |
 | `still_quarantined` | The engine failed again with an engine verdict; the new reason is printed.                                | yes, new `last_error`                          |
-| `inconclusive`      | Validation failed for a reason that is not the engine's verdict (the wall-clock cap, any other class).    | no; selected again on the next run             |
+| `inconclusive`      | Validation failed for a reason that is not the engine's verdict (the wall-clock cap, any other class).    | no; the row stays in the selection             |
 | `integrity_failure` | The object is missing or no longer matches the row's `zip_sha256`. Evidence for a human, constitution IV. | no; the run ends **non-zero** after the report |
 | `changed_elsewhere` | The write matched no row, and the row was no longer `quarantined` when read back.                         | no                                             |
 | `ownership_changed` | The write matched no row, and the row was still `quarantined` when read back.                             | no                                             |
 
 If the object store fails in any other way (an outage, a denied request, a missing bucket) the run
 **stops** at that row, prints `STOPPED` and the error's class (never its text), writes nothing for
-that row, and exits non-zero. Re-run once the store is reachable. If every row of a page is an
-`integrity_failure`, check the bucket name (`S3_BUCKET`) first: a wrong bucket answers "no such
-object" for every key, which is indistinguishable from objects that are really missing.
+that row, and exits non-zero. Re-run once the store is reachable. The stop line names the row it
+stopped at (game, profile, recording time) and the `--after` value that starts past it. If the same
+row stops two runs, pass that value and report the row. If every row of a page is an
+`integrity_failure`, check the bucket name (`S3_BUCKET`) first: a bucket that exists and that the
+token can read, but is not the replay bucket, answers "no such object" for every key, which is
+indistinguishable from objects that are really missing. Any other wrong bucket stops the run: the
+store's answer is not "no such object", so the run ends with `STOPPED` and the error's class.
 
 A database error at a row's write step (the write itself, or the read that tells why a write was
 refused) also **stops** the run at that row. The report of the rows examined before it is printed
@@ -55,7 +59,9 @@ is non-zero. Re-run: the row it failed on is not in the report, it is offered ag
 `quarantined` (and its profile still has an active link whose user has not objected), and the
 totals reported may be short by that one row. Of the rows the command writes, only a `stored` one
 leaves the selection; a `still_quarantined` row keeps an engine verdict, which the selection still
-matches.
+matches. The stop line names the row it stopped at (game, profile, recording time) and the
+`--after` value that starts past it. If the same row stops two runs, pass that value and report the
+row.
 
 Only those two stops keep the report. An interrupted page loses its report: an interrupt in the
 middle of a page (Ctrl-C, a closed terminal), or any other error that ends the run early, prints
@@ -156,8 +162,9 @@ handing out `postgresql://` instead of `postgresql+psycopg://`, zsh globbing the
    ```
 
    Rows that ended `inconclusive` or `integrity_failure` are unchanged, and a `still_quarantined`
-   row keeps an engine verdict as its reason, so all three are selected again: a bare re-run starts
-   from the oldest row and offers them again, and `--after` is what moves past them.
+   row keeps an engine verdict as its reason, so all three stay in the selection: a bare re-run
+   starts from the oldest row and offers them again, unless the owner has since objected or
+   unlinked, and `--after` is what moves past them.
 
 5. Investigate every `integrity_failure` before anything else (constitution I: acknowledge only
    after investigating). The command does not touch those rows and exits non-zero on every

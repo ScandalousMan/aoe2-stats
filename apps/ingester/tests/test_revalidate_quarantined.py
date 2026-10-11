@@ -397,6 +397,10 @@ async def test_a_row_that_fails_with_an_unchanged_reason_is_rewritten_without_an
         # A reason that merely *contains* an engine class name is not the engine's own text.
         pytest.param("reclaim could not read back x: EngineParseError: y", id="embedded-class"),
         pytest.param("xPanicException: z", id="prefix-lookalike"),
+        # The trailing boundary of the text clause (T673d): only a leading lookalike has a row.
+        pytest.param("PanicExceptionGroup: z", id="longer-class-name-with-colon"),
+        pytest.param("EngineParseErrorX", id="longer-bare-class-name"),
+        pytest.param("PanicException:z", id="class-with-colon-and-no-space"),
     ],
 )
 async def test_a_quarantine_that_is_not_the_engines_own_failure_is_never_selected(
@@ -1450,6 +1454,7 @@ async def test_a_store_error_that_is_not_an_integrity_outcome_aborts_the_run_wit
     assert (await _row(db_session, ok)).status == CaptureStatus.STORED
     assert [o.capture_id for o in report.outcomes] == [ok]
     assert report.aborted_by == "_TransportDown"
+    assert report.stopped_row is not None and report.stopped_row.capture_id == down
 
 
 async def test_a_missing_object_and_a_checksum_mismatch_stay_per_row_and_the_run_goes_on(
@@ -1898,6 +1903,7 @@ async def test_a_write_that_fails_on_the_nth_row_stops_there_and_returns_the_rep
     ]
     assert report.write_failed_by == "OperationalError"
     assert report.aborted_by is None
+    assert report.stopped_row is not None and report.stopped_row.capture_id == ids[2]
     assert "secret" not in repr(report)
     assert report.cursor is not None and report.cursor[1] == ids[1]
     assert validator.calls == 3  # the fourth row was never examined
@@ -1989,6 +1995,7 @@ async def test_a_database_error_on_the_read_that_classifies_a_refused_write_stop
     ]
     assert report.write_failed_by == "OperationalError"
     assert report.aborted_by is None
+    assert report.stopped_row is not None and report.stopped_row.capture_id == refused
     assert "secret" not in repr(report)
     assert report.cursor is not None and report.cursor[1] == first
     assert classified == [refused]  # the read was reached, so the real write had matched no row
@@ -2079,3 +2086,189 @@ def test_a_reason_label_is_a_closed_vocabulary(head: str, label: str) -> None:
     from aoe2stats_ingester.capture import _reason_class
 
     assert _reason_class(head, has_object=True, objecting=False, archiving=True) == label
+
+
+# === T673d: remediation of #129's fourth review ================================================
+
+
+@pytest.mark.parametrize("missing", [True, False], ids=["missing-object", "checksum-mismatch"])
+async def test_an_integrity_failure_has_a_reason_of_its_own_and_not_the_reclaims(
+    missing: bool,
+    db_session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """Level: the read-back's reason for this command. The reclaim path stores `reclaim could not
+    read back ...` and `reclaim checksum mismatch ...`, which the selection never reopens; this
+    command writes nothing on an integrity failure, so it must not print those words for a row no
+    reclaim touched. The reason names the key and, on a mismatch, both checksums (it is printed and
+    never stored, so the row is unchanged)."""
+    from aoe2stats_ingester.capture import _CHECKSUM_REASON_PREFIX, _READ_BACK_REASON_PREFIX
+
+    store = _RecordingObjectStore()
+    capture_id = await _seed(
+        db_session,
+        store,
+        game_id=720_900,
+        content=_BAD,
+        stored_object=None if missing else _GOOD,
+    )
+    before = _snapshot(await _row(db_session, capture_id))
+    key = replay_object_key(720_900, 1_720_900)
+
+    report = await _drain(
+        session_factory, store=store, provider=_RecordingReplayProvider(), validator=_Validator()
+    ).revalidate_quarantined(limit=10)
+
+    [outcome] = report.outcomes
+    assert outcome.outcome == "integrity_failure"
+    reason = outcome.reason or ""
+    assert not reason.startswith(_READ_BACK_REASON_PREFIX)
+    assert not reason.startswith(_CHECKSUM_REASON_PREFIX)
+    assert "reclaim" not in reason
+    assert repr(key) in reason
+    if not missing:
+        assert hashlib.sha256(_BAD).hexdigest() in reason
+        assert hashlib.sha256(_GOOD).hexdigest() in reason
+    assert _snapshot(await _row(db_session, capture_id)) == before
+
+
+async def test_the_reclaim_path_still_stores_its_own_integrity_texts() -> None:
+    """Contrast for the test above: the default read-back (the reclaim path's) keeps the texts it
+    stores, which `_reason_class` matches."""
+    from aoe2stats_ingester.capture import (
+        _CHECKSUM_REASON_PREFIX,
+        _READ_BACK_REASON_PREFIX,
+        CaptureDrain,
+    )
+
+    drain = CaptureDrain(
+        session_factory=None,  # type: ignore[arg-type]
+        replay_provider=_RecordingReplayProvider(),  # type: ignore[arg-type]
+        object_store=_RecordingObjectStore({"k": b"drifted"}),
+        validator=_Validator(),
+    )
+
+    _, missing = await drain._read_back_verified("absent", "0" * 64)
+    _, mismatch = await drain._read_back_verified("k", "0" * 64)
+
+    assert (missing or "").startswith(_READ_BACK_REASON_PREFIX)
+    assert (mismatch or "").startswith(_CHECKSUM_REASON_PREFIX)
+
+
+async def test_a_class_whose_name_only_begins_with_an_engine_class_is_not_a_verdict(
+    db_session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """Level: the write's own reading of the new reason (`_is_engine_failure_reason`), its
+    trailing boundary: the barrier writes `EngineParseErrorX: ...`, which begins with an engine
+    class's name and is not that class. It is `inconclusive` and nothing is written. Contrast: the
+    engine's own class, in the tests above, is `still_quarantined`."""
+
+    class EngineParseErrorX(Exception):
+        pass
+
+    store = _RecordingObjectStore()
+    capture_id = await _seed(db_session, store, game_id=720_910, last_error=_PARSE_REASON)
+    before = _snapshot(await _row(db_session, capture_id))
+
+    report = await _drain(
+        session_factory,
+        store=store,
+        provider=_RecordingReplayProvider(),
+        validator=_Validator(reject_with=EngineParseErrorX("x")),
+    ).revalidate_quarantined(limit=10)
+
+    assert [(o.outcome, o.reason) for o in report.outcomes] == [
+        ("inconclusive", "EngineParseErrorX: x")
+    ]
+    assert _snapshot(await _row(db_session, capture_id)) == before
+
+
+async def test_an_engine_row_true_of_two_labels_gets_the_first_in_order(
+    db_session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """Level: the dry run's labelling order (`_reason_class`: objected, then no object, then no
+    link). Two rows, each true of two conditions, a different engine class each so a wrong count
+    names its row: an active objector's row without an object is `(archival objected)`; a row
+    without an object whose profile has no active link is `(no committed object)`. Swapping either
+    adjacent pair of the three checks relabels one of them."""
+    store = _RecordingObjectStore()
+    await _seed(
+        db_session,
+        store,
+        game_id=720_920,
+        with_object_key=False,
+        stored_object=None,
+        linked=False,
+        last_error=_PANIC_REASON,
+    )
+    await _link_profile(db_session, 720_920 + 1_000_000, objected=True)
+    await _seed(
+        db_session,
+        store,
+        game_id=720_921,
+        with_object_key=False,
+        stored_object=None,
+        linked=False,
+        last_error=_PARSE_REASON,
+    )
+
+    report = await _drain(
+        session_factory, store=store, provider=_RecordingReplayProvider(), validator=_Validator()
+    ).revalidate_quarantined(limit=10, dry_run=True)
+
+    assert report.outcomes == ()
+    assert report.unselected_by_reason is not None
+    assert dict(report.unselected_by_reason) == {
+        "PanicException (archival objected)": 1,
+        "EngineParseError (no committed object)": 1,
+    }
+
+
+async def test_a_reason_that_only_starts_like_the_wall_clock_cap_is_counted_as_other(
+    db_session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """Level: the dry run's labelling of the cap, which is matched at both ends. A reason that
+    starts with the cap's opening words and does not end with its closing words is `other`.
+    Contrast: the cap's exact text keeps its label."""
+    from aoe2stats_ingester.capture import _CAP_REASON_PREFIX, _CAP_REASON_SUFFIX
+
+    store = _RecordingObjectStore()
+    await _seed(db_session, store, game_id=720_930, last_error=_TIMEOUT_REASON)
+    await _seed(
+        db_session, store, game_id=720_931, last_error=_CAP_REASON_PREFIX + "30.0s of patience"
+    )
+    assert _TIMEOUT_REASON.startswith(_CAP_REASON_PREFIX)
+    assert _TIMEOUT_REASON.endswith(_CAP_REASON_SUFFIX)
+
+    report = await _drain(
+        session_factory, store=store, provider=_RecordingReplayProvider(), validator=_Validator()
+    ).revalidate_quarantined(limit=10, dry_run=True)
+
+    assert report.unselected_by_reason is not None
+    assert dict(report.unselected_by_reason) == {"wall-clock cap": 1, "other": 1}
+
+
+async def test_a_reason_whose_first_colon_lies_past_the_head_length_is_read_from_the_cut(
+    db_session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """Level: `_count_unselected`'s read of a reason. An identifier ending in `Error` whose colon
+    lies past `_REASON_HEAD_CHARS` is read only as far as that length, so it is `other`, not a
+    label of its own. Contrast: a short identifier ending in `Error` is its own label."""
+    from aoe2stats_ingester.capture import _REASON_HEAD_CHARS
+
+    long_identifier = "a" * (_REASON_HEAD_CHARS + 10) + "Error"
+    assert long_identifier.endswith("Error")
+    store = _RecordingObjectStore()
+    await _seed(db_session, store, game_id=720_940, last_error=f"{long_identifier}: z")
+    await _seed(db_session, store, game_id=720_941, last_error="ValueError: z")
+
+    report = await _drain(
+        session_factory, store=store, provider=_RecordingReplayProvider(), validator=_Validator()
+    ).revalidate_quarantined(limit=10, dry_run=True)
+
+    assert report.unselected_by_reason is not None
+    assert dict(report.unselected_by_reason) == {"other": 1, "ValueError": 1}

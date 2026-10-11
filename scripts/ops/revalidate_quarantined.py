@@ -34,16 +34,19 @@ one when it was first quarantined.
 
 **Outcomes** (one line per row): `stored`, `still_quarantined` (a new engine verdict, written),
 `inconclusive` (validation failed for a reason that is not the engine's verdict, e.g. the
-wall-clock cap: nothing is written, the reason is printed, and the row is selected again next run),
+wall-clock cap: nothing is written, the reason is printed, and the row stays in the selection),
 `integrity_failure` (the object is missing or no longer matches the row's `zip_sha256`: nothing is
-written), `changed_elsewhere` (the write matched no row, and the row was no longer `quarantined`
-when read back) and `ownership_changed` (the write matched no row, and the row was still
-`quarantined` when read back).
+written; the reason names the key and, for a mismatch, both checksums), `changed_elsewhere`
+(the write matched no row, and the row was no longer `quarantined` when read back) and
+`ownership_changed` (the write matched no row, and the row was still `quarantined` when read
+back).
 
 Two errors stop the run at a row and still print the report of the rows examined before it,
 whatever their outcome, then the error's class (never its text), with exit code 1: a store error
 that is neither a missing object nor a checksum mismatch, and a database error at a row's write
 step (the write itself, or the read that tells why a write was refused).
+The stop line names the row it stopped at (game, profile, recording time) and the `--after` value
+that starts past it. That row is not among the rows listed.
 Of the rows this command writes, only a `stored` one leaves the selection; a `still_quarantined`
 row keeps an engine verdict, which the selection still matches. Nothing else keeps the report:
 anything else that ends a page early, an interrupt included, prints no report for it.
@@ -56,9 +59,10 @@ engine row outside the selection is labelled `(archival objected)`, `(no committ
 `(no active link)`. For those rows it prints counts under the labels, and no object key.
 
 **Bounded and resumable.** At most `--limit` rows per run (default 25: a validation can take up to
-its 30 s wall-clock cap, and this runs from a terminal). When more remain, the report prints the
-`--after` value that continues from the last row examined; a bare re-run starts again from the
-oldest selected row.
+its 30 s wall-clock cap, and this runs from a terminal). When more remain and the run did not
+stop, the report prints the `--after` value that continues from the last row examined. A run that
+stopped prints instead, on its stop line, the stopped row and the `--after` value that starts past
+that row. A bare re-run starts again from the oldest selected row.
 
 `--after` is one value, `<timestamp>,<capture id>`: the recording's completion time (ISO 8601, with
 an offset) and the capture's UUID, which together are the ordering key. The id is not optional:
@@ -261,41 +265,72 @@ def build_arg_parser(*, exit_on_error: bool = True) -> argparse.ArgumentParser:
     return parser
 
 
-def _one_line(reason: str | None) -> str:
+#: The outcomes whose reason exists nowhere else: neither writes the row, so a reason cut here is
+#: lost. They are printed whole. A `still_quarantined` reason is stored in full on the row.
+_WHOLE_REASON_OUTCOMES = frozenset({"integrity_failure", "inconclusive"})
+
+
+def _one_line(reason: str | None, *, whole: bool = False) -> str:
     """A reason on one printable ASCII line: an engine panic text carries terminal escape codes
-    and a backtrace, which must not reach a terminal."""
+    and a backtrace, which must not reach a terminal. Cut at `_REASON_WIDTH` characters unless
+    `whole`."""
     flat = ascii(" ".join((reason or "").split()))[1:-1]
-    return flat if len(flat) <= _REASON_WIDTH else flat[: _REASON_WIDTH - 3] + "..."
+    if whole or len(flat) <= _REASON_WIDTH:
+        return flat
+    return flat[: _REASON_WIDTH - 3] + "..."
+
+
+def _stopped_row_text(report: RevalidationReport) -> str:
+    """The stopped row (game, profile, recording time) and the `--after` value that starts past
+    it, as a sentence for a stop line; empty when the report carries no stopped row."""
+    row = report.stopped_row
+    if row is None:
+        return ""
+    return (
+        f" It stopped at game {row.game_id}, profile {row.profile_id}, recorded "
+        f"{row.completed_at.isoformat()}; --after {_after_value(row.cursor)} starts past that row."
+    )
+
+
+def _after_value(cursor: tuple[datetime, uuid.UUID]) -> str:
+    return f"{cursor[0].isoformat()},{cursor[1]}"
 
 
 def format_report(report: RevalidationReport, *, dry_run: bool) -> list[str]:
     lines = [
         f"{o.outcome:<18} game {o.game_id} profile {o.profile_id} "
-        f"recorded {o.completed_at.isoformat()}" + (f"  {_one_line(o.reason)}" if o.reason else "")
+        f"recorded {o.completed_at.isoformat()}"
+        + (
+            f"  {_one_line(o.reason, whole=o.outcome in _WHOLE_REASON_OUTCOMES)}"
+            if o.reason
+            else ""
+        )
         for o in report.outcomes
     ]
     counts: dict[str, int] = {}
     for outcome in report.outcomes:
         counts[outcome.outcome] = counts.get(outcome.outcome, 0) + 1
     summary = ", ".join(f"{name}={count}" for name, count in sorted(counts.items())) or "nothing"
-    lines.append(f"revalidate-quarantined: {len(report.outcomes)} row(s) examined ({summary}).")
+    verb = "selected" if dry_run else "examined"
+    lines.append(f"revalidate-quarantined: {len(report.outcomes)} row(s) {verb} ({summary}).")
     if report.aborted_by is not None:
         lines.append(
             f"revalidate-quarantined: STOPPED: the object store failed with {report.aborted_by}. "
             "The row it failed on was not written and no later row was examined."
+            + _stopped_row_text(report)
         )
     if report.write_failed_by is not None:
         lines.append(
             f"revalidate-quarantined: STOPPED: a database error stopped the run: "
             f"{report.write_failed_by}. The rows listed above were examined before it; the row "
-            "it failed on is not listed and no later row was examined."
+            "it failed on is not listed and no later row was examined." + _stopped_row_text(report)
         )
     cursor = report.cursor
     stopped = report.aborted_by is not None or report.write_failed_by is not None
     if report.truncated and cursor is not None and not stopped:
         lines.append(
             "revalidate-quarantined: more candidates remain; continue with "
-            f"--after {cursor[0].isoformat()},{cursor[1]}"
+            f"--after {_after_value(cursor)}"
         )
     if report.unselected_by_reason is not None:
         total = sum(count for _, count in report.unselected_by_reason)

@@ -1756,7 +1756,7 @@ T671 and T672 ship together; T673 follows once T672 is deployed.
       reason when it is short; say so in both places that claim otherwise. **Runbook, a hung
       engine:** after a wall-clock cap outcome the command prints its report and does not exit until
       the abandoned validation thread ends; one sentence
-- [ ] T673d Close #129's fourth review (`reviewer` REJECT 2026-10-11 on T673c; no wrong write, no
+- [x] T673d Close #129's fourth review (`reviewer` REJECT 2026-10-11 on T673c; no wrong write, no
       data-safety and no constitution finding, and nothing on the dry-run path. Verified by mutation
       and not to be re-checked: every selection clause removed alone, all four branches of the text
       clause and of its Python twin, the status and ownership guards of both writes, the

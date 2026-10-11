@@ -398,17 +398,22 @@ _CLASS_NAME_SUFFIXES = ("Error", "Exception")
 
 def _reason_class(reason: str | None, *, has_object: bool, objecting: bool, archiving: bool) -> str:
     """The label a quarantined row outside the selection is counted under in a dry run. A label is
-    one of three things:
+    one of four things:
 
-    - a fixed label: `no reason recorded`, the two reclaim prefixes, `wall-clock cap`;
+    - a fixed label: `no reason recorded`, the two reclaim prefixes, `wall-clock cap` (a reason
+      that starts with the cap's opening words and ends with its closing words);
     - the head of the reason (the text before the first colon, or all of it when it has none)
       when it is an identifier ending in `Error` or `Exception`: ASCII letters, digits and
       underscores, no dot. `_validate_with_barrier` writes a class as `type(exc).__name__`, a
       bare name with no module path;
-    - `other` for everything else, including an identifier without that ending and a dotted name.
+    - `other` for everything else, including an identifier without that ending and a dotted name;
+    - for an engine failure row outside the selection, the engine class followed by its reason in
+      brackets (below).
 
     The head is matched on its shape, not against a list of classes: a reason whose head has that
-    shape is counted under that head, whoever wrote it.
+    shape is counted under that head, whoever wrote it. The caller passes at most
+    `_REASON_HEAD_CHARS` characters of the reason (`_count_unselected`), so when the first colon
+    lies past that length the head is read from the cut, not from the colon.
 
     An engine failure row outside the selection gets its reason: `(archival objected)`
     (an active owner objected), `(no committed object)` or `(no active link)` (nobody holds the
@@ -478,6 +483,22 @@ class RevalidationOutcome:
 
 
 @dataclass(frozen=True, slots=True)
+class RevalidationStop:
+    """The row a stop happened at (`RevalidationReport.stopped_row`): which row, and nothing about
+    what state it is in."""
+
+    capture_id: uuid.UUID
+    game_id: int
+    profile_id: int
+    completed_at: datetime
+
+    @property
+    def cursor(self) -> RevalidationCursor:
+        """The `after` value that starts past this row in the selection's ordering."""
+        return (self.completed_at, self.capture_id)
+
+
+@dataclass(frozen=True, slots=True)
 class RevalidationReport:
     outcomes: tuple[RevalidationOutcome, ...]
     #: More candidates exist beyond `limit`; resume with `after=cursor`.
@@ -501,6 +522,9 @@ class RevalidationReport:
     #: later row was examined. Of the rows the run wrote, only a `stored` one has left the
     #: selection.
     write_failed_by: str | None = None
+    #: The row `aborted_by` or `write_failed_by` happened at, else `None`. It is not among
+    #: `outcomes`, and the report claims nothing about its state.
+    stopped_row: RevalidationStop | None = None
 
     @property
     def cursor(self) -> RevalidationCursor | None:
@@ -508,6 +532,15 @@ class RevalidationReport:
         if self.last_completed_at is None or self.last_capture_id is None:
             return None
         return (self.last_completed_at, self.last_capture_id)
+
+
+def _stop_at(capture: ReplayCapture, completed_at: datetime) -> RevalidationStop:
+    return RevalidationStop(
+        capture_id=capture.id,
+        game_id=capture.game_id,
+        profile_id=capture.profile_id,
+        completed_at=completed_at,
+    )
 
 
 class _StoreTransportError(Exception):
@@ -1072,6 +1105,19 @@ class CaptureDrain:
         return await self._quarantine(capture_id, reason, game_id=game_id, profile_id=profile_id)
 
     @staticmethod
+    def _revalidation_missing_reason(object_key: str) -> str:
+        """`integrity_failure`'s reason for a missing object: printed, never stored."""
+        return f"the object store answered that no object exists under {object_key!r}"
+
+    @staticmethod
+    def _revalidation_mismatch_reason(object_key: str, expected: str, actual: str) -> str:
+        """`integrity_failure`'s reason for a checksum mismatch: printed, never stored."""
+        return (
+            f"the object under {object_key!r} does not match the row's checksum: "
+            f"row records {expected}, object store holds {actual}"
+        )
+
+    @staticmethod
     def _read_back_failure_reason(object_key: str, exc: Exception) -> str:
         return (
             f"{_READ_BACK_REASON_PREFIX} {object_key!r} from the object store: "
@@ -1085,7 +1131,10 @@ class CaptureDrain:
 
         Returns `(content, None)` when the bytes are present and hash to `expected_sha256`, and
         `(None, reason)` for an integrity failure: the object cannot be read, or it hashes to
-        something else. `reason` is the exact text a quarantine records.
+        something else. For the reclaim path `reason` is the exact text a quarantine records; for
+        `revalidate_quarantined` it is a text of its own (`_revalidation_missing_reason`,
+        `_revalidation_mismatch_reason`) that is printed and never stored, and does not start with
+        either reclaim text.
 
         Two callers, two readings of "cannot be read". The reclaim path (default) quarantines the
         row on *any* store error. `revalidate_quarantined` passes `only_integrity_is_per_row`:
@@ -1097,6 +1146,8 @@ class CaptureDrain:
         try:
             content = await self._require_object_store().get(object_key)
         except ObjectNotFound as exc:
+            if only_integrity_is_per_row:
+                return None, self._revalidation_missing_reason(object_key)
             return None, self._read_back_failure_reason(object_key, exc)
         except Exception as exc:
             if only_integrity_is_per_row:
@@ -1104,6 +1155,10 @@ class CaptureDrain:
             return None, self._read_back_failure_reason(object_key, exc)
         actual_sha256 = hashlib.sha256(content).hexdigest()
         if actual_sha256 != expected_sha256:
+            if only_integrity_is_per_row:
+                return None, self._revalidation_mismatch_reason(
+                    object_key, expected_sha256, actual_sha256
+                )
             return None, (
                 f"{_CHECKSUM_REASON_PREFIX} for {object_key!r}: row records {expected_sha256}, "
                 f"object store holds {actual_sha256}"
@@ -1139,7 +1194,8 @@ class CaptureDrain:
 
         - the object is missing, or does not hash to the row's `zip_sha256`: `integrity_failure`,
           no write at all. The bytes are not the ones the row vouches for, so they are neither
-          marked `stored` nor given a new error. Any *other* store error stops the run
+          marked `stored` nor given a new error. Its reason names the key and, on a mismatch, both
+          checksums; it is printed and never stored. Any *other* store error stops the run
           (`aborted_by`) with that row unwritten;
         - the barrier returns a result: `stored`, written by `_mark_stored` as the normal path
           writes it (`validated_by`, `inner_filename`, `inner_bytes`); `stored_at` is the time of
@@ -1165,9 +1221,10 @@ class CaptureDrain:
         before them, whatever their outcome: a store error that is not an integrity outcome
         (`aborted_by`), and a `SQLAlchemyError` raised while a row is written or a refused write is
         classified (`write_failed_by`, the error's class only). The row either one stopped on is
-        not in the report. The loop catches nothing else: a cancellation (an interrupt in the
-        middle of a page), or any other exception that reaches it, leaves this method with no
-        report at all, the rows already examined included.
+        not in the report's `outcomes`; the report carries it as `stopped_row`. The loop catches
+        nothing else: a cancellation (an interrupt in the middle of a page), or any other
+        exception that reaches it, leaves this method with no report at all, the rows already
+        examined included.
 
         `dry_run` reads the database only: it lists the selection (outcome `selected`), reads no
         object, validates nothing and writes nothing, and counts the `quarantined` rows outside it
@@ -1207,6 +1264,7 @@ class CaptureDrain:
         outcomes: list[RevalidationOutcome] = []
         aborted_by: str | None = None
         write_failed_by: str | None = None
+        stopped_row: RevalidationStop | None = None
         for capture, completed_at in candidates:
             assert capture.object_key is not None and capture.zip_sha256 is not None
             outcome: RevalidationOutcomeKind
@@ -1220,6 +1278,7 @@ class CaptureDrain:
                     )
                 except _StoreTransportError as exc:
                     aborted_by = str(exc)
+                    stopped_row = _stop_at(capture, completed_at)
                     break
                 except SQLAlchemyError as exc:
                     # Only the row's write (or the read that classifies a refused one) reaches
@@ -1228,6 +1287,7 @@ class CaptureDrain:
                     # again, so no later report would list it. The class name only; the text
                     # carries SQL. Only these two errors are caught; a cancellation is not.
                     write_failed_by = type(exc).__name__
+                    stopped_row = _stop_at(capture, completed_at)
                     break
             outcomes.append(
                 RevalidationOutcome(
@@ -1247,6 +1307,7 @@ class CaptureDrain:
             unselected_by_reason=unselected,
             aborted_by=aborted_by,
             write_failed_by=write_failed_by,
+            stopped_row=stopped_row,
         )
 
     async def _count_unselected(self, session: AsyncSession) -> tuple[tuple[str, int], ...]:
