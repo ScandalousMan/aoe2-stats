@@ -1868,7 +1868,7 @@ carries what T673's dry run read.
       nothing, so say it is reported and never stored. **Left as they are:**
       `only_integrity_is_per_row` choosing wording as well as control flow, and the empty branch of
       `_stopped_row_text`.
-- [ ] T673f Follow-ups from #129's sixth review (`reviewer` APPROVE 2026-10-11, on T673e's delta
+- [x] T673f Follow-ups from #129's sixth review (`reviewer` APPROVE 2026-10-11, on T673e's delta
       alone; none blocks the merge or the operator's run). Sentences and one assertion, no
       executable statement. **Re-running after a stop:** under both stops
       `docs/runbooks/revalidate-quarantined.md` says the fix is "followed by a re-run without
@@ -1887,6 +1887,57 @@ carries what T673's dry run read.
       reason does too; the distinction is that these two write nothing. The runbook says a database
       "refuses every write" nine lines after "a write was refused" in the other sense, a guard that
       matched no row; say "fails every write".
+- [x] T673g Follow-ups from #132's review (`reviewer` APPROVE 2026-10-11 on T673f; none blocks the
+      merge; the user chose the same day to close them in #132). Sentences only: no executable
+      statement, no test. **Which command to re-run:** T673f's wording, "a re-run of the command
+      that stopped", has two candidates once a second run has stopped. `after` is an exclusive
+      comparison on a row's recording time and capture id, so the stop line's value excludes the
+      stopped row. A run stopped at row A by a failure that is not about the row, re-run with that
+      value, stops at its first row B; read at that second stop, the sentence yields the value
+      that excludes A. Under both stops in `docs/runbooks/revalidate-quarantined.md`, name the
+      command by what distinguishes it: the first command that failure stopped, with the `--after`
+      that command was given, if any. **What that re-run repeats:** it starts where the stopped
+      command started, so a row before the stop that is still selected is examined and listed
+      again, and totals summed over both runs count it twice. Say so under both stops; read the
+      selection for which outcomes leave it before naming the rows. **Four outcomes write
+      nothing:** `_WHOLE_REASON_OUTCOMES`'s comment in `scripts/ops/revalidate_quarantined.py`
+      opens "The two outcomes that write nothing", and `changed_elsewhere` and `ownership_changed`
+      write nothing either. Its two are the ones that write nothing and whose reason carries what
+      the run found; put both properties in the head. **Two more "Printed":** the comments above
+      the two refused-write reason constants in `apps/ingester/src/aoe2stats_ingester/capture.py`
+      say "Printed in the report", and that module prints nothing. Say "Reported"
+- [ ] T673h Follow-ups from #132's second review (`reviewer` APPROVE 2026-10-11 on T673g; none
+      blocks the merge; filed by the user's decision the same day). The first two concern an
+      operator, and #132 changed neither sentence. Its own branch and pull request. **The `--after`
+      help after a stop:** the option's help and `_cursor`'s refusal text in
+      `scripts/ops/revalidate_quarantined.py` both say "copy the value the previous run printed".
+      After a stop, the only `--after` value the previous run printed is the stop line's, which
+      excludes the stopped row, where `docs/runbooks/revalidate-quarantined.md` names the `--after`
+      the first stopped command was given. Both texts are string literals, so this item is an
+      executable change and not a sentence: reword both so that neither offers the previous run's
+      value for the case of a stop, and name the runbook for that case. A test in
+      `scripts/ops/tests/test_revalidate_quarantined_command.py` that quotes either text moves with
+      it. **A stop at the last selected row:** under both stops the runbook says the next run stops
+      again while the failure lasts. Read on 2026-10-11 and not verified by a test: when the stopped
+      row is the last one selected, a run given the stop line's value selects no row, reports that
+      it examined nothing and exits 0, with the failure still there. Pin that with a test of the
+      command; it is expected to pass as written, so say in the hand-back what it was run against.
+      Then qualify both sentences: the next run stops again if a row lies past the stopped one, and
+      a run that examined nothing shows nothing about the failure. **The repeated rows:** T673g's
+      sentence under both stops says totals summed "over both runs" count a repeated row twice, and
+      that the row "is examined". Under the database stop a run in between can list `inconclusive`
+      and `integrity_failure` rows before it stops, and the re-run lists those again when its page
+      reaches them; and a row that enters the selection ahead of a repeated row can push it past
+      `--limit`. Name the two runs as the command and its re-run, say the row is offered again, and
+      say a row a run in between listed is listed again. **What separates the two whole-reason
+      outcomes:** `_WHOLE_REASON_OUTCOMES`'s comment separates them from the refused-write pair by
+      "carries what the run found", and the comment above the `changed_elsewhere` reason in
+      `apps/ingester/src/aoe2stats_ingester/capture.py` calls that reason "what it observed". The
+      difference is that a refused-write reason is one fixed text, the same for every row; say that.
+      "Shorter than the cut" is asserted by no test: assert it or cut it. **T673g's count:** its
+      entry and its commit say four outcomes write nothing, which counts a real run's; `selected`,
+      the dry run's outcome, writes nothing either. Amend the entry to say four of a real run's
+      outcomes, dated
 - [ ] T713 Stop the claim from taking a capture whose profile has no active link (filed 2026-10-11
       from T673b; decided by the user the same day). `CaptureDrain._claim_batch` in
       `apps/ingester/src/aoe2stats_ingester/capture.py` excludes a row only when

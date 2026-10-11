@@ -265,9 +265,11 @@ def build_arg_parser(*, exit_on_error: bool = True) -> argparse.ArgumentParser:
     return parser
 
 
-#: The two outcomes that carry what this run found (the object's key and checksums, or the
-#: validation's failure text): neither writes the row, so a reason cut here is lost. They are
-#: printed whole. A `still_quarantined` reason is stored in full on the row.
+#: The two outcomes that write nothing and whose reason carries what the run found (the object's
+#: key and checksums, or the validation's failure text): a reason cut here is lost, so they are
+#: printed whole. `changed_elsewhere` and `ownership_changed` write nothing either, but their
+#: reasons are fixed texts shorter than the cut. A `still_quarantined` reason carries what the run
+#: found too, but it is stored in full on the row.
 _WHOLE_REASON_OUTCOMES = frozenset({"integrity_failure", "inconclusive"})
 
 

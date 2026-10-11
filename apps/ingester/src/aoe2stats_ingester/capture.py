@@ -229,14 +229,14 @@ _CHECKSUM_REASON_PREFIX = "reclaim checksum mismatch"
 _REASON_HEAD_CHARS = 120
 
 #: The reason `revalidate_quarantined` reports with `changed_elsewhere`, which is what it observed:
-#: the guarded write matched no row, and the status read afterwards was not `quarantined`. Printed
-#: in the report, never stored on a row.
+#: the guarded write matched no row, and the status read afterwards was not `quarantined`. Reported,
+#: never stored on a row.
 _CHANGED_ELSEWHERE = (
     "the guarded write matched no row, and the row was no longer quarantined when read back"
 )
 
 #: The reason it reports with `ownership_changed`: the guarded write matched no row, and the
-#: status read afterwards was still `quarantined`. Printed in the report, never stored on a row.
+#: status read afterwards was still `quarantined`. Reported, never stored on a row.
 _OWNERSHIP_CHANGED = (
     "the guarded write matched no row, and the row was still quarantined when read back"
 )
@@ -1106,12 +1106,12 @@ class CaptureDrain:
 
     @staticmethod
     def _revalidation_missing_reason(object_key: str) -> str:
-        """`integrity_failure`'s reason for a missing object: printed, never stored."""
+        """`integrity_failure`'s reason for a missing object: reported, never stored."""
         return f"the object store answered that no object exists under {object_key!r}"
 
     @staticmethod
     def _revalidation_mismatch_reason(object_key: str, expected: str, actual: str) -> str:
-        """`integrity_failure`'s reason for a checksum mismatch: printed, never stored."""
+        """`integrity_failure`'s reason for a checksum mismatch: reported, never stored."""
         return (
             f"the object under {object_key!r} does not match the row's checksum: "
             f"row records {expected}, object store holds {actual}"
