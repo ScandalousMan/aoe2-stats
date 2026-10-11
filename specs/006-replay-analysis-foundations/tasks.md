@@ -2057,6 +2057,22 @@ carries what T673's dry run read.
       when its user unlinks or objects, since the normal path's stored and quarantine writes carry
       no ownership guard, where T673b gave the re-validation's writes one. Its own branch and pull
       request, not #129
+- [ ] T714 Decide what a capture the claim refuses does once its capture deadline passes (filed
+      2026-10-11 from T713; not decided). Since T713 the claim takes a row only when its profile has
+      an active link whose user has not objected, and a refused row keeps its status: `expired` is
+      written only for a row that was claimed and fetched. `_raise_deadline_breach_alert` in
+      `apps/ingester/src/aoe2stats_ingester/run.py` and `captures_pending_past_deadline` in
+      `scripts/checks/capture_audit.py` filter on the deadline and the status, and read neither
+      links nor objections. So a refused row past its deadline is carried by the severity-1
+      `deadline_breach` alert, which is raised again after each acknowledgement while the row stays
+      unresolved (T059b), and it fails the nightly capture audit. That was already so for an
+      objector's row; T713 adds a profile its user unlinked. Pinned as it stands by
+      `test_a_pending_capture_nobody_may_claim_still_raises_deadline_breach` in
+      `apps/ingester/tests/test_deadline_alert.py` and
+      `test_captures_pending_past_deadline_counts_a_capture_nobody_may_claim` in
+      `scripts/checks/tests/test_capture_audit.py`; both change with the decision. **For the user:**
+      whether such a row is alerted on and audited as a breach, is given a terminal status, or is
+      left out of both. Nothing is built before that is decided
 
 - [x] T706 Unstick an analysis whose lease expired (filed 2026-10-08; decided by the user the same
       day). Match 511523321's row stayed `running` from the 2026-10-05 crash until a manual
