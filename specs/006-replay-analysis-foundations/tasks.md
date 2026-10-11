@@ -1887,6 +1887,25 @@ carries what T673's dry run read.
       reason does too; the distinction is that these two write nothing. The runbook says a database
       "refuses every write" nine lines after "a write was refused" in the other sense, a guard that
       matched no row; say "fails every write".
+- [x] T673g Follow-ups from #132's review (`reviewer` APPROVE 2026-10-11 on T673f; none blocks the
+      merge; the user chose the same day to close them in #132). Sentences only: no executable
+      statement, no test. **Which command to re-run:** T673f's wording, "a re-run of the command
+      that stopped", has two candidates once a second run has stopped. `after` is an exclusive
+      comparison on a row's recording time and capture id, so the stop line's value excludes the
+      stopped row. A run stopped at row A by a failure that is not about the row, re-run with that
+      value, stops at its first row B; read at that second stop, the sentence yields the value
+      that excludes A. Under both stops in `docs/runbooks/revalidate-quarantined.md`, name the
+      command by what distinguishes it: the first command that failure stopped, with the `--after`
+      that command was given, if any. **What that re-run repeats:** it starts where the stopped
+      command started, so a row before the stop that is still selected is examined and listed
+      again, and totals summed over both runs count it twice. Say so under both stops; read the
+      selection for which outcomes leave it before naming the rows. **Four outcomes write
+      nothing:** `_WHOLE_REASON_OUTCOMES`'s comment in `scripts/ops/revalidate_quarantined.py`
+      opens "The two outcomes that write nothing", and `changed_elsewhere` and `ownership_changed`
+      write nothing either. Its two are the ones that write nothing and whose reason carries what
+      the run found; put both properties in the head. **Two more "Printed":** the comments above
+      the two refused-write reason constants in `apps/ingester/src/aoe2stats_ingester/capture.py`
+      say "Printed in the report", and that module prints nothing. Say "Reported"
 - [ ] T713 Stop the claim from taking a capture whose profile has no active link (filed 2026-10-11
       from T673b; decided by the user the same day). `CaptureDrain._claim_batch` in
       `apps/ingester/src/aoe2stats_ingester/capture.py` excludes a row only when
