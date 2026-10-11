@@ -1812,6 +1812,57 @@ T671 and T672 ship together; T673 follows once T672 is deployed.
       they are:** the names `write_failed_by` and `ownership_changed`, whose comments and runbook
       rows already say what was observed; a head such as `EngineParseError:x`, which no writer
       emits, counted under the bare class; and every store service error printing as one class name.
+- [ ] T673e Close #129's fifth review (`reviewer` REJECT 2026-10-11 on T673d; no wrong write, no
+      data-safety and no constitution finding; sentences, comments and tests only, and no statement
+      of `apps/ingester/src/aoe2stats_ingester/capture.py` or of
+      `scripts/ops/revalidate_quarantined.py` changes outside a comment, a docstring or the
+      `--limit` help text. Verified and not to be re-checked: both stop tests run the real command
+      with the value read from the printed stop line, no path carries an integrity reason of this
+      command to `last_error`, the reclaim path's two stored texts are character-identical to the
+      main branch's, and a `still_quarantined` reason is written uncut). **A rule that misfires on
+      its own paragraph's causes:** under each stop `docs/runbooks/revalidate-quarantined.md` says
+      "If the same row stops two runs, pass that value and report the row", the sentence T673d
+      prescribed. The store stop's listed causes (an outage, a denied request, a missing bucket) are
+      not about the row and stop whichever row comes first, so an operator following the rule passes
+      over one sound row per two runs and re-validates nothing; a database that refuses writes does
+      the same. Replace the sentence in both paragraphs with what holds: passing that value starts
+      the next run past the row, and the row is left as it is and stays in the selection; a failure
+      that is not about the row is not passed by any `--after` value, because the next run stops
+      again, at its first row for the store and at the first row it writes for the database, and the
+      thing to fix is then the store (token, bucket, endpoint) or the database, followed by a re-run
+      without `--after`. No advice to report a row, and nothing about what state the stopped row is
+      in. **A test that asserts the opposite of what ships:**
+      `test_a_stopped_run_names_the_error_class_prints_no_continuation_and_exits_non_zero` in
+      `scripts/ops/tests/test_revalidate_quarantined_command.py` builds a stopped report with no
+      stopped row, a shape the drain no longer returns, and asserts no line carries `--after`; its
+      docstring says a stopped report prints no continuation because the operator has to deal with
+      the stop first. Give its report a stopped row, assert that the "more candidates remain" line
+      is absent, and reword the docstring to that. **A comment against its neighbours:**
+      `stopped_row`'s comment says the report claims nothing about that row's state, while
+      `aborted_by`'s comment and the store stop line say it was not written. Say the field claims
+      nothing about its state. **Wrong bucket, the residue:** "Any other wrong bucket stops the run"
+      is wider than `packages/storage/src/aoe2stats_storage/objects.py`, which also reads two
+      generic not-found codes as a missing object. Say that a wrong bucket the store answers with a
+      missing-bucket error or a denial stops the run, and that the other bucket answers "no such
+      object" for every key it does not hold. **A test named for more than it asserts:**
+      `test_the_reclaim_path_still_stores_its_own_integrity_texts` in
+      `apps/ingester/tests/test_revalidate_quarantined.py` checks what the read-back helper returns
+      by default, and stores nothing. Rename it and reword its docstring to that. A reclaim driven
+      into a missing or drifted object has no test anywhere in the repository; that is older than
+      this feature and is not closed here. **A shared recording time:** neither stop test seeds a
+      second capture of the stopped match, so "selects the one behind it" is run only where the row
+      behind has a later time. In one of the two, seed a second capture of the stopped match and
+      assert the run given the printed value selects it. Red against a stopped row's cursor that
+      keeps the time and takes the highest capture id, with the output in the hand-back.
+      **"Examined" where a dry run read nothing:** the script's docstring and `--limit` help, the
+      runbook's "One line per row examined" above a table that lists `selected`, and the two cursor
+      comments on the report in `capture.py`. Reword each to hold for both kinds of run.
+      `_WHOLE_REASON_OUTCOMES`'s comment also describes the two refused-write outcomes, whose
+      reasons are short fixed texts; say the two it names carry what this run found.
+      `revalidate_quarantined`'s docstring says an integrity reason "is printed"; the method prints
+      nothing, so say it is reported and never stored. **Left as they are:**
+      `only_integrity_is_per_row` choosing wording as well as control flow, and the empty branch of
+      `_stopped_row_text`.
 - [ ] T713 Stop the claim from taking a capture whose profile has no active link (filed 2026-10-11
       from T673b; decided by the user the same day). `CaptureDrain._claim_batch` in
       `apps/ingester/src/aoe2stats_ingester/capture.py` excludes a row only when
