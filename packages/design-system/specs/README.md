@@ -1948,8 +1948,8 @@ hover:underline-offset-2` beside `active:underline-offset-4`, `src/screens/DataE
        Telling them apart needs the stamps each render held, which the manifest does not record, and a
        real entry could gain a key from it that no one can check without a browser pass;
      - a navigation the browser has not committed when the probe first checks, right after the force,
-       is not caught by name: the pass may fail without naming the story, or record the story as an
-       ordinary one;
+       is not always caught by name: the pass may fail naming the story, fail without naming it, or
+       record the story as an ordinary one;
      - a handler of the force that changes what the force's own record holds (it disables or
        unmounts the forced element, or changes the variant or size of the instance that placed it):
        the force's own record (match count, stamp, placing instance, disabled) is read before the

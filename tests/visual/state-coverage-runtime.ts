@@ -445,8 +445,8 @@ async function assertRegistryPresent(page: Page): Promise<void> {
 //      the force, during that scan, is captured and not recorded. That is the one difference between the
 //      two read points, listed in row 8 of `packages/design-system/specs/README.md` as a known shape.
 //   7. the document is checked a second time, after the clip. A navigation the browser had not committed
-//      at the first check is not caught by name: the pass may fail without naming the story, or record
-//      the story as an ordinary one.
+//      at the first check is not always caught by name: the pass may fail naming the story, fail
+//      without naming it, or record the story as an ordinary one.
 //
 // An `active` force leaves the mouse down on the control. It is released last, whatever happened above,
 // on `about:blank` and not over the story (`releaseMouseOffStory`): the browser state is cleared first on

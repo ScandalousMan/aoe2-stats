@@ -14,5 +14,10 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true
   },
-  "include": ["./**/*.ts", "../../scripts/visual/*.d.mts", "../../scripts/visual/*.d.cts"]
+  "include": [
+    "./**/*.ts",
+    "./**/*.tsx",
+    "../../scripts/visual/*.d.mts",
+    "../../scripts/visual/*.d.cts"
+  ]
 }
