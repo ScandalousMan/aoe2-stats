@@ -15,8 +15,8 @@
 // that rendered an element in the story's document (portals included — a story renders alone in its
 // page), unioned across widths. `selectRuntimeStories` reads it: a diff selects the entries that
 // recorded a file it touches. When it is not empty, an entry also carries `oneThemeFiles` (T711): the
-// files of `files` that exactly one of the two themes rendered, which the checker reads and selection
-// does not.
+// files of `files` that exactly one of the two themes rendered at ANY single width (one width is
+// enough), which the checker reads and selection does not.
 //
 // An instance is an object, `{ component, variant, size, disabledAt }` in that key order, so a reader
 // (T694) decodes it in Node without reading `preview.tsx`: `variant` and `size` are `null` when the

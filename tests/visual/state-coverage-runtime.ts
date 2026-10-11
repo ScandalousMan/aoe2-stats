@@ -39,12 +39,14 @@
 // enabled `<a>`, so it is empty, which is the point of reading the DOM.
 import type { Locator, Page } from '@playwright/test'
 import { STAMP_ATTRIBUTE } from '../../packages/design-system/.storybook/source-stamp-attribute.cjs'
+import { instanceKey } from '../../scripts/visual/instance-identity.mjs'
 import {
   applyForceState,
   gotoAndWaitForStorySettled,
   locateTarget,
   readCaptureClip,
   readForceState,
+  releaseMouseOffStory,
 } from './story-render'
 
 export { STAMP_ATTRIBUTE }
@@ -77,11 +79,17 @@ export interface ElementRecord {
 export interface ForceRecord extends ElementRecord {
   count: number
   // Present, and `true`, only when the light and the dark render disagree on the force (a target that
-  // resolves to a different count, stamp or placing instance in one theme, or a force one theme
-  // carries and the other does not): `combineThemeRecords` writes the answer of the first theme that
-  // has one (`light.force ?? dark.force`) beside it, and the manifest's reader refuses the force
-  // whatever else the record says (T710).
+  // resolves to a different count, stamp, placing instance or disabled state in one theme, or a force
+  // one theme carries and the other does not): `combineThemeRecords` writes the answer of the first
+  // theme that has one (`light.force ?? dark.force`) beside it, and the manifest's reader refuses the
+  // force whatever else the record says (T710, T712).
   differsByTheme?: true
+  // Whether the forced element itself is disabled (`:disabled`, or `aria-disabled="true"`) in the
+  // settle that wrote this record. A per-theme INPUT of `combineThemeRecords` and never written to the
+  // manifest: an element a tracked primitive placed carries its disabled stamps in `placedBy.disabledAt`,
+  // but one no tracked primitive placed (`placedBy` null) has nothing else to compare, so a target
+  // disabled in one theme only would be credited from the theme where it is not (T712).
+  disabled?: boolean
 }
 
 // One width's record of one story. `force` is present only for a story that carries a
@@ -106,20 +114,24 @@ export interface ForceRecord extends ElementRecord {
 //     the dark render lacks included, is not in it. `focus` is the light render's when the two agree and
 //     `null` when they do not or when only one theme has a `play()`; that disagreement also
 //     writes `focusDiffersByTheme: true` (T711), which the manifest's reader answers by withholding the
-//     Rest credit of the story's own mounts at that width: with `focus` `null`, the placing instance
-//     would lose its focus role and the mount would read as an ordinary Rest, though one capture shows
-//     that element focused.
+//     Rest credit of the story's own mounts for the whole entry, at every width, not only at this one:
+//     with `focus` `null`, the placing instance would lose its focus role and the mount would read as
+//     an ordinary Rest, though one capture shows that element focused. The reader does the same when the
+//     WIDTHS disagree on the focus (T712).
 //   - `force` is `light.force ?? dark.force`: the light render's answer when it has one, the dark one's
-//     when only it does. It carries `differsByTheme` when the two differ in count, stamp or placing
-//     instance, or when only one theme has a force; the manifest's reader then refuses the force, and
-//     credits neither theme's answer.
+//     when only it does. It carries `differsByTheme` when the two differ in count, stamp, placing
+//     instance or the forced element's own disabled state (T712), or when only one theme has a force;
+//     the manifest's reader then refuses the force, and credits neither theme's answer.
 //   - `files` is the UNION of the two themes' stamped files. It decides which stories a diff re-checks
 //     and whether the story may render outside its root (the overlay refusal): there a file only one
 //     theme renders selects, and refuses, as one both render. `oneThemeFiles` (T711), written only when
-//     not empty, names the files exactly one theme rendered, and `buildEntry` unions it across widths
-//     into the entry's own `oneThemeFiles`; the manifest's reader (`buildElementCells`) credits a
-//     `play()` click's `active` cell only from a file that is not in it. A reader that credits from
-//     `files` and does not read `oneThemeFiles` credits from a file one theme alone rendered.
+//     not empty, names the files exactly one theme rendered at ANY single width, and `buildEntry` unions
+//     it across widths into the entry's own `oneThemeFiles`; the manifest's reader
+//     (`buildElementCells`) credits a `play()` click's `active` cell only from a file that is not in it.
+//     A reader that credits from `files` and does not read `oneThemeFiles` credits from a file one theme
+//     alone rendered. The test is by FILE: an element one theme alone renders inside a file both render,
+//     and a file rendered at one width only, are not told apart (T712, row 8 of
+//     `packages/design-system/specs/README.md` lists both).
 //   - `fullPage` is whether the capture takes the whole page when no clip applies, from the built
 //     index's tags, the one place the capture reads it (`isFullPageEntry`, `story-index.mjs`); it does
 //     not depend on the theme. A clip wins over the tag, as it does in the capture.
@@ -400,22 +412,50 @@ async function assertRegistryPresent(page: Page): Promise<void> {
 
 // One story at one width in one theme, already settled (`gotoAndWaitForStorySettled`): what a forced
 // target selects, what holds focus after `play()`, every tracked primitive instance mounted, and the
-// capture clip. The force is located before it is applied — hover, press and focus change paint, not
-// which element a role, a name and an `nth` select nor which component placed it — and the mounts, the
-// files, the force and the focus are all read BEFORE it is applied.
+// capture clip. The order is the capture's (`stories.spec.ts`), so that the record describes the frame
+// it shows:
+//   1. the force is LOCATED before it is applied, as `applyForceState` counts its target before acting:
+//      hover, press and focus change paint, not which element a role, a name and an `nth` select nor
+//      which component placed it. The forced element's own disabled state is read here too.
+//   2. the focus after `play()` is read before the force, which is a different question (what the
+//      story's own `play()` focused).
+//   3. the force is applied (`applyForceState`, the capture's own driver, when the target is exactly one
+//      element; with none or several the capture throws before any frame, so there is nothing to apply).
+//   4. the mounts and the files are read AFTER the force (T712): a handler the force triggers (an
+//      `onMouseEnter`, an `onMouseDown`) can mount or unmount an element, and the capture shows the page
+//      after it, so a read before would record a page the frame does not show.
+//   5. the clip is read last, as `stories.spec.ts` reads it: after the force and, at the designated
+//      width only, after the axe scan. The axe scan only reads the DOM and is not repeated here, and it
+//      takes time: a handler that writes `visualCaptureClip` asynchronously (a timer, a promise) after
+//      the force, during that scan, is captured and not recorded. That is the one difference between the
+//      two read points, listed in row 8 of `packages/design-system/specs/README.md` as a known shape.
+//   6. the document is checked to be the one the story settled in (T712): a force whose handler
+//      navigates (a `mouseenter` or a `mousedown` that sets `location`, a reload) leaves the capture
+//      showing another page, so the pass fails naming the story and records nothing from it. The check
+//      is a property set on `window` before the force: a navigation the browser has not committed when it
+//      runs is not seen.
 //
-// The clip is read last, after the force is applied (`applyForceState`, the capture's own driver, when
-// the target is exactly one element; with none or several the capture throws before any frame, so there
-// is nothing to apply), because `stories.spec.ts` reads it there: after `applyForceState` and, at the
-// designated width only, the axe scan. A handler the force triggers (an `onMouseEnter`, an `onFocus`)
-// can write `parameters.visualCaptureClip`, and the capture then shows it. The axe scan only reads the
-// DOM and is not repeated here; this is the one difference between the two read points.
-//
-// An `active` force leaves the mouse down on the control. It is released after the clip is read, on
-// `about:blank` and not over the story: the browser state is cleared first on the story's origin, the
-// page then goes to `about:blank`, and only then does the button come up. `hover` and `focus-visible`
-// hold no button, so nothing is released and the page stays on the story. `probeStory` therefore never
-// starts a settle with the mouse down.
+// An `active` force leaves the mouse down on the control. It is released last, whatever happened above,
+// on `about:blank` and not over the story (`releaseMouseOffStory`): the browser state is cleared first on
+// the story's origin, the page then goes to `about:blank`, and only then does the button come up.
+// `hover` and `focus-visible` hold no button, so nothing is released and the page stays on the story.
+// `probeStory` therefore never starts a settle with the mouse down. A failure above is thrown after the
+// release, and a failure of the release does not replace it.
+const DOCUMENT_MARKER = '__DS_RUNTIME_PROBE_DOCUMENT__'
+
+// Whether the document the marker was set in is still the page's: a navigation or a reload replaces
+// the `window`, and a read that finds the context destroyed mid-navigation counts as one.
+async function documentSurvived(page: Page): Promise<boolean> {
+  try {
+    return await page.evaluate(
+      (key: string) => (window as unknown as Record<string, unknown>)[key] === true,
+      DOCUMENT_MARKER,
+    )
+  } catch {
+    return false
+  }
+}
+
 export async function probeSettledStory(
   page: Page,
   root: Locator,
@@ -429,12 +469,10 @@ export async function probeSettledStory(
     stampAttribute: STAMP_ATTRIBUTE,
   })
   const forceState = await readForceState(page, storyId)
-  const record: WidthRecord = {
-    clip: false,
-    fullPage,
-    mounts: (await root.evaluate(inspect, inspectOptions('mounts'))) as Instance[],
-    files: (await root.evaluate(inspect, inspectOptions('files'))) as string[],
-  }
+  await page.evaluate((key: string) => {
+    ;(window as unknown as Record<string, unknown>)[key] = true
+  }, DOCUMENT_MARKER)
+  const record: WidthRecord = { clip: false, fullPage, mounts: [], files: [] }
 
   let applicable = false
   if (forceState) {
@@ -446,6 +484,9 @@ export async function probeSettledStory(
         ? {
             count,
             ...((await target.evaluate(inspect, inspectOptions('element'))) as ElementRecord),
+            disabled: await target.evaluate(
+              (el) => el.matches(':disabled') || el.getAttribute('aria-disabled') === 'true',
+            ),
           }
         : { count, stamp: null, placedBy: null }
   }
@@ -463,26 +504,48 @@ export async function probeSettledStory(
   }
 
   let releaseMouse = false
-  if (forceState && applicable) {
-    ;({ releaseMouseAfterCapture: releaseMouse } = await applyForceState(page, root, forceState, {
-      ...frame,
-      fullPage,
-    }))
+  let failure: unknown = null
+  try {
+    if (forceState && applicable) {
+      ;({ releaseMouseAfterCapture: releaseMouse } = await applyForceState(page, root, forceState, {
+        ...frame,
+        fullPage,
+      }))
+    }
+    record.mounts = (await root.evaluate(inspect, inspectOptions('mounts'))) as Instance[]
+    record.files = (await root.evaluate(inspect, inspectOptions('files'))) as string[]
+    // The capture's own test: `if (captureClip)`, so a falsy clip is no clip.
+    record.clip = Boolean(await readCaptureClip(page, storyId))
+    if (!(await documentSurvived(page))) {
+      throw new Error(
+        `visualForceState: applying the force of story "${storyId}" left the story's document ` +
+          '(a handler navigated or reloaded the page), so the capture shows another page: fix the ' +
+          "story's handler, nothing is recorded for it.",
+      )
+    }
+  } catch (error) {
+    failure = error
   }
-  // The capture's own test: `if (captureClip)`, so a falsy clip is no clip.
-  record.clip = Boolean(await readCaptureClip(page, storyId))
   if (releaseMouse) {
     // The mouse is still down on the forced control and is released only on `about:blank`: a release
     // over the control is a click, and over a link with an `href` or a submit button it starts a
     // navigation that destroys the document the next `clearBrowserState` evaluates in. So the browser
     // state is cleared first, on the story's origin (storage can only be cleared there), then the page
     // leaves the story, then the button comes up over a document that holds no story: no click handler
-    // of the story runs and nothing navigates. `goto` resolves once the blank document is loaded, so
-    // there is no navigation left to race, and the mouse is up before this function returns.
-    await clearBrowserState(page)
-    await page.goto('about:blank')
-    await page.mouse.up()
+    // of the story runs and nothing navigates. Each step runs whatever the one before it did, so a
+    // control whose `mousedown` navigated still has its button released.
+    try {
+      await clearBrowserState(page)
+    } catch (error) {
+      failure ??= error
+    }
+    try {
+      await releaseMouseOffStory(page)
+    } catch (error) {
+      failure ??= error
+    }
   }
+  if (failure !== null) throw failure
   return record
 }
 
@@ -490,16 +553,14 @@ export async function probeSettledStory(
 // counts once per time BOTH render it, identity being the whole instance (component, variant, size and
 // `disabledAt`), so a `<Button disabled>` one theme mounts and the other does not is in neither.
 function intersectMounts(light: Instance[], dark: Instance[]): Instance[] {
-  const keyOf = (mount: Instance) =>
-    JSON.stringify([mount.component, mount.variant, mount.size, [...mount.disabledAt].sort()])
   const available = new Map<string, number>()
   for (const mount of dark) {
-    const key = keyOf(mount)
+    const key = instanceKey(mount)
     available.set(key, (available.get(key) ?? 0) + 1)
   }
   const both: Instance[] = []
   for (const mount of light) {
-    const key = keyOf(mount)
+    const key = instanceKey(mount)
     const left = available.get(key) ?? 0
     if (left > 0) {
       available.set(key, left - 1)
@@ -529,11 +590,19 @@ export function combineThemeRecords(light: WidthRecord, dark: WidthRecord): Widt
   if (oneTheme.length > 0) record.oneThemeFiles = oneTheme
   const answered = light.force ?? dark.force
   if (answered) {
+    // `disabled` is compared and then dropped: the manifest never carries it (`ForceRecord`).
+    const answerOf = (force: ForceRecord): ForceRecord => {
+      const { disabled: _disabled, ...rest } = force
+      return rest
+    }
     const agree =
       light.force !== undefined &&
       dark.force !== undefined &&
-      JSON.stringify(light.force) === JSON.stringify(dark.force)
-    record.force = agree ? light.force : { ...answered, differsByTheme: true }
+      JSON.stringify(answerOf(light.force)) === JSON.stringify(answerOf(dark.force)) &&
+      Boolean(light.force.disabled) === Boolean(dark.force.disabled)
+    record.force = agree
+      ? answerOf(light.force as ForceRecord)
+      : { ...answerOf(answered), differsByTheme: true }
   }
   if (light.focus !== undefined || dark.focus !== undefined) {
     const agree =

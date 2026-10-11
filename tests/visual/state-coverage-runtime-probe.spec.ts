@@ -12,7 +12,9 @@ import {
   describeElement,
   describeFiles,
   describeMounts,
+  probeSettledStory,
 } from './state-coverage-runtime'
+import { stubStoryPage } from './fixtures/story-page-stub'
 import type { Instance, TrackedRegistry, WidthRecord } from './state-coverage-runtime'
 
 function Button() {}
@@ -482,6 +484,47 @@ test('combineThemeRecords: a force the themes answer alike is the ordinary recor
   expect(combineThemeRecords(themed(), themed())).not.toHaveProperty('force')
 })
 
+// T712 (6): a force target no tracked primitive placed carries no `disabledAt` to compare (that list
+// belongs to the placing instance), so the element's own disabled state is read per theme and joined.
+test('T712 (6) plant: a force target no tracked primitive placed, disabled in one theme only, is flagged differsByTheme, in either direction, and the per-theme flag is never written', () => {
+  const raw = { count: 1, stamp: ROW_BUTTON, placedBy: null }
+  for (const [light, dark] of [
+    [true, false],
+    [false, true],
+  ]) {
+    const joined = combineThemeRecords(
+      themed({ force: { ...raw, disabled: light } }),
+      themed({ force: { ...raw, disabled: dark } }),
+    )
+    expect(joined.force).toEqual({ ...raw, differsByTheme: true })
+  }
+})
+
+test('T712 (6) plant: the same target disabled in both themes, or in neither, is the ordinary record, and the per-theme disabled flag is not written', () => {
+  const raw = { count: 1, stamp: ROW_BUTTON, placedBy: null }
+  for (const both of [true, false]) {
+    const joined = combineThemeRecords(
+      themed({ force: { ...raw, disabled: both } }),
+      themed({ force: { ...raw, disabled: both } }),
+    )
+    expect(joined.force).toEqual(raw)
+  }
+})
+
+test('T712 (6) contrast: a record with no disabled field is the ordinary record as before, and a placed target is judged by its instance', () => {
+  const raw = { count: 1, stamp: ROW_BUTTON, placedBy: null }
+  expect(combineThemeRecords(themed({ force: raw }), themed({ force: { ...raw } })).force).toEqual(
+    raw,
+  )
+  const placed = { count: 1, stamp: BUTTON_FILE, placedBy: btn('primary', 'md', [BUTTON_FILE]) }
+  expect(
+    combineThemeRecords(
+      themed({ force: { ...placed } }),
+      themed({ force: { ...placed, placedBy: btn('primary', 'md') } }),
+    ).force,
+  ).toEqual({ ...placed, differsByTheme: true })
+})
+
 test('combineThemeRecords: a focus is credited only when both themes agree on it', () => {
   const focus = { stamp: BUTTON_FILE, placedBy: btn('ghost', 'md') }
   expect(combineThemeRecords(themed({ focus }), themed({ focus: { ...focus } })).focus).toEqual(
@@ -546,4 +589,131 @@ test('clearBrowserState: about:blank is skipped after the cookies, any other sto
   const healthy = stubPage('http://localhost:6006/iframe.html', async () => {})
   await clearBrowserState(healthy.page)
   expect(healthy.calls).toEqual(['cookies', 'storage'])
+})
+
+// ---- T712: the order the probe drives a settled page in, against a stub page (no browser) --------------
+//
+// `stubStoryPage` runs the readers of `story-render.ts` against a `window` it owns and answers
+// `inspect`'s questions from what the test says the page holds when the harness asks, so a handler the
+// force triggers shows up in what is read, and in when.
+
+const FORCE = { state: 'hover', role: 'button' }
+const noElement = () => ({ stamp: null, placedBy: null })
+const FRAME = { width: 400, height: 300 }
+// Reads one width of one theme the way `probeStory` does, with the force in the story's parameters.
+function probeWith(
+  state: Parameters<typeof stubStoryPage>[1],
+  force: Record<string, unknown> | null = FORCE,
+) {
+  const stub = stubStoryPage('test--story', state)
+  if (force) stub.parameters.visualForceState = force
+  return { stub, probed: () => probeSettledStory(stub.page, stub.root, 'test--story', true, FRAME) }
+}
+
+test('T712 (2) plant: the mounts and the files are read after the force is applied, so a handler that mounts on hover is in the record the frame shows', async () => {
+  let hovered = false
+  const extra = btn('ghost', 'sm')
+  const { probed } = probeWith({
+    mounts: () => (hovered ? [btn('primary', 'md'), extra] : [btn('primary', 'md')]),
+    files: () => (hovered ? ['a.tsx', 'b.tsx'] : ['a.tsx']),
+    element: noElement,
+    onHover: () => {
+      hovered = true
+    },
+  })
+  const record = await probed()
+  expect(record.mounts).toEqual([btn('primary', 'md'), extra])
+  expect(record.files).toEqual(['a.tsx', 'b.tsx'])
+})
+
+test('T712 (2) plant: a handler that UNMOUNTS on hover or press is gone from the record, as it is from the frame', async () => {
+  let pressed = false
+  const { probed } = probeWith(
+    {
+      mounts: () => (pressed ? [] : [btn('primary', 'md')]),
+      files: () => (pressed ? [] : ['a.tsx']),
+      element: noElement,
+      onMouseDown: () => {
+        pressed = true
+      },
+    },
+    { state: 'active', role: 'button' },
+  )
+  const record = await probed()
+  expect(record.mounts).toEqual([])
+  expect(record.files).toEqual([])
+})
+
+test('T712 (2) contrast: a story with no force reads its mounts and files once, and a handler-free force records what the page holds', async () => {
+  const { probed } = probeWith(
+    { mounts: () => [btn('primary', 'md')], files: () => ['a.tsx'], element: noElement },
+    null,
+  )
+  expect(await probed()).toMatchObject({ mounts: [btn('primary', 'md')], files: ['a.tsx'] })
+  const forced = probeWith({
+    mounts: () => [btn('primary', 'md')],
+    files: () => ['a.tsx'],
+    element: noElement,
+  })
+  expect(await forced.probed()).toMatchObject({ mounts: [btn('primary', 'md')], files: ['a.tsx'] })
+})
+
+test('T712 (9) plant: a hover handler that navigates fails the probe, naming the story, not a record of a page the capture would not show', async () => {
+  const { probed } = probeWith({
+    mounts: () => [btn('primary', 'md')],
+    files: () => ['a.tsx'],
+    element: noElement,
+    onHover: (stub) => stub.navigate('http://stub/elsewhere.html'),
+  })
+  await expect(probed()).rejects.toThrow(/test--story.*left the story/)
+})
+
+test('T712 (9) plant: a control whose mousedown navigates fails the probe, and the mouse comes up on about:blank, never over the story', async () => {
+  const { stub, probed } = probeWith(
+    {
+      mounts: () => [],
+      files: () => [],
+      element: noElement,
+      onMouseDown: (page) => page.navigate('http://stub/elsewhere.html'),
+    },
+    { state: 'active', role: 'button' },
+  )
+  await expect(probed()).rejects.toThrow(/left the story/)
+  expect(stub.calls).toContain('mouse.up on about:blank')
+  expect(stub.calls).not.toContain('mouse.up on the story')
+})
+
+test('T712 (9) contrast: an active force on a control that does not navigate is a record, with the mouse up on about:blank after the reads', async () => {
+  const { stub, probed } = probeWith(
+    { mounts: () => [btn('primary', 'md')], files: () => ['a.tsx'], element: noElement },
+    { state: 'active', role: 'button' },
+  )
+  expect(await probed()).toMatchObject({ clip: false, mounts: [btn('primary', 'md')] })
+  expect(stub.calls.slice(-6)).toEqual([
+    'read clip',
+    'clear cookies',
+    'clear localStorage',
+    'clear sessionStorage',
+    'goto about:blank',
+    'mouse.up on about:blank',
+  ])
+})
+
+test('T712 (6) the per-theme record carries the forced element’s own disabled state, and a story with no force carries no force record', async () => {
+  for (const disabled of [true, false]) {
+    const { probed } = probeWith({
+      mounts: () => [],
+      files: () => [],
+      element: () => ({ stamp: ROW_BUTTON, placedBy: null }),
+      disabled: () => disabled,
+    })
+    expect((await probed()).force).toEqual({
+      count: 1,
+      stamp: ROW_BUTTON,
+      placedBy: null,
+      disabled,
+    })
+  }
+  const none = probeWith({ mounts: () => [], files: () => [], element: noElement }, null)
+  expect(await none.probed()).not.toHaveProperty('force')
 })

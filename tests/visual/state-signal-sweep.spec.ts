@@ -94,13 +94,14 @@ import {
   gotoAndWaitForStorySettled,
   readCaptureClip,
   readForceState,
+  releaseMouseOffStory,
   resolveCaptureClip,
-  type VisualCaptureClip,
   type VisualForceState,
 } from './story-render'
 // T675 remediation (M4(a) on PR #105): the same Steam avatar CDN stub `stories.spec.ts` installs —
 // see that module's own header for why a second, separate definition is not an option.
 import { installSteamAvatarStub, STEAM_AVATAR_FIXTURE_PATH } from './fixtures/avatar-stub'
+import { stubStoryPage } from './fixtures/story-page-stub'
 
 const rootDir = path.resolve(__dirname, '..', '..')
 const rawResultsDir = path.join(rootDir, 'test-results', 'state-signal-sweep', 'raw')
@@ -368,28 +369,35 @@ async function captureNow(
 }
 
 // Captures a `'forced'` work item's *state* frame: drives the real pseudo-class
-// (`story-render.ts`'s own `applyForceState`), captures, then releases a held mouse button in a
-// `finally` — even when the capture itself throws — so that `active`'s own `page.mouse.down()`
-// never stays held across the remaining units and navigations this same test still has to run
-// (M4(b), T675's own comparator sweep review on PR #105: the discarded `releaseMouseAfterCapture`
-// left every `active` story's mouse button held past its own capture, contaminating every unit and
-// navigation after it in the same test). Exported so a `setContent` page with no story and no
-// Storybook build can prove the release fires, the same pattern `story-render.spec.ts` uses for its
-// own DOM-only checks on `story-render.ts` itself.
+// (`story-render.ts`'s own `applyForceState`), reads the story's clip, captures, then releases a held
+// mouse button in a `finally` — even when the capture itself throws — so that `active`'s own
+// `page.mouse.down()` never stays held across the remaining units and navigations this same test
+// still has to run (M4(b), T675's own comparator sweep review on PR #105: the discarded
+// `releaseMouseAfterCapture` left every `active` story's mouse button held past its own capture,
+// contaminating every unit and navigation after it in the same test).
+//
+// T712 (1): two orders match `stories.spec.ts` and the runtime pass here. The clip is read AFTER the
+// force is applied (`readCaptureClip` below, as `stories.spec.ts` reads it): a handler the force
+// triggers (an `onMouseEnter`, an `onFocus`) can write `parameters.visualCaptureClip`, and the capture
+// then shows it, so a clip read before the force would frame the capture by a clip the story no longer
+// has. And the mouse comes up on `about:blank` (`releaseMouseOffStory`), after the capture, never over
+// the control: a release over it is a click, which can navigate or run a handler of the story.
+// Exported so a stub page with no story and no Storybook build can prove the order, the same pattern
+// `story-render.spec.ts` uses for its own DOM-only checks on `story-render.ts` itself.
 export async function captureForcedState(
   page: Page,
   root: Locator,
   id: string,
   forceState: VisualForceState,
-  clip: VisualCaptureClip | null,
   opts: { width: number; height: number; fullPage: boolean },
 ): Promise<Buffer> {
   const { releaseMouseAfterCapture } = await applyForceState(page, root, forceState, opts)
   try {
+    const clip = await readCaptureClip(page, id)
     return await captureNow(page, root, id, clip, opts.fullPage)
   } finally {
     if (releaseMouseAfterCapture) {
-      await page.mouse.up()
+      await releaseMouseOffStory(page)
     }
   }
 }
@@ -501,7 +509,6 @@ for (const item of workItems) {
         // in `'forced'` mode — `'play-focus-blur'` needs nothing further, the settled render
         // already *is* the state.
         const stateRoot = await gotoAndWaitForStorySettled(page, item.stateId, theme, width, height)
-        const stateClip = await readCaptureClip(page, item.stateId)
         let stateBuffer: Buffer
         if (item.mode === 'forced') {
           const forceState = await readForceState(page, item.stateId)
@@ -512,19 +519,14 @@ for (const item of workItems) {
                 'the live story have drifted apart.',
             )
           }
-          stateBuffer = await captureForcedState(
-            page,
-            stateRoot,
-            item.stateId,
-            forceState,
-            stateClip,
-            {
-              width,
-              height,
-              fullPage,
-            },
-          )
+          stateBuffer = await captureForcedState(page, stateRoot, item.stateId, forceState, {
+            width,
+            height,
+            fullPage,
+          })
         } else {
+          // Nothing is applied in this mode, so the clip is read from the settled render itself.
+          const stateClip = await readCaptureClip(page, item.stateId)
           stateBuffer = await captureNow(page, stateRoot, item.stateId, stateClip, fullPage)
         }
 
@@ -683,29 +685,77 @@ test.describe('state-signal-sweep remediation (M4, M5)', () => {
   // even though the capture it wraps never throws in this happy-path proof — the `finally` is what
   // makes the release unconditional on the capture's own outcome, not a claim this test alone can
   // distinguish from a plain post-capture call; the discard this finding describes never released
-  // at all, which is the gap this proves closed.
+  // at all, which is the gap this proves closed. Since T712 the button comes up on `about:blank`, so a
+  // listener in the story's document cannot see it: the page having left for `about:blank` is what a
+  // real browser shows here, and the stub tests below pin that the release follows the capture.
   test('captureForcedState releases a held mouse button after capturing an "active" force', async ({
     page,
   }) => {
     await page.setContent(`
       <button id="target" style="width: 80px; height: 30px;">Click</button>
-      <script>
-        window.__mouseReleased = false
-        document.addEventListener('mouseup', () => { window.__mouseReleased = true })
-      </script>
     `)
     const root = page.locator('body')
 
-    await captureForcedState(page, root, 'test-story', { state: 'active', role: 'button' }, null, {
-      width: 400,
-      height: 300,
-      fullPage: false,
-    })
-
-    const released = await page.evaluate(
-      () => (window as unknown as { __mouseReleased: boolean }).__mouseReleased,
+    await captureForcedState(
+      page,
+      root,
+      'test-story',
+      { state: 'active', role: 'button' },
+      {
+        width: 400,
+        height: 300,
+        fullPage: false,
+      },
     )
-    expect(released).toBe(true)
+
+    expect(page.url()).toBe('about:blank')
+  })
+
+  // T712 (1): the order the state frame is captured in. The clip is read where `stories.spec.ts` reads
+  // it, AFTER the force is applied (a handler the force triggers can write it, and the capture then
+  // shows it), and an `active` force's mouse button comes up on `about:blank`, never over the story,
+  // where a release is a click and can navigate. A stub page, no browser: what is asserted is which
+  // call comes when.
+  test('T712 (1) plant: captureForcedState reads the clip after the force is applied and releases the mouse on about:blank, after the capture', async () => {
+    const stub = stubStoryPage('test--story', {
+      mounts: () => [],
+      files: () => [],
+      element: () => ({ stamp: null, placedBy: null }),
+    })
+    await captureForcedState(
+      stub.page,
+      stub.root,
+      'test--story',
+      { state: 'active', role: 'button' },
+      { width: 400, height: 300, fullPage: false },
+    )
+    expect(stub.calls).toEqual([
+      'hover',
+      'mouse.down',
+      'read clip',
+      'screenshot',
+      'goto about:blank',
+      'mouse.up on about:blank',
+    ])
+  })
+
+  test('T712 (1) contrast: a hover force holds no button, so nothing is released and the page stays on the story', async () => {
+    const stub = stubStoryPage('test--story', {
+      mounts: () => [],
+      files: () => [],
+      element: () => ({ stamp: null, placedBy: null }),
+    })
+    await captureForcedState(
+      stub.page,
+      stub.root,
+      'test--story',
+      { state: 'hover', role: 'button' },
+      { width: 400, height: 300, fullPage: false },
+    )
+    expect(
+      stub.calls.filter((call) => call.startsWith('goto') || call.startsWith('mouse')),
+    ).toEqual([])
+    expect(stub.calls).toContain('screenshot')
   })
 
   // M4(a): the stub answers the fixture hash with the local fixture and every other path on the

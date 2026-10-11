@@ -179,33 +179,71 @@ test('isFullPageEntry reads the built index tag and nothing else, and run.mjs bu
   assert.equal(runSource.includes("'visual-full-page'"), false)
 })
 
-// T710 (L5), T711: the tag is written once. Every reader that can import the constant does, so a
+// T710 (L5), T711, T712: the tag is written once. Every reader that can import the constant does, so a
 // literal of it in a harness file is a second definition that a rename of the tag would leave behind.
-// The files read are the capture and sweep specs and helpers (`tests/visual/*.ts` and
-// `tests/visual/fixtures/*.ts`) and the Node scripts of `scripts/visual/` other than the definition and
+// The files read are the capture and sweep specs and helpers (`tests/visual/*.ts(x)` and
+// `tests/visual/fixtures/*.ts(x)`) and the Node scripts of `scripts/visual/` other than the definition and
 // the tests; a single-quoted, double-quoted or template literal of the tag is a hit. The inline script
 // of `.github/workflows/baselines.yml` cannot import, and a comment above its unit list says so.
+//
+// A file is read with its comments removed (`withoutComments`), not line by line: a line that starts with
+// a comment marker can carry code after the comment, and a skipped line hides it. Comments name the tag in
+// backticks, and a message that spells it between escaped backticks is not a literal of it.
+function withoutComments(text) {
+  let out = ''
+  let i = 0
+  while (i < text.length) {
+    const char = text[i]
+    const next = text[i + 1]
+    if (char === '/' && next === '/') {
+      while (i < text.length && text[i] !== '\n') i += 1
+    } else if (char === '/' && next === '*') {
+      const end = text.indexOf('*/', i + 2)
+      i = end === -1 ? text.length : end + 2
+      out += ' '
+    } else if (char === "'" || char === '"' || char === '`') {
+      // A string is kept whole, so a `//` or a `/*` inside it starts no comment. A regular expression
+      // literal holding a quote can misread the span after it: the text is kept either way, so the
+      // error is a comment read as code (a false hit), never code read as a comment.
+      out += char
+      i += 1
+      while (i < text.length && text[i] !== char) {
+        if (text[i] === '\\') {
+          out += text[i]
+          i += 1
+        }
+        if (i < text.length) {
+          out += text[i]
+          i += 1
+        }
+      }
+      if (i < text.length) {
+        out += text[i]
+        i += 1
+      }
+    } else {
+      out += char
+      i += 1
+    }
+  }
+  return out
+}
+
 function scanHarnessForTagLiteral(root) {
-  const tsIn = (dir) =>
+  const sourceIn = (dir) =>
     readdirSync(path.join(root, dir), { withFileTypes: true })
-      .filter((entry) => entry.isFile() && entry.name.endsWith('.ts'))
+      .filter((entry) => entry.isFile() && /\.tsx?$/.test(entry.name))
       .map((entry) => `${dir}/${entry.name}`)
-  const testFiles = [...tsIn('tests/visual'), ...tsIn('tests/visual/fixtures')]
+  const testFiles = [...sourceIn('tests/visual'), ...sourceIn('tests/visual/fixtures')]
   const scriptFiles = readdirSync(path.join(root, 'scripts/visual'))
     .filter(
       (name) =>
         /\.(mjs|cjs)$/.test(name) && !name.endsWith('.test.mjs') && name !== 'story-index.mjs',
     )
     .map((name) => `scripts/visual/${name}`)
-  // A line that is a comment from its first character is skipped: comments name the tag in backticks,
-  // and the scan reads code. A message that spells it between escaped backticks is not a literal of it.
   const literal = new RegExp(`['"\`]${FULL_PAGE_TAG}['"\`]`)
-  const isCode = (line) => !/^\s*(\/\/|\/\*|\*)/.test(line)
   const offenders = [...testFiles, ...scriptFiles].filter((file) =>
-    readFileSync(path.join(root, file), 'utf8')
-      .split('\n')
-      .filter(isCode)
-      .some((line) => literal.test(line)),
+    literal.test(withoutComments(readFileSync(path.join(root, file), 'utf8'))),
   )
   return { testFiles, scriptFiles, offenders, literal }
 }
@@ -264,6 +302,53 @@ test('the full-page tag scan flags a quoted, double-quoted and template literal 
       ),
       false,
     )
+  } finally {
+    rmSync(scratch, { recursive: true, force: true })
+  }
+})
+
+// T712 (13): a comment marker at the start of a line does not make the rest of the line a comment, and a
+// `.tsx` file is code too.
+test('T712 (13) plant: a literal after a block comment on the same line is a hit, a block comment’s own text is not, and a .tsx file is read', () => {
+  const scratch = mkdtempSync(path.join(tmpdir(), 'tag-literal-comment-'))
+  try {
+    const put = (file, text) => {
+      mkdirSync(path.dirname(path.join(scratch, file)), { recursive: true })
+      writeFileSync(path.join(scratch, file), text)
+    }
+    put('tests/visual/clean.ts', 'export const a = 1\n')
+    put('tests/visual/fixtures/clean.ts', 'export const b = 1\n')
+    put('scripts/visual/clean.mjs', 'export const c = 1\n')
+    for (const [file, text] of [
+      // The literal follows a block comment that opens the line.
+      ['tests/visual/after-block.ts', `/* note */ const t = '${FULL_PAGE_TAG}'\n`],
+      ['tests/visual/after-block-multi.ts', `/*\n * note\n */ const t = '${FULL_PAGE_TAG}'\n`],
+      ['tests/visual/after-star.ts', `const u = 1\n/* a */ /* b */ const t = "${FULL_PAGE_TAG}"\n`],
+      // A `.tsx` file under the specs or the fixtures.
+      ['tests/visual/view.tsx', `const t = '${FULL_PAGE_TAG}'\n`],
+      ['tests/visual/fixtures/view.tsx', `const t = \`${FULL_PAGE_TAG}\`\n`],
+    ]) {
+      put(file, text)
+      assert.deepEqual(scanHarnessForTagLiteral(scratch).offenders, [file], file)
+      rmSync(path.join(scratch, file))
+    }
+    // The contrast: the tag named inside comments of every kind, on lines that also carry code, is no hit,
+    // and a `//` inside a string does not start a comment that would hide a literal after it.
+    put(
+      'tests/visual/comments.ts',
+      [
+        `const a = 1 // the '${FULL_PAGE_TAG}' tag`,
+        `/* the '${FULL_PAGE_TAG}' tag */ const b = 2`,
+        `/*`,
+        ` * the "${FULL_PAGE_TAG}" tag`,
+        ` */`,
+        `const c = 3 /* "${FULL_PAGE_TAG}" */ + 4`,
+        '',
+      ].join('\n'),
+    )
+    assert.deepEqual(scanHarnessForTagLiteral(scratch).offenders, [])
+    put('tests/visual/url.ts', `const u = 'http://x/y'; const t = '${FULL_PAGE_TAG}'\n`)
+    assert.deepEqual(scanHarnessForTagLiteral(scratch).offenders, ['tests/visual/url.ts'])
   } finally {
     rmSync(scratch, { recursive: true, force: true })
   }

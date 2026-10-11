@@ -11,7 +11,8 @@
     "format:check": "prettier --check \"apps/**/*.{ts,tsx,css,json}\" \"packages/**/*.{ts,tsx,css,json}\" \"!packages/knowledge/packs/**\" \"!packages/knowledge/snapshots/**\" --ignore-path .gitignore",
     "lint": "pnpm -r --if-present run lint",
     "test": "pnpm -r --if-present run test",
-    "typecheck": "pnpm -r --if-present run typecheck",
+    "typecheck": "pnpm -r --if-present run typecheck && pnpm run typecheck:visual",
+    "typecheck:visual": "tsc -p tests/visual/tsconfig.check.json",
     "test:visual": "node scripts/visual/run.mjs",
     "test:visual:state-signal-sweep": "node scripts/visual/run.mjs --state-signal-sweep",
     "test:visual:state-coverage-runtime": "node scripts/visual/state-coverage-runtime.mjs"
@@ -19,8 +20,10 @@
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
     "@playwright/test": "^1.62.1",
+    "@types/node": "^24.13.3",
     "http-server": "^14.1.1",
     "pngjs": "^7.0.0",
-    "prettier": "^3.9.6"
+    "prettier": "^3.9.6",
+    "typescript": "~6.0.2"
   }
 }
