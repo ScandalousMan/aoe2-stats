@@ -509,6 +509,8 @@ def test_a_stopped_run_names_the_error_class_prints_no_more_candidates_line_and_
     )
     lines = format_report(stopped, dry_run=False)
     assert any("STOPPED" in line and needle in line for line in lines)
+    [stop_line] = [line for line in lines if "STOPPED" in line]
+    assert f"--after {when.isoformat()},{uuid.UUID(int=10)} starts past that row" in stop_line
     assert any(next(iter(stop.values())) in line for line in lines)
     assert not any("more candidates remain" in line for line in lines)
     assert exit_code(stopped) == 1

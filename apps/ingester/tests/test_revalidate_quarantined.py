@@ -2099,8 +2099,8 @@ async def test_an_integrity_failure_has_a_reason_of_its_own_and_not_the_reclaims
 ) -> None:
     """Level: the read-back's reason for this command. The reclaim path stores `reclaim could not
     read back ...` and `reclaim checksum mismatch ...`, which the selection never reopens; this
-    command writes nothing on an integrity failure, so it must not print those words for a row no
-    reclaim touched. The reason names the key and, on a mismatch, both checksums (it is printed and
+    command writes nothing on an integrity failure, so it must not report those words for a row no
+    reclaim touched. The reason names the key and, on a mismatch, both checksums (it is reported and
     never stored, so the row is unchanged)."""
     from aoe2stats_ingester.capture import _CHECKSUM_REASON_PREFIX, _READ_BACK_REASON_PREFIX
 
