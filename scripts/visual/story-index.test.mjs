@@ -179,7 +179,7 @@ test('isFullPageEntry reads the built index tag and nothing else, and run.mjs bu
   assert.equal(runSource.includes("'visual-full-page'"), false)
 })
 
-// T710 (L5), T711, T712: the tag is written once. Every reader that can import the constant does, so a
+// T710 (L5), T711, T712: the tag is defined once. Every reader that can import the constant does, so a
 // literal of it in a harness file is a second definition that a rename of the tag would leave behind.
 // The files read are the capture and sweep specs and helpers (`tests/visual/*.ts(x)` and
 // `tests/visual/fixtures/*.ts(x)`) and the Node scripts of `scripts/visual/` other than the definition and
@@ -188,8 +188,9 @@ test('isFullPageEntry reads the built index tag and nothing else, and run.mjs bu
 //
 // A file is read as text, comments included, so a quoted tag in a comment is a hit too: a comment names
 // the tag unquoted or by its constant. The scan knows no syntax (T717): it replaced a comment scan that
-// five reviews each found source to mislead. It does not see a tag that is not written whole between two
-// quote characters, assembled at run time or written with an escape.
+// five reviews each found source to mislead. It sees the tag only where a quote character stands
+// immediately before it, and immediately after it or after one backslash: a tag assembled at run time,
+// written with an escape inside it, or inside a longer string is not seen.
 function scanHarnessForTagLiteral(root) {
   const sourceIn = (dir) =>
     readdirSync(path.join(root, dir), { withFileTypes: true })
@@ -202,7 +203,7 @@ function scanHarnessForTagLiteral(root) {
         /\.(mjs|cjs)$/.test(name) && !name.endsWith('.test.mjs') && name !== 'story-index.mjs',
     )
     .map((name) => `scripts/visual/${name}`)
-  const literal = new RegExp(`['"\`]${FULL_PAGE_TAG}['"\`]`)
+  const literal = new RegExp(`['"\`]${FULL_PAGE_TAG}\\\\?['"\`]`)
   const offenders = [...testFiles, ...scriptFiles].filter((file) =>
     literal.test(readFileSync(path.join(root, file), 'utf8')),
   )
@@ -264,7 +265,7 @@ test('the full-page tag scan flags a quoted, double-quoted and template literal 
   }
 })
 
-// T717: three clean files and one planted file on a scratch root; `run` receives `put`.
+// T717: three clean files on a scratch root; `run` receives `put` to plant the others.
 function inScratch(run) {
   const scratch = mkdtempSync(path.join(tmpdir(), 'tag-literal-text-'))
   try {
@@ -336,6 +337,7 @@ test('T717 plant: a quoted tag in a comment is a hit', () => {
       ['tests/visual/line.ts', `// the '${FULL_PAGE_TAG}' tag\n`],
       ['tests/visual/block.tsx', `/* the "${FULL_PAGE_TAG}" tag */\n`],
       ['scripts/visual/doc.mjs', `/**\n * the \`${FULL_PAGE_TAG}\` tag\n */\n`],
+      ['tests/visual/fixtures/doc.tsx', `/* the '${FULL_PAGE_TAG}' tag */\n`],
     ]) {
       put(file, text)
       assert.deepEqual(scanHarnessForTagLiteral(scratch).offenders, [file], file)
@@ -344,12 +346,28 @@ test('T717 plant: a quoted tag in a comment is a hit', () => {
   })
 })
 
-// The limit the header states: a tag not written whole between two quote characters is not seen.
+// Red before T718: the pattern of T717 did not see a backslash before the closing quote character, and
+// the real tree held one such message. At that pattern all three inputs returned `[]`.
+test('T718 plant: a tag between escaped quote characters is a hit', () => {
+  inScratch((scratch, put) => {
+    for (const [file, text] of [
+      ['tests/visual/template.ts', `const m = \`says \\\`${FULL_PAGE_TAG}\\\` here\`\n`],
+      ['tests/visual/single.ts', `const m = 'it\\'s \\'${FULL_PAGE_TAG}\\''\n`],
+      ['tests/visual/double.ts', `const m = "it\\"s \\"${FULL_PAGE_TAG}\\""\n`],
+    ]) {
+      put(file, text)
+      assert.deepEqual(scanHarnessForTagLiteral(scratch).offenders, [file], file)
+      rmSync(path.join(scratch, file))
+    }
+  })
+})
+
+// The limit the header states: a tag assembled, unquoted or inside a longer string is not seen.
 test('T717 contrast: a tag not written whole between quotes is not seen', () => {
   inScratch((scratch, put) => {
     put('tests/visual/assembled.ts', "const t = 'visual-' + 'full-page'\n")
     put('tests/visual/unquoted.ts', `// a full-page story\n// the ${FULL_PAGE_TAG} tag\n`)
-    put('tests/visual/escaped.ts', `const m = \`says \\\`${FULL_PAGE_TAG}\\\` here\`\n`)
+    put('tests/visual/longer.ts', `const t = 'tags: ${FULL_PAGE_TAG}'\n`)
     assert.deepEqual(scanHarnessForTagLiteral(scratch).offenders, [])
   })
 })

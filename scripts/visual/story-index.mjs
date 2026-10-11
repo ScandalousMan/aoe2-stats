@@ -20,8 +20,8 @@ export const FIXTURE_TAG = 'state-coverage-fixture'
 // source. `run.mjs` builds its capture units with this constant, the runtime pass (T703) records it
 // beside the clip it observed, and the state-signal sweep (T710) reads the built index's tags through it;
 // the inline script of `.github/workflows/baselines.yml` cannot import and writes the literal itself.
-// `story-index.test.mjs` fails on a quoted literal of it in `tests/visual/*.ts` or the other Node
-// scripts of `scripts/visual/`.
+// `story-index.test.mjs` fails on a quoted literal of it in `tests/visual/*.ts(x)` or the other Node
+// scripts of `scripts/visual/`, their tests excepted.
 export const FULL_PAGE_TAG = 'visual-full-page'
 
 // Every entry of a parsed `index.json`, whatever its type. `entries` is Storybook 10's key,

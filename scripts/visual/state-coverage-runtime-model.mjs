@@ -27,7 +27,13 @@ import { spawnSync } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { BUILD_STORYBOOK_COMMAND } from './missing-index.mjs'
-import { importFile, isFixtureEntry, isFullPageEntry, listStories } from './story-index.mjs'
+import {
+  FULL_PAGE_TAG,
+  importFile,
+  isFixtureEntry,
+  isFullPageEntry,
+  listStories,
+} from './story-index.mjs'
 import { selectChangedStories } from './story-selection.mjs'
 
 export const MANIFEST_PATH = 'packages/design-system/specs/state-coverage-runtime.json'
@@ -105,7 +111,7 @@ export function findKeyProblems({ manifest, index }) {
         problems.push({
           kind: 'full-page',
           id,
-          detail: `fullPage at ${width}px is ${JSON.stringify(record?.fullPage)}, the index ${fullPage ? 'tags' : 'does not tag'} the story \`visual-full-page\``,
+          detail: `fullPage at ${width}px is ${JSON.stringify(record?.fullPage)}, the index ${fullPage ? 'tags' : 'does not tag'} the story \`${FULL_PAGE_TAG}\``,
         })
       }
     }
