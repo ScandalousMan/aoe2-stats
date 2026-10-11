@@ -42,6 +42,11 @@ Ids resolve **across** features: `spec_lint.py`'s `task-refs` check treats an id
 moment any feature's `tasks.md` says so. 003 and 004 already overlap at T401–T412, which is exactly
 the ambiguity a disjoint range costs nothing to avoid.
 
+**Amended 2026-10-11:** the range did not stay disjoint. 005 runs past T597, and ten ids are defined
+by both this file and 005's: T671, T672, T673, T674, T706, T707, T708, T709, T710 and T713. None is
+renumbered. The record, and the task that makes a further collision fail the lint (T720), are in
+`specs/005-design-system-foundations/tasks.md`.
+
 ## What every implementer must know before starting
 
 **`.env.local` points at production.** No task here runs a migration, a backfill or a script against
