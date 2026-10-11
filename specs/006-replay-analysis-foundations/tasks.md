@@ -1939,6 +1939,47 @@ carries what T673's dry run read.
       entry and its commit say four outcomes write nothing, which counts a real run's; `selected`,
       the dry run's outcome, writes nothing either. Amend the entry to say four of a real run's
       outcomes, dated
+- [ ] T673i Close #133's review (`reviewer` REJECT 2026-10-11 on T673h; three findings the code
+      contradicts, four that do not block; the user chose the same day to close all seven in #133).
+      Same branch and pull request as T673h. **The database stop's condition is too wide:** under
+      the database stop `docs/runbooks/revalidate-quarantined.md` says the next run stops again "if
+      a row lies past the stopped one". `_revalidate_one` in
+      `apps/ingester/src/aoe2stats_ingester/capture.py` returns `integrity_failure` and
+      `inconclusive` before any write, and the loop in `revalidate_quarantined` breaks only on an
+      exception, so a run whose rows past the stopped one all end without a write does not stop,
+      prints no stop line, and exits 0 (or 1 if an `integrity_failure` is listed) with the failure
+      still there. That is the twin of the empty-page case T673h pinned. Pin it with a test of the
+      command: two rows past the stopped one, both ending without a write while every write fails,
+      no stop line, and the exit code the listed outcomes give. Then say under the database stop
+      that the next run stops again if a row past the stopped one reaches a write, and that a run
+      whose rows all needed no write, like one that selected none, ends without a stop line with the
+      failure still there. The store stop's condition stands: every row reads the store. **A run in
+      between under the store stop:** the sentence "a row a run in between listed is listed again
+      when the re-run's page reaches it" lacks "if it is still in the selection". A run in between
+      lists a row only where the failure did not hold for it, and can then mark it `stored` or
+      report it `changed_elsewhere` or `ownership_changed`; those leave the selection. Add the
+      qualifier under the store stop; the database stop's sentence names only the two no-write
+      outcomes and stands. **`_WHOLE_REASON_OUTCOMES`'s comment overclaims:** in
+      `scripts/ops/revalidate_quarantined.py` it says the pair's reason "differs from row to row".
+      An `inconclusive` from the wall-clock cap reports one fixed text, and so does an exception
+      with no message; a `still_quarantined` reason can repeat an engine verdict. Say "can differ
+      from row to row" for both; what always holds is that the refused-write pair's reason is one
+      fixed text. **The module docstring's last instruction:** "Copy the printed value exactly" in
+      the same module follows a paragraph that describes two printed values, the continuation's and
+      the stop line's, so it still offers the stop line's value after a stop; `--help` sends the
+      operator to that docstring. It is the last place that does: `git grep` on 2026-10-11 found no
+      other. Reword it as the two literals were. **The runbook path breaks in `--help`:** argparse
+      wraps on hyphens, so the rendered help prints `docs/runbooks/revalidate-` and `quarantined.md`
+      on two lines, and the test in `scripts/ops/tests/test_revalidate_quarantined_command.py` reads
+      the raw help text, not the rendered one. Make the path survive rendering (a
+      `RawDescriptionHelpFormatter` or a non-breaking form) and have the test assert on
+      `format_help()`; the test fails first against the wrapped path. **`_WHICH_VALUE`'s comment:**
+      it says the stop line's value "is not what the runbook has an operator give after a stop". The
+      runbook presents that value as the way past the stopped row, and names the first command's
+      `--after` only for a failure that is not about the row. Say that. **The test's negative
+      needle:** `"previous run printed" not in out` passes against "the last run printed". Assert
+      the absence of the shape, not of one wording: no sentence in either text offers a run's
+      printed value without naming the "more candidates remain" line
 - [ ] T713 Stop the claim from taking a capture whose profile has no active link (filed 2026-10-11
       from T673b; decided by the user the same day). `CaptureDrain._claim_batch` in
       `apps/ingester/src/aoe2stats_ingester/capture.py` excludes a row only when
