@@ -63,6 +63,7 @@ import {
   unwrapExpression,
 } from '../visual/module-specifiers.mjs'
 import { BUILD_STORYBOOK_COMMAND } from '../visual/missing-index.mjs'
+import { instanceKey } from '../visual/instance-identity.mjs'
 import { REVIEW_WIDTHS } from '../visual/review-widths.mjs'
 import { FIXTURE_TAG } from '../visual/story-index.mjs'
 import {
@@ -85,8 +86,9 @@ const specsDir = path.join(dsDir, 'specs')
 const readmePath = path.join(dsDir, 'specs', 'README.md')
 const prettierBin = path.join(rootDir, 'node_modules', '.bin', 'prettier')
 
-// `typescript` is a direct devDependency of packages/design-system, not of the workspace root —
-// resolved through that package's own node_modules rather than adding a second copy at the root.
+// `typescript` is a direct devDependency of packages/design-system, and of the workspace root since
+// T712; it is resolved here through that package's own node_modules, as it was before the
+// root declared it.
 const dsRequire = createRequire(path.join(dsDir, 'package.json'))
 const ts = dsRequire('typescript')
 
@@ -2534,7 +2536,8 @@ function asPrinted(storyObjectsWithMeta) {
 //     rendered file painted (`computeStateCoverage`); a tracked primitive written in a story file
 //     credits nothing;
 //   - every other forced story credits no cell and is reported with the reason (`resolveRuntimeForce`),
-//     among them a force on an element the browser reports disabled.
+//     among them a force whose stamp is in its placing instance's `disabledAt`, and a force the light
+//     and dark render disagree on, a disabled state included.
 // The stories considered are the manifest's entries, each joined to its parsed story object by the
 // entry's `importPath` and `exportName`, never the story files found under a component directory, so
 // where a story file lives decides nothing. A story with no entry fails the check, naming the command
@@ -2598,15 +2601,6 @@ function isStoryPath(filePath) {
   return /\.stories\.tsx?$/.test(filePath)
 }
 
-function canonicalInstance(instance) {
-  return JSON.stringify([
-    instance.component,
-    instance.variant ?? null,
-    instance.size ?? null,
-    [...(instance.disabledAt ?? [])].sort(),
-  ])
-}
-
 // The tracked-primitive instances every captured width mounts: the multiset intersection across
 // widths, in the first width's order. An instance one width renders and another does not is not
 // what the story shows, so it credits nothing.
@@ -2616,7 +2610,7 @@ export function stableMounts(entry) {
   const counts = perWidth.map((mounts) => {
     const byKey = new Map()
     for (const mount of mounts) {
-      const key = canonicalInstance(mount)
+      const key = instanceKey(mount)
       byKey.set(key, (byKey.get(key) ?? 0) + 1)
     }
     return byKey
@@ -2627,7 +2621,7 @@ export function stableMounts(entry) {
   }
   const stable = []
   for (const mount of perWidth[0]) {
-    const key = canonicalInstance(mount)
+    const key = instanceKey(mount)
     if ((allowed.get(key) ?? 0) > 0) {
       allowed.set(key, allowed.get(key) - 1)
       stable.push(mount)
@@ -2668,6 +2662,11 @@ export function rowAxesOf(instance) {
 
 // The widths every story is captured and recorded at, as the manifest's keys.
 const CAPTURED_WIDTHS = REVIEW_WIDTHS.map(String)
+
+// The keys of one width's record the runtime pass writes (`WidthRecord`,
+// `tests/visual/state-coverage-runtime.ts`, after `buildEntry` has lifted `files` and `oneThemeFiles`
+// into the entry). `force` is present for a forced story and `focus` for a story with a `play()`.
+const WIDTH_RECORD_KEYS = ['clip', 'fullPage', 'mounts', 'force', 'focus', 'focusDiffersByTheme']
 
 const isPlainObject = (value) =>
   value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -2787,19 +2786,25 @@ function unstampedPlacedProblem(record, where) {
 //     is not one) nor a `file:line` string (`stampProblem`: an empty string is neither), or whose
 //     `placedBy` is neither null nor a well-formed instance, or whose `stamp` is null while its
 //     `placedBy` is not; and a force record whose `differsByTheme` (the light and the dark render
-//     disagree on the match count, stamp or placing instance, or only one carries the force, T710) is
+//     disagree on the match count, stamp, placing instance or the forced element's own disabled state,
+//     or only one carries the force, T710, T712) is
 //     present and not `true`;
 //     (An entry's `files` is checked by `filesProblem`, which the story path runs first: it is read
 //     outside this function's widths, so a value that is not an array of strings must be named before
 //     any of it is read.)
-//   - the entry's `oneThemeFiles` (the files exactly one of the two themes rendered, T711) is, when
-//     present, an array of strings, and a width's `focusDiffersByTheme` (the two themes disagree on the
-//     focus, T711) is, when present, `true`;
+//   - the entry's `oneThemeFiles` (the files exactly one of the two themes rendered at some width, T711)
+//     is, when present, a NON-EMPTY array of strings (the pass writes it only when it is not empty,
+//     T712), and a width's `focusDiffersByTheme` (the two themes disagree on the focus, T711) is, when
+//     present, `true`;
+//   - a width's record has no key outside `WIDTH_RECORD_KEYS` (T712);
 // `knownAxisValues` is `readAxisValues` per primitive; absent, an axis value is not checked against it.
 export function entryShapeProblem(entry, { forced, knownAxisValues } = {}) {
   const oneTheme = entry?.oneThemeFiles
   if (oneTheme !== undefined && !isStringArray(oneTheme)) {
     return `its \`oneThemeFiles\` is not an array of strings (${show(oneTheme)}); the pass writes it only as one, and only when it is not empty`
+  }
+  if (oneTheme !== undefined && oneTheme.length === 0) {
+    return 'its `oneThemeFiles` is empty; the pass writes it only when it is not empty'
   }
   const recorded = Object.keys(entry?.widths ?? {})
   const missing = CAPTURED_WIDTHS.filter((w) => !recorded.includes(w))
@@ -2822,11 +2827,20 @@ export function entryShapeProblem(entry, { forced, knownAxisValues } = {}) {
     if (!Array.isArray(record.mounts)) {
       return `${at} has \`mounts\` that is not an array (${show(record.mounts)})`
     }
-    // The capture frame (T703): booleans the browser pass writes. An entry without them predates the
-    // record, and a mount credit read from nothing would be a credit for a frame nobody observed.
+    // A key the pass does not write (T712). `buildEntry` lifts `files` and `oneThemeFiles` out of the
+    // width records into the entry, and no pass writes any other key here, so one that is present is a
+    // hand edit or a writer this check does not know: named, not ignored.
+    for (const key of Object.keys(record)) {
+      if (!WIDTH_RECORD_KEYS.includes(key)) {
+        return `${at} has a key \`${key}\` the pass does not write (it writes ${WIDTH_RECORD_KEYS.map((k) => `\`${k}\``).join(', ')})`
+      }
+    }
+    // The two themes disagree on the focus (T711): present only as `true`.
     if (record.focusDiffersByTheme !== undefined && record.focusDiffersByTheme !== true) {
       return `${at} has a \`focusDiffersByTheme\` that is not \`true\` (${show(record.focusDiffersByTheme)}); the pass writes it only as \`true\``
     }
+    // The capture frame (T703): booleans the browser pass writes. An entry without them predates the
+    // record, and a mount credit read from nothing would be a credit for a frame nobody observed.
     for (const field of ['clip', 'fullPage']) {
       if (typeof record[field] !== 'boolean') {
         return `${at} has \`${field}\` that is not a boolean (${show(record[field])}), so the capture frame it shows is not recorded`
@@ -2887,9 +2901,10 @@ export function entryShapeProblem(entry, { forced, knownAxisValues } = {}) {
 //
 // A force is credited only when it is the same answer at every captured width: one element
 // (Playwright's strict mode refuses two, so no frame of a two-match force can be captured, and none
-// of zero), one stamp, one placing instance, and an element the browser does not report disabled. The
-// refusal names the true reason — never the one a refusal prints for every cause (`credited on no
-// cell`).
+// of zero), one stamp, one placing instance, and a stamp that is in no width's placing
+// instance's `disabledAt` (an element no tracked primitive placed is not refused for being disabled,
+// unless the two themes disagree on it). The refusal names the true reason — never the one a refusal
+// prints for every cause (`credited on no cell`).
 export function resolveRuntimeForce(entry, { recordOneKeys, knownAxisValues }) {
   const malformed = entryShapeProblem(entry, { forced: true, knownAxisValues })
   if (malformed) return { malformed }
@@ -2902,12 +2917,13 @@ export function resolveRuntimeForce(entry, { recordOneKeys, knownAxisValues }) {
     }
   }
   // The light and the dark render of the story disagree on the force (T710, `combineThemeRecords`) in
-  // match count, stamp or placing instance, or only one carries it: the record carries one theme's
-  // answer and this flag, and neither theme's answer is the capture's.
+  // match count, stamp, placing instance or the forced element's own disabled state, or only one
+  // carries it: the record carries one theme's answer and this flag, and neither theme's answer is the
+  // capture's.
   const themed = widths.filter(([, record]) => record.force.differsByTheme === true)
   if (themed.length > 0) {
     return {
-      refusal: `the light and the dark render disagree on the force at ${label(themed)} (a different match count, stamp or placing instance, or a force only one theme carries): the capture shows both themes, so neither answer is credited`,
+      refusal: `the light and the dark render disagree on the force at ${label(themed)} (a different match count, stamp or placing instance, a different disabled state of the forced element itself, or a force only one theme carries): the capture shows both themes, so neither answer is credited`,
     }
   }
   const none = widths.filter(([, record]) => record.force.count === 0)
@@ -2978,7 +2994,7 @@ export function resolveRuntimeForce(entry, { recordOneKeys, knownAxisValues }) {
 // The runtime half of a story's own record, shared by the matrices: what it credits, per record.
 // Built once per manifest entry (`computeStateCoverage`).
 function sameInstance(a, b) {
-  return canonicalInstance(a) === canonicalInstance(b)
+  return instanceKey(a) === instanceKey(b)
 }
 
 // Walks the story files the Storybook globs index that `walkAllTsxFiles` does not (anywhere under
@@ -3557,9 +3573,13 @@ export function computeStateCoverage({
       const mountCredit = !shapeProblem && !sourceUnread && !clipped && !mayRenderOutsideRoot
       // The two themes disagree on the focus at some width (T711, `combineThemeRecords`): one capture
       // shows an element focused that the record names none for, so the Rest credit of this story's own
-      // mounts is withheld at every width, the placing instance and any other alike. The Disabled
-      // credit does not read the focus and is unchanged.
-      const focusDisagrees = widthRecords.some((record) => record.focusDiffersByTheme === true)
+      // mounts is withheld for the entry, at every width, the placing instance and any other alike. The
+      // Disabled credit does not read the focus and is unchanged.
+      // The WIDTHS disagree on the focus (T712): each width keeps its own answer and `stableFocus` takes
+      // none when they differ, so the placing instance would lose its focus role the same way.
+      const focusDisagrees =
+        widthRecords.some((record) => record.focusDiffersByTheme === true) ||
+        new Set(widthRecords.map((record) => JSON.stringify(record.focus ?? null))).size > 1
       const restCredit = mountCredit && !focusDisagrees
       let verdict = null
       if (shapeProblem) {
@@ -3649,8 +3669,13 @@ export function computeStateCoverage({
           pushInstance(mount, row, role)
         }
       }
-      // The placing instance is always among a story's mounts; a manifest that disagrees still
-      // credits the instance the force located, which is what the browser reported.
+      // The placing instance is not always among a story's mounts: the force's record is read before
+      // the force and the mounts after it, so a handler of the force that changes what the force's own
+      // record holds (it disables or unmounts the forced element, or changes the variant or size of the
+      // instance that placed it) leaves a record whose halves describe different pages (a known shape,
+      // row 8). An instance the mounts lack is credited from the force's own record, which is what the
+      // browser reported before the force: the forced state is credited to the row read before the
+      // force.
       if (placingForce && !forceUsed) pushInstance(placingForce, placingForce.row, 'force')
       if (placingFocus && !focusUsed) {
         const row = rowAxesOf(placingFocus)
@@ -3896,7 +3921,9 @@ function resolveClickMatch({ candidate, pool, name, argsLiterals }) {
 //   - a `play()` click credits an `activeStateConditional` element statically (`entry.playClick`),
 //     only when the story's rendered files include the element's own file and that file is not in the
 //     entry's `oneThemeFiles` (T711): the capture shows both themes, and an element of a file only one
-//     of them rendered is not on the other's frame.
+//     of them rendered is not on the other's frame. The test is by file, from `files` (the union of
+//     every theme and width), so an element one theme alone renders inside a file both render, and a
+//     file rendered at one width only, are credited: known shapes (T712, row 8 of the README).
 function buildElementCells(el, elements, storyObjectsAsEntered) {
   const storyObjectsWithMeta = asPrinted(storyObjectsAsEntered)
   const impliedRole = impliedRoleOf(el)
@@ -4193,11 +4220,17 @@ export const REGION_LEGEND = [
   "row's variant and size. A force on an element whose stamp is in the placing instance's `disabledAt`",
   '(the host elements it placed that the browser reports `:disabled` or `aria-disabled="true"`) is',
   'refused, and so is a force the light and the dark render of the story answer differently (a',
-  'different match count, stamp or placing instance, or a force only one theme carries).',
+  'different match count, stamp or placing instance, a different disabled state of the forced element',
+  'itself, or a force only one theme carries).',
   "The Disabled column of every matrix, and a primitive's own stories' Rest column, come from",
   'the primitive instances a story mounts, as rendered, and from nothing else: a `disabled` or `loading`',
   "written at a call site, and a `disabled: true` in a story's `args`, credit no Disabled cell. The",
-  'instances credited are the ones the light and the dark render both mount. A story',
+  'instances credited are the ones the light and the dark render both mount. A `play()` click credits an',
+  "element's `active` cell only when the story rendered that element's file in both themes (an entry",
+  'whose `oneThemeFiles` names the file credits none); the test is by file, so an element one theme or',
+  'one width alone renders inside a file every render shares is still credited. A story whose two themes,',
+  'or whose captured widths, disagree on what holds focus after its `play()` gets no Rest credit for its',
+  'own mounts, at any width. A story',
   'gives no mount credit when the browser applied a `visualCaptureClip` to it in either theme at any',
   'captured width (the manifest records, per width, whether one applied, read from the settled story',
   'the capture itself reads, in the light theme and in the dark one, so a clip no object literal spells',
@@ -4224,8 +4257,11 @@ export const REGION_LEGEND = [
   ...STATIC_CREDITS.map((credit) => `- ${credit.legend}`),
   '',
   '**Residual gaps, not refused:** a forced element no tracked primitive placed (a record-1 element of',
-  'another component) is credited without knowing whether it renders disabled, because the manifest',
-  "records disabled elements only among a tracked primitive's own; a mounted instance the page does not",
+  'another component) is credited without knowing whether it renders disabled: the runtime pass reads',
+  "the element's own disabled state and compares it between the two themes at each width, and the manifest",
+  'does not carry it, so a target disabled in both themes, or at one width with the themes agreeing, is',
+  'credited (a target the light and the dark render disagree on at a width is refused, whichever of them is',
+  'disabled); a mounted instance the page does not',
   'show (`hidden`, `sr-only`, `opacity-0`, a closed `details`) is credited as mounted, because the',
   'manifest records what mounts, not what paints; a story tagged `visual-full-page` is screenshotted as',
   'the viewport, so a disabled instance behind its scrim is credited though the scrim covers it; the',

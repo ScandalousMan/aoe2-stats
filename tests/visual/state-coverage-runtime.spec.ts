@@ -27,7 +27,7 @@ import type { Instance, WidthRecord } from './state-coverage-runtime'
 interface WorkItem {
   id: string
   widths: number[]
-  // Whether the built index tags the story `visual-full-page` (`isFullPageEntry`): the capture's own source.
+  // Whether the built index tags the story full-page (`isFullPageEntry`): the capture's own source.
   fullPage: boolean
 }
 // What the driver hands over: the stories to run, and every fixture story the built index lists —

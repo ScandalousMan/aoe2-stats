@@ -173,7 +173,7 @@ for (const { id, theme, width, fullPage } of stories) {
       // landmark and a heading. Those are Storybook's chrome, not the design system's, exactly the
       // failure mode this comment is here to explain. Scoping to the root removes them entirely and
       // still catches every element-level rule (color-contrast, aria-*, button-name, and so on).
-      // A `visual-full-page` story's subject (a fixed dialog, an open popover) still gets scanned
+      // A full-page story's subject (a fixed dialog, an open popover) still gets scanned
       // even though its *screenshot* goes full-page: none of these components use a portal
       // (`ReactDOM.createPortal`, confirmed absent from `packages/design-system/src`), so a
       // `position: fixed` element stays a DOM descendant of `#storybook-root` — only its painted
@@ -211,7 +211,7 @@ for (const { id, theme, width, fullPage } of stories) {
 
     const baselineName = `${id}-${theme}-${width}.png`
     // `visualCaptureClip` takes precedence over `fullPage` (T591): a story that carries both would
-    // mean its own `visual-full-page` tag was never removed when the clip was added — the clip is
+    // mean its own full-page tag was never removed when the clip was added — the clip is
     // still the more specific, more correct capture, so it wins rather than the two silently racing.
     const captureClip = await readCaptureClip(page, id)
 

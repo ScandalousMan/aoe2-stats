@@ -265,6 +265,9 @@ jobs:
       # workspace member's own `typecheck` script (`pnpm -r --if-present run typecheck`, the
       # same idiom `lint` and `test` already use below); `apps/web`'s runs `tsr generate` first
       # so TanStack's generated, uncommitted route tree exists before `tsc -b` checks it.
+      # T712: the root `typecheck` script also runs `typecheck:visual`, a `tsc` over `tests/visual` (the
+      # specs, the helpers and the fixtures) and the declarations of the `scripts/visual` modules they
+      # import (`tests/visual/tsconfig.check.json`), which no workspace member's own typecheck reaches.
       - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm test
@@ -482,8 +485,10 @@ jobs:
       # same reason as the line above (a browser pass over every story on each pull request is the
       # factory constitution VII and FR-061 keep for nightly), but not by the same rule: the
       # selection is the union of what `--changed` above selects (a story's own directory, a
-      # global-reach path, a file the preview reaches through module specifiers (T710: every story),
-      # or, T707, a module the story file imports transitively through a module specifier), every
+      # global-reach path, a file the preview reaches through module specifiers (T710: every story; T712:
+      # the preview's walk is not held to the package, so a file it imports from elsewhere in the
+      # repository counts, and a file the diff deleted still counts when a specifier names it), or,
+      # T707, a module the story file imports transitively through a module specifier), every
       # story whose committed entry RECORDED a source file the diff touches (`files`: the stamped
       # files that rendered an element in that story, portals included; a rename lists both its
       # paths), and every story whose entry differs from the manifest at the diff base (so a

@@ -331,6 +331,20 @@ export async function gotoAndWaitForStorySettled(
   return root
 }
 
+// Brings up the mouse button an `active` force left down (`applyForceState`), away from the story:
+// the page leaves it for `about:blank` first, and only then does the button come up. A release over
+// the control is a click, and over a link with an `href`, a submit button or any handler that
+// navigates it runs the story's own code and can destroy the document the caller still reads or
+// clears; over a blank document no click handler of the story runs and nothing navigates. `goto`
+// resolves once the blank document is loaded, so no navigation is left to race (T708, T712). Shared by
+// the runtime pass (`state-coverage-runtime.ts`) and the sweep (`state-signal-sweep.spec.ts`), so the
+// order is one definition. `stories.spec.ts` releases over the story after its capture, at the end of
+// a test whose page closes next.
+export async function releaseMouseOffStory(page: Page): Promise<void> {
+  await page.goto('about:blank')
+  await page.mouse.up()
+}
+
 // Drives the real CSS pseudo-class a `visualForceState` names, in this real browser, on the
 // already-settled `root` — the exact block `stories.spec.ts` used to run inline. Returns whether
 // the caller must release a held mouse button after capturing (`active` holds it down on purpose).

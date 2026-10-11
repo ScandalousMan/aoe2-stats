@@ -15,8 +15,8 @@
 // that rendered an element in the story's document (portals included — a story renders alone in its
 // page), unioned across widths. `selectRuntimeStories` reads it: a diff selects the entries that
 // recorded a file it touches. When it is not empty, an entry also carries `oneThemeFiles` (T711): the
-// files of `files` that exactly one of the two themes rendered, which the checker reads and selection
-// does not.
+// files of `files` that exactly one of the two themes rendered at ANY single width (one width is
+// enough), which the checker reads and selection does not.
 //
 // An instance is an object, `{ component, variant, size, disabledAt }` in that key order, so a reader
 // (T694) decodes it in Node without reading `preview.tsx`: `variant` and `size` are `null` when the
@@ -27,7 +27,13 @@ import { spawnSync } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { BUILD_STORYBOOK_COMMAND } from './missing-index.mjs'
-import { importFile, isFixtureEntry, isFullPageEntry, listStories } from './story-index.mjs'
+import {
+  FULL_PAGE_TAG,
+  importFile,
+  isFixtureEntry,
+  isFullPageEntry,
+  listStories,
+} from './story-index.mjs'
 import { selectChangedStories } from './story-selection.mjs'
 
 export const MANIFEST_PATH = 'packages/design-system/specs/state-coverage-runtime.json'
@@ -105,7 +111,7 @@ export function findKeyProblems({ manifest, index }) {
         problems.push({
           kind: 'full-page',
           id,
-          detail: `fullPage at ${width}px is ${JSON.stringify(record?.fullPage)}, the index ${fullPage ? 'tags' : 'does not tag'} the story \`visual-full-page\``,
+          detail: `fullPage at ${width}px is ${JSON.stringify(record?.fullPage)}, the index ${fullPage ? 'tags' : 'does not tag'} the story \`${FULL_PAGE_TAG}\``,
         })
       }
     }

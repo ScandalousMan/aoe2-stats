@@ -11,8 +11,9 @@ import { collectModuleSpecifiers, findNonLiteralSpecifiers } from './module-spec
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const designSystemDir = path.join(rootDir, 'packages', 'design-system')
-// `typescript` is a direct devDependency of packages/design-system, not of the workspace root; the same
-// resolution `module-specifiers.mjs` uses, here only for `ts.createSourceFile`.
+// `typescript` is a direct devDependency of packages/design-system, and of the workspace root since
+// T712; the same resolution `module-specifiers.mjs` uses, here only for
+// `ts.createSourceFile`.
 const ts = createRequire(path.join(designSystemDir, 'package.json'))('typescript')
 
 // Paths whose diff repaints or can repaint *every* story, so touching any of them selects the
@@ -147,10 +148,13 @@ const isFile = (file) => {
 // and `..`, name a directory and try the `index` candidates only. Each existing candidate is returned,
 // not the first: over-selecting is the safe direction, so which one a bundler would load (`helper.js`
 // or `helper.ts`, a file or a directory index of the same name) is a question the walk never needs to
-// answer, and its extension order is irrelevant. A bare specifier (a package, an alias), one that
-// resolves to nothing, and a candidate outside `dsDir` or inside `node_modules` yield nothing: not
-// walked.
-function resolveRelativeSpecifier(fromFile, rawSpecifier, dsDir) {
+// answer, and its extension order is irrelevant. A candidate the diff DELETED is no longer on disk and
+// is returned too, when `touched` names it (T712): the importer named a file the diff removed, and
+// that is a change to what it imports whatever else exists. A bare specifier (a package, an alias),
+// one that resolves to nothing, and a candidate outside `boundary` or inside `node_modules` yield
+// nothing: not walked. `boundary` is the package for a story's walk and the repository for the
+// preview's (`selectChangedStories`).
+function resolveRelativeSpecifier(fromFile, rawSpecifier, boundary, touched = new Set()) {
   const specifier = rawSpecifier.replace(/[?#].*$/, '')
   const bareDirectory = specifier === '.' || specifier === '..'
   if (!bareDirectory && !specifier.startsWith('./') && !specifier.startsWith('../')) return []
@@ -170,16 +174,25 @@ function resolveRelativeSpecifier(fromFile, rawSpecifier, dsDir) {
       ...indexes,
     ]
   }
-  return candidates.filter(isFile).filter((file) => {
-    const rel = path.relative(dsDir, file)
-    if (rel.startsWith('..') || path.isAbsolute(rel)) return false
-    return !rel.split(path.sep).includes('node_modules')
-  })
+  return candidates
+    .filter((file) => isFile(file) || touched.has(file))
+    .filter((file) => {
+      const rel = path.relative(boundary, file)
+      if (rel.startsWith('..') || path.isAbsolute(rel)) return false
+      return !rel.split(path.sep).includes('node_modules')
+    })
+}
+
+// One walk's context: the directory it stays inside, the absolute paths the diff touched (a deleted
+// file among them is a candidate the resolver still returns), and the parse cache, which depends on
+// both and so is not shared between walks.
+function walkContext(boundary, touched) {
+  return { boundary, touched, cache: new Map() }
 }
 
 // What one file names: the files its relative specifiers resolve to, and whether it holds an
 // `import()`, `require()` or `import x = require()` whose specifier is not a plain string literal.
-function readImports(file, dsDir, cache) {
+function readImports(file, { boundary, touched, cache }) {
   const cached = cache.get(file)
   if (cached) return cached
   const result = { resolved: [], opaque: false }
@@ -194,7 +207,7 @@ function readImports(file, dsDir, cache) {
   const sourceFile = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true)
   result.opaque = findNonLiteralSpecifiers(sourceFile).length > 0
   for (const specifier of collectModuleSpecifiers(sourceFile)) {
-    result.resolved.push(...resolveRelativeSpecifier(file, specifier, dsDir))
+    result.resolved.push(...resolveRelativeSpecifier(file, specifier, boundary, touched))
   }
   return result
 }
@@ -202,15 +215,15 @@ function readImports(file, dsDir, cache) {
 // Whether the story module at `storyFile` reaches, through module specifiers and transitively, a file
 // in `touched` (absolute paths) — or holds a specifier it cannot read. The visited set ends the cycles
 // the real tree has (a component's story file and its `index` import each other's neighbours).
-function storyReachesTouched(storyFile, touched, dsDir, cache) {
+function storyReachesTouched(storyFile, context) {
   const visited = new Set()
   const pending = [storyFile]
   while (pending.length > 0) {
     const file = pending.pop()
     if (visited.has(file)) continue
     visited.add(file)
-    if (touched.has(file)) return true
-    const { resolved, opaque } = readImports(file, dsDir, cache)
+    if (context.touched.has(file)) return true
+    const { resolved, opaque } = readImports(file, context)
     if (opaque) return true
     pending.push(...resolved)
   }
@@ -220,7 +233,7 @@ function storyReachesTouched(storyFile, touched, dsDir, cache) {
 // Every file reachable from `starts` through module specifiers, the same reader and the same
 // "follow every candidate" resolution `storyReachesTouched` uses, and whether any file reached holds a
 // specifier it cannot read.
-function reachOf(starts, dsDir, cache) {
+function reachOf(starts, context) {
   const visited = new Set()
   const pending = [...starts]
   let opaque = false
@@ -228,7 +241,7 @@ function reachOf(starts, dsDir, cache) {
     const file = pending.pop()
     if (visited.has(file)) continue
     visited.add(file)
-    const read = readImports(file, dsDir, cache)
+    const read = readImports(file, context)
     if (read.opaque) opaque = true
     pending.push(...read.resolved)
   }
@@ -237,8 +250,13 @@ function reachOf(starts, dsDir, cache) {
 
 // The preview's own module (`.storybook/preview.tsx`, whatever extension it has) as the walk starts:
 // every file a `preview` specifier in `.storybook` can name.
-function previewModules(dsDir) {
-  return resolveRelativeSpecifier(path.join(dsDir, '.storybook', 'index.mjs'), './preview', dsDir)
+function previewModules(dsDir, { boundary, touched }) {
+  return resolveRelativeSpecifier(
+    path.join(dsDir, '.storybook', 'index.mjs'),
+    './preview',
+    boundary,
+    touched,
+  )
 }
 
 // The stories a diff affects. A change under any `GLOBAL_REACH_PREFIXES` path repaints (or can
@@ -267,6 +285,8 @@ function previewModules(dsDir) {
 // literal is selected on ANY diff inside the package: what it loads is not readable.
 // T710: and every story when the diff touches a file the PREVIEW reaches through module specifiers
 // (`reachOf` from `.storybook/preview.tsx`), since the preview's imports run for every story.
+// T712: a file the diff DELETED is still named by the specifier that imported it, so it is in the reach of
+// a story and of the preview; and the preview's walk is held to the repository, not to the package.
 // Known shapes that stay outside the rule, not an exhaustive list: a file a story reaches only at run
 // time and not through a module specifier its story file or a reached file names (a hook's side
 // effect, state a module sets that a story reads without importing it, a stylesheet's own `@import`,
@@ -284,30 +304,36 @@ export function selectChangedStories(stories, diff, dsDir = designSystemDir) {
   const touchedInPackage = diff
     .filter((f) => f.startsWith(PACKAGE_PREFIX))
     .map((f) => f.slice(PACKAGE_PREFIX.length))
-  const importCache = new Map()
   // T710: the preview imports primitives (`Button`, `Field`, `Link`, `Menu` at the time of writing) whose
   // module graphs run their top-level code for every story, a story that does not import them
   // included. A diff on a file the preview reaches through module specifiers repaints, or can change
   // what any story records, so it selects every story; so does any diff inside the package when a file
   // the preview reaches holds a specifier it cannot read. The walk is `storyReachesTouched`'s, from the
   // preview once instead of from each story.
-  if (touchedInPackage.length > 0) {
-    const { visited, opaque } = reachOf(previewModules(dsDir), dsDir, importCache)
-    if (opaque || touchedInPackage.some((f) => visited.has(path.join(dsDir, f)))) {
+  // T712: the preview's walk is not held to the package. A file it imports from outside (another
+  // workspace member, `apps/`, a root file) runs for every story as much as one inside, and the
+  // global-reach prefixes name only some of those places. Its boundary is the repository (the package
+  // directory's grandparent, `packages/design-system/` up two) and it reads the whole diff; a candidate
+  // the diff deleted is still named by the specifier that imported it. A story's own walk keeps the
+  // package as its boundary.
+  const repoRoot = path.resolve(dsDir, '..', '..')
+  const touchedRepo = new Set(diff.map((f) => path.join(repoRoot, f)))
+  if (diff.length > 0) {
+    const previewContext = walkContext(repoRoot, touchedRepo)
+    const { visited, opaque } = reachOf(previewModules(dsDir, previewContext), previewContext)
+    if ((opaque && touchedInPackage.length > 0) || [...touchedRepo].some((f) => visited.has(f))) {
       return { stories, globallyAffected: true }
     }
   }
   const touchedDesignSystemDirs = new Set(touchedInPackage.map((f) => path.posix.dirname(f)))
   const touchedStoryFiles = new Set(touchedInPackage.filter((f) => storyGlob.test(f)))
   const touchedAbsolute = new Set(touchedInPackage.map((f) => path.join(dsDir, f)))
+  const storyContext = walkContext(dsDir, touchedAbsolute)
   // The built index lists one entry per story, a dozen to a file: walk each story file once.
   const reachesByFile = new Map()
   const reachesTouched = (importPath) => {
     if (!reachesByFile.has(importPath)) {
-      reachesByFile.set(
-        importPath,
-        storyReachesTouched(path.join(dsDir, importPath), touchedAbsolute, dsDir, importCache),
-      )
+      reachesByFile.set(importPath, storyReachesTouched(path.join(dsDir, importPath), storyContext))
     }
     return reachesByFile.get(importPath)
   }

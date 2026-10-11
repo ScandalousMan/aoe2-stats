@@ -228,6 +228,85 @@ test('T707 contrast: a story is not selected because a story in another director
   )
 })
 
+// ---- T712 (5): the walked reach of a story and of the preview --------------------------------------------
+
+test('T712 (5) plant: a candidate file the diff deletes is in the reach, so the importing story is selected', () => {
+  // `shared/gone.ts` is not on disk: the diff deleted it. The story's `import '../../shared/gone'` named
+  // it, so the diff changes what the story imports, and no other candidate exists to follow.
+  withTree(
+    {
+      'src/composites/Card/Card.stories.tsx': "import '../../shared/gone'\nexport default {}\n",
+      'src/composites/Panel/Panel.stories.tsx': 'export default {}\n',
+    },
+    (select) => {
+      assert.deepEqual(select(`${PKG}src/shared/gone.ts`), [CARD])
+      // The directory index and the emitted extension are candidates too.
+      assert.deepEqual(select(`${PKG}src/shared/gone/index.tsx`), [CARD])
+    },
+  )
+})
+
+test('T712 (5) contrast: a deleted file no story names selects nothing, and an importer is not selected by a file of a different name', () => {
+  withTree(
+    {
+      'src/composites/Card/Card.stories.tsx': "import '../../shared/gone'\nexport default {}\n",
+      'src/composites/Panel/Panel.stories.tsx': 'export default {}\n',
+    },
+    (select) => {
+      assert.deepEqual(select(`${PKG}src/shared/never-imported.ts`), [])
+      assert.deepEqual(select(`${PKG}src/shared/gone-not.ts`), [])
+      assert.deepEqual(select(`${PKG}src/shared/gone.css`), [])
+    },
+  )
+})
+
+test('T712 (5) plant: a file the preview imports from outside the package, under no global-reach prefix, selects every story, deleted or not', () => {
+  // `packages/shared-ui/` is neither inside `packages/design-system/` nor under a global-reach prefix.
+  const tree = {
+    '.storybook/preview.tsx': "import { token } from '../../shared-ui/token'\nexport default {}\n",
+    '/packages/shared-ui/token.ts': 'export const token = 1\n',
+    'src/composites/Card/Card.stories.tsx': 'export default {}\n',
+    'src/composites/Panel/Panel.stories.tsx': 'export default {}\n',
+  }
+  withTree(tree, (select) => {
+    assert.deepEqual(select('packages/shared-ui/token.ts'), [CARD, PANEL])
+  })
+  // Deleted by the diff: absent from disk, still named by the preview.
+  const { '/packages/shared-ui/token.ts': _gone, ...withoutFile } = tree
+  withTree(withoutFile, (select) => {
+    assert.deepEqual(select('packages/shared-ui/token.ts'), [CARD, PANEL])
+  })
+})
+
+test('T712 (5) contrast: a file outside the package the preview does not import selects nothing, and a story importing one is still not walked there', () => {
+  withTree(
+    {
+      '.storybook/preview.tsx':
+        "import { token } from '../../shared-ui/token'\nexport default {}\n",
+      '/packages/shared-ui/token.ts': 'export const token = 1\n',
+      '/packages/shared-ui/other.ts': 'export const other = 1\n',
+      'src/composites/Card/Card.stories.tsx': 'export default {}\n',
+    },
+    (select) => {
+      assert.deepEqual(select('packages/shared-ui/other.ts'), [])
+      assert.deepEqual(select('docs/readme.md'), [])
+    },
+  )
+  // A story file reaching outside the package is not walked (its rule is the package's); only the
+  // preview's walk crosses the boundary.
+  withTree(
+    {
+      '.storybook/preview.tsx': 'export default {}\n',
+      '/packages/shared-ui/token.ts': 'export const token = 1\n',
+      'src/composites/Card/Card.stories.tsx':
+        "import '../../../../shared-ui/token'\nexport default {}\n",
+    },
+    (select) => {
+      assert.deepEqual(select('packages/shared-ui/token.ts'), [])
+    },
+  )
+})
+
 test('T707: every form of module specifier is followed, a bare or unresolvable one is ignored, and the walk stays in the package', () => {
   withTree(
     {
@@ -268,7 +347,10 @@ test('T707: every form of module specifier is followed, a bare or unresolvable o
         assert.deepEqual(select(`${PKG}${file}`), [CARD], file)
       }
       assert.deepEqual(select('apps/web/src/main.tsx'), [])
-      assert.deepEqual(select(`${PKG}src/nowhere/missing.ts`), [])
+      // `../../nowhere/missing` resolves to no file, so it is ignored: a diff on an unrelated path selects
+      // nothing through it. A diff that NAMES a path the specifier can resolve to is the file the diff
+      // deleted (T712, plant below), and selects the importer.
+      assert.deepEqual(select(`${PKG}src/nowhere/other.ts`), [])
     },
   )
 })

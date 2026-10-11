@@ -4564,8 +4564,8 @@ test('resolveRuntimeForce: two matches are refused as strict-mode ambiguity, wit
 })
 
 // T710: the light and the dark render disagree on the force (`combineThemeRecords`,
-// `tests/visual/state-coverage-runtime.ts`); the record carries the light answer and `differsByTheme`.
-test('resolveRuntimeForce: a force the light and dark themes locate differently is refused, naming the themes, even when the light answer would credit', () => {
+// `tests/visual/state-coverage-runtime.ts`); the record carries the answer of the first theme that has one and `differsByTheme`.
+test('resolveRuntimeForce: a force the light and dark themes locate differently is refused, naming the themes, even when the answer the record carries would credit', () => {
   const credited = {
     count: 1,
     stamp: `${STAMP_ROOT}primitives/Button/index.tsx:213`,
@@ -4584,6 +4584,33 @@ test('resolveRuntimeForce: a force the light and dark themes locate differently 
   const agreed = resolveRuntimeForce({ widths: forceWidths(credited) }, { recordOneKeys })
   assert.equal(agreed.refusal, undefined)
   assert.equal(agreed.stamp, credited.stamp)
+})
+
+// T713 (d): `differsByTheme` is also written when the forced element is disabled in one theme only
+// (`combineThemeRecords` compares `disabled` and drops it), so the refusal's list of reasons names it.
+// The record carries the flag and not the cause, so one refusal text covers every cause, and the test
+// pins that the text names each one, the disabled state with the others.
+test('T713 (d) resolveRuntimeForce: the refusal of a force the themes answer differently names the forced element’s disabled state, and still names the match count', () => {
+  const verdict = resolveRuntimeForce(
+    {
+      widths: forceWidths({
+        count: 1,
+        stamp: `${STAMP_ROOT}primitives/Button/index.tsx:213`,
+        placedBy: null,
+        differsByTheme: true,
+      }),
+    },
+    { recordOneKeys },
+  )
+  assert.match(verdict.refusal, /a different disabled state of the forced element itself/)
+  assert.match(verdict.refusal, /a different match count/)
+  assert.match(verdict.refusal, /stamp or placing instance/)
+  assert.match(verdict.refusal, /a force only one theme carries/)
+  // The legend printed in the README region says the same.
+  assert.match(
+    REGION_LEGEND.replace(/\s+/g, ' '),
+    /a different disabled state of the forced element itself/,
+  )
 })
 
 test('entryShapeProblem: differsByTheme is true or absent, never another value', () => {
@@ -8850,7 +8877,6 @@ test("T711 (M1) plant: a play() click whose element's file exactly one theme ren
 test('T711 (M1) contrast: a file both themes rendered credits the click as before, and so does one-theme-only naming a different file', () => {
   const expected = [`Tooltip|button @ ${TOOLTIP_FILE}:2|active`, `record1|${TOOLTIP_FILE}:2|active`]
   assert.deepEqual(activeCreditOf(tooltipClickRun({})), expected)
-  assert.deepEqual(activeCreditOf(tooltipClickRun({ oneThemeFiles: [] })), expected)
   assert.deepEqual(
     activeCreditOf(tooltipClickRun({ oneThemeFiles: [`${STAMP_ROOT}primitives/Other/index.tsx`] })),
     expected,
@@ -8891,7 +8917,7 @@ test('T711 (M1, M2) entryShapeProblem: oneThemeFiles is an array of strings or a
     )
   }
   assert.equal(entryShapeProblem(entryWith({ oneThemeFiles: ['a.tsx'] }), { forced: false }), null)
-  assert.equal(entryShapeProblem(entryWith({ oneThemeFiles: [] }), { forced: false }), null)
+  // (An empty array is malformed since T712: the pass writes the key only when it is not empty.)
   assert.equal(entryShapeProblem(entryWith({}), { forced: false }), null)
   for (const bad of [false, 'true', 1, null]) {
     assert.match(
@@ -8974,4 +9000,95 @@ test('T711 (L) a default export whose parameters is an identifier keeps its cred
       manifest: { 'zz-a': cardEntry('ZzA', { mounts: [disabledMount] }) },
     })
   }
+})
+
+// ---- T712: what the width join and the shape check leave for the checker to refuse ----------------------
+//
+// (3) A focus the WIDTHS disagree on. Each width keeps its own answer; `stableFocus` takes none when
+// they differ, so the placing instance has no focus role and the story's own mount would read as an
+// ordinary Rest, though one capture shows that element focused. T711 closed the same shape across the two
+// themes of a width (`focusDiffersByTheme`); this is the shape across widths, which needs no flag because
+// the per-width records already carry each answer.
+const FOCUS_HELD = { stamp: MINI_BUTTON_STAMP, placedBy: FOCUSED_BUTTON }
+const FOCUS_ELSEWHERE = { stamp: `${BUTTON_FILE}:9`, placedBy: FOCUSED_BUTTON }
+const focusAcrossWidths = (answers) => {
+  const widths = atEveryWidth(miniRecord([FOCUSED_BUTTON]))
+  WIDTHS.forEach((w, i) => {
+    widths[w] = { ...widths[w], focus: answers[i] }
+  })
+  return miniRun(focusStory, {
+    'zz-focus': { ...miniEntry('ZzFocus', miniRecord([FOCUSED_BUTTON])), widths },
+  })
+}
+for (const [name, answers] of [
+  ['held at the narrowest width only', [FOCUS_HELD, null, null]],
+  ['held at the widest width only', [null, null, FOCUS_HELD]],
+  ['held in a different element at one width', [FOCUS_HELD, FOCUS_HELD, FOCUS_ELSEWHERE]],
+  ['held at every width but one', [FOCUS_HELD, null, FOCUS_HELD]],
+]) {
+  test(`T712 (3) plant: a focus the widths disagree on, ${name}, credits no Rest for the story's own mount`, () => {
+    const computed = focusAcrossWidths(answers)
+    assert.deepEqual(computed.manifestProblems, [])
+    assert.deepEqual(creditsOf(computed, 'ZzFocus'), [])
+  })
+}
+
+test('T712 (3) contrast: every width agreeing on no focus is an ordinary Rest, and every width agreeing on one is the focused instance’s no-Rest as before', () => {
+  assert.deepEqual(creditsOf(focusAcrossWidths([null, null, null]), 'ZzFocus'), [
+    'Button|secondary|md|rest',
+  ])
+  assert.deepEqual(
+    creditsOf(focusAcrossWidths([FOCUS_HELD, FOCUS_HELD, FOCUS_HELD]), 'ZzFocus'),
+    [],
+  )
+})
+
+// (12) A key the pass does not write in a width record is a shape problem, named, not ignored.
+test('T712 (12) plant: a width record carrying a key the pass does not write is malformed, naming the key and the width', () => {
+  const entryWith = (recordExtras) => ({
+    files: [],
+    widths: atEveryWidth({ mounts: [], ...recordExtras }),
+  })
+  // `oneThemeFiles` and `files` belong to the ENTRY (`buildEntry` lifts them out of the width records);
+  // the others are keys no pass has written.
+  for (const key of ['oneThemeFiles', 'files', 'differsByTheme', 'stamps', 'x']) {
+    assert.match(
+      entryShapeProblem(entryWith({ [key]: key === 'differsByTheme' ? true : [] }), {
+        forced: false,
+      }),
+      new RegExp(`at ${WIDTHS[0]}px has a key \`${key}\` the pass does not write`),
+      key,
+    )
+  }
+})
+
+test('T712 (12) contrast: every key the pass writes in a width record, together, is no shape problem', () => {
+  const entry = {
+    files: [],
+    widths: atEveryWidth({
+      mounts: [],
+      focus: null,
+      focusDiffersByTheme: true,
+      force: { count: 1, stamp: null, placedBy: null, differsByTheme: true },
+    }),
+  }
+  assert.equal(entryShapeProblem(entry, { forced: true }), null)
+  assert.equal(entryShapeProblem({ files: [], widths: atEveryWidth({ mounts: [] }) }), null)
+})
+
+// (14) The shape check accepts no empty `oneThemeFiles`: the pass writes the key only when it is not empty.
+test('T712 (14) plant: an empty oneThemeFiles is malformed, as the message that refuses a non-array says the pass never writes it', () => {
+  const entryWith = (extras) => ({ files: [], ...extras, widths: atEveryWidth({ mounts: [] }) })
+  assert.match(
+    entryShapeProblem(entryWith({ oneThemeFiles: [] }), { forced: false }),
+    /`oneThemeFiles` is empty; the pass writes it only when it is not empty/,
+  )
+  const computed = tooltipClickRun({ oneThemeFiles: [] })
+  assert.deepEqual(problemsOf(computed), [['malformed-entry', `src/${TOOLTIP_STORIES}:Pinned`]])
+})
+
+test('T712 (14) contrast: an absent oneThemeFiles and a non-empty array of strings are no shape problem', () => {
+  const entryWith = (extras) => ({ files: [], ...extras, widths: atEveryWidth({ mounts: [] }) })
+  assert.equal(entryShapeProblem(entryWith({}), { forced: false }), null)
+  assert.equal(entryShapeProblem(entryWith({ oneThemeFiles: ['a.tsx'] }), { forced: false }), null)
 })

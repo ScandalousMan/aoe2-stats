@@ -13,8 +13,9 @@ import { fileURLToPath } from 'node:url'
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 
-// `typescript` is a direct devDependency of packages/design-system, not of the workspace root —
-// resolved through that package's own node_modules, the idiom `state-coverage.mjs` uses.
+// `typescript` is a direct devDependency of packages/design-system, and of the workspace root since
+// T712; it is resolved here through that package's own node_modules, the idiom
+// `state-coverage.mjs` uses.
 const ts = createRequire(path.join(rootDir, 'packages', 'design-system', 'package.json'))(
   'typescript',
 )

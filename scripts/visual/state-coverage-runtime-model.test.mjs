@@ -870,3 +870,49 @@ test('the work file lists every fixture id whatever the selection, so the specâ€
     )
   })
 })
+
+// ---- T712 (7): the identity of a tracked-primitive instance is defined once --------------------------------
+//
+// Two readers decide when two instances are the same: the runtime pass joining the two themes
+// (`tests/visual/state-coverage-runtime.ts`) and the checker joining the widths
+// (`scripts/checks/state-coverage.mjs`). Each had its own copy of the key; a third axis added to one
+// would have left the other comparing a different thing. `instance-identity.mjs` is the definition.
+test('T712 (7) plant: instanceKey is one definition, the checker and the runtime pass both import it, and neither writes the key itself', async () => {
+  const { instanceKey } = await import('./instance-identity.mjs')
+  const base = { component: 'Button', variant: 'primary', size: 'md', disabledAt: ['b:1', 'a:2'] }
+  // Same instance: `disabledAt` in any order, an axis absent or `undefined` where the other says `null`.
+  assert.equal(instanceKey(base), instanceKey({ ...base, disabledAt: ['a:2', 'b:1'] }))
+  assert.equal(
+    instanceKey({ component: 'Link', variant: 'x', disabledAt: [] }),
+    instanceKey({ component: 'Link', variant: 'x', size: null }),
+  )
+  // Contrast: each field is part of the identity.
+  for (const other of [
+    { component: 'Link' },
+    { variant: 'ghost' },
+    { size: 'lg' },
+    { disabledAt: ['a:2'] },
+    { disabledAt: [] },
+  ]) {
+    assert.notEqual(instanceKey(base), instanceKey({ ...base, ...other }), JSON.stringify(other))
+  }
+  // The input is not reordered in place.
+  assert.deepEqual(base.disabledAt, ['b:1', 'a:2'])
+
+  const checker = readFileSync(path.join(rootDir, 'scripts/checks/state-coverage.mjs'), 'utf8')
+  const runtime = readFileSync(path.join(rootDir, 'tests/visual/state-coverage-runtime.ts'), 'utf8')
+  assert.match(checker, /from '\.\.\/visual\/instance-identity\.mjs'/)
+  assert.match(runtime, /from '\.\.\/\.\.\/scripts\/visual\/instance-identity\.mjs'/)
+  // A second definition is a `JSON.stringify` of an instance's component, axes and `disabledAt`.
+  for (const [name, source] of [
+    ['state-coverage.mjs', checker],
+    ['state-coverage-runtime.ts', runtime],
+  ]) {
+    assert.doesNotMatch(
+      source,
+      /JSON\.stringify\(\[\s*\w+\.component/,
+      `${name} keys an instance itself`,
+    )
+    assert.doesNotMatch(source, /function canonicalInstance/, `${name} defines canonicalInstance`)
+  }
+})

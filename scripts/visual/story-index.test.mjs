@@ -179,33 +179,32 @@ test('isFullPageEntry reads the built index tag and nothing else, and run.mjs bu
   assert.equal(runSource.includes("'visual-full-page'"), false)
 })
 
-// T710 (L5), T711: the tag is written once. Every reader that can import the constant does, so a
+// T710 (L5), T711, T712: the tag is defined once. Every reader that can import the constant does, so a
 // literal of it in a harness file is a second definition that a rename of the tag would leave behind.
-// The files read are the capture and sweep specs and helpers (`tests/visual/*.ts` and
-// `tests/visual/fixtures/*.ts`) and the Node scripts of `scripts/visual/` other than the definition and
+// The files read are the capture and sweep specs and helpers (`tests/visual/*.ts(x)` and
+// `tests/visual/fixtures/*.ts(x)`) and the Node scripts of `scripts/visual/` other than the definition and
 // the tests; a single-quoted, double-quoted or template literal of the tag is a hit. The inline script
 // of `.github/workflows/baselines.yml` cannot import, and a comment above its unit list says so.
+//
+// A file is read as text, comments included, so a quoted tag in a comment is a hit too: a comment names
+// the tag unquoted or by its constant. The scan knows no syntax (T717): it replaced a comment scan that
+// five reviews each found source to mislead. It sees the tag only where a quote character stands
+// immediately before it, and immediately after it or after one backslash.
 function scanHarnessForTagLiteral(root) {
-  const tsIn = (dir) =>
+  const sourceIn = (dir) =>
     readdirSync(path.join(root, dir), { withFileTypes: true })
-      .filter((entry) => entry.isFile() && entry.name.endsWith('.ts'))
+      .filter((entry) => entry.isFile() && /\.tsx?$/.test(entry.name))
       .map((entry) => `${dir}/${entry.name}`)
-  const testFiles = [...tsIn('tests/visual'), ...tsIn('tests/visual/fixtures')]
+  const testFiles = [...sourceIn('tests/visual'), ...sourceIn('tests/visual/fixtures')]
   const scriptFiles = readdirSync(path.join(root, 'scripts/visual'))
     .filter(
       (name) =>
         /\.(mjs|cjs)$/.test(name) && !name.endsWith('.test.mjs') && name !== 'story-index.mjs',
     )
     .map((name) => `scripts/visual/${name}`)
-  // A line that is a comment from its first character is skipped: comments name the tag in backticks,
-  // and the scan reads code. A message that spells it between escaped backticks is not a literal of it.
-  const literal = new RegExp(`['"\`]${FULL_PAGE_TAG}['"\`]`)
-  const isCode = (line) => !/^\s*(\/\/|\/\*|\*)/.test(line)
+  const literal = new RegExp(`['"\`]${FULL_PAGE_TAG}\\\\?['"\`]`)
   const offenders = [...testFiles, ...scriptFiles].filter((file) =>
-    readFileSync(path.join(root, file), 'utf8')
-      .split('\n')
-      .filter(isCode)
-      .some((line) => literal.test(line)),
+    literal.test(readFileSync(path.join(root, file), 'utf8')),
   )
   return { testFiles, scriptFiles, offenders, literal }
 }
@@ -220,7 +219,11 @@ test('no harness file writes the full-page tag as a string literal', () => {
     'the scan found tests/visual/fixtures',
   )
   assert.ok(scriptFiles.length > 5, 'the scan found the Node scripts of scripts/visual')
-  assert.deepEqual(offenders, [])
+  assert.deepEqual(
+    offenders,
+    [],
+    'import FULL_PAGE_TAG from scripts/visual/story-index.mjs; if the tag is quoted in a comment, name it unquoted',
+  )
   // The contrast: the definition itself holds the literal, which is what the scan is looking for.
   assert.match(readFileSync(path.join(rootDir, 'scripts/visual/story-index.mjs'), 'utf8'), literal)
 })
@@ -235,11 +238,6 @@ test('the full-page tag scan flags a quoted, double-quoted and template literal 
     put('tests/visual/clean.ts', 'export const a = 1\n')
     put('tests/visual/fixtures/clean.ts', 'export const b = 1\n')
     put('scripts/visual/clean.mjs', 'export const c = 1\n')
-    // The contrast: the tag named in a comment or between escaped backticks is not a literal of it.
-    put(
-      'tests/visual/prose.ts',
-      `// the \`${FULL_PAGE_TAG}\` tag\n/*\n * \`${FULL_PAGE_TAG}\`\n */\nconst m = \`says \\\`${FULL_PAGE_TAG}\\\` here\`\n`,
-    )
     assert.deepEqual(scanHarnessForTagLiteral(scratch).offenders, [])
     for (const [file, text] of [
       ['tests/visual/single.ts', `const t = '${FULL_PAGE_TAG}'\n`],
@@ -254,10 +252,7 @@ test('the full-page tag scan flags a quoted, double-quoted and template literal 
     }
     // A set with no file is empty, which the real scan's per-set assertions would refuse.
     rmSync(path.join(scratch, 'tests/visual/fixtures/clean.ts'))
-    assert.deepEqual(scanHarnessForTagLiteral(scratch).testFiles, [
-      'tests/visual/clean.ts',
-      'tests/visual/prose.ts',
-    ])
+    assert.deepEqual(scanHarnessForTagLiteral(scratch).testFiles, ['tests/visual/clean.ts'])
     assert.equal(
       scanHarnessForTagLiteral(scratch).testFiles.some((f) =>
         f.startsWith('tests/visual/fixtures/'),
@@ -267,4 +262,112 @@ test('the full-page tag scan flags a quoted, double-quoted and template literal 
   } finally {
     rmSync(scratch, { recursive: true, force: true })
   }
+})
+
+// T717: three clean files on a scratch root; `run` receives `put` to plant the others.
+function inScratch(run) {
+  const scratch = mkdtempSync(path.join(tmpdir(), 'tag-literal-text-'))
+  try {
+    const put = (file, text) => {
+      mkdirSync(path.dirname(path.join(scratch, file)), { recursive: true })
+      writeFileSync(path.join(scratch, file), text)
+    }
+    put('tests/visual/clean.ts', 'export const a = 1\n')
+    put('tests/visual/fixtures/clean.ts', 'export const b = 1\n')
+    put('scripts/visual/clean.mjs', 'export const c = 1\n')
+    run(scratch, put)
+  } finally {
+    rmSync(scratch, { recursive: true, force: true })
+  }
+}
+
+// Shapes 1 to 4 were silent misses of the comment scan (`offenders: []`, the unsafe direction), 5 stopped
+// it, and 6 is a shape an earlier round fixed.
+test('T717 plant: a quoted tag is a hit in source the comment scan misread', () => {
+  const tag = `'${FULL_PAGE_TAG}'`
+  inScratch((scratch, put) => {
+    for (const [file, lines] of [
+      [
+        'scripts/visual/await-regex.mjs',
+        [
+          `import path from 'node:path'`,
+          `const r = await /\\//.test(path.sep); export const t = ${tag}`,
+        ],
+      ],
+      [
+        'scripts/visual/await-class.mjs',
+        [
+          `import path from 'node:path'`,
+          'const r = await /[/*]/.test(path.sep)',
+          `export const t = ${tag}`,
+        ],
+      ],
+      [
+        'scripts/visual/script-await.mjs',
+        [
+          `const s = 'x'`,
+          'const r = await /[/*]/.test(s)',
+          `const t = ${tag}`,
+          `const u = '*/ 1] //'`,
+        ],
+      ],
+      [
+        'scripts/visual/html-comment.cjs',
+        ['let y = 1', 'const x = y <!-- /*', `const t = ${tag}`, '/* */', 'y'],
+      ],
+      [
+        'scripts/visual/glued.mjs',
+        [`const s = 'a/'; const a = 1; const x = a </\\//.test(s); export const t = ${tag}`],
+      ],
+      ['tests/visual/jsdoc.tsx', [`/** {@link Foo} // see */ const t = ${tag}`]],
+    ]) {
+      put(file, `${lines.join('\n')}\n`)
+      assert.deepEqual(scanHarnessForTagLiteral(scratch).offenders, [file], file)
+      rmSync(path.join(scratch, file))
+    }
+  })
+})
+
+// Red before T717: the comment scan removed these, so `offenders` was `[]`. A quoted tag in a comment is
+// now a hit.
+test('T717 plant: a quoted tag in a comment is a hit', () => {
+  inScratch((scratch, put) => {
+    for (const [file, text] of [
+      ['tests/visual/line.ts', `// the '${FULL_PAGE_TAG}' tag\n`],
+      ['tests/visual/block.tsx', `/* the "${FULL_PAGE_TAG}" tag */\n`],
+      ['scripts/visual/doc.mjs', `/**\n * the \`${FULL_PAGE_TAG}\` tag\n */\n`],
+      ['tests/visual/fixtures/doc.tsx', `/* the '${FULL_PAGE_TAG}' tag */\n`],
+    ]) {
+      put(file, text)
+      assert.deepEqual(scanHarnessForTagLiteral(scratch).offenders, [file], file)
+      rmSync(path.join(scratch, file))
+    }
+  })
+})
+
+// Red before T718: the pattern of T717 did not see a backslash before the closing quote character, and
+// the real tree held one such message. At that pattern all three inputs returned `[]`.
+test('T718 plant: a tag between escaped quote characters is a hit', () => {
+  inScratch((scratch, put) => {
+    for (const [file, text] of [
+      ['tests/visual/template.ts', `const m = \`says \\\`${FULL_PAGE_TAG}\\\` here\`\n`],
+      ['tests/visual/single.ts', `const m = 'it\\'s \\'${FULL_PAGE_TAG}\\''\n`],
+      ['tests/visual/double.ts', `const m = "it\\"s \\"${FULL_PAGE_TAG}\\""\n`],
+    ]) {
+      put(file, text)
+      assert.deepEqual(scanHarnessForTagLiteral(scratch).offenders, [file], file)
+      rmSync(path.join(scratch, file))
+    }
+  })
+})
+
+// Three spellings the pattern does not see: a tag assembled at run time, a tag with no quote character
+// around it, and a tag preceded by other text inside its string.
+test('T717 contrast: a tag assembled at run time, unquoted, or preceded by other text inside its string is not seen', () => {
+  inScratch((scratch, put) => {
+    put('tests/visual/assembled.ts', "const t = 'visual-' + 'full-page'\n")
+    put('tests/visual/unquoted.ts', `// a full-page story\n// the ${FULL_PAGE_TAG} tag\n`)
+    put('tests/visual/longer.ts', `const t = 'tags: ${FULL_PAGE_TAG}'\n`)
+    assert.deepEqual(scanHarnessForTagLiteral(scratch).offenders, [])
+  })
 })
