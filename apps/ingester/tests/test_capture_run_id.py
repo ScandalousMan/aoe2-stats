@@ -26,6 +26,7 @@ from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from tests.links import link_profile
 
 from aoe2stats_core.replay.validation import MalformedArchiveError, ReplayValidationResult
 from aoe2stats_providers.base import NotFound, ReplayBlob
@@ -137,6 +138,7 @@ async def _seed_capture(
                 source=CaptureSource.AUTOMATIC,
             )
         )
+        await link_profile(session, profile_id)
         await session.commit()
     return capture_id
 

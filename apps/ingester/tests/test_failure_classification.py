@@ -53,6 +53,7 @@ from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from tests.links import link_profile
 
 from aoe2stats_ingester.budget import Budget
 from aoe2stats_providers.base import (
@@ -147,6 +148,7 @@ async def _seed_capture(
                 source=CaptureSource.AUTOMATIC,
             )
         )
+        await link_profile(session, profile_id)
         await session.commit()
     return capture_id
 

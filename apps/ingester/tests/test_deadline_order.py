@@ -40,6 +40,7 @@ from typing import Any
 import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from tests.links import link_profile
 
 from aoe2stats_storage.models import AoeProfile, CaptureSource, CaptureStatus, Match, ReplayCapture
 
@@ -195,6 +196,7 @@ async def _seed_pending_capture(
             source=CaptureSource.AUTOMATIC,
         )
     )
+    await link_profile(session, profile_id)
     await session.commit()
 
 

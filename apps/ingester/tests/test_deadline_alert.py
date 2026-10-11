@@ -52,6 +52,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
@@ -454,3 +455,43 @@ async def test_deadline_breach_raises_again_once_the_prior_alert_is_acknowledged
     for alert in alerts:
         assert alert.detail is not None
         assert set(alert.detail.get("capture_ids", [])) == {str(breached_id)}
+
+
+@pytest.mark.parametrize("owner", ["objector", "unlinked", "never_linked"])
+async def test_a_pending_capture_nobody_may_claim_still_raises_deadline_breach(
+    owner: str,
+    session_factory: async_sessionmaker,
+    clean_database: None,
+) -> None:
+    """Characterization (T713), not a decision. Since T713 `CaptureDrain._claim_batch` refuses a
+    capture whose profile has no active link whose user has not objected, so such a row stays
+    `pending` for good, and the sweep reads `status` and `capture_deadline_at` alone: it raises
+    `deadline_breach` for a capture nobody may take, exactly as for one the drain failed to reach.
+    Whether that is wanted is the user's call; this test records what the sweep does today."""
+    from tests.links import link_profile
+
+    from aoe2stats_ingester.run import run_once
+
+    profile_id = 700_000_010
+    async with session_factory() as session:
+        session.add(AoeProfile(profile_id=profile_id, alias="Unclaimable", country="FR"))
+        await session.flush()
+        if owner == "objector":
+            await link_profile(session, profile_id, objected=True)
+        elif owner == "unlinked":
+            await link_profile(session, profile_id, unlinked=True)
+        await session.commit()
+    capture_id = await _seed_capture(
+        session_factory,
+        game_id=701_000_010,
+        profile_id=profile_id,
+        status=CaptureStatus.PENDING,
+        capture_deadline_at=datetime.now(UTC) - timedelta(hours=1),
+    )
+
+    await run_once(30, trigger="test", stages=(), session_factory=session_factory)
+
+    alerts = await _deadline_breach_alerts(session_factory)
+    assert len(alerts) == 1
+    assert alerts[0].detail is not None
+    assert alerts[0].detail["capture_ids"] == [str(capture_id)]

@@ -347,12 +347,12 @@ def _is_engine_failure_reason(reason: str) -> bool:
 def _objecting_owner_exists() -> ColumnElement[bool]:
     """Correlated `EXISTS`, against the enclosing query's `replay_captures.profile_id`: the
     *currently active* link's owner has objected to archival (`profile_links.unlinked_at IS NULL
-    AND users.archival_objected_at IS NOT NULL`, constitution IX, FR-035). The claim's definition
-    of "objecting": `CaptureDrain._claim_batch` excludes exactly the rows it matches, and
-    `_count_unselected` uses it to label them. It is not the only definition in the package:
-    `discover.archiving_links` holds the inverse one (active link, user not objected), which is
-    what `_owner_is_archiving` reuses. Only a *found* objection matches; a capture with no active
-    link on record is not objecting, which is why the re-validation does not rely on this alone.
+    AND users.archival_objected_at IS NOT NULL`, constitution IX, FR-035). It labels, and it
+    decides nothing: `_count_unselected` uses it to tell an objecting owner's quarantined row from
+    one with no active owner at all. The claim does not use it (T713): `CaptureDrain._claim_batch`
+    and `revalidate_quarantined` both gate on `_owner_is_archiving`, `discover.archiving_links`'s
+    set. Only a *found* objection matches; a capture with no active link on record is not
+    objecting, which is why a label needs `_owner_is_archiving` beside this one.
     """
     return (
         select(ProfileLink.profile_id)
@@ -365,17 +365,18 @@ def _objecting_owner_exists() -> ColumnElement[bool]:
 
 
 def _owner_is_archiving() -> ColumnElement[bool]:
-    """The ownership predicate of `revalidate_quarantined`, selection and both writes alike: the
-    capture's profile has an active link (`profile_links.unlinked_at IS NULL`) held by a user who
-    has not objected (`users.archival_objected_at IS NULL`). That is `discover.archiving_links`'s
-    set, reused rather than copied. A profile has at most one active link
+    """The ownership predicate, one definition for the claim and the re-validation: the capture's
+    profile has an active link (`profile_links.unlinked_at IS NULL`) held by a user who has not
+    objected (`users.archival_objected_at IS NULL`). That is `discover.archiving_links`'s set,
+    reused rather than copied. A profile has at most one active link
     (`ix_profile_links_profile_id_active`), so this is the owner's current state.
 
-    Stricter than the claim's `_objecting_owner_exists`, which excludes only a *found* objection:
-    a profile with no active link (an objector who has since unlinked it, or one nobody holds) is
-    not taken here. A quarantined capture is not an archived one (001's spec), so the carve-out
-    for recordings archived before an objection does not cover it. A capture without an active
-    owner is not selected (T673); the row and its object stay as they are.
+    `CaptureDrain._claim_batch` takes a row only when it holds (T713), a `pending` row and a stale
+    `downloading` row alike. `revalidate_quarantined` uses it for its selection and both writes
+    (T673b). A profile with no active link (an objector who has since unlinked it, a user who
+    unlinked, or one nobody holds) is not taken by either. A quarantined capture is not an archived
+    one (001's spec), so the carve-out for recordings archived before an objection does not cover
+    it. A capture without an active owner is left as it is; the row and any object stay.
     """
     return ReplayCapture.profile_id.in_(archiving_links())
 
@@ -909,21 +910,25 @@ class CaptureDrain:
         clause of any kind and would download and store it anyway on the very next cycle, which is
         the exact edge case spec.md lists and `test_consent_withdrawal.py` asserts against.
 
-        `_objecting` below is `_objecting_owner_exists()` — a correlated `EXISTS`, against this
-        row's own `profile_id`, for the *currently active* link's owner having objected,
-        `profile_links.unlinked_at IS NULL AND users.archival_objected_at IS NOT NULL`, joined the
-        same way discovery joins it (`profile_links` to `users`), and shared with
-        `_count_unselected`, which labels a dry run's unselected rows with it, and with nothing
-        else: `revalidate_quarantined`'s selection and writes use a stricter predicate of their
-        own. This claim excludes exactly the rows it matches.
-        Phrased as an exclusion, not `_archiving_profile_ids()`'s own inclusion, on purpose: that
-        method's query only ever runs over profiles discovery already knows are linked, so "no
-        active link" never arises there, but `replay_captures` carries rows with no such context at
-        all (every capture-mechanics test in this package, seeded directly against
-        `Match`/`ReplayCapture` with no `profile_links`/`users` rows to speak of, being the
-        concrete case). A capture with no active, objecting owner on record is eligible exactly as
-        it always was — only a *found* objection ever removes one from this claim, never the mere
-        absence of ownership context.
+        **The claim requires an owner (T713).** The gate is `_owner_is_archiving()`: the row's
+        `profile_id` has an active link (`profile_links.unlinked_at IS NULL`) held by a user who has
+        not objected (`users.archival_objected_at IS NULL`) — `discover.archiving_links`'s set, and
+        the very predicate `revalidate_quarantined` selects and guards its writes with, so the claim
+        and the re-validation share one definition. It applies to both arms alike, a `pending` row
+        and a stale `downloading` row taken again. T089a excluded a row only when it *found* an
+        objecting owner, so a capture queued while a link stood was still fetched and stored after
+        its user unlinked the profile; 001's spec says automatic ingestion stops for a profile its
+        user unlinks (US1, acceptance scenario 6), and a row with no active link on record is now
+        refused exactly as an objector's is. The absence of ownership context is not an exception:
+        a test that seeds a capture to be claimed gives its profile a link
+        (`tests/links.py::link_profile`).
+        **A refused row stays as it is** — `pending` or `downloading`, never fetched, nothing
+        written to it. The source drops the recording after its retention window
+        (`docs/data-sources.md`), so unlike the re-validation's refusal this one cannot be undone
+        later: the capture is lost. A relink by a user who has not objected makes the row
+        claimable again while the window lasts. A download already in flight when its user unlinks
+        or objects is not stopped by this gate; the normal path's stored and quarantine writes
+        carry no ownership guard.
         An already-`stored` row is never touched by this claim in the first place (its status is
         neither `pending` nor stale `downloading`), so this gate only ever stops a capture that has
         not yet fetched anything — objection stops further capture (FR-035); erasure, not this, is
@@ -931,8 +936,6 @@ class CaptureDrain:
         """
         now = datetime.now(UTC)
         stale_before = now - timedelta(seconds=self._max_claim_age_seconds)
-
-        _objecting = _objecting_owner_exists()
 
         eligibility = and_(
             or_(
@@ -946,7 +949,7 @@ class CaptureDrain:
                     ReplayCapture.claimed_at < stale_before,
                 ),
             ),
-            ~_objecting,
+            _owner_is_archiving(),
         )
         claimable_ids = select(ReplayCapture.id).where(eligibility)
         if exclude_ids:

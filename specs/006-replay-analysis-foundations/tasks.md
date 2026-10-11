@@ -2027,7 +2027,7 @@ carries what T673's dry run read.
       last sentence has no regression test; the clause check pointed at the docstring flags its
       descriptive sentences about what the report prints, so a guard there would need a different
       check, and none is added
-- [ ] T713 Stop the claim from taking a capture whose profile has no active link (filed 2026-10-11
+- [x] T713 Stop the claim from taking a capture whose profile has no active link (filed 2026-10-11
       from T673b; decided by the user the same day). `CaptureDrain._claim_batch` in
       `apps/ingester/src/aoe2stats_ingester/capture.py` excludes a row only when
       `_objecting_owner_exists` finds an active link whose user has objected, so a capture queued

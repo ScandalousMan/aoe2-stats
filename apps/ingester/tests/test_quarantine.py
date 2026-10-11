@@ -77,6 +77,7 @@ from typing import Any
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from tests.links import link_profile
 
 from aoe2stats_core.alerting import AlertRecord
 from aoe2stats_core.replay.validation import MalformedArchiveError, ReplayValidationResult
@@ -304,6 +305,7 @@ async def _seed_pending_capture(
             source=CaptureSource.AUTOMATIC,
         )
     )
+    await link_profile(db_session, profile_id)
     await db_session.commit()
     return capture_id
 

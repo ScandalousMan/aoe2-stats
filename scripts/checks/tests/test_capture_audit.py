@@ -14,6 +14,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 from tests.db import clean_database, database_url, db_session, engine, session_factory
 
@@ -400,3 +401,32 @@ async def test_capture_lag_p95_seconds_ignores_captures_outside_the_trailing_win
         "a capture first seen 30 days ago is outside the trailing seven-day window this call "
         "asked for and must not surface in it"
     )
+
+
+@pytest.mark.parametrize("owner", ["objector", "unlinked"])
+async def test_captures_pending_past_deadline_counts_a_capture_nobody_may_claim(
+    owner: str, db_session: AsyncSession
+) -> None:
+    """Characterization (T713), not a decision: the audit reads `status` and `capture_deadline_at`
+    alone, so a `pending` capture the claim refuses (no active link whose user has not objected)
+    is as red as one the drain failed to reach. Whether that is wanted is the user's call."""
+    from scripts.checks.capture_audit import captures_pending_past_deadline
+    from tests.links import link_profile
+
+    now = datetime.now(UTC)
+    game_id = 910_000_050
+    capture_id = await _seed_capture(
+        db_session,
+        game_id=game_id,
+        status=CaptureStatus.PENDING,
+        completed_at=now - timedelta(days=22),
+        capture_deadline_at=now - timedelta(hours=1),
+    )
+    await link_profile(
+        db_session, game_id, objected=owner == "objector", unlinked=owner == "unlinked"
+    )
+    await db_session.commit()
+
+    overdue = await captures_pending_past_deadline(db_session, now=now)
+
+    assert [capture.id for capture in overdue] == [capture_id]
