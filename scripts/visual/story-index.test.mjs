@@ -216,6 +216,10 @@ function withoutComments(text, fileName) {
     }
   }
   const visit = (node) => {
+    // A documentation comment is trivia, and the parser also returns it among a node's children: its
+    // leaves sit inside the comment, where a `//` after a tag would be read as a line comment that runs
+    // past the end of the block.
+    if (ts.isJSDoc(node)) return
     const children = node.getChildren(source)
     // The text of a JSX element is not trivia: a `//` in it is text.
     if (children.length === 0 && node.kind !== ts.SyntaxKind.JsxText) collect(node.getFullStart())
@@ -225,6 +229,9 @@ function withoutComments(text, fileName) {
   let out = ''
   let at = 0
   for (const [pos, end] of [...ranges].sort((a, b) => a[0] - b[0])) {
+    // Two comments cannot overlap in a valid source. If they do, the scan no longer knows what a comment
+    // is, and it must stop rather than return text.
+    if (pos < at) throw new Error(`${fileName}: comment ranges overlap at ${pos}`)
     out += text.slice(at, pos) + ' '
     at = end
   }
@@ -403,6 +410,9 @@ test('T713 (a) plant: a literal after a regular expression holding two slashes, 
   }
 })
 
+// The files of this contrast are not green on both sides: the loop of T712 reads each as a hit (run
+// against that loop, both files report the tag), so this is red before T713 in the safe direction, a
+// comment read as code, a false hit.
 test('T713 (a) contrast: a literal inside a real line comment or block comment is no hit, whatever precedes it on the line', () => {
   const scratch = mkdtempSync(path.join(tmpdir(), 'tag-literal-regex-comment-'))
   try {
@@ -452,4 +462,149 @@ test('T713 (a) the real tree: the rest of the line after the regular expression 
   )
   assert.equal(surface.includes('whole point of'), false)
   assert.ok(surface.includes('distinctSurfaceStops(walk)'))
+})
+
+// T714 (a): the parser returns the documentation-comment nodes among a node's children. A walk that enters
+// one reads a `//` after a tag inside it as a line comment that runs to the end of the line, past the end
+// of the block, so a literal after the block on the same line is hidden.
+test('T714 (a) plant: a literal after a documentation comment holding a tag and a `//` is a hit, in .ts, .tsx and .mjs, and inside an object literal and a parameter list', () => {
+  const scratch = mkdtempSync(path.join(tmpdir(), 'tag-literal-jsdoc-'))
+  try {
+    const put = (file, text) => {
+      mkdirSync(path.dirname(path.join(scratch, file)), { recursive: true })
+      writeFileSync(path.join(scratch, file), text)
+    }
+    put('tests/visual/clean.ts', 'export const a = 1\n')
+    put('tests/visual/fixtures/clean.ts', 'export const b = 1\n')
+    put('scripts/visual/clean.mjs', 'export const c = 1\n')
+    const tag = `'${FULL_PAGE_TAG}'`
+    const cases = []
+    for (const [name, body] of [
+      ['link', '{@link Foo} // see'],
+      ['see', '@see // note'],
+      ['type', '@type // note'],
+      ['param', '@param // note'],
+    ]) {
+      cases.push(
+        [`tests/visual/jsdoc-${name}.ts`, `/** ${body} */ const t = ${tag}\n`],
+        [`tests/visual/jsdoc-${name}.tsx`, `/** ${body} */ const t = ${tag}\n`],
+        [`scripts/visual/jsdoc-${name}.mjs`, `/** ${body} */ const t = ${tag}\n`],
+      )
+    }
+    cases.push(
+      // A documentation comment that opens a property of an object literal.
+      [
+        'tests/visual/jsdoc-object.ts',
+        `const o = {\n  /** {@link Foo} // see */ b: ${tag},\n}\n`,
+      ],
+      [
+        'tests/visual/jsdoc-params.ts',
+        `function f(/** @param // note */ x = ${tag}) { return x }\n`,
+      ],
+    )
+    // Every case is run before the assertion, so a failure names all the shapes that went undetected.
+    const missed = []
+    for (const [file, text] of cases) {
+      put(file, text)
+      if (scanHarnessForTagLiteral(scratch).offenders.join() !== file) missed.push(file)
+      rmSync(path.join(scratch, file))
+    }
+    assert.deepEqual(missed, [])
+  } finally {
+    rmSync(scratch, { recursive: true, force: true })
+  }
+})
+
+test('T714 (a) contrast: a tag named in backticks on a later line of a documentation comment holding `{@link Foo} // more` is no hit', () => {
+  const scratch = mkdtempSync(path.join(tmpdir(), 'tag-literal-jsdoc-multi-'))
+  try {
+    const put = (file, text) => {
+      mkdirSync(path.dirname(path.join(scratch, file)), { recursive: true })
+      writeFileSync(path.join(scratch, file), text)
+    }
+    put('tests/visual/clean.ts', 'export const a = 1\n')
+    put('tests/visual/fixtures/clean.ts', 'export const b = 1\n')
+    put('scripts/visual/clean.mjs', 'export const c = 1\n')
+    put(
+      'tests/visual/multi.ts',
+      [
+        '/**',
+        ' * See {@link Foo} // more',
+        ` * the \`${FULL_PAGE_TAG}\` tag`,
+        ' */',
+        'export const a = 1',
+        '',
+      ].join('\n'),
+    )
+    assert.deepEqual(scanHarnessForTagLiteral(scratch).offenders, [])
+  } finally {
+    rmSync(scratch, { recursive: true, force: true })
+  }
+})
+
+test('T714 (a) contrast: a literal named inside a documentation comment with no `//` in it is no hit', () => {
+  const scratch = mkdtempSync(path.join(tmpdir(), 'tag-literal-jsdoc-plain-'))
+  try {
+    const put = (file, text) => {
+      mkdirSync(path.dirname(path.join(scratch, file)), { recursive: true })
+      writeFileSync(path.join(scratch, file), text)
+    }
+    put('tests/visual/clean.ts', 'export const a = 1\n')
+    put('tests/visual/fixtures/clean.ts', 'export const b = 1\n')
+    put('scripts/visual/clean.mjs', 'export const c = 1\n')
+    put(
+      'tests/visual/plain.ts',
+      [
+        '/**',
+        ` * the \`${FULL_PAGE_TAG}\` tag and '${FULL_PAGE_TAG}'`,
+        ' */',
+        `/** the "${FULL_PAGE_TAG}" tag */ export const b = 2`,
+        '',
+      ].join('\n'),
+    )
+    assert.deepEqual(scanHarnessForTagLiteral(scratch).offenders, [])
+  } finally {
+    rmSync(scratch, { recursive: true, force: true })
+  }
+})
+
+// T714 (a): the only input found that overlaps two ranges after the walk skips documentation comments is
+// invalid source (found by generating combinations of comment, JSX and brace fragments): the parser
+// recovers from the unclosed expression in the JSX element in a way that puts a comment inside another.
+// A valid file of the harness has no such pair, so this pins that the scan stops, naming the file, and
+// leaves open whether a later version of the parser recovers the same way.
+test('T714 (a) the scan throws, naming the file, when two comment ranges overlap', () => {
+  const scratch = mkdtempSync(path.join(tmpdir(), 'tag-literal-overlap-'))
+  try {
+    const put = (file, text) => {
+      mkdirSync(path.dirname(path.join(scratch, file)), { recursive: true })
+      writeFileSync(path.join(scratch, file), text)
+    }
+    put('tests/visual/clean.ts', 'export const a = 1\n')
+    put('tests/visual/fixtures/clean.ts', 'export const b = 1\n')
+    put('scripts/visual/clean.mjs', 'export const c = 1\n')
+    put('tests/visual/overlap.tsx', '<p>{// y/</p>/**// y\n')
+    assert.throws(() => scanHarnessForTagLiteral(scratch), /tests\/visual\/overlap\.tsx: comment ranges overlap/)
+  } finally {
+    rmSync(scratch, { recursive: true, force: true })
+  }
+})
+
+// T714 (b): the text of a JSX element is not trivia. Without the guard in `withoutComments`, a text that
+// starts with `//` is read as a line comment that hides the rest of the line.
+test('T714 (b) plant: a literal after JSX text starting with `//` on the same line is a hit', () => {
+  const scratch = mkdtempSync(path.join(tmpdir(), 'tag-literal-jsx-text-'))
+  try {
+    const put = (file, text) => {
+      mkdirSync(path.dirname(path.join(scratch, file)), { recursive: true })
+      writeFileSync(path.join(scratch, file), text)
+    }
+    put('tests/visual/clean.ts', 'export const a = 1\n')
+    put('tests/visual/fixtures/clean.ts', 'export const b = 1\n')
+    put('scripts/visual/clean.mjs', 'export const c = 1\n')
+    put('tests/visual/jsx-slashes.tsx', `const A = <p>// see</p>; const t = '${FULL_PAGE_TAG}'\n`)
+    assert.deepEqual(scanHarnessForTagLiteral(scratch).offenders, ['tests/visual/jsx-slashes.tsx'])
+  } finally {
+    rmSync(scratch, { recursive: true, force: true })
+  }
 })

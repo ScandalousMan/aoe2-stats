@@ -681,15 +681,14 @@ test.describe('state-signal-sweep remediation (M4, M5)', () => {
     })
   })
 
-  // M4(b): `captureForcedState` must release a held mouse button after capturing, in a `finally`,
-  // even though the capture it wraps never throws in this happy-path proof — the `finally` is what
-  // makes the release unconditional on the capture's own outcome, not a claim this test alone can
-  // distinguish from a plain post-capture call; the discard this finding describes never released
-  // at all, which is the gap this proves closed. Since T712 the button comes up on `about:blank`, so a
-  // listener in the story's document cannot see it: what a real browser shows is the control gone from
-  // the document, which only the release does (T713), and the stub tests below pin that the release
-  // follows the capture.
-  test('captureForcedState releases a held mouse button after capturing an "active" force', async ({
+  // M4(b): after capturing an "active" force in a real browser, `captureForcedState` has taken the page
+  // off the story. Since T712 the button comes up on `about:blank`, so a listener in the story's
+  // document cannot see it, and what this test sees is the control gone from the document: that proves
+  // the page left the story (`releaseMouseOffStory` goes to `about:blank`), not that the button came up.
+  // The call to `mouse.up`, and its order after the capture, are pinned by the stub test below
+  // (`T712 (1) plant`); no test tells the release in a `finally` from one after a successful capture
+  // (row 8 of `packages/design-system/specs/README.md`).
+  test('captureForcedState leaves the story after capturing an "active" force: the control the force held is gone from the document', async ({
     page,
   }) => {
     await page.setContent(`

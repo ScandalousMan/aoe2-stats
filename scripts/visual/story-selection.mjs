@@ -11,8 +11,9 @@ import { collectModuleSpecifiers, findNonLiteralSpecifiers } from './module-spec
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const designSystemDir = path.join(rootDir, 'packages', 'design-system')
-// `typescript` is a direct devDependency of packages/design-system, not of the workspace root; the same
-// resolution `module-specifiers.mjs` uses, here only for `ts.createSourceFile`.
+// `typescript` is a direct devDependency of packages/design-system, and of the workspace root since
+// T712; the same resolution `module-specifiers.mjs` uses, here only for
+// `ts.createSourceFile`.
 const ts = createRequire(path.join(designSystemDir, 'package.json'))('typescript')
 
 // Paths whose diff repaints or can repaint *every* story, so touching any of them selects the

@@ -1765,11 +1765,12 @@ hover:underline-offset-2` beside `active:underline-offset-4`, `src/screens/DataE
      or `focus-visible` is applied before the mounts, the files and the clip are read, as the capture
      shows the page after it, so the mounts, the files and the clip are those of that page. The
      force's own record (match count, stamp, placing instance, disabled) is read before the force, not
-     after (a known shape, below). A handler that navigates or reloads the page fails the pass naming
-     the story, and an `active` force's mouse button comes up on `about:blank`, never over the story. A force on
-     an element no tracked primitive placed is also refused when that element is disabled in one
-     theme only (a placed element carries its `disabledAt` in the instance, which is compared). The
-     capture's axe scan, which only reads the DOM, is not repeated (a known shape, below).
+     after (a known shape, below). A handler that navigates or reloads the page as the force is applied
+     fails the pass naming the story, and an `active` force's mouse button comes up on `about:blank`,
+     never over the story. A force on an element no tracked primitive placed is also refused when that
+     element is disabled in one theme only (a placed element carries its `disabledAt` in the instance,
+     which is compared). The capture's axe scan, which only reads the DOM, is not repeated (a known
+     shape, below).
      Cookies, `localStorage` and `sessionStorage` are cleared before each settle;
      IndexedDB, Cache Storage and `window.name` are not, and nothing in the design system uses them;
      a capture unit starts in a fresh browser context, which clears all of them. A clip that no object literal spells is in it (written from a
@@ -1946,19 +1947,22 @@ hover:underline-offset-2` beside `active:underline-offset-4`, `src/screens/DataE
        element of a file rendered at one width only, are credited as though every capture shows them.
        Telling them apart needs the stamps each render held, which the manifest does not record, and a
        real entry could gain a key from it that no one can check without a browser pass;
-     - a navigation the browser has not committed when the probe checks that the document is still
-       the story's: the check is a property set on `window` before the force, and a force whose
-       handler navigates later than that is recorded as an ordinary story;
-     - a handler of the force that disables or unmounts the forced element: the force's own record
-       (match count, stamp, placing instance, disabled) is read before the force, and the mounts and
-       the files after it, so the record's two halves describe different pages. The element is
-       credited the forced state, and Disabled as well when the handler disabled it;
+     - a navigation the browser has not committed when the probe first checks, right after the force:
+       the check is a property set on `window` before the force. One that commits during the reads
+       fails the pass, by name when the new page answers the reads and otherwise as a
+       context-destroyed error or the timeout of a read through `#storybook-root`, neither naming the
+       story; one that commits after the second check, after the last read, is recorded as an
+       ordinary story;
+     - a handler of the force that changes what the force's own record holds (it disables or
+       unmounts the forced element, or changes the variant or size of the instance that placed it):
+       the force's own record (match count, stamp, placing instance, disabled) is read before the
+       force, and the mounts and the files after it, so the record's two halves describe different
+       pages. The forced state is credited to the row read before the force, and Disabled as well
+       when the handler disabled it;
      - a force target no tracked primitive placed that is disabled in both themes, or disabled at one
        width with the two themes agreeing at each width: the disabled state is compared between the
        themes at each width and not across widths, and the manifest does not carry it, so the check
-       credits the force;
-     - a story's own relative import that leaves the package is not walked, so a change to the file it
-       names does not select the story by that walk (the preview's walk is not held to the package, T712).
+       credits the force.
 
    - **Known shapes of the harness, not credits: each listed, none refused** (T713).
      - an unknown key at the entry level, in a force record, in a focus record or in a mount is not a
@@ -1966,8 +1970,12 @@ hover:underline-offset-2` beside `active:underline-offset-4`, `src/screens/DataE
      - a preview import with an opaque specifier (`import(variable)`) widens the selection to every
        story only when the diff touches the package; a file outside the package that such a specifier
        names at run time, changed alone, selects nothing;
+     - a story's own relative import that leaves the package is not walked, so a change to the file it
+       names does not select the story by that walk (the preview's walk is not held to the package, T712);
      - a release that fails in the `finally` of the state-signal sweep's capture
        (`tests/visual/state-signal-sweep.spec.ts`) replaces the capture's own error;
+     - no test tells that release in a `finally` from a release placed after a successful
+       capture;
      - nothing ties the hand-written declarations of `scripts/visual` (`a11y-scan.d.cts`,
        `instance-identity.d.mts`, `review-widths.d.mts`, `story-index.d.mts`) to the implementations
        they describe.

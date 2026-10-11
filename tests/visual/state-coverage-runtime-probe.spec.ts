@@ -699,6 +699,27 @@ test('T713 (b) plant: a handler that reloads the story page, which holds a root 
   await expect(probed()).rejects.toThrow(/test--story.*left the story/)
 })
 
+// T714 (c): the two document checks tell different navigations apart. `onHover` above navigates as the
+// force is applied, which the first check (before any read) catches whether or not the second exists.
+// This one navigates DURING the reads, to a page that has a root, so the reads succeed and only the
+// second check, after the clip, sees that the document is another one.
+test('T714 (c) plant: a navigation during the reads, to a page that holds a root, fails with the named failure, which only the check after the last read can give', async () => {
+  let leave: () => void = () => {}
+  const { stub, probed } = probeWith({
+    mounts: () => {
+      leave()
+      return [btn('primary', 'md')]
+    },
+    files: () => ['a.tsx'],
+    element: noElement,
+  })
+  leave = () => stub.navigate('http://stub/iframe.html?reloaded')
+  await expect(probed()).rejects.toThrow(/test--story.*left the story/)
+  // The reads went through, so the failure did not come from the first check or from a read.
+  expect(stub.calls).toContain('read files')
+  expect(stub.calls).toContain('read clip')
+})
+
 test('T712 (9) plant: a control whose mousedown navigates fails the probe, and the mouse comes up on about:blank, never over the story', async () => {
   const { stub, probed } = probeWith(
     {

@@ -412,26 +412,30 @@ async function assertRegistryPresent(page: Page): Promise<void> {
 
 // One story at one width in one theme, already settled (`gotoAndWaitForStorySettled`): what a forced
 // target selects, what holds focus after `play()`, every tracked primitive instance mounted, and the
-// capture clip. The order is the capture's (`stories.spec.ts`), so that the record describes the frame
-// it shows:
+// capture clip. The order is the capture's (`stories.spec.ts`), so that the mounts, the files and the
+// clip describe the frame it shows; the forced element's own record does not, it is read before the
+// force (step 1):
 //   1. the force is LOCATED before it is applied, as `applyForceState` counts its target before acting:
 //      hover, press and focus change paint, not which element a role, a name and an `nth` select nor
 //      which component placed it. The forced element's own record (match count, stamp, placing
 //      instance, disabled) is read here, BEFORE the force, while the mounts and the files are read
-//      AFTER it (step 5): a handler of the force that disables or unmounts the forced element leaves
-//      a record whose halves describe different pages. That is a known shape, listed in row 8 of
-//      `packages/design-system/specs/README.md`.
+//      AFTER it (step 5): a handler of the force that changes what the force's own record holds (it
+//      disables or unmounts the forced element, or changes the variant or size of the instance that
+//      placed it) leaves a record whose halves describe different pages. The forced state is credited
+//      to the row read before the force, and Disabled as well when the handler disabled it. That is a
+//      known shape, listed in row 8 of `packages/design-system/specs/README.md`.
 //   2. the focus after `play()` is read before the force, which is a different question (what the
 //      story's own `play()` focused).
 //   3. the force is applied (`applyForceState`, the capture's own driver, when the target is exactly one
 //      element; with none or several the capture throws before any frame, so there is nothing to apply).
 //   4. the document is checked to be the one the story settled in (T712, moved here by T713), BEFORE any
-//      read: a force whose handler navigates (a `mouseenter` or a `mousedown` that sets `location`, a
-//      reload) leaves the capture showing another page, so the pass fails naming the story and records
-//      nothing from it. The check is a property set on `window` before the force: a navigation the
-//      browser has not committed when it runs is not seen. It runs first because a read through the
-//      story root waits for `#storybook-root`, and a page the handler left for may hold none: that
-//      read would end in a timeout naming no story. The check runs again after the last read.
+//      read: a handler that navigates or reloads the page as the force is applied (a `mouseenter` or a
+//      `mousedown` that sets `location`, a reload) leaves the capture showing another page, so the pass
+//      fails naming the story and records nothing from it. The check is a property set on `window`
+//      before the force: a navigation the browser has not committed when it runs is not seen. It runs
+//      first because a read through the story root waits for `#storybook-root`, and a page the handler
+//      left for may hold none: that read would end in a timeout naming no story. The check runs again
+//      after the last read.
 //   5. the mounts and the files are read AFTER the force (T712): a handler the force triggers (an
 //      `onMouseEnter`, an `onMouseDown`) can mount or unmount an element, and the capture shows the page
 //      after it, so a read before would record a page the frame does not show.
@@ -440,7 +444,10 @@ async function assertRegistryPresent(page: Page): Promise<void> {
 //      takes time: a handler that writes `visualCaptureClip` asynchronously (a timer, a promise) after
 //      the force, during that scan, is captured and not recorded. That is the one difference between the
 //      two read points, listed in row 8 of `packages/design-system/specs/README.md` as a known shape.
-//   7. the document is checked a second time, after the clip: a navigation that began during the reads.
+//   7. the document is checked a second time, after the clip. A navigation that commits during the reads
+//      fails the pass, by name when the new page answers the reads, and otherwise as a context-destroyed
+//      error or the timeout of a read through `#storybook-root`, neither naming the story; one that
+//      commits after this check is recorded as an ordinary story.
 //
 // An `active` force leaves the mouse down on the control. It is released last, whatever happened above,
 // on `about:blank` and not over the story (`releaseMouseOffStory`): the browser state is cleared first on

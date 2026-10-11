@@ -86,8 +86,9 @@ const specsDir = path.join(dsDir, 'specs')
 const readmePath = path.join(dsDir, 'specs', 'README.md')
 const prettierBin = path.join(rootDir, 'node_modules', '.bin', 'prettier')
 
-// `typescript` is a direct devDependency of packages/design-system, not of the workspace root —
-// resolved through that package's own node_modules rather than adding a second copy at the root.
+// `typescript` is a direct devDependency of packages/design-system, and of the workspace root since
+// T712; it is resolved here through that package's own node_modules, as it was before the
+// root declared it.
 const dsRequire = createRequire(path.join(dsDir, 'package.json'))
 const ts = dsRequire('typescript')
 
@@ -2535,7 +2536,8 @@ function asPrinted(storyObjectsWithMeta) {
 //     rendered file painted (`computeStateCoverage`); a tracked primitive written in a story file
 //     credits nothing;
 //   - every other forced story credits no cell and is reported with the reason (`resolveRuntimeForce`),
-//     among them a force on an element the browser reports disabled.
+//     among them a force whose stamp is in its placing instance's `disabledAt`, and a force the light
+//     and dark render disagree on, a disabled state included.
 // The stories considered are the manifest's entries, each joined to its parsed story object by the
 // entry's `importPath` and `exportName`, never the story files found under a component directory, so
 // where a story file lives decides nothing. A story with no entry fails the check, naming the command
@@ -2899,9 +2901,10 @@ export function entryShapeProblem(entry, { forced, knownAxisValues } = {}) {
 //
 // A force is credited only when it is the same answer at every captured width: one element
 // (Playwright's strict mode refuses two, so no frame of a two-match force can be captured, and none
-// of zero), one stamp, one placing instance, and an element the browser does not report disabled. The
-// refusal names the true reason — never the one a refusal prints for every cause (`credited on no
-// cell`).
+// of zero), one stamp, one placing instance, and a stamp that is in no width's placing
+// instance's `disabledAt` (an element no tracked primitive placed is not refused for being disabled,
+// unless the two themes disagree on it). The refusal names the true reason — never the one a refusal
+// prints for every cause (`credited on no cell`).
 export function resolveRuntimeForce(entry, { recordOneKeys, knownAxisValues }) {
   const malformed = entryShapeProblem(entry, { forced: true, knownAxisValues })
   if (malformed) return { malformed }
@@ -3667,10 +3670,12 @@ export function computeStateCoverage({
         }
       }
       // The placing instance is not always among a story's mounts: the force's record is read before
-      // the force and the mounts after it, so a handler of the force that unmounts the forced element
-      // leaves a record whose halves describe different pages (a known shape, row 8). An instance the
-      // mounts lack is credited from the force's own record, which is what the browser reported
-      // before the force.
+      // the force and the mounts after it, so a handler of the force that changes what the force's own
+      // record holds (it disables or unmounts the forced element, or changes the variant or size of the
+      // instance that placed it) leaves a record whose halves describe different pages (a known shape,
+      // row 8). An instance the mounts lack is credited from the force's own record, which is what the
+      // browser reported before the force: the forced state is credited to the row read before the
+      // force.
       if (placingForce && !forceUsed) pushInstance(placingForce, placingForce.row, 'force')
       if (placingFocus && !focusUsed) {
         const row = rowAxesOf(placingFocus)
