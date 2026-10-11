@@ -1626,13 +1626,292 @@ T671 and T672 ship together; T673 follows once T672 is deployed.
       `rec_owner` instead of restating its measurement. Third review: `_describe` names no class as
       the only one quoting foreign text, and ADR 0001's amendment names the one recording measured
 - [ ] T673 Re-validate captures that ended `quarantined` because the engine could not parse them,
-      once T672 is deployed: read the committed object, check it against the row's own
-      `zip_sha256`, and run it through the capture barrier again, marking `stored` or leaving it
-      `quarantined` with the new error. Never re-download, never modify or delete an object. Bound
-      the selection to the engine's own failure text so an integrity quarantine (missing object,
-      checksum mismatch) is never reopened. Urgent: 31 days after a recording, an analysis of its
-      match has no source to fall back on. The earliest affected recording is not measured; the
-      earliest sampled is from 2026-09-27, and 0.1.22 shipped on 2026-09-22
+      once T672 is deployed: read the committed object, check it against the row's own `zip_sha256`,
+      and run it through the capture barrier again, marking `stored` or leaving it `quarantined`
+      with the new error. Never re-download, never modify or delete an object. Bound the selection
+      to the engine's own failure text so an integrity quarantine (missing object, checksum
+      mismatch) is never reopened. Urgent: 31 days after a recording, an analysis of its match has
+      no source to fall back on. The earliest affected recording is not measured; the earliest
+      sampled is from 2026-09-27, and 0.1.22 shipped on 2026-09-22. **Decided by the user
+      2026-10-11:** a capture whose profile has no active link stays outside the selection, as T673b
+      left it; re-validated rows may turn the nightly capture audit's lag assertion red, and that is
+      ruled on for good once the dry run reports how many rows it would write; timeout quarantines
+      stay outside the selection until the dry run reports their count
+- [x] T673a Close #129's review (`reviewer` REJECT 2026-10-10 on T673). The command is written and
+      no capture has been re-validated, so T673 stays open until the operator run reports its count.
+      **Eviction:** a re-validation that fails for a reason that is not the engine's verdict (the
+      wall-clock cap, any class outside the selection) overwrites `last_error` with a text the
+      selection no longer matches, and the row is never offered again. Write a new reason only when
+      the selection would still match it; otherwise leave the row untouched and report the reason.
+      Red first: a row whose validation times out once is selected again on the next run; contrast,
+      a row that fails with a new engine error is rewritten. **Objection:** the selection
+      re-validates a capture whose user has objected to archival since (constitution IX; 001's spec
+      says a quarantined capture is not archived, so its carve-out for recordings already archived
+      does not cover it). Apply the claim's own objection predicate, shared rather than copied, and
+      test both sides: an objecting user's row is not selected, a non-objecting profile's row on the
+      same match is. **Guard:** test the quarantine write's status guard with a failing validation
+      while another writer stores the row; the existing test exercises the stored write only, and a
+      mutation dropping the other guard passed every test. **Integrity versus transport:** only a
+      missing object and a checksum mismatch are per-row outcomes; any other store error aborts the
+      run non-zero with no write, and the store is configured through the application's own settings
+      validation, not from raw environment values. An integrity failure found here ends the run
+      non-zero after the report. **The dry run counts what it does not select:** `quarantined` rows
+      outside the selection, grouped by reason class (the text before the first colon, the reclaim
+      texts, the cap), counts only, no values. **Tests:** the command test named for a dry run
+      asserts one; the cursor test asserts each field; one test drives the entry point through a
+      successful dry run and a real run. **Prose, cut to what is measured:** one recording is
+      measured as build 185872; "a row that fails again is still a candidate" and "idempotent" are
+      claimed only as far as the eviction fix makes them true; the retention window is cited from
+      `docs/data-sources.md`, never restated; oldest-first is an ordering and is not justified by
+      the analysis path, which reads `retained_recordings` and the source and never a capture's
+      object; "exactly as a normal capture" says that `stored_at` is the time of re-validation.
+      Correct `apps/api/src/aoe2stats_api/ingest_stages.py`'s claim to be the one place a drain is
+      built, and `packages/storage/src/aoe2stats_storage/models.py`'s comment that `last_error` is
+      never control flow. **Runbook:** `docs/runbooks/` gains the operator procedure, with secrets
+      read as `docs/runbooks/alert-acknowledgement.md` reads them, never inline on a command line.
+      Left to the user, not decided here: whether re-validated rows may turn the nightly capture
+      audit red (`scripts/checks/capture_audit.py` measures `stored_at` against the recording), and
+      whether timeout quarantines are reopened (001's plan calls the cap an engine failure), which
+      waits on the dry run's count
+- [x] T673b Close #129's second review (`reviewer` REJECT 2026-10-10 on T673a; eviction, the
+      quarantine guard, integrity versus transport and the two corrected claims are closed).
+      **Objection at write time:** the objection is read once, when the page is selected, and both
+      guarded writes filter on status alone, so a user who objects while a page is being validated
+      still has their row marked `stored`. Put the ownership predicate in both guarded writes' own
+      `WHERE` and report a row it refuses as an unwritten outcome of its own. Red first: a validator
+      that records the objection mid-validation, once for a validation that succeeds and once for
+      one that fails with an engine verdict; contrast, a non-objecting row of the same page is
+      written. **An objector who has left:** the claim's predicate matches an active link only, so a
+      capture whose objecting user has since unlinked the profile is selected, and the test that
+      pins it speaks of a new owner while seeding none. Until the user rules on it, a capture is
+      taken only when its profile has an active link whose user has not objected, at selection and
+      again at write; a profile with no active link is not selected, and the dry run counts it under
+      its own label. Not selecting loses nothing: the row and its object stay as they are. The claim
+      path's own predicate is not changed here. Tests: an objector who unlinked is not selected; a
+      profile relinked by a second user who has not objected is; a profile with no link is not, and
+      is counted. **Partial report:** a database error on one row's write discards the report of the
+      rows already written, which are no longer selected, so their count cannot be recovered. Stop
+      at that row, return the report so far named as the store stop is, and exit non-zero; test with
+      a write that fails on the Nth row. **Reason labels:** `_reason_class` returns any
+      identifier-shaped head as its label. Make the label a closed vocabulary (a name ending in
+      `Error` or `Exception`, the fixed labels, else `other`) and test a head that is an identifier
+      and not a class name. **Tests:** the assertion that a stopped run prints no continuation runs
+      on a truncated report with a cursor; the selection's checksum clause gets a row of its own,
+      object key set and checksum null; the two command tests that expect a refused environment
+      clear the ambient process environment first, and `settings_from_environment`'s docstring says
+      the process environment is read as well as the mapping. **Prose, exact shapes only:** every
+      sentence saying the command never selects or reopens an objector's capture says what the
+      predicate checks and when it checks it; `_objecting_owner_exists` is not called the one
+      definition of objecting while `archiving_links` in
+      `apps/ingester/src/aoe2stats_ingester/discover.py` holds another; the script's docstring does
+      not assert that a quarantined capture exists for the measured recording, which `docs/risks.md`
+      gives as what the code implies; the ingester test module's docstring names one recording,
+      drops "idempotence" and qualifies "exactly as the normal path" with `stored_at`; a dry run
+      reads the database, reads no object and writes nothing. **Runbook:** the cron secret is
+      length-checked, not checked for presence only; a bare re-run also offers `still_quarantined`
+      rows again; a run exits non-zero for an integrity failure only when its page includes that
+      row; the closing `unset` is a fenced block on one line and names the variable that held the
+      pasted database URL; when every row is an integrity failure, check the bucket name first. Left
+      to the user, not decided here: whether a capture whose profile has no active link, or whose
+      objecting user has left, is ever re-validated; and the same gap in the claim path for a
+      `pending` row, which predates this branch
+- [x] T673c Close #129's third review (`reviewer` REJECT 2026-10-11 on T673b; no wrong write and no
+      constitution finding. Verified and not to be re-checked: the ownership predicate at selection
+      and in both writes, the refused-write outcome, the cursor on a stopped run, the schema's one
+      active link per profile, and T713's premises). **The stop report says "written" for rows it
+      only examined:** on a database stop `scripts/ops/revalidate_quarantined.py` prints that the
+      rows listed above were written, and the report lists every row examined before the failure,
+      whatever its outcome. Say "examined". Say that only a `stored` row leaves the selection
+      wherever the opposite is written: `write_failed_by`'s comment, `revalidate_quarantined`'s
+      docstring and the comment in its loop in `apps/ingester/src/aoe2stats_ingester/capture.py`,
+      the script's docstring, `docs/runbooks/revalidate-quarantined.md`, and the docstrings of the
+      two tests that fail a write. Drop "with that row unwritten" from the script: a commit that
+      raises leaves the row's state unknown, and both tests replace the whole method, so they assert
+      nothing about it. Give the runbook the step for a database stop that the store stop already
+      has: re-run, the failing row is offered again if it is still `quarantined`, and the reported
+      count may be short by that one row. Cut sentences; add no claim about the failing row's state.
+      **An interrupted page:** only a store error and a database error keep the report, and an
+      interrupt in the middle of a page prints nothing. Narrow every sentence about the partial
+      report to those two cases, and have the runbook say an interrupted page loses its report. Do
+      not catch a cancellation and do not widen the handler around the write. Left to the user, not
+      decided here: printing each row as it is decided, so an interrupt keeps the rows already
+      examined. **Object key clause:** the selection's `object_key` clause has no row of its own,
+      the twin of T673b's checksum row, and removing the clause passes every test. Add a row with
+      the object key null and the checksum set, not selected, beside a contrast row that is
+      selected; `_seed` cannot build one today. Red against the clause removed, with the output in
+      the hand-back. Do not change the predicate. **Ambient environment, a third test:**
+      `test_a_missing_application_key_is_named_and_no_value_is_printed` in
+      `scripts/ops/tests/test_revalidate_quarantined_command.py` reads the process environment and
+      fails in a shell that exports the bucket key, which the runbook's first step does. Give it the
+      fixture the two entry-point tests received, then check every other test in that module that
+      expects a refused or missing key. Do not weaken the assertion. **Stale claim:**
+      `_claim_batch`'s docstring says its predicate is shared with the re-validation's selection,
+      which T673b ended; it is shared with the dry run's labelling only. **Reason labels:** the
+      pattern `_reason_class` matches a head against admits dots, which no writer emits (the barrier
+      writes a bare class name), so a dotted free-text head ending in `Error` is a label. Remove the
+      dot, change the test that pins a dotted head to expect `other`, and reword the docstring to
+      what holds: a label is a fixed label, an identifier ending in `Error` or `Exception`, or
+      `other`. It does not say free text can never become a label. **"Never a whole reason":**
+      `_count_unselected` reads the head of each reason up to a fixed length, which is the whole
+      reason when it is short; say so in both places that claim otherwise. **Runbook, a hung
+      engine:** after a wall-clock cap outcome the command prints its report and does not exit until
+      the abandoned validation thread ends; one sentence
+- [x] T673d Close #129's fourth review (`reviewer` REJECT 2026-10-11 on T673c; no wrong write, no
+      data-safety and no constitution finding, and nothing on the dry-run path. Verified by mutation
+      and not to be re-checked: every selection clause removed alone, all four branches of the text
+      clause and of its Python twin, the status and ownership guards of both writes, the
+      missing-object versus transport split, both loop handlers, the cursor, the exit code's three
+      terms, and each sentence of T673c). **Evidence cut off:** `_one_line` in
+      `scripts/ops/revalidate_quarantined.py` cuts every reason at a fixed width, so a checksum
+      mismatch on an ordinary object key prints the checksum the row records and loses the one the
+      store holds. `integrity_failure` and `inconclusive` write nothing, so their reason exists
+      nowhere else. Print the reason whole for those two outcomes, still flattened to one ASCII
+      line; keep the cut for `still_quarantined`. One test: a mismatch line for a key of realistic
+      length carries both checksums. Contrast: a `still_quarantined` reason longer than the width is
+      still cut. Red against the cut applied to every outcome. **Reclaim's words on a row no reclaim
+      touched:** this command reports an `integrity_failure` with the texts the reclaim path stores
+      (`reclaim could not read back`, `reclaim checksum mismatch`), which the runbook and the script
+      say are never selected. Give `integrity_failure` a reason of its own that names the key and,
+      on a mismatch, both checksums; it is printed and never stored. Leave the reclaim path, its
+      stored texts and the constants `_reason_class` matches as they are. One test per integrity
+      outcome: the reason starts with neither reclaim text. **The trailing boundary of the text
+      clause:** only a leading lookalike has a row. Dropping the colon and space, or the space
+      alone, from the prefix match in `_engine_failure_reason`, or matching the bare class name in
+      `_is_engine_failure_reason`, passes every test in
+      `apps/ingester/tests/test_revalidate_quarantined.py`. Add three never-selected rows: a longer
+      class name with a colon (`PanicExceptionGroup: z`), a longer bare name (`EngineParseErrorX`),
+      and the class with a colon and no space. Add one validator raising a class named
+      `EngineParseErrorX`, which must end `inconclusive` with nothing written. Red against each of
+      the three mutations, with the output in the hand-back. Do not change either predicate. **A
+      stop does not name its row:** both stop lines say a row stopped the run and neither says
+      which, selection is oldest first, and a row that fails the same way on every run keeps every
+      later row out of reach. Carry the stopped row on the report and have each stop line print its
+      game, its profile, its recording time and the `--after` value that starts past it. The runbook
+      gains one sentence under each stop: if the same row stops two runs, pass that value and report
+      the row. Two tests, one per stop: the line names the row, and a run given that value does not
+      select the row and selects the one behind it. Contrast: a run that does not stop prints no
+      such line. Catch nothing new and do not widen either handler. **Sentences wider than the
+      code:** `inconclusive` is "selected again on the next run" in the runbook's table and in the
+      script's docstring, which does not hold for a run given the printed `--after`, nor after the
+      owner objects or unlinks; say the row stays in the selection. The runbook says a wrong bucket
+      answers "no such object" for every key: read
+      `packages/storage/src/aoe2stats_storage/objects.py` and narrow the sentence to the case that
+      holds, a bucket that exists and that the token can read, and say that any other wrong bucket
+      stops the run. The script's docstring says the report prints the `--after` value "when more
+      remain"; say what a stopped run prints. `_reason_class`'s docstring counts three shapes of
+      label and returns a fourth, the engine class with its reason in brackets. A dry run's summary
+      line says rows were "examined" where it read no object; say "selected". **Three docstring
+      claims with no row:** "tested in that order" in `_reason_class`, where swapping either
+      adjacent pair of the three checks passes: add an engine row that is both objecting and without
+      an object, labelled `(archival objected)`, and one both without an object and without an
+      active link, labelled `(no committed object)`. "Matched at both ends" for the wall-clock cap:
+      add a reason that starts with the cap's opening words and does not end with its closing words,
+      counted as `other`. "A longer one is cut here" for the head `_count_unselected` reads: add a
+      reason whose first colon lies past the head length behind an identifier ending in `Error`,
+      counted as `other`. Red against each mutation, with the output in the hand-back. **Left as
+      they are:** the names `write_failed_by` and `ownership_changed`, whose comments and runbook
+      rows already say what was observed; a head such as `EngineParseError:x`, which no writer
+      emits, counted under the bare class; and every store service error printing as one class name.
+- [x] T673e Close #129's fifth review (`reviewer` REJECT 2026-10-11 on T673d; no wrong write, no
+      data-safety and no constitution finding; sentences, comments and tests only, and no statement
+      of `apps/ingester/src/aoe2stats_ingester/capture.py` or of
+      `scripts/ops/revalidate_quarantined.py` changes outside a comment, a docstring or the
+      `--limit` help text. Verified and not to be re-checked: both stop tests run the real command
+      with the value read from the printed stop line, no path carries an integrity reason of this
+      command to `last_error`, the reclaim path's two stored texts are character-identical to the
+      main branch's, and a `still_quarantined` reason is written uncut). **A rule that misfires on
+      its own paragraph's causes:** under each stop `docs/runbooks/revalidate-quarantined.md` says
+      "If the same row stops two runs, pass that value and report the row", the sentence T673d
+      prescribed. The store stop's listed causes (an outage, a denied request, a missing bucket) are
+      not about the row and stop whichever row comes first, so an operator following the rule passes
+      over one sound row per two runs and re-validates nothing; a database that refuses writes does
+      the same. Replace the sentence in both paragraphs with what holds: passing that value starts
+      the next run past the row; a store failure that is not about the row, or a database that
+      refuses every write, is not passed by any `--after` value, because the next run stops again,
+      at its first row for the store and at the first row it writes for the database, and the thing
+      to fix is then the store (token, bucket, endpoint) or the database, followed by a re-run
+      without `--after`. No advice to report a row, and nothing about what state the stopped row is
+      in. **A test that asserts the opposite of what ships:**
+      `test_a_stopped_run_names_the_error_class_prints_no_continuation_and_exits_non_zero` in
+      `scripts/ops/tests/test_revalidate_quarantined_command.py` builds a stopped report with no
+      stopped row, a shape the drain no longer returns, and asserts no line carries `--after`; its
+      docstring says a stopped report prints no continuation because the operator has to deal with
+      the stop first. Give its report a stopped row, assert that the "more candidates remain" line
+      is absent, and reword the docstring to that. **A comment against its neighbours:**
+      `stopped_row`'s comment says the report claims nothing about that row's state, while
+      `aborted_by`'s comment and the store stop line say it was not written. Say the field claims
+      nothing about its state. **Wrong bucket, the residue:** "Any other wrong bucket stops the run"
+      is wider than `packages/storage/src/aoe2stats_storage/objects.py`, which also reads two
+      generic not-found codes as a missing object. Say that a wrong bucket the store answers with a
+      missing-bucket error or a denial stops the run, and that the other bucket answers "no such
+      object" for every key it does not hold. **A test named for more than it asserts:**
+      `test_the_reclaim_path_still_stores_its_own_integrity_texts` in
+      `apps/ingester/tests/test_revalidate_quarantined.py` checks what the read-back helper returns
+      by default, and stores nothing. Rename it and reword its docstring to that. A reclaim driven
+      into a missing or drifted object has no test anywhere in the repository; that is older than
+      this feature and is not closed here. **A shared recording time:** neither stop test seeds a
+      second capture of the stopped match, so "selects the one behind it" is run only where the row
+      behind has a later time. In one of the two, seed a second capture of the stopped match and
+      assert the run given the printed value selects it. Red against a stopped row's cursor that
+      keeps the time and takes the highest capture id, with the output in the hand-back.
+      **"Examined" where a dry run read nothing:** the script's docstring and `--limit` help, the
+      runbook's "One line per row examined" above a table that lists `selected`, and the two cursor
+      comments on the report in `capture.py`. Reword each to hold for both kinds of run.
+      `_WHOLE_REASON_OUTCOMES`'s comment also describes the two refused-write outcomes, whose
+      reasons are short fixed texts; say the two it names carry what this run found.
+      `revalidate_quarantined`'s docstring says an integrity reason "is printed"; the method prints
+      nothing, so say it is reported and never stored. **Left as they are:**
+      `only_integrity_is_per_row` choosing wording as well as control flow, and the empty branch of
+      `_stopped_row_text`.
+- [ ] T673f Follow-ups from #129's sixth review (`reviewer` APPROVE 2026-10-11, on T673e's delta
+      alone; none blocks the merge or the operator's run). Sentences and one assertion, no
+      executable statement. **Re-running after a stop:** under both stops
+      `docs/runbooks/revalidate-quarantined.md` says the fix is "followed by a re-run without
+      `--after`". That is safe, and on any page after the first it starts again from the oldest row
+      and re-validates every earlier row that did not end `stored`. Say to re-run the command that
+      stopped, with the `--after` it was given if it was given one, and not the stop line's value.
+      "The next run stops again" holds while the failure lasts; say so. **Three more places that say
+      "printed":** the docstrings of the two helpers that build an `integrity_failure` reason in
+      `apps/ingester/src/aoe2stats_ingester/capture.py`, and a comment in
+      `apps/ingester/tests/test_revalidate_quarantined.py` above the read-back helper's test;
+      nothing there prints. Say "reported". **A clause the stopped-run test does not assert:** its
+      docstring in `scripts/ops/tests/test_revalidate_quarantined_command.py` says the stop line
+      carries the `--after` value, and the test stays green with that text removed from both stop
+      lines. Assert it there or cut the clause. **Two wordings:** `_WHOLE_REASON_OUTCOMES`'s comment
+      reads as if only its two outcomes carried what the run found, where a `still_quarantined`
+      reason does too; the distinction is that these two write nothing. The runbook says a database
+      "refuses every write" nine lines after "a write was refused" in the other sense, a guard that
+      matched no row; say "fails every write".
+- [ ] T713 Stop the claim from taking a capture whose profile has no active link (filed 2026-10-11
+      from T673b; decided by the user the same day). `CaptureDrain._claim_batch` in
+      `apps/ingester/src/aoe2stats_ingester/capture.py` excludes a row only when
+      `_objecting_owner_exists` finds an active link whose user has objected, so a capture queued
+      while a link stood is still fetched and stored after the user unlinks the profile, objector or
+      not; 001's spec says automatic ingestion stops for a profile its user unlinks (US1, acceptance
+      scenario 6). Claim a row only when its profile has an active link whose user has not objected:
+      `_owner_is_archiving`, the predicate T673b gave the re-validation, so the claim and the
+      re-validation share one definition. This reverses T089a's stated choice that only a found
+      objection removes a row from the claim; correct `_claim_batch`'s docstring,
+      `_objecting_owner_exists`'s, and `_owner_is_archiving`'s, which calls itself stricter than the
+      claim. **Both arms:** the predicate applies to a `pending` row and to a stale `downloading`
+      row taken again. **What a refused row becomes:** it is never fetched and the source drops the
+      recording after its retention window (`docs/data-sources.md`), so this refusal cannot be
+      undone, where T673b's can. Read what an objector's unclaimed row does today once its capture
+      deadline passes: the deadline alert in `apps/ingester/src/aoe2stats_ingester/run.py` and the
+      pending-past-deadline assertion in `scripts/checks/capture_audit.py` were read on 2026-10-11
+      as filtering on status alone, which is not yet verified by a test. A row with no active link
+      behaves as an objector's row does; if that is an alert or a red audit for a capture nobody may
+      take, file it for the user and do not decide it here. **Red first:** a `pending` capture whose
+      user unlinked after it was queued is not claimed; nor is one whose objecting user unlinked;
+      nor is a stale `downloading` row in either case. Contrast: a profile relinked by a second user
+      who has not objected is claimed, and a row with an active link whose user has not objected is
+      claimed as before. **Fixtures:** `_claim_batch`'s docstring records that tests seed captures
+      with no link rows at all. Count them before starting; each gains a link through a shared
+      helper, the predicate gains no exception for them, and the predicate and every fixture it
+      turns red are one commit. **Left to the user, not decided here:** a download already in flight
+      when its user unlinks or objects, since the normal path's stored and quarantine writes carry
+      no ownership guard, where T673b gave the re-validation's writes one. Its own branch and pull
+      request, not #129
 
 - [x] T706 Unstick an analysis whose lease expired (filed 2026-10-08; decided by the user the same
       day). Match 511523321's row stayed `running` from the 2026-10-05 crash until a manual
