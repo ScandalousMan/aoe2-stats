@@ -228,15 +228,16 @@ _CHECKSUM_REASON_PREFIX = "reclaim checksum mismatch"
 #: no longer than this is read whole; a longer one is cut here.
 _REASON_HEAD_CHARS = 120
 
-#: The reason `revalidate_quarantined` reports with `changed_elsewhere`, which is what it observed:
-#: the guarded write matched no row, and the status read afterwards was not `quarantined`. Reported,
-#: never stored on a row.
+#: The reason `revalidate_quarantined` reports with `changed_elsewhere`: the guarded write matched
+#: no row, and the status read afterwards was not `quarantined`. One fixed text, the same for every
+#: row. Reported, never stored on a row.
 _CHANGED_ELSEWHERE = (
     "the guarded write matched no row, and the row was no longer quarantined when read back"
 )
 
 #: The reason it reports with `ownership_changed`: the guarded write matched no row, and the
-#: status read afterwards was still `quarantined`. Reported, never stored on a row.
+#: status read afterwards was still `quarantined`. One fixed text, the same for every row. Reported,
+#: never stored on a row.
 _OWNERSHIP_CHANGED = (
     "the guarded write matched no row, and the row was still quarantined when read back"
 )

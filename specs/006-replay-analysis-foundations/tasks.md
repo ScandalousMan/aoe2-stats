@@ -1899,14 +1899,15 @@ carries what T673's dry run read.
       that command was given, if any. **What that re-run repeats:** it starts where the stopped
       command started, so a row before the stop that is still selected is examined and listed
       again, and totals summed over both runs count it twice. Say so under both stops; read the
-      selection for which outcomes leave it before naming the rows. **Four outcomes write
-      nothing:** `_WHOLE_REASON_OUTCOMES`'s comment in `scripts/ops/revalidate_quarantined.py`
-      opens "The two outcomes that write nothing", and `changed_elsewhere` and `ownership_changed`
-      write nothing either. Its two are the ones that write nothing and whose reason carries what
+      selection for which outcomes leave it before naming the rows. **Four of a real run's
+      outcomes write nothing; `selected`, the dry run's outcome, writes nothing either (amended
+      2026-10-11 by T673h; the count of four was a real run's):** `_WHOLE_REASON_OUTCOMES`'s comment
+      in `scripts/ops/revalidate_quarantined.py` opens "The two outcomes that write nothing", and
+      `changed_elsewhere` and `ownership_changed` write nothing either. Its two are the ones that write nothing and whose reason carries what
       the run found; put both properties in the head. **Two more "Printed":** the comments above
       the two refused-write reason constants in `apps/ingester/src/aoe2stats_ingester/capture.py`
       say "Printed in the report", and that module prints nothing. Say "Reported"
-- [ ] T673h Follow-ups from #132's second review (`reviewer` APPROVE 2026-10-11 on T673g; none
+- [x] T673h Follow-ups from #132's second review (`reviewer` APPROVE 2026-10-11 on T673g; none
       blocks the merge; filed by the user's decision the same day). The first two concern an
       operator, and #132 changed neither sentence. Its own branch and pull request. **The `--after`
       help after a stop:** the option's help and `_cursor`'s refusal text in

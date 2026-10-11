@@ -197,6 +197,14 @@ def default_validator() -> ReplayValidator:
 
 
 _CURSOR_SHAPE = "<timestamp with offset>,<capture id>"
+_RUNBOOK = "docs/runbooks/revalidate-quarantined.md"
+#: Which value to give. A stop line also prints an `--after` value, but it excludes the stopped row,
+#: which is not what the runbook has an operator give after a stop; so the previous run's output is
+#: named only for the line that continues a page.
+_WHICH_VALUE = (
+    "copy the value a 'more candidates remain' line printed; after a stop, "
+    f"{_RUNBOOK} says which value to give"
+)
 
 
 def _cursor(text: str) -> RevalidationCursor:
@@ -206,7 +214,7 @@ def _cursor(text: str) -> RevalidationCursor:
     if not comma:
         raise argparse.ArgumentTypeError(
             f"{text!r} is not {_CURSOR_SHAPE}; the capture id is required (several captures can "
-            "share one recording time), copy the value the previous run printed"
+            f"share one recording time); {_WHICH_VALUE}"
         )
     try:
         parsed = datetime.fromisoformat(timestamp_text)
@@ -259,17 +267,17 @@ def build_arg_parser(*, exit_on_error: bool = True) -> argparse.ArgumentParser:
         metavar="TIMESTAMP,CAPTURE_ID",
         default=None,
         help="resume after this row: the recording's ISO 8601 completion time (with offset), a "
-        "comma, and the capture id; copy the value the previous run printed. "
-        "A timestamp alone is refused",
+        f"comma, and the capture id; {_WHICH_VALUE}. A timestamp alone is refused",
     )
     return parser
 
 
-#: The two outcomes that write nothing and whose reason carries what the run found (the object's
-#: key and checksums, or the validation's failure text): a reason cut here is lost, so they are
-#: printed whole. `changed_elsewhere` and `ownership_changed` write nothing either, but their
-#: reasons are fixed texts shorter than the cut. A `still_quarantined` reason carries what the run
-#: found too, but it is stored in full on the row.
+#: The two outcomes that write nothing and whose reason is not one fixed text: it differs from row
+#: to row (the object's key and checksums, or the validation's failure text), and is stored
+#: nowhere, so a reason cut here is lost and they are printed whole. `changed_elsewhere` and
+#: `ownership_changed` write nothing either, but each reports one fixed text, the same for every
+#: row. A `still_quarantined` reason differs from row to row too, but the row holds it in full, so
+#: it is cut.
 _WHOLE_REASON_OUTCOMES = frozenset({"integrity_failure", "inconclusive"})
 
 
