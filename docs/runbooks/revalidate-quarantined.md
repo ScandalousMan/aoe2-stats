@@ -4,8 +4,9 @@
 because the replay engine could not parse its recording a second validation, from the bytes already
 in the object store (T673, feature 006). It exists because the engine was upgraded (T672) after
 `aoe2rec-py` 0.1.21 panicked on the one recording measured as game build 185872 (`docs/risks.md`).
-How many captures carry the engine's failure text is **not measured**: the dry run below is how it
-becomes measured. Where the source's retention window sits is `docs/data-sources.md`'s to say.
+How many captures carried the engine's failure text when this command first ran is in
+`docs/risks.md`: the dry run below is how it is measured. Where the source's retention window sits
+is `docs/data-sources.md`'s to say.
 
 This is a maintenance command, not part of the ingest cycle. It runs from a terminal, against
 production, by hand.
@@ -89,7 +90,7 @@ engine's class followed by `(archival objected)`, `(no committed object)` or `(n
 engine rows the selection excludes (`PanicException (archival objected)`, for one), `other` for any
 other text, and `no reason recorded`. For those rows it prints counts under the labels, and no
 object key. A dry run reads the database, reads no object and writes nothing. Paste that block into
-the write-up this run belongs to: it is the measurement `docs/risks.md` still lacks.
+the write-up this run belongs to: `docs/risks.md` holds the first one.
 
 Two decisions this command does not make, and the dry run's count is what they wait on:
 

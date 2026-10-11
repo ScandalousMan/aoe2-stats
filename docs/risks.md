@@ -27,8 +27,11 @@ cannot be recreated by anyone, at any price.
   185872), and analysis of that match answered 500 in production. 0.1.24 reads that recording and is
   now pinned (feature 006, Phase 7; `docs/adr/0001-replay-parser.md` carries the amendment).
   Capture validation calls the same parser, so recordings 0.1.21 could not read would have ended
-  `quarantined`, with their object kept; that is what the code implies, not an observation, and how
-  many it holds is unmeasured until T673 counts them.
+  `quarantined`, with their object kept; that is what the code implies, and it was not observed.
+  T673's dry run against production on 2026-10-11 found no `quarantined` capture, for any reason,
+  so nothing was re-validated. Read the same day: every capture row is `stored` or `expired`, none
+  was first seen after 2026-08-28, and none is for a match after 2026-05-02. Why nothing has been
+  discovered since is not measured.
 - **2026-08-19 — R4.** `aoe-api.reliclink.com` now serves a certificate for `*.worldsedgelink.com`,
   so every community document naming that host is stale. Recorded before it could cost anything.
 - **2026-08-19 — R4.** aoe2companion returned 403 from CI while the identical request succeeded from
