@@ -169,10 +169,11 @@ Per-state behaviour (`contracts/http-api.md`):
 **The boundary race (FR-025, R8) needed a table of its own, `replay_fetch_misses` — see
 `ReplayFetchMiss`'s docstring in `packages/storage/src/aoe2stats_storage/models.py` for why
 `replay_captures` was the tempting answer and the wrong one.** In short: that table's automatic
-capture pipeline claims from it with no ownership filter at all
-(`apps/ingester/.../capture.py::_claim_batch`), so any row this route wrote there would either have
-that pipeline fetch and *store* a third party's recording as a direct consequence of a download
-click (a `pending` row — forbidden by FR-012 and FR-027) or permanently block the real capture that
+capture pipeline claims from it, taking a row only when its profile has an active link whose user
+has not objected (`apps/ingester/.../capture.py::_claim_batch`, `_owner_is_archiving`), so any row
+this route wrote there would either have that pipeline fetch and *store* a recording as a direct
+consequence of a download click once its profile has such a link (a `pending` row — forbidden by
+FR-012 and FR-027) or permanently block the real capture that
 pipeline owes that profile's owner if they later link an account (any terminal status —
 `discover.py`'s `_enqueue_capture` no-ops on `ON CONFLICT DO NOTHING` against a row that already
 exists). `replay_fetch_misses` is read-only evidence with none of `replay_captures`' readers:

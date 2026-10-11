@@ -31,9 +31,11 @@ promote to, and `is_primary` is left as-is on the now-inactive row.
 
 **FR-004 — the `DELETE` preview.** Unlinking never deletes a `profile_links` row (data-model.md:
 "Set rather than deleted, so capture history stays explicable") and never touches the
-`replay_captures` rows a profile already earned — those keep archiving nothing further only
-because `unlinked_at` removes the link from the discovery query's `WHERE ... unlinked_at IS NULL`
-(data-model.md), not because anything here reaches into `replay_captures` at all. This handler is
+`replay_captures` rows a profile already earned — no new row is queued for the profile, because
+`unlinked_at` removes the link from the discovery query's `WHERE ... unlinked_at IS NULL`
+(data-model.md), and none of its rows is claimed, because the capture claim takes a row only when
+its profile has an active link whose user has not objected (`_owner_is_archiving`); not because
+anything here reaches into `replay_captures` at all. This handler is
 called once to preview (no `?confirm=true`) and again to act, both against the same path, matching
 the sibling `/api/privacy/erase` pattern `contracts/http-api.md` already documents ("Requires an
 explicit confirmation token from a prior `GET`"): the preview call states the consequence — the

@@ -919,20 +919,17 @@ class CaptureDrain:
         objecting owner, so a capture queued while a link stood was still fetched and stored after
         its user unlinked the profile; 001's spec says automatic ingestion stops for a profile its
         user unlinks (US1, acceptance scenario 6), and a row with no active link on record is now
-        refused exactly as an objector's is. The absence of ownership context is not an exception:
-        a test that seeds a capture to be claimed gives its profile a link
-        (`tests/links.py::link_profile`).
-        **A refused row stays as it is** — `pending` or `downloading`, never fetched, nothing
-        written to it. The source drops the recording after its retention window
-        (`docs/data-sources.md`), so unlike the re-validation's refusal this one cannot be undone
-        later: the capture is lost. A relink by a user who has not objected makes the row
-        claimable again while the window lasts. A download already in flight when its user unlinks
-        or objects is not stopped by this gate; the normal path's stored and quarantine writes
-        carry no ownership guard.
+        refused exactly as an objector's is.
+        **A refused row** keeps its status and nothing is written to it. It is claimable again once
+        its profile has an active link whose user has not objected. A row with no committed object
+        is not fetched while it is refused, and the source keeps a recording for a bounded time
+        (`docs/data-sources.md`); a row with a committed object keeps it. A download already in
+        flight when its user unlinks or objects is not stopped by this gate; the normal path's
+        stored and quarantine writes carry no ownership guard.
         An already-`stored` row is never touched by this claim in the first place (its status is
-        neither `pending` nor stale `downloading`), so this gate only ever stops a capture that has
-        not yet fetched anything — objection stops further capture (FR-035); erasure, not this, is
-        what removes what was already captured (FR-037).
+        neither `pending` nor stale `downloading`); a stale `downloading` row is, and this gate
+        applies to it — objection stops further capture (FR-035); erasure, not this, is what
+        removes what was already captured (FR-037).
         """
         now = datetime.now(UTC)
         stale_before = now - timedelta(seconds=self._max_claim_age_seconds)

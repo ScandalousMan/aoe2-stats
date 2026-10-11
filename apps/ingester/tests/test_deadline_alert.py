@@ -464,8 +464,8 @@ async def test_a_pending_capture_nobody_may_claim_still_raises_deadline_breach(
     clean_database: None,
 ) -> None:
     """Characterization (T713), not a decision. Since T713 `CaptureDrain._claim_batch` refuses a
-    capture whose profile has no active link whose user has not objected, so such a row stays
-    `pending` for good, and the sweep reads `status` and `capture_deadline_at` alone: it raises
+    capture whose profile has no active link whose user has not objected, so such a row keeps
+    its status, and the sweep reads `status` and `capture_deadline_at` alone: it raises
     `deadline_breach` for a capture nobody may take, exactly as for one the drain failed to reach.
     Whether that is wanted is the user's call; this test records what the sweep does today."""
     from tests.links import link_profile

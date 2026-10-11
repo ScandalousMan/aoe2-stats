@@ -2057,7 +2057,7 @@ carries what T673's dry run read.
       when its user unlinks or objects, since the normal path's stored and quarantine writes carry
       no ownership guard, where T673b gave the re-validation's writes one. Its own branch and pull
       request, not #129
-- [ ] T713a Close #135's review (`reviewer` REJECT 2026-10-11 on T713; no wrong write and no
+- [x] T713a Close #135's review (`reviewer` REJECT 2026-10-11 on T713; no wrong write and no
       constitution finding. Verified and not to be re-checked: `archiving_links` is exactly an
       active link whose user has not objected; the compiled claim gates both arms with it, an
       uncorrelated positive `IN`, lock and order unchanged; `_claim_batch` is the only writer of
@@ -2106,21 +2106,31 @@ carries what T673's dry run read.
       which is what a refused row relinked after its deadline meets if the source no longer has the
       recording; and that `backlog_remaining` on `ingest_runs` counts refused rows
 - [ ] T714 Decide what a capture the claim refuses does once its capture deadline passes (filed
-      2026-10-11 from T713; not decided). Since T713 the claim takes a row only when its profile has
-      an active link whose user has not objected, and a refused row keeps its status: `expired` is
-      written only for a row that was claimed and fetched. `_raise_deadline_breach_alert` in
-      `apps/ingester/src/aoe2stats_ingester/run.py` and `captures_pending_past_deadline` in
-      `scripts/checks/capture_audit.py` filter on the deadline and the status, and read neither
-      links nor objections. So a refused row past its deadline is carried by the severity-1
-      `deadline_breach` alert, which is raised again after each acknowledgement while the row stays
-      unresolved (T059b), and it fails the nightly capture audit. That was already so for an
-      objector's row; T713 adds a profile its user unlinked. Pinned as it stands by
+      2026-10-11 from T713, amended the same day from #135's review; not decided). Since T713 the
+      claim takes a row only when its profile has an active link whose user has not objected, and a
+      refused row keeps its status: `expired` is written only when a claimed row's fetch answers 404
+      past its capture deadline, with a severity-1 `expired_capture` alert. Three readers filter on
+      the deadline and the status and read neither links nor objections:
+      `_raise_deadline_breach_alert` in `apps/ingester/src/aoe2stats_ingester/run.py`,
+      `captures_pending_past_deadline` in `scripts/checks/capture_audit.py`, and
+      `deadline_gate_admits` in `apps/analyzer/src/aoe2stats_analyzer/admission.py`. So a refused
+      row past its deadline is carried by the severity-1 `deadline_breach` alert, which is raised
+      again after each acknowledgement while the row stays unresolved (T059b); it fails the nightly
+      capture audit; and it makes the admission gate refuse `POST /api/analyze` for every user
+      until the row leaves `pending` and `downloading`. That was already so for an objector's row;
+      T713 adds a profile its user unlinked. Pinned as it stands by
       `test_a_pending_capture_nobody_may_claim_still_raises_deadline_breach` in
-      `apps/ingester/tests/test_deadline_alert.py` and
+      `apps/ingester/tests/test_deadline_alert.py`,
       `test_captures_pending_past_deadline_counts_a_capture_nobody_may_claim` in
-      `scripts/checks/tests/test_capture_audit.py`; both change with the decision. **For the user:**
-      whether such a row is alerted on and audited as a breach, is given a terminal status, or is
-      left out of both. Nothing is built before that is decided
+      `scripts/checks/tests/test_capture_audit.py` and
+      `test_deadline_gate_refuses_for_a_pending_capture_the_claim_refuses` in
+      `apps/analyzer/tests/test_admission.py`; all three change with the decision. Two more facts,
+      pinned by no test: a refused row whose profile gains, after its deadline, an active link whose
+      user has not objected is claimed, and is written `expired` with that alert if the source
+      answers 404; and `backlog_remaining` on `ingest_runs` counts refused rows. **For the user:**
+      whether such a row is alerted on, audited and counted against the admission gate as a breach,
+      is given a terminal status, or is left out of all three. Nothing is built before that is
+      decided
 
 - [x] T706 Unstick an analysis whose lease expired (filed 2026-10-08; decided by the user the same
       day). Match 511523321's row stayed `running` from the 2026-10-05 crash until a manual

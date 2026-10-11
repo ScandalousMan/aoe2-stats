@@ -8,19 +8,23 @@ claim excluded a row only when it found an active link whose user had objected
 unlinked the profile. 001's spec says automatic ingestion stops for a profile its user unlinks
 (US1, acceptance scenario 6); the claim now shares `_owner_is_archiving` with the re-validation.
 
-The cases, each run against both arms:
+The cases, each run against both arms unless it says otherwise:
 
 - the user unlinked after the capture was queued: not claimed;
 - the user objected and then unlinked: not claimed;
-- no link row was ever written for the profile: not claimed (no exception for the absence of
-  ownership context; every claiming fixture gives its profile a link through
+- no link row was ever written for the profile: not claimed (the predicate has no exception for the
+  absence of a link; the fixtures that claim give their profile one through
   `tests.links.link_profile`);
 - the user objected and the link is still active: not claimed (unchanged);
+- a profile relinked by a second user who has objected: not claimed;
+- a stale `downloading` row holding a committed object (this arm only): refused with its object key
+  and checksum unchanged, then claimed once its profile has an active link whose user has not
+  objected;
 - contrast: a profile relinked by a second user who has not objected is claimed, and so is a
   profile with an active link whose user has not objected.
 
-`_claim_batch` is called directly. A refused row is never fetched and the source drops the recording
-after its retention window (`docs/data-sources.md`), so what these tests pin cannot be undone later.
+`_claim_batch` is called directly; the tests assert at the claim, not at what is done with a row
+once it is claimed.
 """
 
 from __future__ import annotations
@@ -54,8 +58,16 @@ class _NeverCalledProvider:
         raise AssertionError("these tests claim; they never fetch")
 
 
-async def _seed_capture(db_session: AsyncSession, arm: Arm) -> uuid.UUID:
-    """One capture for `_PROFILE_ID` in the given arm, committed with no link of any kind."""
+_OBJECT_KEY = f"replays/{_GAME_ID}/{_PROFILE_ID}.zip"
+_ZIP_SHA256 = "a" * 64
+
+
+async def _seed_capture(
+    db_session: AsyncSession, arm: Arm, *, with_object: bool = False
+) -> uuid.UUID:
+    """One capture for `_PROFILE_ID` in the given arm, flushed with no link of any kind.
+    `with_object` gives it the committed object a killed run leaves behind (`object_key`,
+    `zip_bytes`, `zip_sha256`)."""
     now = datetime.now(UTC)
     completed_at = now - timedelta(hours=1)
     capture_id = uuid.uuid4()
@@ -82,6 +94,9 @@ async def _seed_capture(db_session: AsyncSession, arm: Arm) -> uuid.UUID:
             claimed_at=None if arm == "pending" else now - timedelta(hours=1),
             first_seen_at=completed_at,
             source=CaptureSource.AUTOMATIC,
+            object_key=_OBJECT_KEY if with_object else None,
+            zip_bytes=1024 if with_object else None,
+            zip_sha256=_ZIP_SHA256 if with_object else None,
         )
     )
     await db_session.flush()
@@ -202,3 +217,43 @@ async def test_a_profile_relinked_by_a_second_user_who_has_not_objected_is_claim
     await link_profile(db_session, _PROFILE_ID, second_user=True)
 
     await _is_taken(db_session, session_factory, capture_id, arm)
+
+
+@pytest.mark.parametrize("arm", _ARMS)
+@pytest.mark.parametrize("first_user_unlinked_objected", [False, True])
+async def test_a_profile_relinked_by_a_second_user_who_has_objected_is_not_claimed(
+    arm: Arm,
+    first_user_unlinked_objected: bool,
+    db_session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    capture_id = await _seed_capture(db_session, arm)
+    await link_profile(
+        db_session, _PROFILE_ID, objected=first_user_unlinked_objected, unlinked=True
+    )
+    await link_profile(db_session, _PROFILE_ID, objected=True, second_user=True)
+
+    await _is_refused(db_session, session_factory, capture_id, arm)
+
+
+async def test_a_stale_downloading_row_holding_an_object_is_refused_then_claimed_on_a_relink(
+    db_session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """A refused row with a committed object keeps its status, object key and checksum; the same
+    row is claimed once its profile has an active link whose user has not objected. Asserted at the
+    claim only, not at what the drain then does with it."""
+    capture_id = await _seed_capture(db_session, "stale_downloading", with_object=True)
+    await link_profile(db_session, _PROFILE_ID, unlinked=True)
+
+    await _is_refused(db_session, session_factory, capture_id, "stale_downloading")
+    row = await db_session.get(ReplayCapture, capture_id)
+    assert row is not None
+    assert (row.object_key, row.zip_sha256) == (_OBJECT_KEY, _ZIP_SHA256)
+
+    await link_profile(db_session, _PROFILE_ID, second_user=True)
+
+    await _is_taken(db_session, session_factory, capture_id, "stale_downloading")
+    row = await db_session.get(ReplayCapture, capture_id)
+    assert row is not None
+    assert (row.object_key, row.zip_sha256) == (_OBJECT_KEY, _ZIP_SHA256)

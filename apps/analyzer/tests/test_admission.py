@@ -250,6 +250,36 @@ async def test_deadline_gate_ignores_a_capture_already_resolved_however_late(
     assert await deadline_gate_admits(db_session, now=_NOW) is True
 
 
+@pytest.mark.parametrize("owner", ["objector", "unlinked"])
+async def test_deadline_gate_refuses_for_a_pending_capture_the_claim_refuses(
+    owner: str,
+    db_session: AsyncSession,
+) -> None:
+    """Characterization (T713a), not a decision. Since T713 `CaptureDrain._claim_batch` takes a row
+    only when its profile has an active link whose user has not objected, so a `pending` row whose
+    profile is held by an objector or was unlinked keeps its status. `deadline_gate_admits` reads
+    `status` and `capture_deadline_at` alone, so once that row is past its deadline the gate returns
+    False for every analysis request. Whether that is wanted is the user's call (T714); this test
+    records what the gate does today."""
+    from tests.links import link_profile
+
+    from aoe2stats_analyzer.admission import deadline_gate_admits
+
+    profile_id = 930_000_021
+    await _seed_capture(
+        db_session,
+        game_id=920_000_021,
+        profile_id=profile_id,
+        status=CaptureStatus.PENDING,
+        capture_deadline_at=_NOW - timedelta(hours=1),
+    )
+    await link_profile(
+        db_session, profile_id, objected=owner == "objector", unlinked=owner == "unlinked"
+    )
+
+    assert await deadline_gate_admits(db_session, now=_NOW) is False
+
+
 # --- Gate 2 — the budget gate: analysis's own, smaller allowance (R7) ---------------------------
 
 

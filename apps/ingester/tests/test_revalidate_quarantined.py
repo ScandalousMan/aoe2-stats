@@ -1326,20 +1326,48 @@ async def test_an_objecting_users_capture_is_not_offered_by_a_dry_run_either(
     assert report.outcomes == ()
 
 
-def test_the_claim_and_the_revalidation_share_the_archiving_predicate() -> None:
-    """Level: the code. The claim (T713), the re-validation's selection and both of its guarded
-    writes all use `_owner_is_archiving`, which is `discover.archiving_links`'s set; the claim's
-    old exclusion of a *found* objection (`_objecting_owner_exists`) is only a label now."""
+def _names_called_by(function: Any) -> set[str]:
+    """The names a function's *code* calls, its docstring left out: `inspect.getsource` includes
+    the docstring, and a docstring that spells a call proves nothing about the body."""
+    import ast
     import inspect
+    import textwrap
 
+    definition = ast.parse(textwrap.dedent(inspect.getsource(function))).body[0]
+    assert isinstance(definition, ast.FunctionDef | ast.AsyncFunctionDef)
+    body = definition.body
+    if (
+        body
+        and isinstance(body[0], ast.Expr)
+        and isinstance(body[0].value, ast.Constant)
+        and isinstance(body[0].value.value, str)
+    ):
+        body = body[1:]
+    called: set[str] = set()
+    for statement in body:
+        for node in ast.walk(statement):
+            if isinstance(node, ast.Call):
+                target = node.func
+                if isinstance(target, ast.Name):
+                    called.add(target.id)
+                elif isinstance(target, ast.Attribute):
+                    called.add(target.attr)
+    return called
+
+
+def test_the_claim_and_the_revalidation_share_the_archiving_predicate() -> None:
+    """Level: the code, read without docstrings. The claim (T713), the re-validation's selection
+    and both of its guarded writes all call `_owner_is_archiving`, which calls
+    `discover.archiving_links`; the claim's old exclusion of a *found* objection
+    (`_objecting_owner_exists`) is only a label now and the claim does not call it."""
     from aoe2stats_ingester import capture
 
-    assert "_owner_is_archiving()" in inspect.getsource(capture.CaptureDrain._claim_batch)
-    assert "_objecting_owner_exists" not in inspect.getsource(capture.CaptureDrain._claim_batch)
-    assert "archiving_links()" in inspect.getsource(capture._owner_is_archiving)
-    assert "_owner_is_archiving()" in inspect.getsource(capture._revalidation_selection)
-    assert "_owner_is_archiving()" in inspect.getsource(capture.CaptureDrain._mark_stored)
-    assert "_owner_is_archiving()" in inspect.getsource(capture.CaptureDrain._mark_quarantined)
+    assert "_owner_is_archiving" in _names_called_by(capture.CaptureDrain._claim_batch)
+    assert "_objecting_owner_exists" not in _names_called_by(capture.CaptureDrain._claim_batch)
+    assert "archiving_links" in _names_called_by(capture._owner_is_archiving)
+    assert "_owner_is_archiving" in _names_called_by(capture._revalidation_selection)
+    assert "_owner_is_archiving" in _names_called_by(capture.CaptureDrain._mark_stored)
+    assert "_owner_is_archiving" in _names_called_by(capture.CaptureDrain._mark_quarantined)
 
 
 # --- Guard (level: the write guards) ---------------------------------------------------------

@@ -1,10 +1,14 @@
-"""The one place a test gives a profile an owner (T713).
+"""A shared helper that gives a profile an owner in a test (T713).
 
 `CaptureDrain._claim_batch` takes a capture only when its profile has an active link whose user has
 not objected to archival (`_owner_is_archiving`, the predicate `revalidate_quarantined` already
-used), so a capture fixture without a link is a capture nobody may take. Every fixture that seeds a
-`replay_captures` row to be claimed gives its profile a link through `link_profile`; the predicate
-itself has no exception for a row with no link on record.
+used), so a capture seeded without a link is one the claim refuses. T713 moved onto `link_profile`
+the six capture-mechanics seeding helpers in `apps/ingester/tests` (`test_capture_run_id.py`,
+`test_deadline_order.py`, `test_failure_classification.py`, `test_idempotency.py`,
+`test_interruption.py`, `test_quarantine.py`) and the wrapper in `test_revalidate_quarantined.py`;
+`test_claim_requires_active_link.py` and the characterization tests of T713 and T713a
+(`test_deadline_alert.py`, `test_capture_audit.py`, `test_admission.py`) use it too. Other test
+files build their own `ProfileLink` rows; they are not migrated here.
 
 Like `tests/db.py`, this is test-only infrastructure applying across app boundaries, so it sits
 beside it rather than inside a workspace member.
