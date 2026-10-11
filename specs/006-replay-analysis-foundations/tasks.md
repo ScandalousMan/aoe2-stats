@@ -1939,7 +1939,7 @@ carries what T673's dry run read.
       entry and its commit say four outcomes write nothing, which counts a real run's; `selected`,
       the dry run's outcome, writes nothing either. Amend the entry to say four of a real run's
       outcomes, dated
-- [ ] T673i Close #133's review (`reviewer` REJECT 2026-10-11 on T673h; three findings the code
+- [x] T673i Close #133's review (`reviewer` REJECT 2026-10-11 on T673h; three findings the code
       contradicts, four that do not block; the user chose the same day to close all seven in #133).
       Same branch and pull request as T673h. **The database stop's condition is too wide:** under
       the database stop `docs/runbooks/revalidate-quarantined.md` says the next run stops again "if

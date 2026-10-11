@@ -68,8 +68,9 @@ that row. A bare re-run starts again from the oldest selected row.
 an offset) and the capture's UUID, which together are the ordering key. The id is not optional:
 two tracked profiles can have captured the same match, so several captures share one completion
 time, and a run cut between them would lose the rest if only the timestamp were kept. A timestamp
-without an id is refused (exit 1), never read as "after everything at that time". Copy the printed
-value exactly.
+without an id is refused (exit 1), never read as "after everything at that time". Copy the value a
+"more candidates remain" line printed exactly; after a stop,
+`docs/runbooks/revalidate-quarantined.md` says which value to give.
 
 **Environment** (nothing is read from a dotenv file: `.env.local` in this repository points at the
 *production* Neon database, and the operator must name the target on the command line).
@@ -102,6 +103,7 @@ import argparse
 import asyncio
 import os
 import sys
+import textwrap
 import uuid
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
@@ -198,8 +200,10 @@ def default_validator() -> ReplayValidator:
 
 _CURSOR_SHAPE = "<timestamp with offset>,<capture id>"
 _RUNBOOK = "docs/runbooks/revalidate-quarantined.md"
-#: Which value to give. A stop line also prints an `--after` value, but it excludes the stopped row,
-#: which is not what the runbook has an operator give after a stop; so the previous run's output is
+#: Which value to give. A stop line also prints an `--after` value, which starts past the stopped
+#: row. The runbook presents that value as the way past that row, and names the first stopped
+#: command's own `--after` only for a failure that is not about the row; which one to give after a
+#: stop therefore depends on the cause, and the runbook says which. So the previous run's output is
 #: named only for the line that continues a page.
 _WHICH_VALUE = (
     "copy the value a 'more candidates remain' line printed; after a stop, "
@@ -236,9 +240,21 @@ def _cursor(text: str) -> RevalidationCursor:
     return parsed.astimezone(UTC), capture_id
 
 
+class _HelpFormatter(argparse.HelpFormatter):
+    """argparse's formatter, except that a help text is not wrapped at a hyphen: the default
+    prints `docs/runbooks/revalidate-` and `quarantined.md` on two lines, and a path cut there
+    cannot be copied."""
+
+    def _split_lines(self, text: str, width: int) -> list[str]:
+        return textwrap.wrap(
+            self._whitespace_matcher.sub(" ", text).strip(), width, break_on_hyphens=False
+        )
+
+
 def build_arg_parser(*, exit_on_error: bool = True) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         exit_on_error=exit_on_error,
+        formatter_class=_HelpFormatter,
         description=(
             "Re-validate captures quarantined by an engine failure, from the committed object. "
             "Never downloads, never modifies or deletes an object. "
@@ -272,11 +288,13 @@ def build_arg_parser(*, exit_on_error: bool = True) -> argparse.ArgumentParser:
     return parser
 
 
-#: The two outcomes that write nothing and whose reason is not one fixed text: it differs from row
-#: to row (the object's key and checksums, or the validation's failure text), and is stored
-#: nowhere, so a reason cut here is lost and they are printed whole. `changed_elsewhere` and
-#: `ownership_changed` write nothing either, but each reports one fixed text, the same for every
-#: row. A `still_quarantined` reason differs from row to row too, but the row holds it in full, so
+#: The two outcomes that write nothing and whose reason can differ from row to row (the object's
+#: key and checksums, or the validation's failure text; an `inconclusive` from the wall-clock cap
+#: and an exception with no message each report one fixed text, so it is "can", not "does"). The
+#: reason is stored nowhere, so a reason cut here is lost and they are printed whole.
+#: `changed_elsewhere` and `ownership_changed` write nothing either; what always holds for that
+#: pair is that its reason is one fixed text, the same for every row. A `still_quarantined` reason
+#: can differ from row to row too (or repeat an engine verdict), but the row holds it in full, so
 #: it is cut.
 _WHOLE_REASON_OUTCOMES = frozenset({"integrity_failure", "inconclusive"})
 

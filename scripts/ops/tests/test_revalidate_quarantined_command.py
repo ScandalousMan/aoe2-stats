@@ -371,9 +371,65 @@ def test_neither_after_text_offers_the_previous_runs_value_after_a_stop_and_both
     value a "more candidates remain" line prints is still the one to copy for a page."""
     out = _after_texts(capsys)[text]
 
-    assert "previous run printed" not in out
+    assert _sentences_offering_a_printed_value_unqualified(out) == []
     assert "more candidates remain" in out
     assert _RUNBOOK in out
+
+
+def _sentences_offering_a_printed_value_unqualified(text: str) -> list[str]:
+    """The sentences of `text` (split where the texts are built, on `. ` and `;`) that send the
+    operator to something a run printed or to copy, without naming the "more candidates remain"
+    line. After a stop that is the stop line's value, which excludes the stopped row; the one
+    printed value an operator may copy for a page is the continuation line's."""
+    sentences = re.split(r";\s+|\.\s+", " ".join(text.split()))
+    return [
+        sentence
+        for sentence in sentences
+        if re.search(r"\bcopy\b|\bprint(?:ed|s)\b", sentence)
+        and "more candidates remain" not in sentence
+    ]
+
+
+@pytest.mark.parametrize(
+    "offer",
+    [
+        "copy the value the previous run printed",
+        "copy the value the last run printed",
+        "use what the run printed; after a stop, see the runbook",
+        "resume after this row. Copy the value printed above",
+    ],
+)
+def test_the_sentence_check_finds_an_offer_of_a_printed_value_whatever_its_wording(
+    offer: str,
+) -> None:
+    """The check asserts the absence of a shape, not of one wording: "the last run printed" is
+    found as well as "the previous run printed"."""
+    assert _sentences_offering_a_printed_value_unqualified(offer) != []
+
+
+def test_the_sentence_check_passes_the_continuation_lines_value_and_the_runbook_pointer() -> None:
+    assert (
+        _sentences_offering_a_printed_value_unqualified(
+            "copy the value a 'more candidates remain' line printed; after a stop, "
+            f"{_RUNBOOK} says which value to give"
+        )
+        == []
+    )
+
+
+def test_the_runbook_path_survives_the_rendered_help_at_any_terminal_width(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """argparse wraps on hyphens, so `docs/runbooks/revalidate-` and `quarantined.md` landed on
+    two lines of the rendered help while the raw help text, which the test above reads, was whole.
+    The path has to be whole in `format_help()`, which is what the operator reads. (Below about
+    66 columns the help column is narrower than the path, and any wrapping must cut it.)"""
+    broken = []
+    for columns in range(70, 201):
+        monkeypatch.setenv("COLUMNS", str(columns))
+        if _RUNBOOK not in build_arg_parser().format_help():
+            broken.append(columns)
+    assert broken == [], f"the path is wrapped at these widths: {broken}"
 
 
 @pytest.mark.parametrize(
@@ -1174,3 +1230,83 @@ async def test_a_database_stop_at_the_last_selected_row_leaves_the_next_run_noth
     assert "0 row(s) examined (nothing)." in out
     assert "STOPPED" not in out and "more candidates remain" not in out
     assert store.gets == [] and calls["n"] == 2
+
+
+class _CannotValidate:
+    """A validator that fails with an exception which is not an engine verdict, so the row ends
+    `inconclusive`: nothing is written."""
+
+    def validate(self, zip_bytes: bytes) -> ReplayValidationResult:
+        raise RuntimeError("the validation could not run")
+
+
+@pytest.mark.parametrize(
+    ("shape", "expected_code"),
+    [
+        # Both rows' objects are gone: `integrity_failure`, which makes the exit code 1 on its
+        # own (the stop's exit code is 1 as well, so the absence of the stop line is the proof).
+        ("integrity_failure", 1),
+        # Both rows fail validation for a reason that is not an engine verdict: `inconclusive`
+        # only, so the exit code is 0 while the database still fails every write.
+        ("inconclusive", 0),
+    ],
+)
+async def test_a_database_stop_followed_by_rows_that_need_no_write_does_not_stop_again(
+    shape: str,
+    expected_code: int,
+    db_session: AsyncSession,
+    database_url: str,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The runbook's condition for a database stop that stops again is "a row past the stopped one
+    reaches a write", not "a row lies past it": `_revalidate_one` returns `integrity_failure` and
+    `inconclusive` before any write and the loop breaks only on an exception. So with every write
+    failing, a run given the stop line's value whose rows past the stopped one all end without a
+    write lists them, prints no stop line, and exits with the code the listed outcomes give."""
+    from sqlalchemy.exc import OperationalError
+
+    from aoe2stats_ingester.capture import CaptureDrain
+
+    store = _GetOnlyStore({})
+    await _seed(db_session, store, 800_340)
+    await _seed(db_session, store, 800_341)
+    await _seed(db_session, store, 800_342)
+    calls = {"n": 0}
+
+    async def _every_write_fails(self: Any, *args: Any, **kwargs: Any) -> bool:
+        calls["n"] += 1
+        raise OperationalError("UPDATE t SET x = 1", {}, Exception("x"))
+
+    monkeypatch.setattr(CaptureDrain, "_mark_stored", _every_write_fails)
+    run = _ConfiguredByTheRun(store)
+    first = await asyncio.to_thread(
+        main,
+        ["--limit", "5"],
+        _application_environment(database_url),
+        make_object_store=run.make_object_store,
+        make_validator=run.make_validator,
+    )
+    stopped = capsys.readouterr().out
+    assert first == 1 and "a database error stopped the run: OperationalError" in stopped
+    assert "game 800340, profile 800347" in stopped
+    assert calls["n"] == 1
+
+    # The rows past the stopped one now end without a write.
+    second_run = _ConfiguredByTheRun(store)
+    if shape == "integrity_failure":
+        del store.objects["replays/800341.zip"]
+        del store.objects["replays/800342.zip"]
+    else:
+        second_run.make_validator = lambda: _CannotValidate()  # type: ignore[method-assign]
+
+    code, out = await _run_given_the_stop_lines_value(stopped, database_url, second_run, capsys)
+
+    assert code == expected_code
+    assert "STOPPED" not in out and "starts past" not in out
+    assert "more candidates remain" not in out
+    assert f"{shape:<18} game 800341 profile 800348 " in out
+    assert f"{shape:<18} game 800342 profile 800349 " in out
+    assert f"2 row(s) examined ({shape}=2)." in out
+    assert "game 800340 " not in out
+    assert calls["n"] == 1

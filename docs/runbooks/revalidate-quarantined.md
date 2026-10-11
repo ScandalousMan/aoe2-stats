@@ -56,12 +56,13 @@ followed by a re-run of the first command that failure stopped, with the `--afte
 given, if any. The re-run starts where that command started, so a row before the stop that is still
 in the selection is offered again: the re-run lists it when its page reaches it, and totals summed
 over the command and its re-run count it twice. A row that has entered the selection ahead of it
-since can push it past `--limit`, and a row a run in between listed is listed again when the
-re-run's page reaches it. If every row of a page is an `integrity_failure`, check the bucket name
-(`S3_BUCKET`) first: a bucket that exists and that the token can read, but is not the replay bucket,
-answers "no such object" for every key it does not hold, which is indistinguishable from objects
-that are really missing. A wrong bucket that the store answers with a missing-bucket error or a
-denial stops the run instead, with `STOPPED` and the error's class.
+since can push it past `--limit`, and a row a run in between listed is listed again, if it is still
+in the selection, when the re-run's page reaches it. If every row of a page is an
+`integrity_failure`, check the bucket name (`S3_BUCKET`) first: a bucket that exists and that the
+token can read, but is not the replay bucket, answers "no such object" for every key it does not
+hold, which is indistinguishable from objects that are really missing. A wrong bucket that the store
+answers with a missing-bucket error or a denial stops the run instead, with `STOPPED` and the
+error's class.
 
 A database error at a row's write step (the write itself, or the read that tells why a write was
 refused) also **stops** the run at that row. The report of the rows examined before it is printed
@@ -73,16 +74,18 @@ the selection; a `still_quarantined` row keeps an engine verdict, which the sele
 The stop line names the row it stopped at (game, profile, recording time) and the `--after` value
 that starts past it. Passing that value starts the next run past that row. A database that fails
 every write is not passed by any `--after` value: while it does, the next run stops again, at the
-first row it writes (an `inconclusive` or `integrity_failure` row needs no write), if a row lies
-past the stopped one. If none does (the stopped row was the last one selected), that run selects no
-row, reports that it examined nothing and exits 0 with the failure still there: a run that examined
-nothing shows nothing about the failure. The thing to fix is the database, followed by a re-run of
-the first command that failure stopped, with the `--after` that command was given, if any. The
-re-run starts where that command started, so a row before the stop that is still in the selection is
-offered again: the re-run lists it when its page reaches it, and totals summed over the command and
-its re-run count it twice. A row that has entered the selection ahead of it since can push it past
-`--limit`. A run in between can list `inconclusive` and `integrity_failure` rows before it stops,
-since those need no write, and the re-run lists those again when its page reaches them.
+first row it writes, if a row past the stopped one reaches a write (an `inconclusive` or
+`integrity_failure` row needs no write). A run whose rows all needed no write, like one that
+selected none (the stopped row was the last one selected, so it reports that it examined nothing),
+ends without a stop line, with the failure still there: it exits 0, or 1 if it listed an
+`integrity_failure`. A run that wrote nothing shows nothing about the failure. The thing to fix is
+the database, followed by a re-run of the first command that failure stopped, with the `--after`
+that command was given, if any. The re-run starts where that command started, so a row before the
+stop that is still in the selection is offered again: the re-run lists it when its page reaches it,
+and totals summed over the command and its re-run count it twice. A row that has entered the
+selection ahead of it since can push it past `--limit`. A run in between can list `inconclusive` and
+`integrity_failure` rows before it stops, since those need no write, and the re-run lists those
+again when its page reaches them.
 
 Only those two stops keep the report. An interrupted page loses its report: an interrupt in the
 middle of a page (Ctrl-C, a closed terminal), or any other error that ends the run early, prints
