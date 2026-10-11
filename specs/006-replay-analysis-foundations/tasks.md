@@ -1980,6 +1980,48 @@ carries what T673's dry run read.
       needle:** `"previous run printed" not in out` passes against "the last run printed". Assert
       the absence of the shape, not of one wording: no sentence in either text offers a run's
       printed value without naming the "more candidates remain" line
+- [ ] T673j Close #133's second review (`reviewer` REJECT 2026-10-11 on T673i's delta alone; two
+      tests that stay green without the behaviour they are named for, one runbook sentence false in
+      the runbook's own vocabulary, and four that do not block; closed in #133 as the user chose for
+      T673i). **The no-write test patches one write of two:** `_every_write_fails` in
+      `scripts/ops/tests/test_revalidate_quarantined_command.py` replaces
+      `CaptureDrain._mark_stored` only, while its docstring says "every write failing";
+      `_mark_quarantined`, the write a `still_quarantined` row takes, still succeeds. Measured: with
+      `_revalidate_one`'s `inconclusive` branch made to call `_mark_quarantined` before returning,
+      both parametrisations pass. Patch `_mark_quarantined` with the same raising function and the
+      same counter, so that the counter at 1 means no write was reached; the plant above must then
+      fail both parametrisations, and the hand-back quotes that failure. **The clause check is
+      case-sensitive:** `_sentences_offering_a_printed_value_unqualified` searches
+      `\bcopy\b|\bprint(?:ed|s)\b` without `re.IGNORECASE`, and the split at `. ` puts "Copy" at a
+      clause's start, where it is never matched; measured, "resume here. Copy the stop line's value"
+      returns no clause. Of the four parametrised offers, none exercises the `copy` arm without
+      "printed", so a pattern of `printed` alone passes all four. Add `re.IGNORECASE`; add offers
+      with "Copy" and no "printed", and one with "prints"; and narrow the test's name and docstring
+      to what the check does: a clause, split at `;` or `. `, that says copy, printed or prints in
+      any case without naming the "more candidates remain" line. The check does not find an offer
+      worded with "output" or "shows", nor one joined to its qualifier by a comma; the docstring
+      says neither that it does nor "whatever its wording". **"Wrote nothing":**
+      `docs/runbooks/revalidate-quarantined.md` under the database stop says "A run that wrote
+      nothing shows nothing about the failure". The paragraph's premise is a database that fails
+      every write, under which the run that stops again also wrote nothing and shows the failure
+      with a stop line; and the runbook's table and `capture.py` both use "writes nothing" for
+      `changed_elsewhere` and `ownership_changed`, which reached the database. Say "A run that
+      reached no write". **The database stop's twin of T673i's qualifier:** the same paragraph says
+      the re-run "lists those again when its page reaches them" of the `inconclusive` and
+      `integrity_failure` rows a run in between listed; an objection or an unlink takes such a row
+      out of the selection. Add "if they are still in the selection", as the store stop's sentence
+      has. **An exception with no message:** `_WHOLE_REASON_OUTCOMES`'s comment in
+      `scripts/ops/revalidate_quarantined.py` says such an exception reports "one fixed text";
+      `_validate_with_barrier` reports the bare class name, fixed per class and different between
+      classes. Say "an exception of one class with no message reports its bare class name". **The
+      width bound:** the rendered-help test's docstring says the help column is narrower than the
+      path "below about 66 columns"; the reviewer measured the path whole at 65 and cut at 64, the
+      help column being 26 narrower than the terminal and the path 39 characters. Measure it again,
+      state the measured bound and the two numbers it follows from, and start the sweep at that
+      bound rather than at 70. **Left unguarded, recorded here:** the module docstring's reworded
+      last sentence has no regression test; the clause check pointed at the docstring flags its
+      descriptive sentences about what the report prints, so a guard there would need a different
+      check, and none is added
 - [ ] T713 Stop the claim from taking a capture whose profile has no active link (filed 2026-10-11
       from T673b; decided by the user the same day). `CaptureDrain._claim_batch` in
       `apps/ingester/src/aoe2stats_ingester/capture.py` excludes a row only when
