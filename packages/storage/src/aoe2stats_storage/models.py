@@ -973,10 +973,9 @@ class ReplayFetchMiss(Base):
     no column to ... `replay_captures`" merely states. `replay_captures` is the single table 001's
     automatic capture pipeline claims from (`apps/ingester/.../capture.py::_claim_batch` and its
     `_enqueue_capture` counterpart in `discover.py`): the claim takes a row only when its
-    `profile_id` has an active link whose user has not objected, and a `pending` row it takes is
-    fetched on that cycle; `_enqueue_capture` leaves a `stored`/`unavailable`/`expired` row it
-    finds already occupying a `(game_id, profile_id)` pair untouched forever (its own `ON CONFLICT
-    DO NOTHING`, `discover.py`). A download of an
+    `profile_id` has an active link whose user has not objected; `_enqueue_capture` leaves a
+    `stored`/`unavailable`/`expired` row it finds already occupying a `(game_id, profile_id)` pair
+    untouched forever (its own `ON CONFLICT DO NOTHING`, `discover.py`). A download of an
     `obtainable` point of view is, by construction, a point of view this service has **not**
     captured — most often because nobody who played it has ever linked an account here. Writing
     *any* status into `replay_captures` for that pair would therefore do one of two things, both

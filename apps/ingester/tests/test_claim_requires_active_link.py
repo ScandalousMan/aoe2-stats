@@ -13,8 +13,7 @@ The cases, each run against both arms unless it says otherwise:
 - the user unlinked after the capture was queued: not claimed;
 - the user objected and then unlinked: not claimed;
 - no link row was ever written for the profile: not claimed (the predicate has no exception for the
-  absence of a link; the fixtures that claim give their profile one through
-  `tests.links.link_profile`);
+  absence of a link);
 - the user objected and the link is still active: not claimed (unchanged);
 - a profile relinked by a second user who has objected: not claimed;
 - a stale `downloading` row holding a committed object (this arm only): refused with its object key

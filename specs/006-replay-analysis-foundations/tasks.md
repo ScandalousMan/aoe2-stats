@@ -2061,9 +2061,9 @@ carries what T673's dry run read.
       constitution finding. Verified and not to be re-checked: `archiving_links` is exactly an
       active link whose user has not objected; the compiled claim gates both arms with it, an
       uncorrelated positive `IN`, lock and order unchanged; `_claim_batch` is the only writer of
-      `downloading` and no path bypasses it; none of the 14 claim tests passes against a predicate
-      that reads only the link or only the objection; the six fixture helpers link no profile in a
-      test about the absence of a link). **A third reader of the same condition:**
+      `downloading` and no path bypasses it; against the old predicate, which reads only the
+      objection, 6 of the 14 claim tests fail and 8 pass; the six fixture helpers link no profile
+      in a test about the absence of a link). **A third reader of the same condition:**
       `deadline_gate_admits` in `apps/analyzer/src/aoe2stats_analyzer/admission.py` refuses every
       analysis request while any `pending` or `downloading` row is past its capture deadline, and
       reads neither links nor objections, so one refused row past its deadline refuses
@@ -2105,7 +2105,7 @@ carries what T673's dry run read.
       row's fetch answers 404 past its capture deadline, with a severity-1 `expired_capture` alert,
       which is what a refused row relinked after its deadline meets if the source no longer has the
       recording; and that `backlog_remaining` on `ingest_runs` counts refused rows
-- [ ] T713b Close #135's second review (`reviewer` REJECT 2026-10-11 on T713a; delta-scoped, two
+- [x] T713b Close #135's second review (`reviewer` REJECT 2026-10-11 on T713a; delta-scoped, two
       sentences, no code and no test logic. Verified and not to be re-checked: the five blocking
       findings of the first review closed where they were cited, T721's amended facts, the two
       added contrasts, and the guard failing with the call removed from the body). **A fact in

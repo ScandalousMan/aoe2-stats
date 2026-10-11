@@ -259,7 +259,7 @@ async def test_deadline_gate_refuses_for_a_pending_capture_the_claim_refuses(
     only when its profile has an active link whose user has not objected, so a `pending` row whose
     profile is held by an objector or was unlinked keeps its status. `deadline_gate_admits` reads
     `status` and `capture_deadline_at` alone, so once that row is past its deadline the gate returns
-    False for every analysis request. Whether that is wanted is the user's call (T714); this test
+    False for every analysis request. Whether that is wanted is the user's call (T721); this test
     records what the gate does today."""
     from tests.links import link_profile
 
