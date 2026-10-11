@@ -1715,6 +1715,47 @@ T671 and T672 ship together; T673 follows once T672 is deployed.
       to the user, not decided here: whether a capture whose profile has no active link, or whose
       objecting user has left, is ever re-validated; and the same gap in the claim path for a
       `pending` row, which predates this branch
+- [ ] T673c Close #129's third review (`reviewer` REJECT 2026-10-11 on T673b; no wrong write and no
+      constitution finding. Verified and not to be re-checked: the ownership predicate at selection
+      and in both writes, the refused-write outcome, the cursor on a stopped run, the schema's one
+      active link per profile, and T713's premises). **The stop report says "written" for rows it
+      only examined:** on a database stop `scripts/ops/revalidate_quarantined.py` prints that the
+      rows listed above were written, and the report lists every row examined before the failure,
+      whatever its outcome. Say "examined". Say that only a `stored` row leaves the selection
+      wherever the opposite is written: `write_failed_by`'s comment, `revalidate_quarantined`'s
+      docstring and the comment in its loop in `apps/ingester/src/aoe2stats_ingester/capture.py`,
+      the script's docstring, `docs/runbooks/revalidate-quarantined.md`, and the docstrings of the
+      two tests that fail a write. Drop "with that row unwritten" from the script: a commit that
+      raises leaves the row's state unknown, and both tests replace the whole method, so they assert
+      nothing about it. Give the runbook the step for a database stop that the store stop already
+      has: re-run, the failing row is offered again if it is still `quarantined`, and the reported
+      count may be short by that one row. Cut sentences; add no claim about the failing row's state.
+      **An interrupted page:** only a store error and a database error keep the report, and an
+      interrupt in the middle of a page prints nothing. Narrow every sentence about the partial
+      report to those two cases, and have the runbook say an interrupted page loses its report. Do
+      not catch a cancellation and do not widen the handler around the write. Left to the user, not
+      decided here: printing each row as it is decided, so an interrupt keeps the rows already
+      examined. **Object key clause:** the selection's `object_key` clause has no row of its own,
+      the twin of T673b's checksum row, and removing the clause passes every test. Add a row with
+      the object key null and the checksum set, not selected, beside a contrast row that is
+      selected; `_seed` cannot build one today. Red against the clause removed, with the output in
+      the hand-back. Do not change the predicate. **Ambient environment, a third test:**
+      `test_a_missing_application_key_is_named_and_no_value_is_printed` in
+      `scripts/ops/tests/test_revalidate_quarantined_command.py` reads the process environment and
+      fails in a shell that exports the bucket key, which the runbook's first step does. Give it the
+      fixture the two entry-point tests received, then check every other test in that module that
+      expects a refused or missing key. Do not weaken the assertion. **Stale claim:**
+      `_claim_batch`'s docstring says its predicate is shared with the re-validation's selection,
+      which T673b ended; it is shared with the dry run's labelling only. **Reason labels:** the
+      pattern `_reason_class` matches a head against admits dots, which no writer emits (the barrier
+      writes a bare class name), so a dotted free-text head ending in `Error` is a label. Remove the
+      dot, change the test that pins a dotted head to expect `other`, and reword the docstring to
+      what holds: a label is a fixed label, an identifier ending in `Error` or `Exception`, or
+      `other`. It does not say free text can never become a label. **"Never a whole reason":**
+      `_count_unselected` reads the head of each reason up to a fixed length, which is the whole
+      reason when it is short; say so in both places that claim otherwise. **Runbook, a hung
+      engine:** after a wall-clock cap outcome the command prints its report and does not exit until
+      the abandoned validation thread ends; one sentence
 - [ ] T713 Stop the claim from taking a capture whose profile has no active link (filed 2026-10-11
       from T673b; decided by the user the same day). `CaptureDrain._claim_batch` in
       `apps/ingester/src/aoe2stats_ingester/capture.py` excludes a row only when
