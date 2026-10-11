@@ -49,8 +49,10 @@ def test_build_ingest_stages_wires_the_fairness_quota_from_settings() -> None:
     built somewhere with `max_captures_per_user_per_run`/`quota_exempt_days` left at their default
     `None` — which disables the cap silently rather than failing loudly, since `CaptureDrain`
     itself only rejects the two arguments being supplied *one without the other*, never both
-    absent (`capture.py`'s own constructor guard). This is the one place production ever builds a
-    `CaptureDrain`, so it is the one regression test that would actually have caught it.
+    absent (`capture.py`'s own constructor guard). This is the one place the ingest cycle's
+    `CaptureDrain` is built, so it is the one regression test that would actually have caught it.
+    (`scripts/ops/revalidate_quarantined.py` builds a second drain, never run as a stage, so no
+    cap applies to it.)
     """
     settings = get_settings()
 

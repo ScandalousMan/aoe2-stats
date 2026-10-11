@@ -143,12 +143,13 @@ class RunScoped(Protocol):
     assuming every `Stage` satisfies it.
 
     Also deliberately **not** a constructor argument on `CaptureDrain`. `build_ingest_stages`
-    (`apps/api/src/aoe2stats_api/ingest_stages.py`) is the one place production ever constructs a
-    `CaptureDrain`, and nothing about that call site guarantees the instance is built fresh for
-    every single run — a value fixed at construction would be correct for the first call handed to
-    it and silently stale for every one after it, since the run id is necessarily per run. A method
-    called once per run, right before `__call__`, is correct regardless of how long the instance
-    that implements it lives.
+    (`apps/api/src/aoe2stats_api/ingest_stages.py`) is the one place the ingest cycle's
+    `CaptureDrain` is built (`scripts/ops/revalidate_quarantined.py` builds a second one, never run
+    as a stage, so it never receives a run id), and nothing about that call site guarantees the
+    instance is built fresh for every single run — a value fixed at construction would be correct
+    for the first call handed to it and silently stale for every one after it, since the run id is
+    necessarily per run. A method called once per run, right before `__call__`, is correct
+    regardless of how long the instance that implements it lives.
     """
 
     def bind_run(self, run_id: uuid.UUID) -> None: ...

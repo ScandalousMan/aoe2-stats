@@ -446,7 +446,9 @@ class ReplayCapture(Base):
     source: Mapped[CaptureSource] = mapped_column(
         _enum_column(CaptureSource, "replay_capture_source"), nullable=False
     )
-    # For diagnosis, never for control flow.
+    # `http_status` is for diagnosis only. `last_error` is diagnosis with one reader: `CaptureDrain.
+    # revalidate_quarantined` (apps/ingester) selects quarantined rows by the first words of the
+    # engine's own failure text, so the text `_validate_with_barrier` writes is a contract with it.
     http_status: Mapped[int | None] = mapped_column(Integer)
     last_error: Mapped[str | None] = mapped_column(Text)
     # Parser engine and version used at capture-time validation.
