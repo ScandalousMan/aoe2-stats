@@ -1863,6 +1863,25 @@ T671 and T672 ship together; T673 follows once T672 is deployed.
       nothing, so say it is reported and never stored. **Left as they are:**
       `only_integrity_is_per_row` choosing wording as well as control flow, and the empty branch of
       `_stopped_row_text`.
+- [ ] T673f Follow-ups from #129's sixth review (`reviewer` APPROVE 2026-10-11, on T673e's delta
+      alone; none blocks the merge or the operator's run). Sentences and one assertion, no
+      executable statement. **Re-running after a stop:** under both stops
+      `docs/runbooks/revalidate-quarantined.md` says the fix is "followed by a re-run without
+      `--after`". That is safe, and on any page after the first it starts again from the oldest row
+      and re-validates every earlier row that did not end `stored`. Say to re-run the command that
+      stopped, with the `--after` it was given if it was given one, and not the stop line's value.
+      "The next run stops again" holds while the failure lasts; say so. **Three more places that say
+      "printed":** the docstrings of the two helpers that build an `integrity_failure` reason in
+      `apps/ingester/src/aoe2stats_ingester/capture.py`, and a comment in
+      `apps/ingester/tests/test_revalidate_quarantined.py` above the read-back helper's test;
+      nothing there prints. Say "reported". **A clause the stopped-run test does not assert:** its
+      docstring in `scripts/ops/tests/test_revalidate_quarantined_command.py` says the stop line
+      carries the `--after` value, and the test stays green with that text removed from both stop
+      lines. Assert it there or cut the clause. **Two wordings:** `_WHOLE_REASON_OUTCOMES`'s comment
+      reads as if only its two outcomes carried what the run found, where a `still_quarantined`
+      reason does too; the distinction is that these two write nothing. The runbook says a database
+      "refuses every write" nine lines after "a write was refused" in the other sense, a guard that
+      matched no row; say "fails every write".
 - [ ] T713 Stop the claim from taking a capture whose profile has no active link (filed 2026-10-11
       from T673b; decided by the user the same day). `CaptureDrain._claim_batch` in
       `apps/ingester/src/aoe2stats_ingester/capture.py` excludes a row only when
