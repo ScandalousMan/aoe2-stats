@@ -1812,7 +1812,7 @@ T671 and T672 ship together; T673 follows once T672 is deployed.
       they are:** the names `write_failed_by` and `ownership_changed`, whose comments and runbook
       rows already say what was observed; a head such as `EngineParseError:x`, which no writer
       emits, counted under the bare class; and every store service error printing as one class name.
-- [ ] T673e Close #129's fifth review (`reviewer` REJECT 2026-10-11 on T673d; no wrong write, no
+- [x] T673e Close #129's fifth review (`reviewer` REJECT 2026-10-11 on T673d; no wrong write, no
       data-safety and no constitution finding; sentences, comments and tests only, and no statement
       of `apps/ingester/src/aoe2stats_ingester/capture.py` or of
       `scripts/ops/revalidate_quarantined.py` changes outside a comment, a docstring or the
@@ -1826,10 +1826,10 @@ T671 and T672 ship together; T673 follows once T672 is deployed.
       not about the row and stop whichever row comes first, so an operator following the rule passes
       over one sound row per two runs and re-validates nothing; a database that refuses writes does
       the same. Replace the sentence in both paragraphs with what holds: passing that value starts
-      the next run past the row, and the row is left as it is and stays in the selection; a failure
-      that is not about the row is not passed by any `--after` value, because the next run stops
-      again, at its first row for the store and at the first row it writes for the database, and the
-      thing to fix is then the store (token, bucket, endpoint) or the database, followed by a re-run
+      the next run past the row; a store failure that is not about the row, or a database that
+      refuses every write, is not passed by any `--after` value, because the next run stops again,
+      at its first row for the store and at the first row it writes for the database, and the thing
+      to fix is then the store (token, bucket, endpoint) or the database, followed by a re-run
       without `--after`. No advice to report a row, and nothing about what state the stopped row is
       in. **A test that asserts the opposite of what ships:**
       `test_a_stopped_run_names_the_error_class_prints_no_continuation_and_exits_non_zero` in

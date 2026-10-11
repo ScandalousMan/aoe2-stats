@@ -503,7 +503,7 @@ class RevalidationReport:
     outcomes: tuple[RevalidationOutcome, ...]
     #: More candidates exist beyond `limit`; resume with `after=cursor`.
     truncated: bool
-    #: `matches.completed_at` and capture id of the last row examined: together the cursor for
+    #: `matches.completed_at` and capture id of the last row listed: together the cursor for
     #: `after`. Both, because the ordering key is `(completed_at, id)` and two captures of one
     #: match (two tracked profiles) share a `completed_at`: a timestamp alone would skip the rest.
     last_completed_at: datetime | None
@@ -523,12 +523,12 @@ class RevalidationReport:
     #: selection.
     write_failed_by: str | None = None
     #: The row `aborted_by` or `write_failed_by` happened at, else `None`. It is not among
-    #: `outcomes`, and the report claims nothing about its state.
+    #: `outcomes`, and this field claims nothing about its state.
     stopped_row: RevalidationStop | None = None
 
     @property
     def cursor(self) -> RevalidationCursor | None:
-        """The `after` value that continues from the last row examined, or `None`."""
+        """The `after` value that continues from the last row listed, or `None`."""
         if self.last_completed_at is None or self.last_capture_id is None:
             return None
         return (self.last_completed_at, self.last_capture_id)
@@ -1133,7 +1133,7 @@ class CaptureDrain:
         `(None, reason)` for an integrity failure: the object cannot be read, or it hashes to
         something else. For the reclaim path `reason` is the exact text a quarantine records; for
         `revalidate_quarantined` it is a text of its own (`_revalidation_missing_reason`,
-        `_revalidation_mismatch_reason`) that is printed and never stored, and does not start with
+        `_revalidation_mismatch_reason`) that is never stored, and does not start with
         either reclaim text.
 
         Two callers, two readings of "cannot be read". The reclaim path (default) quarantines the
@@ -1195,7 +1195,7 @@ class CaptureDrain:
         - the object is missing, or does not hash to the row's `zip_sha256`: `integrity_failure`,
           no write at all. The bytes are not the ones the row vouches for, so they are neither
           marked `stored` nor given a new error. Its reason names the key and, on a mismatch, both
-          checksums; it is printed and never stored. Any *other* store error stops the run
+          checksums; it is reported and never stored. Any *other* store error stops the run
           (`aborted_by`) with that row unwritten;
         - the barrier returns a result: `stored`, written by `_mark_stored` as the normal path
           writes it (`validated_by`, `inner_filename`, `inner_bytes`); `stored_at` is the time of

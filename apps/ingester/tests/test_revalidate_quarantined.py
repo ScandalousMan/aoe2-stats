@@ -2132,9 +2132,10 @@ async def test_an_integrity_failure_has_a_reason_of_its_own_and_not_the_reclaims
     assert _snapshot(await _row(db_session, capture_id)) == before
 
 
-async def test_the_reclaim_path_still_stores_its_own_integrity_texts() -> None:
-    """Contrast for the test above: the default read-back (the reclaim path's) keeps the texts it
-    stores, which `_reason_class` matches."""
+async def test_the_read_back_helper_returns_the_reclaim_texts_by_default() -> None:
+    """Contrast for the test above: `_read_back_verified` called with its defaults returns the
+    reclaim path's reason texts for a missing object and for a checksum mismatch. It stores
+    nothing: the drain has no session factory."""
     from aoe2stats_ingester.capture import (
         _CHECKSUM_REASON_PREFIX,
         _READ_BACK_REASON_PREFIX,

@@ -60,7 +60,7 @@ engine row outside the selection is labelled `(archival objected)`, `(no committ
 
 **Bounded and resumable.** At most `--limit` rows per run (default 25: a validation can take up to
 its 30 s wall-clock cap, and this runs from a terminal). When more remain and the run did not
-stop, the report prints the `--after` value that continues from the last row examined. A run that
+stop, the report prints the `--after` value that continues from the last row listed. A run that
 stopped prints instead, on its stop line, the stopped row and the `--after` value that starts past
 that row. A bare re-run starts again from the oldest selected row.
 
@@ -251,7 +251,7 @@ def build_arg_parser(*, exit_on_error: bool = True) -> argparse.ArgumentParser:
         "--limit",
         type=int,
         default=_DEFAULT_LIMIT,
-        help=f"most rows to examine this run (default {_DEFAULT_LIMIT}, minimum 1)",
+        help=f"most rows per run (default {_DEFAULT_LIMIT}, minimum 1)",
     )
     parser.add_argument(
         "--after",
@@ -265,8 +265,9 @@ def build_arg_parser(*, exit_on_error: bool = True) -> argparse.ArgumentParser:
     return parser
 
 
-#: The outcomes whose reason exists nowhere else: neither writes the row, so a reason cut here is
-#: lost. They are printed whole. A `still_quarantined` reason is stored in full on the row.
+#: The two outcomes that carry what this run found (the object's key and checksums, or the
+#: validation's failure text): neither writes the row, so a reason cut here is lost. They are
+#: printed whole. A `still_quarantined` reason is stored in full on the row.
 _WHOLE_REASON_OUTCOMES = frozenset({"integrity_failure", "inconclusive"})
 
 

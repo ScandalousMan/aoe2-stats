@@ -136,7 +136,13 @@ async def _link(session: AsyncSession, profile_id: int) -> None:
     await session.commit()
 
 
-async def _seed(session: AsyncSession, store: _GetOnlyStore, game_id: int) -> uuid.UUID:
+async def _seed(
+    session: AsyncSession,
+    store: _GetOnlyStore,
+    game_id: int,
+    *,
+    capture_id: uuid.UUID | None = None,
+) -> uuid.UUID:
     completed_at = datetime.now(UTC) - timedelta(days=4)
     key = f"replays/{game_id}.zip"
     store.objects[key] = _BODY
@@ -150,7 +156,7 @@ async def _seed(session: AsyncSession, store: _GetOnlyStore, game_id: int) -> uu
             raw_payload={},
         )
     )
-    capture_id = uuid.uuid4()
+    capture_id = capture_id or uuid.uuid4()
     session.add(
         ReplayCapture(
             id=capture_id,
@@ -169,6 +175,39 @@ async def _seed(session: AsyncSession, store: _GetOnlyStore, game_id: int) -> uu
     await session.commit()
     await _link(session, game_id + 7)
     return capture_id
+
+
+async def _seed_second_capture(
+    session: AsyncSession,
+    store: _GetOnlyStore,
+    game_id: int,
+    *,
+    capture_id: uuid.UUID,
+    profile_id: int,
+) -> None:
+    """A second tracked profile's capture of the match `_seed` made: the same `completed_at`
+    (it is the match's), its own object key, an active link."""
+    key = f"replays/{game_id}-{profile_id}.zip"
+    store.objects[key] = _BODY
+    session.add(AoeProfile(profile_id=profile_id, alias="p", country="FR"))
+    await session.flush()
+    session.add(
+        ReplayCapture(
+            id=capture_id,
+            game_id=game_id,
+            profile_id=profile_id,
+            status=CaptureStatus.QUARANTINED,
+            capture_deadline_at=datetime.now(UTC) + timedelta(days=17),
+            source=CaptureSource.AUTOMATIC,
+            object_key=key,
+            zip_bytes=len(_BODY),
+            zip_sha256=hashlib.sha256(_BODY).hexdigest(),
+            last_error="PanicException: boom",
+            attempts=1,
+        )
+    )
+    await session.commit()
+    await _link(session, profile_id)
 
 
 async def test_the_provider_handed_to_the_drain_refuses_every_call() -> None:
@@ -444,13 +483,17 @@ def test_the_report_counts_the_unselected_rows_by_label() -> None:
         ),
     ],
 )
-def test_a_stopped_run_names_the_error_class_prints_no_continuation_and_exits_non_zero(
+def test_a_stopped_run_names_the_error_class_prints_no_more_candidates_line_and_exits_non_zero(
     stop: dict[str, str], needle: str
 ) -> None:
-    """A truncated report with a cursor prints `--after`; a stopped one must not print a
-    continuation, because the row it stopped on is not in the report and the operator has to deal
-    with the stop first. Contrast: the same report, not stopped, does print it."""
-    from aoe2stats_ingester.capture import RevalidationOutcome, RevalidationReport
+    """A truncated report with a cursor prints the "more candidates remain" line; a stopped one,
+    which carries the row it stopped at, does not: its stop line carries the `--after` value
+    instead. Contrast: the same report, not stopped, does print it and exits zero."""
+    from aoe2stats_ingester.capture import (
+        RevalidationOutcome,
+        RevalidationReport,
+        RevalidationStop,
+    )
 
     when = datetime(2026, 9, 27, tzinfo=UTC)
     outcomes = (RevalidationOutcome(uuid.uuid4(), 1, 2, when, "stored"),)
@@ -461,15 +504,17 @@ def test_a_stopped_run_names_the_error_class_prints_no_continuation_and_exits_no
         "last_capture_id": uuid.UUID(int=9),
     }
 
-    stopped = RevalidationReport(**common, **stop)
+    stopped = RevalidationReport(
+        **common, stopped_row=RevalidationStop(uuid.UUID(int=10), 3, 4, when), **stop
+    )
     lines = format_report(stopped, dry_run=False)
     assert any("STOPPED" in line and needle in line for line in lines)
     assert any(next(iter(stop.values())) in line for line in lines)
-    assert not any("--after" in line for line in lines)
+    assert not any("more candidates remain" in line for line in lines)
     assert exit_code(stopped) == 1
 
     running = RevalidationReport(**common)
-    assert any("--after" in line for line in format_report(running, dry_run=False))
+    assert any("more candidates remain" in line for line in format_report(running, dry_run=False))
     assert exit_code(running) == 0
 
 
@@ -872,9 +917,12 @@ async def _stopped_line_then_a_run_given_its_after_value(
     stopped_game: int,
     behind_game: int,
     stop_out: str,
+    same_time_profile: int | None = None,
 ) -> None:
     """The stop line must name the row it stopped at, and the `--after` value it prints must,
-    given to a run, leave that row out and select the one behind it."""
+    given to a run, leave that row out and select the one behind it. With `same_time_profile`,
+    the match also has a second capture (by that profile) that shares the stopped row's
+    `completed_at`, and the run given the value selects that one too."""
     [line] = [line for line in stop_out.splitlines() if "STOPPED" in line]
     completed_at = await db_session.scalar(
         select(Match.completed_at).where(Match.game_id == stopped_game)
@@ -893,7 +941,7 @@ async def _stopped_line_then_a_run_given_its_after_value(
         == 0
     )
     unrestricted = capsys.readouterr().out
-    assert f"game {stopped_game} " in unrestricted
+    assert f"game {stopped_game} profile {stopped_game + 7} " in unrestricted
 
     assert (
         await asyncio.to_thread(
@@ -904,8 +952,10 @@ async def _stopped_line_then_a_run_given_its_after_value(
         == 0
     )
     resumed = capsys.readouterr().out
-    assert f"game {stopped_game} " not in resumed
+    assert f"game {stopped_game} profile {stopped_game + 7} " not in resumed
     assert f"game {behind_game} " in resumed
+    if same_time_profile is not None:
+        assert f"game {stopped_game} profile {same_time_profile} " in resumed
     assert "STOPPED" not in resumed and "starts past" not in resumed
 
 
@@ -914,9 +964,15 @@ async def test_a_store_stop_names_its_row_and_the_after_value_it_prints_starts_p
     database_url: str,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    """The stopped match also has a second capture that shares its recording time. The stopped
+    row is the one with the lower capture id (`UUID(int=1)` against `UUID(int=2)`, both fixed),
+    and `fail_on` is its key, so the run stops at it and the second capture sorts behind it."""
     store = _FailsOnOneKey({}, fail_on="replays/800301.zip")
     await _seed(db_session, store, 800_300)
-    await _seed(db_session, store, 800_301)
+    await _seed(db_session, store, 800_301, capture_id=uuid.UUID(int=1))
+    await _seed_second_capture(
+        db_session, store, 800_301, capture_id=uuid.UUID(int=2), profile_id=900_001
+    )
     await _seed(db_session, store, 800_302)
     run = _ConfiguredByTheRun(store)
 
@@ -939,6 +995,7 @@ async def test_a_store_stop_names_its_row_and_the_after_value_it_prints_starts_p
         stopped_game=800_301,
         behind_game=800_302,
         stop_out=out,
+        same_time_profile=900_001,
     )
 
 

@@ -30,7 +30,7 @@ production, by hand.
 
 ## Outcomes
 
-One line per row examined:
+One line per row listed:
 
 | Outcome             | Meaning                                                                                                   | Row written?                                   |
 | ------------------- | --------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
@@ -45,12 +45,15 @@ One line per row examined:
 If the object store fails in any other way (an outage, a denied request, a missing bucket) the run
 **stops** at that row, prints `STOPPED` and the error's class (never its text), writes nothing for
 that row, and exits non-zero. Re-run once the store is reachable. The stop line names the row it
-stopped at (game, profile, recording time) and the `--after` value that starts past it. If the same
-row stops two runs, pass that value and report the row. If every row of a page is an
+stopped at (game, profile, recording time) and the `--after` value that starts past it. Passing
+that value starts the next run past that row. A failure that is not about the row is not passed by
+any `--after` value: the next run stops again, at its first row, and the thing to fix is the store
+(token, bucket, endpoint), followed by a re-run without `--after`. If every row of a page is an
 `integrity_failure`, check the bucket name (`S3_BUCKET`) first: a bucket that exists and that the
-token can read, but is not the replay bucket, answers "no such object" for every key, which is
-indistinguishable from objects that are really missing. Any other wrong bucket stops the run: the
-store's answer is not "no such object", so the run ends with `STOPPED` and the error's class.
+token can read, but is not the replay bucket, answers "no such object" for every key it does not
+hold, which is indistinguishable from objects that are really missing. A wrong bucket that the
+store answers with a missing-bucket error or a denial stops the run instead, with `STOPPED` and the
+error's class.
 
 A database error at a row's write step (the write itself, or the read that tells why a write was
 refused) also **stops** the run at that row. The report of the rows examined before it is printed
@@ -60,8 +63,10 @@ is non-zero. Re-run: the row it failed on is not in the report, it is offered ag
 totals reported may be short by that one row. Of the rows the command writes, only a `stored` one
 leaves the selection; a `still_quarantined` row keeps an engine verdict, which the selection still
 matches. The stop line names the row it stopped at (game, profile, recording time) and the
-`--after` value that starts past it. If the same row stops two runs, pass that value and report the
-row.
+`--after` value that starts past it. Passing that value starts the next run past that row. A
+database that refuses every write is not passed by any `--after` value: the next run stops again,
+at the first row it writes (an `inconclusive` or `integrity_failure` row needs no write), and the
+thing to fix is the database, followed by a re-run without `--after`.
 
 Only those two stops keep the report. An interrupted page loses its report: an interrupt in the
 middle of a page (Ctrl-C, a closed terminal), or any other error that ends the run early, prints
