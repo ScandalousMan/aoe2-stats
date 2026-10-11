@@ -1756,6 +1756,62 @@ T671 and T672 ship together; T673 follows once T672 is deployed.
       reason when it is short; say so in both places that claim otherwise. **Runbook, a hung
       engine:** after a wall-clock cap outcome the command prints its report and does not exit until
       the abandoned validation thread ends; one sentence
+- [ ] T673d Close #129's fourth review (`reviewer` REJECT 2026-10-11 on T673c; no wrong write, no
+      data-safety and no constitution finding, and nothing on the dry-run path. Verified by mutation
+      and not to be re-checked: every selection clause removed alone, all four branches of the text
+      clause and of its Python twin, the status and ownership guards of both writes, the
+      missing-object versus transport split, both loop handlers, the cursor, the exit code's three
+      terms, and each sentence of T673c). **Evidence cut off:** `_one_line` in
+      `scripts/ops/revalidate_quarantined.py` cuts every reason at a fixed width, so a checksum
+      mismatch on an ordinary object key prints the checksum the row records and loses the one the
+      store holds. `integrity_failure` and `inconclusive` write nothing, so their reason exists
+      nowhere else. Print the reason whole for those two outcomes, still flattened to one ASCII
+      line; keep the cut for `still_quarantined`. One test: a mismatch line for a key of realistic
+      length carries both checksums. Contrast: a `still_quarantined` reason longer than the width is
+      still cut. Red against the cut applied to every outcome. **Reclaim's words on a row no reclaim
+      touched:** this command reports an `integrity_failure` with the texts the reclaim path stores
+      (`reclaim could not read back`, `reclaim checksum mismatch`), which the runbook and the script
+      say are never selected. Give `integrity_failure` a reason of its own that names the key and,
+      on a mismatch, both checksums; it is printed and never stored. Leave the reclaim path, its
+      stored texts and the constants `_reason_class` matches as they are. One test per integrity
+      outcome: the reason starts with neither reclaim text. **The trailing boundary of the text
+      clause:** only a leading lookalike has a row. Dropping the colon and space, or the space
+      alone, from the prefix match in `_engine_failure_reason`, or matching the bare class name in
+      `_is_engine_failure_reason`, passes every test in
+      `apps/ingester/tests/test_revalidate_quarantined.py`. Add three never-selected rows: a longer
+      class name with a colon (`PanicExceptionGroup: z`), a longer bare name (`EngineParseErrorX`),
+      and the class with a colon and no space. Add one validator raising a class named
+      `EngineParseErrorX`, which must end `inconclusive` with nothing written. Red against each of
+      the three mutations, with the output in the hand-back. Do not change either predicate. **A
+      stop does not name its row:** both stop lines say a row stopped the run and neither says
+      which, selection is oldest first, and a row that fails the same way on every run keeps every
+      later row out of reach. Carry the stopped row on the report and have each stop line print its
+      game, its profile, its recording time and the `--after` value that starts past it. The runbook
+      gains one sentence under each stop: if the same row stops two runs, pass that value and report
+      the row. Two tests, one per stop: the line names the row, and a run given that value does not
+      select the row and selects the one behind it. Contrast: a run that does not stop prints no
+      such line. Catch nothing new and do not widen either handler. **Sentences wider than the
+      code:** `inconclusive` is "selected again on the next run" in the runbook's table and in the
+      script's docstring, which does not hold for a run given the printed `--after`, nor after the
+      owner objects or unlinks; say the row stays in the selection. The runbook says a wrong bucket
+      answers "no such object" for every key: read
+      `packages/storage/src/aoe2stats_storage/objects.py` and narrow the sentence to the case that
+      holds, a bucket that exists and that the token can read, and say that any other wrong bucket
+      stops the run. The script's docstring says the report prints the `--after` value "when more
+      remain"; say what a stopped run prints. `_reason_class`'s docstring counts three shapes of
+      label and returns a fourth, the engine class with its reason in brackets. A dry run's summary
+      line says rows were "examined" where it read no object; say "selected". **Three docstring
+      claims with no row:** "tested in that order" in `_reason_class`, where swapping either
+      adjacent pair of the three checks passes: add an engine row that is both objecting and without
+      an object, labelled `(archival objected)`, and one both without an object and without an
+      active link, labelled `(no committed object)`. "Matched at both ends" for the wall-clock cap:
+      add a reason that starts with the cap's opening words and does not end with its closing words,
+      counted as `other`. "A longer one is cut here" for the head `_count_unselected` reads: add a
+      reason whose first colon lies past the head length behind an identifier ending in `Error`,
+      counted as `other`. Red against each mutation, with the output in the hand-back. **Left as
+      they are:** the names `write_failed_by` and `ownership_changed`, whose comments and runbook
+      rows already say what was observed; a head such as `EngineParseError:x`, which no writer
+      emits, counted under the bare class; and every store service error printing as one class name.
 - [ ] T713 Stop the claim from taking a capture whose profile has no active link (filed 2026-10-11
       from T673b; decided by the user the same day). `CaptureDrain._claim_batch` in
       `apps/ingester/src/aoe2stats_ingester/capture.py` excludes a row only when
