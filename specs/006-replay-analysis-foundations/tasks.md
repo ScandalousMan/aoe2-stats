@@ -2057,6 +2057,54 @@ carries what T673's dry run read.
       when its user unlinks or objects, since the normal path's stored and quarantine writes carry
       no ownership guard, where T673b gave the re-validation's writes one. Its own branch and pull
       request, not #129
+- [ ] T713a Close #135's review (`reviewer` REJECT 2026-10-11 on T713; no wrong write and no
+      constitution finding. Verified and not to be re-checked: `archiving_links` is exactly an
+      active link whose user has not objected; the compiled claim gates both arms with it, an
+      uncorrelated positive `IN`, lock and order unchanged; `_claim_batch` is the only writer of
+      `downloading` and no path bypasses it; none of the 14 claim tests passes against a predicate
+      that reads only the link or only the objection; the six fixture helpers link no profile in a
+      test about the absence of a link). **A third reader of the same condition:**
+      `deadline_gate_admits` in `apps/analyzer/src/aoe2stats_analyzer/admission.py` refuses every
+      analysis request while any `pending` or `downloading` row is past its capture deadline, and
+      reads neither links nor objections, so one refused row past its deadline refuses
+      `POST /api/analyze` for every user. T714 names two readers; add this one to its facts, and
+      pin it in `apps/analyzer/tests/test_admission.py` as the other two are pinned: a
+      characterization, for an objector's row and for an unlinked profile's row. **Three texts the
+      claim made false:** `apps/api/src/aoe2stats_api/routers/replays.py` and `ReplayFetchMiss`'s
+      docstring in `packages/storage/src/aoe2stats_storage/models.py` say the claim has no
+      ownership filter and downloads any `pending` row for any profile;
+      `apps/api/src/aoe2stats_api/routers/profiles.py` says an unlinked profile's rows archive
+      nothing further only because discovery drops the link. Say what the claim does now. The
+      conclusion each draws, that the download route writes no `replay_captures` row, is not
+      reopened. **`_claim_batch`'s docstring on a refused row:** it says a refused row was never
+      fetched, that the refusal cannot be undone and the capture is lost, that a relink makes the
+      row claimable "while the window lasts", and that the gate only stops a capture that has
+      fetched nothing. The stale `downloading` arm can hold a row with a committed object; the
+      claim has no window clause; and the second and third of those contradict each other. State
+      only: a refused row keeps its status and nothing is written to it; it is claimable again once
+      its profile has an active link whose user has not objected; a row with no committed object
+      is not fetched while it is refused, and the source keeps a recording for a bounded time
+      (`docs/data-sources.md`); a row with a committed object keeps it. The same wording in the
+      docstring of `apps/ingester/tests/test_claim_requires_active_link.py`, and "stays `pending`
+      for good" in `apps/ingester/tests/test_deadline_alert.py`. **A uniqueness the tree does not
+      have:** `tests/links.py` calls itself the one place a test gives a profile an owner and says
+      every fixture seeding a capture to be claimed goes through it, and `_claim_batch`'s docstring
+      repeats it; other test files build a `ProfileLink` themselves,
+      `apps/ingester/tests/test_quota.py` among them. Claim only that the helper exists and which
+      fixtures this change moved onto it. The other helpers are not migrated here. **A guard that
+      cannot fail:** the source-inspection test in
+      `apps/ingester/tests/test_revalidate_quarantined.py` looks for the call in
+      `inspect.getsource`, which includes the docstring, and `_claim_batch`'s docstring spells the
+      call. Read the code without its docstring, for the claim and for the three sibling assertions
+      alike. Red first: with the call removed from `_claim_batch`'s body and its docstring
+      unchanged, the guard fails. **Contrasts to add** to the claim tests: a profile relinked by a
+      second user who has objected is refused; a stale `downloading` row holding a committed object
+      is refused, keeps its object key and checksum, and is claimed once its profile has an active
+      link whose user has not objected. Not added, recorded here: a relink by the same user.
+      **T714's entry** gains, as facts: the third reader; that `expired` is written when a claimed
+      row's fetch answers 404 past its capture deadline, with a severity-1 `expired_capture` alert,
+      which is what a refused row relinked after its deadline meets if the source no longer has the
+      recording; and that `backlog_remaining` on `ingest_runs` counts refused rows
 - [ ] T714 Decide what a capture the claim refuses does once its capture deadline passes (filed
       2026-10-11 from T713; not decided). Since T713 the claim takes a row only when its profile has
       an active link whose user has not objected, and a refused row keeps its status: `expired` is
