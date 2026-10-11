@@ -189,8 +189,7 @@ test('isFullPageEntry reads the built index tag and nothing else, and run.mjs bu
 // A file is read as text, comments included, so a quoted tag in a comment is a hit too: a comment names
 // the tag unquoted or by its constant. The scan knows no syntax (T717): it replaced a comment scan that
 // five reviews each found source to mislead. It sees the tag only where a quote character stands
-// immediately before it, and immediately after it or after one backslash: a tag assembled at run time,
-// written with an escape inside it, or inside a longer string is not seen.
+// immediately before it, and immediately after it or after one backslash.
 function scanHarnessForTagLiteral(root) {
   const sourceIn = (dir) =>
     readdirSync(path.join(root, dir), { withFileTypes: true })
@@ -362,8 +361,9 @@ test('T718 plant: a tag between escaped quote characters is a hit', () => {
   })
 })
 
-// The limit the header states: a tag assembled, unquoted or inside a longer string is not seen.
-test('T717 contrast: a tag not written whole between quotes is not seen', () => {
+// Three spellings the pattern does not see: a tag assembled at run time, a tag with no quote character
+// around it, and a tag preceded by other text inside its string.
+test('T717 contrast: a tag assembled at run time, unquoted, or preceded by other text inside its string is not seen', () => {
   inScratch((scratch, put) => {
     put('tests/visual/assembled.ts', "const t = 'visual-' + 'full-page'\n")
     put('tests/visual/unquoted.ts', `// a full-page story\n// the ${FULL_PAGE_TAG} tag\n`)
