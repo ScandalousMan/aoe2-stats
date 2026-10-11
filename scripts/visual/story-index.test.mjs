@@ -493,10 +493,7 @@ test('T714 (a) plant: a literal after a documentation comment holding a tag and 
     }
     cases.push(
       // A documentation comment that opens a property of an object literal.
-      [
-        'tests/visual/jsdoc-object.ts',
-        `const o = {\n  /** {@link Foo} // see */ b: ${tag},\n}\n`,
-      ],
+      ['tests/visual/jsdoc-object.ts', `const o = {\n  /** {@link Foo} // see */ b: ${tag},\n}\n`],
       [
         'tests/visual/jsdoc-params.ts',
         `function f(/** @param // note */ x = ${tag}) { return x }\n`,
@@ -584,7 +581,10 @@ test('T714 (a) the scan throws, naming the file, when two comment ranges overlap
     put('tests/visual/fixtures/clean.ts', 'export const b = 1\n')
     put('scripts/visual/clean.mjs', 'export const c = 1\n')
     put('tests/visual/overlap.tsx', '<p>{// y/</p>/**// y\n')
-    assert.throws(() => scanHarnessForTagLiteral(scratch), /tests\/visual\/overlap\.tsx: comment ranges overlap/)
+    assert.throws(
+      () => scanHarnessForTagLiteral(scratch),
+      /tests\/visual\/overlap\.tsx: comment ranges overlap/,
+    )
   } finally {
     rmSync(scratch, { recursive: true, force: true })
   }
