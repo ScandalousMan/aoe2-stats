@@ -18,7 +18,6 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { test } from 'node:test'
@@ -31,9 +30,6 @@ import {
   isFullPageEntry,
   listStories,
 } from './story-index.mjs'
-
-const require = createRequire(import.meta.url)
-const ts = require('typescript')
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 
@@ -190,64 +186,10 @@ test('isFullPageEntry reads the built index tag and nothing else, and run.mjs bu
 // the tests; a single-quoted, double-quoted or template literal of the tag is a hit. The inline script
 // of `.github/workflows/baselines.yml` cannot import, and a comment above its unit list says so.
 //
-// A file that parses is read with its comments removed (`withoutComments`), not line by line: a line that
-// starts with a comment marker can carry code after the comment, and a skipped line hides it. Comments
-// name the tag in backticks, and a message that spells it between escaped backticks is not a literal of it.
-//
-// What a comment is, is decided by the TypeScript parser the repository already resolves (a root
-// devDependency), not by a character loop. A file the parser reports an error in stops the scan, naming
-// the file. In a `.mjs`, `.cjs` or `.tsx` file the parser reads `<` followed by `/` as one token, so a
-// regular expression literal glued to a `<` is not a token there: the plants of T716 are such files, and
-// the parser reports an error in each.
-function withoutComments(text, fileName) {
-  const kind = fileName.endsWith('.tsx')
-    ? ts.ScriptKind.TSX
-    : fileName.endsWith('.ts')
-      ? ts.ScriptKind.TS
-      : ts.ScriptKind.JS
-  const source = ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, kind)
-  if (source.parseDiagnostics.length > 0) {
-    throw new Error(`${fileName}: does not parse, so the scan cannot tell a comment from code`)
-  }
-  const ranges = new Map()
-  const collect = (pos) => {
-    for (const range of [
-      ...(ts.getLeadingCommentRanges(text, pos) ?? []),
-      ...(ts.getTrailingCommentRanges(text, pos) ?? []),
-    ]) {
-      ranges.set(range.pos, range.end)
-    }
-  }
-  const visit = (node) => {
-    // A documentation comment is trivia, and the parser also returns it among a node's children: its
-    // leaves sit inside the comment, where a `//` after a tag would be read as a line comment that runs
-    // past the end of the block.
-    if (ts.isJSDoc(node)) return
-    const children = node.getChildren(source)
-    // The text of a JSX element is not trivia: a `//` in it is text. The end-of-file token is named
-    // because it stops being a leaf once it carries a documentation comment, and its comments are the ones
-    // after the last statement.
-    if (
-      (children.length === 0 || node.kind === ts.SyntaxKind.EndOfFileToken) &&
-      node.kind !== ts.SyntaxKind.JsxText
-    )
-      collect(node.getFullStart())
-    for (const child of children) visit(child)
-  }
-  visit(source)
-  let out = ''
-  let at = 0
-  for (const [pos, end] of [...ranges].sort((a, b) => a[0] - b[0])) {
-    // Two comments cannot overlap in a file that parses. If they do, the scan stops rather than return
-    // text. No test reaches this line: the only input found that overlapped does not parse and stops
-    // earlier.
-    if (pos < at) throw new Error(`${fileName}: comment ranges overlap at ${pos}`)
-    out += text.slice(at, pos) + ' '
-    at = end
-  }
-  return out + text.slice(at)
-}
-
+// A file is read as text, comments included, so a quoted tag in a comment is a hit too: a comment names
+// the tag unquoted or by its constant. The scan knows no syntax (T717): it replaced a comment scan that
+// five reviews each found source to mislead. It does not see a tag that is not written whole between two
+// quote characters, assembled at run time or written with an escape.
 function scanHarnessForTagLiteral(root) {
   const sourceIn = (dir) =>
     readdirSync(path.join(root, dir), { withFileTypes: true })
@@ -262,7 +204,7 @@ function scanHarnessForTagLiteral(root) {
     .map((name) => `scripts/visual/${name}`)
   const literal = new RegExp(`['"\`]${FULL_PAGE_TAG}['"\`]`)
   const offenders = [...testFiles, ...scriptFiles].filter((file) =>
-    literal.test(withoutComments(readFileSync(path.join(root, file), 'utf8'), file)),
+    literal.test(readFileSync(path.join(root, file), 'utf8')),
   )
   return { testFiles, scriptFiles, offenders, literal }
 }
@@ -277,7 +219,11 @@ test('no harness file writes the full-page tag as a string literal', () => {
     'the scan found tests/visual/fixtures',
   )
   assert.ok(scriptFiles.length > 5, 'the scan found the Node scripts of scripts/visual')
-  assert.deepEqual(offenders, [])
+  assert.deepEqual(
+    offenders,
+    [],
+    'import FULL_PAGE_TAG from scripts/visual/story-index.mjs; if the tag is quoted in a comment, name it unquoted',
+  )
   // The contrast: the definition itself holds the literal, which is what the scan is looking for.
   assert.match(readFileSync(path.join(rootDir, 'scripts/visual/story-index.mjs'), 'utf8'), literal)
 })
@@ -292,11 +238,6 @@ test('the full-page tag scan flags a quoted, double-quoted and template literal 
     put('tests/visual/clean.ts', 'export const a = 1\n')
     put('tests/visual/fixtures/clean.ts', 'export const b = 1\n')
     put('scripts/visual/clean.mjs', 'export const c = 1\n')
-    // The contrast: the tag named in a comment or between escaped backticks is not a literal of it.
-    put(
-      'tests/visual/prose.ts',
-      `// the \`${FULL_PAGE_TAG}\` tag\n/*\n * \`${FULL_PAGE_TAG}\`\n */\nconst m = \`says \\\`${FULL_PAGE_TAG}\\\` here\`\n`,
-    )
     assert.deepEqual(scanHarnessForTagLiteral(scratch).offenders, [])
     for (const [file, text] of [
       ['tests/visual/single.ts', `const t = '${FULL_PAGE_TAG}'\n`],
@@ -311,10 +252,7 @@ test('the full-page tag scan flags a quoted, double-quoted and template literal 
     }
     // A set with no file is empty, which the real scan's per-set assertions would refuse.
     rmSync(path.join(scratch, 'tests/visual/fixtures/clean.ts'))
-    assert.deepEqual(scanHarnessForTagLiteral(scratch).testFiles, [
-      'tests/visual/clean.ts',
-      'tests/visual/prose.ts',
-    ])
+    assert.deepEqual(scanHarnessForTagLiteral(scratch).testFiles, ['tests/visual/clean.ts'])
     assert.equal(
       scanHarnessForTagLiteral(scratch).testFiles.some((f) =>
         f.startsWith('tests/visual/fixtures/'),
@@ -326,10 +264,9 @@ test('the full-page tag scan flags a quoted, double-quoted and template literal 
   }
 })
 
-// T712 (13): a comment marker at the start of a line does not make the rest of the line a comment, and a
-// `.tsx` file is code too.
-test('T712 (13) plant: a literal after a block comment on the same line is a hit, a block comment’s own text is not, and a .tsx file is read', () => {
-  const scratch = mkdtempSync(path.join(tmpdir(), 'tag-literal-comment-'))
+// T717: three clean files and one planted file on a scratch root; `run` receives `put`.
+function inScratch(run) {
+  const scratch = mkdtempSync(path.join(tmpdir(), 'tag-literal-text-'))
   try {
     const put = (file, text) => {
       mkdirSync(path.dirname(path.join(scratch, file)), { recursive: true })
@@ -338,384 +275,81 @@ test('T712 (13) plant: a literal after a block comment on the same line is a hit
     put('tests/visual/clean.ts', 'export const a = 1\n')
     put('tests/visual/fixtures/clean.ts', 'export const b = 1\n')
     put('scripts/visual/clean.mjs', 'export const c = 1\n')
+    run(scratch, put)
+  } finally {
+    rmSync(scratch, { recursive: true, force: true })
+  }
+}
+
+// Shapes 1 to 4 were silent misses of the comment scan (`offenders: []`, the unsafe direction), 5 stopped
+// it, and 6 is a shape an earlier round fixed.
+test('T717 plant: a quoted tag is a hit in source the comment scan misread', () => {
+  const tag = `'${FULL_PAGE_TAG}'`
+  inScratch((scratch, put) => {
+    for (const [file, lines] of [
+      [
+        'scripts/visual/await-regex.mjs',
+        [
+          `import path from 'node:path'`,
+          `const r = await /\\//.test(path.sep); export const t = ${tag}`,
+        ],
+      ],
+      [
+        'scripts/visual/await-class.mjs',
+        [
+          `import path from 'node:path'`,
+          'const r = await /[/*]/.test(path.sep)',
+          `export const t = ${tag}`,
+        ],
+      ],
+      [
+        'scripts/visual/script-await.mjs',
+        [
+          `const s = 'x'`,
+          'const r = await /[/*]/.test(s)',
+          `const t = ${tag}`,
+          `const u = '*/ 1] //'`,
+        ],
+      ],
+      [
+        'scripts/visual/html-comment.cjs',
+        ['let y = 1', 'const x = y <!-- /*', `const t = ${tag}`, '/* */', 'y'],
+      ],
+      [
+        'scripts/visual/glued.mjs',
+        [`const s = 'a/'; const a = 1; const x = a </\\//.test(s); export const t = ${tag}`],
+      ],
+      ['tests/visual/jsdoc.tsx', [`/** {@link Foo} // see */ const t = ${tag}`]],
+    ]) {
+      put(file, `${lines.join('\n')}\n`)
+      assert.deepEqual(scanHarnessForTagLiteral(scratch).offenders, [file], file)
+      rmSync(path.join(scratch, file))
+    }
+  })
+})
+
+// Red before T717: the comment scan removed these, so `offenders` was `[]`. A quoted tag in a comment is
+// now a hit.
+test('T717 plant: a quoted tag in a comment is a hit', () => {
+  inScratch((scratch, put) => {
     for (const [file, text] of [
-      // The literal follows a block comment that opens the line.
-      ['tests/visual/after-block.ts', `/* note */ const t = '${FULL_PAGE_TAG}'\n`],
-      ['tests/visual/after-block-multi.ts', `/*\n * note\n */ const t = '${FULL_PAGE_TAG}'\n`],
-      ['tests/visual/after-star.ts', `const u = 1\n/* a */ /* b */ const t = "${FULL_PAGE_TAG}"\n`],
-      // A `.tsx` file under the specs or the fixtures.
-      ['tests/visual/view.tsx', `const t = '${FULL_PAGE_TAG}'\n`],
-      ['tests/visual/fixtures/view.tsx', `const t = \`${FULL_PAGE_TAG}\`\n`],
+      ['tests/visual/line.ts', `// the '${FULL_PAGE_TAG}' tag\n`],
+      ['tests/visual/block.tsx', `/* the "${FULL_PAGE_TAG}" tag */\n`],
+      ['scripts/visual/doc.mjs', `/**\n * the \`${FULL_PAGE_TAG}\` tag\n */\n`],
     ]) {
       put(file, text)
       assert.deepEqual(scanHarnessForTagLiteral(scratch).offenders, [file], file)
       rmSync(path.join(scratch, file))
     }
-    // The contrast: the tag named inside comments of every kind, on lines that also carry code, is no hit,
-    // and a `//` inside a string does not start a comment that would hide a literal after it.
-    put(
-      'tests/visual/comments.ts',
-      [
-        `const a = 1 // the '${FULL_PAGE_TAG}' tag`,
-        `/* the '${FULL_PAGE_TAG}' tag */ const b = 2`,
-        `/*`,
-        ` * the "${FULL_PAGE_TAG}" tag`,
-        ` */`,
-        `const c = 3 /* "${FULL_PAGE_TAG}" */ + 4`,
-        '',
-      ].join('\n'),
-    )
+  })
+})
+
+// The limit the header states: a tag not written whole between two quote characters is not seen.
+test('T717 contrast: a tag not written whole between quotes is not seen', () => {
+  inScratch((scratch, put) => {
+    put('tests/visual/assembled.ts', "const t = 'visual-' + 'full-page'\n")
+    put('tests/visual/unquoted.ts', `// a full-page story\n// the ${FULL_PAGE_TAG} tag\n`)
+    put('tests/visual/escaped.ts', `const m = \`says \\\`${FULL_PAGE_TAG}\\\` here\`\n`)
     assert.deepEqual(scanHarnessForTagLiteral(scratch).offenders, [])
-    put('tests/visual/url.ts', `const u = 'http://x/y'; const t = '${FULL_PAGE_TAG}'\n`)
-    assert.deepEqual(scanHarnessForTagLiteral(scratch).offenders, ['tests/visual/url.ts'])
-  } finally {
-    rmSync(scratch, { recursive: true, force: true })
-  }
-})
-
-// T713 (a): the scan knows what a regular expression literal and JSX text are, because it reads the file
-// with the TypeScript parser, not with a character loop. Each of the three shapes below hid a literal from
-// the loop that T712 wrote and was caught by the line scan it replaced.
-test('T713 (a) plant: a literal after a regular expression holding two slashes, after a quote inside a regular expression, and after an apostrophe in JSX text is a hit', () => {
-  const scratch = mkdtempSync(path.join(tmpdir(), 'tag-literal-regex-'))
-  try {
-    const put = (file, text) => {
-      mkdirSync(path.dirname(path.join(scratch, file)), { recursive: true })
-      writeFileSync(path.join(scratch, file), text)
-    }
-    put('tests/visual/clean.ts', 'export const a = 1\n')
-    put('tests/visual/fixtures/clean.ts', 'export const b = 1\n')
-    put('scripts/visual/clean.mjs', 'export const c = 1\n')
-    for (const [file, text] of [
-      // The real line of `story-selection.mjs`, with a literal appended: `\//` is not a comment.
-      [
-        'scripts/visual/regex-slashes.mjs',
-        `const importPath = (entry.importPath ?? '').replace(/^\\.\\//, ''); const t = '${FULL_PAGE_TAG}'\n`,
-      ],
-      // A quote inside a regular expression is not the start of a string.
-      [
-        'tests/visual/regex-quote.ts',
-        `const r = /'/\nconst u = 'http://x/y'; const t = '${FULL_PAGE_TAG}'\n`,
-      ],
-      [
-        'tests/visual/regex-dquote.ts',
-        `const r = /"/\nconst u = "http://x/y"; const t = "${FULL_PAGE_TAG}"\n`,
-      ],
-      // An apostrophe in JSX text is not the start of a string.
-      [
-        'tests/visual/jsx-apostrophe.tsx',
-        `export const A = () => <p>don't</p>\nconst u = 'http://x/y'; const t = '${FULL_PAGE_TAG}'\n`,
-      ],
-      [
-        'tests/visual/fixtures/jsx-apostrophe.tsx',
-        `export const A = () => <p>don't</p>\nconst u = 'http://x/y'; const t = \`${FULL_PAGE_TAG}\`\n`,
-      ],
-    ]) {
-      put(file, text)
-      assert.deepEqual(scanHarnessForTagLiteral(scratch).offenders, [file], file)
-      rmSync(path.join(scratch, file))
-    }
-  } finally {
-    rmSync(scratch, { recursive: true, force: true })
-  }
-})
-
-// The files of this contrast are not green on both sides: the loop of T712 reads each as a hit (run
-// against that loop, both files report the tag), so this is red before T713 in the safe direction, a
-// comment read as code, a false hit.
-test('T713 (a) contrast: a literal inside a real line comment or block comment is no hit, after a regular expression literal or JSX on the same line', () => {
-  const scratch = mkdtempSync(path.join(tmpdir(), 'tag-literal-regex-comment-'))
-  try {
-    const put = (file, text) => {
-      mkdirSync(path.dirname(path.join(scratch, file)), { recursive: true })
-      writeFileSync(path.join(scratch, file), text)
-    }
-    put('tests/visual/clean.ts', 'export const a = 1\n')
-    put('tests/visual/fixtures/clean.ts', 'export const b = 1\n')
-    put('scripts/visual/clean.mjs', 'export const c = 1\n')
-    put(
-      'scripts/visual/after-regex.mjs',
-      [
-        `const p = (entry.importPath ?? '').replace(/^\\.\\//, '') // the '${FULL_PAGE_TAG}' tag`,
-        `const q = /'/ /* the "${FULL_PAGE_TAG}" tag */`,
-        `// don't`,
-        `const half = 4 / 2 // 'visual-full-page'`,
-        '',
-      ].join('\n'),
-    )
-    put(
-      'tests/visual/jsx.tsx',
-      [
-        `export const A = () => <p>don't // not a comment</p> // the '${FULL_PAGE_TAG}' tag`,
-        `export const B = () => <p>{/* the '${FULL_PAGE_TAG}' tag */ 'x'}</p>`,
-        '',
-      ].join('\n'),
-    )
-    assert.deepEqual(scanHarnessForTagLiteral(scratch).offenders, [])
-  } finally {
-    rmSync(scratch, { recursive: true, force: true })
-  }
-})
-
-// The two real files the review named: the regular expression line of the selection script keeps the
-// rest of its line, and a comment of the open-surface test, which the loop of T712 read as code, is gone.
-test('T713 (a) the real tree: the rest of the line after the regular expression of story-selection.mjs is kept, and the comment of open-surface.test.ts is removed', () => {
-  const selection = withoutComments(
-    readFileSync(path.join(rootDir, 'scripts/visual/story-selection.mjs'), 'utf8'),
-    'story-selection.mjs',
-  )
-  assert.ok(selection.includes(`.replace(/^\\.\\//, '')`))
-  assert.equal(selection.includes('// '), false, 'no line comment survives in the selection script')
-  const surface = withoutComments(
-    readFileSync(path.join(rootDir, 'tests/visual/fixtures/open-surface.test.ts'), 'utf8'),
-    'open-surface.test.ts',
-  )
-  assert.equal(surface.includes('whole point of'), false)
-  assert.ok(surface.includes('distinctSurfaceStops(walk)'))
-})
-
-// T714 (a): the parser returns the documentation-comment nodes among a node's children. A walk that enters
-// one reads a `//` after a tag inside it as a line comment that runs to the end of the line, past the end
-// of the block, so a literal after the block on the same line is hidden.
-test('T714 (a) plant: a literal after a documentation comment holding a tag and a `//` is a hit, in .ts, .tsx and .mjs, and inside an object literal and a parameter list', () => {
-  const scratch = mkdtempSync(path.join(tmpdir(), 'tag-literal-jsdoc-'))
-  try {
-    const put = (file, text) => {
-      mkdirSync(path.dirname(path.join(scratch, file)), { recursive: true })
-      writeFileSync(path.join(scratch, file), text)
-    }
-    put('tests/visual/clean.ts', 'export const a = 1\n')
-    put('tests/visual/fixtures/clean.ts', 'export const b = 1\n')
-    put('scripts/visual/clean.mjs', 'export const c = 1\n')
-    const tag = `'${FULL_PAGE_TAG}'`
-    const cases = []
-    for (const [name, body] of [
-      ['link', '{@link Foo} // see'],
-      ['see', '@see // note'],
-      ['type', '@type // note'],
-      ['param', '@param // note'],
-    ]) {
-      cases.push(
-        [`tests/visual/jsdoc-${name}.ts`, `/** ${body} */ const t = ${tag}\n`],
-        [`tests/visual/jsdoc-${name}.tsx`, `/** ${body} */ const t = ${tag}\n`],
-        [`scripts/visual/jsdoc-${name}.mjs`, `/** ${body} */ const t = ${tag}\n`],
-      )
-    }
-    cases.push(
-      // A documentation comment that opens a property of an object literal.
-      ['tests/visual/jsdoc-object.ts', `const o = {\n  /** {@link Foo} // see */ b: ${tag},\n}\n`],
-      [
-        'tests/visual/jsdoc-params.ts',
-        `function f(/** @param // note */ x = ${tag}) { return x }\n`,
-      ],
-    )
-    // Every case is run before the assertion, so a failure names all the shapes that went undetected.
-    const missed = []
-    for (const [file, text] of cases) {
-      put(file, text)
-      if (scanHarnessForTagLiteral(scratch).offenders.join() !== file) missed.push(file)
-      rmSync(path.join(scratch, file))
-    }
-    assert.deepEqual(missed, [])
-  } finally {
-    rmSync(scratch, { recursive: true, force: true })
-  }
-})
-
-// This is not green on both sides: the code before T714 reads a `//` inside the block as a line comment
-// that runs past it, so the rest of the block comes back as code (a hit), and after T714 it is no hit. It
-// is a second plant in the safe direction, a comment read as code, a false hit.
-test('T714 (a) contrast: a tag named in backticks on a later line of a documentation comment holding `{@link Foo} // more` is no hit', () => {
-  const scratch = mkdtempSync(path.join(tmpdir(), 'tag-literal-jsdoc-multi-'))
-  try {
-    const put = (file, text) => {
-      mkdirSync(path.dirname(path.join(scratch, file)), { recursive: true })
-      writeFileSync(path.join(scratch, file), text)
-    }
-    put('tests/visual/clean.ts', 'export const a = 1\n')
-    put('tests/visual/fixtures/clean.ts', 'export const b = 1\n')
-    put('scripts/visual/clean.mjs', 'export const c = 1\n')
-    put(
-      'tests/visual/multi.ts',
-      [
-        '/**',
-        ' * See {@link Foo} // more',
-        ` * the \`${FULL_PAGE_TAG}\` tag`,
-        ' */',
-        'export const a = 1',
-        '',
-      ].join('\n'),
-    )
-    assert.deepEqual(scanHarnessForTagLiteral(scratch).offenders, [])
-  } finally {
-    rmSync(scratch, { recursive: true, force: true })
-  }
-})
-
-test('T714 (a) contrast: a literal named inside a documentation comment with no `//` in it is no hit', () => {
-  const scratch = mkdtempSync(path.join(tmpdir(), 'tag-literal-jsdoc-plain-'))
-  try {
-    const put = (file, text) => {
-      mkdirSync(path.dirname(path.join(scratch, file)), { recursive: true })
-      writeFileSync(path.join(scratch, file), text)
-    }
-    put('tests/visual/clean.ts', 'export const a = 1\n')
-    put('tests/visual/fixtures/clean.ts', 'export const b = 1\n')
-    put('scripts/visual/clean.mjs', 'export const c = 1\n')
-    put(
-      'tests/visual/plain.ts',
-      [
-        '/**',
-        ` * the \`${FULL_PAGE_TAG}\` tag and '${FULL_PAGE_TAG}'`,
-        ' */',
-        `/** the "${FULL_PAGE_TAG}" tag */ export const b = 2`,
-        '',
-      ].join('\n'),
-    )
-    assert.deepEqual(scanHarnessForTagLiteral(scratch).offenders, [])
-  } finally {
-    rmSync(scratch, { recursive: true, force: true })
-  }
-})
-
-// T715 (a): the end-of-file token is not a leaf once it carries a documentation comment, so a walk that
-// collects only leaves never reads the comments after the last statement. These two files are not green on
-// both sides: run against the code of T714 both report the tag, a comment read as code, a false hit, so
-// this is red before T715 in the safe direction.
-test('T715 (a) contrast: a tag named in a documentation comment after the last statement, or in a line comment after that, is no hit, in .ts, .tsx and .mjs', () => {
-  const scratch = mkdtempSync(path.join(tmpdir(), 'tag-literal-eof-'))
-  try {
-    const put = (file, text) => {
-      mkdirSync(path.dirname(path.join(scratch, file)), { recursive: true })
-      writeFileSync(path.join(scratch, file), text)
-    }
-    put('tests/visual/clean.ts', 'export const a = 1\n')
-    put('tests/visual/fixtures/clean.ts', 'export const b = 1\n')
-    put('scripts/visual/clean.mjs', 'export const c = 1\n')
-    const tag = `'${FULL_PAGE_TAG}'`
-    for (const [dir, ext] of [
-      ['tests/visual', 'ts'],
-      ['tests/visual', 'tsx'],
-      ['scripts/visual', 'mjs'],
-    ]) {
-      put(`${dir}/eof-doc.${ext}`, `const a = 1\n/** the ${tag} tag */\n`)
-      put(`${dir}/eof-doc-line.${ext}`, `const a = 1\n/** doc */\n// the ${tag} tag\n`)
-    }
-    assert.deepEqual(scanHarnessForTagLiteral(scratch).offenders, [])
-  } finally {
-    rmSync(scratch, { recursive: true, force: true })
-  }
-})
-
-// T714 (a), re-pointed by T716: the input is invalid source (found by generating combinations of comment,
-// JSX and brace fragments; the parser recovers from the unclosed expression in the JSX element in a way
-// that puts a comment inside another). Since T716 the parse check meets it first, so this pins that a file
-// the parser reports an error in stops the scan, naming the file. It no longer reaches the overlap throw.
-test('T716 (a) a file the parser reports an error in stops the scan, naming the file', () => {
-  const scratch = mkdtempSync(path.join(tmpdir(), 'tag-literal-overlap-'))
-  try {
-    const put = (file, text) => {
-      mkdirSync(path.dirname(path.join(scratch, file)), { recursive: true })
-      writeFileSync(path.join(scratch, file), text)
-    }
-    put('tests/visual/clean.ts', 'export const a = 1\n')
-    put('tests/visual/fixtures/clean.ts', 'export const b = 1\n')
-    put('scripts/visual/clean.mjs', 'export const c = 1\n')
-    put('tests/visual/overlap.tsx', '<p>{// y/</p>/**// y\n')
-    assert.throws(
-      () => scanHarnessForTagLiteral(scratch),
-      /tests\/visual\/overlap\.tsx: does not parse/,
-    )
-  } finally {
-    rmSync(scratch, { recursive: true, force: true })
-  }
-})
-
-// T714 (b): the text of a JSX element is not trivia. Without the guard in `withoutComments`, a text that
-// starts with `//` is read as a line comment that hides the rest of the line.
-test('T714 (b) plant: a literal after JSX text starting with `//` on the same line is a hit', () => {
-  const scratch = mkdtempSync(path.join(tmpdir(), 'tag-literal-jsx-text-'))
-  try {
-    const put = (file, text) => {
-      mkdirSync(path.dirname(path.join(scratch, file)), { recursive: true })
-      writeFileSync(path.join(scratch, file), text)
-    }
-    put('tests/visual/clean.ts', 'export const a = 1\n')
-    put('tests/visual/fixtures/clean.ts', 'export const b = 1\n')
-    put('scripts/visual/clean.mjs', 'export const c = 1\n')
-    put('tests/visual/jsx-slashes.tsx', `const A = <p>// see</p>; const t = '${FULL_PAGE_TAG}'\n`)
-    assert.deepEqual(scanHarnessForTagLiteral(scratch).offenders, ['tests/visual/jsx-slashes.tsx'])
-  } finally {
-    rmSync(scratch, { recursive: true, force: true })
-  }
-})
-
-// T716 (a): in a `.mjs`, `.cjs` or `.tsx` file the parser reads `<` followed by `/` as one token, so a
-// regular expression literal glued to a `<` is not a token there: its body is scanned as code, and a `\/`
-// followed by `/`, or a `/*` in a character class, opens a comment. That is valid JavaScript that Node
-// runs. These files are red before T716, in the unsafe direction: the scan did not throw and reported
-// `offenders: []`, a literal hidden, code read as a comment. Now the parser reports an error on each, and
-// the scan stops, naming the file.
-test('T716 (a) plant: a regular expression literal glued to a `<` in a .mjs, .cjs or .tsx file stops the scan, naming the file', () => {
-  const scratch = mkdtempSync(path.join(tmpdir(), 'tag-literal-glued-regex-'))
-  try {
-    const put = (file, text) => {
-      mkdirSync(path.dirname(path.join(scratch, file)), { recursive: true })
-      writeFileSync(path.join(scratch, file), text)
-    }
-    put('tests/visual/clean.ts', 'export const a = 1\n')
-    put('tests/visual/fixtures/clean.ts', 'export const b = 1\n')
-    put('scripts/visual/clean.mjs', 'export const c = 1\n')
-    const glued = `const s = 'a/'; const a = 1; const x = a </\\//.test(s); export const t = '${FULL_PAGE_TAG}'\n`
-    // The second shape: a `/*` in a character class opens a comment that runs to a later `*/`.
-    const star = `const a = 1; const x = a </[/*]/.test('a')\nexport const t = '${FULL_PAGE_TAG}'\n/* done */\n`
-    for (const [file, text] of [
-      ['scripts/visual/glued.mjs', glued],
-      ['scripts/visual/glued.cjs', glued],
-      ['tests/visual/glued.tsx', glued],
-      ['scripts/visual/glued-star.mjs', star],
-    ]) {
-      put(file, text)
-      assert.throws(
-        () => scanHarnessForTagLiteral(scratch),
-        (error) => error.message.startsWith(`${file}: `) && /does not parse/.test(error.message),
-        file,
-      )
-      rmSync(path.join(scratch, file))
-    }
-  } finally {
-    rmSync(scratch, { recursive: true, force: true })
-  }
-})
-
-// T716 (a): the contrast of the plant above. With a space after the `<` in a `.mjs` file, and with the
-// glued form in a `.ts` file (which the parser reads in the plain variant), the literal is a token, the
-// file parses, and the tag after it is a hit.
-test('T716 (a) contrast: a regular expression literal after `< ` in a .mjs file, or glued to a `<` in a .ts file, parses and its tag is a hit', () => {
-  const scratch = mkdtempSync(path.join(tmpdir(), 'tag-literal-glued-regex-contrast-'))
-  try {
-    const put = (file, text) => {
-      mkdirSync(path.dirname(path.join(scratch, file)), { recursive: true })
-      writeFileSync(path.join(scratch, file), text)
-    }
-    put('tests/visual/clean.ts', 'export const a = 1\n')
-    put('tests/visual/fixtures/clean.ts', 'export const b = 1\n')
-    put('scripts/visual/clean.mjs', 'export const c = 1\n')
-    for (const [file, text] of [
-      [
-        'scripts/visual/spaced.mjs',
-        `const s = 'a/'; const a = 1; const x = a < /\\//.test(s); const t = '${FULL_PAGE_TAG}'\n`,
-      ],
-      [
-        'tests/visual/glued.ts',
-        `const s = 'a/'; const a = 1; const x = a </\\//.test(s); const t = '${FULL_PAGE_TAG}'\n`,
-      ],
-    ]) {
-      put(file, text)
-      assert.deepEqual(scanHarnessForTagLiteral(scratch).offenders, [file], file)
-      rmSync(path.join(scratch, file))
-    }
-  } finally {
-    rmSync(scratch, { recursive: true, force: true })
-  }
+  })
 })

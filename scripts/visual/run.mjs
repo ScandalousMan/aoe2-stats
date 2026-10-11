@@ -147,7 +147,7 @@ async function main() {
         id: entry.id,
         theme,
         width,
-        // A story tagged `visual-full-page` names a subject that escapes the `#storybook-root`
+        // A story tagged full-page names a subject that escapes the `#storybook-root`
         // box — a `position: fixed` dialog (fixed positioning is relative to the viewport, not
         // any ancestor box) or a popover that overflows its trigger's layout box (an absolutely
         // positioned descendant does not enlarge that box, so a screenshot clipped to it never

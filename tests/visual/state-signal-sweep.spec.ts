@@ -115,7 +115,7 @@ const framesDir = path.join(rootDir, 'test-results', 'state-signal-sweep', 'fram
 const screenshotsDir = path.join(rootDir, 'packages', 'design-system', '__screenshots__')
 
 // The same built-Storybook-index read `stories.spec.ts` already does for `titleById` — here for
-// one more field, `tags`, so this file learns which stories are `visual-full-page` (a fixed dialog,
+// one more field, `tags`, so this file learns which stories are full-page (a fixed dialog,
 // an open popover) the same way `scripts/visual/run.mjs` does, rather than re-deriving it from
 // source.
 const storybookIndexPath = path.join(rootDir, 'packages/design-system/storybook-static/index.json')
