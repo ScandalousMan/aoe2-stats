@@ -6,10 +6,10 @@
 185872 (`docs/risks.md`); T672 pinned 0.1.24, which reads that recording. Capture validation calls
 the same parser, so a recording the engine could not read would have ended `quarantined` with its
 object kept (constitution IV); `docs/risks.md` gives that as what the code implies, not as an
-observation. Whether any capture carries the engine's failure text is not measured: the dry run's
-report is how it becomes so. This command gives each such row a second validation from the bytes
-already committed. It does not read the source, and where the source's retention window sits is
-`docs/data-sources.md`'s to say, not this file's.
+observation. Whether any capture carries the engine's failure text is what the dry run's report
+measures; `docs/risks.md` records what the first dry run found. This command gives each such row a
+second validation from the bytes already committed. It does not read the source, and where the
+source's retention window sits is `docs/data-sources.md`'s to say, not this file's.
 
 **What it does, per row** (`CaptureDrain.revalidate_quarantined`, `apps/ingester/src/
 aoe2stats_ingester/capture.py`, which owns the selection and says exactly why): read the committed
