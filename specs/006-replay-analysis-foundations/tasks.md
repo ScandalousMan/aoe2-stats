@@ -1572,7 +1572,9 @@ contains: the request fails, the claimed row stays `running`, and once its lease
 request fetches the recording from the source again. `aoe2rec-py` 0.1.22 (2026-09-22) to 0.1.24
 parse match 511523321 but changed the shape of what they return. Capture is not losing bytes: the blob
 is committed before validation, so the same recordings end `quarantined` with their object kept.
-T671 and T672 ship together; T673 follows once T672 is deployed.
+T671 and T672 ship together; T673 follows once T672 is deployed. **Amended 2026-10-11:** that the
+same recordings end `quarantined` was read from the code and never observed; `docs/risks.md`
+carries what T673's dry run read.
 
 - [x] T671 Contain a native engine panic on the analysis path, as `apps/ingester/src/
       aoe2stats_ingester/capture.py`'s `_validate_with_barrier` does on the capture path. A
@@ -1637,10 +1639,9 @@ T671 and T672 ship together; T673 follows once T672 is deployed.
       left it; re-validated rows may turn the nightly capture audit's lag assertion red, and that is
       ruled on for good once the dry run reports how many rows it would write; timeout quarantines
       stay outside the selection until the dry run reports their count. **Closed 2026-10-11 on the
-      operator's dry run against production:** the selection was empty and no row was `quarantined`
-      for any reason, so no real run followed and no capture was re-validated; `docs/risks.md`
-      carries the reading. Neither question left to the dry run's count had anything to rule on;
-      both stay in `docs/runbooks/revalidate-quarantined.md` for a run that selects something
+      operator's dry run against production,** whose reading `docs/risks.md` carries; no real run
+      followed and no capture was re-validated. Neither question left to the dry run's count had
+      anything to rule on; both stay in `docs/runbooks/revalidate-quarantined.md`
 - [x] T673a Close #129's review (`reviewer` REJECT 2026-10-10 on T673). The command is written and
       no capture has been re-validated, so T673 stays open until the operator run reports its count.
       **Eviction:** a re-validation that fails for a reason that is not the engine's verdict (the

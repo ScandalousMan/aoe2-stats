@@ -90,7 +90,7 @@ engine's class followed by `(archival objected)`, `(no committed object)` or `(n
 engine rows the selection excludes (`PanicException (archival objected)`, for one), `other` for any
 other text, and `no reason recorded`. For those rows it prints counts under the labels, and no
 object key. A dry run reads the database, reads no object and writes nothing. Paste that block into
-the write-up this run belongs to: `docs/risks.md` holds the first one.
+the write-up this run belongs to; `docs/risks.md` records what the first dry run found.
 
 Two decisions this command does not make, and the dry run's count is what they wait on:
 
@@ -175,8 +175,8 @@ handing out `postgresql://` instead of `postgresql+psycopg://`, zsh globbing the
 5. Investigate every `integrity_failure` before anything else (constitution I: acknowledge only
    after investigating). The command does not touch those rows and exits non-zero on every
    run whose page includes one, until a human resolves it.
-6. Report the dry run's count and the real run's outcome totals back to the task (T673 stays open
-   until it has them), then close the shell, or clear the credentials from it. `RAW` is the
+6. Report the dry run's count, and the real run's outcome totals if one followed, in the write-up
+   the run belongs to, then close the shell, or clear the credentials from it. `RAW` is the
    variable that held the pasted database URL:
 
    ```sh
