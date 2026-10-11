@@ -2067,7 +2067,7 @@ carries what T673's dry run read.
       `deadline_gate_admits` in `apps/analyzer/src/aoe2stats_analyzer/admission.py` refuses every
       analysis request while any `pending` or `downloading` row is past its capture deadline, and
       reads neither links nor objections, so one refused row past its deadline refuses
-      `POST /api/analyze` for every user. T714 names two readers; add this one to its facts, and
+      `POST /api/analyze` for every user. T721 names two readers; add this one to its facts, and
       pin it in `apps/analyzer/tests/test_admission.py` as the other two are pinned: a
       characterization, for an objector's row and for an unlinked profile's row. **Three texts the
       claim made false:** `apps/api/src/aoe2stats_api/routers/replays.py` and `ReplayFetchMiss`'s
@@ -2101,16 +2101,35 @@ carries what T673's dry run read.
       second user who has objected is refused; a stale `downloading` row holding a committed object
       is refused, keeps its object key and checksum, and is claimed once its profile has an active
       link whose user has not objected. Not added, recorded here: a relink by the same user.
-      **T714's entry** gains, as facts: the third reader; that `expired` is written when a claimed
+      **T721's entry** gains, as facts: the third reader; that `expired` is written when a claimed
       row's fetch answers 404 past its capture deadline, with a severity-1 `expired_capture` alert,
       which is what a refused row relinked after its deadline meets if the source no longer has the
       recording; and that `backlog_remaining` on `ingest_runs` counts refused rows
-- [ ] T714 Decide what a capture the claim refuses does once its capture deadline passes (filed
-      2026-10-11 from T713, amended the same day from #135's review; not decided). Since T713 the
-      claim takes a row only when its profile has an active link whose user has not objected, and a
-      refused row keeps its status: `expired` is written only when a claimed row's fetch answers 404
-      past its capture deadline, with a severity-1 `expired_capture` alert. Three readers filter on
-      the deadline and the status and read neither links nor objections:
+- [ ] T713b Close #135's second review (`reviewer` REJECT 2026-10-11 on T713a; delta-scoped, two
+      sentences, no code and no test logic. Verified and not to be re-checked: the five blocking
+      findings of the first review closed where they were cited, T721's amended facts, the two
+      added contrasts, and the guard failing with the call removed from the body). **A fact in
+      T713a's entry:** it records that none of the 14 claim tests passes against a predicate that
+      reads only the link or only the objection. Measured on T713: against the old predicate,
+      which reads only the objection, 6 of the 14 fail and 8 pass. Say that, and nothing about a
+      predicate that reads only the link, which was not run. **A twin of the uniqueness claim:**
+      the module docstring of `apps/ingester/tests/test_claim_requires_active_link.py` says the
+      fixtures that claim give their profile a link through the shared helper;
+      `apps/ingester/tests/test_quota.py` and `apps/ingester/tests/test_consent_withdrawal.py` seed
+      captures a drain claims and build their own link rows. The parenthetical says only that the
+      predicate has no exception for the absence of a link. **Loose, cut:** `ReplayFetchMiss`'s
+      docstring in `packages/storage/src/aoe2stats_storage/models.py` says a `pending` row the
+      claim takes is fetched on that cycle; a row the quota defers is claimed and handed back
+      without a fetch. Drop the clause. **An id two features define:** the open decision was filed
+      as T714, which `specs/005-design-system-foundations/tasks.md` also defines. It is T721 here,
+      in this file and in the docstring of the admission characterization test
+- [ ] T721 Decide what a capture the claim refuses does once its capture deadline passes (filed
+      2026-10-11 from T713 as T714, an id 005's file also defines, and renumbered the same day;
+      amended from #135's review; not decided). Since T713 the claim takes a row only when its
+      profile has an active link whose user has not objected, and a refused row keeps its status:
+      `expired` is written only when a claimed row's fetch answers 404 past its capture deadline,
+      with a severity-1 `expired_capture` alert. Three readers filter on the deadline and the
+      status and read neither links nor objections:
       `_raise_deadline_breach_alert` in `apps/ingester/src/aoe2stats_ingester/run.py`,
       `captures_pending_past_deadline` in `scripts/checks/capture_audit.py`, and
       `deadline_gate_admits` in `apps/analyzer/src/aoe2stats_analyzer/admission.py`. So a refused
