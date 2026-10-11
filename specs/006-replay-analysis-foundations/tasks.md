@@ -1626,13 +1626,17 @@ T671 and T672 ship together; T673 follows once T672 is deployed.
       `rec_owner` instead of restating its measurement. Third review: `_describe` names no class as
       the only one quoting foreign text, and ADR 0001's amendment names the one recording measured
 - [ ] T673 Re-validate captures that ended `quarantined` because the engine could not parse them,
-      once T672 is deployed: read the committed object, check it against the row's own
-      `zip_sha256`, and run it through the capture barrier again, marking `stored` or leaving it
-      `quarantined` with the new error. Never re-download, never modify or delete an object. Bound
-      the selection to the engine's own failure text so an integrity quarantine (missing object,
-      checksum mismatch) is never reopened. Urgent: 31 days after a recording, an analysis of its
-      match has no source to fall back on. The earliest affected recording is not measured; the
-      earliest sampled is from 2026-09-27, and 0.1.22 shipped on 2026-09-22
+      once T672 is deployed: read the committed object, check it against the row's own `zip_sha256`,
+      and run it through the capture barrier again, marking `stored` or leaving it `quarantined`
+      with the new error. Never re-download, never modify or delete an object. Bound the selection
+      to the engine's own failure text so an integrity quarantine (missing object, checksum
+      mismatch) is never reopened. Urgent: 31 days after a recording, an analysis of its match has
+      no source to fall back on. The earliest affected recording is not measured; the earliest
+      sampled is from 2026-09-27, and 0.1.22 shipped on 2026-09-22. **Decided by the user
+      2026-10-11:** a capture whose profile has no active link stays outside the selection, as T673b
+      left it; re-validated rows may turn the nightly capture audit's lag assertion red, and that is
+      ruled on for good once the dry run reports how many rows it would write; timeout quarantines
+      stay outside the selection until the dry run reports their count
 - [x] T673a Close #129's review (`reviewer` REJECT 2026-10-10 on T673). The command is written and
       no capture has been re-validated, so T673 stays open until the operator run reports its count.
       **Eviction:** a re-validation that fails for a reason that is not the engine's verdict (the
@@ -1711,6 +1715,36 @@ T671 and T672 ship together; T673 follows once T672 is deployed.
       to the user, not decided here: whether a capture whose profile has no active link, or whose
       objecting user has left, is ever re-validated; and the same gap in the claim path for a
       `pending` row, which predates this branch
+- [ ] T713 Stop the claim from taking a capture whose profile has no active link (filed 2026-10-11
+      from T673b; decided by the user the same day). `CaptureDrain._claim_batch` in
+      `apps/ingester/src/aoe2stats_ingester/capture.py` excludes a row only when
+      `_objecting_owner_exists` finds an active link whose user has objected, so a capture queued
+      while a link stood is still fetched and stored after the user unlinks the profile, objector or
+      not; 001's spec says automatic ingestion stops for a profile its user unlinks (US1, acceptance
+      scenario 6). Claim a row only when its profile has an active link whose user has not objected:
+      `_owner_is_archiving`, the predicate T673b gave the re-validation, so the claim and the
+      re-validation share one definition. This reverses T089a's stated choice that only a found
+      objection removes a row from the claim; correct `_claim_batch`'s docstring,
+      `_objecting_owner_exists`'s, and `_owner_is_archiving`'s, which calls itself stricter than the
+      claim. **Both arms:** the predicate applies to a `pending` row and to a stale `downloading`
+      row taken again. **What a refused row becomes:** it is never fetched and the source drops the
+      recording after its retention window (`docs/data-sources.md`), so this refusal cannot be
+      undone, where T673b's can. Read what an objector's unclaimed row does today once its capture
+      deadline passes: the deadline alert in `apps/ingester/src/aoe2stats_ingester/run.py` and the
+      pending-past-deadline assertion in `scripts/checks/capture_audit.py` were read on 2026-10-11
+      as filtering on status alone, which is not yet verified by a test. A row with no active link
+      behaves as an objector's row does; if that is an alert or a red audit for a capture nobody may
+      take, file it for the user and do not decide it here. **Red first:** a `pending` capture whose
+      user unlinked after it was queued is not claimed; nor is one whose objecting user unlinked;
+      nor is a stale `downloading` row in either case. Contrast: a profile relinked by a second user
+      who has not objected is claimed, and a row with an active link whose user has not objected is
+      claimed as before. **Fixtures:** `_claim_batch`'s docstring records that tests seed captures
+      with no link rows at all. Count them before starting; each gains a link through a shared
+      helper, the predicate gains no exception for them, and the predicate and every fixture it
+      turns red are one commit. **Left to the user, not decided here:** a download already in flight
+      when its user unlinks or objects, since the normal path's stored and quarantine writes carry
+      no ownership guard, where T673b gave the re-validation's writes one. Its own branch and pull
+      request, not #129
 
 - [x] T706 Unstick an analysis whose lease expired (filed 2026-10-08; decided by the user the same
       day). Match 511523321's row stayed `running` from the 2026-10-05 crash until a manual
