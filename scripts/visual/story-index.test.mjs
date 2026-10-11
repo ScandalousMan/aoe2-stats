@@ -221,8 +221,14 @@ function withoutComments(text, fileName) {
     // past the end of the block.
     if (ts.isJSDoc(node)) return
     const children = node.getChildren(source)
-    // The text of a JSX element is not trivia: a `//` in it is text.
-    if (children.length === 0 && node.kind !== ts.SyntaxKind.JsxText) collect(node.getFullStart())
+    // The text of a JSX element is not trivia: a `//` in it is text. The end-of-file token is named
+    // because it stops being a leaf once it carries a documentation comment, and its comments are the ones
+    // after the last statement.
+    if (
+      (children.length === 0 || node.kind === ts.SyntaxKind.EndOfFileToken) &&
+      node.kind !== ts.SyntaxKind.JsxText
+    )
+      collect(node.getFullStart())
     for (const child of children) visit(child)
   }
   visit(source)
@@ -512,6 +518,9 @@ test('T714 (a) plant: a literal after a documentation comment holding a tag and 
   }
 })
 
+// This is not green on both sides: the code before T714 reads a `//` inside the block as a line comment
+// that runs past it, so the rest of the block comes back as code (a hit), and after T714 it is no hit. It
+// is a second plant in the safe direction, a comment read as code, a false hit.
 test('T714 (a) contrast: a tag named in backticks on a later line of a documentation comment holding `{@link Foo} // more` is no hit', () => {
   const scratch = mkdtempSync(path.join(tmpdir(), 'tag-literal-jsdoc-multi-'))
   try {
@@ -559,6 +568,35 @@ test('T714 (a) contrast: a literal named inside a documentation comment with no 
         '',
       ].join('\n'),
     )
+    assert.deepEqual(scanHarnessForTagLiteral(scratch).offenders, [])
+  } finally {
+    rmSync(scratch, { recursive: true, force: true })
+  }
+})
+
+// T715 (a): the end-of-file token is not a leaf once it carries a documentation comment, so a walk that
+// collects only leaves never reads the comments after the last statement. These two files are not green on
+// both sides: run against the code of T714 both report the tag, a comment read as code, a false hit, so
+// this is red before T715 in the safe direction.
+test('T715 (a) contrast: a tag named in a documentation comment after the last statement, or in a line comment after that, is no hit, in .ts, .tsx and .mjs', () => {
+  const scratch = mkdtempSync(path.join(tmpdir(), 'tag-literal-eof-'))
+  try {
+    const put = (file, text) => {
+      mkdirSync(path.dirname(path.join(scratch, file)), { recursive: true })
+      writeFileSync(path.join(scratch, file), text)
+    }
+    put('tests/visual/clean.ts', 'export const a = 1\n')
+    put('tests/visual/fixtures/clean.ts', 'export const b = 1\n')
+    put('scripts/visual/clean.mjs', 'export const c = 1\n')
+    const tag = `'${FULL_PAGE_TAG}'`
+    for (const [dir, ext] of [
+      ['tests/visual', 'ts'],
+      ['tests/visual', 'tsx'],
+      ['scripts/visual', 'mjs'],
+    ]) {
+      put(`${dir}/eof-doc.${ext}`, `const a = 1\n/** the ${tag} tag */\n`)
+      put(`${dir}/eof-doc-line.${ext}`, `const a = 1\n/** doc */\n// the ${tag} tag\n`)
+    }
     assert.deepEqual(scanHarnessForTagLiteral(scratch).offenders, [])
   } finally {
     rmSync(scratch, { recursive: true, force: true })

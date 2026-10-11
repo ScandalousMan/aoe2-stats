@@ -1947,18 +1947,14 @@ hover:underline-offset-2` beside `active:underline-offset-4`, `src/screens/DataE
        element of a file rendered at one width only, are credited as though every capture shows them.
        Telling them apart needs the stamps each render held, which the manifest does not record, and a
        real entry could gain a key from it that no one can check without a browser pass;
-     - a navigation the browser has not committed when the probe first checks, right after the force:
-       the check is a property set on `window` before the force. One that commits during the reads
-       fails the pass, by name when the new page answers the reads and otherwise as a
-       context-destroyed error or the timeout of a read through `#storybook-root`, neither naming the
-       story; one that commits after the second check, after the last read, is recorded as an
-       ordinary story;
+     - a navigation the browser has not committed when the probe first checks, right after the force,
+       is not caught by name: the pass may fail without naming the story, or record the story as an
+       ordinary one;
      - a handler of the force that changes what the force's own record holds (it disables or
        unmounts the forced element, or changes the variant or size of the instance that placed it):
        the force's own record (match count, stamp, placing instance, disabled) is read before the
        force, and the mounts and the files after it, so the record's two halves describe different
-       pages. The forced state is credited to the row read before the force, and Disabled as well
-       when the handler disabled it;
+       pages. The forced state is credited to the row read before the force;
      - a force target no tracked primitive placed that is disabled in both themes, or disabled at one
        width with the two themes agreeing at each width: the disabled state is compared between the
        themes at each width and not across widths, and the manifest does not carry it, so the check

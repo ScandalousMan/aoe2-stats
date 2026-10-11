@@ -54,9 +54,9 @@ export const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url))
 export const dsDir = path.join(rootDir, 'packages', 'design-system')
 export const srcDir = path.join(dsDir, 'src')
 
-// `typescript` and `storybook` are direct devDependencies of packages/design-system, not of the
-// workspace root — resolved through that package's own node_modules, the same `createRequire`
-// idiom `state-coverage.mjs` already uses for `typescript`.
+// `storybook` is a direct devDependency of packages/design-system and not of the workspace root;
+// `typescript` is one of both since T712. Both are resolved here through that package's own
+// node_modules, the same `createRequire` idiom `state-coverage.mjs` uses for `typescript`.
 const dsRequire = createRequire(path.join(dsDir, 'package.json'))
 const ts = dsRequire('typescript')
 // `storybook/internal/csf` is the real package's own published subpath (`package.json`'s own

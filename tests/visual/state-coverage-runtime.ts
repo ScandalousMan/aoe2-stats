@@ -422,8 +422,8 @@ async function assertRegistryPresent(page: Page): Promise<void> {
 //      AFTER it (step 5): a handler of the force that changes what the force's own record holds (it
 //      disables or unmounts the forced element, or changes the variant or size of the instance that
 //      placed it) leaves a record whose halves describe different pages. The forced state is credited
-//      to the row read before the force, and Disabled as well when the handler disabled it. That is a
-//      known shape, listed in row 8 of `packages/design-system/specs/README.md`.
+//      to the row read before the force. That is a known shape, listed in row 8 of
+//      `packages/design-system/specs/README.md`.
 //   2. the focus after `play()` is read before the force, which is a different question (what the
 //      story's own `play()` focused).
 //   3. the force is applied (`applyForceState`, the capture's own driver, when the target is exactly one
@@ -444,10 +444,9 @@ async function assertRegistryPresent(page: Page): Promise<void> {
 //      takes time: a handler that writes `visualCaptureClip` asynchronously (a timer, a promise) after
 //      the force, during that scan, is captured and not recorded. That is the one difference between the
 //      two read points, listed in row 8 of `packages/design-system/specs/README.md` as a known shape.
-//   7. the document is checked a second time, after the clip. A navigation that commits during the reads
-//      fails the pass, by name when the new page answers the reads, and otherwise as a context-destroyed
-//      error or the timeout of a read through `#storybook-root`, neither naming the story; one that
-//      commits after this check is recorded as an ordinary story.
+//   7. the document is checked a second time, after the clip. A navigation the browser had not committed
+//      at the first check is not caught by name: the pass may fail without naming the story, or record
+//      the story as an ordinary one.
 //
 // An `active` force leaves the mouse down on the control. It is released last, whatever happened above,
 // on `about:blank` and not over the story (`releaseMouseOffStory`): the browser state is cleared first on
