@@ -416,24 +416,31 @@ async function assertRegistryPresent(page: Page): Promise<void> {
 // it shows:
 //   1. the force is LOCATED before it is applied, as `applyForceState` counts its target before acting:
 //      hover, press and focus change paint, not which element a role, a name and an `nth` select nor
-//      which component placed it. The forced element's own disabled state is read here too.
+//      which component placed it. The forced element's own record (match count, stamp, placing
+//      instance, disabled) is read here, BEFORE the force, while the mounts and the files are read
+//      AFTER it (step 5): a handler of the force that disables or unmounts the forced element leaves
+//      a record whose halves describe different pages. That is a known shape, listed in row 8 of
+//      `packages/design-system/specs/README.md`.
 //   2. the focus after `play()` is read before the force, which is a different question (what the
 //      story's own `play()` focused).
 //   3. the force is applied (`applyForceState`, the capture's own driver, when the target is exactly one
 //      element; with none or several the capture throws before any frame, so there is nothing to apply).
-//   4. the mounts and the files are read AFTER the force (T712): a handler the force triggers (an
+//   4. the document is checked to be the one the story settled in (T712, moved here by T713), BEFORE any
+//      read: a force whose handler navigates (a `mouseenter` or a `mousedown` that sets `location`, a
+//      reload) leaves the capture showing another page, so the pass fails naming the story and records
+//      nothing from it. The check is a property set on `window` before the force: a navigation the
+//      browser has not committed when it runs is not seen. It runs first because a read through the
+//      story root waits for `#storybook-root`, and a page the handler left for may hold none: that
+//      read would end in a timeout naming no story. The check runs again after the last read.
+//   5. the mounts and the files are read AFTER the force (T712): a handler the force triggers (an
 //      `onMouseEnter`, an `onMouseDown`) can mount or unmount an element, and the capture shows the page
 //      after it, so a read before would record a page the frame does not show.
-//   5. the clip is read last, as `stories.spec.ts` reads it: after the force and, at the designated
+//   6. the clip is read last, as `stories.spec.ts` reads it: after the force and, at the designated
 //      width only, after the axe scan. The axe scan only reads the DOM and is not repeated here, and it
 //      takes time: a handler that writes `visualCaptureClip` asynchronously (a timer, a promise) after
 //      the force, during that scan, is captured and not recorded. That is the one difference between the
 //      two read points, listed in row 8 of `packages/design-system/specs/README.md` as a known shape.
-//   6. the document is checked to be the one the story settled in (T712): a force whose handler
-//      navigates (a `mouseenter` or a `mousedown` that sets `location`, a reload) leaves the capture
-//      showing another page, so the pass fails naming the story and records nothing from it. The check
-//      is a property set on `window` before the force: a navigation the browser has not committed when it
-//      runs is not seen.
+//   7. the document is checked a second time, after the clip: a navigation that began during the reads.
 //
 // An `active` force leaves the mouse down on the control. It is released last, whatever happened above,
 // on `about:blank` and not over the story (`releaseMouseOffStory`): the browser state is cleared first on
@@ -453,6 +460,16 @@ async function documentSurvived(page: Page): Promise<boolean> {
     )
   } catch {
     return false
+  }
+}
+
+async function assertDocumentSurvived(page: Page, storyId: string): Promise<void> {
+  if (!(await documentSurvived(page))) {
+    throw new Error(
+      `visualForceState: applying the force of story "${storyId}" left the story's document ` +
+        '(a handler navigated or reloaded the page), so the capture shows another page: fix the ' +
+        "story's handler, nothing is recorded for it.",
+    )
   }
 }
 
@@ -511,18 +528,15 @@ export async function probeSettledStory(
         ...frame,
         fullPage,
       }))
+      // Before any read: a read through the story root waits for `#storybook-root`, and a page the
+      // handler left for holds none, so it would end in a timeout that names no story.
+      await assertDocumentSurvived(page, storyId)
     }
     record.mounts = (await root.evaluate(inspect, inspectOptions('mounts'))) as Instance[]
     record.files = (await root.evaluate(inspect, inspectOptions('files'))) as string[]
     // The capture's own test: `if (captureClip)`, so a falsy clip is no clip.
     record.clip = Boolean(await readCaptureClip(page, storyId))
-    if (!(await documentSurvived(page))) {
-      throw new Error(
-        `visualForceState: applying the force of story "${storyId}" left the story's document ` +
-          '(a handler navigated or reloaded the page), so the capture shows another page: fix the ' +
-          "story's handler, nothing is recorded for it.",
-      )
-    }
+    await assertDocumentSurvived(page, storyId)
   } catch (error) {
     failure = error
   }

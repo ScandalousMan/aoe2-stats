@@ -1752,9 +1752,9 @@ hover:underline-offset-2` beside `active:underline-offset-4`, `src/screens/DataE
      runs both themes, so a clip set in one theme only is a clip; the record is the disjunction of the
      two. The other fields are recorded from both renders (T710, T711): the mounts and the focus are what
      both themes show (the instances both render, counted once per time both do, and a focus the two
-     agree on); the force is refused when the two differ in match count, stamp or placing instance, or
-     when only one theme carries it, and the record then holds the answer of the light theme, or of the
-     dark one when only it has one, beside `differsByTheme`; the rendered files are the union of the
+     agree on); the force is refused when the two differ in match count, stamp, placing instance or the
+     forced element's own disabled state, or when only one theme carries it, and the record then holds
+     the answer of the light theme, or of the dark one when only it has one, beside `differsByTheme`; the rendered files are the union of the
      two. An instance only one theme mounts is not in the record's mounts. A file only one theme
      rendered is in the union, so it selects the story and counts for the overlay refusal, and the
      entry names it in `oneThemeFiles`, which a `play()` click's `active` credit reads: it credits no
@@ -1763,9 +1763,10 @@ hover:underline-offset-2` beside `active:underline-offset-4`, `src/screens/DataE
      at any width; widths that disagree on the focus do the same, with no flag, because each width's
      record keeps its own answer. A force triggered by `hover`, `active`
      or `focus-visible` is applied before the mounts, the files and the clip are read, as the capture
-     shows the page after it, so what a handler of the force mounts, unmounts or writes as a clip is
-     in the record; one whose handler navigates or reloads the page fails the pass naming the story,
-     and an `active` force's mouse button comes up on `about:blank`, never over the story. A force on
+     shows the page after it, so the mounts, the files and the clip are those of that page. The
+     force's own record (match count, stamp, placing instance, disabled) is read before the force, not
+     after (a known shape, below). A handler that navigates or reloads the page fails the pass naming
+     the story, and an `active` force's mouse button comes up on `about:blank`, never over the story. A force on
      an element no tracked primitive placed is also refused when that element is disabled in one
      theme only (a placed element carries its `disabledAt` in the instance, which is compared). The
      capture's axe scan, which only reads the DOM, is not repeated (a known shape, below).
@@ -1936,13 +1937,10 @@ hover:underline-offset-2` beside `active:underline-offset-4`, `src/screens/DataE
      - a `visualCaptureClip` that a handler the force triggers writes asynchronously (a timer, a
        promise), after the probe reads the clip: the capture reads it after the axe scan it runs at
        1280px only, which the probe does not repeat, so such a clip is captured and not recorded and
-       the story's mounts credit. No story writes a clip from a handler today (measured 2026-10-10:
-       every `visualCaptureClip` in `packages/design-system/src` and `.storybook` is a literal of a
-       `parameters` object);
+       the story's mounts credit;
      - storage a handler writes while the page unloads (`pagehide`, `beforeunload`, `unload`):
        it lands after the clear between settles, so the next settle starts with it, in the light and the
-       dark theme alike, and a capture unit's fresh context does not. Nothing in the design system or
-       the fixtures listens to either (measured 2026-10-10);
+       dark theme alike, and a capture unit's fresh context does not;
      - the click credit is by file, from the entry's `files` (the union of every theme and width) less
        its `oneThemeFiles`: an element exactly one theme renders inside a file both render, and an
        element of a file rendered at one width only, are credited as though every capture shows them.
@@ -1950,12 +1948,34 @@ hover:underline-offset-2` beside `active:underline-offset-4`, `src/screens/DataE
        real entry could gain a key from it that no one can check without a browser pass;
      - a navigation the browser has not committed when the probe checks that the document is still
        the story's: the check is a property set on `window` before the force, and a force whose
-       handler navigates later than that is recorded as an ordinary story.
+       handler navigates later than that is recorded as an ordinary story;
+     - a handler of the force that disables or unmounts the forced element: the force's own record
+       (match count, stamp, placing instance, disabled) is read before the force, and the mounts and
+       the files after it, so the record's two halves describe different pages. The element is
+       credited the forced state, and Disabled as well when the handler disabled it;
+     - a force target no tracked primitive placed that is disabled in both themes, or disabled at one
+       width with the two themes agreeing at each width: the disabled state is compared between the
+       themes at each width and not across widths, and the manifest does not carry it, so the check
+       credits the force;
+     - a story's own relative import that leaves the package is not walked, so a change to the file it
+       names does not select the story by that walk (the preview's walk is not held to the package, T712).
+
+   - **Known shapes of the harness, not credits: each listed, none refused** (T713).
+     - an unknown key at the entry level, in a force record, in a focus record or in a mount is not a
+       shape problem: `entryShapeProblem` checks the keys it knows and returns null on one it does not;
+     - a preview import with an opaque specifier (`import(variable)`) widens the selection to every
+       story only when the diff touches the package; a file outside the package that such a specifier
+       names at run time, changed alone, selects nothing;
+     - a release that fails in the `finally` of the state-signal sweep's capture
+       (`tests/visual/state-signal-sweep.spec.ts`) replaces the capture's own error;
+     - nothing ties the hand-written declarations of `scripts/visual` (`a11y-scan.d.cts`,
+       `instance-identity.d.mts`, `review-widths.d.mts`, `story-index.d.mts`) to the implementations
+       they describe.
 
    - **Every other forced story credits no cell and is reported with the true reason** — no element
      matched, more than one (Playwright's strict mode refuses it, so no frame can be captured), stamps
      or placing instances that differ across widths, a force the light and dark render answer
-     differently (a different count, stamp or placing instance, or one theme alone), a stamp in no record-1 element and no placing
+     differently (a different count, stamp, placing instance or disabled state of the forced element, or one theme alone), a stamp in no record-1 element and no placing
      primitive, an element no design-system file wrote — and the run fails on it exactly as it does on
      a lost frame. A story with no manifest entry fails the run, naming the story and the command that
      refreshes the manifest (`pnpm test:visual:state-coverage-runtime --write`).
@@ -2526,7 +2546,8 @@ element's `file:line`; a record-3 cell when the tracked primitive instance that 
 row's variant and size. A force on an element whose stamp is in the placing instance's `disabledAt`
 (the host elements it placed that the browser reports `:disabled` or `aria-disabled="true"`) is
 refused, and so is a force the light and the dark render of the story answer differently (a
-different match count, stamp or placing instance, or a force only one theme carries).
+different match count, stamp or placing instance, a different disabled state of the forced element
+itself, or a force only one theme carries).
 The Disabled column of every matrix, and a primitive's own stories' Rest column, come from
 the primitive instances a story mounts, as rendered, and from nothing else: a `disabled` or `loading`
 written at a call site, and a `disabled: true` in a story's `args`, credit no Disabled cell. The
@@ -2565,9 +2586,11 @@ like the rest. A manifest entry of the wrong shape fails the check, naming the s
 - the hover or active an ancestor inherits from a credited descendant
 
 **Residual gaps, not refused:** a forced element no tracked primitive placed (a record-1 element of
-another component) is credited without knowing whether it renders disabled, because the manifest
-records disabled elements only among a tracked primitive's own (a target the light and the dark render
-disagree on is refused, whichever of them is disabled); a mounted instance the page does not
+another component) is credited without knowing whether it renders disabled: the runtime pass reads
+the element's own disabled state and compares it between the two themes at each width, and the manifest
+does not carry it, so a target disabled in both themes, or at one width with the themes agreeing, is
+credited (a target the light and the dark render disagree on at a width is refused, whichever of them is
+disabled); a mounted instance the page does not
 show (`hidden`, `sr-only`, `opacity-0`, a closed `details`) is credited as mounted, because the
 manifest records what mounts, not what paints; a story tagged `visual-full-page` is screenshotted as
 the viewport, so a disabled instance behind its scrim is credited though the scrim covers it; the

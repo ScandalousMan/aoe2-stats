@@ -686,8 +686,9 @@ test.describe('state-signal-sweep remediation (M4, M5)', () => {
   // makes the release unconditional on the capture's own outcome, not a claim this test alone can
   // distinguish from a plain post-capture call; the discard this finding describes never released
   // at all, which is the gap this proves closed. Since T712 the button comes up on `about:blank`, so a
-  // listener in the story's document cannot see it: the page having left for `about:blank` is what a
-  // real browser shows here, and the stub tests below pin that the release follows the capture.
+  // listener in the story's document cannot see it: what a real browser shows is the control gone from
+  // the document, which only the release does (T713), and the stub tests below pin that the release
+  // follows the capture.
   test('captureForcedState releases a held mouse button after capturing an "active" force', async ({
     page,
   }) => {
@@ -695,6 +696,9 @@ test.describe('state-signal-sweep remediation (M4, M5)', () => {
       <button id="target" style="width: 80px; height: 30px;">Click</button>
     `)
     const root = page.locator('body')
+    // The story's document holds the control before the capture. The page address cannot show the
+    // release: `setContent` leaves it at `about:blank` already.
+    await expect(page.locator('#target')).toHaveCount(1)
 
     await captureForcedState(
       page,
@@ -708,7 +712,9 @@ test.describe('state-signal-sweep remediation (M4, M5)', () => {
       },
     )
 
-    expect(page.url()).toBe('about:blank')
+    // The release is what takes the page off the story (`releaseMouseOffStory` goes to `about:blank`
+    // before the button comes up), so the control the force held down is no longer in the document.
+    await expect(page.locator('#target')).toHaveCount(0)
   })
 
   // T712 (1): the order the state frame is captured in. The clip is read where `stories.spec.ts` reads

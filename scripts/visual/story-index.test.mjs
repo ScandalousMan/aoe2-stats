@@ -18,6 +18,7 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { test } from 'node:test'
@@ -30,6 +31,9 @@ import {
   isFullPageEntry,
   listStories,
 } from './story-index.mjs'
+
+const require = createRequire(import.meta.url)
+const ts = require('typescript')
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 
@@ -189,44 +193,42 @@ test('isFullPageEntry reads the built index tag and nothing else, and run.mjs bu
 // A file is read with its comments removed (`withoutComments`), not line by line: a line that starts with
 // a comment marker can carry code after the comment, and a skipped line hides it. Comments name the tag in
 // backticks, and a message that spells it between escaped backticks is not a literal of it.
-function withoutComments(text) {
-  let out = ''
-  let i = 0
-  while (i < text.length) {
-    const char = text[i]
-    const next = text[i + 1]
-    if (char === '/' && next === '/') {
-      while (i < text.length && text[i] !== '\n') i += 1
-    } else if (char === '/' && next === '*') {
-      const end = text.indexOf('*/', i + 2)
-      i = end === -1 ? text.length : end + 2
-      out += ' '
-    } else if (char === "'" || char === '"' || char === '`') {
-      // A string is kept whole, so a `//` or a `/*` inside it starts no comment. A regular expression
-      // literal holding a quote can misread the span after it: the text is kept either way, so the
-      // error is a comment read as code (a false hit), never code read as a comment.
-      out += char
-      i += 1
-      while (i < text.length && text[i] !== char) {
-        if (text[i] === '\\') {
-          out += text[i]
-          i += 1
-        }
-        if (i < text.length) {
-          out += text[i]
-          i += 1
-        }
-      }
-      if (i < text.length) {
-        out += text[i]
-        i += 1
-      }
-    } else {
-      out += char
-      i += 1
+//
+// What a comment is, is decided by the TypeScript parser the repository already resolves (a root
+// devDependency), not by a character loop: a regular expression literal, a template literal and JSX text
+// are tokens of the parse, so a `//` or a quote inside one starts no comment and opens no string. A file
+// of this harness is valid source; the parser would read an invalid one as best it can, and nothing here
+// asserts what it would make of it.
+function withoutComments(text, fileName) {
+  const kind = fileName.endsWith('.tsx')
+    ? ts.ScriptKind.TSX
+    : fileName.endsWith('.ts')
+      ? ts.ScriptKind.TS
+      : ts.ScriptKind.JS
+  const source = ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, kind)
+  const ranges = new Map()
+  const collect = (pos) => {
+    for (const range of [
+      ...(ts.getLeadingCommentRanges(text, pos) ?? []),
+      ...(ts.getTrailingCommentRanges(text, pos) ?? []),
+    ]) {
+      ranges.set(range.pos, range.end)
     }
   }
-  return out
+  const visit = (node) => {
+    const children = node.getChildren(source)
+    // The text of a JSX element is not trivia: a `//` in it is text.
+    if (children.length === 0 && node.kind !== ts.SyntaxKind.JsxText) collect(node.getFullStart())
+    for (const child of children) visit(child)
+  }
+  visit(source)
+  let out = ''
+  let at = 0
+  for (const [pos, end] of [...ranges].sort((a, b) => a[0] - b[0])) {
+    out += text.slice(at, pos) + ' '
+    at = end
+  }
+  return out + text.slice(at)
 }
 
 function scanHarnessForTagLiteral(root) {
@@ -243,7 +245,7 @@ function scanHarnessForTagLiteral(root) {
     .map((name) => `scripts/visual/${name}`)
   const literal = new RegExp(`['"\`]${FULL_PAGE_TAG}['"\`]`)
   const offenders = [...testFiles, ...scriptFiles].filter((file) =>
-    literal.test(withoutComments(readFileSync(path.join(root, file), 'utf8'))),
+    literal.test(withoutComments(readFileSync(path.join(root, file), 'utf8'), file)),
   )
   return { testFiles, scriptFiles, offenders, literal }
 }
@@ -352,4 +354,102 @@ test('T712 (13) plant: a literal after a block comment on the same line is a hit
   } finally {
     rmSync(scratch, { recursive: true, force: true })
   }
+})
+
+// T713 (a): the scan knows what a regular expression literal and JSX text are, because it reads the file
+// with the TypeScript parser, not with a character loop. Each of the three shapes below hid a literal from
+// the loop that T712 wrote and was caught by the line scan it replaced.
+test('T713 (a) plant: a literal after a regular expression holding two slashes, after a quote inside a regular expression, and after an apostrophe in JSX text is a hit', () => {
+  const scratch = mkdtempSync(path.join(tmpdir(), 'tag-literal-regex-'))
+  try {
+    const put = (file, text) => {
+      mkdirSync(path.dirname(path.join(scratch, file)), { recursive: true })
+      writeFileSync(path.join(scratch, file), text)
+    }
+    put('tests/visual/clean.ts', 'export const a = 1\n')
+    put('tests/visual/fixtures/clean.ts', 'export const b = 1\n')
+    put('scripts/visual/clean.mjs', 'export const c = 1\n')
+    for (const [file, text] of [
+      // The real line of `story-selection.mjs`, with a literal appended: `\//` is not a comment.
+      [
+        'scripts/visual/regex-slashes.mjs',
+        `const importPath = (entry.importPath ?? '').replace(/^\\.\\//, ''); const t = '${FULL_PAGE_TAG}'\n`,
+      ],
+      // A quote inside a regular expression is not the start of a string.
+      [
+        'tests/visual/regex-quote.ts',
+        `const r = /'/\nconst u = 'http://x/y'; const t = '${FULL_PAGE_TAG}'\n`,
+      ],
+      [
+        'tests/visual/regex-dquote.ts',
+        `const r = /"/\nconst u = "http://x/y"; const t = "${FULL_PAGE_TAG}"\n`,
+      ],
+      // An apostrophe in JSX text is not the start of a string.
+      [
+        'tests/visual/jsx-apostrophe.tsx',
+        `export const A = () => <p>don't</p>\nconst u = 'http://x/y'; const t = '${FULL_PAGE_TAG}'\n`,
+      ],
+      [
+        'tests/visual/fixtures/jsx-apostrophe.tsx',
+        `export const A = () => <p>don't</p>\nconst u = 'http://x/y'; const t = \`${FULL_PAGE_TAG}\`\n`,
+      ],
+    ]) {
+      put(file, text)
+      assert.deepEqual(scanHarnessForTagLiteral(scratch).offenders, [file], file)
+      rmSync(path.join(scratch, file))
+    }
+  } finally {
+    rmSync(scratch, { recursive: true, force: true })
+  }
+})
+
+test('T713 (a) contrast: a literal inside a real line comment or block comment is no hit, whatever precedes it on the line', () => {
+  const scratch = mkdtempSync(path.join(tmpdir(), 'tag-literal-regex-comment-'))
+  try {
+    const put = (file, text) => {
+      mkdirSync(path.dirname(path.join(scratch, file)), { recursive: true })
+      writeFileSync(path.join(scratch, file), text)
+    }
+    put('tests/visual/clean.ts', 'export const a = 1\n')
+    put('tests/visual/fixtures/clean.ts', 'export const b = 1\n')
+    put('scripts/visual/clean.mjs', 'export const c = 1\n')
+    put(
+      'scripts/visual/after-regex.mjs',
+      [
+        `const p = (entry.importPath ?? '').replace(/^\\.\\//, '') // the '${FULL_PAGE_TAG}' tag`,
+        `const q = /'/ /* the "${FULL_PAGE_TAG}" tag */`,
+        `// don't`,
+        `const half = 4 / 2 // 'visual-full-page'`,
+        '',
+      ].join('\n'),
+    )
+    put(
+      'tests/visual/jsx.tsx',
+      [
+        `export const A = () => <p>don't // not a comment</p> // the '${FULL_PAGE_TAG}' tag`,
+        `export const B = () => <p>{/* the '${FULL_PAGE_TAG}' tag */ 'x'}</p>`,
+        '',
+      ].join('\n'),
+    )
+    assert.deepEqual(scanHarnessForTagLiteral(scratch).offenders, [])
+  } finally {
+    rmSync(scratch, { recursive: true, force: true })
+  }
+})
+
+// The two real files the review named: the regular expression line of the selection script keeps the
+// rest of its line, and a comment of the open-surface test, which the loop of T712 read as code, is gone.
+test('T713 (a) the real tree: the rest of the line after the regular expression of story-selection.mjs is kept, and the comment of open-surface.test.ts is removed', () => {
+  const selection = withoutComments(
+    readFileSync(path.join(rootDir, 'scripts/visual/story-selection.mjs'), 'utf8'),
+    'story-selection.mjs',
+  )
+  assert.ok(selection.includes(`.replace(/^\\.\\//, '')`))
+  assert.equal(selection.includes('// '), false, 'no line comment survives in the selection script')
+  const surface = withoutComments(
+    readFileSync(path.join(rootDir, 'tests/visual/fixtures/open-surface.test.ts'), 'utf8'),
+    'open-surface.test.ts',
+  )
+  assert.equal(surface.includes('whole point of'), false)
+  assert.ok(surface.includes('distinctSurfaceStops(walk)'))
 })

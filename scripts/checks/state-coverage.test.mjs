@@ -4586,6 +4586,33 @@ test('resolveRuntimeForce: a force the light and dark themes locate differently 
   assert.equal(agreed.stamp, credited.stamp)
 })
 
+// T713 (d): `differsByTheme` is also written when the forced element is disabled in one theme only
+// (`combineThemeRecords` compares `disabled` and drops it), so the refusal's list of reasons names it.
+// The record carries the flag and not the cause, so one refusal text covers every cause, and the test
+// pins that the text names each one, the disabled state with the others.
+test('T713 (d) resolveRuntimeForce: the refusal of a force the themes answer differently names the forced element’s disabled state, and still names the match count', () => {
+  const verdict = resolveRuntimeForce(
+    {
+      widths: forceWidths({
+        count: 1,
+        stamp: `${STAMP_ROOT}primitives/Button/index.tsx:213`,
+        placedBy: null,
+        differsByTheme: true,
+      }),
+    },
+    { recordOneKeys },
+  )
+  assert.match(verdict.refusal, /a different disabled state of the forced element itself/)
+  assert.match(verdict.refusal, /a different match count/)
+  assert.match(verdict.refusal, /stamp or placing instance/)
+  assert.match(verdict.refusal, /a force only one theme carries/)
+  // The legend printed in the README region says the same.
+  assert.match(
+    REGION_LEGEND.replace(/\s+/g, ' '),
+    /a different disabled state of the forced element itself/,
+  )
+})
+
 test('entryShapeProblem: differsByTheme is true or absent, never another value', () => {
   const widthsWith = (differsByTheme) => ({
     widths: forceWidths({ count: 1, stamp: null, placedBy: null, differsByTheme }),

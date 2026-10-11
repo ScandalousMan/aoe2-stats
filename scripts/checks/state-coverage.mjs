@@ -2784,7 +2784,8 @@ function unstampedPlacedProblem(record, where) {
 //     is not one) nor a `file:line` string (`stampProblem`: an empty string is neither), or whose
 //     `placedBy` is neither null nor a well-formed instance, or whose `stamp` is null while its
 //     `placedBy` is not; and a force record whose `differsByTheme` (the light and the dark render
-//     disagree on the match count, stamp or placing instance, or only one carries the force, T710) is
+//     disagree on the match count, stamp, placing instance or the forced element's own disabled state,
+//     or only one carries the force, T710, T712) is
 //     present and not `true`;
 //     (An entry's `files` is checked by `filesProblem`, which the story path runs first: it is read
 //     outside this function's widths, so a value that is not an array of strings must be named before
@@ -2913,12 +2914,13 @@ export function resolveRuntimeForce(entry, { recordOneKeys, knownAxisValues }) {
     }
   }
   // The light and the dark render of the story disagree on the force (T710, `combineThemeRecords`) in
-  // match count, stamp or placing instance, or only one carries it: the record carries one theme's
-  // answer and this flag, and neither theme's answer is the capture's.
+  // match count, stamp, placing instance or the forced element's own disabled state, or only one
+  // carries it: the record carries one theme's answer and this flag, and neither theme's answer is the
+  // capture's.
   const themed = widths.filter(([, record]) => record.force.differsByTheme === true)
   if (themed.length > 0) {
     return {
-      refusal: `the light and the dark render disagree on the force at ${label(themed)} (a different match count, stamp or placing instance, or a force only one theme carries): the capture shows both themes, so neither answer is credited`,
+      refusal: `the light and the dark render disagree on the force at ${label(themed)} (a different match count, stamp or placing instance, a different disabled state of the forced element itself, or a force only one theme carries): the capture shows both themes, so neither answer is credited`,
     }
   }
   const none = widths.filter(([, record]) => record.force.count === 0)
@@ -3664,8 +3666,11 @@ export function computeStateCoverage({
           pushInstance(mount, row, role)
         }
       }
-      // The placing instance is always among a story's mounts; a manifest that disagrees still
-      // credits the instance the force located, which is what the browser reported.
+      // The placing instance is not always among a story's mounts: the force's record is read before
+      // the force and the mounts after it, so a handler of the force that unmounts the forced element
+      // leaves a record whose halves describe different pages (a known shape, row 8). An instance the
+      // mounts lack is credited from the force's own record, which is what the browser reported
+      // before the force.
       if (placingForce && !forceUsed) pushInstance(placingForce, placingForce.row, 'force')
       if (placingFocus && !focusUsed) {
         const row = rowAxesOf(placingFocus)
@@ -4210,7 +4215,8 @@ export const REGION_LEGEND = [
   "row's variant and size. A force on an element whose stamp is in the placing instance's `disabledAt`",
   '(the host elements it placed that the browser reports `:disabled` or `aria-disabled="true"`) is',
   'refused, and so is a force the light and the dark render of the story answer differently (a',
-  'different match count, stamp or placing instance, or a force only one theme carries).',
+  'different match count, stamp or placing instance, a different disabled state of the forced element',
+  'itself, or a force only one theme carries).',
   "The Disabled column of every matrix, and a primitive's own stories' Rest column, come from",
   'the primitive instances a story mounts, as rendered, and from nothing else: a `disabled` or `loading`',
   "written at a call site, and a `disabled: true` in a story's `args`, credit no Disabled cell. The",
@@ -4246,9 +4252,11 @@ export const REGION_LEGEND = [
   ...STATIC_CREDITS.map((credit) => `- ${credit.legend}`),
   '',
   '**Residual gaps, not refused:** a forced element no tracked primitive placed (a record-1 element of',
-  'another component) is credited without knowing whether it renders disabled, because the manifest',
-  "records disabled elements only among a tracked primitive's own (a target the light and the dark render",
-  'disagree on is refused, whichever of them is disabled); a mounted instance the page does not',
+  'another component) is credited without knowing whether it renders disabled: the runtime pass reads',
+  "the element's own disabled state and compares it between the two themes at each width, and the manifest",
+  'does not carry it, so a target disabled in both themes, or at one width with the themes agreeing, is',
+  'credited (a target the light and the dark render disagree on at a width is refused, whichever of them is',
+  'disabled); a mounted instance the page does not',
   'show (`hidden`, `sr-only`, `opacity-0`, a closed `details`) is credited as mounted, because the',
   'manifest records what mounts, not what paints; a story tagged `visual-full-page` is screenshotted as',
   'the viewport, so a disabled instance behind its scrim is credited though the scrim covers it; the',

@@ -11,7 +11,9 @@
 //   - `inspect`'s three questions, answered from what the test says the page holds NOW, so a handler
 //     that changes the answer when the force is applied is visible in what the harness reads.
 //   - a navigation (`navigate()`): the document is replaced, so a property set on the old window is gone,
-//     as it is in a browser, and `__STORYBOOK_PREVIEW__` with it.
+//     as it is in a browser, and `__STORYBOOK_PREVIEW__` with it. A page that is not a story page
+//     (the address has no `iframe.html`) holds no `#storybook-root`, so a read through the story root
+//     rejects, as a locator on an element that is not in the document does when its wait runs out.
 //   - the order of every call that matters, in `calls`.
 import type { Locator, Page } from '@playwright/test'
 
@@ -65,6 +67,7 @@ export function stubStoryPage(
   })
   let currentWindow = freshWindow()
   let currentUrl = url
+  let rootInDocument = true
 
   // Runs a page function in Node with `window` and the two storages bound to the current document's.
   const storageNamed = (name: string) => ({ clear: () => void calls.push(`clear ${name}`) })
@@ -108,6 +111,9 @@ export function stubStoryPage(
       return Buffer.alloc(0)
     },
     evaluate: async (_fn: unknown, options: { mode?: string }) => {
+      if (!rootInDocument) {
+        throw new Error('locator.evaluate: Timeout exceeded waiting for locator("#storybook-root")')
+      }
       if (options?.mode === 'mounts') {
         calls.push('read mounts')
         return state.mounts()
@@ -155,6 +161,7 @@ export function stubStoryPage(
     parameters,
     navigate: (to) => {
       currentUrl = to
+      rootInDocument = to.includes('iframe.html')
       currentWindow = to.includes('iframe.html') ? freshWindow() : {}
     },
     windowHolds: (key) => key in currentWindow,

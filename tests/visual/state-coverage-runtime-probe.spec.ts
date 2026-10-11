@@ -659,11 +659,42 @@ test('T712 (2) contrast: a story with no force reads its mounts and files once, 
 })
 
 test('T712 (9) plant: a hover handler that navigates fails the probe, naming the story, not a record of a page the capture would not show', async () => {
+  const { stub, probed } = probeWith({
+    mounts: () => [btn('primary', 'md')],
+    files: () => ['a.tsx'],
+    element: noElement,
+    onHover: (page) => page.navigate('http://stub/elsewhere.html'),
+  })
+  await expect(probed()).rejects.toThrow(/test--story.*left the story/)
+  // T713 (b): the check runs before any read, so it is the named failure and not the timeout of a read
+  // through a story root the new page does not hold (the stub rejects that read as a locator would).
+  expect(stub.calls).not.toContain('read mounts')
+})
+
+test('T713 (b) plant: a handler that leaves for a page with no story root fails with the named failure, not the timeout of a read through the root', async () => {
+  const { probed } = probeWith(
+    {
+      mounts: () => [],
+      files: () => [],
+      element: noElement,
+      onMouseDown: (page) => page.navigate('http://stub/not-a-story.html'),
+    },
+    { state: 'active', role: 'button' },
+  )
+  const error = await probed().then(
+    () => null,
+    (thrown: unknown) => thrown as Error,
+  )
+  expect(error?.message).toMatch(/test--story.*left the story/)
+  expect(error?.message).not.toMatch(/Timeout/)
+})
+
+test('T713 (b) plant: a handler that reloads the story page, which holds a root again, fails with the named failure', async () => {
   const { probed } = probeWith({
     mounts: () => [btn('primary', 'md')],
     files: () => ['a.tsx'],
     element: noElement,
-    onHover: (stub) => stub.navigate('http://stub/elsewhere.html'),
+    onHover: (page) => page.navigate('http://stub/iframe.html?reloaded'),
   })
   await expect(probed()).rejects.toThrow(/test--story.*left the story/)
 })
