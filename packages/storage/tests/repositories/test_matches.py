@@ -284,7 +284,7 @@ async def test_list_matches_reports_every_raw_capture_status_intact(
     db_session: AsyncSession,
 ) -> None:
     """Per T073: the collapse into a badge's "lost"/"safe"/"needs review" happens in the
-    component, never here — every one of the seven raw statuses must survive unchanged."""
+    component, never here — every raw status the dict names must survive unchanged."""
     await _seed_callers_and_opponent(db_session)
     now = datetime(2026, 8, 20, 12, 0, tzinfo=UTC)
     statuses = {
@@ -294,6 +294,7 @@ async def test_list_matches_reports_every_raw_capture_status_intact(
         604_004: CaptureStatus.EXPIRED,
         604_005: CaptureStatus.QUARANTINED,
         604_006: CaptureStatus.FAILED,
+        604_007: CaptureStatus.WITHDRAWN,
     }
     for offset, (game_id, status) in enumerate(statuses.items()):
         await _seed_full_match(

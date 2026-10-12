@@ -18,13 +18,15 @@ module's structure").
 
 **`oldest_pending` and `nearest_deadline` are both scoped to `status = 'pending'`.** `pending` is
 the only status still racing the clock: `downloading` is a claim held for the duration of a single
-run (data-model.md), and `stored`, `unavailable`, `expired`, `quarantined` and `failed` are all
-terminal — read the state table's "Retried?" column. Ordering by `capture_deadline_at ASC` among
-`pending` rows is exactly the claiming query's own `ORDER BY` (data-model.md: "the single most
-consequential line in the schema"), so `nearest_deadline` names the row a run would claim first
-under a backlog. `oldest_pending` orders by `first_seen_at ASC` instead — how long a capture has
-sat undiscovered-but-known — which is a different question from "how soon does it expire" and is
-not always the same row: a backfilled older match can be *discovered* later than a fresh one while
+run (data-model.md), and `stored`, `unavailable`, `expired`, `quarantined`, `failed` and
+`withdrawn` (T721) are all terminal — read the state table's "Retried?" column for the first five.
+Ordering by `capture_deadline_at ASC` among `pending` rows is exactly the claiming query's own
+`ORDER BY` (data-model.md: "the single most consequential line in the schema"), so
+`nearest_deadline` is the profile's `pending` row with the earliest `capture_deadline_at`; it does
+not say which row a run would claim, since the claim also requires an owner and a due next
+attempt time. `oldest_pending` orders by `first_seen_at ASC` instead — how long a capture has sat
+undiscovered-but-known — which is a different question from "how soon does it expire" and is not
+always the same row: a backfilled older match can be *discovered* later than a fresh one while
 still carrying an earlier `capture_deadline_at`, or vice versa.
 
 **Counts cover every `CaptureStatus` value, zero-filled.** A profile with, say, no `quarantined`
@@ -169,10 +171,11 @@ Per-state behaviour (`contracts/http-api.md`):
 **The boundary race (FR-025, R8) needed a table of its own, `replay_fetch_misses` — see
 `ReplayFetchMiss`'s docstring in `packages/storage/src/aoe2stats_storage/models.py` for why
 `replay_captures` was the tempting answer and the wrong one.** In short: that table's automatic
-capture pipeline claims from it with no ownership filter at all
-(`apps/ingester/.../capture.py::_claim_batch`), so any row this route wrote there would either have
-that pipeline fetch and *store* a third party's recording as a direct consequence of a download
-click (a `pending` row — forbidden by FR-012 and FR-027) or permanently block the real capture that
+capture pipeline claims from it, taking a row only when its profile has an active link whose user
+has not objected (`apps/ingester/.../capture.py::_claim_batch`, `_owner_is_archiving`), so any row
+this route wrote there would either have that pipeline fetch and *store* a recording as a direct
+consequence of a download click once its profile has such a link (a `pending` row — forbidden by
+FR-012 and FR-027) or permanently block the real capture that
 pipeline owes that profile's owner if they later link an account (any terminal status —
 `discover.py`'s `_enqueue_capture` no-ops on `ON CONFLICT DO NOTHING` against a row that already
 exists). `replay_fetch_misses` is read-only evidence with none of `replay_captures`' readers:
@@ -446,8 +449,8 @@ async def _oldest_pending(db_session: AsyncSession, profile_id: int) -> ReplayCa
 
 
 async def _nearest_deadline(db_session: AsyncSession, profile_id: int) -> ReplayCapture | None:
-    """The `pending` capture the claiming query would fetch first under a backlog — the same
-    `ORDER BY capture_deadline_at ASC` data-model.md fixes for that query (module docstring)."""
+    """The profile's `pending` capture with the earliest `capture_deadline_at` — the claiming
+    query's own `ORDER BY` (module docstring). It reads neither links nor `next_attempt_at`."""
     result = await db_session.execute(
         select(ReplayCapture)
         .where(

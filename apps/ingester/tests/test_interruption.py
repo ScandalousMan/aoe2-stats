@@ -39,6 +39,7 @@ import pytest
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from tests.db import clean_database, database_url, db_session, engine, session_factory
+from tests.links import link_profile
 
 import aoe2stats_ingester.budget as budget_module
 from aoe2stats_core.replay.validation import MalformedArchiveError, ReplayValidationResult
@@ -310,6 +311,7 @@ async def _seed_pending_capture(
             source=CaptureSource.AUTOMATIC,
         )
     )
+    await link_profile(session, profile_id)
 
 
 async def _mark_stale_downloading(

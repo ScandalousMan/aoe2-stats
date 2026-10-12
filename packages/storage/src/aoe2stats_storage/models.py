@@ -53,7 +53,15 @@ def _uuid_pk() -> Any:
 
 
 class CaptureStatus(enum.StrEnum):
-    """`replay_captures.status` — see the state machine in data-model.md."""
+    """`replay_captures.status` — see the state machine in data-model.md.
+
+    `WITHDRAWN` (T721) is terminal, and is not in data-model.md's state machine. It is written only
+    by `CaptureDrain.withdraw_refused_near_deadline`, to a `pending` or stale `downloading` row
+    whose capture deadline is within the withdrawal lead (`INGEST_WITHDRAW_LEAD_HOURS`) or past,
+    and whose profile has no active link whose user has not objected, the rows
+    `CaptureDrain._claim_batch` refuses. The claim never takes it, and discovery queues no
+    second capture for the `(game_id, profile_id)` pair it occupies.
+    """
 
     PENDING = "pending"
     DOWNLOADING = "downloading"
@@ -62,6 +70,7 @@ class CaptureStatus(enum.StrEnum):
     EXPIRED = "expired"
     QUARANTINED = "quarantined"
     FAILED = "failed"
+    WITHDRAWN = "withdrawn"
 
 
 class CaptureSource(enum.StrEnum):
@@ -971,19 +980,19 @@ class ReplayFetchMiss(Base):
     **Deliberately not a `replay_captures` row, and not a fourth column bolted onto it** — a
     decision this table's whole existence is, not an oversight `data-model.md`'s "this feature adds
     no column to ... `replay_captures`" merely states. `replay_captures` is the single table 001's
-    automatic capture pipeline claims from with no ownership filter at all
-    (`apps/ingester/.../capture.py::_claim_batch` and its `_enqueue_capture` counterpart in
-    `discover.py`): any `pending` row it finds, for any `profile_id`, is downloaded and archived on
-    the very next cycle, and a `stored`/`unavailable`/`expired` row it finds already occupying a
-    `(game_id, profile_id)` pair is left untouched forever (`_enqueue_capture`'s own `ON CONFLICT DO
-    NOTHING`, `discover.py`). A download of an `obtainable` point of view is, by construction, a
-    point of view this service has **not** captured — most often because nobody who played it has
-    ever linked an account here. Writing *any* status into `replay_captures` for that pair would
-    therefore do one of two things, both forbidden: a `pending` row would have the automatic
-    pipeline fetch and **store** a third-party recording as a direct consequence of a download
-    click, which is exactly what FR-012 and FR-027 forbid ("downloading is not analysing"); any
-    terminal status (`unavailable`, `stored`, `expired`, ...) would permanently block the *real*
-    capture that pipeline owes that profile's owner the day they link their account, since
+    automatic capture pipeline claims from (`apps/ingester/.../capture.py::_claim_batch` and its
+    `_enqueue_capture` counterpart in `discover.py`): the claim takes a row only when its
+    `profile_id` has an active link whose user has not objected; `_enqueue_capture` leaves a
+    `stored`/`unavailable`/`expired` row it finds already occupying a `(game_id, profile_id)` pair
+    untouched forever (its own `ON CONFLICT DO NOTHING`, `discover.py`). A download of an
+    `obtainable` point of view is, by construction, a point of view this service has **not**
+    captured — most often because nobody who played it has ever linked an account here. Writing
+    *any* status into `replay_captures` for that pair would therefore do one of two things, both
+    forbidden: a `pending` row would have the automatic pipeline fetch and **store** a recording
+    as a direct consequence of a download click, once its profile has such a link, which is
+    exactly what FR-012 and FR-027 forbid ("downloading is not analysing"); any terminal status
+    (`unavailable`, `stored`, `expired`, ...) would permanently block the *real* capture that
+    pipeline owes that profile's owner the day they link their account, since
     `_enqueue_capture`'s `ON CONFLICT DO NOTHING` would then silently no-op forever against the
     synthetic row. Neither risk is hypothetical or bounded to this feature's own tests; both are
     constitution I and FR-012 violations reachable from production traffic. This table carries

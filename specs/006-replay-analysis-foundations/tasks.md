@@ -2027,7 +2027,7 @@ carries what T673's dry run read.
       last sentence has no regression test; the clause check pointed at the docstring flags its
       descriptive sentences about what the report prints, so a guard there would need a different
       check, and none is added
-- [ ] T713 Stop the claim from taking a capture whose profile has no active link (filed 2026-10-11
+- [x] T713 Stop the claim from taking a capture whose profile has no active link (filed 2026-10-11
       from T673b; decided by the user the same day). `CaptureDrain._claim_batch` in
       `apps/ingester/src/aoe2stats_ingester/capture.py` excludes a row only when
       `_objecting_owner_exists` finds an active link whose user has objected, so a capture queued
@@ -2057,6 +2057,183 @@ carries what T673's dry run read.
       when its user unlinks or objects, since the normal path's stored and quarantine writes carry
       no ownership guard, where T673b gave the re-validation's writes one. Its own branch and pull
       request, not #129
+- [x] T713a Close #135's review (`reviewer` REJECT 2026-10-11 on T713; no wrong write and no
+      constitution finding. Verified and not to be re-checked: `archiving_links` is exactly an
+      active link whose user has not objected; the compiled claim gates both arms with it, an
+      uncorrelated positive `IN`, lock and order unchanged; `_claim_batch` is the only writer of
+      `downloading` and no path bypasses it; against the old predicate, which reads only the
+      objection, 6 of the 14 claim tests fail and 8 pass; the six fixture helpers link no profile
+      in a test about the absence of a link). **A third reader of the same condition:**
+      `deadline_gate_admits` in `apps/analyzer/src/aoe2stats_analyzer/admission.py` refuses every
+      analysis request while any `pending` or `downloading` row is past its capture deadline, and
+      reads neither links nor objections, so one refused row past its deadline refuses
+      `POST /api/analyze` for every user. T721 names two readers; add this one to its facts, and
+      pin it in `apps/analyzer/tests/test_admission.py` as the other two are pinned: a
+      characterization, for an objector's row and for an unlinked profile's row. **Three texts the
+      claim made false:** `apps/api/src/aoe2stats_api/routers/replays.py` and `ReplayFetchMiss`'s
+      docstring in `packages/storage/src/aoe2stats_storage/models.py` say the claim has no
+      ownership filter and downloads any `pending` row for any profile;
+      `apps/api/src/aoe2stats_api/routers/profiles.py` says an unlinked profile's rows archive
+      nothing further only because discovery drops the link. Say what the claim does now. The
+      conclusion each draws, that the download route writes no `replay_captures` row, is not
+      reopened. **`_claim_batch`'s docstring on a refused row:** it says a refused row was never
+      fetched, that the refusal cannot be undone and the capture is lost, that a relink makes the
+      row claimable "while the window lasts", and that the gate only stops a capture that has
+      fetched nothing. The stale `downloading` arm can hold a row with a committed object; the
+      claim has no window clause; and the second and third of those contradict each other. State
+      only: a refused row keeps its status and nothing is written to it; it is claimable again once
+      its profile has an active link whose user has not objected; a row with no committed object
+      is not fetched while it is refused, and the source keeps a recording for a bounded time
+      (`docs/data-sources.md`); a row with a committed object keeps it. The same wording in the
+      docstring of `apps/ingester/tests/test_claim_requires_active_link.py`, and "stays `pending`
+      for good" in `apps/ingester/tests/test_deadline_alert.py`. **A uniqueness the tree does not
+      have:** `tests/links.py` calls itself the one place a test gives a profile an owner and says
+      every fixture seeding a capture to be claimed goes through it, and `_claim_batch`'s docstring
+      repeats it; other test files build a `ProfileLink` themselves,
+      `apps/ingester/tests/test_quota.py` among them. Claim only that the helper exists and which
+      fixtures this change moved onto it. The other helpers are not migrated here. **A guard that
+      cannot fail:** the source-inspection test in
+      `apps/ingester/tests/test_revalidate_quarantined.py` looks for the call in
+      `inspect.getsource`, which includes the docstring, and `_claim_batch`'s docstring spells the
+      call. Read the code without its docstring, for the claim and for the three sibling assertions
+      alike. Red first: with the call removed from `_claim_batch`'s body and its docstring
+      unchanged, the guard fails. **Contrasts to add** to the claim tests: a profile relinked by a
+      second user who has objected is refused; a stale `downloading` row holding a committed object
+      is refused, keeps its object key and checksum, and is claimed once its profile has an active
+      link whose user has not objected. Not added, recorded here: a relink by the same user.
+      **T721's entry** gains, as facts: the third reader; that `expired` is written when a claimed
+      row's fetch answers 404 past its capture deadline, with a severity-1 `expired_capture` alert,
+      which is what a refused row relinked after its deadline meets if the source no longer has the
+      recording; and that `backlog_remaining` on `ingest_runs` counts refused rows
+- [x] T713b Close #135's second review (`reviewer` REJECT 2026-10-11 on T713a; delta-scoped, two
+      sentences, no code and no test logic. Verified and not to be re-checked: the five blocking
+      findings of the first review closed where they were cited, T721's amended facts, the two
+      added contrasts, and the guard failing with the call removed from the body). **A fact in
+      T713a's entry:** it records that none of the 14 claim tests passes against a predicate that
+      reads only the link or only the objection. Measured on T713: against the old predicate,
+      which reads only the objection, 6 of the 14 fail and 8 pass. Say that, and nothing about a
+      predicate that reads only the link, which was not run. **A twin of the uniqueness claim:**
+      the module docstring of `apps/ingester/tests/test_claim_requires_active_link.py` says the
+      fixtures that claim give their profile a link through the shared helper;
+      `apps/ingester/tests/test_quota.py` and `apps/ingester/tests/test_consent_withdrawal.py` seed
+      captures a drain claims and build their own link rows. The parenthetical says only that the
+      predicate has no exception for the absence of a link. **Loose, cut:** `ReplayFetchMiss`'s
+      docstring in `packages/storage/src/aoe2stats_storage/models.py` says a `pending` row the
+      claim takes is fetched on that cycle; a row the quota defers is claimed and handed back
+      without a fetch. Drop the clause. **An id two features define:** the open decision was filed
+      as T714, which `specs/005-design-system-foundations/tasks.md` also defines. It is T721 here,
+      in this file and in the docstring of the admission characterization test
+- [x] T721 Give a capture the claim refuses a terminal status once its capture deadline passes
+      (filed 2026-10-11 from T713 as T714, an id 005's file also defines, and renumbered the same
+      day; amended from #135's review; decided by the user 2026-10-12). Since T713 the claim takes
+      a row only when its profile has an active link whose user has not objected, and a refused row
+      keeps its status. Three readers filter on the deadline and the status and read neither links
+      nor objections: `_raise_deadline_breach_alert` in
+      `apps/ingester/src/aoe2stats_ingester/run.py`, `captures_pending_past_deadline` in
+      `scripts/checks/capture_audit.py`, and `deadline_gate_admits` in
+      `apps/analyzer/src/aoe2stats_analyzer/admission.py`. So a refused row past its deadline is
+      carried by the severity-1 `deadline_breach` alert, fails the nightly capture audit, and makes
+      the admission gate refuse `POST /api/analyze` for every user. **The status:** `withdrawn`, a
+      new value of `CaptureStatus` and of the `replay_capture_status` type, added by one additive
+      revision as `1f9879367c9d` added a value to `alert_kind`; the expected schema revision in
+      `packages/storage/src/aoe2stats_storage/revision.py` moves with it. The claim never takes a
+      `withdrawn` row. **The write:** one statement on `CaptureDrain` sets `withdrawn` on every row
+      that is past its capture deadline, is `pending` (whatever its next attempt time) or a stale
+      `downloading` row as the claim defines stale, and fails `_owner_is_archiving`. It writes the
+      status and a fixed reason in `last_error`, and nothing else: an object key and checksum the
+      row holds stay, and no object is read, written or deleted. It raises no alert and adds no
+      column. `run_once` calls it once per cycle, after the stages and before the deadline sweep,
+      on every stage that offers it, whether or not that stage ran, and with the instant the sweep
+      then uses; the ingest cycles of `apps/api/src/aoe2stats_api/ingest_stages.py` always carry
+      the drain. A cycle given no such stage withdraws nothing. **Not taken by
+      the write:** a row not yet past its deadline, so a profile relinked before then is claimed as
+      T713 left it; a `downloading` row that is not stale, the download in flight T713 left to the
+      user; a row whose profile has an active link whose user has not objected, which stays for
+      the deadline alert. **The readers:** `withdrawn` joins the resolved statuses of the deadline
+      sweep and of the capture audit; the admission gate reads `pending` and `downloading` only and
+      needs no change. A `withdrawn` row occupies its `(game_id, profile_id)` pair, so discovery
+      queues no new capture for it after a relink. **Red first**, at the write: a `pending` row
+      past its deadline is withdrawn when its user unlinked, when its user objected, and when its
+      next attempt time has not come; a stale `downloading` row holding a committed object is
+      withdrawn with its key and checksum unchanged. Contrasts, each left as it is: the same rows
+      one hour before the deadline; a `downloading` row that is not stale; a row whose profile has
+      an active link whose user has not objected; a row whose profile was relinked by a second user
+      who has not objected; a `stored` row. At `run_once`: a cycle over a refused row past its
+      deadline leaves it `withdrawn` and raises no `deadline_breach` for it, and still raises one
+      for an owned `pending` row past its deadline in the same cycle. The three characterization
+      tests of T713 and T713a become tests of the decision: each reader still counts a refused row
+      that is still `pending`, and does not count it once `withdrawn`. **Every consumer of the
+      status values:** grep them before starting; the match routes serialise the value as it is.
+      What the interface shows for it is T722, not this task
+- [x] T721a Close #135's review of T721 (`reviewer` REJECT 2026-10-12, one blocking finding; decided
+      by the user the same day. Verified and not to be re-checked: the statement's selection, its
+      races with the claim and with the re-validation, `run_once`'s order and shared instant, the
+      revision and its downgrade, every other reader of the status, each new test failing for the
+      reason it names, and the facts of T721's and T722's entries). **The window T721 left:** the
+      write runs once per ingest cycle and took a row only past its deadline, and production runs
+      one cycle a day (`vercel.json`), so a refused row stayed `pending` from its deadline to the
+      next cycle: the admission gate refused `POST /api/analyze` for every user in that window, and
+      the nightly capture audit, scheduled before the cycle, could fail once. **Decided:** the write
+      takes a refused row a lead before its deadline. The lead is `INGEST_WITHDRAW_LEAD_HOURS`, a
+      required key as the drain's other settings are, with no default, handed to `CaptureDrain` by
+      `apps/api/src/aoe2stats_api/ingest_stages.py`. The selection becomes: the capture deadline is
+      less than the lead away, or past. Nothing else in the statement changes, and no reader
+      changes. The lead has to exceed the longest gap between two ingest cycles; the docstring says
+      so and names where the schedule lives, without restating it. **What it costs:** a profile
+      relinked inside the lead finds its row `withdrawn`; the claim takes a refused row only until
+      the write has reached it. **What it does not close, state it:** a row whose profile loses its
+      archiving owner inside the lead, and less than one cycle before the deadline, is still
+      `pending` past its deadline until the next cycle. The admission gate and the audit count it
+      until then; the deadline sweep never does, the next cycle's write reaching it first.
+      **Red first:** a refused row whose deadline is one hour inside the lead is withdrawn; with a
+      lead of zero it is not. Contrasts: one hour outside the lead, left as it is; an owned row
+      inside the lead, left as it is; a row past its deadline, withdrawn as before. The earlier
+      contrasts seeded one hour before the deadline move outside the lead. **Across the window:**
+      after one cycle over a refused row whose deadline is inside the lead, the admission gate
+      admits and the audit's assertion finds nothing at an instant after that deadline. **The
+      setting:** a missing key refused, an override from the environment reaching the drain, and
+      its declaration where the other ingest settings are declared. **Texts:** `_claim_batch`'s
+      docstring says a refused row is claimable until its deadline passes; say until the write has
+      withdrawn it. The fixed reason reads as if no link existed when the deadline passed; the
+      write reads ownership when it runs, so say that. `CaptureStatus`'s docstring, the module
+      paragraphs of `capture.py` and `run.py`, the audit's comment and the revision's docstring
+      say the write acts once the deadline has passed; each says the lead. **A
+      contrast that proves less than it names:** the other-status rows of the withdrawal tests
+      carry no claim time, so a stale-claim clause that lost its status check would leave them
+      untouched; give them an old one
+- [x] T721b Close #135's review of T721a (`reviewer` REJECT 2026-10-12; text only, no code and no
+      test logic at fault. Verified and not to be re-checked: the clause and its arithmetic, no
+      wrong write beyond the stated cost, the window closed as decided, the setting and where it is
+      declared, the tests, and T722's added fact). **The residual reaches two readers, not three:**
+      the deadline sweep runs only inside a cycle, after the write and with its instant, and the
+      write's deadline clause contains the sweep's, so a row that lost its owner inside the lead is
+      withdrawn before the sweep reads it and raises no `deadline_breach`. Between cycles only the
+      admission gate and the nightly audit read the table. Say so wherever the residual is stated:
+      the module paragraph and the method's docstring in `capture.py`, the module paragraph and the
+      comment on the excluded statuses in `run.py`, and T721a's entry; and wherever a text says
+      "the readers" for it: the docstrings of the withdrawal tests and of the sweep test, and the
+      setting's comment in `.env.example`. **Pin it:** in the residual test the second cycle runs at
+      an instant after the deadline, and the row is withdrawn with no `deadline_breach` naming it.
+      **Two facts in T721a's entry:** `packages/storage/src/aoe2stats_storage/revision.py` never
+      said when the write acts and is not one of the texts to correct; the lead has no default, the
+      key is required and `.env.example` declares its value. **A leftover:**
+      `packages/storage/tests/test_models.py` still says the claim refuses a capture once its
+      deadline has passed. **Stated a little wide, narrow it:** the cost names a relink inside the
+      lead; a relink before the write has reached the row is still claimed, and a lifted objection
+      meets the same rows as a relink
+- [ ] T722 Show a `withdrawn` capture in the interface (filed 2026-10-12 from T721). The match
+      routes serialise `replay_captures.status` as it is, for the caller's own linked profiles, so
+      an objector with an active link receives `withdrawn` for a match past its capture deadline.
+      `packages/design-system/specs/capture-state-badge.md` and `CaptureStateBadge` name seven raw
+      values collapsed into four states; an eighth falls to the component's unknown-status state, a
+      neutral badge carrying the raw word. `apps/web/src/features/replays/uploadEligibility.ts`
+      offers the manual upload for `unavailable`, `expired` and `failed` only, and withholds it from
+      `quarantined` because that row's bytes are already stored. A `withdrawn` row can hold a
+      committed object too: the upload route in `apps/api/src/aoe2stats_api/routers/replays.py`
+      refuses a `stored` row only, and puts the uploaded bytes under the row's object key. The
+      `product-designer` first: which of the four states `withdrawn` reads as, its wording, and
+      whether the manual upload is offered. That spec's lines are cited by number; keep its line
+      count. Its own branch and pull request, after #135
 
 - [x] T706 Unstick an analysis whose lease expired (filed 2026-10-08; decided by the user the same
       day). Match 511523321's row stayed `running` from the 2026-10-05 crash until a manual

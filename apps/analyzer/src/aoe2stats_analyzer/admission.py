@@ -92,8 +92,8 @@ async def deadline_gate_admits(session: AsyncSession, *, now: datetime) -> bool:
     and its own `capture_deadline_at` has already passed `now` — the exact condition
     `scripts/checks/capture_audit.py`'s `captures_pending_past_deadline` already reads. `True`
     otherwise, including when a capture past its own deadline is already resolved one way or
-    another (`stored`, `unavailable`, `expired`, `quarantined`, `failed`): there is nothing left for
-    an analysis fetch to compete with.
+    another (`stored`, `unavailable`, `expired`, `quarantined`, `failed`, `withdrawn`): there is
+    nothing left for an analysis fetch to compete with.
     """
     result = await session.execute(
         select(ReplayCapture.id)
