@@ -2123,33 +2123,55 @@ carries what T673's dry run read.
       without a fetch. Drop the clause. **An id two features define:** the open decision was filed
       as T714, which `specs/005-design-system-foundations/tasks.md` also defines. It is T721 here,
       in this file and in the docstring of the admission characterization test
-- [ ] T721 Decide what a capture the claim refuses does once its capture deadline passes (filed
-      2026-10-11 from T713 as T714, an id 005's file also defines, and renumbered the same day;
-      amended from #135's review; not decided). Since T713 the claim takes a row only when its
-      profile has an active link whose user has not objected, and a refused row keeps its status:
-      `expired` is written only when a claimed row's fetch answers 404 past its capture deadline,
-      with a severity-1 `expired_capture` alert. Three readers filter on the deadline and the
-      status and read neither links nor objections:
-      `_raise_deadline_breach_alert` in `apps/ingester/src/aoe2stats_ingester/run.py`,
-      `captures_pending_past_deadline` in `scripts/checks/capture_audit.py`, and
-      `deadline_gate_admits` in `apps/analyzer/src/aoe2stats_analyzer/admission.py`. So a refused
-      row past its deadline is carried by the severity-1 `deadline_breach` alert, which is raised
-      again after each acknowledgement while the row stays unresolved (T059b); it fails the nightly
-      capture audit; and it makes the admission gate refuse `POST /api/analyze` for every user
-      until the row leaves `pending` and `downloading`. That was already so for an objector's row;
-      T713 adds a profile its user unlinked. Pinned as it stands by
-      `test_a_pending_capture_nobody_may_claim_still_raises_deadline_breach` in
-      `apps/ingester/tests/test_deadline_alert.py`,
-      `test_captures_pending_past_deadline_counts_a_capture_nobody_may_claim` in
-      `scripts/checks/tests/test_capture_audit.py` and
-      `test_deadline_gate_refuses_for_a_pending_capture_the_claim_refuses` in
-      `apps/analyzer/tests/test_admission.py`; all three change with the decision. Two more facts,
-      pinned by no test: a refused row whose profile gains, after its deadline, an active link whose
-      user has not objected is claimed, and is written `expired` with that alert if the source
-      answers 404; and `backlog_remaining` on `ingest_runs` counts refused rows. **For the user:**
-      whether such a row is alerted on, audited and counted against the admission gate as a breach,
-      is given a terminal status, or is left out of all three. Nothing is built before that is
-      decided
+- [ ] T721 Give a capture the claim refuses a terminal status once its capture deadline passes
+      (filed 2026-10-11 from T713 as T714, an id 005's file also defines, and renumbered the same
+      day; amended from #135's review; decided by the user 2026-10-12). Since T713 the claim takes
+      a row only when its profile has an active link whose user has not objected, and a refused row
+      keeps its status. Three readers filter on the deadline and the status and read neither links
+      nor objections: `_raise_deadline_breach_alert` in
+      `apps/ingester/src/aoe2stats_ingester/run.py`, `captures_pending_past_deadline` in
+      `scripts/checks/capture_audit.py`, and `deadline_gate_admits` in
+      `apps/analyzer/src/aoe2stats_analyzer/admission.py`. So a refused row past its deadline is
+      carried by the severity-1 `deadline_breach` alert, fails the nightly capture audit, and makes
+      the admission gate refuse `POST /api/analyze` for every user. **The status:** `withdrawn`, a
+      new value of `CaptureStatus` and of the `replay_capture_status` type, added by one additive
+      revision as `1f9879367c9d` added a value to `alert_kind`; the expected schema revision in
+      `packages/storage/src/aoe2stats_storage/revision.py` moves with it. The claim never takes a
+      `withdrawn` row. **The write:** once per ingester cycle, before the deadline sweep in
+      `run_once`, one statement on `CaptureDrain` sets `withdrawn` on every row that is past its
+      capture deadline, is `pending` (whatever its next attempt time) or a stale `downloading` row
+      as the claim defines stale, and fails `_owner_is_archiving`. It writes the status and a fixed
+      reason in `last_error`, and nothing else: an object key and checksum the row holds stay, and
+      no object is read, written or deleted. It raises no alert and adds no column. **Not taken by
+      the write:** a row not yet past its deadline, so a profile relinked before then is claimed as
+      T713 left it; a `downloading` row that is not stale, the download in flight T713 left to the
+      user; a row whose profile has an active link whose user has not objected, which stays for
+      the deadline alert. **The readers:** `withdrawn` joins the resolved statuses of the deadline
+      sweep and of the capture audit; the admission gate reads `pending` and `downloading` only and
+      needs no change. A `withdrawn` row occupies its `(game_id, profile_id)` pair, so discovery
+      queues no new capture for it after a relink. **Red first**, at the write: a `pending` row
+      past its deadline is withdrawn when its user unlinked, when its user objected, and when its
+      next attempt time has not come; a stale `downloading` row holding a committed object is
+      withdrawn with its key and checksum unchanged. Contrasts, each left as it is: the same rows
+      one hour before the deadline; a `downloading` row that is not stale; a row whose profile has
+      an active link whose user has not objected; a row whose profile was relinked by a second user
+      who has not objected; a `stored` row. At `run_once`: a cycle over a refused row past its
+      deadline leaves it `withdrawn` and raises no `deadline_breach` for it, and still raises one
+      for an owned `pending` row past its deadline in the same cycle. The three characterization
+      tests of T713 and T713a become tests of the decision: each reader still counts a refused row
+      that is still `pending`, and does not count it once `withdrawn`. **Every consumer of the
+      status values:** grep them before starting; the match routes serialise the value as it is.
+      What the interface shows for it is T722, not this task
+- [ ] T722 Show a `withdrawn` capture in the interface (filed 2026-10-12 from T721). The match
+      routes serialise `replay_captures.status` as it is, for the caller's own linked profiles, so
+      an objector with an active link receives `withdrawn` for a match past its capture deadline.
+      `packages/design-system/specs/capture-state-badge.md` and `CaptureStateBadge` name seven raw
+      values collapsed into four states; an eighth falls to the component's unknown-status state, a
+      neutral badge carrying the raw word. `apps/web/src/features/replays/uploadEligibility.ts`
+      offers the manual upload for `unavailable`, `expired` and `failed` only. The
+      `product-designer` first: which of the four states `withdrawn` reads as, its wording, and
+      whether the manual upload is offered. That spec's lines are cited by number; keep its line
+      count. Its own branch and pull request, after #135
 
 - [x] T706 Unstick an analysis whose lease expired (filed 2026-10-08; decided by the user the same
       day). Match 511523321's row stayed `running` from the 2026-10-05 crash until a manual
