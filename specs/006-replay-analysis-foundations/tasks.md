@@ -2174,8 +2174,8 @@ carries what T673's dry run read.
       one cycle a day (`vercel.json`), so a refused row stayed `pending` from its deadline to the
       next cycle: the admission gate refused `POST /api/analyze` for every user in that window, and
       the nightly capture audit, scheduled before the cycle, could fail once. **Decided:** the write
-      takes a refused row a lead before its deadline, 48 hours by default, read from the
-      environment as the drain's other settings are and handed to `CaptureDrain` by
+      takes a refused row a lead before its deadline. The lead is `INGEST_WITHDRAW_LEAD_HOURS`, a
+      required key as the drain's other settings are, with no default, handed to `CaptureDrain` by
       `apps/api/src/aoe2stats_api/ingest_stages.py`. The selection becomes: the capture deadline is
       less than the lead away, or past. Nothing else in the statement changes, and no reader
       changes. The lead has to exceed the longest gap between two ingest cycles; the docstring says
@@ -2190,8 +2190,8 @@ carries what T673's dry run read.
       contrasts seeded one hour before the deadline move outside the lead. **Across the window:**
       after one cycle over a refused row whose deadline is inside the lead, the admission gate
       admits and the audit's assertion finds nothing at an instant after that deadline. **The
-      setting:** its default, an override from the environment reaching the drain, and its
-      declaration where the other ingest settings are declared. **Texts:** `_claim_batch`'s
+      setting:** a missing key refused, an override from the environment reaching the drain, and
+      its declaration where the other ingest settings are declared. **Texts:** `_claim_batch`'s
       docstring says a refused row is claimable until its deadline passes; say until the write has
       withdrawn it. The fixed reason reads as if no link existed when the deadline passed; the
       write reads ownership when it runs, so say that. `CaptureStatus`'s docstring, the module
@@ -2200,6 +2200,26 @@ carries what T673's dry run read.
       contrast that proves less than it names:** the other-status rows of the withdrawal tests
       carry no claim time, so a stale-claim clause that lost its status check would leave them
       untouched; give them an old one
+- [ ] T721b Close #135's review of T721a (`reviewer` REJECT 2026-10-12; text only, no code and no
+      test logic at fault. Verified and not to be re-checked: the clause and its arithmetic, no
+      wrong write beyond the stated cost, the window closed as decided, the setting and where it is
+      declared, the tests, and T722's added fact). **The residual reaches two readers, not three:**
+      the deadline sweep runs only inside a cycle, after the write and with its instant, and the
+      write's deadline clause contains the sweep's, so a row that lost its owner inside the lead is
+      withdrawn before the sweep reads it and raises no `deadline_breach`. Between cycles only the
+      admission gate and the nightly audit read the table. Say so wherever the residual is stated:
+      the module paragraph and the method's docstring in `capture.py`, the module paragraph and the
+      comment on the excluded statuses in `run.py`, and T721a's entry; and wherever a text says
+      "the readers" for it: the docstrings of the withdrawal tests and of the sweep test, and the
+      setting's comment in `.env.example`. **Pin it:** in the residual test the second cycle runs at
+      an instant after the deadline, and the row is withdrawn with no `deadline_breach` naming it.
+      **Two facts in T721a's entry:** `packages/storage/src/aoe2stats_storage/revision.py` never
+      said when the write acts and is not one of the texts to correct; the lead has no default, the
+      key is required and `.env.example` declares its value. **A leftover:**
+      `packages/storage/tests/test_models.py` still says the claim refuses a capture once its
+      deadline has passed. **Stated a little wide, narrow it:** the cost names a relink inside the
+      lead; a relink before the write has reached the row is still claimed, and a lifted objection
+      meets the same rows as a relink
 - [ ] T722 Show a `withdrawn` capture in the interface (filed 2026-10-12 from T721). The match
       routes serialise `replay_captures.status` as it is, for the caller's own linked profiles, so
       an objector with an active link receives `withdrawn` for a match past its capture deadline.
