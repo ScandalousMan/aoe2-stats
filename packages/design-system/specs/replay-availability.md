@@ -50,7 +50,7 @@ Constitution X.
 ## 3. The four states (FR-025, mandatory — do not re-derive)
 
 Each of R8's four `availability` values gets its own label and its own `Badge` tone — **not**
-collapsed the way `capture-state-badge.md` §3 collapses seven raw statuses into four labels. FR-025's
+collapsed the way `capture-state-badge.md` §3 collapses eight raw statuses into five labels. FR-025's
 "distinguish and display" is stronger here: `expired` and `never_recorded` are both permanently
 unobtainable, and folding them into one "Lost" label the way that badge folds three raw statuses would
 recreate exactly the failure `capture-state-badge.md` §3 was written to prevent for a different pair

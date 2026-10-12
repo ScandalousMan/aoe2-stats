@@ -15,14 +15,14 @@ here, see §3), `Skeleton`.
 
 Tell the user, per match, what will happen to their replay — in one word they can read at a glance,
 plus the one further sentence that decides whether they have anything to do about it. `replay_captures.status`
-carries **seven** raw values (`data-model.md`); this badge is the single place their collapse into a
-user-facing state is decided, so no two call sites invent a different mapping.
+carries **eight** raw values (`data-model.md`'s seven and `withdrawn`); this badge is the single
+place their collapse into a user-facing state is decided, so no two call sites map them differently.
 
 ## 2. Anatomy
 
 ```
 CaptureStateBadge
-├─ Badge              the coloured pill: shared-primitives.md's Badge, one of four new tone variants
+├─ Badge              the pill: shared-primitives.md's Badge, one of four tone variants or neutral
 └─ SecondaryLine       optional — a countdown or a reason, never both, never invented text
 ```
 
@@ -31,7 +31,7 @@ by colour or shape alone" — the label is the carrier, the tone is reinforcemen
 would be a third channel repeating the same word with the added cost of one more asset to justify
 under constitution X (see `shared-primitives.md`'s IP note).
 
-## 3. The four-state collapse (FR-019, FR-026, mandatory — do not re-derive)
+## 3. The five-state collapse (FR-019, FR-026, mandatory — do not re-derive)
 
 | `replay_captures.status`           | Badge label         | Tone      |
 | ---------------------------------- | ------------------- | --------- |
@@ -39,6 +39,7 @@ under constitution X (see `shared-primitives.md`'s IP note).
 | `pending`, `downloading`           | **Still catchable** | `warning` |
 | `unavailable`, `expired`, `failed` | **Lost**            | `danger`  |
 | `quarantined`                      | **Needs review**    | `info`    |
+| `withdrawn`                        | **Not archived**    | `neutral` |
 
 **The user-facing label for `stored` is "Archived", not "safe".** `data-model.md`'s own
 one-word-per-side rule states this directly: "'Archived' is the user-facing label for the same
@@ -49,13 +50,12 @@ T065's docstring use "archived" for the rendered label for the same reason. **"A
 spelling that may appear on screen, in copy, in Storybook story names and in visual acceptance
 criteria for this state — never "safe".**
 
-**`downloading` is not a fifth state.** It means a run holds this row right now; it resolves to
-`stored` or `quarantined` within seconds. A user who loads the page mid-cycle sees "Still catchable"
-exactly as they would a second before or after — never a fourth label they would have to look up.
+**`downloading` is not a state of its own.** A run holds the row right now and resolves it to
+`stored` or `quarantined` within seconds; a page loaded mid-cycle reads "Still catchable" all along.
 
 **The collapse is in the badge only.** `GET /api/matches` and `GET /api/matches/{game_id}` return
 the raw `capture_status` value untouched (`test_matches_list.py`, `test_capture_visibility.py`) —
-this component is where the seven values become four, and nowhere else. The three statuses behind
+this component is where the eight values become five, and nowhere else. The three statuses behind
 "Lost" travel to this component intact, and it renders the **reason** as `SecondaryLine`, because
 they differ in the one way that matters to the reader:
 
@@ -75,10 +75,23 @@ unreadable; per FR-028's literal "archived" scope, `CaptureStateBadge` and `Matc
 (`match-history.md` §5) do **not** offer a download for this state — the row is evidence for
 operators, not a file the product hands the user as their archive.
 
+**`withdrawn` is a fifth state, not a fourth "Lost" status (T721).** Archival was not running for
+the profile when the capture window closed — its owner had objected, or no account was linked — so
+the row is a rule carried out, not a failure. `danger` on every such match of an objector's history
+is the red banner `archival-control.md` §4.3 rules out, a right turned into a penalty. Hence
+`Badge`'s existing `neutral` variant, no new token or pair (§8), and the label "Not archived", true
+whether or not the row holds a committed object. `SecondaryLine`, `detail` only: "Archival was not
+running for this profile when this match's capture window closed, so its replay is not in your
+archive. There is nothing for you to do." `compact` shows the pill alone, as `stored` does: with no
+recourse to weigh, one sentence repeated down an objector's list is that banner in small print.
+**No upload, no download** — `manual-upload.md` §2's gate stays the three "Lost" statuses. The row
+may hold a committed object an upload would overwrite (constitution IV; why `quarantined` is
+withheld), and an objection stops all further capture for as long as it stands (constitution IX).
+
 ## 4. Variants and sizes
 
-**Tone** — one of `success`, `warning`, `danger`, `info`, set by the table in §3, never chosen by the
-caller. `CaptureStateBadge` takes `captureStatus` (one of the seven raw values) and
+**Tone** — one of `success`, `warning`, `danger`, `info` or `neutral`, set by the table in §3, never
+chosen by the caller. `CaptureStateBadge` takes `captureStatus` (one of the eight raw values) and
 `captureDeadlineAt` (ISO 8601 or `null`) as its only inputs and derives the tone, the label and the
 `SecondaryLine` itself — a call site never passes a label or a tone directly, which is what keeps
 every match row and the detail panel from ever disagreeing about what a given status means.
@@ -91,33 +104,22 @@ every tone and every label; only the `SecondaryLine`'s phrasing and layout diffe
 
 **Renamed from `context` to `variant` (FR-032, FR-066, T557).** Every other component whose
 rendering depends on where it is embedded (`ProfileSummary`, `StatValue`, `SignInScreen`) calls that
-prop `variant`; `CaptureStateBadge` alone called the identical thing `context`, which is the shape
-of collision FR-032 exists to close. There is no semantic difference the old name protected — like
-`CivilisationIconSize`, `MapThumbnailSize` and every other embedding-dependent scale in this system,
-the caller picks one of a closed set of shapes based on where it places the component, and that is
-what `variant` already means everywhere else. This is the deprecation procedure's first real
-subject (T570, ahead of the procedure itself being written down in T573/`GOVERNANCE.md`): the old
-prop name `context` and the old type name `CaptureStateBadgeContext` are retired, `variant` and
-`CaptureStateBadgeVariant` replace them, and every consumer moved in the same change —
-`CaptureStateBadge`'s own `index.tsx` and `countdown.ts`, its tests and stories, and the two call
-sites, `MatchRow` and `MatchDetailPanel`. No behaviour changed: the two values and everything they
-render are identical, only the prop and the type are renamed.
+prop `variant`; this one alone called it `context`, the collision FR-032 exists to close. `context`
+and the type `CaptureStateBadgeContext` are retired for `variant` and `CaptureStateBadgeVariant`;
+every consumer moved in the same change and nothing rendered changed (`GOVERNANCE.md`, Record).
 
 **Sizes** — none of its own; the pill is `Badge`'s one size (`space-5` tall) in both variants.
 
 ## 5. Badge tone variants (new, added to `shared-primitives.md`'s `Badge`)
 
 Four variants join `neutral` and `accent`, following the same construction: a neutral fill and a
-tone-coloured label, never a tone-coloured fill. This is deliberate and reuses, rather than invents,
-contrast headroom — the README's measured contrast table already asserts `success`, `warning`,
-`danger` and `info` against `surface-raised` at the 4.5:1 normal-text floor in both themes
+tone-coloured label, never a tone-coloured fill. This reuses contrast headroom rather than inventing
+it: the README's measured contrast table already asserts `success`, `warning`, `danger` and `info`
+against `surface-raised` at the 4.5:1 normal-text floor in both themes
 (`tokens/build-tokens.test.mjs`, "warning clears the 4.5:1 ... floor" and "info, success and danger
-clear the 4.5:1 floor", both against `surface-raised`) because `Callout` already renders the
-identical pair for its heading. A tone-tinted **fill** would be a new, unmeasured pair and is exactly
-the kind of value this spec is not licensed to invent (README: "a spec never publishes a raw value
-for a component to copy"); reusing the neutral-fill-plus-coloured-label shape `accent` already
-established keeps every pair this badge needs inside what is already measured and already asserted
-in the build.
+clear the 4.5:1 floor"), because `Callout` already renders the identical pair for its heading. A
+tone-tinted **fill** would be a new, unmeasured pair, a value this spec is not licensed to invent
+(README: "a spec never publishes a raw value for a component to copy").
 
 | Variant   | Fill             | Label colour | Boundary             |
 | --------- | ---------------- | ------------ | -------------------- |
@@ -127,16 +129,14 @@ in the build.
 | `info`    | `surface-raised` | `info`       | `border-transparent` |
 
 Unlike `accent` (which substitutes `accent-active` for light theme text because plain `accent` on
-`surface-raised` does not clear AA there), none of these four need a per-theme substitution: the
-README table shows `success`, `warning`, `danger` and `info` each clear 4.5:1 against `surface-raised`
-in **both** themes using the same token in each, so the Tailwind class is a single `text-{tone}`,
-with no `dark:` override, mirroring `Badge`'s existing `neutral` variant rather than its `accent`
-one.
+`surface-raised` does not clear AA there), none of these four needs a per-theme substitution: the
+README table shows each clears 4.5:1 against `surface-raised` in **both** themes with the same
+token, so the class is a single `text-{tone}` with no `dark:` override, as `neutral`'s is.
 
 ## 6. States
 
 The interaction-state vocabulary (default / hover / focus-visible / active / disabled / loading /
-error / empty) applies to the whole component, not to be confused with the four _capture_ states in
+error / empty) applies to the whole component, not to be confused with the five _capture_ states in
 §3.
 
 - **default** — as tabled in §3/§5.
@@ -148,17 +148,16 @@ error / empty) applies to the whole component, not to be confused with the four 
   `Skeleton/text` sized to the pill's footprint (`space-5` tall, `~90px` wide) in place of
   `CaptureStateBadge` — never a placeholder tone and never an empty pill. Matches `Badge`'s own rule
   that a state change is a `Skeleton`, not a flicker through a wrong colour.
-- **error** — `capture_status` is present but is not one of the seven known `CaptureStatus` values
+- **error** — `capture_status` is present but is not one of the eight known `CaptureStatus` values
   (a forward-compatibility guard, not an expected case today): render `Badge/neutral` with the raw
-  string as the label, and no `SecondaryLine`. Never render nothing, and never guess a tone for a
-  value this component cannot honestly classify.
+  string as the label, and no `SecondaryLine`. Never render nothing, never guess a tone, and never
+  let a known status reach this fallback: `withdrawn` reads "Not archived", never its raw word (§3).
 - **empty** — no `ReplayCapture` row exists yet for this match (`capture_status` absent/`null` in the
   API response — `test_matches_list.py`'s own note that this can happen before discovery inserts one,
   T053). Render nothing: an absent badge on a just-discovered match is honest; a badge guessing
   "Still catchable" ahead of the row that would justify it is not. Additionally, if `captureStatus`
-  is `pending`/`downloading` but `captureDeadlineAt` is `null` (should not happen per `data-model.md`
-  — "every discovered match acquires one at discovery time" — but never trusted blindly): render the
-  "Still catchable" pill with no `SecondaryLine`, never a countdown built from a missing value.
+  is `pending`/`downloading` but `captureDeadlineAt` is `null` (ruled out by `data-model.md`, never
+  trusted): render the pill with no `SecondaryLine`, never a countdown built from a missing value.
 - **selection** — not applicable; a capture-state pill is not a set member.
 - **expansion** — not applicable; the pill never reveals a second surface. The full sentence in
   `detail`'s `SecondaryLine` is a variant choice (§4), not a disclosure the reader triggers.
@@ -170,8 +169,7 @@ error / empty) applies to the whole component, not to be confused with the four 
 
 - Unit is **days** while at least 1 full day remains to `capture_deadline_at` (floor, not round —
   "6 days left" never means less than 144 hours remain); **hours** below that while at least 1 full
-  hour remains; **minutes** below that. Never seconds — a 21-day budget has no use for second-level
-  precision and it would recompute needlessly.
+  hour remains; **minutes** below that. Never seconds — a 21-day budget has no use for them.
 - Correct pluralisation (`"1 day left"`, not `"1 days left"`).
 - Recomputed on an interval no coarser than once per minute while the component is mounted; this is
   a text update, not an animation, and carries no transition — §"Numbers before atmosphere"
@@ -183,13 +181,13 @@ error / empty) applies to the whole component, not to be confused with the four 
 
 ## 8. Tokens used
 
-Colour: `surface-raised` (pill fill), `success`, `warning`, `danger`, `info` (label, per §5),
-`text-secondary` (`SecondaryLine`), `border-transparent` (pill boundary, all four new variants).
-Radius `full` (pill). Font: `sans`, size `xs`, weight `semibold`, tracking `wide` for the label
-(unchanged from `Badge`); `sans`, size `xs`, weight `normal` for `SecondaryLine`.
+Colour: `surface-raised`, `border-transparent` (tone pill fill and boundary), `success`, `warning`,
+`danger`, `info` (label, per §5); `surface-sunken`, `border` (the `neutral` pill of "Not archived");
+`text-secondary` (that pill's label, and `SecondaryLine`). Radius `full` (pill). Font: `sans`, size
+`xs` throughout; label weight `semibold`, tracking `wide`; `SecondaryLine` weight `normal`.
 
-Gaps in play: none. Every pair this component needs is already measured and asserted in
-`tokens/build-tokens.test.mjs` (§5); no new token or new pair is introduced.
+Gaps in play: none. The four tone pairs are measured and asserted in `tokens/build-tokens.test.mjs`
+(§5); `neutral`'s pair is a row of the README table in both themes. No new token, no new pair.
 
 ## 9. Spacing
 
@@ -202,21 +200,20 @@ Gaps in play: none. Every pair this component needs is already measured and asse
 
 `compact` variant wraps `SecondaryLine` onto its own line below 640px-equivalent row width rather
 than truncating — a countdown or a reason is exactly the text this product refuses to ellipsise
-(`profile-summary.md`'s "Figures never ellipsise at any viewport" extends here: this is the same
-discipline applied to the sentence explaining a figure's absence). `detail` variant always stacks,
-at every viewport.
+(`profile-summary.md`'s "Figures never ellipsise at any viewport", applied here to the sentence
+explaining a figure's absence). `detail` variant always stacks, at every viewport.
 
 ## 11. Accessibility
 
 - The label is real text in document order, immediately followed by `SecondaryLine` when present —
   never colour alone, never an `aria-label` standing in for visible text.
-- `SecondaryLine`, when it states a reason for `unavailable`/`expired`/`failed`/`quarantined`, is
-  programmatically associated with the pill (e.g. `aria-describedby`) so a screen-reader user
-  reaches the reason immediately after the label, not only by continuing to read the row.
+- `SecondaryLine`, when it states a reason (`unavailable`/`expired`/`failed`/`quarantined`, and
+  `withdrawn` in `detail`), is programmatically associated with the pill (e.g. `aria-describedby`)
+  so a screen-reader user reaches the reason right after the label, not only by reading on.
 - The `error` fallback (§6) never omits text: a status this component cannot classify still reads as
   a word, not as a blank pill a screen reader skips silently.
-- Contrast per `shared-primitives.md`'s README table, §5 above: all four tones clear 4.5:1 on
-  `surface-raised` in both themes.
+- Contrast per the README table (§5, §8): all four tones clear 4.5:1 on `surface-raised`, and
+  `neutral`'s `text-secondary` clears it on `surface-sunken`, in both themes.
 
 ## 12. Visual acceptance criteria
 
@@ -226,11 +223,14 @@ at every viewport.
       `capture-state-badge.md`, `match-history.md` and their stories.
 - [ ] The three "Lost" stories (`unavailable`, `expired`, `failed`) show the identical "Lost" pill
       and three visibly different `SecondaryLine` sentences in the same screenshot set.
+- [ ] The `withdrawn` stories show a "Not archived" pill in `Badge`'s `neutral` paint (sunken fill,
+      visible border) — never the `danger` ink of "Lost", never the word "withdrawn" — alone
+      in `compact`, and above §3's one sentence in `detail`.
 - [ ] The "Still catchable" story shows a countdown in the correct unit for its seeded
       `capture_deadline_at` (days / hours / minutes fixtures each get their own story).
-- [ ] The "Needs review" story never shows a download affordance in the `MatchDetailPanel` combined
-      story (cross-checked against `match-history.md`'s own acceptance criteria).
-- [ ] Converting any tone story to greyscale still leaves the four states distinguishable by label
+- [ ] In `MatchDetailPanel`'s combined story, "Not archived" shows neither a download nor an upload
+      affordance, and "Needs review" no download affordance (see `match-history.md` §10).
+- [ ] Converting any state story to greyscale still leaves the five states distinguishable by label
       text alone.
 - [ ] Loading story: a `Skeleton` matches the pill's footprint, no reflow against the loaded story.
 - [ ] Empty story (no capture row yet): nothing renders where the badge would sit — confirmed by
