@@ -2171,7 +2171,10 @@ carries what T673's dry run read.
       `packages/design-system/specs/capture-state-badge.md` and `CaptureStateBadge` name seven raw
       values collapsed into four states; an eighth falls to the component's unknown-status state, a
       neutral badge carrying the raw word. `apps/web/src/features/replays/uploadEligibility.ts`
-      offers the manual upload for `unavailable`, `expired` and `failed` only. The
+      offers the manual upload for `unavailable`, `expired` and `failed` only, and withholds it from
+      `quarantined` because that row's bytes are already stored. A `withdrawn` row can hold a
+      committed object too: the upload route in `apps/api/src/aoe2stats_api/routers/replays.py`
+      refuses a `stored` row only, and puts the uploaded bytes under the row's object key. The
       `product-designer` first: which of the four states `withdrawn` reads as, its wording, and
       whether the manual upload is offered. That spec's lines are cited by number; keep its line
       count. Its own branch and pull request, after #135
