@@ -29,8 +29,8 @@ before its deadline is left.
 Across the window: after one cycle over a refused row whose deadline is inside the lead, at an
 instant after that deadline the admission gate admits and the audit's assertion finds nothing. The
 residual is asserted as what the code does: a row owned at the cycle that loses its owner inside
-the lead and before its deadline is `pending` past that deadline, counted by the readers, until the
-next cycle withdraws it.
+the lead and before its deadline is `pending` past that deadline, counted by the admission gate and
+the audit, until the next cycle withdraws it before the deadline sweep reads it.
 """
 
 from __future__ import annotations
@@ -558,13 +558,17 @@ async def test_after_one_cycle_with_a_lead_of_zero_the_readers_count_the_row_pas
 async def test_a_row_that_loses_its_owner_after_the_cycle_is_counted_until_the_next_cycle(
     db_session: AsyncSession,
     session_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The residual, as what the code does and not as a decision. A row owned at the cycle, with
     its deadline inside the lead, is left; its user then unlinks, before the deadline. At an
     instant after the deadline and before the next cycle it is still `pending`, and the admission
-    gate and the audit count it. The next cycle withdraws it."""
+    gate and the audit count it. The deadline sweep does not: the next cycle runs at an instant
+    after the deadline, and it withdraws the row before the sweep reads it, so no `deadline_breach`
+    names it. This fails if the write runs after the sweep."""
     from scripts.checks.capture_audit import captures_pending_past_deadline
 
+    import aoe2stats_ingester.run as run_module
     from aoe2stats_analyzer.admission import deadline_gate_admits
     from aoe2stats_ingester.run import run_once
 
@@ -592,6 +596,10 @@ async def test_a_row_that_loses_its_owner_after_the_cycle_is_counted_until_the_n
     overdue = await captures_pending_past_deadline(db_session, now=after_the_deadline)
     assert [capture.id for capture in overdue] == [capture_id]
 
+    # The next cycle, at an instant after the row's deadline: `run_once` reads it for the instant
+    # the write and the sweep share (`finished_at`).
+    monkeypatch.setattr(run_module, "_now", lambda: after_the_deadline)
     await run_once(30, trigger="test", stages=(drain,), session_factory=session_factory)
 
     assert (await _snapshot(db_session, capture_id))["status"] == CaptureStatus.WITHDRAWN
+    assert await _deadline_breach_capture_ids(session_factory) == []

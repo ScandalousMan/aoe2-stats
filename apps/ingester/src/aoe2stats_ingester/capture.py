@@ -84,12 +84,15 @@ ingest cycles, or a row can reach its deadline between two cycles; the schedule 
 `vercel.json`. It is one `UPDATE` that writes the status and a fixed reason in `last_error` and
 nothing else: `object_key`, `zip_sha256`, `attempts` and `claimed_at` stay, and no object is read,
 written or deleted. It raises no alert. A row whose deadline is further away than the lead is left
-as it is, so a profile relinked before the write reaches its row is claimed as before; one relinked
-after finds the row `withdrawn`, which the claim never takes, and discovery queues no second
-capture for its `(game_id, profile_id)` pair. **Not closed:** the write reads ownership when it
-runs. A row whose profile loses its archiving owner inside the lead, and less than one cycle before
-its deadline, stays `pending` past that deadline until the next cycle, and the sweep, the audit and
-the admission gate count it until then.
+as it is, so a profile that gains an archiving owner again (a relink, or an objection lifted)
+before the write reaches its row is claimed as before; once the write has withdrawn the row, such a
+profile finds it `withdrawn`, which the claim never takes, and discovery queues no second capture
+for its `(game_id, profile_id)` pair. **Not closed:** the write reads ownership when it runs. A row
+whose profile loses its archiving owner inside the lead, and less than one cycle before its
+deadline, stays `pending` past that deadline until the next cycle, and the admission gate and the
+nightly audit count it until then. The deadline sweep does not: it runs only inside `run_once`,
+after the write and at the same instant, and the write's deadline clause contains the sweep's, so
+the next cycle withdraws the row before the sweep reads it.
 
 **The per-user fairness cap is wired in here, not reimplemented here** (T058's own gap: `quota.py`
 shipped `apply_quota` fully tested in isolation, but nothing in this module ever called it, so
@@ -1037,11 +1040,13 @@ class CaptureDrain:
         and a row whose profile has an active link whose user has not objected are not matched.
 
         The lead has to exceed the longest gap between two ingest cycles; the schedule lives in
-        `vercel.json`. A profile relinked after the write has reached its row finds it `withdrawn`.
-        **Not closed:** ownership is read when this runs, so a row whose profile loses its
-        archiving owner inside the lead, and less than one cycle before its deadline, stays
-        `pending` past that deadline until the next cycle, and the sweep, the audit and the
-        admission gate count it until then.
+        `vercel.json`. Once this has withdrawn a row, a profile that gains an archiving owner again
+        (a relink, or an objection lifted) finds it `withdrawn`. **Not closed:** ownership is read
+        when this runs, so a row whose profile loses its archiving owner inside the lead, and less
+        than one cycle before its deadline, stays `pending` past that deadline until the next
+        cycle, and the admission gate and the nightly audit count it until then. The deadline
+        sweep does not: it runs only inside `run_once`, after this and at the same instant, and
+        this deadline clause contains the sweep's, so the next cycle withdraws the row first.
 
         `run_once` (`run.py`) calls it once per cycle, with the instant it then uses for the
         deadline sweep, before that sweep (`DeadlineWithdrawing`).

@@ -2183,7 +2183,8 @@ carries what T673's dry run read.
       relinked inside the lead finds its row `withdrawn`; the claim takes a refused row only until
       the write has reached it. **What it does not close, state it:** a row whose profile loses its
       archiving owner inside the lead, and less than one cycle before the deadline, is still
-      `pending` past its deadline until the next cycle, and the three readers count it until then.
+      `pending` past its deadline until the next cycle. The admission gate and the audit count it
+      until then; the deadline sweep never does, the next cycle's write reaching it first.
       **Red first:** a refused row whose deadline is one hour inside the lead is withdrawn; with a
       lead of zero it is not. Contrasts: one hour outside the lead, left as it is; an owned row
       inside the lead, left as it is; a row past its deadline, withdrawn as before. The earlier
@@ -2195,12 +2196,12 @@ carries what T673's dry run read.
       docstring says a refused row is claimable until its deadline passes; say until the write has
       withdrawn it. The fixed reason reads as if no link existed when the deadline passed; the
       write reads ownership when it runs, so say that. `CaptureStatus`'s docstring, the module
-      paragraphs of `capture.py` and `run.py`, the audit's comment, the revision's docstring and
-      `revision.py` say the write acts once the deadline has passed; each says the lead. **A
+      paragraphs of `capture.py` and `run.py`, the audit's comment and the revision's docstring
+      say the write acts once the deadline has passed; each says the lead. **A
       contrast that proves less than it names:** the other-status rows of the withdrawal tests
       carry no claim time, so a stale-claim clause that lost its status check would leave them
       untouched; give them an old one
-- [ ] T721b Close #135's review of T721a (`reviewer` REJECT 2026-10-12; text only, no code and no
+- [x] T721b Close #135's review of T721a (`reviewer` REJECT 2026-10-12; text only, no code and no
       test logic at fault. Verified and not to be re-checked: the clause and its arithmetic, no
       wrong write beyond the stated cost, the window closed as decided, the setting and where it is
       declared, the tests, and T722's added fact). **The residual reaches two readers, not three:**

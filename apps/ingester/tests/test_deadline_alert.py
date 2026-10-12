@@ -491,7 +491,8 @@ async def test_a_refused_pending_capture_past_its_deadline_is_still_counted_whil
     `capture_deadline_at` alone: while the row is still `pending` it raises `deadline_breach` for
     it, exactly as for one the drain failed to reach. `stages=()` has no drain stage, so nothing
     withdraws the row first (`test_withdraw_refused_near_deadline.py` covers a cycle with one, and
-    the row that loses its owner after that cycle and is counted until the next)."""
+    the row that loses its owner after that cycle: the gate and the audit count it until the next
+    cycle, which withdraws it before this sweep reads it)."""
     from aoe2stats_ingester.run import run_once
 
     capture_id = await _seed_unclaimable_capture(session_factory, owner, CaptureStatus.PENDING)

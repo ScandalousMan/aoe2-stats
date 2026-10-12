@@ -75,7 +75,8 @@ schedule is in `vercel.json`); `withdrawn` is one of the sweep's excluded status
 no such stage (`stages=()`) withdraws nothing, and the sweep names a refused `pending` row past its
 deadline as it names any other. A row whose profile loses its archiving owner inside the lead, and
 less than one cycle before its deadline, is still `pending` past it until the next cycle, and the
-sweep counts it until then.
+admission gate and the nightly audit count it until then; the sweep does not, since it runs after
+the write with the same instant and the write's deadline clause contains the sweep's.
 
 **`DEFAULT_STAGES` staying `()` was never this module's fix to make — and, as of T060, it no
 longer needs to be.** `DiscoverStage` (`discover.py`, T053), `ReconcileStage` (`reconcile.py`,
@@ -393,8 +394,9 @@ _DEADLINE_BREACH_ALERT_SEVERITY = 1
 #: T721 adds `WITHDRAWN`: terminal, written by `CaptureDrain.withdraw_refused_near_deadline` to a
 #: row the claim refuses once its capture deadline is within the withdrawal lead or past, and never
 #: taken by the claim. The write runs before this sweep in `run_once`, so a row it has just
-#: withdrawn is not named here. A refused row not yet withdrawn (a cycle with no
-#: `DeadlineWithdrawing` stage, or one that lost its owner after the write ran) is still swept.
+#: withdrawn is not named here. A refused row not yet withdrawn in a cycle with no
+#: `DeadlineWithdrawing` stage is still swept. A row that lost its owner after an earlier write is
+#: not: the write's deadline clause contains this sweep's, so the cycle withdraws it first.
 #:
 #: `scripts/checks/capture_audit.py`'s `_RESOLVED_STATUSES` mirrors this tuple exactly — see that
 #: constant's own comment — and must be kept in sync by hand for the same reason `_nearest_rank`
