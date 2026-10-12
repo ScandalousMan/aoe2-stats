@@ -86,7 +86,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { createRequire } from 'node:module'
-import { expect, test, type Locator, type Page } from '@playwright/test'
+import { expect, test } from './fixtures/story-requests'
+import type { Locator, Page } from '@playwright/test'
 import { PNG } from 'pngjs'
 import { FULL_PAGE_TAG } from '../../scripts/visual/story-index.mjs'
 import {
