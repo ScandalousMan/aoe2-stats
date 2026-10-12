@@ -46,11 +46,11 @@ cause instead of two.
 
 **Capture status travels intact.** Per T073's own note (quoted in `test_capture_visibility.py`),
 the collapse of `unavailable`/`expired`/`failed` into a single "lost" badge state belongs to the
-design-system component, not the data layer. This module returns `ReplayCapture.status` — all
-seven raw values, including `quarantined` — completely unmodified, via a `LEFT OUTER JOIN` so a
-match that has not yet acquired a capture row (should not happen once discovery has run per
-`data-model.md`, but is not this repository's invariant to enforce) still comes back rather than
-being silently dropped by an inner join.
+design-system component, not the data layer. This module returns `ReplayCapture.status` — every
+raw value, including `quarantined` and `withdrawn` — completely unmodified, via a `LEFT OUTER
+JOIN` so a match that has not yet acquired a capture row (should not happen once discovery has run
+per `data-model.md`, but is not this repository's invariant to enforce) still comes back rather
+than being silently dropped by an inner join.
 """
 
 from __future__ import annotations

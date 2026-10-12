@@ -274,6 +274,7 @@ def build_ingest_stages(settings: Settings) -> tuple[Stage, ...]:
         replay_publication_grace_hours=settings.replay_publication_grace_hours,
         max_captures_per_user_per_run=settings.ingest_max_captures_per_user_per_run,
         quota_exempt_days=settings.ingest_quota_exempt_days,
+        withdraw_lead_hours=settings.ingest_withdraw_lead_hours,
     )
 
     return (discover, reconcile, drain)

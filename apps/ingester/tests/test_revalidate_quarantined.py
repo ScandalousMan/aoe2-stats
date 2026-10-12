@@ -45,6 +45,7 @@ from typing import Any
 import pytest
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from tests.links import link_profile
 
 from aoe2stats_core.replay.validation import (
     EngineParseError,
@@ -61,7 +62,6 @@ from aoe2stats_storage.models import (
     Match,
     ProfileLink,
     ReplayCapture,
-    SteamIdentity,
     User,
 )
 from aoe2stats_storage.objects import ObjectNotFound, replay_object_key
@@ -1252,34 +1252,10 @@ async def _link_profile(
     unlinked: bool = False,
     second_user: bool = False,
 ) -> uuid.UUID:
-    """A user (with a Steam identity) linked to `profile_id`; returns the user's id.
-    `second_user` gives the identity a different Steam id, for a profile linked twice over time
-    (the first link ended with `unlinked=True`)."""
-    now = datetime.now(UTC)
-    user_id = uuid.uuid4()
-    steam_id64 = f"{'76561199' if second_user else '76561198'}{profile_id:010d}"
-    db_session.add(
-        User(
-            id=user_id,
-            created_at=now,
-            allowlisted_at=now,
-            archival_objected_at=now if objected else None,
-        )
-    )
-    db_session.add(
-        SteamIdentity(steam_id64=steam_id64, user_id=user_id, verified_at=now, last_sign_in_at=now)
-    )
-    await db_session.flush()
-    db_session.add(
-        ProfileLink(
-            id=uuid.uuid4(),
-            user_id=user_id,
-            profile_id=profile_id,
-            steam_id64=steam_id64,
-            is_primary=True,
-            linked_at=now,
-            unlinked_at=now if unlinked else None,
-        )
+    """`tests.links.link_profile` (the one shared helper), committed: the re-validation reads
+    through its own session."""
+    user_id = await link_profile(
+        db_session, profile_id, objected=objected, unlinked=unlinked, second_user=second_user
     )
     await db_session.commit()
     return user_id
@@ -1350,20 +1326,48 @@ async def test_an_objecting_users_capture_is_not_offered_by_a_dry_run_either(
     assert report.outcomes == ()
 
 
-def test_the_claim_keeps_its_own_predicate_and_the_revalidation_uses_the_archiving_set() -> None:
-    """Level: the code. The claim still excludes a *found* objection (`_objecting_owner_exists`;
-    T673b does not change the claim path), while the re-validation's selection and both of its
-    guarded writes use `_owner_is_archiving`, which is `discover.archiving_links`'s set."""
+def _names_called_by(function: Any) -> set[str]:
+    """The names a function's *code* calls, its docstring left out: `inspect.getsource` includes
+    the docstring, and a docstring that spells a call proves nothing about the body."""
+    import ast
     import inspect
+    import textwrap
 
+    definition = ast.parse(textwrap.dedent(inspect.getsource(function))).body[0]
+    assert isinstance(definition, ast.FunctionDef | ast.AsyncFunctionDef)
+    body = definition.body
+    if (
+        body
+        and isinstance(body[0], ast.Expr)
+        and isinstance(body[0].value, ast.Constant)
+        and isinstance(body[0].value.value, str)
+    ):
+        body = body[1:]
+    called: set[str] = set()
+    for statement in body:
+        for node in ast.walk(statement):
+            if isinstance(node, ast.Call):
+                target = node.func
+                if isinstance(target, ast.Name):
+                    called.add(target.id)
+                elif isinstance(target, ast.Attribute):
+                    called.add(target.attr)
+    return called
+
+
+def test_the_claim_and_the_revalidation_share_the_archiving_predicate() -> None:
+    """Level: the code, read without docstrings. The claim (T713), the re-validation's selection
+    and both of its guarded writes all call `_owner_is_archiving`, which calls
+    `discover.archiving_links`; the claim's old exclusion of a *found* objection
+    (`_objecting_owner_exists`) is only a label now and the claim does not call it."""
     from aoe2stats_ingester import capture
 
-    assert "_objecting_owner_exists()" in inspect.getsource(capture.CaptureDrain._claim_batch)
-    assert "_owner_is_archiving" not in inspect.getsource(capture.CaptureDrain._claim_batch)
-    assert "archiving_links()" in inspect.getsource(capture._owner_is_archiving)
-    assert "_owner_is_archiving()" in inspect.getsource(capture._revalidation_selection)
-    assert "_owner_is_archiving()" in inspect.getsource(capture.CaptureDrain._mark_stored)
-    assert "_owner_is_archiving()" in inspect.getsource(capture.CaptureDrain._mark_quarantined)
+    assert "_owner_is_archiving" in _names_called_by(capture.CaptureDrain._claim_batch)
+    assert "_objecting_owner_exists" not in _names_called_by(capture.CaptureDrain._claim_batch)
+    assert "archiving_links" in _names_called_by(capture._owner_is_archiving)
+    assert "_owner_is_archiving" in _names_called_by(capture._revalidation_selection)
+    assert "_owner_is_archiving" in _names_called_by(capture.CaptureDrain._mark_stored)
+    assert "_owner_is_archiving" in _names_called_by(capture.CaptureDrain._mark_quarantined)
 
 
 # --- Guard (level: the write guards) ---------------------------------------------------------

@@ -52,6 +52,7 @@ from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from tests.links import link_profile
 
 from aoe2stats_providers.base import NotFound
 from aoe2stats_storage.models import AoeProfile, CaptureSource, CaptureStatus, Match, ReplayCapture
@@ -219,6 +220,7 @@ async def _seed(session_factory: async_sessionmaker[AsyncSession]) -> _Seeded:
                 source=CaptureSource.AUTOMATIC,
             )
         )
+        await link_profile(session, _PROFILE_ID)
 
     return _Seeded(
         archived_capture_id=archived_capture_id,

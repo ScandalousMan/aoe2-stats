@@ -72,6 +72,28 @@ quarantined. A row that validates is marked `stored`; one that fails is rewritte
 reason the selection would still match, and any other failure leaves it untouched and is reported.
 See that method.
 
+**Withdrawal of a capture nobody may take (T721, T721a).** `_claim_batch` refuses a row whose
+profile has no active link whose user has not objected (`_owner_is_archiving`) and writes nothing
+to it, so without a further step that row would stay `pending` or `downloading` past its capture
+deadline, and `run.py`'s deadline sweep, `scripts/checks/capture_audit.py` and the analysis
+admission gate would all count it. `withdraw_refused_near_deadline`, called once per cycle by
+`run_once` before the sweep, gives such a row the terminal status `withdrawn` when
+`capture_deadline_at` is less than the withdrawal lead (`withdraw_lead_hours`,
+`INGEST_WITHDRAW_LEAD_HOURS`) away, or past. The lead has to exceed the longest gap between two
+ingest cycles, or a row can reach its deadline between two cycles; the schedule lives in
+`vercel.json`. It is one `UPDATE` that writes the status and a fixed reason in `last_error` and
+nothing else: `object_key`, `zip_sha256`, `attempts` and `claimed_at` stay, and no object is read,
+written or deleted. It raises no alert. A row whose deadline is further away than the lead is left
+as it is, so a profile that gains an archiving owner again (a relink, or an objection lifted)
+before the write reaches its row is claimed as before; once the write has withdrawn the row, such a
+profile finds it `withdrawn`, which the claim never takes, and discovery queues no second capture
+for its `(game_id, profile_id)` pair. **Not closed:** the write reads ownership when it runs. A row
+whose profile loses its archiving owner inside the lead, and less than one cycle before its
+deadline, stays `pending` past that deadline until the next cycle, and the admission gate and the
+nightly audit count it until then. The deadline sweep does not: it runs only inside `run_once`,
+after the write and at the same instant, and the write's deadline clause contains the sweep's, so
+the next cycle withdraws the row before the sweep reads it.
+
 **The per-user fairness cap is wired in here, not reimplemented here** (T058's own gap: `quota.py`
 shipped `apply_quota` fully tested in isolation, but nothing in this module ever called it, so
 FR-044 enforced nothing in production). `apply_quota` is a pure, read-only filter over a run's
@@ -202,6 +224,20 @@ VALIDATION_FAILED_ALERT_KIND = "validation_failed"
 #: not garbage), so this is not the "a replay is gone" incident constitution I reserves severity 1
 #: for. The nightly audit (T061) fails only on an unacknowledged severity-1 row.
 VALIDATION_FAILED_ALERT_SEVERITY = 2
+
+#: The `last_error` of a row `CaptureDrain.withdraw_refused_near_deadline` withdraws (T721, T721a).
+#: One fixed text, the same for every row: it names the two facts true when the write ran, that
+#: the row was inside the withdrawal lead of its capture deadline or past it, and that its profile
+#: had no active link whose user has not objected. It carries nothing about the owner.
+WITHDRAWN_REASON = (
+    "withdrawn: within the withdrawal lead of the capture deadline or past it, and no active "
+    "link whose user has not objected when the write ran"
+)
+
+#: `INGEST_WITHDRAW_LEAD_HOURS` (`.env.example`) as a constructor default: no lead, so
+#: `withdraw_refused_near_deadline` takes a row only once its deadline has passed (T721). The
+#: number a deployment runs with is the environment's alone; `build_ingest_stages` hands it down.
+DEFAULT_WITHDRAW_LEAD_HOURS = 0
 
 #: The exact text shapes `_validate_with_barrier` writes for a failure that is the *engine's*
 #: judgement of a recording (T673), each `"<ExcClass>: <text>"` or the bare class when the text is
@@ -347,12 +383,12 @@ def _is_engine_failure_reason(reason: str) -> bool:
 def _objecting_owner_exists() -> ColumnElement[bool]:
     """Correlated `EXISTS`, against the enclosing query's `replay_captures.profile_id`: the
     *currently active* link's owner has objected to archival (`profile_links.unlinked_at IS NULL
-    AND users.archival_objected_at IS NOT NULL`, constitution IX, FR-035). The claim's definition
-    of "objecting": `CaptureDrain._claim_batch` excludes exactly the rows it matches, and
-    `_count_unselected` uses it to label them. It is not the only definition in the package:
-    `discover.archiving_links` holds the inverse one (active link, user not objected), which is
-    what `_owner_is_archiving` reuses. Only a *found* objection matches; a capture with no active
-    link on record is not objecting, which is why the re-validation does not rely on this alone.
+    AND users.archival_objected_at IS NOT NULL`, constitution IX, FR-035). It labels, and it
+    decides nothing: `_count_unselected` uses it to tell an objecting owner's quarantined row from
+    one with no active owner at all. The claim does not use it (T713): `CaptureDrain._claim_batch`
+    and `revalidate_quarantined` both gate on `_owner_is_archiving`, `discover.archiving_links`'s
+    set. Only a *found* objection matches; a capture with no active link on record is not
+    objecting, which is why a label needs `_owner_is_archiving` beside this one.
     """
     return (
         select(ProfileLink.profile_id)
@@ -365,19 +401,34 @@ def _objecting_owner_exists() -> ColumnElement[bool]:
 
 
 def _owner_is_archiving() -> ColumnElement[bool]:
-    """The ownership predicate of `revalidate_quarantined`, selection and both writes alike: the
-    capture's profile has an active link (`profile_links.unlinked_at IS NULL`) held by a user who
-    has not objected (`users.archival_objected_at IS NULL`). That is `discover.archiving_links`'s
-    set, reused rather than copied. A profile has at most one active link
-    (`ix_profile_links_profile_id_active`), so this is the owner's current state.
+    """The ownership predicate, one definition for the claim, the re-validation and the withdrawal:
+    the capture's profile has an active link (`profile_links.unlinked_at IS NULL`) held by a user
+    who has not objected (`users.archival_objected_at IS NULL`). That is
+    `discover.archiving_links`'s set, reused rather than copied. A profile has at most one active
+    link (`ix_profile_links_profile_id_active`), so this is the owner's current state.
 
-    Stricter than the claim's `_objecting_owner_exists`, which excludes only a *found* objection:
-    a profile with no active link (an objector who has since unlinked it, or one nobody holds) is
-    not taken here. A quarantined capture is not an archived one (001's spec), so the carve-out
-    for recordings archived before an objection does not cover it. A capture without an active
-    owner is not selected (T673); the row and its object stay as they are.
+    `CaptureDrain._claim_batch` takes a row only when it holds (T713), a `pending` row and a stale
+    `downloading` row alike. `revalidate_quarantined` uses it for its selection and both writes
+    (T673b). A profile with no active link (an objector who has since unlinked it, a user who
+    unlinked, or one nobody holds) is taken by neither. A quarantined capture is not an archived
+    one (001's spec), so the carve-out for recordings archived before an objection does not cover
+    it. A quarantined capture without an active owner is left as it is; the row and any object
+    stay. `withdraw_refused_near_deadline` (T721) negates it, to select the `pending` and stale
+    `downloading` rows the claim refuses once their capture deadline is within the withdrawal lead
+    or past.
     """
     return ReplayCapture.profile_id.in_(archiving_links())
+
+
+def _stale_downloading(stale_before: datetime) -> ColumnElement[bool]:
+    """A `downloading` row whose claim has outlived `max_claim_age_seconds`: `claimed_at` is set and
+    older than `stale_before` (`now - max_claim_age_seconds`). The one definition of a stale claim,
+    for `CaptureDrain._claim_batch`'s second arm and for `withdraw_refused_near_deadline`."""
+    return and_(
+        ReplayCapture.status == CaptureStatus.DOWNLOADING,
+        ReplayCapture.claimed_at.is_not(None),
+        ReplayCapture.claimed_at < stale_before,
+    )
 
 
 def _revalidation_selection() -> ColumnElement[bool]:
@@ -714,6 +765,7 @@ class CaptureDrain:
         max_attempts: int = DEFAULT_MAX_ATTEMPTS,
         max_captures_per_user_per_run: int | None = None,
         quota_exempt_days: int | None = None,
+        withdraw_lead_hours: int = DEFAULT_WITHDRAW_LEAD_HOURS,
     ) -> None:
         # `test_idempotency.py` names this keyword argument `engine`; every other test file names
         # it `validator`. Both are the same `ReplayValidator` (`aoe2stats_core.replay.validation`)
@@ -740,6 +792,9 @@ class CaptureDrain:
         self._capture_budget_days = capture_budget_days  # accepted, stored, not read — see above
         self._replay_publication_grace_hours = replay_publication_grace_hours
         self._max_attempts = max_attempts  # accepted, stored, not read — T057 owns using it
+        if withdraw_lead_hours < 0:
+            raise ValueError("CaptureDrain requires withdraw_lead_hours to be zero or more")
+        self._withdraw_lead_hours = withdraw_lead_hours
 
         # T058's fairness cap (`quota.py`, FR-044): both or neither. A caller that means to enforce
         # the cap and forgot the exemption (or the reverse) gets a loud, immediate configuration
@@ -909,30 +964,31 @@ class CaptureDrain:
         clause of any kind and would download and store it anyway on the very next cycle, which is
         the exact edge case spec.md lists and `test_consent_withdrawal.py` asserts against.
 
-        `_objecting` below is `_objecting_owner_exists()` — a correlated `EXISTS`, against this
-        row's own `profile_id`, for the *currently active* link's owner having objected,
-        `profile_links.unlinked_at IS NULL AND users.archival_objected_at IS NOT NULL`, joined the
-        same way discovery joins it (`profile_links` to `users`), and shared with
-        `_count_unselected`, which labels a dry run's unselected rows with it, and with nothing
-        else: `revalidate_quarantined`'s selection and writes use a stricter predicate of their
-        own. This claim excludes exactly the rows it matches.
-        Phrased as an exclusion, not `_archiving_profile_ids()`'s own inclusion, on purpose: that
-        method's query only ever runs over profiles discovery already knows are linked, so "no
-        active link" never arises there, but `replay_captures` carries rows with no such context at
-        all (every capture-mechanics test in this package, seeded directly against
-        `Match`/`ReplayCapture` with no `profile_links`/`users` rows to speak of, being the
-        concrete case). A capture with no active, objecting owner on record is eligible exactly as
-        it always was — only a *found* objection ever removes one from this claim, never the mere
-        absence of ownership context.
+        **The claim requires an owner (T713).** The gate is `_owner_is_archiving()`: the row's
+        `profile_id` has an active link (`profile_links.unlinked_at IS NULL`) held by a user who has
+        not objected (`users.archival_objected_at IS NULL`) — `discover.archiving_links`'s set, and
+        the very predicate `revalidate_quarantined` selects and guards its writes with, so the claim
+        and the re-validation share one definition. It applies to both arms alike, a `pending` row
+        and a stale `downloading` row taken again. T089a excluded a row only when it *found* an
+        objecting owner, so a capture queued while a link stood was still fetched and stored after
+        its user unlinked the profile; 001's spec says automatic ingestion stops for a profile its
+        user unlinks (US1, acceptance scenario 6), and a row with no active link on record is now
+        refused exactly as an objector's is.
+        **A refused row** keeps its status and the claim writes nothing to it. It is claimable
+        again once its profile has an active link whose user has not objected, until
+        `withdraw_refused_near_deadline` has withdrawn it (T721, T721a): it gives the row the
+        terminal status `withdrawn`, which this claim never takes. A row with no committed object
+        is not fetched while it is refused, and the source keeps a recording for a bounded time
+        (`docs/data-sources.md`); a row with a committed object keeps it. A download already in
+        flight when its user unlinks or objects is not stopped by this gate; the normal path's
+        stored and quarantine writes carry no ownership guard.
         An already-`stored` row is never touched by this claim in the first place (its status is
-        neither `pending` nor stale `downloading`), so this gate only ever stops a capture that has
-        not yet fetched anything — objection stops further capture (FR-035); erasure, not this, is
-        what removes what was already captured (FR-037).
+        neither `pending` nor stale `downloading`); a stale `downloading` row is, and this gate
+        applies to it — objection stops further capture (FR-035); erasure, not this, is what
+        removes what was already captured (FR-037).
         """
         now = datetime.now(UTC)
         stale_before = now - timedelta(seconds=self._max_claim_age_seconds)
-
-        _objecting = _objecting_owner_exists()
 
         eligibility = and_(
             or_(
@@ -940,13 +996,9 @@ class CaptureDrain:
                     ReplayCapture.status == CaptureStatus.PENDING,
                     ReplayCapture.next_attempt_at <= now,
                 ),
-                and_(
-                    ReplayCapture.status == CaptureStatus.DOWNLOADING,
-                    ReplayCapture.claimed_at.is_not(None),
-                    ReplayCapture.claimed_at < stale_before,
-                ),
+                _stale_downloading(stale_before),
             ),
-            ~_objecting,
+            _owner_is_archiving(),
         )
         claimable_ids = select(ReplayCapture.id).where(eligibility)
         if exclude_ids:
@@ -971,6 +1023,52 @@ class CaptureDrain:
             ids = [row[0] for row in result.all()]
             await session.commit()
         return ids
+
+    # --- Withdrawing what the claim refuses (T721) -----------------------------------------
+
+    async def withdraw_refused_near_deadline(self, *, now: datetime) -> int:
+        """Set `withdrawn` and `WITHDRAWN_REASON` on every row whose capture deadline is less than
+        the withdrawal lead away or past (`capture_deadline_at < now + withdraw_lead_hours`), that
+        is `pending` (whatever its `next_attempt_at`) or a stale `downloading` row
+        (`_stale_downloading`, the claim's own definition against this drain's
+        `max_claim_age_seconds`), and that fails `_owner_is_archiving`: the rows `_claim_batch`
+        refuses. Returns how many rows it changed.
+
+        One `UPDATE`, status and `last_error` only. `object_key`, `zip_sha256`, `attempts` and
+        `claimed_at` are not written, and no object is read, written or deleted. Raises no alert.
+        A row whose deadline is further away than the lead, a `downloading` row that is not stale,
+        and a row whose profile has an active link whose user has not objected are not matched.
+
+        The lead has to exceed the longest gap between two ingest cycles; the schedule lives in
+        `vercel.json`. Once this has withdrawn a row, a profile that gains an archiving owner again
+        (a relink, or an objection lifted) finds it `withdrawn`. **Not closed:** ownership is read
+        when this runs, so a row whose profile loses its archiving owner inside the lead, and less
+        than one cycle before its deadline, stays `pending` past that deadline until the next
+        cycle, and the admission gate and the nightly audit count it until then. The deadline
+        sweep does not: it runs only inside `run_once`, after this and at the same instant, and
+        this deadline clause contains the sweep's, so the next cycle withdraws the row first.
+
+        `run_once` (`run.py`) calls it once per cycle, with the instant it then uses for the
+        deadline sweep, before that sweep (`DeadlineWithdrawing`).
+        """
+        stale_before = now - timedelta(seconds=self._max_claim_age_seconds)
+        statement = (
+            update(ReplayCapture)
+            .where(
+                ReplayCapture.capture_deadline_at
+                < now + timedelta(hours=self._withdraw_lead_hours),
+                or_(
+                    ReplayCapture.status == CaptureStatus.PENDING,
+                    _stale_downloading(stale_before),
+                ),
+                ~_owner_is_archiving(),
+            )
+            .values(status=CaptureStatus.WITHDRAWN, last_error=WITHDRAWN_REASON)
+        )
+        async with self._session_factory() as session:
+            result = await session.execute(statement)
+            await session.commit()
+        return int(result.rowcount)  # type: ignore[attr-defined]
 
     # --- Processing one claimed row ----------------------------------------------------------
 

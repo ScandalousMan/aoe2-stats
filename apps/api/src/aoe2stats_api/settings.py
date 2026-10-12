@@ -152,6 +152,10 @@ class Settings(BaseSettings):
     ingest_max_captures_per_user_per_run: int = Field(alias="INGEST_MAX_CAPTURES_PER_USER_PER_RUN")
     # Captures nearer than this to their deadline ignore the fairness cap entirely.
     ingest_quota_exempt_days: int = Field(alias="INGEST_QUOTA_EXEMPT_DAYS")
+    # T721a: how long before its capture deadline a capture nobody may claim is withdrawn. Not
+    # negative: a negative lead would withdraw a row only after its deadline, the window the lead
+    # exists to close. See .env.example for what it must exceed.
+    ingest_withdraw_lead_hours: int = Field(alias="INGEST_WITHDRAW_LEAD_HOURS", ge=0)
 
     # --- Search, favourites and analysis tuning -------------------------------------------------
     # How many players a user may favourite — see .env.example for why.

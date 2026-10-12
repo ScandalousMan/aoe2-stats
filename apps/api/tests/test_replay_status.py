@@ -254,6 +254,7 @@ async def test_replay_status_happy_path_mix_of_statuses(
         CaptureStatus.EXPIRED: 1006,
         CaptureStatus.QUARANTINED: 1007,
         CaptureStatus.FAILED: 1008,
+        CaptureStatus.WITHDRAWN: 1009,
     }
     for status, game_id in other_statuses.items():
         await _seed_match(db_session, game_id=game_id, completed_at=now - timedelta(days=10))
@@ -279,6 +280,7 @@ async def test_replay_status_happy_path_mix_of_statuses(
         "expired": 1,
         "quarantined": 1,
         "failed": 1,
+        "withdrawn": 1,
     }
     assert body["oldest_pending"]["game_id"] == older_seen_game_id
     assert body["nearest_deadline"]["game_id"] == nearer_deadline_game_id

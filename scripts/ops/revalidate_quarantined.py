@@ -27,8 +27,8 @@ failure text, and nothing else. It takes a capture only when its profile has an 
 NULL`, constitution IX), and checks that twice: when the page is selected and again inside each
 write, because a user can object or unlink while a page is being validated. A profile with no
 active link is not taken, even if its former owner never objected; that is the same set as
-`archiving_links` in `apps/ingester/src/aoe2stats_ingester/discover.py`, and stricter than the
-capture claim, which excludes only a found objection. Such a capture is not selected (T673), and
+`archiving_links` in `apps/ingester/src/aoe2stats_ingester/discover.py`, and the set the capture
+claim takes (T713). Such a capture is not selected (T673), and
 the row and its object stay as they are. It raises no `validation_failed` alert; the row raised
 one when it was first quarantined.
 

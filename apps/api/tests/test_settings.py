@@ -36,6 +36,7 @@ REQUIRED_ENV: dict[str, str] = {
     "INGEST_RUN_BUDGET_SECONDS": "240",
     "INGEST_MAX_CAPTURES_PER_USER_PER_RUN": "20",
     "INGEST_QUOTA_EXEMPT_DAYS": "7",
+    "INGEST_WITHDRAW_LEAD_HOURS": "48",
     "FAVOURITES_MAX_PER_USER": "100",
     "PLAYER_SEARCH_CACHE_TTL_SECONDS": "300",
     "PLAYER_SEARCH_MAX_PER_USER_PER_MINUTE": "20",
@@ -112,6 +113,8 @@ def test_numeric_fields_are_typed_correctly(monkeypatch: pytest.MonkeyPatch) -> 
     assert settings.ingest_max_captures_per_user_per_run == 20
     assert isinstance(settings.ingest_quota_exempt_days, int)
     assert settings.ingest_quota_exempt_days == 7
+    assert isinstance(settings.ingest_withdraw_lead_hours, int)
+    assert settings.ingest_withdraw_lead_hours == 48
     assert isinstance(settings.favourites_max_per_user, int)
     assert settings.favourites_max_per_user == 100
     assert isinstance(settings.player_search_cache_ttl_seconds, int)
@@ -416,3 +419,43 @@ def test_an_unset_request_idle_timeout_is_a_startup_error_like_every_other_key(
         get_settings()
 
     assert raised.value.keys == ["REQUEST_IDLE_IN_TRANSACTION_TIMEOUT_SECONDS"]
+
+
+# --- T721a: the withdrawal lead is configuration, validated at startup --------------------------
+
+
+@pytest.mark.parametrize("value", ["-1", "-48", "two", "1.5", ""])
+def test_withdraw_lead_outside_its_bounds_is_rejected_naming_the_key(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    """A negative lead would withdraw a row only after its deadline, the window the lead exists to
+    close."""
+    _set_all(monkeypatch, {"INGEST_WITHDRAW_LEAD_HOURS": value})
+
+    with pytest.raises(ConfigurationError) as raised:
+        get_settings()
+
+    assert raised.value.keys == ["INGEST_WITHDRAW_LEAD_HOURS"]
+
+
+@pytest.mark.parametrize("value", [0, 1, 48, 720])
+def test_withdraw_lead_accepts_zero_and_up(monkeypatch: pytest.MonkeyPatch, value: int) -> None:
+    _set_all(monkeypatch, {"INGEST_WITHDRAW_LEAD_HOURS": str(value)})
+
+    assert get_settings().ingest_withdraw_lead_hours == value
+
+
+def test_an_unset_withdraw_lead_is_a_startup_error_like_every_other_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No Python-side default (module docstring of `settings.py`): the 48 lives in
+    `.env.example`."""
+    values = dict(REQUIRED_ENV)
+    del values["INGEST_WITHDRAW_LEAD_HOURS"]
+    for key, value in values.items():
+        monkeypatch.setenv(key, value)
+
+    with pytest.raises(ConfigurationError) as raised:
+        get_settings()
+
+    assert raised.value.keys == ["INGEST_WITHDRAW_LEAD_HOURS"]

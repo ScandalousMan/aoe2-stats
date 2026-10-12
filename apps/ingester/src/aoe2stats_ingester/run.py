@@ -65,6 +65,19 @@ reverse). Building a fresh engine per call rather than holding one across calls 
 `build_engine`'s own `NullPool` choice is for (research §4): every process this code runs in is
 short-lived and connects through Neon's pooled endpoint, so there is nothing here to amortise.
 
+**T721, T721a — withdrawing what the claim refuses, before the sweep.** `CaptureDrain._claim_batch`
+takes a row only when its profile has an active link whose user has not objected, so a refused row
+keeps its status. After the stages have run and before `_raise_deadline_breach_alert`, `run_once`
+asks every stage that implements `DeadlineWithdrawing` (the drain) to give such a row the terminal
+status `withdrawn` when its capture deadline is less than the withdrawal lead away, or past
+(`INGEST_WITHDRAW_LEAD_HOURS`, which has to exceed the longest gap between two cycles; the
+schedule is in `vercel.json`); `withdrawn` is one of the sweep's excluded statuses. A cycle given
+no such stage (`stages=()`) withdraws nothing, and the sweep names a refused `pending` row past its
+deadline as it names any other. A row whose profile loses its archiving owner inside the lead, and
+less than one cycle before its deadline, is still `pending` past it until the next cycle, and the
+admission gate and the nightly audit count it until then; the sweep does not, since it runs after
+the write with the same instant and the write's deadline clause contains the sweep's.
+
 **`DEFAULT_STAGES` staying `()` was never this module's fix to make — and, as of T060, it no
 longer needs to be.** `DiscoverStage` (`discover.py`, T053), `ReconcileStage` (`reconcile.py`,
 T054) and `CaptureDrain` (`capture.py`, T055-T058) cannot be constructed without a real
@@ -153,6 +166,23 @@ class RunScoped(Protocol):
     """
 
     def bind_run(self, run_id: uuid.UUID) -> None: ...
+
+
+@runtime_checkable
+class DeadlineWithdrawing(Protocol):
+    """A `Stage` that owns the claim, and so owns what to do with a row the claim refuses once its
+    capture deadline is within the withdrawal lead or past (T721, T721a). `run_once` calls
+    `withdraw_refused_near_deadline` once per cycle on every stage that implements this, after the
+    stages have run and before the deadline sweep, so the sweep does not name a row the write has
+    just made terminal. `CaptureDrain` is the only implementer.
+
+    A method on the drain rather than a function here: the statement needs the drain's own
+    `_owner_is_archiving` and its stale-claim age, and `capture.py` imports `aoe2stats_providers`
+    at module scope, which this module must not (`_AlertSink`'s docstring). A `run_once` given no
+    such stage (`stages=()`) writes nothing.
+    """
+
+    async def withdraw_refused_near_deadline(self, *, now: datetime) -> int: ...
 
 
 #: Empty today and not this task's to populate — see the module docstring's closing paragraph for
@@ -359,16 +389,25 @@ _DEADLINE_BREACH_ALERT_SEVERITY = 1
 #: tuple meant every cycle re-swept the same terminal loss forever and inserted a fresh severity-1
 #: row for it every time — the row was never wrong, but a loss already reported once, by
 #: `expired_capture` (T056) for `expired` or by the run's own `failed_total` counter for `failed`,
-#: is not a second incident. `scripts/checks/capture_audit.py`'s `_RESOLVED_STATUSES` mirrors this
-#: tuple exactly — see that constant's own comment — and must be kept in sync by hand for the same
-#: reason `_nearest_rank` is: that script deliberately sits outside the uv workspace and does not
-#: import this module.
+#: is not a second incident.
+#:
+#: T721 adds `WITHDRAWN`: terminal, written by `CaptureDrain.withdraw_refused_near_deadline` to a
+#: row the claim refuses once its capture deadline is within the withdrawal lead or past, and never
+#: taken by the claim. The write runs before this sweep in `run_once`, so a row it has just
+#: withdrawn is not named here. A refused row not yet withdrawn in a cycle with no
+#: `DeadlineWithdrawing` stage is still swept. A row that lost its owner after an earlier write is
+#: not: the write's deadline clause contains this sweep's, so the cycle withdraws it first.
+#:
+#: `scripts/checks/capture_audit.py`'s `_RESOLVED_STATUSES` mirrors this tuple exactly — see that
+#: constant's own comment — and must be kept in sync by hand for the same reason `_nearest_rank`
+#: is: that script deliberately sits outside the uv workspace and does not import this module.
 _DEADLINE_BREACH_EXCLUDED_STATUSES = (
     CaptureStatus.STORED,
     CaptureStatus.UNAVAILABLE,
     CaptureStatus.QUARANTINED,
     CaptureStatus.EXPIRED,
     CaptureStatus.FAILED,
+    CaptureStatus.WITHDRAWN,
 )
 
 
@@ -646,6 +685,15 @@ async def run_once(
 
         finished_at = _now()
         counters = _aggregate_counters(stage_reports)
+        # T721: a row the claim refuses is withdrawn once its capture deadline is within the
+        # withdrawal lead or past, before the sweep below reads it. Every stage that implements
+        # `DeadlineWithdrawing` is asked, whether or not its own `__call__` ran this cycle (the
+        # budget may have ended first), with the instant the sweep uses as its deadline reference.
+        # It raises no alert and adds no counter.
+        for stage in stages:
+            if isinstance(stage, DeadlineWithdrawing):
+                withdrawn = await stage.withdraw_refused_near_deadline(now=finished_at)
+                logger.info("ingest run %s withdrew %s capture(s)", run_id, withdrawn)
         # T059a: the deadline sweep runs after the drain, against this same still-open row, so its
         # alert (if any) carries a real `ingest_run_id` and is counted in that row's
         # `alerts_raised` — see the module docstring's T059a paragraph and

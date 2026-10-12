@@ -52,6 +52,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
@@ -454,3 +455,70 @@ async def test_deadline_breach_raises_again_once_the_prior_alert_is_acknowledged
     for alert in alerts:
         assert alert.detail is not None
         assert set(alert.detail.get("capture_ids", [])) == {str(breached_id)}
+
+
+async def _seed_unclaimable_capture(
+    session_factory: async_sessionmaker, owner: str, status: CaptureStatus
+) -> uuid.UUID:
+    from tests.links import link_profile
+
+    profile_id = 700_000_010
+    async with session_factory() as session:
+        session.add(AoeProfile(profile_id=profile_id, alias="Unclaimable", country="FR"))
+        await session.flush()
+        if owner == "objector":
+            await link_profile(session, profile_id, objected=True)
+        elif owner == "unlinked":
+            await link_profile(session, profile_id, unlinked=True)
+        await session.commit()
+    return await _seed_capture(
+        session_factory,
+        game_id=701_000_010,
+        profile_id=profile_id,
+        status=status,
+        capture_deadline_at=datetime.now(UTC) - timedelta(hours=1),
+    )
+
+
+@pytest.mark.parametrize("owner", ["objector", "unlinked", "never_linked"])
+async def test_a_refused_pending_capture_past_its_deadline_is_still_counted_while_pending(
+    owner: str,
+    session_factory: async_sessionmaker,
+    clean_database: None,
+) -> None:
+    """T721. `CaptureDrain._claim_batch` refuses a capture whose profile has no active link whose
+    user has not objected, so such a row keeps its status, and the sweep reads `status` and
+    `capture_deadline_at` alone: while the row is still `pending` it raises `deadline_breach` for
+    it, exactly as for one the drain failed to reach. `stages=()` has no drain stage, so nothing
+    withdraws the row first (`test_withdraw_refused_near_deadline.py` covers a cycle with one, and
+    the row that loses its owner after that cycle: the gate and the audit count it until the next
+    cycle, which withdraws it before this sweep reads it)."""
+    from aoe2stats_ingester.run import run_once
+
+    capture_id = await _seed_unclaimable_capture(session_factory, owner, CaptureStatus.PENDING)
+
+    await run_once(30, trigger="test", stages=(), session_factory=session_factory)
+
+    alerts = await _deadline_breach_alerts(session_factory)
+    assert len(alerts) == 1
+    assert alerts[0].detail is not None
+    assert alerts[0].detail["capture_ids"] == [str(capture_id)]
+
+
+@pytest.mark.parametrize("owner", ["objector", "unlinked", "never_linked"])
+async def test_a_withdrawn_capture_past_its_deadline_raises_no_deadline_breach(
+    owner: str,
+    session_factory: async_sessionmaker,
+    clean_database: None,
+) -> None:
+    """T721. `withdrawn` is one of `_DEADLINE_BREACH_EXCLUDED_STATUSES`: the status the write gives
+    a refused row once its deadline is within the withdrawal lead or past, so the sweep no longer
+    names it, however many cycles run."""
+    from aoe2stats_ingester.run import run_once
+
+    await _seed_unclaimable_capture(session_factory, owner, CaptureStatus.WITHDRAWN)
+
+    await run_once(30, trigger="test", stages=(), session_factory=session_factory)
+    await run_once(30, trigger="test", stages=(), session_factory=session_factory)
+
+    assert await _deadline_breach_alerts(session_factory) == []
