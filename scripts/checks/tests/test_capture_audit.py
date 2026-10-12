@@ -413,8 +413,9 @@ async def test_captures_pending_past_deadline_counts_a_refused_capture_until_it_
 ) -> None:
     """T721. The audit reads `status` and `capture_deadline_at` alone. A `pending` capture the claim
     refuses (no active link whose user has not objected) is as red as one the drain failed to reach;
-    once `CaptureDrain.withdraw_refused_past_deadline` has made it `withdrawn` it is resolved and
-    the audit does not count it."""
+    once `CaptureDrain.withdraw_refused_near_deadline` has made it `withdrawn` (it acts when the
+    deadline is within the withdrawal lead, T721a) it is resolved and the audit does not count
+    it."""
     from scripts.checks.capture_audit import captures_pending_past_deadline
     from tests.links import link_profile
 

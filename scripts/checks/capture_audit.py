@@ -40,11 +40,13 @@ none of them redundant with the other two or with `alert_audit.py`.
   none of `stored`/`unavailable`/`quarantined`/`expired`/`failed`/`withdrawn` (`expired` and
   `failed` are terminal — see `_RESOLVED_STATUSES`'s own comment — and were alerted once already,
   by `expired_capture` or by their own terminal counter; `withdrawn` is terminal too, written by
-  `CaptureDrain.withdraw_refused_past_deadline` (T721) to a row the claim refuses once its
-  deadline passes, with no alert) — computed independently here, straight from the table, rather
-  than by reading `alerts`. That independence is the entire point (see the module docstring's
-  overlap note below): this assertion still catches the breach even if the ingester never ran a
-  single cycle to raise the alert in the first place. `CAPTURE_BUDGET_DAYS` itself is never
+  `CaptureDrain.withdraw_refused_near_deadline` (T721) to a row the claim refuses once its
+  deadline is within the withdrawal lead or past, with no alert; a row that loses its owner
+  inside the lead and less than one cycle before its deadline is counted until the next cycle) —
+  computed independently here, straight from the table, rather than by reading `alerts`. That
+  independence is the entire point (see the module docstring's overlap note below): this
+  assertion still catches the breach even if the ingester never ran a single cycle to raise the
+  alert in the first place. `CAPTURE_BUDGET_DAYS` itself is never
   restated here as a literal — `capture_deadline_at` already carries it, computed once on insert,
   and the informational message below reads the same environment variable `Settings` does
   (`CAPTURE_BUDGET_DAYS`) rather than a second hard-coded threshold.

@@ -2165,7 +2165,7 @@ carries what T673's dry run read.
       that is still `pending`, and does not count it once `withdrawn`. **Every consumer of the
       status values:** grep them before starting; the match routes serialise the value as it is.
       What the interface shows for it is T722, not this task
-- [ ] T721a Close #135's review of T721 (`reviewer` REJECT 2026-10-12, one blocking finding; decided
+- [x] T721a Close #135's review of T721 (`reviewer` REJECT 2026-10-12, one blocking finding; decided
       by the user the same day. Verified and not to be re-checked: the statement's selection, its
       races with the claim and with the re-validation, `run_once`'s order and shared instant, the
       revision and its downgrade, every other reader of the status, each new test failing for the

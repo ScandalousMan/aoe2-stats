@@ -63,6 +63,20 @@ def test_build_ingest_stages_wires_the_fairness_quota_from_settings() -> None:
     assert drain._quota_exempt_days == settings.ingest_quota_exempt_days
 
 
+def test_build_ingest_stages_wires_the_withdrawal_lead_from_the_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """T721a: a `CaptureDrain` built without the lead withdraws only past the deadline, which is
+    the window the lead exists to close, and does so silently. The value reaches the drain from the
+    environment, so an override of it is the drain's lead."""
+    monkeypatch.setenv("INGEST_WITHDRAW_LEAD_HOURS", "13")
+    get_settings.cache_clear()
+
+    _, _, drain = build_ingest_stages(get_settings())
+
+    assert drain._withdraw_lead_hours == 13
+
+
 def test_build_ingest_stages_reuses_the_process_wide_client_engine_and_bucket() -> None:
     """T060a: `build_ingest_stages` used to build a fresh `httpx.AsyncClient`, a fresh
     `AsyncEngine` and a fresh `TokenBucket` on *every* call — never released on a long-lived

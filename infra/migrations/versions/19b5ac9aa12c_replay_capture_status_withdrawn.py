@@ -5,9 +5,9 @@ Revises: 53375d9435fc
 Create Date: 2026-10-12 00:00:00.000000
 
 006-replay-analysis-foundations (T721): `replay_capture_status` gains one value, `withdrawn`, the
-terminal status of a capture the claim refuses once its capture deadline has passed
-(`CaptureDrain.withdraw_refused_past_deadline`). Additive only: no column, no table, no index, and
-no existing row is rewritten.
+terminal status of a capture the claim refuses once its capture deadline is within the withdrawal
+lead or past (`CaptureDrain.withdraw_refused_near_deadline`). Additive only: no column, no table,
+no index, and no existing row is rewritten.
 
 Apply it **before** the deploy that carries it: the same change bumps
 `aoe2stats_storage.revision.EXPECTED_SCHEMA_REVISION`, so a database that lags the build answers

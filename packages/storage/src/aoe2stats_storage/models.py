@@ -56,9 +56,10 @@ class CaptureStatus(enum.StrEnum):
     """`replay_captures.status` — see the state machine in data-model.md.
 
     `WITHDRAWN` (T721) is terminal, and is not in data-model.md's state machine. It is written only
-    by `CaptureDrain.withdraw_refused_past_deadline`, to a `pending` or stale `downloading` row
-    past its capture deadline whose profile has no active link whose user has not objected, the
-    rows `CaptureDrain._claim_batch` refuses. The claim never takes it, and discovery queues no
+    by `CaptureDrain.withdraw_refused_near_deadline`, to a `pending` or stale `downloading` row
+    whose capture deadline is within the withdrawal lead (`INGEST_WITHDRAW_LEAD_HOURS`) or past,
+    and whose profile has no active link whose user has not objected, the rows
+    `CaptureDrain._claim_batch` refuses. The claim never takes it, and discovery queues no
     second capture for the `(game_id, profile_id)` pair it occupies.
     """
 

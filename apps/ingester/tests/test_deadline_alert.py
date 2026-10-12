@@ -490,7 +490,8 @@ async def test_a_refused_pending_capture_past_its_deadline_is_still_counted_whil
     user has not objected, so such a row keeps its status, and the sweep reads `status` and
     `capture_deadline_at` alone: while the row is still `pending` it raises `deadline_breach` for
     it, exactly as for one the drain failed to reach. `stages=()` has no drain stage, so nothing
-    withdraws the row first (`test_withdraw_refused_past_deadline.py` covers a cycle with one)."""
+    withdraws the row first (`test_withdraw_refused_near_deadline.py` covers a cycle with one, and
+    the row that loses its owner after that cycle and is counted until the next)."""
     from aoe2stats_ingester.run import run_once
 
     capture_id = await _seed_unclaimable_capture(session_factory, owner, CaptureStatus.PENDING)
@@ -510,8 +511,8 @@ async def test_a_withdrawn_capture_past_its_deadline_raises_no_deadline_breach(
     clean_database: None,
 ) -> None:
     """T721. `withdrawn` is one of `_DEADLINE_BREACH_EXCLUDED_STATUSES`: the status the write gives
-    a refused row once its deadline has passed, so the sweep no longer names it, however many
-    cycles run."""
+    a refused row once its deadline is within the withdrawal lead or past, so the sweep no longer
+    names it, however many cycles run."""
     from aoe2stats_ingester.run import run_once
 
     await _seed_unclaimable_capture(session_factory, owner, CaptureStatus.WITHDRAWN)

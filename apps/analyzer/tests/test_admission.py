@@ -265,8 +265,9 @@ async def test_deadline_gate_refuses_for_a_refused_capture_until_it_is_withdrawn
     user has not objected, so a `pending` row whose profile is held by an objector or was unlinked
     keeps its status. `deadline_gate_admits` reads `status` and `capture_deadline_at` alone, so
     while that row is still `pending` past its deadline the gate returns False for every analysis
-    request. Once `CaptureDrain.withdraw_refused_past_deadline` has made it `withdrawn` it is not in
-    `pending` or `downloading` and the gate admits."""
+    request. Once `CaptureDrain.withdraw_refused_near_deadline` has made it `withdrawn` (it acts
+    when the deadline is within the withdrawal lead, T721a) it is not in `pending` or `downloading`
+    and the gate admits."""
     from tests.links import link_profile
 
     from aoe2stats_analyzer.admission import deadline_gate_admits

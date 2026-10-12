@@ -1,25 +1,36 @@
-"""T721 - a capture the claim refuses gets the terminal status `withdrawn` once its capture deadline
-has passed.
+"""T721, T721a - a capture the claim refuses gets the terminal status `withdrawn` once its capture
+deadline is within the withdrawal lead, or past.
 
-Level: `CaptureDrain.withdraw_refused_past_deadline` called directly (the statement), then
-`run_once` over a drain stage (its place in the cycle), then `_claim_batch` (it never takes a
-`withdrawn` row). The three readers that filter on the deadline and the status have their own tests
-beside the readers: `test_deadline_alert.py`, `scripts/checks/tests/test_capture_audit.py` and
-`apps/analyzer/tests/test_admission.py`.
+Level: `CaptureDrain.withdraw_refused_near_deadline` called directly (the statement), then
+`run_once` over a drain stage (its place in the cycle, and what it buys across the window between
+two cycles), then `_claim_batch` (it never takes a `withdrawn` row). The three readers that filter
+on the deadline and the status have their own tests beside the readers: `test_deadline_alert.py`,
+`scripts/checks/tests/test_capture_audit.py` and `apps/analyzer/tests/test_admission.py`.
 
-The statement withdraws a row that is past its deadline, is `pending` (whatever its
-`next_attempt_at`) or a stale `downloading` row, and whose profile has no active link whose user has
-not objected:
+The lead in these tests is `_LEAD_HOURS`, a fixture value; the number a deployment runs with is
+`INGEST_WITHDRAW_LEAD_HOURS` in `.env.example`. The statement withdraws a row whose deadline is
+less than the lead away or past, that is `pending` (whatever its `next_attempt_at`) or a stale
+`downloading` row, and whose profile has no active link whose user has not objected:
 
 - the user unlinked; the user objected and the link is active; no link was ever written; the next
   attempt time has not come (a `pending` row); the stale `downloading` row holds a committed object;
+  the deadline is one hour inside the lead, or past;
 - in each, `status` and `last_error` are the only columns that change (`_snapshot` compares the
   rest), so an object key, a checksum, `attempts` and `claimed_at` are as they were.
 
-Left as it is, each asserted unchanged: the same rows one hour before their deadline; a
-`downloading` row that is not stale; a row whose profile has an active link whose user has not
-objected; a profile relinked by a second user who has not objected; a `stored` row with no owner and
-the other terminal statuses.
+Left as it is, each asserted unchanged, and each excluded by exactly one clause: the same rows one
+hour outside the lead (the deadline clause); a `downloading` row that is not stale (the staleness
+clause); a row whose profile has an active link whose user has not objected, past its deadline or
+inside the lead, and a profile relinked by a second user who has not objected (the ownership
+clause); every other status, with an old claim time so a staleness clause that lost its status
+check would take them (the status clause). A lead of zero selects as T721 did: a row one hour
+before its deadline is left.
+
+Across the window: after one cycle over a refused row whose deadline is inside the lead, at an
+instant after that deadline the admission gate admits and the audit's assertion finds nothing. The
+residual is asserted as what the code does: a row owned at the cycle that loses its owner inside
+the lead and before its deadline is `pending` past that deadline, counted by the readers, until the
+next cycle withdraws it.
 """
 
 from __future__ import annotations
@@ -29,7 +40,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
 import pytest
-from sqlalchemy import inspect, select
+from sqlalchemy import inspect, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from tests.links import link_profile
 
@@ -41,11 +52,15 @@ from aoe2stats_storage.models import (
     CaptureSource,
     CaptureStatus,
     Match,
+    ProfileLink,
     ReplayCapture,
 )
 
 Arm = Literal["pending", "stale_downloading", "fresh_downloading"]
 
+#: A fixture value for `withdraw_lead_hours`; see the module docstring.
+_LEAD_HOURS = 48
+_LEAD = timedelta(hours=_LEAD_HOURS)
 _BASE_GAME_ID = 940_000_000
 _BASE_PROFILE_ID = 240_000_000
 _OBJECT_PREFIX = "replays"
@@ -57,10 +72,13 @@ class _NeverCalledProvider:
         raise AssertionError("these tests withdraw or claim; they never fetch")
 
 
-def _drain(session_factory: async_sessionmaker[AsyncSession]) -> CaptureDrain:
+def _drain(
+    session_factory: async_sessionmaker[AsyncSession], lead_hours: int = _LEAD_HOURS
+) -> CaptureDrain:
     return CaptureDrain(
         session_factory=session_factory,
         replay_provider=_NeverCalledProvider(),  # type: ignore[arg-type]
+        withdraw_lead_hours=lead_hours,
     )
 
 
@@ -143,6 +161,9 @@ async def _give_owner(db_session: AsyncSession, profile_id: int, owner: Owner) -
 
 
 @pytest.mark.parametrize(
+    "deadline_in", [timedelta(hours=-1), _LEAD - timedelta(hours=1)], ids=["past", "inside_lead"]
+)
+@pytest.mark.parametrize(
     ("arm", "owner", "next_attempt_in", "with_object"),
     [
         ("pending", "unlinked", timedelta(minutes=-1), False),
@@ -156,7 +177,8 @@ async def _give_owner(db_session: AsyncSession, profile_id: int, owner: Owner) -
         ("stale_downloading", "objector", timedelta(minutes=-1), True),
     ],
 )
-async def test_a_refused_row_past_its_deadline_is_withdrawn_and_nothing_else_changes(
+async def test_a_refused_row_past_or_inside_the_lead_is_withdrawn_and_nothing_else_changes(
+    deadline_in: timedelta,
     arm: Arm,
     owner: Owner,
     next_attempt_in: timedelta,
@@ -165,12 +187,16 @@ async def test_a_refused_row_past_its_deadline_is_withdrawn_and_nothing_else_cha
     session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     capture_id, profile_id = await _seed_capture(
-        db_session, arm=arm, next_attempt_in=next_attempt_in, with_object=with_object
+        db_session,
+        arm=arm,
+        deadline_in=deadline_in,
+        next_attempt_in=next_attempt_in,
+        with_object=with_object,
     )
     await _give_owner(db_session, profile_id, owner)
     before = await _snapshot(db_session, capture_id)
 
-    changed = await _drain(session_factory).withdraw_refused_past_deadline(now=datetime.now(UTC))
+    changed = await _drain(session_factory).withdraw_refused_near_deadline(now=datetime.now(UTC))
 
     assert changed == 1
     after = await _snapshot(db_session, capture_id)
@@ -196,10 +222,10 @@ async def test_a_second_call_changes_nothing(
     await _give_owner(db_session, profile_id, "unlinked")
     await db_session.commit()
     drain = _drain(session_factory)
-    assert await drain.withdraw_refused_past_deadline(now=datetime.now(UTC)) == 1
+    assert await drain.withdraw_refused_near_deadline(now=datetime.now(UTC)) == 1
     first = await _snapshot(db_session, capture_id)
 
-    assert await drain.withdraw_refused_past_deadline(now=datetime.now(UTC)) == 0
+    assert await drain.withdraw_refused_near_deadline(now=datetime.now(UTC)) == 0
     assert await _snapshot(db_session, capture_id) == first
 
 
@@ -208,19 +234,19 @@ async def test_a_second_call_changes_nothing(
 
 @pytest.mark.parametrize("arm", ["pending", "stale_downloading"])
 @pytest.mark.parametrize("owner", ["unlinked", "objector", "never_linked"])
-async def test_the_same_row_one_hour_before_its_deadline_is_left_as_it_is(
+async def test_the_same_row_one_hour_outside_the_lead_is_left_as_it_is(
     arm: Arm,
     owner: Owner,
     db_session: AsyncSession,
     session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     capture_id, profile_id = await _seed_capture(
-        db_session, arm=arm, deadline_in=timedelta(hours=1), with_object=arm != "pending"
+        db_session, arm=arm, deadline_in=_LEAD + timedelta(hours=1), with_object=arm != "pending"
     )
     await _give_owner(db_session, profile_id, owner)
     before = await _snapshot(db_session, capture_id)
 
-    changed = await _drain(session_factory).withdraw_refused_past_deadline(now=datetime.now(UTC))
+    changed = await _drain(session_factory).withdraw_refused_near_deadline(now=datetime.now(UTC))
 
     assert changed == 0
     assert await _snapshot(db_session, capture_id) == before
@@ -237,24 +263,28 @@ async def test_a_downloading_row_that_is_not_stale_is_left_as_it_is(
     await _give_owner(db_session, profile_id, owner)
     before = await _snapshot(db_session, capture_id)
 
-    changed = await _drain(session_factory).withdraw_refused_past_deadline(now=datetime.now(UTC))
+    changed = await _drain(session_factory).withdraw_refused_near_deadline(now=datetime.now(UTC))
 
     assert changed == 0
     assert await _snapshot(db_session, capture_id) == before
 
 
+@pytest.mark.parametrize(
+    "deadline_in", [timedelta(hours=-1), _LEAD - timedelta(hours=1)], ids=["past", "inside_lead"]
+)
 @pytest.mark.parametrize("arm", ["pending", "stale_downloading"])
 async def test_a_row_with_an_active_link_whose_user_has_not_objected_is_left_as_it_is(
     arm: Arm,
+    deadline_in: timedelta,
     db_session: AsyncSession,
     session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
-    """It stays for the deadline alert."""
-    capture_id, profile_id = await _seed_capture(db_session, arm=arm)
+    """Past its deadline it stays for the deadline alert; inside the lead it is still claimable."""
+    capture_id, profile_id = await _seed_capture(db_session, arm=arm, deadline_in=deadline_in)
     await link_profile(db_session, profile_id)
     before = await _snapshot(db_session, capture_id)
 
-    changed = await _drain(session_factory).withdraw_refused_past_deadline(now=datetime.now(UTC))
+    changed = await _drain(session_factory).withdraw_refused_near_deadline(now=datetime.now(UTC))
 
     assert changed == 0
     assert await _snapshot(db_session, capture_id) == before
@@ -273,7 +303,7 @@ async def test_a_profile_relinked_by_a_second_user_who_has_not_objected_is_left_
     await link_profile(db_session, profile_id, second_user=True)
     before = await _snapshot(db_session, capture_id)
 
-    changed = await _drain(session_factory).withdraw_refused_past_deadline(now=datetime.now(UTC))
+    changed = await _drain(session_factory).withdraw_refused_near_deadline(now=datetime.now(UTC))
 
     assert changed == 0
     assert await _snapshot(db_session, capture_id) == before
@@ -294,12 +324,17 @@ async def test_a_row_in_any_other_status_with_no_owner_is_left_as_it_is(
     db_session: AsyncSession,
     session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
+    # `stale_downloading` gives the row a claim time older than the stale bound, so a staleness
+    # clause that lost its status check would take it; the status override keeps the row's status.
     capture_id, _ = await _seed_capture(
-        db_session, status=status, with_object=status in (CaptureStatus.STORED,)
+        db_session,
+        arm="stale_downloading",
+        status=status,
+        with_object=status in (CaptureStatus.STORED,),
     )
     before = await _snapshot(db_session, capture_id)
 
-    changed = await _drain(session_factory).withdraw_refused_past_deadline(now=datetime.now(UTC))
+    changed = await _drain(session_factory).withdraw_refused_near_deadline(now=datetime.now(UTC))
 
     assert changed == 0
     assert await _snapshot(db_session, capture_id) == before
@@ -318,7 +353,7 @@ async def test_the_claim_never_takes_a_withdrawn_row_even_after_a_relink(
     await link_profile(db_session, profile_id, unlinked=True)
     await db_session.commit()
     drain = _drain(session_factory)
-    assert await drain.withdraw_refused_past_deadline(now=datetime.now(UTC)) == 1
+    assert await drain.withdraw_refused_near_deadline(now=datetime.now(UTC)) == 1
 
     await link_profile(db_session, profile_id, second_user=True)
     await db_session.commit()
@@ -413,3 +448,150 @@ async def test_a_cycle_with_no_drain_stage_withdraws_nothing(
 
     assert (await _snapshot(db_session, refused_id))["status"] == CaptureStatus.PENDING
     assert await _deadline_breach_capture_ids(session_factory) == [str(refused_id)]
+
+
+# --- The lead --------------------------------------------------------------------------------
+
+
+async def test_a_lead_of_zero_selects_as_t721_did(
+    db_session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """With no lead, a refused row one hour before its deadline is left and one an hour past it is
+    withdrawn."""
+    before_id, before_profile = await _seed_capture(
+        db_session, index=0, deadline_in=timedelta(hours=1)
+    )
+    past_id, past_profile = await _seed_capture(
+        db_session, index=1, deadline_in=timedelta(hours=-1)
+    )
+    await _give_owner(db_session, before_profile, "unlinked")
+    await _give_owner(db_session, past_profile, "unlinked")
+    left = await _snapshot(db_session, before_id)
+
+    changed = await _drain(session_factory, 0).withdraw_refused_near_deadline(now=datetime.now(UTC))
+
+    assert changed == 1
+    assert await _snapshot(db_session, before_id) == left
+    assert (await _snapshot(db_session, past_id))["status"] == CaptureStatus.WITHDRAWN
+
+
+def test_a_negative_lead_is_refused_at_construction() -> None:
+    with pytest.raises(ValueError, match="withdraw_lead_hours"):
+        CaptureDrain(
+            session_factory=None,  # type: ignore[arg-type]
+            replay_provider=_NeverCalledProvider(),  # type: ignore[arg-type]
+            withdraw_lead_hours=-1,
+        )
+
+
+# --- Across the window between two cycles ------------------------------------------------------
+
+
+async def _refused_row_inside_the_lead_then_one_cycle(
+    db_session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
+    *,
+    lead_hours: int,
+) -> uuid.UUID:
+    """A refused `pending` row whose deadline is twelve hours away, then one `run_once` cycle with a
+    drain of the given lead. Returns the row's id."""
+    from aoe2stats_ingester.run import run_once
+
+    capture_id, profile_id = await _seed_capture(db_session, deadline_in=timedelta(hours=12))
+    await link_profile(db_session, profile_id, unlinked=True)
+    await db_session.commit()
+
+    await run_once(
+        30,
+        trigger="test",
+        stages=(_drain(session_factory, lead_hours),),
+        session_factory=session_factory,
+    )
+    return capture_id
+
+
+async def test_after_one_cycle_the_readers_do_not_count_a_row_whose_deadline_then_passes(
+    db_session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """The property the lead buys. Production runs one cycle a day: the cycle sees the row twelve
+    hours before its deadline, and at an instant after that deadline, with no cycle in between, the
+    admission gate admits and the audit's assertion finds nothing. With a lead of zero the cycle
+    leaves the row `pending` and both readers count it (`..._with_a_lead_of_zero_...` below)."""
+    from scripts.checks.capture_audit import captures_pending_past_deadline
+
+    from aoe2stats_analyzer.admission import deadline_gate_admits
+
+    capture_id = await _refused_row_inside_the_lead_then_one_cycle(
+        db_session, session_factory, lead_hours=_LEAD_HOURS
+    )
+    after_the_deadline = datetime.now(UTC) + timedelta(hours=24)
+
+    db_session.expire_all()
+    assert await deadline_gate_admits(db_session, now=after_the_deadline) is True
+    assert await captures_pending_past_deadline(db_session, now=after_the_deadline) == []
+    assert (await _snapshot(db_session, capture_id))["status"] == CaptureStatus.WITHDRAWN
+    assert await _deadline_breach_capture_ids(session_factory) == []
+
+
+async def test_after_one_cycle_with_a_lead_of_zero_the_readers_count_the_row_past_its_deadline(
+    db_session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """The window T721 left, as the contrast of the test above."""
+    from scripts.checks.capture_audit import captures_pending_past_deadline
+
+    from aoe2stats_analyzer.admission import deadline_gate_admits
+
+    capture_id = await _refused_row_inside_the_lead_then_one_cycle(
+        db_session, session_factory, lead_hours=0
+    )
+    after_the_deadline = datetime.now(UTC) + timedelta(hours=24)
+
+    db_session.expire_all()
+    assert await deadline_gate_admits(db_session, now=after_the_deadline) is False
+    overdue = await captures_pending_past_deadline(db_session, now=after_the_deadline)
+    assert [capture.id for capture in overdue] == [capture_id]
+
+
+async def test_a_row_that_loses_its_owner_after_the_cycle_is_counted_until_the_next_cycle(
+    db_session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """The residual, as what the code does and not as a decision. A row owned at the cycle, with
+    its deadline inside the lead, is left; its user then unlinks, before the deadline. At an
+    instant after the deadline and before the next cycle it is still `pending`, and the admission
+    gate and the audit count it. The next cycle withdraws it."""
+    from scripts.checks.capture_audit import captures_pending_past_deadline
+
+    from aoe2stats_analyzer.admission import deadline_gate_admits
+    from aoe2stats_ingester.run import run_once
+
+    # The next attempt is not due, so the drain leaves the owned row alone rather than fetching it.
+    capture_id, profile_id = await _seed_capture(
+        db_session, deadline_in=timedelta(hours=12), next_attempt_in=timedelta(days=2)
+    )
+    await link_profile(db_session, profile_id)
+    await db_session.commit()
+    drain = _drain(session_factory)
+    await run_once(30, trigger="test", stages=(drain,), session_factory=session_factory)
+    assert (await _snapshot(db_session, capture_id))["status"] == CaptureStatus.PENDING
+
+    await db_session.execute(
+        update(ProfileLink)
+        .where(ProfileLink.profile_id == profile_id)
+        .values(unlinked_at=datetime.now(UTC))
+    )
+    await db_session.commit()
+    after_the_deadline = datetime.now(UTC) + timedelta(hours=24)
+
+    db_session.expire_all()
+    assert (await _snapshot(db_session, capture_id))["status"] == CaptureStatus.PENDING
+    assert await deadline_gate_admits(db_session, now=after_the_deadline) is False
+    overdue = await captures_pending_past_deadline(db_session, now=after_the_deadline)
+    assert [capture.id for capture in overdue] == [capture_id]
+
+    await run_once(30, trigger="test", stages=(drain,), session_factory=session_factory)
+
+    assert (await _snapshot(db_session, capture_id))["status"] == CaptureStatus.WITHDRAWN
