@@ -85,7 +85,7 @@ export interface ApiMatchListRow {
    * (every participant then simply carries every optional field `null`). */
   participants: ApiMatchRowParticipant[]
   /** `null` only for a match with no `replay_captures` row yet (module docstring) — every raw
-   * `CaptureStatus` value otherwise, unmodified: the four-state collapse is `CaptureStateBadge`'s
+   * `CaptureStatus` value otherwise, unmodified: the five-state collapse is `CaptureStateBadge`'s
    * job (capture-state-badge.md §3), never this client's. */
   capture_status: string | null
   capture_deadline_at: string | null

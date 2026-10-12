@@ -8,18 +8,26 @@ import type { CaptureStateBadgeVariant } from './countdown'
 
 // packages/design-system/specs/capture-state-badge.md
 
-/** The seven raw `replay_captures.status` values (data-model.md). Typed as a string union with a
- * fallback so an unrecognised value from the wire still type-checks — the component's own §6
- * "error" state exists for exactly that case, rather than a type assertion papering over it. */
+/** The eight raw `replay_captures.status` values: data-model.md's seven and `withdrawn` (T721,
+ * capture-state-badge.md §1). Typed as a string union with a fallback so an unrecognised value
+ * from the wire still type-checks — the component's own §6 "error" state exists for exactly that
+ * case, rather than a type assertion papering over it. */
 export type CaptureStatus =
-  'pending' | 'downloading' | 'stored' | 'unavailable' | 'expired' | 'failed' | 'quarantined'
+  | 'pending'
+  | 'downloading'
+  | 'stored'
+  | 'unavailable'
+  | 'expired'
+  | 'failed'
+  | 'quarantined'
+  | 'withdrawn'
 
 export type { CaptureStateBadgeVariant }
 
 export interface CaptureStateBadgeProps {
-  /** One of the seven raw values, or any other string (§6 "error"), or `null`/`undefined` — no
+  /** One of the eight raw values, or any other string (§6 "error"), or `null`/`undefined` — no
    * `ReplayCapture` row exists yet for this match (§6 "empty"), which renders nothing. */
-  // `string & {}` keeps literal autocomplete for the known seven while still accepting any other
+  // `string & {}` keeps literal autocomplete for the known eight while still accepting any other
   // string — §6 "error" is exactly that case, an unrecognised value that must still type-check.
   captureStatus?: CaptureStatus | (string & {}) | null
   /** ISO 8601, or `null`. Consulted only while `captureStatus` is `pending`/`downloading`. */
@@ -52,10 +60,15 @@ const TONE_BY_STATUS: Partial<Record<CaptureStatus, { label: string; variant: Ba
   expired: { label: 'Lost', variant: 'danger' },
   failed: { label: 'Lost', variant: 'danger' },
   quarantined: { label: 'Needs review', variant: 'info' },
+  // A fifth state, not a fourth "Lost" (§3, T721): archival was not running when the window
+  // closed, a rule carried out and not a failure. `neutral`, never `danger`. The raw word
+  // "withdrawn" is never a label — a known status must not reach the §6 fallback.
+  withdrawn: { label: 'Not archived', variant: 'neutral' },
 }
 
 // The three "Lost" statuses and "Needs review" carry the *reason* as SecondaryLine, because they
 // send the user to different places (§3). `stored` has none: "Archived" needs no further sentence.
+// These four read the same in both variants.
 const REASON: Partial<Record<CaptureStatus, string>> = {
   unavailable:
     'The game never recorded this match. Your own saved games folder is probably empty too.',
@@ -65,6 +78,14 @@ const REASON: Partial<Record<CaptureStatus, string>> = {
     'We could not capture this replay after repeated attempts. If you still have the file, you can upload it.',
   quarantined:
     'We have a copy, but it failed validation. It is kept for review — there is nothing further for you to do.',
+}
+
+// `withdrawn` is the one reason that depends on the variant (§3): `detail` carries the sentence,
+// `compact` shows the pill alone, because with no recourse to weigh one sentence repeated down an
+// objector's list would be the red banner `archival-control.md` §4.3 rules out, in small print.
+const DETAIL_ONLY_REASON: Partial<Record<CaptureStatus, string>> = {
+  withdrawn:
+    "Archival was not running for this profile when this match's capture window closed, so its replay is not in your archive. There is nothing for you to do.",
 }
 
 const CATCHABLE = new Set<CaptureStatus>(['pending', 'downloading'])
@@ -95,10 +116,10 @@ function secondaryLineFor(
     // but a missing deadline renders the pill with no SecondaryLine rather than trusted blindly.
     return deadlineAt ? describeCaptureCountdown(deadlineAt, now, variant) : undefined
   }
-  return REASON[status]
+  return REASON[status] ?? (variant === 'detail' ? DETAIL_ONLY_REASON[status] : undefined)
 }
 
-/** The single place `replay_captures.status`'s seven raw values collapse into the four states a
+/** The single place `replay_captures.status`'s eight raw values collapse into the five states a
  * user sees. Never called with a caller-chosen label or tone — see capture-state-badge.md §3. */
 export function CaptureStateBadge({
   captureStatus,

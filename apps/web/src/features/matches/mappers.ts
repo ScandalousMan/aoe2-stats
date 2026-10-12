@@ -176,7 +176,7 @@ export function toTeamGroups(participants: readonly ApiMatchParticipant[]): Team
 /** `ApiMatchDetail` (`api.ts`) to `MatchDetailPanel`'s `MatchDetailData`. `captureStatus` and
  * `captureDeadlineAt` travel through verbatim (T070e: `_match_detail_json` now computes both, the
  * same way `_match_row_json` already did) — no collapse here either, `CaptureStateBadge` is where
- * the seven raw `CaptureStatus` values become the badge's four states (capture-state-badge.md
+ * the eight raw `CaptureStatus` values become the badge's five states (capture-state-badge.md
  * §3). This is what lets `MatchDetailPanel`'s `DownloadAction` gate (`captureStatus === 'stored'`)
  * fire for real. */
 export function toMatchDetailData(detail: ApiMatchDetail): MatchDetailData {

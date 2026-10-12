@@ -4,7 +4,9 @@
 // `pending`/`downloading` (capture may still succeed on its own; offering an upload there invites
 // a needless one that races the automatic capture) nor `quarantined` (bytes are already stored;
 // an upload would be the overwrite FR-032 forbids) nor `stored` (`DownloadAction` renders in this
-// exact slot instead — match-history.md §2: "mutually exclusive with `DownloadAction`").
+// exact slot instead — match-history.md §2: "mutually exclusive with `DownloadAction`") nor
+// `withdrawn` (T722: the row may hold a committed object an upload would overwrite, constitution
+// IV, and an objection stops all further capture for as long as it stands, constitution IX).
 
 const LOST_CAPTURE_STATUSES = new Set(['unavailable', 'expired', 'failed'])
 

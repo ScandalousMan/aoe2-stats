@@ -213,8 +213,10 @@ export const NoAssetsCovered: Story = {
 }
 
 // --- MatchList: the list-level states (§5) — loading, error, empty, and a populated list showing
-// all four capture states so the acceptance criterion ("every row shows one of exactly four
-// labels") is visible in one screenshot.
+// four of the five capture states so the acceptance criterion ("every row shows one of the five
+// labels, and only those") is visible in one screenshot. `withdrawn` has no row here by choice: it
+// would move this story's CI-authoritative baseline for no gain, and `CaptureStateBadge`'s
+// `AllStates` already shows all five.
 
 const populated: MatchRowData[] = [
   base,
@@ -245,7 +247,7 @@ const populated: MatchRowData[] = [
 ]
 
 export const ListPopulated: Story = {
-  name: 'MatchList — populated (all four capture states across rows)',
+  name: 'MatchList — populated (four of the five capture states across rows)',
   render: () => <MatchList matches={populated} />,
 }
 

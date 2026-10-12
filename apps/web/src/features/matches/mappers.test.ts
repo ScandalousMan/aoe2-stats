@@ -498,10 +498,15 @@ describe('toMatchDetailData', () => {
   })
 
   it('never collapses capture_status — every raw CaptureStatus value passes through unmodified', () => {
-    // The badge's four-state collapse belongs to CaptureStateBadge, never this mapper
+    // The badge's five-state collapse belongs to CaptureStateBadge, never this mapper
     // (capture-state-badge.md §3, mirrored from `toMatchRowData`'s identical rule).
     const result = toMatchDetailData(detail({ capture_status: 'quarantined' }))
     expect(result.captureStatus).toBe('quarantined')
+  })
+
+  it('passes withdrawn through unmodified too (T722), for the badge to read as "Not archived"', () => {
+    const result = toMatchDetailData(detail({ capture_status: 'withdrawn' }))
+    expect(result.captureStatus).toBe('withdrawn')
   })
 
   it('carries capture_status/capture_deadline_at as null for a match with no capture row', () => {

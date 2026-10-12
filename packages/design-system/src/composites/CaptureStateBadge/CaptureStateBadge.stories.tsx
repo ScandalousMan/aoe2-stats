@@ -93,6 +93,18 @@ export const NeedsReview: Story = {
   args: { captureStatus: 'quarantined' },
 }
 
+// T722 (§3, §12): a fifth state, not a fourth "Lost" — the neutral paint, never the word
+// "withdrawn". `compact` shows the pill alone; `detail` stacks §3's one sentence beneath it.
+export const NotArchived: Story = {
+  name: 'Not archived — withdrawn, compact (the pill alone)',
+  args: { captureStatus: 'withdrawn' },
+}
+
+export const NotArchivedDetail: Story = {
+  name: 'Not archived — withdrawn, detail (pill above its one sentence)',
+  args: { captureStatus: 'withdrawn', variant: 'detail' },
+}
+
 // `stacked`: told to stack rather than inferring it from the window, for a caller whose own box
 // is bounded regardless of how wide the page is — `MatchRow`'s trailing table column
 // (match-history.md §8). Rendered inside a narrow, fixed-width wrapper so the effect (SecondaryLine
@@ -159,9 +171,10 @@ export const UnrecognisedStatus: Story = {
   args: { captureStatus: 'a_future_status_this_build_does_not_know' },
 }
 
-// Acceptance: all four tones distinct from each other, in the same screenshot, and — converted to
-// greyscale — still distinguishable by label text alone.
-export const AllFourStates: Story = {
+// Acceptance: every state distinct from the others, in the same screenshot, and — converted to
+// greyscale — still distinguishable by label text alone. The name carries no count: the set of
+// states has grown once already (T722) and will be read as a claim if it says how many.
+export const AllStates: Story = {
   render: () => (
     <ul className="flex flex-col gap-4">
       <li>
@@ -181,6 +194,9 @@ export const AllFourStates: Story = {
       </li>
       <li>
         <CaptureStateBadge captureStatus="quarantined" />
+      </li>
+      <li>
+        <CaptureStateBadge captureStatus="withdrawn" />
       </li>
     </ul>
   ),

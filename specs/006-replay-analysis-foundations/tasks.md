@@ -2221,7 +2221,7 @@ carries what T673's dry run read.
       deadline has passed. **Stated a little wide, narrow it:** the cost names a relink inside the
       lead; a relink before the write has reached the row is still claimed, and a lifted objection
       meets the same rows as a relink
-- [ ] T722 Show a `withdrawn` capture in the interface (filed 2026-10-12 from T721). The match
+- [x] T722 Show a `withdrawn` capture in the interface (filed 2026-10-12 from T721). The match
       routes serialise `replay_captures.status` as it is, for the caller's own linked profiles, so
       an objector with an active link receives `withdrawn` for a match past its capture deadline.
       `packages/design-system/specs/capture-state-badge.md` and `CaptureStateBadge` name seven raw
@@ -2234,6 +2234,27 @@ carries what T673's dry run read.
       `product-designer` first: which of the four states `withdrawn` reads as, its wording, and
       whether the manual upload is offered. That spec's lines are cited by number; keep its line
       count. Its own branch and pull request, after #135
+- [ ] T723 Decide what the manual upload does to a row that holds an object (filed 2026-10-12 from
+      T722). `upload_replay` in `apps/api/src/aoe2stats_api/routers/replays.py` refuses a `stored`
+      row only, then writes with the object store's `put`, which overwrites, under the key an
+      automatic capture uses for the pair; `record_manual_upload` then marks the row `stored`. A
+      `quarantined` row holds an object under that key, and the withdrawal write leaves
+      `object_key` as it was, so a `withdrawn` row can hold one too: a direct `POST` on either
+      replaces the bytes. The interface withholds the upload for both
+      (`apps/web/src/features/replays/uploadEligibility.ts`) and is the only barrier. The route
+      reads the caller's active link and not `archival_objected_at`. T722 withheld the upload from
+      every `withdrawn` row because the response does not say which rows hold an object or whose
+      owner objects, so an owner who relinked or lifted the objection cannot supply the file for
+      one. To decide first, by the user: which rows the route refuses, and whether an objector's
+      own upload is a capture constitution IX stops
+- [ ] T724 Decide what a `pending` capture reads for an objecting owner (filed 2026-10-12 from
+      T722). `CaptureStateBadge` renders a `pending` row as "Still catchable" with "Captures
+      automatically within N days" in `detail`; since T713 the claim refuses that row while the
+      objection stands, and T721a's write withdraws it a lead before its deadline. Until then the
+      sentence promises a capture that will not run. The match routes in
+      `apps/api/src/aoe2stats_api/routers/matches.py` serialise the status as it is and do not
+      read `archival_objected_at`. The `product-designer` first; the spec's lines are cited by
+      number, keep its line count
 
 - [x] T706 Unstick an analysis whose lease expired (filed 2026-10-08; decided by the user the same
       day). Match 511523321's row stayed `running` from the 2026-10-05 crash until a manual
