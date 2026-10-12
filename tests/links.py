@@ -6,8 +6,9 @@ used), so a capture seeded without a link is one the claim refuses. T713 moved o
 the six capture-mechanics seeding helpers in `apps/ingester/tests` (`test_capture_run_id.py`,
 `test_deadline_order.py`, `test_failure_classification.py`, `test_idempotency.py`,
 `test_interruption.py`, `test_quarantine.py`) and the wrapper in `test_revalidate_quarantined.py`;
-`test_claim_requires_active_link.py` and the characterization tests of T713 and T713a
-(`test_deadline_alert.py`, `test_capture_audit.py`, `test_admission.py`) use it too. Other test
+`test_claim_requires_active_link.py`, `test_deadline_alert.py` and
+`test_withdraw_refused_past_deadline.py` in `apps/ingester/tests`, `test_admission.py` in
+`apps/analyzer/tests` and `test_capture_audit.py` in `scripts/checks/tests` use it too. Other test
 files build their own `ProfileLink` rows; they are not migrated here.
 
 Like `tests/db.py`, this is test-only infrastructure applying across app boundaries, so it sits

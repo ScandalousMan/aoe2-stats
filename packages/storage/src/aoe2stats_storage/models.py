@@ -53,7 +53,14 @@ def _uuid_pk() -> Any:
 
 
 class CaptureStatus(enum.StrEnum):
-    """`replay_captures.status` — see the state machine in data-model.md."""
+    """`replay_captures.status` — see the state machine in data-model.md.
+
+    `WITHDRAWN` (T721) is terminal, and is not in data-model.md's state machine. It is written only
+    by `CaptureDrain.withdraw_refused_past_deadline`, to a `pending` or stale `downloading` row
+    past its capture deadline whose profile has no active link whose user has not objected, the
+    rows `CaptureDrain._claim_batch` refuses. The claim never takes it, and discovery queues no
+    second capture for the `(game_id, profile_id)` pair it occupies.
+    """
 
     PENDING = "pending"
     DOWNLOADING = "downloading"
@@ -62,6 +69,7 @@ class CaptureStatus(enum.StrEnum):
     EXPIRED = "expired"
     QUARANTINED = "quarantined"
     FAILED = "failed"
+    WITHDRAWN = "withdrawn"
 
 
 class CaptureSource(enum.StrEnum):

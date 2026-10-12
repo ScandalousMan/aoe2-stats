@@ -72,6 +72,18 @@ quarantined. A row that validates is marked `stored`; one that fails is rewritte
 reason the selection would still match, and any other failure leaves it untouched and is reported.
 See that method.
 
+**Withdrawal of a capture nobody may take (T721).** `_claim_batch` refuses a row whose profile has
+no active link whose user has not objected (`_owner_is_archiving`) and writes nothing to it, so
+without a further step that row would stay `pending` or `downloading` forever, past its capture
+deadline, and `run.py`'s deadline sweep, `scripts/checks/capture_audit.py` and the analysis
+admission gate would all count it. `withdraw_refused_past_deadline`, called once per cycle by
+`run_once` before the sweep, gives such a row the terminal status `withdrawn` once
+`capture_deadline_at` has passed. It is one `UPDATE` that writes the status and a fixed reason in
+`last_error` and nothing else: `object_key`, `zip_sha256`, `attempts` and `claimed_at` stay, and no
+object is read, written or deleted. It raises no alert. A row not yet past its deadline is left as
+it is, so a profile relinked before then is claimed as before. The claim never takes a `withdrawn`
+row, and discovery queues no second capture for its `(game_id, profile_id)` pair.
+
 **The per-user fairness cap is wired in here, not reimplemented here** (T058's own gap: `quota.py`
 shipped `apply_quota` fully tested in isolation, but nothing in this module ever called it, so
 FR-044 enforced nothing in production). `apply_quota` is a pure, read-only filter over a run's
@@ -202,6 +214,13 @@ VALIDATION_FAILED_ALERT_KIND = "validation_failed"
 #: not garbage), so this is not the "a replay is gone" incident constitution I reserves severity 1
 #: for. The nightly audit (T061) fails only on an unacknowledged severity-1 row.
 VALIDATION_FAILED_ALERT_SEVERITY = 2
+
+#: The `last_error` of a row `CaptureDrain.withdraw_refused_past_deadline` withdraws (T721). One
+#: fixed text, the same for every row: it names the two facts that selected the row and carries
+#: nothing about its owner.
+WITHDRAWN_REASON = (
+    "withdrawn: the capture deadline passed with no active link whose user has not objected"
+)
 
 #: The exact text shapes `_validate_with_barrier` writes for a failure that is the *engine's*
 #: judgement of a recording (T673), each `"<ExcClass>: <text>"` or the bare class when the text is
@@ -365,20 +384,33 @@ def _objecting_owner_exists() -> ColumnElement[bool]:
 
 
 def _owner_is_archiving() -> ColumnElement[bool]:
-    """The ownership predicate, one definition for the claim and the re-validation: the capture's
-    profile has an active link (`profile_links.unlinked_at IS NULL`) held by a user who has not
-    objected (`users.archival_objected_at IS NULL`). That is `discover.archiving_links`'s set,
-    reused rather than copied. A profile has at most one active link
-    (`ix_profile_links_profile_id_active`), so this is the owner's current state.
+    """The ownership predicate, one definition for the claim, the re-validation and the withdrawal:
+    the capture's profile has an active link (`profile_links.unlinked_at IS NULL`) held by a user
+    who has not objected (`users.archival_objected_at IS NULL`). That is
+    `discover.archiving_links`'s set, reused rather than copied. A profile has at most one active
+    link (`ix_profile_links_profile_id_active`), so this is the owner's current state.
 
     `CaptureDrain._claim_batch` takes a row only when it holds (T713), a `pending` row and a stale
     `downloading` row alike. `revalidate_quarantined` uses it for its selection and both writes
     (T673b). A profile with no active link (an objector who has since unlinked it, a user who
-    unlinked, or one nobody holds) is not taken by either. A quarantined capture is not an archived
+    unlinked, or one nobody holds) is taken by neither. A quarantined capture is not an archived
     one (001's spec), so the carve-out for recordings archived before an objection does not cover
-    it. A capture without an active owner is left as it is; the row and any object stay.
+    it. A quarantined capture without an active owner is left as it is; the row and any object
+    stay. `withdraw_refused_past_deadline` (T721) negates it, to select the `pending` and stale
+    `downloading` rows the claim refuses once their capture deadline has passed.
     """
     return ReplayCapture.profile_id.in_(archiving_links())
+
+
+def _stale_downloading(stale_before: datetime) -> ColumnElement[bool]:
+    """A `downloading` row whose claim has outlived `max_claim_age_seconds`: `claimed_at` is set and
+    older than `stale_before` (`now - max_claim_age_seconds`). The one definition of a stale claim,
+    for `CaptureDrain._claim_batch`'s second arm and for `withdraw_refused_past_deadline`."""
+    return and_(
+        ReplayCapture.status == CaptureStatus.DOWNLOADING,
+        ReplayCapture.claimed_at.is_not(None),
+        ReplayCapture.claimed_at < stale_before,
+    )
 
 
 def _revalidation_selection() -> ColumnElement[bool]:
@@ -920,9 +952,11 @@ class CaptureDrain:
         its user unlinked the profile; 001's spec says automatic ingestion stops for a profile its
         user unlinks (US1, acceptance scenario 6), and a row with no active link on record is now
         refused exactly as an objector's is.
-        **A refused row** keeps its status and nothing is written to it. It is claimable again once
-        its profile has an active link whose user has not objected. A row with no committed object
-        is not fetched while it is refused, and the source keeps a recording for a bounded time
+        **A refused row** keeps its status and the claim writes nothing to it. It is claimable
+        again once its profile has an active link whose user has not objected, until its capture
+        deadline passes: `withdraw_refused_past_deadline` then gives it the terminal status
+        `withdrawn` (T721), which this claim never takes. A row with no committed object is not
+        fetched while it is refused, and the source keeps a recording for a bounded time
         (`docs/data-sources.md`); a row with a committed object keeps it. A download already in
         flight when its user unlinks or objects is not stopped by this gate; the normal path's
         stored and quarantine writes carry no ownership guard.
@@ -940,11 +974,7 @@ class CaptureDrain:
                     ReplayCapture.status == CaptureStatus.PENDING,
                     ReplayCapture.next_attempt_at <= now,
                 ),
-                and_(
-                    ReplayCapture.status == CaptureStatus.DOWNLOADING,
-                    ReplayCapture.claimed_at.is_not(None),
-                    ReplayCapture.claimed_at < stale_before,
-                ),
+                _stale_downloading(stale_before),
             ),
             _owner_is_archiving(),
         )
@@ -971,6 +1001,41 @@ class CaptureDrain:
             ids = [row[0] for row in result.all()]
             await session.commit()
         return ids
+
+    # --- Withdrawing what the claim refuses (T721) -----------------------------------------
+
+    async def withdraw_refused_past_deadline(self, *, now: datetime) -> int:
+        """Set `withdrawn` and `WITHDRAWN_REASON` on every row that is past its capture deadline
+        (`capture_deadline_at < now`), is `pending` (whatever its `next_attempt_at`) or a stale
+        `downloading` row (`_stale_downloading`, the claim's own definition against this drain's
+        `max_claim_age_seconds`), and fails `_owner_is_archiving`: the rows `_claim_batch` refuses.
+        Returns how many rows it changed.
+
+        One `UPDATE`, status and `last_error` only. `object_key`, `zip_sha256`, `attempts` and
+        `claimed_at` are not written, and no object is read, written or deleted. Raises no alert.
+        A row not yet past its deadline, a `downloading` row that is not stale, and a row whose
+        profile has an active link whose user has not objected are not matched.
+
+        `run_once` (`run.py`) calls it once per cycle, with the instant it then uses for the
+        deadline sweep, before that sweep (`DeadlineWithdrawing`).
+        """
+        stale_before = now - timedelta(seconds=self._max_claim_age_seconds)
+        statement = (
+            update(ReplayCapture)
+            .where(
+                ReplayCapture.capture_deadline_at < now,
+                or_(
+                    ReplayCapture.status == CaptureStatus.PENDING,
+                    _stale_downloading(stale_before),
+                ),
+                ~_owner_is_archiving(),
+            )
+            .values(status=CaptureStatus.WITHDRAWN, last_error=WITHDRAWN_REASON)
+        )
+        async with self._session_factory() as session:
+            result = await session.execute(statement)
+            await session.commit()
+        return int(result.rowcount)  # type: ignore[attr-defined]
 
     # --- Processing one claimed row ----------------------------------------------------------
 

@@ -172,7 +172,8 @@ def test_the_revision_downgrades_cleanly_and_upgrades_again(migrated_url: str) -
         == 0
     )
 
-    _alembic(migrated_url, "upgrade", "head")
+    # To this revision, not `head`: later revisions move head, and this test is about this one.
+    _alembic(migrated_url, "upgrade", REVISION)
 
     assert "identity_digest" in _columns(migrated_url, "match_analyses")
     assert "recording_build" in _columns(migrated_url, "match_analyses")

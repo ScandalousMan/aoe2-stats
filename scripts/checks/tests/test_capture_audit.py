@@ -404,12 +404,17 @@ async def test_capture_lag_p95_seconds_ignores_captures_outside_the_trailing_win
 
 
 @pytest.mark.parametrize("owner", ["objector", "unlinked"])
-async def test_captures_pending_past_deadline_counts_a_capture_nobody_may_claim(
-    owner: str, db_session: AsyncSession
+@pytest.mark.parametrize(
+    ("status", "counted"),
+    [(CaptureStatus.PENDING, True), (CaptureStatus.WITHDRAWN, False)],
+)
+async def test_captures_pending_past_deadline_counts_a_refused_capture_until_it_is_withdrawn(
+    owner: str, status: CaptureStatus, counted: bool, db_session: AsyncSession
 ) -> None:
-    """Characterization (T713), not a decision: the audit reads `status` and `capture_deadline_at`
-    alone, so a `pending` capture the claim refuses (no active link whose user has not objected)
-    is as red as one the drain failed to reach. Whether that is wanted is the user's call."""
+    """T721. The audit reads `status` and `capture_deadline_at` alone. A `pending` capture the claim
+    refuses (no active link whose user has not objected) is as red as one the drain failed to reach;
+    once `CaptureDrain.withdraw_refused_past_deadline` has made it `withdrawn` it is resolved and
+    the audit does not count it."""
     from scripts.checks.capture_audit import captures_pending_past_deadline
     from tests.links import link_profile
 
@@ -418,7 +423,7 @@ async def test_captures_pending_past_deadline_counts_a_capture_nobody_may_claim(
     capture_id = await _seed_capture(
         db_session,
         game_id=game_id,
-        status=CaptureStatus.PENDING,
+        status=status,
         completed_at=now - timedelta(days=22),
         capture_deadline_at=now - timedelta(hours=1),
     )
@@ -429,4 +434,4 @@ async def test_captures_pending_past_deadline_counts_a_capture_nobody_may_claim(
 
     overdue = await captures_pending_past_deadline(db_session, now=now)
 
-    assert [capture.id for capture in overdue] == [capture_id]
+    assert [capture.id for capture in overdue] == ([capture_id] if counted else [])

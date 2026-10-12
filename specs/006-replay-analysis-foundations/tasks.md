@@ -2123,7 +2123,7 @@ carries what T673's dry run read.
       without a fetch. Drop the clause. **An id two features define:** the open decision was filed
       as T714, which `specs/005-design-system-foundations/tasks.md` also defines. It is T721 here,
       in this file and in the docstring of the admission characterization test
-- [ ] T721 Give a capture the claim refuses a terminal status once its capture deadline passes
+- [x] T721 Give a capture the claim refuses a terminal status once its capture deadline passes
       (filed 2026-10-11 from T713 as T714, an id 005's file also defines, and renumbered the same
       day; amended from #135's review; decided by the user 2026-10-12). Since T713 the claim takes
       a row only when its profile has an active link whose user has not objected, and a refused row
@@ -2137,12 +2137,15 @@ carries what T673's dry run read.
       new value of `CaptureStatus` and of the `replay_capture_status` type, added by one additive
       revision as `1f9879367c9d` added a value to `alert_kind`; the expected schema revision in
       `packages/storage/src/aoe2stats_storage/revision.py` moves with it. The claim never takes a
-      `withdrawn` row. **The write:** once per ingester cycle, before the deadline sweep in
-      `run_once`, one statement on `CaptureDrain` sets `withdrawn` on every row that is past its
-      capture deadline, is `pending` (whatever its next attempt time) or a stale `downloading` row
-      as the claim defines stale, and fails `_owner_is_archiving`. It writes the status and a fixed
-      reason in `last_error`, and nothing else: an object key and checksum the row holds stay, and
-      no object is read, written or deleted. It raises no alert and adds no column. **Not taken by
+      `withdrawn` row. **The write:** one statement on `CaptureDrain` sets `withdrawn` on every row
+      that is past its capture deadline, is `pending` (whatever its next attempt time) or a stale
+      `downloading` row as the claim defines stale, and fails `_owner_is_archiving`. It writes the
+      status and a fixed reason in `last_error`, and nothing else: an object key and checksum the
+      row holds stay, and no object is read, written or deleted. It raises no alert and adds no
+      column. `run_once` calls it once per cycle, after the stages and before the deadline sweep,
+      on every stage that offers it, whether or not that stage ran, and with the instant the sweep
+      then uses; the ingest cycles of `apps/api/src/aoe2stats_api/ingest_stages.py` always carry
+      the drain. A cycle given no such stage withdraws nothing. **Not taken by
       the write:** a row not yet past its deadline, so a profile relinked before then is claimed as
       T713 left it; a `downloading` row that is not stale, the download in flight T713 left to the
       user; a row whose profile has an active link whose user has not objected, which stays for

@@ -105,6 +105,9 @@ def test_replay_captures_status_enum_matches_the_state_machine() -> None:
         "expired",
         "quarantined",
         "failed",
+        # T721: not in data-model.md's state machine; the terminal status of a capture the claim
+        # refuses once its capture deadline has passed. The migration test pins the database side.
+        "withdrawn",
     }
 
 

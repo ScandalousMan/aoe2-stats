@@ -44,6 +44,11 @@ from __future__ import annotations
 #: nullable `match_analyses.identity_digest` and `match_analyses.recording_build` (T666b) — one
 #: additive revision. Apply it **before** the deploy that carries this constant: a database that
 #: lags the build answers `schema_out_of_date`.
-EXPECTED_SCHEMA_REVISION = "53375d9435fc"
+#:
+#: `19b5ac9aa12c` (006-replay-analysis-foundations, T721) adds the value `withdrawn` to the
+#: `replay_capture_status` enum type: additive, no row rewritten. Apply it **before** the deploy
+#: that carries this constant: a build that writes `withdrawn` into a database without the value
+#: fails that write, and one that lags answers `schema_out_of_date`.
+EXPECTED_SCHEMA_REVISION = "19b5ac9aa12c"
 
 __all__ = ["EXPECTED_SCHEMA_REVISION"]
