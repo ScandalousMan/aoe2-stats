@@ -75,18 +75,18 @@ unreadable; per FR-028's literal "archived" scope, `CaptureStateBadge` and `Matc
 (`match-history.md` §5) do **not** offer a download for this state — the row is evidence for
 operators, not a file the product hands the user as their archive.
 
-**`withdrawn` is a fifth state, not a fourth "Lost" status (T721).** Archival was not running for
-the profile when the capture window closed — its owner had objected, or no account was linked — so
-the row is a rule carried out, not a failure. `danger` on every such match of an objector's history
-is the red banner `archival-control.md` §4.3 rules out, a right turned into a penalty. Hence
-`Badge`'s existing `neutral` variant, no new token or pair (§8), and the label "Not archived", true
-whether or not the row holds a committed object. `SecondaryLine`, `detail` only: "Archival was not
-running for this profile when this match's capture window closed, so its replay is not in your
-archive. There is nothing for you to do." `compact` shows the pill alone, as `stored` does: with no
-recourse to weigh, one sentence repeated down an objector's list is that banner in small print.
-**No upload, no download** — `manual-upload.md` §2's gate stays the three "Lost" statuses. The row
-may hold a committed object an upload would overwrite (constitution IV; why `quarantined` is
-withheld), and an objection stops all further capture for as long as it stands (constitution IX).
+**`withdrawn` is a fifth state, not a fourth "Lost" status (T721).** The write that sets it takes a
+row inside a lead before its capture deadline, or past it, and reads ownership as it runs: at that
+instant the profile had no active link whose user had not objected. The status says nothing more,
+so the copy claims nothing about the deadline, the source, what the row holds or what to do next.
+`danger` on every such match of an objector's history is the red banner `archival-control.md` §4.3
+rules out, a right turned into a penalty; hence `Badge`'s existing `neutral` variant, no new token
+or pair (§8), and the label "Not archived", true of any row that is not `stored`. `SecondaryLine`,
+`detail` only: "Automatic capture ended for this match while archival was not running for this
+profile." `compact` shows the pill alone: one sentence repeated down an objector's list is that
+banner in small print. **No upload, no `DownloadAction`**: that action is `stored`'s alone
+(`match-history.md` §2), and `manual-upload.md` §2's gate stays the three "Lost" statuses, as the
+row may hold an object the upload overwrites (constitution IV) — on that reason alone, pending T723.
 
 ## 4. Variants and sizes
 
@@ -100,7 +100,7 @@ every match row and the detail panel from ever disagreeing about what a given st
 two, whichever the row's own width forces) and `detail` (inside `MatchDetailPanel`: pill and
 `SecondaryLine` always stack, `SecondaryLine` renders as a full sentence rather than the shortened
 countdown form — see §3's copy versus the countdown format below). Both variants share every token,
-every tone and every label; only the `SecondaryLine`'s phrasing and layout differ.
+tone and label; `SecondaryLine` differs in phrasing and layout and, for `withdrawn`, presence (§3).
 
 **Renamed from `context` to `variant` (FR-032, FR-066, T557).** Every other component whose
 rendering depends on where it is embedded (`ProfileSummary`, `StatValue`, `SignInScreen`) calls that
@@ -228,8 +228,8 @@ explaining a figure's absence). `detail` variant always stacks, at every viewpor
       in `compact`, and above §3's one sentence in `detail`.
 - [ ] The "Still catchable" story shows a countdown in the correct unit for its seeded
       `capture_deadline_at` (days / hours / minutes fixtures each get their own story).
-- [ ] In `MatchDetailPanel`'s combined story, "Not archived" shows neither a download nor an upload
-      affordance, and "Needs review" no download affordance (see `match-history.md` §10).
+- [ ] In `MatchDetailPanel`'s combined story, "Not archived" and "Needs review" show no download
+      affordance (`match-history.md` §10); the upload is gated by `manual-upload.md` §2, not here.
 - [ ] Converting any state story to greyscale still leaves the five states distinguishable by label
       text alone.
 - [ ] Loading story: a `Skeleton` matches the pill's footprint, no reflow against the loaded story.

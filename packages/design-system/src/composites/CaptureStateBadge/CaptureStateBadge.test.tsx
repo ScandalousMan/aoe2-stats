@@ -64,11 +64,12 @@ describe('CaptureStateBadge', () => {
     )
   })
 
-  // T722 (capture-state-badge.md §3, "`withdrawn` is a fifth state"): archival was not running
-  // for the profile when the window closed, so the row is a rule carried out, not a failure.
+  // T722 (capture-state-badge.md §3, "`withdrawn` is a fifth state"): the write that sets it read
+  // ownership as it ran, so the row is a rule carried out, not a failure — and the sentence claims
+  // nothing about the deadline, the source, what the row holds or what to do next.
   describe('withdrawn — a fifth state, known, never the unknown-status fallback', () => {
     const WITHDRAWN_SENTENCE =
-      "Archival was not running for this profile when this match's capture window closed, so its replay is not in your archive. There is nothing for you to do."
+      'Automatic capture ended for this match while archival was not running for this profile.'
 
     it('detail: reads "Not archived" in the neutral paint, with the sentence and never the raw word', () => {
       const { container } = render(<CaptureStateBadge captureStatus="withdrawn" variant="detail" />)
@@ -95,7 +96,7 @@ describe('CaptureStateBadge', () => {
       expect(pill.className).toContain('bg-surface-sunken')
       expect(container).toHaveTextContent(/^Not archived$/)
       expect(container.querySelector('[aria-describedby]')).toBeNull()
-      expect(screen.queryByText(/Archival was not running/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/archival was not running/i)).not.toBeInTheDocument()
       expect(container).not.toHaveTextContent(/withdrawn/i)
     })
 

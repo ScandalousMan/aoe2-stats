@@ -48,7 +48,7 @@ a tier and a surface class.
 
 ## The baseline set, as it stands
 
-**587 stories, 3,544 baseline PNGs** under `__screenshots__/`: 3,522 story captures — every story at
+**590 stories, 3,562 baseline PNGs** under `__screenshots__/`: 3,540 story captures — every story at
 {light, dark} x {375, 768, 1280} — plus 22 `tests/visual/app-routes.spec.ts` captures, which are not
 stories and are exempt from the six-per-story rule. This figure is stated once, here, and it is
 trustworthy for one reason only: **`scripts/checks/story-baselines.mjs` asserts both numbers**,

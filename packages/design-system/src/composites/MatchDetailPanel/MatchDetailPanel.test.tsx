@@ -123,16 +123,20 @@ describe('MatchDetailPanel', () => {
     expect(screen.queryByRole('button', { name: 'Download replay' })).not.toBeInTheDocument()
   })
 
-  // T722 (capture-state-badge.md §3, §12): the row may hold a committed object (constitution IV)
-  // and an objection stops further capture (constitution IX), so "Not archived" offers no
-  // download, and the badge beside it reads the detail sentence rather than the raw word.
+  // T722 (capture-state-badge.md §3, §12): the row may hold a committed object (constitution IV),
+  // so "Not archived" offers no download, and the badge beside it reads the detail sentence
+  // rather than the raw word.
   it('never shows the DownloadAction for a withdrawn capture, and reads "Not archived" with its sentence', () => {
     const { container } = render(
       <MatchDetailPanel match={{ ...match, captureStatus: 'withdrawn' }} />,
     )
     expect(screen.queryByRole('button', { name: 'Download replay' })).not.toBeInTheDocument()
     expect(screen.getByText('Not archived')).toBeInTheDocument()
-    expect(screen.getByText(/Archival was not running for this profile/)).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        'Automatic capture ended for this match while archival was not running for this profile.',
+      ),
+    ).toBeInTheDocument()
     expect(container).not.toHaveTextContent(/withdrawn/i)
   })
 

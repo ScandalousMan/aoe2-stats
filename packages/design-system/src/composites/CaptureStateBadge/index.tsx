@@ -60,8 +60,8 @@ const TONE_BY_STATUS: Partial<Record<CaptureStatus, { label: string; variant: Ba
   expired: { label: 'Lost', variant: 'danger' },
   failed: { label: 'Lost', variant: 'danger' },
   quarantined: { label: 'Needs review', variant: 'info' },
-  // A fifth state, not a fourth "Lost" (§3, T721): archival was not running when the window
-  // closed, a rule carried out and not a failure. `neutral`, never `danger`. The raw word
+  // A fifth state, not a fourth "Lost" (§3, T721): the write that sets it read ownership as it
+  // ran, a rule carried out and not a failure. `neutral`, never `danger`. The raw word
   // "withdrawn" is never a label — a known status must not reach the §6 fallback.
   withdrawn: { label: 'Not archived', variant: 'neutral' },
 }
@@ -81,11 +81,12 @@ const REASON: Partial<Record<CaptureStatus, string>> = {
 }
 
 // `withdrawn` is the one reason that depends on the variant (§3): `detail` carries the sentence,
-// `compact` shows the pill alone, because with no recourse to weigh one sentence repeated down an
-// objector's list would be the red banner `archival-control.md` §4.3 rules out, in small print.
+// `compact` shows the pill alone, because one sentence repeated down an objector's list would be
+// the red banner `archival-control.md` §4.3 rules out, in small print. The sentence claims nothing
+// about the deadline, the source, what the row holds or what to do next (§3).
 const DETAIL_ONLY_REASON: Partial<Record<CaptureStatus, string>> = {
   withdrawn:
-    "Archival was not running for this profile when this match's capture window closed, so its replay is not in your archive. There is nothing for you to do.",
+    'Automatic capture ended for this match while archival was not running for this profile.',
 }
 
 const CATCHABLE = new Set<CaptureStatus>(['pending', 'downloading'])

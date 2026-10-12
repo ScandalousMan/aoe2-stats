@@ -5,8 +5,8 @@
 // a needless one that races the automatic capture) nor `quarantined` (bytes are already stored;
 // an upload would be the overwrite FR-032 forbids) nor `stored` (`DownloadAction` renders in this
 // exact slot instead — match-history.md §2: "mutually exclusive with `DownloadAction`") nor
-// `withdrawn` (T722: the row may hold a committed object an upload would overwrite, constitution
-// IV, and an objection stops all further capture for as long as it stands, constitution IX).
+// `withdrawn` (T722: withheld because the row may hold an object the upload would overwrite,
+// constitution IV, on that reason alone, pending T723).
 
 const LOST_CAPTURE_STATUSES = new Set(['unavailable', 'expired', 'failed'])
 

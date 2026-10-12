@@ -213,8 +213,8 @@ export const NoAssetsCovered: Story = {
 }
 
 // --- MatchList: the list-level states (§5) — loading, error, empty, and a populated list showing
-// four of the five capture states so the acceptance criterion ("every row shows one of the five
-// labels, and only those") is visible in one screenshot. `withdrawn` has no row here by choice: it
+// four of the five capture states so the acceptance criterion ("every row shows a
+// `CaptureStateBadge` reading one of exactly five labels") is visible in one screenshot. `withdrawn` has no row here by choice: it
 // would move this story's CI-authoritative baseline for no gain, and `CaptureStateBadge`'s
 // `AllStates` already shows all five.
 

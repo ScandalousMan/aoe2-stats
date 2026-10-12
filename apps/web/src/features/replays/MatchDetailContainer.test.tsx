@@ -751,6 +751,11 @@ describe('MatchDetailContainer', () => {
 
       await screen.findByText('Arabia')
       expect(screen.getByText('Not archived')).toBeInTheDocument()
+      expect(
+        screen.getByText(
+          'Automatic capture ended for this match while archival was not running for this profile.',
+        ),
+      ).toBeInTheDocument()
       expect(screen.queryByText(/withdrawn/i)).not.toBeInTheDocument()
       expect(screen.queryByRole('button', { name: 'Download replay' })).not.toBeInTheDocument()
       expect(screen.queryByText('Add the replay yourself')).not.toBeInTheDocument()

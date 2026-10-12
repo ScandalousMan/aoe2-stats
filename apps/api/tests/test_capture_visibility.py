@@ -4,8 +4,8 @@ FR-027: "System MUST show the user, per match, the archival state and the time r
 the capture window closes" — the **capture deadline** (day 21), never the source's ~31-day
 retention (the system commits to the deadline it controls, never to the one it refuses to rely
 on). SC-010: "A user can tell, for any match, whether its replay is safe, still catchable, or
-lost, without contacting support." T073's badge spec collapses `replay_captures`'s seven raw
-`CaptureStatus` values into exactly **four** user-facing states:
+lost, without contacting support." T073's badge spec collapses `replay_captures`'s eight raw
+`CaptureStatus` values into exactly **five** user-facing states:
 
 | `replay_captures.status`           | Badge                                              |
 | ----------------------------------- | --------------------------------------------------- |
@@ -13,6 +13,7 @@ lost, without contacting support." T073's badge spec collapses `replay_captures`
 | `pending`, `downloading`            | still catchable, time remaining to `capture_deadline_at` |
 | `unavailable`, `expired`, `failed`  | lost                                               |
 | `quarantined`                       | needs review                                       |
+| `withdrawn`                         | not archived (T722)                                |
 
 FR-026 is explicit that a `quarantined` capture sits in **neither** the archived nor the lost
 column — it is evidence, not garbage, once the retention window has closed and the source holds
