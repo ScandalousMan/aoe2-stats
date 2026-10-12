@@ -2165,6 +2165,41 @@ carries what T673's dry run read.
       that is still `pending`, and does not count it once `withdrawn`. **Every consumer of the
       status values:** grep them before starting; the match routes serialise the value as it is.
       What the interface shows for it is T722, not this task
+- [ ] T721a Close #135's review of T721 (`reviewer` REJECT 2026-10-12, one blocking finding; decided
+      by the user the same day. Verified and not to be re-checked: the statement's selection, its
+      races with the claim and with the re-validation, `run_once`'s order and shared instant, the
+      revision and its downgrade, every other reader of the status, each new test failing for the
+      reason it names, and the facts of T721's and T722's entries). **The window T721 left:** the
+      write runs once per ingest cycle and took a row only past its deadline, and production runs
+      one cycle a day (`vercel.json`), so a refused row stayed `pending` from its deadline to the
+      next cycle: the admission gate refused `POST /api/analyze` for every user in that window, and
+      the nightly capture audit, scheduled before the cycle, could fail once. **Decided:** the write
+      takes a refused row a lead before its deadline, 48 hours by default, read from the
+      environment as the drain's other settings are and handed to `CaptureDrain` by
+      `apps/api/src/aoe2stats_api/ingest_stages.py`. The selection becomes: the capture deadline is
+      less than the lead away, or past. Nothing else in the statement changes, and no reader
+      changes. The lead has to exceed the longest gap between two ingest cycles; the docstring says
+      so and names where the schedule lives, without restating it. **What it costs:** a profile
+      relinked inside the lead finds its row `withdrawn`; the claim takes a refused row only until
+      the write has reached it. **What it does not close, state it:** a row whose profile loses its
+      archiving owner inside the lead, and less than one cycle before the deadline, is still
+      `pending` past its deadline until the next cycle, and the three readers count it until then.
+      **Red first:** a refused row whose deadline is one hour inside the lead is withdrawn; with a
+      lead of zero it is not. Contrasts: one hour outside the lead, left as it is; an owned row
+      inside the lead, left as it is; a row past its deadline, withdrawn as before. The earlier
+      contrasts seeded one hour before the deadline move outside the lead. **Across the window:**
+      after one cycle over a refused row whose deadline is inside the lead, the admission gate
+      admits and the audit's assertion finds nothing at an instant after that deadline. **The
+      setting:** its default, an override from the environment reaching the drain, and its
+      declaration where the other ingest settings are declared. **Texts:** `_claim_batch`'s
+      docstring says a refused row is claimable until its deadline passes; say until the write has
+      withdrawn it. The fixed reason reads as if no link existed when the deadline passed; the
+      write reads ownership when it runs, so say that. `CaptureStatus`'s docstring, the module
+      paragraphs of `capture.py` and `run.py`, the audit's comment, the revision's docstring and
+      `revision.py` say the write acts once the deadline has passed; each says the lead. **A
+      contrast that proves less than it names:** the other-status rows of the withdrawal tests
+      carry no claim time, so a stale-claim clause that lost its status check would leave them
+      untouched; give them an old one
 - [ ] T722 Show a `withdrawn` capture in the interface (filed 2026-10-12 from T721). The match
       routes serialise `replay_captures.status` as it is, for the caller's own linked profiles, so
       an objector with an active link receives `withdrawn` for a match past its capture deadline.
