@@ -213,7 +213,7 @@ describe('MatchRow', () => {
     expect(screen.getByText('3 hours ago')).not.toHaveAttribute('title')
   })
 
-  it('renders the capture-state badge collapsed to one of the four labels', () => {
+  it('renders the capture-state badge collapsed to one of the five labels', () => {
     render(<MatchRow match={match} />)
     expect(screen.getByText('Archived')).toBeInTheDocument()
   })

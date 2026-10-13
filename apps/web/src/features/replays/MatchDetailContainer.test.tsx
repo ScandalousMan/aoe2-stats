@@ -740,6 +740,46 @@ describe('MatchDetailContainer', () => {
       },
     )
 
+    // T722 (download: capture-state-badge.md §12, match-history.md §10; upload: manual-upload.md §2):
+    // "Not archived" offers neither affordance; the contrast cases show the gate still opens for
+    // the statuses it is meant for.
+    it('shows neither a download nor an upload for a withdrawn capture, and reads "Not archived"', async () => {
+      installFakeApi({
+        profiles: [],
+        detail: () => jsonResponse(baseDetail({ capture_status: 'withdrawn' })),
+      })
+      renderMatch()
+
+      await screen.findByText('Arabia')
+      expect(screen.getByText('Not archived')).toBeInTheDocument()
+      expect(
+        screen.getByText(
+          'Automatic capture ended for this match while archival was not running for this profile.',
+        ),
+      ).toBeInTheDocument()
+      expect(screen.queryByText(/withdrawn/i)).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Download replay' })).not.toBeInTheDocument()
+      expect(screen.queryByText('Add the replay yourself')).not.toBeInTheDocument()
+    })
+
+    it('contrast: stored still offers the download and expired still offers the upload', async () => {
+      installFakeApi({
+        profiles: [],
+        detail: () => jsonResponse(baseDetail({ capture_status: 'stored' })),
+      })
+      const stored = renderMatch()
+      await screen.findByText('Arabia')
+      expect(screen.getByRole('button', { name: 'Download replay' })).toBeInTheDocument()
+      stored.unmount()
+
+      installFakeApi({
+        profiles: [],
+        detail: () => jsonResponse(baseDetail({ capture_status: 'expired' })),
+      })
+      renderMatch()
+      expect(await screen.findByText('Add the replay yourself')).toBeInTheDocument()
+    })
+
     it('hides "Add the replay yourself" when no replay_captures row exists yet (capture_status null)', async () => {
       installFakeApi({
         profiles: [],

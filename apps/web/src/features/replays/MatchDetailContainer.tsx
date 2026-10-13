@@ -230,10 +230,11 @@ export function MatchDetailContainer({ gameId, children }: MatchDetailContainerP
   //
   // `manual-upload.md` §2: rendered only for the three "Lost" statuses `CaptureStateBadge` groups
   // together — never `stored` (`DownloadAction` above already covers it), `pending`/`downloading`
-  // (capture may still succeed on its own) or `quarantined` (bytes already stored; an upload would
-  // be the overwrite FR-032 forbids). Gated on the same `matchDetail.captureStatus` the header's
-  // `CaptureStateBadge` and `DownloadAction` already derive off `GET /api/matches/{game_id}`
-  // (T070e), not a second read of the wire.
+  // (capture may still succeed on its own), `quarantined` (bytes already stored; an upload would
+  // be the overwrite FR-032 forbids) or `withdrawn` (T722: withheld because the row may hold an
+  // object the upload would overwrite, constitution IV, on that reason alone, pending T723). Gated on the same `matchDetail.captureStatus` the
+  // header's `CaptureStateBadge` and `DownloadAction` already derive off
+  // `GET /api/matches/{game_id}` (T070e), not a second read of the wire.
   const showUpload = matchDetail !== undefined && isUploadEligible(matchDetail.captureStatus)
 
   async function handleUpload(file: File): Promise<void> {

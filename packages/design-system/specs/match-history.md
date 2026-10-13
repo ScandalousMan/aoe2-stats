@@ -392,8 +392,8 @@ imagery to the card layout; the structure, the breakpoints and the one-DOM rule 
 
 - [ ] At 1280 the match list renders as a ruled table with a visible capture column; at 375 it
       renders as stacked cards. Only one of the two is present in the DOM in a given screenshot.
-- [ ] Every row shows a `CaptureStateBadge` reading one of exactly four labels: "Archived", "Still
-      catchable", "Lost", "Needs review" — never "Safe" (see `capture-state-badge.md` §3).
+- [ ] Every row shows a `CaptureStateBadge` reading one of exactly five labels: "Archived", "Still
+      catchable", "Lost", "Needs review", "Not archived" — never "Safe" (`capture-state-badge.md` §3).
 - [ ] A team match's `Opponent` field never lists more than one alias plus "and N others" inline; the
       remaining aliases appear only once the row is opened. **Superseded by §12.8's first criterion**
       — the row now names both sides under a cap, and the overflow rule ("and N others", never a bare

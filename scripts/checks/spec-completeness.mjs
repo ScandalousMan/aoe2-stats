@@ -40,8 +40,8 @@
 // (token-scale.mjs's own header explains the reasoning: the shapes are lexical, not structural).
 // Two conventions both ship today for declaring a section or a state, and both are matched:
 //   - A `#`-`######` heading whose text names the section (`## 5. States`, numbering and trailing
-//     qualifiers ignored). Matching is by whole word, not substring: `## 3. The four-state
-//     collapse` is genuinely not a match for "States" (the hyphenated compound `four-state` is one
+//     qualifiers ignored). Matching is by whole word, not substring: `## 3. The five-state
+//     collapse` is genuinely not a match for "States" (the hyphenated compound `five-state` is one
 //     token, and no token in it equals or starts with the keyword `state`), while `## 6. Tokens
 //     used` is a match for "Tokens used" (the token `tokens` starts with the keyword `token`).
 //   - A bold label at the very start of a (trimmed) line, optionally bulleted (`**Purpose** —

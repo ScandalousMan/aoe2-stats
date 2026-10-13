@@ -123,6 +123,24 @@ describe('MatchDetailPanel', () => {
     expect(screen.queryByRole('button', { name: 'Download replay' })).not.toBeInTheDocument()
   })
 
+  // T722 (capture-state-badge.md §3, §12): "Not archived" offers no download because
+  // `DownloadAction` is `stored`'s alone (match-history.md §2) — the row possibly holding a
+  // committed object (constitution IV) is the upload's reason, not this one. The badge beside it
+  // reads the detail sentence rather than the raw word.
+  it('never shows the DownloadAction for a withdrawn capture, and reads "Not archived" with its sentence', () => {
+    const { container } = render(
+      <MatchDetailPanel match={{ ...match, captureStatus: 'withdrawn' }} />,
+    )
+    expect(screen.queryByRole('button', { name: 'Download replay' })).not.toBeInTheDocument()
+    expect(screen.getByText('Not archived')).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        'Automatic capture ended for this match while archival was not running for this profile.',
+      ),
+    ).toBeInTheDocument()
+    expect(container).not.toHaveTextContent(/withdrawn/i)
+  })
+
   it('shows a loading label while the signed URL is being requested', () => {
     render(<MatchDetailPanel match={match} downloadState="loading" />)
     expect(screen.getByRole('button', { name: /Preparing your download/ })).toBeInTheDocument()

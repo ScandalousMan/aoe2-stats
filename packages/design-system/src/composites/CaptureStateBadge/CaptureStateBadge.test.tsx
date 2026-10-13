@@ -64,6 +64,73 @@ describe('CaptureStateBadge', () => {
     )
   })
 
+  // T722 (capture-state-badge.md §3, "`withdrawn` is a fifth state"): the write that sets it read
+  // ownership as it ran, and the sentence claims nothing about the deadline, the source, what the
+  // row holds or what to do next.
+  describe('withdrawn — a fifth state, known, never the unknown-status fallback', () => {
+    const WITHDRAWN_SENTENCE =
+      'Automatic capture ended for this match while archival was not running for this profile.'
+
+    it('detail: reads "Not archived" in the neutral paint, with the sentence and never the raw word', () => {
+      const { container } = render(<CaptureStateBadge captureStatus="withdrawn" variant="detail" />)
+      const pill = screen.getByText('Not archived')
+      expect(pill.className).toContain('bg-surface-sunken')
+      expect(pill.className).not.toContain('text-danger')
+      expect(screen.getByText(WITHDRAWN_SENTENCE)).toBeInTheDocument()
+      expect(container).not.toHaveTextContent(/withdrawn/i)
+    })
+
+    it('detail: associates the sentence with the pill via aria-describedby', () => {
+      render(<CaptureStateBadge captureStatus="withdrawn" variant="detail" />)
+      const wrapper = screen.getByText('Not archived').closest('span[aria-describedby]')
+      const describedBy = wrapper?.getAttribute('aria-describedby')
+      expect(describedBy).toBeTruthy()
+      expect(document.getElementById(describedBy as string)).toHaveTextContent(WITHDRAWN_SENTENCE)
+    })
+
+    it('compact: the pill alone — no sentence and no aria-describedby', () => {
+      const { container } = render(
+        <CaptureStateBadge captureStatus="withdrawn" variant="compact" />,
+      )
+      const pill = screen.getByText('Not archived')
+      expect(pill.className).toContain('bg-surface-sunken')
+      expect(container).toHaveTextContent(/^Not archived$/)
+      expect(container.querySelector('[aria-describedby]')).toBeNull()
+      expect(screen.queryByText(/archival was not running/i)).not.toBeInTheDocument()
+      expect(container).not.toHaveTextContent(/withdrawn/i)
+    })
+
+    it('compact is the default variant, so a bare withdrawn badge is also the pill alone', () => {
+      const { container } = render(<CaptureStateBadge captureStatus="withdrawn" />)
+      expect(container).toHaveTextContent(/^Not archived$/)
+    })
+
+    // The contrast cases: `withdrawn` was added as a known state, not by loosening the fallback.
+    it.each(['compact', 'detail'] as const)(
+      'an unknown status still renders the neutral fallback carrying the raw word (%s)',
+      (variant) => {
+        const { container } = render(
+          <CaptureStateBadge captureStatus="something_new" variant={variant} />,
+        )
+        const pill = screen.getByText('something_new')
+        expect(pill.className).toContain('bg-surface-sunken')
+        expect(container).toHaveTextContent(/^something_new$/)
+        expect(container.querySelector('[aria-describedby]')).toBeNull()
+        expect(screen.queryByText('Not archived')).not.toBeInTheDocument()
+      },
+    )
+
+    it.each(['compact', 'detail'] as const)(
+      'expired still reads "Lost" in danger with its reason (%s)',
+      (variant) => {
+        render(<CaptureStateBadge captureStatus="expired" variant={variant} />)
+        expect(screen.getByText('Lost').className).toContain('text-danger')
+        expect(screen.getByText(/did not capture it in time/)).toBeInTheDocument()
+        expect(screen.queryByText('Not archived')).not.toBeInTheDocument()
+      },
+    )
+  })
+
   it('renders nothing when no capture row exists yet (empty)', () => {
     const { container } = render(<CaptureStateBadge captureStatus={null} />)
     expect(container).toBeEmptyDOMElement()
