@@ -14,7 +14,7 @@ here, see §3), `Skeleton`.
 ## 1. Purpose
 
 Tell the user, per match, what will happen to their replay — in one word they can read at a glance,
-plus the one further sentence that decides whether they have anything to do about it. `replay_captures.status`
+plus at most one further sentence, a countdown or a reason (§2). `replay_captures.status`
 carries **eight** raw values (`data-model.md`'s seven and `withdrawn`); this badge is the single
 place their collapse into a user-facing state is decided, so no two call sites map them differently.
 
@@ -84,7 +84,7 @@ rules out, a right turned into a penalty; hence `Badge`'s existing `neutral` var
 or pair (§8), and the label "Not archived", true of any row that is not `stored`. `SecondaryLine`,
 `detail` only: "Automatic capture ended for this match while archival was not running for this
 profile." `compact` shows the pill alone: one sentence repeated down an objector's list is that
-banner in small print. **No upload, no `DownloadAction`**: that action is `stored`'s alone
+banner in small print. **No upload, no `MatchDetailPanel` `DownloadAction`**: it is `stored`'s alone
 (`match-history.md` §2), and `manual-upload.md` §2's gate stays the three "Lost" statuses, as the
 row may hold an object the upload overwrites (constitution IV) — on that reason alone, pending T723.
 

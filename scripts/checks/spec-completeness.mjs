@@ -320,10 +320,10 @@ export function extractHeadingsAndLabels(specSource) {
   return items
 }
 
-// Whole letter/hyphen runs, so a hyphenated compound (`five-state`) is one token rather than two —
+// Whole letter/hyphen runs, so a hyphenated compound (`four-state`) is one token rather than two —
 // splitting on the hyphen too would let `state` re-match inside it, exactly the false match this
 // tokenisation exists to prevent (see the file header, and C3 of the T571 remediation: `## 3. The
-// five-state collapse` must genuinely not match "States").
+// four-state collapse` must genuinely not match "States").
 function tokenise(text) {
   return text.match(/[a-z][a-z-]*/g) ?? []
 }

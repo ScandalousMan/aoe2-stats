@@ -61,8 +61,8 @@ const TONE_BY_STATUS: Partial<Record<CaptureStatus, { label: string; variant: Ba
   failed: { label: 'Lost', variant: 'danger' },
   quarantined: { label: 'Needs review', variant: 'info' },
   // A fifth state, not a fourth "Lost" (§3, T721): the write that sets it read ownership as it
-  // ran, a rule carried out and not a failure. `neutral`, never `danger`. The raw word
-  // "withdrawn" is never a label — a known status must not reach the §6 fallback.
+  // ran. `neutral`, never `danger`. The raw word "withdrawn" is never a label — a known status
+  // must not reach the §6 fallback.
   withdrawn: { label: 'Not archived', variant: 'neutral' },
 }
 

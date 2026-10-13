@@ -65,8 +65,8 @@ describe('CaptureStateBadge', () => {
   })
 
   // T722 (capture-state-badge.md §3, "`withdrawn` is a fifth state"): the write that sets it read
-  // ownership as it ran, so the row is a rule carried out, not a failure — and the sentence claims
-  // nothing about the deadline, the source, what the row holds or what to do next.
+  // ownership as it ran, and the sentence claims nothing about the deadline, the source, what the
+  // row holds or what to do next.
   describe('withdrawn — a fifth state, known, never the unknown-status fallback', () => {
     const WITHDRAWN_SENTENCE =
       'Automatic capture ended for this match while archival was not running for this profile.'

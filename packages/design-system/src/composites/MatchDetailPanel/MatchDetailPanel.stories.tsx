@@ -543,8 +543,8 @@ export const HoverFocusActiveNotApplicable: Story = {
 // Appended after the cited stories above, not placed beside `NeedsReview`: the design-system specs
 // cite this file's lines by number (state-coverage.mjs --check-citations), so a story inserted in
 // the middle would move them.
-// capture-state-badge.md §12: "Not archived" shows neither a download nor an upload affordance
-// (the upload is the container's, never this panel's), and `detail` carries the one sentence.
+// capture-state-badge.md §12 (download) + manual-upload.md §2 (upload): "Not archived" shows no
+// download and no upload (the upload is the container's, never this panel's); `detail` has the sentence.
 export const NotArchived: Story = {
   name: 'Not archived — DownloadAction absent, sentence beneath the pill (withdrawn)',
   args: { match: { ...baseMatch, gameId: '1006', captureStatus: 'withdrawn' } },

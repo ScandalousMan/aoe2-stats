@@ -355,6 +355,9 @@ test('checkNineSections does not accept "Variants, sizes and props" as a real ma
 // while the implementation actually matched it (a hyphenated compound is not a word boundary to
 // `.includes`). These tests make that claim true: the tokeniser treats `four-state` as one token
 // distinct from `state`, so it no longer satisfies the "States" section by accident.
+// The file header now names the heading as it reads today (`## 3. The five-state collapse`); the
+// literal below is a synthetic heading of the same shape, kept as it was when the claim was fixed.
+// "The file header" in the next test's title means that shape, not this exact string.
 
 test('checkNineSections does NOT accept "## 3. The four-state collapse" as a match for "States" — the check has been seen to fail (this is the exact example the file header now claims correctly)', () => {
   const heading = '## 3. The four-state collapse\n\nSome text.\n'

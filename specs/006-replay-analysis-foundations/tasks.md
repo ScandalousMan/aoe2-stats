@@ -2245,7 +2245,7 @@ carries what T673's dry run read.
       now "Automatic capture ended for this match while archival was not running for this
       profile.": no deadline, no source, nothing about what the row holds, nothing to do or not
       to do. `packages/design-system/specs/capture-state-badge.md` §3, the component, its
-      comments and the three tests that pin the sentence say so. **A sentence the change made
+      comments and the three test files that pin the sentence say so. **A sentence the change made
       false:** §4 said the variants differ only in the second line's phrasing and layout; for
       `withdrawn` its presence differs too. **The count gate:** three stories net and eighteen
       baseline files net; `scripts/checks/story-baselines.mjs` and the figure in

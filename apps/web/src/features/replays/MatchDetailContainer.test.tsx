@@ -740,8 +740,9 @@ describe('MatchDetailContainer', () => {
       },
     )
 
-    // T722 (capture-state-badge.md §12, match-history.md §10): "Not archived" offers neither
-    // affordance; the contrast cases show the gate still opens for the statuses it is meant for.
+    // T722 (download: capture-state-badge.md §12, match-history.md §10; upload: manual-upload.md §2):
+    // "Not archived" offers neither affordance; the contrast cases show the gate still opens for
+    // the statuses it is meant for.
     it('shows neither a download nor an upload for a withdrawn capture, and reads "Not archived"', async () => {
       installFakeApi({
         profiles: [],

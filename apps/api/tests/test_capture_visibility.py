@@ -57,8 +57,8 @@ directly off `contracts/http-api.md` ("Each row carries its capture status and
 travel to the client **intact**, not pre-collapsed:
 
 - `GET /api/matches?profile_id=<id>` answers `200` with `{"matches": [...], "next_cursor": ...}`.
-- Each row carries at least `game_id`, `capture_status` (one of `replay_captures.status`'s seven
-  raw values, verbatim — the collapse into the four badge states is the design-system component's
+- Each row carries at least `game_id`, `capture_status` (one of `replay_captures.status`'s eight
+  raw values, verbatim — the collapse into the five badge states is the design-system component's
   job, T073/T074, not the API's), and `capture_deadline_at` (ISO 8601, or absent/`null` for a row
   with no matching capture, though every discovered match acquires one at discovery time — T053).
 - A profile with zero matches answers `200` with `"matches": []`, never a 404 or an error: spec.md
