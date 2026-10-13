@@ -15,7 +15,7 @@
 // baselines.yml` used to, before this same file transport replaced its batching too).
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
-import { test, expect } from '@playwright/test'
+import { test, expect } from './fixtures/story-requests'
 import AxeBuilder from '@axe-core/playwright'
 // `.cjs`, not `.mjs` — see that file's header comment. An `.mjs` sibling imported from here used to
 // crash on CI (never locally): Playwright transpiles this spec to CommonJS, and a transpiled `.mjs`

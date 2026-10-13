@@ -42,7 +42,8 @@
 // (`packages/design-system/specs/README.md`, "Measured contrast pairs"). Both call sites below were
 // updated accordingly and DS-10 is closed, so the two cases that used to carry a `test.fail()`
 // escape hatch (`knownContrastFailure`) now assert like every other control in this file.
-import { test, expect, type Locator, type Page } from '@playwright/test'
+import { test, expect } from './fixtures/story-requests'
+import type { Locator, Page } from '@playwright/test'
 // An `.mjs` imported from a spec Playwright transpiles to CommonJS is the exact shape
 // `scripts/visual/a11y-scan.cjs`'s header warns against: its `.mjs` predecessor failed to load on
 // CI only (0a400c4e). This one is deliberately `.mjs` anyway, because `.cjs` is not available to

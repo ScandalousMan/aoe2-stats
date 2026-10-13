@@ -7,7 +7,7 @@
 // is an assertion against live layout, not a screenshot diff: a baseline screenshot only proves a
 // regression once one already exists to diff against, and this test must fail on the exact code
 // that shipped the bug.
-import { test, expect } from '@playwright/test'
+import { test, expect } from './fixtures/story-requests'
 
 const STORY_ID = 'screens-privacynotice--default'
 

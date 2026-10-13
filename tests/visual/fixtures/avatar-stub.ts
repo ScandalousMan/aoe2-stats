@@ -34,6 +34,25 @@ export const STEAM_AVATAR_FIXTURE = readFileSync(
 // indistinguishable from `Loaded` and quietly retire the assertion it stands for.
 export const STEAM_AVATAR_FIXTURE_PATH = '/0123456789abcdef0123456789abcdef01234567_full.jpg'
 
+// T719: the URLs this stub has answered locally, per page. A story-loading suite fails on every host
+// its page requests other than the one serving the Storybook build (`./story-requests`), except a
+// request this stub answered — the `PlayerAvatar` stories depend on it — and "answered" has to mean
+// the stub's own handler ran, not "the host is the Steam CDN": a request to that host with the stub
+// absent reaches the real network and is a failure. Recorded by the handler itself, so it can never
+// say "answered" about a page the stub was not installed on.
+const answeredUrls = new WeakMap<Page, Set<string>>()
+
+function recordAnswered(page: Page, url: string): void {
+  const urls = answeredUrls.get(page) ?? new Set<string>()
+  urls.add(url)
+  answeredUrls.set(page, urls)
+}
+
+/** Whether `installSteamAvatarStub`'s handler on `page` answered a request for exactly `url`. */
+export function stubAnswered(page: Page, url: string): boolean {
+  return answeredUrls.get(page)?.has(new URL(url).href) ?? false
+}
+
 // Installed unconditionally, once per test, rather than only on the stories/units known to carry an
 // avatar — both callers stay "dumb" about which story needs which stub (`stories.spec.ts`'s own
 // header) and never has to learn it; harmless for a page that never hits this host. Every request
@@ -44,6 +63,7 @@ export const STEAM_AVATAR_FIXTURE_PATH = '/0123456789abcdef0123456789abcdef01234
 export async function installSteamAvatarStub(page: Page): Promise<void> {
   await page.route('https://avatars.steamstatic.com/**', (route: Route) => {
     const requestUrl = new URL(route.request().url())
+    recordAnswered(page, requestUrl.href)
     if (requestUrl.pathname === STEAM_AVATAR_FIXTURE_PATH) {
       return route.fulfill({ status: 200, contentType: 'image/jpeg', body: STEAM_AVATAR_FIXTURE })
     }
