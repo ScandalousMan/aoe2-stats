@@ -2271,7 +2271,27 @@ carries what T673's dry run read.
       on its own (`packages/design-system/specs/manual-upload.md`); for an objecting owner's
       `pending` row the claim refuses it, so that reason does not hold there (T724). To decide
       first, by the user: which rows the route refuses, and whether an objector's own upload is a
-      capture constitution IX stops
+      capture constitution IX stops. **Decided (user, 2026-10-13).** **Rows refused:** the route
+      refuses, 409, a row that is `stored` or that names an `object_key`, whatever its status, and
+      it writes with the object store's `put_if_absent`, refusing the same way when the store
+      answers that the key exists. A refusal writes nothing: no object, and no row created or
+      changed. A row of any other status that names no `object_key` is accepted as before, a
+      `withdrawn` one included. **An objector's upload is a capture the objection stops:** the route
+      refuses a caller whose `archival_objected_at` is set, 409 with a code of its own, after the
+      participation check and before the file is read, whatever the row; with the objection lifted
+      the same request is accepted. **The interface** withholds `UploadControl` from an objecting
+      caller for every status, on `archival_objected` of `GET /api/me`, which
+      `apps/web/src/features/replays/MatchDetailContainer.tsx` holds (T724); the `product-designer`
+      amends `packages/design-system/specs/manual-upload.md` first, keeping its line count (its
+      lines are cited). **Tests, each red before:** a `quarantined` row naming a key, and a
+      `withdrawn` row naming one, are refused with the stored bytes and the row unchanged; a pair
+      with no row and an object under its key is refused and no row is created; an objector's upload
+      for an `expired` row is refused and nothing is written; the match page of an objecting caller
+      shows no upload for an `expired` row. **Contrasts:** a `withdrawn` row naming no key is stored
+      `manual`; an `expired` row is stored as today; the request the objection refused is accepted
+      once it is lifted; a caller who does not object still sees the upload for an `expired` row.
+      **Left as it is:** the interface still withholds the upload from every `withdrawn` row (T727),
+      and the automatic capture's own write (T728)
 - [x] T724 Decide what a `pending` capture reads for an objecting owner (filed 2026-10-12 from
       T722). `CaptureStateBadge` renders a `pending` row as "Still catchable" with "Captures
       automatically within N days" in `detail`; since T089a the claim refuses that row while the
@@ -2331,7 +2351,32 @@ carries what T673's dry run read.
       (the profiles and `archival_objected` of `GET /api/me`) and nothing is disclosed; `MatchList`
       withholds the input there on `subject="other"` alone. To decide first, by the user: whether
       a third party's row carries a capture state at all, and if it does, what the server serves
-      for a row the claim refuses
+      for a row the claim refuses. **Decided (user, 2026-10-13).** **A third party's row carries no
+      capture state:** `GET /api/players/{profile_id}/matches` serves `capture_status` and
+      `capture_deadline_at` as `null` unless the caller holds an active link on that profile, which
+      is the rule the detail route already applies; the second question then has no case left. **The
+      owner by that route** is served the state, and `MatchList` forwards the caller's objection
+      when the profile viewed is one the caller is actively linked to, instead of withholding it on
+      `subject="other"` alone. The `product-designer` amends
+      `packages/design-system/specs/match-history.md` §11.3 and
+      `packages/design-system/specs/capture-state-badge.md` first, keeping their line counts
+- [ ] T727 Offer the upload on a `withdrawn` row that holds no object (filed 2026-10-13 from
+      T723). Since T723 the route accepts an upload for a `withdrawn` row that names no
+      `object_key`, from a caller who does not object;
+      `apps/web/src/features/replays/uploadEligibility.ts` still withholds `UploadControl` from
+      every `withdrawn` row, because the match response does not say which rows hold an object.
+      After T726, so that whatever the response gains is served for the caller's own capture only.
+      The `product-designer` first: what the response carries, and what
+      `packages/design-system/specs/manual-upload.md` says of the row
+- [ ] T728 Decide what the automatic capture's write does to a key that holds an object (filed
+      2026-10-13 from T723). `CaptureDrain` in `apps/ingester/src/aoe2stats_ingester/capture.py`
+      writes a downloaded blob with the object store's `put`, which overwrites, under the key a
+      manual upload uses for the pair. T723 made the upload's write conditional; the drain's is not.
+      The route does not refuse a `pending` or `downloading` row that names no key, so an upload
+      accepted while a claim on the row is in flight is followed by the drain's write over it. Not
+      measured: whether the drain's row writes that follow are refused on a row the upload has
+      marked `stored`. To decide first, by the user: whether the route refuses a row a claim holds,
+      or the drain's write becomes conditional, or both
 
 - [x] T706 Unstick an analysis whose lease expired (filed 2026-10-08; decided by the user the same
       day). Match 511523321's row stayed `running` from the 2026-10-05 crash until a manual
