@@ -2266,7 +2266,10 @@ carries what T673's dry run read.
       (`apps/web/src/features/replays/uploadEligibility.ts`) and is the only barrier. The route
       reads the caller's active link and not `archival_objected_at`. The match response does not
       say which rows hold an object, and T722 withheld the upload from every `withdrawn` row, so
-      an owner who relinked or lifted the objection cannot supply the file for one. To decide
+      an owner who relinked or lifted the objection cannot supply the file for one. The interface
+      withholds the upload from `pending` and `downloading` because the capture may still succeed
+      on its own (`packages/design-system/specs/manual-upload.md`); for an objecting owner's
+      `pending` row the claim refuses it, so that reason does not hold there (T724). To decide
       first, by the user: which rows the route refuses, and whether an objector's own upload is a
       capture constitution IX stops
 - [x] T724 Decide what a `pending` capture reads for an objecting owner (filed 2026-10-12 from
@@ -2286,22 +2289,48 @@ carries what T673's dry run read.
       `apps/web/src/features/replays/MatchDetailContainer.tsx` already hold. The list route
       requires the caller's active link on the profile, the detail route carries a capture status
       for the caller's actively linked profiles only, and a profile has at most one active link:
-      for every row those two pages show, the caller's objection is the claim's refusal. **No
+      for a `pending` row and a stale `downloading` row those two pages show, the caller's
+      objection is the claim's refusal (T724a has the `downloading` row it is not). **No
       field on the match routes:** `match_row_json` also serves
       `GET /api/players/{profile_id}/matches` for any profile, where the field would disclose
       another player's objection. `MatchList` does not forward the input with `subject="other"`.
       **The count gate:** three stories net and eighteen baseline files net;
       `scripts/checks/story-baselines.mjs` and the figure in
       `packages/design-system/specs/README.md` move with them. **Left as it is:** T725
-- [ ] T725 Decide what a third party's list shows for an objector's `pending` capture (filed
+- [x] T724a Close #140's review of T724 (`reviewer` REJECT 2026-10-13, three blocking findings,
+      all text; no behaviour changed. Verified and not to be re-checked: the equivalence for a
+      `pending` and a stale `downloading` row on both own-match pages, the forwarding and its
+      `subject` gate, the tests' contrasts, the counts, and no cited line moved). **Two call
+      sites disagree:** an objecting owner's `pending` row reads "Not archived" on their own list
+      and match page and "Still catchable" on the third party's list of their own profile, so
+      `packages/design-system/specs/capture-state-badge.md` no longer says no two call sites
+      disagree: the badge alone maps a status and the input to a reading, and a third party's
+      list withholds the input. **The input is passed for every match:**
+      `apps/web/src/features/replays/MatchDetailContainer.tsx` passes it whoever played; the
+      detail route joins a capture row for the caller's actively linked profiles only, so the
+      status is `null` for any other match and the badge renders nothing. The spec and the two
+      component comments say that, and a test pins it. **A `downloading` row claimed before the
+      objection:** the claim refuses a `pending` row and a stale `downloading` row; a download
+      already in flight is not stopped and can still end `stored`, and the client cannot tell
+      the two apart. An objector's page loaded in that window reads "Not archived" and the row
+      can read "Archived" on the next load. The spec says so and no longer says such a page
+      reads "Still catchable" all along. **The session value is a cached one:** the `me` query
+      is not refetched within its stale time, so an objection changed in another tab shows its
+      old reading until a refetch. **Two tests that claimed more than they pin:** the third-party
+      list test passes on `MatchList`'s gate alone, and the objecting fixture had no linked
+      profile, a response the server cannot produce
+- [ ] T725 Decide what a third party's list shows for a capture the claim refuses (filed
       2026-10-13 from T724). `GET /api/players/{profile_id}/matches` serialises the status as it
       is for any signed-in caller, and `MatchList` with `subject="other"` renders it without the
-      caller's objection (`packages/design-system/specs/match-history.md` §11.3): an objector's
-      `pending` row reads "Still catchable" with its countdown there, to every viewer and to the
-      owner who opens their own profile by that route. The client holds no signal for another
-      player's objection, and a field saying so would disclose it. To decide first, by the user:
-      whether a third party's row carries a capture state at all, and if it does, what the server
-      serves for a row the claim refuses
+      caller's objection (`packages/design-system/specs/match-history.md` §11.3). A `pending` or
+      stale `downloading` row the claim refuses reads "Still catchable" with its countdown there,
+      to every viewer: an objector's row, and the row of a profile with no active link. The client
+      holds no signal for another player's objection or link, and a field saying so would disclose
+      it. For the owner who opens their own profile by that route the client does hold the signal
+      (the profiles and `archival_objected` of `GET /api/me`) and nothing is disclosed; `MatchList`
+      withholds the input there on `subject="other"` alone. To decide first, by the user: whether
+      a third party's row carries a capture state at all, and if it does, what the server serves
+      for a row the claim refuses
 
 - [x] T706 Unstick an analysis whose lease expired (filed 2026-10-08; decided by the user the same
       day). Match 511523321's row stayed `running` from the 2026-10-05 crash until a manual

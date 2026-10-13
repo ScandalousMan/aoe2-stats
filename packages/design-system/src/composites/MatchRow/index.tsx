@@ -497,7 +497,7 @@ export interface MatchListProps {
   /** The caller's own `GET /api/me` `archival_objected` (T724, capture-state-badge.md §4),
    * forwarded to every badge in the card and the table layout so an objecting owner's `pending`
    * row reads "Not archived". Never forwarded when `subject="other"`, even if a caller passes
-   * it: another player's list never carries the caller's own objection (match-history.md §11.3). */
+   * it: a third-party list withholds the input (match-history.md §11.3). */
   archivalObjected?: boolean
   className?: string
 }
@@ -525,8 +525,8 @@ export function MatchList({
   // users do, from the same string").
   const caption = subject === 'other' ? `${subjectAlias}'s recent matches` : 'Your recent matches'
 
-  // T724: the caller's objection is the claim's refusal only for a profile the caller actively
-  // links, so a third party's list never carries it.
+  // T724: a `subject="other"` list withholds the input (match-history.md §11.3); the badge alone
+  // maps it to a reading.
   const forwardedObjection = subject === 'self' && archivalObjected
 
   if (status === 'loading') {

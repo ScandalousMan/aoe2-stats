@@ -551,8 +551,8 @@ export const NotArchived: Story = {
 }
 
 // T724 (capture-state-badge.md §3, §4, §12): an objecting owner's `pending` row reads "Not
-// archived" with its one sentence and no countdown; no `DownloadAction`. Appended last for the
-// same reason as `NotArchived` above.
+// archived" with its one sentence and no countdown. Appended last for the same reason as
+// `NotArchived` above; `pending` never showed a `DownloadAction`, so its absence is not T724's.
 export const NotArchivedObjected: Story = {
   name: 'Not archived — pending, archival objected (DownloadAction absent, no countdown)',
   args: {

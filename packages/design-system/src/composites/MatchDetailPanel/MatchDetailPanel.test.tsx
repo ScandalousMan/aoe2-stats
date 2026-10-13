@@ -141,9 +141,9 @@ describe('MatchDetailPanel', () => {
     expect(container).not.toHaveTextContent(/withdrawn/i)
   })
 
-  // T724 (capture-state-badge.md §3, §4): an objecting owner's `pending` row reads like
-  // `withdrawn`, and the panel offers no download for it, as for every non-`stored` status.
-  it('forwards archivalObjected: a pending row reads "Not archived" with its one sentence and no download', () => {
+  // T724 (capture-state-badge.md §3, §4): an objecting owner's `pending` row reads "Not archived"
+  // with its one sentence. The download assertion is not T724's: `pending` never offered one.
+  it('forwards archivalObjected: a pending row reads "Not archived" with its one sentence', () => {
     const { container } = render(
       <MatchDetailPanel
         match={{

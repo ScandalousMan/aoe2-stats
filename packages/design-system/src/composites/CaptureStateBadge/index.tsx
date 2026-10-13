@@ -33,11 +33,11 @@ export interface CaptureStateBadgeProps {
   /** ISO 8601, or `null`. Consulted only while `captureStatus` is `pending`/`downloading` and
    * `archivalObjected` is not set: with it, the deadline is never read (§7). */
   captureDeadlineAt?: string | null
-  /** `GET /api/me`'s `archival_objected`, passed only for a profile the caller actively links
-   * (§4, T724): `MatchList` (never one with `subject="other"`) and `MatchDetailPanel` forward it.
-   * The claim takes no row of an objecting owner, so a `pending`/`downloading` row reads exactly
-   * as `withdrawn` does — "Not archived", the pill alone in `compact`, §3's one sentence in
-   * `detail` — and no countdown or interval runs. Every other status ignores it. */
+  /** `GET /api/me`'s `archival_objected` (§4, T724). `MatchDetailPanel` passes it for every match:
+   * the detail route joins a capture row only for the caller's linked profiles, so any other
+   * match has a `null` `captureStatus` and renders nothing. `MatchList` withholds it for
+   * `subject="other"`. With it a `pending`/`downloading` row reads "Not archived" as `withdrawn`
+   * does, with "Archival is off for your account." in `detail` and no countdown or interval. */
   archivalObjected?: boolean
   /** `compact` inside `MatchRow`, `detail` inside `MatchDetailPanel` (match-history.md). Renamed
    * from `context` (FR-032, T557): every other component whose rendering depends on where it is
@@ -102,7 +102,7 @@ const ARCHIVAL_OFF_SENTENCE = 'Archival is off for your account.'
 
 const CATCHABLE = new Set<CaptureStatus>(['pending', 'downloading'])
 
-// "Recomputed on an interval no coarser than once per minute while the component is mounted"
+// "Recomputed on an interval no coarser than once per minute while mounted"
 // (§7). Only ticks while the countdown is actually on screen, so an archived or lost row never
 // re-renders on a timer it has no use for.
 function useTickingNow(active: boolean): number {
@@ -131,8 +131,8 @@ function secondaryLineFor(
   return REASON[status] ?? (variant === 'detail' ? DETAIL_ONLY_REASON[status] : undefined)
 }
 
-/** The single place `replay_captures.status`'s eight raw values collapse into the five states a
- * user sees. Never called with a caller-chosen label or tone — see capture-state-badge.md §3. */
+/** Maps `replay_captures.status`'s eight raw values and `archivalObjected` to what a user sees;
+ * a caller passes neither a label nor a tone — see capture-state-badge.md §3, §4. */
 export function CaptureStateBadge({
   captureStatus,
   captureDeadlineAt = null,

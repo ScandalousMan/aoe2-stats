@@ -692,8 +692,8 @@ describe('MatchList', () => {
     })
   })
 
-  // T724 (capture-state-badge.md §4): `archivalObjected` is the caller's own objection, so it is
-  // forwarded to every badge of the caller's own list and never to a third party's.
+  // T724 (capture-state-badge.md §4): `MatchList` forwards `archivalObjected` to every badge of
+  // its card and table layouts unless `subject="other"`, which withholds it (match-history.md §11.3).
   describe('archivalObjected (T724)', () => {
     const pendingMatch: MatchRowData = {
       ...match,

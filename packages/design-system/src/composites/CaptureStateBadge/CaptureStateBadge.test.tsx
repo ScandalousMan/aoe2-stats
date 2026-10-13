@@ -221,8 +221,8 @@ describe('CaptureStateBadge', () => {
     })
   })
 
-  // T724 (capture-state-badge.md §3, §4, §7): the claim takes no row of an objecting owner, so a
-  // `pending`/`downloading` row reads exactly as `withdrawn` does and promises nothing.
+  // T724 (capture-state-badge.md §3, §4, §7): with `archivalObjected`, a `pending`/`downloading`
+  // row reads "Not archived" in `withdrawn`'s paint, with no countdown, whatever the deadline.
   describe('archivalObjected — a catchable row of an objecting owner (T724)', () => {
     const OBJECTED_SENTENCE = 'Archival is off for your account.'
     const WITHDRAWN_SENTENCE =

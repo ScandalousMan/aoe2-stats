@@ -173,10 +173,10 @@ describe('PlayerMatchHistoryContainer', () => {
     expect(screen.queryByText('Your recent matches')).not.toBeInTheDocument()
   })
 
-  // T724 (match-history.md §11.3, capture-state-badge.md §4): a third party's list never carries
-  // the caller's own objection — an objecting caller still reads their `pending` row as
-  // "Still catchable" here, because that row is not theirs to withdraw.
-  it('never passes the caller\'s objection: a pending row still reads "Still catchable"', async () => {
+  // T724 (match-history.md §11.3, capture-state-badge.md §4): an objecting caller reads a
+  // `pending` row on a third party's list as "Still catchable". This pins the whole path; it does
+  // not isolate the container, as `MatchList`'s `subject="other"` gate withholds the input too.
+  it('an objecting caller still reads "Still catchable" on a third party\'s list', async () => {
     installFakeApi({
       session: { ...authenticatedSession, archival_objected: true },
       matchesHandler: () =>

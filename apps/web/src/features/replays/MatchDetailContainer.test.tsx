@@ -34,9 +34,9 @@ interface FakeSession {
 
 // `false` / `null` is the fixture shape of "never answered any question", which constitution IX
 // 4.0.0 makes archiving by default — mirrors `DashboardContainer.test.tsx`'s `baseSession`. This
-// container never reads either field (it only branches on `session.authenticated`), so the exact
-// value does not drive any assertion below; it exists to keep the fixture honest to the current
-// `GET /api/me` contract.
+// container reads only `archival_objected` (T724, forwarded to the panel); only the T724 tests
+// below depend on its value, and `archival_objected_at` exists to keep the fixture honest to the
+// current `GET /api/me` contract.
 function baseSession(overrides: Partial<FakeSession> = {}): FakeSession {
   return {
     authenticated: true,
@@ -97,6 +97,22 @@ function baseDetail(overrides: Partial<ApiMatchDetail> = {}): ApiMatchDetail {
     ],
     capture_status: null,
     capture_deadline_at: null,
+    ...overrides,
+  }
+}
+
+/** A linked profile for `baseDetail()`'s own first participant (profile 11), so a session that
+ * has objected is paired with the match its own profile played — the server cannot return a
+ * `pending` capture for a caller with no linked profile on it. */
+function linkedParticipantProfile(overrides: Partial<ApiProfile> = {}): ApiProfile {
+  return {
+    profile_id: 11,
+    alias: 'aoe2villain',
+    country: 'FR',
+    avatar_hash: null,
+    is_primary: true,
+    linked_at: '2026-08-01T00:00:00Z',
+    ratings: [],
     ...overrides,
   }
 }
@@ -763,7 +779,7 @@ describe('MatchDetailContainer', () => {
     })
 
     // T724 (capture-state-badge.md §4): `GET /api/me`'s `archival_objected` is forwarded to the
-    // panel, so an objecting owner's `pending` row promises no capture; the contrast is the same
+    // panel, so an objecting owner's `pending` row reads "Not archived"; the contrast is the same
     // row for a session that has not objected.
     it('reads "Not archived" with its one sentence and no countdown for a pending capture when the session has objected', async () => {
       installFakeApi({
@@ -771,7 +787,7 @@ describe('MatchDetailContainer', () => {
           archival_objected: true,
           archival_objected_at: '2026-10-01T00:00:00Z',
         }),
-        profiles: [],
+        profiles: [linkedParticipantProfile()],
         detail: () =>
           jsonResponse(
             baseDetail({
@@ -787,14 +803,36 @@ describe('MatchDetailContainer', () => {
       expect(screen.getByText('Archival is off for your account.')).toBeInTheDocument()
       expect(screen.queryByText('Still catchable')).not.toBeInTheDocument()
       expect(container).not.toHaveTextContent(/left|Captures automatically|window closing/i)
+      // Not T724's criterion: a `pending` capture never offered either affordance.
       expect(screen.queryByRole('button', { name: 'Download replay' })).not.toBeInTheDocument()
       expect(screen.queryByText('Add the replay yourself')).not.toBeInTheDocument()
+    })
+
+    // The container passes the flag for every match. What keeps a match the caller's profiles did
+    // not play clean is the detail route: it joins a capture row only for the caller's linked
+    // profiles, so `capture_status` is `null` there and the badge renders nothing. This pins that
+    // reliance and passes by construction today.
+    it('shows no capture reading for an objecting session when capture_status is null', async () => {
+      installFakeApi({
+        session: baseSession({
+          archival_objected: true,
+          archival_objected_at: '2026-10-01T00:00:00Z',
+        }),
+        profiles: [linkedParticipantProfile({ profile_id: 99, alias: 'my_own_account' })],
+        detail: () => jsonResponse(baseDetail({ capture_status: null, capture_deadline_at: null })),
+      })
+      renderMatch()
+
+      await screen.findByText('Arabia')
+      expect(screen.queryByText('Not archived')).not.toBeInTheDocument()
+      expect(screen.queryByText('Archival is off for your account.')).not.toBeInTheDocument()
+      expect(screen.queryByText('Still catchable')).not.toBeInTheDocument()
     })
 
     it('contrast: a pending capture still reads "Still catchable" when the session has not objected', async () => {
       installFakeApi({
         session: baseSession({ archival_objected: false }),
-        profiles: [],
+        profiles: [linkedParticipantProfile()],
         detail: () =>
           jsonResponse(
             baseDetail({

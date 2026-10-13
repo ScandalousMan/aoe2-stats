@@ -15,8 +15,8 @@ here, see §3), `Skeleton`.
 
 Tell the user, per match, what will happen to their replay — in one word they can read at a glance,
 plus at most one further sentence, a countdown or a reason (§2). `replay_captures.status`
-carries **eight** raw values (`data-model.md`'s seven and `withdrawn`); this badge is the single
-place their collapse into a user-facing state is decided, so no two call sites map them differently.
+carries **eight** raw values (`data-model.md`'s seven and `withdrawn`); this badge alone maps a
+status and `archivalObjected` to a reading, so two call sites given the same inputs agree (§4).
 
 ## 2. Anatomy
 
@@ -50,8 +50,8 @@ T065's docstring use "archived" for the rendered label for the same reason. **"A
 spelling that may appear on screen, in copy, in Storybook story names and in visual acceptance
 criteria for this state — never "safe".**
 
-**`downloading` is not a state of its own.** A run holds the row right now and resolves it to
-`stored` or `quarantined` within seconds; a page loaded mid-cycle reads "Still catchable" all along.
+**`downloading` is not a state of its own.** A run holds the row and resolves it to `stored` or
+`quarantined` within seconds; without `archivalObjected`, a mid-cycle load reads "Still catchable".
 
 **The collapse is in the badge only.** `GET /api/matches` and `GET /api/matches/{game_id}` return
 the raw `capture_status` value untouched (`test_matches_list.py`, `test_capture_visibility.py`) —
@@ -89,19 +89,19 @@ banner in small print. **No upload, no `MatchDetailPanel` `DownloadAction`**: it
 row may hold an object the upload overwrites (constitution IV) — on that reason alone, pending T723.
 
 **An objecting owner reads "Not archived" on a `pending` or `downloading` row (T724).** The claim
-takes no row of that owner while the objection stands, so a countdown would promise a capture it
-will not start. With `archivalObjected` (§4) both statuses render as `withdrawn` does, the pill
-alone in `compact`; `detail` adds "Archival is off for your account.", the one fact the session
-holds: nothing on the deadline or on what resuming recovers. No upload or download is offered.
+refuses that owner's `pending` row and stale `downloading` row, so a countdown would promise a
+capture it will not start. With `archivalObjected` (§4) both statuses read "Not archived" in
+`neutral`, the pill alone in `compact`; `detail` adds "Archival is off for your account." No upload
+or download is offered. A `downloading` row claimed before the objection can still end `stored`.
 
 ## 4. Variants and sizes
 
 **Tone** — one of `success`, `warning`, `danger`, `info` or `neutral`, set by §3, never chosen by
-the caller. The data inputs are `captureStatus` (one of the eight raw values), `captureDeadlineAt`
-(ISO 8601 or `null`) and `archivalObjected` (boolean, default `false`); the badge derives tone,
-label and `SecondaryLine` itself: a call site never passes a label or a tone, so no two disagree.
-`archivalObjected` is `GET /api/me`'s `archival_objected`, passed only for a profile the caller
-actively links: `MatchList` (never one with `subject="other"`) and `MatchDetailPanel` forward it.
+the caller. The data inputs are `captureStatus`, `captureDeadlineAt` (ISO 8601 or `null`) and
+`archivalObjected` (boolean, default `false`); the badge derives tone, label and `SecondaryLine`
+itself, so two call sites given the same inputs agree. `MatchDetailPanel` passes `GET /api/me`'s
+`archival_objected` for every match; one no linked profile of the caller played has a `null` status,
+so nothing renders. `MatchList` withholds it for `subject="other"` (`match-history.md` §11.3).
 
 **Variant** — `compact` (inside `MatchRow`: pill and `SecondaryLine` may sit on one line or wrap to
 two, whichever the row's own width forces) and `detail` (inside `MatchDetailPanel`: they always
@@ -157,7 +157,7 @@ error / empty) applies to the whole component, not to be confused with §3's fiv
   T053). Render nothing: an absent badge on a just-discovered match is honest; a badge guessing
   "Still catchable" ahead of the row that would justify it is not. Additionally, if `captureStatus`
   is `pending`/`downloading` but `captureDeadlineAt` is `null` (ruled out by `data-model.md`, never
-  trusted): render the pill with no `SecondaryLine`, never a countdown built from a missing value.
+  trusted): render the pill with no countdown, never one built from a missing value (§7).
 - **selection** — not applicable; a capture-state pill is not a set member.
 - **expansion** — not applicable; the pill never reveals a second surface. The full sentence in
   `detail`'s `SecondaryLine` is a variant choice (§4), not a disclosure the reader triggers.
