@@ -108,6 +108,115 @@ def test_task_refs_fails_for_an_id_defined_nowhere(tmp_path: Path) -> None:
     )
 
 
+# ------------------------------------------------------------------------ (a2) task-collisions
+
+
+def _two_features(tmp_path: Path, first: str, second: str) -> tuple[Path, Path]:
+    """Two sibling feature directories under a fixture `specs/`, returned in the given order."""
+    dirs = []
+    for name in (first, second):
+        feature_dir = tmp_path / "specs" / name
+        feature_dir.mkdir(parents=True)
+        dirs.append(feature_dir)
+    return dirs[0], dirs[1]
+
+
+def _collisions_of(feature_dir: Path) -> list[str]:
+    import scripts.checks.spec_lint as spec_lint
+
+    spec_lint.failures.clear()
+    spec_lint.notes.clear()
+    spec_lint.check_task_id_collisions(feature_dir, (feature_dir / "tasks.md").read_text())
+    return [f for f in spec_lint.failures if f.startswith("task-collisions")]
+
+
+def test_task_collisions_fails_for_an_id_two_features_define_naming_both_files(
+    tmp_path: Path,
+) -> None:
+    """Plant: an id two features both define, and no recorded collision covers, is the shape
+    003/004 and 005/006 reached by accident. The failure names the id and both `tasks.md` files."""
+    mine, other = _two_features(tmp_path, "002-under-test", "001-other")
+    (mine / "tasks.md").write_text("- [ ] T301 Defined here\n")
+    (other / "tasks.md").write_text("- [x] T301 Defined there too\n")
+
+    found = _collisions_of(mine)
+
+    assert len(found) == 1
+    assert "T301" in found[0]
+    assert "specs/002-under-test/tasks.md" in found[0]
+    assert "specs/001-other/tasks.md" in found[0]
+
+
+def test_task_collisions_passes_for_a_recorded_collision_between_its_two_features(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import scripts.checks.spec_lint as spec_lint
+
+    monkeypatch.setitem(
+        spec_lint.RECORDED_TASK_ID_COLLISIONS,
+        "T301",
+        frozenset({"002-under-test", "001-other"}),
+    )
+    mine, other = _two_features(tmp_path, "002-under-test", "001-other")
+    (mine / "tasks.md").write_text("- [ ] T301 Defined here\n")
+    (other / "tasks.md").write_text("- [x] T301 Defined there too\n")
+
+    assert _collisions_of(mine) == []
+    assert _collisions_of(other) == []
+
+
+def test_task_collisions_fails_for_a_recorded_id_colliding_between_the_wrong_pair(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The exemption belongs to a pair of features, not to an id: a recorded id that a third
+    feature also defines, or that the wrong pair defines, is a new collision."""
+    import scripts.checks.spec_lint as spec_lint
+
+    monkeypatch.setitem(
+        spec_lint.RECORDED_TASK_ID_COLLISIONS,
+        "T301",
+        frozenset({"002-under-test", "001-other"}),
+    )
+    mine, other = _two_features(tmp_path, "002-under-test", "001-other")
+    third = tmp_path / "specs" / "003-third"
+    third.mkdir()
+    (mine / "tasks.md").write_text("- [ ] T301 Defined here\n")
+    (other / "tasks.md").write_text("- [x] T301 Defined there too\n")
+    (third / "tasks.md").write_text("- [ ] T301 And a third time\n")
+
+    found = _collisions_of(mine)
+    assert found
+    assert all("T301" in f for f in found)
+    assert any("specs/003-third/tasks.md" in f for f in found)
+
+    wrong_pair, _ = _two_features(tmp_path / "other-tree", "002-under-test", "004-wrong")
+    (wrong_pair / "tasks.md").write_text("- [ ] T301 Defined here\n")
+    (wrong_pair.parent / "004-wrong" / "tasks.md").write_text("- [ ] T301 Wrong partner\n")
+
+    assert _collisions_of(wrong_pair)
+
+
+def test_task_collisions_passes_for_an_id_one_feature_defines_and_another_references(
+    tmp_path: Path,
+) -> None:
+    mine, other = _two_features(tmp_path, "002-under-test", "001-other")
+    (mine / "tasks.md").write_text("- [ ] T301 Defined here\n")
+    (mine / "notes.md").write_text("See T401.\n")
+    (other / "tasks.md").write_text("- [ ] T401 Defined there\n\nIt also mentions T301 in prose.\n")
+
+    assert _collisions_of(mine) == []
+    assert _collisions_of(other) == []
+
+
+def test_task_collisions_treats_a_letter_suffix_as_its_own_id(tmp_path: Path) -> None:
+    mine, other = _two_features(tmp_path, "002-under-test", "001-other")
+    (mine / "tasks.md").write_text("- [ ] T672a Suffixed here\n")
+    (other / "tasks.md").write_text("- [ ] T672 Unsuffixed there\n")
+
+    assert _collisions_of(mine) == []
+    assert _collisions_of(other) == []
+
+
 # ------------------------------------------------------------------------------- (b) alert-kinds
 
 

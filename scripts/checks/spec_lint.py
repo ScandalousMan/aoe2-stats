@@ -20,6 +20,10 @@ repository held exactly one feature. The next check added to this file should as
 third) feature exists from the start, rather than re-acquiring the single-feature assumption and
 paying to unlearn it later.
 
+One check looks the other way: `task-collisions` fails on an id that the linted feature and another
+feature both *define*, since the resolution above would otherwise count a second definition as
+merely defined. Twenty-two such ids predate it and are recorded in the module.
+
 Run: uv run scripts/checks/spec_lint.py --feature specs/001-steam-link-replay-ingestion
 Exit: 0 clean, 1 on any failure. Stdlib only, so it needs no environment.
 """
@@ -60,6 +64,21 @@ UNIT_WORDS = {
     "HOURS": r"hours?",
     "SECONDS": r"seconds?",
     "SECOND": r"per\s+second",
+}
+
+# Task ids that two features both define, recorded 2026-10-11 when the check below was filed (T720).
+# Each maps to exactly the two features that define it; the exemption holds only for that pair, so a
+# third definition of a recorded id still fails. None is renumbered — a renumbering would break
+# every cross-reference to it — and nothing is added here: a new collision is fixed at its source.
+RECORDED_TASK_ID_COLLISIONS: dict[str, frozenset[str]] = {
+    **{
+        f"T{n}": frozenset({"003-player-search-match-analysis", "004-visual-parity"})
+        for n in range(401, 413)
+    },
+    **{
+        f"T{n}": frozenset({"005-design-system-foundations", "006-replay-analysis-foundations"})
+        for n in (671, 672, 673, 674, 706, 707, 708, 709, 710, 713)
+    },
 }
 
 failures: list[str] = []
@@ -191,6 +210,35 @@ def check_task_references(feature_dir: Path, tasks: str) -> None:
             + ", ".join(f"T{n:03d}" for n in gaps)
             + " (harmless; renumbering would break cross-references)"
         )
+
+
+def check_task_id_collisions(feature_dir: Path, tasks: str) -> None:
+    """Fail on a task id the linted feature defines and another feature's `tasks.md` also defines.
+
+    `all_defined_task_ids` answers "is this id defined anywhere", which is the right question for a
+    reference and the wrong one for a definition: it counts an id the moment any feature defines
+    it, so a second definition passed `task-refs` silently (003/004 and 005/006 both did). A
+    recorded collision passes only while exactly its two recorded features define the id; a third
+    definer, or a different partner, is a new collision. Ids are read as `task-refs` reads them,
+    so `T672a` and `T672` are two ids.
+    """
+    defined = set(re.findall(r"^- \[[ x]\] (T\d+[a-z]?)", tasks, re.MULTILINE))
+    specs_root = feature_dir.parent
+    if not specs_root.is_dir():
+        return
+    definers: dict[str, set[str]] = {key: {feature_dir.name} for key in defined}
+    for tasks_file in sorted(specs_root.glob("*/tasks.md")):
+        if tasks_file.parent.name == feature_dir.name:
+            continue
+        for key in set(re.findall(r"^- \[[ x]\] (T\d+[a-z]?)", read(tasks_file), re.MULTILINE)):
+            if key in definers:
+                definers[key].add(tasks_file.parent.name)
+    for key in sorted(definers):
+        features = definers[key]
+        if len(features) < 2 or RECORDED_TASK_ID_COLLISIONS.get(key) == frozenset(features):
+            continue
+        files = ", ".join(f"{specs_root.name}/{name}/tasks.md" for name in sorted(features))
+        fail("task-collisions", f"{key} is defined by more than one feature: {files}")
 
 
 def check_path_roots(tasks: str, tree: set[str]) -> None:
@@ -435,6 +483,7 @@ def main() -> int:
 
     check_requirement_coverage(spec, tasks)
     check_task_references(feature_dir, tasks)
+    check_task_id_collisions(feature_dir, tasks)
     check_path_roots(tasks, tree)
     check_path_collisions(sources, tree)
     check_alert_kinds(data_model, tasks)
