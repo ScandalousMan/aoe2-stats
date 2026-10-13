@@ -215,3 +215,28 @@ export const HoverFocusActiveDisabledNotApplicable: Story = {
     </div>
   ),
 }
+
+// T724 (§3, §4, §12): an objecting owner's `pending` row, six days from its deadline, reads as
+// `withdrawn` does — the deadline is passed to prove it is never read. Appended after the stories
+// above so no cited line moves (state-coverage.mjs --check-citations).
+// visual-equivalence: composite-capturestatebadge--not-archived: `archivalObjected` makes a
+// `pending` row render as `withdrawn` (label "Not archived", `neutral` tone, the pill alone in
+// `compact`), so this story is pixel-identical to NotArchived by design (§3).
+export const NotArchivedObjected: Story = {
+  name: 'Not archived — pending, archival objected, compact (the pill alone, no countdown)',
+  args: {
+    captureStatus: 'pending',
+    captureDeadlineAt: inFromNow(6 * DAY_MS),
+    archivalObjected: true,
+  },
+}
+
+export const NotArchivedObjectedDetail: Story = {
+  name: 'Not archived — pending, archival objected, detail (pill above "Archival is off for your account.")',
+  args: {
+    captureStatus: 'pending',
+    captureDeadlineAt: inFromNow(6 * DAY_MS),
+    archivalObjected: true,
+    variant: 'detail',
+  },
+}

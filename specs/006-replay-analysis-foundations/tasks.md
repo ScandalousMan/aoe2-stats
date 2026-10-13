@@ -2269,14 +2269,39 @@ carries what T673's dry run read.
       an owner who relinked or lifted the objection cannot supply the file for one. To decide
       first, by the user: which rows the route refuses, and whether an objector's own upload is a
       capture constitution IX stops
-- [ ] T724 Decide what a `pending` capture reads for an objecting owner (filed 2026-10-12 from
+- [x] T724 Decide what a `pending` capture reads for an objecting owner (filed 2026-10-12 from
       T722). `CaptureStateBadge` renders a `pending` row as "Still catchable" with "Captures
       automatically within N days" in `detail`; since T089a the claim refuses that row while the
       objection stands, and T721a's write withdraws it a lead before its deadline. Until then the
       sentence promises a capture that will not run. The match routes in
       `apps/api/src/aoe2stats_api/routers/matches.py` serialise the status as it is and do not
       read `archival_objected_at`. The `product-designer` first; the spec's lines are cited by
-      number, keep its line count
+      number, keep its line count. **Decided (`product-designer`, 2026-10-13):** with the badge's
+      `archivalObjected` input, a `pending` or `downloading` row renders as `withdrawn` does: "Not
+      archived", `neutral`, the pill alone in `compact`, and in `detail` the one sentence "Archival
+      is off for your account."; no countdown and no interval, whatever the deadline. Every other
+      status ignores the input, and the upload and download gates did not move. **The signal** is
+      `archival_objected` of `GET /api/me`, which
+      `apps/web/src/features/matches/MatchHistoryContainer.tsx` and
+      `apps/web/src/features/replays/MatchDetailContainer.tsx` already hold. The list route
+      requires the caller's active link on the profile, the detail route carries a capture status
+      for the caller's actively linked profiles only, and a profile has at most one active link:
+      for every row those two pages show, the caller's objection is the claim's refusal. **No
+      field on the match routes:** `match_row_json` also serves
+      `GET /api/players/{profile_id}/matches` for any profile, where the field would disclose
+      another player's objection. `MatchList` does not forward the input with `subject="other"`.
+      **The count gate:** three stories net and eighteen baseline files net;
+      `scripts/checks/story-baselines.mjs` and the figure in
+      `packages/design-system/specs/README.md` move with them. **Left as it is:** T725
+- [ ] T725 Decide what a third party's list shows for an objector's `pending` capture (filed
+      2026-10-13 from T724). `GET /api/players/{profile_id}/matches` serialises the status as it
+      is for any signed-in caller, and `MatchList` with `subject="other"` renders it without the
+      caller's objection (`packages/design-system/specs/match-history.md` §11.3): an objector's
+      `pending` row reads "Still catchable" with its countdown there, to every viewer and to the
+      owner who opens their own profile by that route. The client holds no signal for another
+      player's objection, and a field saying so would disclose it. To decide first, by the user:
+      whether a third party's row carries a capture state at all, and if it does, what the server
+      serves for a row the claim refuses
 
 - [x] T706 Unstick an analysis whose lease expired (filed 2026-10-08; decided by the user the same
       day). Match 511523321's row stayed `running` from the 2026-10-05 crash until a manual

@@ -299,6 +299,9 @@ export function MatchDetailContainer({ gameId, children }: MatchDetailContainerP
         downloadState={downloadState}
         onDownload={handleDownload}
         onRetry={() => void matchQuery.refetch()}
+        // T724 (capture-state-badge.md §4): the caller's own objection, as `GET /api/me` reports
+        // it now, so a `pending` row reads "Not archived" instead of promising a capture.
+        archivalObjected={session?.authenticated === true && session.archival_objected}
       />
 
       {/* match-history.md §2: "an upload affordance for a `lost` capture is not part of

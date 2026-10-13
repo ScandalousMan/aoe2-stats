@@ -691,4 +691,63 @@ describe('MatchList', () => {
       expect(screen.getByRole('status')).toHaveTextContent('Once you play, they will appear here.')
     })
   })
+
+  // T724 (capture-state-badge.md §4): `archivalObjected` is the caller's own objection, so it is
+  // forwarded to every badge of the caller's own list and never to a third party's.
+  describe('archivalObjected (T724)', () => {
+    const pendingMatch: MatchRowData = {
+      ...match,
+      captureStatus: 'pending',
+      captureDeadlineAt: new Date(Date.now() + 6 * 24 * 60 * 60_000 + 60_000).toISOString(),
+    }
+
+    it('card layout: reads "Not archived" with no countdown for every row', () => {
+      const { container } = render(
+        <MatchList
+          matches={[pendingMatch, { ...pendingMatch, gameId: '1002' }]}
+          archivalObjected
+        />,
+      )
+      expect(screen.getAllByText('Not archived')).toHaveLength(2)
+      expect(container).not.toHaveTextContent(/Still catchable|left|window closing/i)
+    })
+
+    it('table layout: reads "Not archived" with no countdown', () => {
+      const restore = mockMatchMediaAt(1280)
+      const { container } = render(<MatchList matches={[pendingMatch]} archivalObjected />)
+      expect(screen.getByRole('table')).toBeInTheDocument()
+      expect(screen.getByText('Not archived')).toBeInTheDocument()
+      expect(container).not.toHaveTextContent(/Still catchable|left|window closing/i)
+      restore()
+    })
+
+    it.each([1280, 375])(
+      'without the flag a pending row still reads "Still catchable" (%ipx)',
+      (width) => {
+        const restore = mockMatchMediaAt(width)
+        render(<MatchList matches={[pendingMatch]} />)
+        expect(screen.getByText('Still catchable')).toBeInTheDocument()
+        expect(screen.queryByText('Not archived')).not.toBeInTheDocument()
+        restore()
+      },
+    )
+
+    it.each([1280, 375])(
+      'subject="other" never forwards it: a pending row reads "Still catchable" (%ipx)',
+      (width) => {
+        const restore = mockMatchMediaAt(width)
+        render(
+          <MatchList
+            matches={[pendingMatch]}
+            subject="other"
+            subjectAlias="aoe2villain"
+            archivalObjected
+          />,
+        )
+        expect(screen.getByText('Still catchable')).toBeInTheDocument()
+        expect(screen.queryByText('Not archived')).not.toBeInTheDocument()
+        restore()
+      },
+    )
+  })
 })

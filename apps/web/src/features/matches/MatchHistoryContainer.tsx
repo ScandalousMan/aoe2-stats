@@ -181,6 +181,9 @@ export function MatchHistoryContainer() {
             // T388: `MatchRow` renders a real `<a href>` so it degrades gracefully, but a plain
             // click routes through here instead of forcing a full document reload.
             onNavigate={(href) => void navigate({ to: href })}
+            // T724 (capture-state-badge.md §4): a profile the caller actively links, so their
+            // objection is the claim's refusal and a `pending` row must not promise a capture.
+            archivalObjected={session?.authenticated === true && session.archival_objected}
           />
         </>
       )}

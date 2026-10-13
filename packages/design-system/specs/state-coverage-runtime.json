@@ -403,6 +403,32 @@
       "1280": { "clip": false, "fullPage": false, "mounts": [] }
     }
   },
+  "composite-capturestatebadge--not-archived-objected": {
+    "importPath": "./src/composites/CaptureStateBadge/CaptureStateBadge.stories.tsx",
+    "exportName": "NotArchivedObjected",
+    "files": [
+      "packages/design-system/src/composites/CaptureStateBadge/index.tsx",
+      "packages/design-system/src/primitives/Badge/index.tsx"
+    ],
+    "widths": {
+      "375": { "clip": false, "fullPage": false, "mounts": [] },
+      "768": { "clip": false, "fullPage": false, "mounts": [] },
+      "1280": { "clip": false, "fullPage": false, "mounts": [] }
+    }
+  },
+  "composite-capturestatebadge--not-archived-objected-detail": {
+    "importPath": "./src/composites/CaptureStateBadge/CaptureStateBadge.stories.tsx",
+    "exportName": "NotArchivedObjectedDetail",
+    "files": [
+      "packages/design-system/src/composites/CaptureStateBadge/index.tsx",
+      "packages/design-system/src/primitives/Badge/index.tsx"
+    ],
+    "widths": {
+      "375": { "clip": false, "fullPage": false, "mounts": [] },
+      "768": { "clip": false, "fullPage": false, "mounts": [] },
+      "1280": { "clip": false, "fullPage": false, "mounts": [] }
+    }
+  },
   "composite-capturestatebadge--still-catchable-days": {
     "importPath": "./src/composites/CaptureStateBadge/CaptureStateBadge.stories.tsx",
     "exportName": "StillCatchableDays",
@@ -2867,6 +2893,25 @@
       "1280": { "clip": false, "fullPage": false, "mounts": [] }
     }
   },
+  "composite-matchdetailpanel--not-archived-objected": {
+    "importPath": "./src/composites/MatchDetailPanel/MatchDetailPanel.stories.tsx",
+    "exportName": "NotArchivedObjected",
+    "files": [
+      "packages/design-system/src/composites/CaptureStateBadge/index.tsx",
+      "packages/design-system/src/composites/CivilisationIcon/index.tsx",
+      "packages/design-system/src/composites/MapThumbnail/index.tsx",
+      "packages/design-system/src/composites/MatchDetailPanel/index.tsx",
+      "packages/design-system/src/composites/MatchRow/index.tsx",
+      "packages/design-system/src/composites/PlayerColourSwatch/index.tsx",
+      "packages/design-system/src/primitives/Badge/index.tsx",
+      "packages/design-system/src/primitives/Table/index.tsx"
+    ],
+    "widths": {
+      "375": { "clip": false, "fullPage": false, "mounts": [] },
+      "768": { "clip": false, "fullPage": false, "mounts": [] },
+      "1280": { "clip": false, "fullPage": false, "mounts": [] }
+    }
+  },
   "composite-matchdetailpanel--not-found": {
     "importPath": "./src/composites/MatchDetailPanel/MatchDetailPanel.stories.tsx",
     "exportName": "NotFound",
@@ -3049,7 +3094,7 @@
         "mounts": [],
         "force": {
           "count": 1,
-          "stamp": "packages/design-system/src/composites/MatchRow/index.tsx:406",
+          "stamp": "packages/design-system/src/composites/MatchRow/index.tsx:409",
           "placedBy": null
         }
       },
@@ -3059,7 +3104,7 @@
         "mounts": [],
         "force": {
           "count": 1,
-          "stamp": "packages/design-system/src/composites/MatchRow/index.tsx:406",
+          "stamp": "packages/design-system/src/composites/MatchRow/index.tsx:409",
           "placedBy": null
         }
       },
@@ -3069,7 +3114,7 @@
         "mounts": [],
         "force": {
           "count": 1,
-          "stamp": "packages/design-system/src/composites/MatchRow/index.tsx:406",
+          "stamp": "packages/design-system/src/composites/MatchRow/index.tsx:409",
           "placedBy": null
         }
       }
@@ -3193,7 +3238,7 @@
         "mounts": [],
         "force": {
           "count": 1,
-          "stamp": "packages/design-system/src/composites/MatchRow/index.tsx:406",
+          "stamp": "packages/design-system/src/composites/MatchRow/index.tsx:409",
           "placedBy": null
         }
       },
@@ -3203,7 +3248,7 @@
         "mounts": [],
         "force": {
           "count": 1,
-          "stamp": "packages/design-system/src/composites/MatchRow/index.tsx:406",
+          "stamp": "packages/design-system/src/composites/MatchRow/index.tsx:409",
           "placedBy": null
         }
       },
@@ -3213,7 +3258,7 @@
         "mounts": [],
         "force": {
           "count": 1,
-          "stamp": "packages/design-system/src/composites/MatchRow/index.tsx:406",
+          "stamp": "packages/design-system/src/composites/MatchRow/index.tsx:409",
           "placedBy": null
         }
       }
@@ -3237,7 +3282,7 @@
         "mounts": [],
         "force": {
           "count": 1,
-          "stamp": "packages/design-system/src/composites/MatchRow/index.tsx:406",
+          "stamp": "packages/design-system/src/composites/MatchRow/index.tsx:409",
           "placedBy": null
         }
       },
@@ -3247,7 +3292,7 @@
         "mounts": [],
         "force": {
           "count": 1,
-          "stamp": "packages/design-system/src/composites/MatchRow/index.tsx:406",
+          "stamp": "packages/design-system/src/composites/MatchRow/index.tsx:409",
           "placedBy": null
         }
       },
@@ -3257,7 +3302,7 @@
         "mounts": [],
         "force": {
           "count": 1,
-          "stamp": "packages/design-system/src/composites/MatchRow/index.tsx:406",
+          "stamp": "packages/design-system/src/composites/MatchRow/index.tsx:409",
           "placedBy": null
         }
       }

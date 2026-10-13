@@ -161,6 +161,11 @@ export interface MatchDetailPanelProps {
   onRetry?: () => void
   /** Where "back to the match list" points. Defaults to `/matches` (T075's route). */
   matchListHref?: string
+  /** The caller's own `GET /api/me` `archival_objected` (T724, capture-state-badge.md §4),
+   * forwarded to the header's `CaptureStateBadge`: an objecting owner's `pending` row reads "Not
+   * archived" with §3's one sentence. A panel for a match the caller does not own passes nothing.
+   * No `DownloadAction` follows either way — it is `stored`'s alone. */
+  archivalObjected?: boolean
   className?: string
 }
 
@@ -195,6 +200,7 @@ export function MatchDetailPanel({
   onDownload,
   onRetry,
   matchListHref = '/matches',
+  archivalObjected = false,
   className,
 }: MatchDetailPanelProps) {
   if (status === 'error') {
@@ -285,6 +291,7 @@ export function MatchDetailPanel({
             variant="detail"
             captureStatus={match.captureStatus}
             captureDeadlineAt={match.captureDeadlineAt}
+            archivalObjected={archivalObjected}
           />
         </header>
 

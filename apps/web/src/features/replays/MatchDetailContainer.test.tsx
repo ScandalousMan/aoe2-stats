@@ -762,6 +762,56 @@ describe('MatchDetailContainer', () => {
       expect(screen.queryByText('Add the replay yourself')).not.toBeInTheDocument()
     })
 
+    // T724 (capture-state-badge.md §4): `GET /api/me`'s `archival_objected` is forwarded to the
+    // panel, so an objecting owner's `pending` row promises no capture; the contrast is the same
+    // row for a session that has not objected.
+    it('reads "Not archived" with its one sentence and no countdown for a pending capture when the session has objected', async () => {
+      installFakeApi({
+        session: baseSession({
+          archival_objected: true,
+          archival_objected_at: '2026-10-01T00:00:00Z',
+        }),
+        profiles: [],
+        detail: () =>
+          jsonResponse(
+            baseDetail({
+              capture_status: 'pending',
+              capture_deadline_at: new Date(Date.now() + 6 * 24 * 60 * 60_000).toISOString(),
+            }),
+          ),
+      })
+      const { container } = renderMatch()
+
+      await screen.findByText('Arabia')
+      await screen.findByText('Not archived')
+      expect(screen.getByText('Archival is off for your account.')).toBeInTheDocument()
+      expect(screen.queryByText('Still catchable')).not.toBeInTheDocument()
+      expect(container).not.toHaveTextContent(/left|Captures automatically|window closing/i)
+      expect(screen.queryByRole('button', { name: 'Download replay' })).not.toBeInTheDocument()
+      expect(screen.queryByText('Add the replay yourself')).not.toBeInTheDocument()
+    })
+
+    it('contrast: a pending capture still reads "Still catchable" when the session has not objected', async () => {
+      installFakeApi({
+        session: baseSession({ archival_objected: false }),
+        profiles: [],
+        detail: () =>
+          jsonResponse(
+            baseDetail({
+              capture_status: 'pending',
+              capture_deadline_at: new Date(
+                Date.now() + 6 * 24 * 60 * 60_000 + 60_000,
+              ).toISOString(),
+            }),
+          ),
+      })
+      renderMatch()
+
+      await screen.findByText('Arabia')
+      expect(await screen.findByText('Still catchable')).toBeInTheDocument()
+      expect(screen.queryByText('Not archived')).not.toBeInTheDocument()
+    })
+
     it('contrast: stored still offers the download and expired still offers the upload', async () => {
       installFakeApi({
         profiles: [],
