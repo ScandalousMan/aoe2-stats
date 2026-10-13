@@ -97,6 +97,9 @@ export interface MatchRowProps {
    * `PlayerResultRow.onNavigate` defines — the row stays a real `<a href={match.href}>`, a
    * modified click or the absence of `onNavigate` falls through to native handling. */
   onNavigate?: (href: string) => void
+  /** The caller's own `archival_objected`, forwarded to `CaptureStateBadge` (T724). `MatchList`
+   * sets it; a row of a third party's list never receives it (capture-state-badge.md §4). */
+  archivalObjected?: boolean
   className?: string
 }
 
@@ -401,7 +404,7 @@ function MatchMeta({ match }: { match: MatchRowData }) {
  * `CaptureStateBadge`, `CivilisationIcon`, `MapThumbnail` and `PlayerColourSwatch` — is
  * non-interactive text and imagery, so the row has exactly one focus stop. Used directly below
  * `xl`; `MatchList` renders a real `<table>` above it instead (§8). */
-export function MatchRow({ match, onNavigate, className }: MatchRowProps) {
+export function MatchRow({ match, onNavigate, archivalObjected, className }: MatchRowProps) {
   return (
     <a
       href={match.href}
@@ -459,6 +462,7 @@ export function MatchRow({ match, onNavigate, className }: MatchRowProps) {
         variant="compact"
         captureStatus={match.captureStatus}
         captureDeadlineAt={match.captureDeadlineAt}
+        archivalObjected={archivalObjected}
       />
     </a>
   )
@@ -490,6 +494,11 @@ export interface MatchListProps {
    * `subject="self"` (default), and never required there — the caller's own list names no alias
    * in either string it uses. */
   subjectAlias?: string
+  /** The caller's own `GET /api/me` `archival_objected` (T724, capture-state-badge.md §4),
+   * forwarded to every badge in the card and the table layout so an objecting owner's `pending`
+   * row reads "Not archived". Never forwarded when `subject="other"`, even if a caller passes
+   * it: a third-party list withholds the input (match-history.md §11.3). */
+  archivalObjected?: boolean
   className?: string
 }
 
@@ -503,6 +512,7 @@ export function MatchList({
   onNavigate,
   subject = 'self',
   subjectAlias,
+  archivalObjected = false,
   className,
 }: MatchListProps) {
   // §8 reserves everything below 1280 for cards; `xl` is the named breakpoint at that width
@@ -514,6 +524,10 @@ export function MatchList({
   // `aria-label` (§9, §11.5: "screen-reader users get the corrected subject the same way sighted
   // users do, from the same string").
   const caption = subject === 'other' ? `${subjectAlias}'s recent matches` : 'Your recent matches'
+
+  // T724: a `subject="other"` list withholds the input (match-history.md §11.3); the badge alone
+  // maps it to a reading.
+  const forwardedObjection = subject === 'self' && archivalObjected
 
   if (status === 'loading') {
     return (
@@ -565,6 +579,7 @@ export function MatchList({
         matches={matches}
         onNavigate={onNavigate}
         caption={caption}
+        archivalObjected={forwardedObjection}
         className={className}
       />
     )
@@ -574,7 +589,7 @@ export function MatchList({
     <ul className={cx('flex flex-col gap-3', className)} aria-label={caption}>
       {matches.map((match) => (
         <li key={match.gameId}>
-          <MatchRow match={match} onNavigate={onNavigate} />
+          <MatchRow match={match} onNavigate={onNavigate} archivalObjected={forwardedObjection} />
         </li>
       ))}
     </ul>
@@ -585,94 +600,101 @@ export function MatchList({
 // `<table>` — `Table` owns the identity-first row link, the numeric-column alignment and the one
 // overflow rule, so this function only ever names the eight columns, never re-implements any of
 // the three.
-const MATCH_TABLE_COLUMNS: [TableColumn<MatchRowData>, ...TableColumn<MatchRowData>[]] = [
-  {
-    key: 'result',
-    header: 'Result',
-    render: (match) => <OutcomeLabel outcome={match.outcome} />,
-  },
-  {
-    key: 'players',
-    // §12.7 renames this column from "Opponent" to "Players" — both sides now name participants,
-    // not just the opponent.
-    header: 'Players',
-    render: (match) =>
-      match.participants && match.participants.length > 0 ? (
-        // §12.7: the Players column names at most two participants per side before its overflow
-        // text — the column's width is bounded by the table, not by the window.
-        <Participants participants={match.participants} cap={2} />
-      ) : null,
-  },
-  {
-    key: 'map',
-    header: 'Map',
-    render: (match) => (
-      // §12.7: `sm` (32px) here so a row with a thumbnail and a row without one are the same
-      // height — map-thumbnail.md §3's own reason for this size existing.
-      <MapThumbnail thumbnailUrl={match.mapThumbnailUrl} mapName={match.map} size="sm" />
-    ),
-  },
-  {
-    key: 'civilisation',
-    header: 'Civilisation',
-    render: (match) => (
-      <CivilisationIcon iconUrl={match.civIconUrl} name={match.civilisation} size="md" />
-    ),
-  },
-  {
-    key: 'rating',
-    // §12.7 renames this column from "Change" to "Rating" — it now carries the absolute value
-    // alongside the signed change.
-    header: 'Rating',
-    align: 'numeric',
-    render: (match) => (
-      <RatingFigure rating={match.rating} ratingChange={match.ratingChange} size="sm" />
-    ),
-  },
-  {
-    key: 'duration',
-    header: 'Duration',
-    align: 'numeric',
-    render: (match) => match.durationLabel,
-  },
-  {
-    key: 'when',
-    header: 'When',
-    render: (match) => <WhenLabel match={match} />,
-  },
-  {
-    key: 'capture',
-    header: 'Capture',
-    render: (match) => (
-      // `stacked`: this column's width is bounded by the table, not by the window
-      // (match-history.md §8) — told to stack rather than left to infer a container width the
-      // badge cannot observe (§8, capture-state-badge.md's own `stacked` prop).
-      <CaptureStateBadge
-        variant="compact"
-        stacked
-        captureStatus={match.captureStatus}
-        captureDeadlineAt={match.captureDeadlineAt}
-      />
-    ),
-  },
-]
+function matchTableColumns(
+  archivalObjected: boolean,
+): [TableColumn<MatchRowData>, ...TableColumn<MatchRowData>[]] {
+  return [
+    {
+      key: 'result',
+      header: 'Result',
+      render: (match) => <OutcomeLabel outcome={match.outcome} />,
+    },
+    {
+      key: 'players',
+      // §12.7 renames this column from "Opponent" to "Players" — both sides now name participants,
+      // not just the opponent.
+      header: 'Players',
+      render: (match) =>
+        match.participants && match.participants.length > 0 ? (
+          // §12.7: the Players column names at most two participants per side before its overflow
+          // text — the column's width is bounded by the table, not by the window.
+          <Participants participants={match.participants} cap={2} />
+        ) : null,
+    },
+    {
+      key: 'map',
+      header: 'Map',
+      render: (match) => (
+        // §12.7: `sm` (32px) here so a row with a thumbnail and a row without one are the same
+        // height — map-thumbnail.md §3's own reason for this size existing.
+        <MapThumbnail thumbnailUrl={match.mapThumbnailUrl} mapName={match.map} size="sm" />
+      ),
+    },
+    {
+      key: 'civilisation',
+      header: 'Civilisation',
+      render: (match) => (
+        <CivilisationIcon iconUrl={match.civIconUrl} name={match.civilisation} size="md" />
+      ),
+    },
+    {
+      key: 'rating',
+      // §12.7 renames this column from "Change" to "Rating" — it now carries the absolute value
+      // alongside the signed change.
+      header: 'Rating',
+      align: 'numeric',
+      render: (match) => (
+        <RatingFigure rating={match.rating} ratingChange={match.ratingChange} size="sm" />
+      ),
+    },
+    {
+      key: 'duration',
+      header: 'Duration',
+      align: 'numeric',
+      render: (match) => match.durationLabel,
+    },
+    {
+      key: 'when',
+      header: 'When',
+      render: (match) => <WhenLabel match={match} />,
+    },
+    {
+      key: 'capture',
+      header: 'Capture',
+      render: (match) => (
+        // `stacked`: this column's width is bounded by the table, not by the window
+        // (match-history.md §8) — told to stack rather than left to infer a container width the
+        // badge cannot observe (§8, capture-state-badge.md's own `stacked` prop).
+        <CaptureStateBadge
+          variant="compact"
+          stacked
+          captureStatus={match.captureStatus}
+          captureDeadlineAt={match.captureDeadlineAt}
+          archivalObjected={archivalObjected}
+        />
+      ),
+    },
+  ]
+}
 
 function MatchTable({
   matches,
   onNavigate,
   caption,
+  archivalObjected,
   className,
 }: {
   matches: MatchRowData[]
   onNavigate?: (href: string) => void
   caption: string
+  archivalObjected: boolean
   className?: string
 }) {
   return (
     <Table<MatchRowData>
       caption={caption}
       captionHidden
-      columns={MATCH_TABLE_COLUMNS}
+      columns={matchTableColumns(archivalObjected)}
       rows={matches}
       getRowKey={(match) => match.gameId}
       getRowHref={(match) => match.href}

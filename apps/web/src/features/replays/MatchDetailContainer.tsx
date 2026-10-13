@@ -299,6 +299,10 @@ export function MatchDetailContainer({ gameId, children }: MatchDetailContainerP
         downloadState={downloadState}
         onDownload={handleDownload}
         onRetry={() => void matchQuery.refetch()}
+        // T724 (capture-state-badge.md §4): `archival_objected` from the cached `me` query, passed
+        // for every match; a match none of the caller's linked profiles played has a null
+        // `capture_status`, so the badge renders nothing there.
+        archivalObjected={session?.authenticated === true && session.archival_objected}
       />
 
       {/* match-history.md §2: "an upload affordance for a `lost` capture is not part of

@@ -141,6 +141,39 @@ describe('MatchDetailPanel', () => {
     expect(container).not.toHaveTextContent(/withdrawn/i)
   })
 
+  // T724 (capture-state-badge.md §3, §4): an objecting owner's `pending` row reads "Not archived"
+  // with its one sentence. The download assertion is not T724's: `pending` never offered one.
+  it('forwards archivalObjected: a pending row reads "Not archived" with its one sentence', () => {
+    const { container } = render(
+      <MatchDetailPanel
+        match={{
+          ...match,
+          captureStatus: 'pending',
+          captureDeadlineAt: new Date(Date.now() + 6 * 24 * 60 * 60_000).toISOString(),
+        }}
+        archivalObjected
+      />,
+    )
+    expect(screen.getByText('Not archived')).toBeInTheDocument()
+    expect(screen.getByText('Archival is off for your account.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Download replay' })).not.toBeInTheDocument()
+    expect(container).not.toHaveTextContent(/Still catchable|left|Captures automatically/i)
+  })
+
+  it('without archivalObjected a pending row still reads "Still catchable" (contrast)', () => {
+    render(
+      <MatchDetailPanel
+        match={{
+          ...match,
+          captureStatus: 'pending',
+          captureDeadlineAt: new Date(Date.now() + 6 * 24 * 60 * 60_000 + 60_000).toISOString(),
+        }}
+      />,
+    )
+    expect(screen.getByText('Still catchable')).toBeInTheDocument()
+    expect(screen.queryByText('Not archived')).not.toBeInTheDocument()
+  })
+
   it('shows a loading label while the signed URL is being requested', () => {
     render(<MatchDetailPanel match={match} downloadState="loading" />)
     expect(screen.getByRole('button', { name: /Preparing your download/ })).toBeInTheDocument()

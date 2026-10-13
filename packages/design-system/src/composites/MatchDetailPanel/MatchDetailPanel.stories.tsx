@@ -549,3 +549,19 @@ export const NotArchived: Story = {
   name: 'Not archived — DownloadAction absent, sentence beneath the pill (withdrawn)',
   args: { match: { ...baseMatch, gameId: '1006', captureStatus: 'withdrawn' } },
 }
+
+// T724 (capture-state-badge.md §3, §4, §12): an objecting owner's `pending` row reads "Not
+// archived" with its one sentence and no countdown. Appended last for the same reason as
+// `NotArchived` above; `pending` never showed a `DownloadAction`, so its absence is not T724's.
+export const NotArchivedObjected: Story = {
+  name: 'Not archived — pending, archival objected (DownloadAction absent, no countdown)',
+  args: {
+    match: {
+      ...baseMatch,
+      gameId: '1007',
+      captureStatus: 'pending',
+      captureDeadlineAt: new Date(Date.now() + 6 * 24 * 60 * 60_000).toISOString(),
+    },
+    archivalObjected: true,
+  },
+}

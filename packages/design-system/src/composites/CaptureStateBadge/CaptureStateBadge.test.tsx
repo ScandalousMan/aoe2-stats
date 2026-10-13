@@ -220,4 +220,149 @@ describe('CaptureStateBadge', () => {
       expect(wrapper?.className).not.toContain('sm:flex-row')
     })
   })
+
+  // T724 (capture-state-badge.md §3, §4, §7): with `archivalObjected`, a `pending`/`downloading`
+  // row reads "Not archived" in `withdrawn`'s paint, with no countdown, whatever the deadline.
+  describe('archivalObjected — a catchable row of an objecting owner (T724)', () => {
+    const OBJECTED_SENTENCE = 'Archival is off for your account.'
+    const WITHDRAWN_SENTENCE =
+      'Automatic capture ended for this match while archival was not running for this profile.'
+    const NO_PROMISE = /Still catchable|left|window closing|due any moment|Captures automatically/i
+
+    const deadlines = {
+      'a future deadline': () => inFromNow(6 * 24 * 60 * 60_000),
+      'a past deadline': () => inFromNow(-5 * 60_000),
+      'a null deadline': () => null,
+    } as const
+
+    describe.each(['pending', 'downloading'] as const)('%s', (status) => {
+      describe.each(Object.entries(deadlines))('with %s', (_name, deadline) => {
+        it('compact: the neutral "Not archived" pill alone, no promise of a capture', () => {
+          const { container } = render(
+            <CaptureStateBadge
+              captureStatus={status}
+              captureDeadlineAt={deadline()}
+              variant="compact"
+              archivalObjected
+            />,
+          )
+          const pill = screen.getByText('Not archived')
+          expect(pill.className).toContain('bg-surface-sunken')
+          expect(pill.className).not.toContain('text-warning')
+          expect(container).toHaveTextContent(/^Not archived$/)
+          expect(container.querySelector('[aria-describedby]')).toBeNull()
+          expect(container).not.toHaveTextContent(NO_PROMISE)
+        })
+
+        it('detail: the one sentence, linked to the pill by aria-describedby', () => {
+          const { container } = render(
+            <CaptureStateBadge
+              captureStatus={status}
+              captureDeadlineAt={deadline()}
+              variant="detail"
+              archivalObjected
+            />,
+          )
+          expect(screen.getByText('Not archived')).toBeInTheDocument()
+          expect(screen.getByText(OBJECTED_SENTENCE)).toBeInTheDocument()
+          const wrapper = screen.getByText('Not archived').closest('span[aria-describedby]')
+          const describedBy = wrapper?.getAttribute('aria-describedby')
+          expect(describedBy).toBeTruthy()
+          expect(document.getElementById(describedBy as string)).toHaveTextContent(
+            OBJECTED_SENTENCE,
+          )
+          expect(container).not.toHaveTextContent(NO_PROMISE)
+        })
+      })
+
+      it.each(['compact', 'detail'] as const)(
+        'starts no interval, whatever the deadline (%s)',
+        (variant) => {
+          const setIntervalSpy = vi.spyOn(window, 'setInterval')
+          try {
+            for (const deadline of Object.values(deadlines)) {
+              const { unmount } = render(
+                <CaptureStateBadge
+                  captureStatus={status}
+                  captureDeadlineAt={deadline()}
+                  variant={variant}
+                  archivalObjected
+                />,
+              )
+              unmount()
+            }
+            expect(setIntervalSpy).not.toHaveBeenCalled()
+          } finally {
+            setIntervalSpy.mockRestore()
+          }
+        },
+      )
+
+      // The contrast: without the flag the same row is unchanged, and the interval does run.
+      it.each(['compact', 'detail'] as const)(
+        'without the flag it still reads "Still catchable" with its countdown (%s)',
+        (variant) => {
+          const setIntervalSpy = vi.spyOn(window, 'setInterval')
+          try {
+            render(
+              <CaptureStateBadge
+                captureStatus={status}
+                captureDeadlineAt={inFromNow(6 * 24 * 60 * 60_000 + 60_000)}
+                variant={variant}
+                archivalObjected={false}
+              />,
+            )
+            expect(screen.getByText('Still catchable')).toBeInTheDocument()
+            expect(screen.getByText(/6 days/)).toBeInTheDocument()
+            expect(screen.queryByText('Not archived')).not.toBeInTheDocument()
+            expect(setIntervalSpy).toHaveBeenCalledTimes(1)
+          } finally {
+            setIntervalSpy.mockRestore()
+          }
+        },
+      )
+    })
+
+    // Every other status, and an unknown one, ignores the prop: output identical to flag false.
+    describe.each(['compact', 'detail'] as const)(
+      'every other status ignores it (%s)',
+      (variant) => {
+        it.each([
+          'stored',
+          'quarantined',
+          'unavailable',
+          'expired',
+          'failed',
+          'withdrawn',
+          'a_future_status',
+        ])('%s renders identically with and without the flag', (status) => {
+          const off = render(
+            <CaptureStateBadge captureStatus={status} variant={variant} archivalObjected={false} />,
+          )
+          const offHtml = off.container.innerHTML.replace(
+            /id="[^"]*"|aria-describedby="[^"]*"/g,
+            '',
+          )
+          off.unmount()
+          const on = render(
+            <CaptureStateBadge captureStatus={status} variant={variant} archivalObjected />,
+          )
+          const onHtml = on.container.innerHTML.replace(/id="[^"]*"|aria-describedby="[^"]*"/g, '')
+          expect(onHtml).toBe(offHtml)
+          expect(on.container).not.toHaveTextContent(OBJECTED_SENTENCE)
+        })
+      },
+    )
+
+    it('withdrawn keeps its own sentence and is not replaced by the new one', () => {
+      render(<CaptureStateBadge captureStatus="withdrawn" variant="detail" archivalObjected />)
+      expect(screen.getByText(WITHDRAWN_SENTENCE)).toBeInTheDocument()
+      expect(screen.queryByText(OBJECTED_SENTENCE)).not.toBeInTheDocument()
+    })
+
+    it('a null status still renders nothing', () => {
+      const { container } = render(<CaptureStateBadge captureStatus={null} archivalObjected />)
+      expect(container).toBeEmptyDOMElement()
+    })
+  })
 })

@@ -112,13 +112,14 @@ function baseRow(overrides: Partial<ApiMatchListRow> = {}): ApiMatchListRow {
 function installFakeApi(options: {
   profileHandler?: () => Response
   matchesHandler?: () => Response
+  session?: typeof authenticatedSession
 }) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const path = String(input)
     const method = init?.method ?? 'GET'
 
     if (path === '/api/me' && method === 'GET') {
-      return jsonResponse(authenticatedSession)
+      return jsonResponse(options.session ?? authenticatedSession)
     }
     if (/^\/api\/players\/\d+\/matches(\?.*)?$/.test(path) && method === 'GET') {
       return options.matchesHandler
@@ -170,6 +171,31 @@ describe('PlayerMatchHistoryContainer', () => {
     await screen.findAllByText('rival_ace')
     expect(screen.getByRole('list', { name: "rival_ace's recent matches" })).toBeInTheDocument()
     expect(screen.queryByText('Your recent matches')).not.toBeInTheDocument()
+  })
+
+  // T724 (match-history.md §11.3, capture-state-badge.md §4): an objecting caller reads a
+  // `pending` row on a third party's list as "Still catchable". This pins the whole path; it does
+  // not isolate the container, as `MatchList`'s `subject="other"` gate withholds the input too.
+  it('an objecting caller still reads "Still catchable" on a third party\'s list', async () => {
+    installFakeApi({
+      session: { ...authenticatedSession, archival_objected: true },
+      matchesHandler: () =>
+        jsonResponse({
+          matches: [
+            baseRow({
+              capture_status: 'pending',
+              capture_deadline_at: new Date(
+                Date.now() + 6 * 24 * 60 * 60_000 + 60_000,
+              ).toISOString(),
+            }),
+          ],
+          next_cursor: null,
+        }),
+    })
+    renderHistory()
+
+    expect(await screen.findByText('Still catchable')).toBeInTheDocument()
+    expect(screen.queryByText('Not archived')).not.toBeInTheDocument()
   })
 
   it('shows the third-party empty-state sentence for a player with no matches', async () => {

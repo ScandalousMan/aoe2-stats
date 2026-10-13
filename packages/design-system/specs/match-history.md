@@ -546,10 +546,10 @@ case.
 service, exactly as `match_row_json` reports it — unmodified, the same "capture state travels intact"
 rule §§1–10 already state for the caller's own list.** This is not a new disclosure this task
 introduces: `GET /api/players/{profile_id}/matches` (T328) already answers with the identical field,
-for any profile, before this component existed to render it. There is no `DownloadAction` on
-`MatchRow` at any point (§2: it lives only on `MatchDetailPanel`, gated to the caller's own point of
-view per §11.1) — a third party's badge is informational, never an offered action the caller could not
-actually take.
+for any profile. A `subject="other"` list never passes `archivalObjected` (`capture-state-badge.md`
+§4), the caller's own objection: an objecting player's `pending` row reads "Still catchable" here.
+There is no `DownloadAction` on `MatchRow` at any point (§2: `MatchDetailPanel` only, the caller's
+own point of view per §11.1) — a third party's badge is informational, never an action on offer.
 
 ### 11.4 States §5 did not need to name
 

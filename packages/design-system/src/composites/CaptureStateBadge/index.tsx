@@ -30,8 +30,15 @@ export interface CaptureStateBadgeProps {
   // `string & {}` keeps literal autocomplete for the known eight while still accepting any other
   // string — §6 "error" is exactly that case, an unrecognised value that must still type-check.
   captureStatus?: CaptureStatus | (string & {}) | null
-  /** ISO 8601, or `null`. Consulted only while `captureStatus` is `pending`/`downloading`. */
+  /** ISO 8601, or `null`. Consulted only while `captureStatus` is `pending`/`downloading` and
+   * `archivalObjected` is not set: with it, the deadline is never read (§7). */
   captureDeadlineAt?: string | null
+  /** `GET /api/me`'s `archival_objected` (§4, T724). `MatchDetailPanel` passes it for every match:
+   * the detail route joins a capture row only for the caller's linked profiles, so any other
+   * match has a `null` `captureStatus` and renders nothing. `MatchList` withholds it for
+   * `subject="other"`. With it a `pending`/`downloading` row reads "Not archived" as `withdrawn`
+   * does, with "Archival is off for your account." in `detail` and no countdown or interval. */
+  archivalObjected?: boolean
   /** `compact` inside `MatchRow`, `detail` inside `MatchDetailPanel` (match-history.md). Renamed
    * from `context` (FR-032, T557): every other component whose rendering depends on where it is
    * embedded calls this `variant`. */
@@ -89,9 +96,13 @@ const DETAIL_ONLY_REASON: Partial<Record<CaptureStatus, string>> = {
     'Automatic capture ended for this match while archival was not running for this profile.',
 }
 
+// T724 (§3): the one fact the session holds for an objecting owner's catchable row. It claims
+// nothing about the deadline or about what resuming archival would recover.
+const ARCHIVAL_OFF_SENTENCE = 'Archival is off for your account.'
+
 const CATCHABLE = new Set<CaptureStatus>(['pending', 'downloading'])
 
-// "Recomputed on an interval no coarser than once per minute while the component is mounted"
+// "Recomputed on an interval no coarser than once per minute while mounted"
 // (§7). Only ticks while the countdown is actually on screen, so an archived or lost row never
 // re-renders on a timer it has no use for.
 function useTickingNow(active: boolean): number {
@@ -120,18 +131,21 @@ function secondaryLineFor(
   return REASON[status] ?? (variant === 'detail' ? DETAIL_ONLY_REASON[status] : undefined)
 }
 
-/** The single place `replay_captures.status`'s eight raw values collapse into the five states a
- * user sees. Never called with a caller-chosen label or tone — see capture-state-badge.md §3. */
+/** Maps `replay_captures.status`'s eight raw values and `archivalObjected` to what a user sees;
+ * a caller passes neither a label nor a tone — see capture-state-badge.md §3, §4. */
 export function CaptureStateBadge({
   captureStatus,
   captureDeadlineAt = null,
+  archivalObjected = false,
   variant = 'compact',
   stacked = false,
   loading = false,
   className,
 }: CaptureStateBadgeProps) {
   const isCatchable = captureStatus != null && CATCHABLE.has(captureStatus as CaptureStatus)
-  const now = useTickingNow(!loading && isCatchable)
+  // T724 (§3, §7): an objecting owner's catchable row shows no countdown, so nothing ticks for it.
+  const archivalOff = archivalObjected && isCatchable
+  const now = useTickingNow(!loading && isCatchable && !archivalOff)
   const secondaryId = useId()
 
   if (loading) {
@@ -144,7 +158,10 @@ export function CaptureStateBadge({
 
   if (!captureStatus) return null
 
-  const known = TONE_BY_STATUS[captureStatus as CaptureStatus]
+  // The objecting owner's catchable row renders as `withdrawn` does (§3).
+  const known = archivalOff
+    ? TONE_BY_STATUS.withdrawn
+    : TONE_BY_STATUS[captureStatus as CaptureStatus]
 
   if (!known) {
     // Forward-compatibility guard (§6 "error"): a status this component cannot classify still
@@ -152,12 +169,11 @@ export function CaptureStateBadge({
     return <Badge variant="neutral">{captureStatus}</Badge>
   }
 
-  const secondary = secondaryLineFor(
-    captureStatus as CaptureStatus,
-    captureDeadlineAt,
-    now,
-    variant,
-  )
+  const secondary = archivalOff
+    ? variant === 'detail'
+      ? ARCHIVAL_OFF_SENTENCE
+      : undefined
+    : secondaryLineFor(captureStatus as CaptureStatus, captureDeadlineAt, now, variant)
 
   // `detail` always stacks, `space-1` between pill and SecondaryLine (§4, §9). `compact` stacks
   // either because the caller told it to (`stacked` — a box it knows is bounded, like MatchRow's
