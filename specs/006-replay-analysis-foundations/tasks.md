@@ -2296,7 +2296,7 @@ carries what T673's dry run read.
       another player's objection. `MatchList` does not forward the input with `subject="other"`.
       **The count gate:** three stories net and eighteen baseline files net;
       `scripts/checks/story-baselines.mjs` and the figure in
-      `packages/design-system/specs/README.md` move with them. **Left as it is:** T725
+      `packages/design-system/specs/README.md` move with them. **Left as it is:** T726
 - [x] T724a Close #140's review of T724 (`reviewer` REJECT 2026-10-13, three blocking findings,
       all text; no behaviour changed. Verified and not to be re-checked: the equivalence for a
       `pending` and a stale `downloading` row on both own-match pages, the forwarding and its
@@ -2319,9 +2319,10 @@ carries what T673's dry run read.
       old reading until a refetch. **Two tests that claimed more than they pin:** the third-party
       list test passes on `MatchList`'s gate alone, and the objecting fixture had no linked
       profile, a response the server cannot produce
-- [ ] T725 Decide what a third party's list shows for a capture the claim refuses (filed
-      2026-10-13 from T724). `GET /api/players/{profile_id}/matches` serialises the status as it
-      is for any signed-in caller, and `MatchList` with `subject="other"` renders it without the
+- [ ] T726 Decide what a third party's list shows for a capture the claim refuses (filed
+      2026-10-13 from T724, as T725 in #140; renumbered the same day, because #139 gave that id
+      to a task of 005). `GET /api/players/{profile_id}/matches` serialises the status as it is
+      for any signed-in caller, and `MatchList` with `subject="other"` renders it without the
       caller's objection (`packages/design-system/specs/match-history.md` §11.3). A `pending` or
       stale `downloading` row the claim refuses reads "Still catchable" with its countdown there,
       to every viewer: an objector's row, and the row of a profile with no active link. The client
