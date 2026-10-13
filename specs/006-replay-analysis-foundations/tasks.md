@@ -2377,6 +2377,14 @@ carries what T673's dry run read.
       measured: whether the drain's row writes that follow are refused on a row the upload has
       marked `stored`. To decide first, by the user: whether the route refuses a row a claim holds,
       or the drain's write becomes conditional, or both
+- [ ] T729 Decide what an `expired` or `failed` capture reads for an objecting owner (filed
+      2026-10-13 from T723). `CaptureStateBadge`'s `SecondaryLine` for both statuses ends "If you
+      still have the file, you can upload it."
+      (`packages/design-system/specs/capture-state-badge.md` §3). Since T723 an objecting caller is
+      offered no `UploadControl` and the route refuses their upload, and the badge reads its
+      `archivalObjected` input for a `pending` or `downloading` row only (T724), so an objecting
+      owner reads that sentence with no upload under it. The `product-designer` first; the spec's
+      lines are cited, keep its line count
 
 - [x] T706 Unstick an analysis whose lease expired (filed 2026-10-08; decided by the user the same
       day). Match 511523321's row stayed `running` from the 2026-10-05 crash until a manual

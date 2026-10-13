@@ -16,8 +16,8 @@ there is no shared form-field primitive, and a file input is not the input eithe
 **Sources of truth this behaviour and copy are derived from, and must not contradict**:
 
 - `apps/api/tests/test_manual_upload.py` and `contracts/http-api.md`'s `POST
-/api/replays/{game_id}/upload` — the multipart endpoint. Its four outcomes are the four this
-  component branches on, by `code`, never by `message` (http-api.md's error-envelope rule):
+/api/replays/{game_id}/upload` — the multipart endpoint. This component has a state for four of its
+  outcomes, branched on by `code`, never by `message` (http-api.md's error-envelope rule):
   - **success** — `200`, body `{"status": "stored", "source": "manual"}` (`CaptureStatus.STORED` /
     `CaptureSource.MANUAL`, FR-033).
   - **`422 invalid_replay`** — the file is not a well-formed replay (FR-030). **Nothing is stored — not
@@ -28,7 +28,7 @@ there is no shared form-field primitive, and a file input is not the input eithe
     indistinguishable causes (FR-045). The copy below respects that: it states the outcome, it does not
     diagnose which indistinguishable cause applied.
   - **`409 already_archived`** — an archive already exists for this `game_id` (FR-032); `stored` is
-    terminal and is never overwritten (`data-model.md`).
+    terminal and never overwritten (`data-model.md`). T723's two other `409` codes map to `failed`: §4.4.
 - [`capture-state-badge.md`](./capture-state-badge.md) §3 owns the **reason** a match is lost and the
   one-line recourse ("If you still have the file, you can upload it." for `expired`/`failed`; "very
   unlikely to help" for `unavailable`). This component renders the **action**, not the reason, and must
@@ -61,16 +61,17 @@ UploadControl                               <section aria-labelledby>; inside Ma
 ```
 
 `UploadControl` is **not** rendered when the match has a `stored` archive — `DownloadAction` is there
-instead ([`match-history.md`](./match-history.md) §2). It is rendered for a match with **no** archive.
-The recommended gate for T084 is the three terminal-failure statuses `capture-state-badge.md` groups as
-"Lost" — `unavailable`, `expired`, `failed` — and **not** `pending`/`downloading` (capture may still
-succeed on its own; offering an upload there invites a needless one that will race the automatic
-capture) nor `quarantined` (bytes are already stored; an upload would be the overwrite FR-032 forbids).
+instead ([`match-history.md`](./match-history.md) §2). The interface's gate is the three terminal-failure
+statuses `capture-state-badge.md` groups as "Lost" — `unavailable`, `expired`, `failed` — and **not**
+`pending`/`downloading` (capture may still succeed on its own; an upload would race it), `quarantined`
+(bytes are already stored) or `withdrawn` (it may hold an object and the match response does not say;
+T727 has the row holding none). **An objecting caller is offered it for no status** (T723): it waits
+for `GET /api/me` to answer `archival_objected` false, a cached session value, stale after a change in
+another tab. Behind this gate the route refuses on its own (§4.4); they do not agree row for row (T727).
 
 **The reason line is not repeated here.** `CaptureStateBadge`'s `SecondaryLine` already tells the user
-_why_ this match is lost and whether a local copy is likely to exist. `UploadControl`'s `Heading` and
-`Explanation` speak only to the _action_ of adding the file, so the panel never says the same thing
-twice, and never says two different things about the same fact.
+_why_ this match is lost and whether a local copy is likely to exist. `Heading` and `Explanation` speak
+only to the _action_ of adding the file, so the panel never states a fact twice, nor two ways.
 
 ## 3. Variants, sizes and props
 
@@ -101,8 +102,7 @@ type UploadUiState =
 
 `onUpload` **rejects with a typed reason**, and the caller maps `code → state` exactly:
 `invalid_replay → invalid-replay`, `not_found → wrong-match`, `already_archived → already-archived`,
-anything else (network, `5xx`, an unrecognised code) `→ failed`. Branching on the `message` string is
-forbidden by http-api.md; a new code the front end does not recognise falls to `failed`, never crashes.
+anything else (network, `5xx`, an unrecognised code) `→ failed`, never a crash; no branch on `message`.
 
 ## 4. Copy
 
@@ -153,22 +153,22 @@ to `idle`.
 
 - **`succeeded`** (`Callout/success`): **Archived from your upload.** _This match's replay is stored now
   and marked as supplied by you. Nothing else about the match changed._ On this state the picker
-  collapses; the download this rescue exists to enable appears when the panel next reads the match — see
-  §5, **succeeded**.
+  collapses; the download this rescue exists to enable appears when the panel next reads the match (§5).
 - **`invalid-replay`** (`422`, `Callout/danger`): **That file is not a replay we can read.** _Nothing
   was stored. Check it is the `.aoe2record` file for this match, taken straight from your saved games
   folder, then try again._
 - **`wrong-match`** (`404`, `Callout/danger`): **This file could not be filed to this match.** _Nothing
   was stored. Make sure it is this match's own recording and try again._ — deliberately does not assert
-  _why_ (the `404` code is shared with "no such match"; see the header). It states the outcome and the
-  one thing the user can act on, and claims nothing it cannot know.
+  _why_ (the `404` is shared with "no such match"; see the header), and claims nothing it cannot know.
 - **`already-archived`** (`409`, `Callout/info`): **This match already has an archived replay.** _Your
   file was not stored, and nothing was overwritten — the copy we already hold is untouched._ Action:
   **Refresh** (`Button/secondary`) — reloads the match so `DownloadAction` (the archive that now exists)
   replaces this control. Info, not danger: the match is fine, the upload was simply unnecessary.
 - **`failed`** (network or `5xx`, `Callout/danger`): **The upload did not go through.** _Nothing was
   stored. This was a problem on our side or with the connection, not with your file. Try again when you
-  are ready._
+  are ready._ T723's two `409` refusals land here too: `replay_held` (the row names an object, or its
+  key holds one) and `archival_objected` (the caller objects). "Nothing was stored" holds; "a problem
+  on our side or with the connection" and "Try again" do not: the route refused, as it would a retry.
 
 ## 5. States
 
@@ -209,7 +209,7 @@ page-load skeleton**: this control fetches nothing to render and is fully presen
 success: `invalid-replay` (`422`, danger), `wrong-match` (`404`, danger), `failed` (network/`5xx`,
 danger), each returning the control to `file-chosen` with the same file still selected so a retry is one
 press away; and `already-archived` (`409`, info), which offers **Refresh** rather than a retry, because
-retrying a `409` can only fail the same way. Every one of the four states **nothing was stored**.
+retrying it can only fail the same way. Every one of the four states **nothing was stored**.
 
 **empty** — the `idle` `DropZone` **is** the empty state, and it is a real rendered state: the prompt,
 the `Choose file` control and the drag target are all present with no file chosen. There is no
@@ -344,7 +344,7 @@ file` control and a "Drop the `.aoe2record` file here" prompt, and **no** submit
 - [ ] The `uploading` frame shows the button busy at its resting width with an "Uploading…" or "Checking
       the file…" label; the file cannot be changed while it is in flight.
 
-**Outcomes — the four the endpoint returns**
+**Outcomes — one per state of §4.4**
 
 - [ ] `succeeded`: a success callout says the replay is archived and marked as supplied by the user; no
       frame calls it "safe".

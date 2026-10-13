@@ -86,7 +86,7 @@ or pair (§8), and the label "Not archived", true of any row that is not `stored
 profile." `compact` shows the pill alone: one sentence repeated down an objector's list is that
 banner in small print. **No upload, no `MatchDetailPanel` `DownloadAction`**: it is `stored`'s alone
 (`match-history.md` §2), and `manual-upload.md` §2's gate stays the three "Lost" statuses, as the
-row may hold an object the upload overwrites (constitution IV) — on that reason alone, pending T723.
+row may hold an object and the match response does not say which rows do (T727).
 
 **An objecting owner reads "Not archived" on a `pending` or `downloading` row (T724).** The claim
 refuses that owner's `pending` row and stale `downloading` row, so a countdown would promise a
