@@ -93,11 +93,11 @@ uv run scripts/checks/spec_lint.py --feature <FEATURE_DIR>
 ```
 
 Everything it checks is settled by the script and is **not** re-derived by hand: identifier
-coverage, task-id references, path agreement between plan and tasks, enum vocabulary, environment
-variables, and duplicated literals. Report its failures as findings by transcribing them, and spend
-the reading budget below on what it cannot decide — judgment, sequencing, and constitution
-alignment. A linter failure is at least HIGH: it means an artifact contradicts another artifact
-mechanically.
+coverage, task-id references and collisions, path agreement between plan and tasks, enum
+vocabulary, environment variables, and duplicated literals. Report its failures as findings by
+transcribing them, and spend the reading budget below on what it cannot decide — judgment,
+sequencing, and constitution alignment. A linter failure is at least HIGH: it means an artifact
+contradicts another artifact mechanically.
 
 Load only the minimal necessary context from each artifact:
 

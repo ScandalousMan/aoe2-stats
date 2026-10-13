@@ -22,7 +22,9 @@ paying to unlearn it later.
 
 One check looks the other way: `task-collisions` fails on an id that the linted feature and another
 feature both *define*, since the resolution above would otherwise count a second definition as
-merely defined. Twenty-two such ids predate it and are recorded in the module.
+merely defined. The ids that predate it are recorded in `RECORDED_TASK_ID_COLLISIONS`, and the
+record is asserted in both directions: a collision missing from it fails, and so does an entry that
+exactly its two features no longer define.
 
 Run: uv run scripts/checks/spec_lint.py --feature specs/001-steam-link-replay-ingestion
 Exit: 0 clean, 1 on any failure. Stdlib only, so it needs no environment.
@@ -68,8 +70,9 @@ UNIT_WORDS = {
 
 # Task ids that two features both define, recorded 2026-10-11 when the check below was filed (T720).
 # Each maps to exactly the two features that define it; the exemption holds only for that pair, so a
-# third definition of a recorded id still fails. None is renumbered — a renumbering would break
-# every cross-reference to it — and nothing is added here: a new collision is fixed at its source.
+# third definition of a recorded id still fails, and so does an entry that its pair stops matching
+# (T725). None is renumbered — a renumbering would break every cross-reference to it — and nothing
+# is added here: a new collision is fixed at its source.
 RECORDED_TASK_ID_COLLISIONS: dict[str, frozenset[str]] = {
     **{
         f"T{n}": frozenset({"003-player-search-match-analysis", "004-visual-parity"})
@@ -80,6 +83,11 @@ RECORDED_TASK_ID_COLLISIONS: dict[str, frozenset[str]] = {
         for n in (671, 672, 673, 674, 706, 707, 708, 709, 710, 713)
     },
 }
+
+# The one pattern that reads a task definition. The box accepts an uppercase X so that such a line
+# is still *read* (and can collide); `check_task_checkboxes` then fails it. A line that defines no
+# task, such as `- [X] some launch item`, has no `T` id and never matches.
+TASK_DEFINITION_RE = re.compile(r"^- \[([ xX])\] (T\d+[a-z]?)(.*)$", re.MULTILINE)
 
 failures: list[str] = []
 notes: list[str] = []
@@ -173,8 +181,31 @@ def _task_number(key: str) -> int:
     return int(match.group(1))
 
 
+def task_definitions(text: str) -> list[tuple[str, str, str]]:
+    """Every task definition in `text`, as `(box, id, rest of the line)`, in file order.
+
+    The only reader of a definition line: every check that needs an id, a body or a box goes
+    through here, so the copies cannot drift apart.
+    """
+    return [(box, key, rest) for box, key, rest in TASK_DEFINITION_RE.findall(text)]
+
+
+def defined_task_ids(text: str) -> set[str]:
+    """The ids that one `tasks.md` text defines."""
+    return {key for _, key, _ in task_definitions(text)}
+
+
+def defined_task_ids_by_feature(specs_root: Path) -> dict[str, set[str]]:
+    """The ids each feature's `tasks.md` under `specs_root` defines, keyed by feature directory."""
+    return {
+        tasks_file.parent.name: defined_task_ids(read(tasks_file))
+        for tasks_file in sorted(specs_root.glob("*/tasks.md"))
+    }
+
+
 def all_defined_task_ids(specs_root: Path) -> set[str]:
-    """Every task id defined by any feature's `tasks.md` under `specs_root`.
+    """Every task id defined by any feature's `tasks.md` under `specs_root`: the union of
+    `defined_task_ids_by_feature`.
 
     `specs_root` is a parameter rather than a reference to the module-level `REPO`, precisely so a
     test can point it at a fixture tree it controls (`feature_dir.parent`) instead of the real
@@ -182,16 +213,11 @@ def all_defined_task_ids(specs_root: Path) -> set[str]:
     directory found there, which is the whole point: a task id counts as defined the moment any
     feature's own `tasks.md` says so, not only the one being examined.
     """
-    ids: set[str] = set()
-    if not specs_root.is_dir():
-        return ids
-    for tasks_file in sorted(specs_root.glob("*/tasks.md")):
-        ids |= set(re.findall(r"^- \[[ x]\] (T\d+[a-z]?)", read(tasks_file), re.MULTILINE))
-    return ids
+    return set().union(*defined_task_ids_by_feature(specs_root).values())
 
 
 def check_task_references(feature_dir: Path, tasks: str) -> None:
-    defined = set(re.findall(r"^- \[[ x]\] (T\d+[a-z]?)", tasks, re.MULTILINE))
+    defined = defined_task_ids(tasks)
     if not defined:
         fail("task-refs", "no task definitions found in tasks.md")
         return
@@ -212,33 +238,58 @@ def check_task_references(feature_dir: Path, tasks: str) -> None:
         )
 
 
+def check_task_checkboxes(tasks: str) -> None:
+    """Fail on a task definition whose checkbox holds an uppercase X.
+
+    `[X]` is read as a definition (see `TASK_DEFINITION_RE`) so the id still resolves and can still
+    collide, but the repository writes `[x]`; the capital is one spelling too many for every tool
+    that reads `tasks.md` to agree on.
+    """
+    for box, key, _ in task_definitions(tasks):
+        if box == "X":
+            fail("task-checkbox", f"{key} is ticked with an uppercase X; write [x]")
+
+
 def check_task_id_collisions(feature_dir: Path, tasks: str) -> None:
-    """Fail on a task id the linted feature defines and another feature's `tasks.md` also defines.
+    """Assert the record of task-id collisions, from the side of the linted feature.
 
     `all_defined_task_ids` answers "is this id defined anywhere", which is the right question for a
     reference and the wrong one for a definition: it counts an id the moment any feature defines
-    it, so a second definition passed `task-refs` silently (003/004 and 005/006 both did). A
-    recorded collision passes only while exactly its two recorded features define the id; a third
-    definer, or a different partner, is a new collision. Ids are read as `task-refs` reads them,
-    so `T672a` and `T672` are two ids.
+    it, so a second definition passed `task-refs` silently (003/004 and 005/006 both did). Two
+    failures follow. An id the linted feature defines and another feature also defines fails unless
+    it is recorded for exactly that pair. And a record entry naming the linted feature fails unless
+    exactly its two features define the id, so an entry for an id nothing collides on, or one left
+    behind when a feature stops defining it, cannot sit in the record unchallenged. Ids are read as
+    `task-refs` reads them, so `T672a` and `T672` are two ids.
     """
-    defined = set(re.findall(r"^- \[[ x]\] (T\d+[a-z]?)", tasks, re.MULTILINE))
     specs_root = feature_dir.parent
-    if not specs_root.is_dir():
-        return
-    definers: dict[str, set[str]] = {key: {feature_dir.name} for key in defined}
-    for tasks_file in sorted(specs_root.glob("*/tasks.md")):
-        if tasks_file.parent.name == feature_dir.name:
-            continue
-        for key in set(re.findall(r"^- \[[ x]\] (T\d+[a-z]?)", read(tasks_file), re.MULTILINE)):
-            if key in definers:
-                definers[key].add(tasks_file.parent.name)
-    for key in sorted(definers):
+    me = feature_dir.name
+    by_feature = {**defined_task_ids_by_feature(specs_root), me: defined_task_ids(tasks)}
+    definers: dict[str, set[str]] = {}
+    for name, ids in by_feature.items():
+        for key in ids:
+            definers.setdefault(key, set()).add(name)
+
+    def files(names: set[str]) -> str:
+        return ", ".join(f"{specs_root.name}/{name}/tasks.md" for name in sorted(names))
+
+    for key in sorted(by_feature[me]):
         features = definers[key]
-        if len(features) < 2 or RECORDED_TASK_ID_COLLISIONS.get(key) == frozenset(features):
+        recorded = RECORDED_TASK_ID_COLLISIONS.get(key)
+        if len(features) < 2 or recorded == frozenset(features):
             continue
-        files = ", ".join(f"{specs_root.name}/{name}/tasks.md" for name in sorted(features))
-        fail("task-collisions", f"{key} is defined by more than one feature: {files}")
+        if recorded is not None and me in recorded:
+            continue  # the record asserts this one below, naming the pair
+        fail("task-collisions", f"{key} is defined by more than one feature: {files(features)}")
+    for key, pair in sorted(RECORDED_TASK_ID_COLLISIONS.items()):
+        if me not in pair or definers.get(key, set()) == pair:
+            continue
+        actual = files(definers[key]) if key in definers else "no feature"
+        fail(
+            "task-collisions",
+            f"{key} is recorded as defined by exactly {' and '.join(sorted(pair))}, "
+            f"but is defined by: {actual}",
+        )
 
 
 def check_path_roots(tasks: str, tree: set[str]) -> None:
@@ -320,7 +371,7 @@ def check_alert_kinds(data_model: str, tasks: str) -> None:
     }
     for kind in sorted(canonical - set(producers)):
         fail("alert-kinds", f"`{kind}` is in the enum but data-model.md names no producing task")
-    task_bodies = dict(re.findall(r"^- \[[ x]\] (T\d+[a-z]?) (.+)$", tasks, re.MULTILINE))
+    task_bodies = {key: body for _, key, body in task_definitions(tasks)}
     for kind, task in sorted(producers.items()):
         if task not in task_bodies:
             fail("alert-kinds", f"`{kind}` names producer {task}, which is defined by no task")
@@ -397,8 +448,8 @@ def check_literals(
         patterns.append((key, re.compile(rf"\b{value}[\s-]+(?:\w+\s+){{0,2}}{unit}\b")))
     for name in ("tasks.md", "data-model.md"):
         for number, line in enumerate(sources.get(name, "").splitlines(), start=1):
-            header = re.match(r"^- \[[ x]\] (T\d+[a-z]?) ", line)
-            where = f"{name} {header.group(1)}" if header else f"{name}:{number}"
+            header = task_definitions(line)
+            where = f"{name} {header[0][1]}" if header else f"{name}:{number}"
             for key, pattern in patterns:
                 if (match := pattern.search(line)) and key not in line:
                     fail(
@@ -419,8 +470,7 @@ def check_register_commitments(tasks: str) -> None:
     register = REPO / "docs/privacy/processing-register.md"
     if not register.is_file():
         return
-    defined = set(re.findall(r"^- \[[ x]\] (T\d+[a-z]?)", tasks, re.MULTILINE))
-    defined |= all_defined_task_ids(REPO / "specs")
+    defined = defined_task_ids(tasks) | all_defined_task_ids(REPO / "specs")
     for line in read(register).splitlines():
         item = re.match(r"^- \[([ x])\] (.+)$", line.strip())
         if not item:
@@ -483,6 +533,7 @@ def main() -> int:
 
     check_requirement_coverage(spec, tasks)
     check_task_references(feature_dir, tasks)
+    check_task_checkboxes(tasks)
     check_task_id_collisions(feature_dir, tasks)
     check_path_roots(tasks, tree)
     check_path_collisions(sources, tree)

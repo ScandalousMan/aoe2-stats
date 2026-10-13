@@ -142,10 +142,10 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
-      # Identifier coverage, task references, path agreement, alert vocabulary, configuration keys
-      # and duplicated literals. What this catches, /speckit-analyze no longer looks for by hand:
-      # a hand pass over prose samples and finds a different subset every time, which is what made
-      # that phase look non-convergent.
+      # Identifier coverage, task references and collisions, path agreement, alert vocabulary,
+      # configuration keys and duplicated literals. What this catches, /speckit-analyze no longer
+      # looks for by hand: a hand pass over prose samples and finds a different subset every time,
+      # which is what made that phase look non-convergent.
       - name: Lint every feature that has reached tasks.md
         run: |
           status=0
