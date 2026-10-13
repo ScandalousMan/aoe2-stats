@@ -19,7 +19,7 @@
 // `fixtureIds`, `checkPlantCoverage`).
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
-import { expect, test } from '@playwright/test'
+import { expect, test } from './fixtures/story-requests'
 import { installSteamAvatarStub } from './fixtures/avatar-stub'
 import { checkPlantCoverage, probeStory } from './state-coverage-runtime'
 import type { Instance, WidthRecord } from './state-coverage-runtime'

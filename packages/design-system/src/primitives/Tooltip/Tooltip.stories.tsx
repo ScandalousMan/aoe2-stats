@@ -19,17 +19,15 @@ export default meta
 type Story = StoryObj<typeof Tooltip>
 
 // A decorative trigger child (empty `alt`) — `CountryFlag`'s own real shape (country-flag.md
-// §11): the tooltip is what gives the trigger its accessible name, not the image.
+// §11): the tooltip is what gives the trigger its accessible name, not the image. The flag is the
+// file the Storybook build serves from `packages/game-assets` (`.storybook/main.ts`, `staticDirs`),
+// the one `CountryFlag`'s stories use: a story never requests a third-party host, so a capture
+// depends on nothing off the machine (constitution III, FR-047; `tests/visual/fixtures/story-requests.ts`
+// fails any story suite that sees one).
+const FLAG_URL = '/game-assets/flags/fr.svg'
+
 function FlagIcon() {
-  return (
-    <img
-      src="https://flagcdn.com/24x18/fr.png"
-      width={24}
-      height={18}
-      alt=""
-      style={{ display: 'block' }}
-    />
-  )
+  return <img src={FLAG_URL} width={24} height={18} alt="" style={{ display: 'block' }} />
 }
 
 // §4: the reveal is pointer- or keyboard-only, so a default capture shows none of it — every

@@ -15,21 +15,38 @@ export interface ExternalRequestWatch {
   assertNone: (context: string) => void
 }
 
-export function watchExternalRequests(page: Page, appOrigin: string): ExternalRequestWatch {
+export interface ExternalRequestOptions {
+  /** A request this returns true for is not reported. Asked when `external()` or `assertNone` is
+   * called, never when the request is made: the handler that answers a request locally can run
+   * after the `request` event fires. Omitted, every request to another host is reported, which is
+   * what the route suites need (T676). The story suites pass `stubAnswered` (`./avatar-stub`),
+   * T719. */
+  exempt?: (url: string) => boolean
+}
+
+export function watchExternalRequests(
+  page: Page,
+  appOrigin: string,
+  { exempt }: ExternalRequestOptions = {},
+): ExternalRequestWatch {
   const appHost = new URL(appOrigin).host
-  const seen = new Map<string, string>()
+  const seen = new Map<string, string[]>()
   page.on('request', (request) => {
     const url = request.url()
     // `data:`, `blob:` and `about:` URLs never leave the page.
     if (!/^https?:/i.test(url)) return
     const host = new URL(url).host
-    if (host !== appHost && !seen.has(host)) seen.set(host, url)
+    if (host === appHost) return
+    seen.set(host, [...(seen.get(host) ?? []), url])
   })
+  // The first reported URL of each host, in the order the hosts were first requested.
+  const reported = (): string[] =>
+    [...seen.values()].flatMap((urls) => urls.filter((url) => !exempt?.(url)).slice(0, 1))
   return {
-    external: () => [...seen.values()],
+    external: reported,
     assertNone: (context) => {
       expect(
-        [...seen.values()],
+        reported(),
         `${context}: the page requested a host other than the application's own (${appHost}) — ` +
           `constitution III forbids a visual suite reaching one; a fixture player with an ` +
           `avatar_hash would reach avatars.steamstatic.com`,
