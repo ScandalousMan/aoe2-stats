@@ -88,25 +88,26 @@ banner in small print. **No upload, no `MatchDetailPanel` `DownloadAction`**: it
 (`match-history.md` §2), and `manual-upload.md` §2's gate stays the three "Lost" statuses, as the
 row may hold an object the upload overwrites (constitution IV) — on that reason alone, pending T723.
 
+**An objecting owner reads "Not archived" on a `pending` or `downloading` row (T724).** The claim
+takes no row of that owner while the objection stands, so a countdown would promise a capture it
+will not start. With `archivalObjected` (§4) both statuses render as `withdrawn` does, the pill
+alone in `compact`; `detail` adds "Archival is off for your account.", the one fact the session
+holds: nothing on the deadline or on what resuming recovers. No upload or download is offered.
+
 ## 4. Variants and sizes
 
-**Tone** — one of `success`, `warning`, `danger`, `info` or `neutral`, set by the table in §3, never
-chosen by the caller. `CaptureStateBadge` takes `captureStatus` (one of the eight raw values) and
-`captureDeadlineAt` (ISO 8601 or `null`) as its only inputs and derives the tone, the label and the
-`SecondaryLine` itself — a call site never passes a label or a tone directly, which is what keeps
-every match row and the detail panel from ever disagreeing about what a given status means.
+**Tone** — one of `success`, `warning`, `danger`, `info` or `neutral`, set by §3, never chosen by
+the caller. The data inputs are `captureStatus` (one of the eight raw values), `captureDeadlineAt`
+(ISO 8601 or `null`) and `archivalObjected` (boolean, default `false`); the badge derives tone,
+label and `SecondaryLine` itself: a call site never passes a label or a tone, so no two disagree.
+`archivalObjected` is `GET /api/me`'s `archival_objected`, passed only for a profile the caller
+actively links: `MatchList` (never one with `subject="other"`) and `MatchDetailPanel` forward it.
 
 **Variant** — `compact` (inside `MatchRow`: pill and `SecondaryLine` may sit on one line or wrap to
-two, whichever the row's own width forces) and `detail` (inside `MatchDetailPanel`: pill and
-`SecondaryLine` always stack, `SecondaryLine` renders as a full sentence rather than the shortened
-countdown form — see §3's copy versus the countdown format below). Both variants share every token,
-tone and label; `SecondaryLine` differs in phrasing and layout and, for `withdrawn`, presence (§3).
-
-**Renamed from `context` to `variant` (FR-032, FR-066, T557).** Every other component whose
-rendering depends on where it is embedded (`ProfileSummary`, `StatValue`, `SignInScreen`) calls that
-prop `variant`; this one alone called it `context`, the collision FR-032 exists to close. `context`
-and the type `CaptureStateBadgeContext` are retired for `variant` and `CaptureStateBadgeVariant`;
-every consumer moved in the same change and nothing rendered changed (`GOVERNANCE.md`, Record).
+two, whichever the row's own width forces) and `detail` (inside `MatchDetailPanel`: they always
+stack, and `SecondaryLine` is a full sentence, not §7's shortened form). Both share every token,
+tone and label; `SecondaryLine` differs in phrasing, layout and, for "Not archived", presence (§3).
+The prop was `context` until T557 (FR-032, FR-066): `GOVERNANCE.md`'s Record has the rename.
 
 **Sizes** — none of its own; the pill is `Badge`'s one size (`space-5` tall) in both variants.
 
@@ -136,8 +137,7 @@ token, so the class is a single `text-{tone}` with no `dark:` override, as `neut
 ## 6. States
 
 The interaction-state vocabulary (default / hover / focus-visible / active / disabled / loading /
-error / empty) applies to the whole component, not to be confused with the five _capture_ states in
-§3.
+error / empty) applies to the whole component, not to be confused with §3's five _capture_ states.
 
 - **default** — as tabled in §3/§5.
 - **hover / focus-visible / active** — none. `Badge`'s own rule holds here unchanged: "a badge is
@@ -171,13 +171,13 @@ error / empty) applies to the whole component, not to be confused with the five 
   "6 days left" never means less than 144 hours remain); **hours** below that while at least 1 full
   hour remains; **minutes** below that. Never seconds — a 21-day budget has no use for them.
 - Correct pluralisation (`"1 day left"`, not `"1 days left"`).
-- Recomputed on an interval no coarser than once per minute while the component is mounted; this is
-  a text update, not an animation, and carries no transition — §"Numbers before atmosphere"
-  (`README.md`) rules out a ticking, second-by-second countdown as motion competing with the number.
+- Recomputed on an interval no coarser than once per minute while mounted: a text update with no
+  transition — §"Numbers before atmosphere" (`README.md`) rules out a second-by-second countdown.
 - If `capture_deadline_at` has already passed while `capture_status` still reads `pending` or
   `downloading` — a brief, expected read-time race against the daily sweep that has not yet flipped
   the row — render `"Capture window closing"` (`compact`) / `"This capture is due any moment."`
   (`detail`). **Never a negative number, never `"-1 days left"`.**
+- With `archivalObjected` (§3) none of this renders, whatever the deadline, and no interval runs.
 
 ## 8. Tokens used
 
@@ -198,17 +198,16 @@ Gaps in play: none. The four tone pairs are measured and asserted in `tokens/bui
 
 ## 10. Responsive
 
-`compact` variant wraps `SecondaryLine` onto its own line below 640px-equivalent row width rather
-than truncating — a countdown or a reason is exactly the text this product refuses to ellipsise
-(`profile-summary.md`'s "Figures never ellipsise at any viewport", applied here to the sentence
-explaining a figure's absence). `detail` variant always stacks, at every viewport.
+`compact` wraps `SecondaryLine` onto its own line below 640px-equivalent row width rather than
+truncating: a countdown or a reason is never ellipsised (`profile-summary.md`'s "Figures never
+ellipsise at any viewport", extended to a sentence). `detail` always stacks, at every viewport.
 
 ## 11. Accessibility
 
 - The label is real text in document order, immediately followed by `SecondaryLine` when present —
   never colour alone, never an `aria-label` standing in for visible text.
 - `SecondaryLine`, when it states a reason (`unavailable`/`expired`/`failed`/`quarantined`, and
-  `withdrawn` in `detail`), is programmatically associated with the pill (e.g. `aria-describedby`)
+  "Not archived" in `detail`), is programmatically linked to the pill (e.g. `aria-describedby`)
   so a screen-reader user reaches the reason right after the label, not only by reading on.
 - The `error` fallback (§6) never omits text: a status this component cannot classify still reads as
   a word, not as a blank pill a screen reader skips silently.
@@ -223,9 +222,10 @@ explaining a figure's absence). `detail` variant always stacks, at every viewpor
       `capture-state-badge.md`, `match-history.md` and their stories.
 - [ ] The three "Lost" stories (`unavailable`, `expired`, `failed`) show the identical "Lost" pill
       and three visibly different `SecondaryLine` sentences in the same screenshot set.
-- [ ] The `withdrawn` stories show a "Not archived" pill in `Badge`'s `neutral` paint (sunken fill,
-      visible border) — never the `danger` ink of "Lost", never the word "withdrawn" — alone
-      in `compact`, and above §3's one sentence in `detail`.
+- [ ] The `withdrawn` stories, and the archival-off stories (`pending` six days from its deadline,
+      `archivalObjected`), show a "Not archived" pill in `Badge`'s `neutral` paint (sunken fill,
+      visible border) — never `danger` or `warning` ink, never the word "withdrawn", never a
+      countdown — alone in `compact`, and above its own sentence of §3 in `detail`.
 - [ ] The "Still catchable" story shows a countdown in the correct unit for its seeded
       `capture_deadline_at` (days / hours / minutes fixtures each get their own story).
 - [ ] In `MatchDetailPanel`'s combined story, "Not archived" and "Needs review" show no download
