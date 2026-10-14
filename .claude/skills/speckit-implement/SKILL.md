@@ -163,7 +163,7 @@ You **MUST** consider the user input before proceeding (if not empty).
        `spec.md`, `plan.md` and the constitution itself — do not paste them.
      - Tasks marked `[P]` in the same phase may be delegated in parallel. Tasks touching the same
        file never are.
-     - When the agent reports back, mark the task `[X]` in `tasks.md` yourself and move on. Do not
+     - When the agent reports back, mark the task `[x]` in `tasks.md` yourself and move on. Do not
        re-read the files it changed to verify; the gate already ran the tests.
    - **Phase-by-phase execution**: Complete each phase before moving to the next
    - **Respect dependencies**: Run sequential tasks in order, parallel tasks [P] can run together
@@ -184,7 +184,7 @@ You **MUST** consider the user input before proceeding (if not empty).
    - For parallel tasks [P], continue with successful tasks, report failed ones
    - Provide clear error messages with context for debugging
    - Suggest next steps if implementation cannot proceed
-   - **IMPORTANT** For completed tasks, make sure to mark the task off as [X] in the tasks file.
+   - **IMPORTANT** For completed tasks, make sure to mark the task off as [x] in the tasks file.
 
 9. Completion validation:
    - **Scope**: "all required tasks" means every task in the range this invocation was given. If the
@@ -238,7 +238,7 @@ Report final status with summary of completed work.
 
 ## Done When
 
-- [ ] Every task in the requested scope completed and marked `[X]` in tasks.md (the whole file only
+- [ ] Every task in the requested scope completed and marked `[x]` in tasks.md (the whole file only
       when no phase or range was given)
 - [ ] Each of those tasks was carried out by an `implementer` agent, not written in this session
 - [ ] Implementation validated against specification, plan, and test coverage

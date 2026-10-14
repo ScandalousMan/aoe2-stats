@@ -22,9 +22,10 @@ paying to unlearn it later.
 
 One check looks the other way: `task-collisions` fails on an id that the linted feature and another
 feature both *define*, since the resolution above would otherwise count a second definition as
-merely defined. The ids that predate it are recorded in `RECORDED_TASK_ID_COLLISIONS`, and the
-record is asserted in both directions: a collision missing from it fails, and so does an entry that
-exactly its two features no longer define.
+merely defined. The ids that predate it are recorded in `RECORDED_TASK_ID_COLLISIONS`. A collision
+missing from the record fails the lint of each feature that defines it, and an entry fails the lint
+of each feature it names unless exactly its two features define the id; the lint of any other
+feature asserts nothing about it.
 
 Run: uv run scripts/checks/spec_lint.py --feature specs/001-steam-link-replay-ingestion
 Exit: 0 clean, 1 on any failure. Stdlib only, so it needs no environment.
@@ -187,7 +188,7 @@ def task_definitions(text: str) -> list[tuple[str, str, str]]:
     The only reader of a definition line: every check that needs an id, a body or a box goes
     through here, so the copies cannot drift apart.
     """
-    return [(box, key, rest) for box, key, rest in TASK_DEFINITION_RE.findall(text)]
+    return TASK_DEFINITION_RE.findall(text)
 
 
 def defined_task_ids(text: str) -> set[str]:
@@ -242,8 +243,8 @@ def check_task_checkboxes(tasks: str) -> None:
     """Fail on a task definition whose checkbox holds an uppercase X.
 
     `[X]` is read as a definition (see `TASK_DEFINITION_RE`) so the id still resolves and can still
-    collide, but the repository writes `[x]`; the capital is one spelling too many for every tool
-    that reads `tasks.md` to agree on.
+    collide, but a task is ticked with a lowercase `[x]`, and the capital is a second spelling of
+    the same tick that this lint refuses.
     """
     for box, key, _ in task_definitions(tasks):
         if box == "X":
@@ -258,9 +259,9 @@ def check_task_id_collisions(feature_dir: Path, tasks: str) -> None:
     it, so a second definition passed `task-refs` silently (003/004 and 005/006 both did). Two
     failures follow. An id the linted feature defines and another feature also defines fails unless
     it is recorded for exactly that pair. And a record entry naming the linted feature fails unless
-    exactly its two features define the id, so an entry for an id nothing collides on, or one left
-    behind when a feature stops defining it, cannot sit in the record unchallenged. Ids are read as
-    `task-refs` reads them, so `T672a` and `T672` are two ids.
+    exactly its two features define the id. An entry is asserted only by the lint of a feature it
+    names: an entry naming two directories that do not exist fails nothing and exempts nothing.
+    Ids are read as `task-refs` reads them, so `T672a` and `T672` are two ids.
     """
     specs_root = feature_dir.parent
     me = feature_dir.name
@@ -371,7 +372,13 @@ def check_alert_kinds(data_model: str, tasks: str) -> None:
     }
     for kind in sorted(canonical - set(producers)):
         fail("alert-kinds", f"`{kind}` is in the enum but data-model.md names no producing task")
-    task_bodies = {key: body for _, key, body in task_definitions(tasks)}
+    # A definition is a producer's only when a space and at least one more character follow its id;
+    # of several such definitions of one id the last wins.
+    task_bodies = {
+        key: rest[1:]
+        for _, key, rest in task_definitions(tasks)
+        if rest.startswith(" ") and len(rest) > 1
+    }
     for kind, task in sorted(producers.items()):
         if task not in task_bodies:
             fail("alert-kinds", f"`{kind}` names producer {task}, which is defined by no task")
@@ -448,8 +455,10 @@ def check_literals(
         patterns.append((key, re.compile(rf"\b{value}[\s-]+(?:\w+\s+){{0,2}}{unit}\b")))
     for name in ("tasks.md", "data-model.md"):
         for number, line in enumerate(sources.get(name, "").splitlines(), start=1):
-            header = task_definitions(line)
-            where = f"{name} {header[0][1]}" if header else f"{name}:{number}"
+            where = f"{name}:{number}"
+            for _box, task_id, rest in task_definitions(line):
+                if rest.startswith(" "):
+                    where = f"{name} {task_id}"
             for key, pattern in patterns:
                 if (match := pattern.search(line)) and key not in line:
                     fail(

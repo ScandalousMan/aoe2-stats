@@ -35,9 +35,15 @@ Each check gets one positive and one negative test:
   item naming an id defined nowhere must still fail.
 - `task-collisions` (a2, a3, a4): an id two features both define must fail naming both files, and
   a collision recorded in `RECORDED_TASK_ID_COLLISIONS` passes only while exactly its two recorded
-  features define it, asserted from both sides (an entry no two features collide on fails too).
-  `main` is run over a fixture tree so deleting the call from it turns the suite red. A definition
-  whose checkbox holds an uppercase X fails, and is read as a definition so it can still collide.
+  features define it, asserted by the lint of each feature the entry names (an entry no two
+  features collide on fails too). `main` is run over a fixture tree so deleting the call from it
+  turns the suite red.
+- `task-checkbox` (a4): a definition whose checkbox holds an uppercase X must fail naming its id,
+  and is still read as a definition so it can collide; a lowercase tick, and an uppercase box on a
+  line that defines no task, must pass.
+- `alert-kinds` and `literals` readings of a definition line (b, c2): a producer counts only when
+  a space and a body follow its id, the last such definition winning; a line is labelled by its
+  task id only when a space follows the id.
 - `behavioural-section` (e): a `.env.example` section header ending in "tuning" other than the
   literal `Ingestion tuning` — feature 003's own `Search, favourites and analysis tuning` — must
   still mark its keys behavioural; a header that merely *contains* "tuning" without ending in it
@@ -253,9 +259,10 @@ def test_task_collisions_fails_for_a_recorded_id_that_only_one_feature_defines(
 def test_task_collisions_fails_for_a_recorded_id_one_of_its_features_stopped_defining(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Plant: an entry left behind when one of its two features stops defining the id. The
-    remaining definer still fails, and so does a different task that the other feature later files
-    under the same id (the id is then defined by the wrong pair)."""
+    """Plant: an entry left behind when one of its two features stops defining the id, after which
+    a third feature files a different task under the same id (the id is then defined by the wrong
+    pair). The remaining definer fails exactly once, with the message that names the recorded
+    pair: the unrecorded-collision message stays off a feature the record names."""
     import scripts.checks.spec_lint as spec_lint
 
     monkeypatch.setitem(
@@ -271,9 +278,10 @@ def test_task_collisions_fails_for_a_recorded_id_one_of_its_features_stopped_def
     (third / "tasks.md").write_text("- [ ] T501 A different task under the same id\n")
 
     found = _collisions_of(mine)
-    assert found
-    assert all("T501" in f for f in found)
-    assert any("001-other" in f and "002-under-test" in f for f in found)
+    assert len(found) == 1, found
+    assert "T501" in found[0]
+    assert "001-other" in found[0]
+    assert "002-under-test" in found[0]
     assert _collisions_of(other)
     assert _collisions_of(third)
 
@@ -490,6 +498,42 @@ def test_alert_kinds_fails_when_a_producer_uses_a_kind_outside_the_vocabulary(
     )
 
 
+def _alert_failures(data_model: str, tasks: str) -> list[str]:
+    import scripts.checks.spec_lint as spec_lint
+
+    spec_lint.failures.clear()
+    spec_lint.notes.clear()
+    spec_lint.check_alert_kinds(data_model, tasks)
+    return [f for f in spec_lint.failures if f.startswith("alert-kinds")]
+
+
+_ONE_KIND_DATA_MODEL = "# Data Model\n\n`kind` (enum: `foo`)\n\nProducers:\n- T701 `foo`\n"
+
+
+def test_alert_kinds_fails_for_a_producer_whose_only_definition_has_a_colon_after_its_id() -> None:
+    """Plant: a producer counts as defined only when a space and a body follow its id, as it did
+    before the single reader. `- [ ] T701: raise ...` is a definition for `task-refs` but was not a
+    producer's definition for this check."""
+    found = _alert_failures(_ONE_KIND_DATA_MODEL, "- [ ] T701: raise a `foo` alert\n")
+
+    assert len(found) == 1, found
+    assert "T701" in found[0]
+    assert "defined by no task" in found[0]
+
+
+def test_alert_kinds_passes_for_a_producer_defined_with_a_body_and_then_again_with_none() -> None:
+    """Plant: of several definitions that carry a body the last wins, and a definition with nothing
+    after its id carries none, so it replaces nothing."""
+    found = _alert_failures(_ONE_KIND_DATA_MODEL, "- [ ] T701 Raises a `foo` alert\n- [ ] T701\n")
+
+    assert found == []
+
+
+def test_alert_kinds_passes_for_a_producer_defined_with_a_space_and_a_body() -> None:
+    """Contrast: the ordinary shape still resolves."""
+    assert _alert_failures(_ONE_KIND_DATA_MODEL, "- [ ] T701 Raises a `foo` alert\n") == []
+
+
 # ------------------------------------------------------------------------------ (c) env-consumed
 
 
@@ -563,6 +607,39 @@ def test_env_consumed_fails_for_a_key_consumed_by_no_task_anywhere(
     assert any(
         f.startswith("env-consumed") and "SOME_BEHAVIOURAL_KEY" in f for f in spec_lint.failures
     )
+
+
+# ----------------------------------------------------------------------------- (c2) literals
+
+
+def _literal_failures(tasks: str) -> list[str]:
+    import scripts.checks.spec_lint as spec_lint
+
+    env_values, behavioural = spec_lint.parse_env(
+        "# --- Ingestion tuning -----------------------------------------------\n"
+        "SOME_WINDOW_DAYS=21\n"
+    )
+    spec_lint.failures.clear()
+    spec_lint.notes.clear()
+    spec_lint.check_literals({"tasks.md": tasks}, env_values, behavioural)
+    return [f for f in spec_lint.failures if f.startswith("literals")]
+
+
+def test_literals_labels_a_line_by_its_line_number_when_a_colon_follows_the_id() -> None:
+    """Plant: a line is labelled by its task id only when a space follows the id."""
+    found = _literal_failures("- [ ] T330: keep it for 21 days\n")
+
+    assert len(found) == 1, found
+    assert "tasks.md:1 " in found[0]
+    assert "T330" not in found[0]
+
+
+def test_literals_labels_a_line_by_its_task_id_when_a_space_follows_the_id() -> None:
+    """Contrast: the ordinary shape keeps its id label."""
+    found = _literal_failures("- [ ] T330 keep it for 21 days\n")
+
+    assert len(found) == 1, found
+    assert "tasks.md T330 " in found[0]
 
 
 # --------------------------------------------------------------------- (d) register-commitments
