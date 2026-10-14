@@ -61,7 +61,8 @@ export interface UploadControlProps {
 // not (§5's own words).
 const VALIDATING_LABEL_DELAY_MS = 1_200
 
-// The four codes `routers/replays.py` answers with, mapped to the state each drives (§3).
+// The three codes `routers/replays.py` answers with that have a state of their own, mapped to it
+// (§3); every other code, `replay_held` and `archival_objected` included, falls to `failed`.
 function stateForFailure(failure: unknown): UploadUiState {
   const code = (failure as UploadFailure | undefined)?.code
   if (code === 'invalid_replay') return 'invalid-replay'

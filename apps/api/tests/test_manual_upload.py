@@ -64,9 +64,11 @@ from __future__ import annotations
 import secrets
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 from fastapi.testclient import TestClient
+from httpx import Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -84,6 +86,10 @@ from aoe2stats_storage.models import (
     User,
 )
 from aoe2stats_storage.models import Session as UserSession
+from aoe2stats_storage.objects import replay_object_key
+
+if TYPE_CHECKING:
+    from conftest import _FakeObjectStore
 
 pytestmark = [pytest.mark.usefixtures("environment")]
 
@@ -421,3 +427,186 @@ async def test_upload_over_an_existing_archive_is_refused_and_does_not_overwrite
     assert capture.source == CaptureSource.AUTOMATIC, (
         "the pre-existing capture's own provenance must survive a refused upload untouched"
     )
+
+
+# --- T723: the upload never replaces a held object, and an objector's upload is refused ----------
+
+_HELD_GAME_ID = 700300100
+_HELD_PROFILE_ID = 900700400
+_OBJECTOR_GAME_ID = 700300200
+_OBJECTOR_PROFILE_ID = 900700500
+_HELD_MESSAGE = "A file is already held for this match and cannot be replaced."
+_OBJECTED_MESSAGE = (
+    "Archival is off for your account. Turn it back on in your privacy settings to upload a replay."
+)
+
+
+def _upload(client: TestClient, game_id: int, content: bytes | None = None) -> Response:
+    return client.post(
+        f"/api/replays/{game_id}/upload",
+        files={
+            "file": (
+                f"AgeIIDE_Replay_{game_id}.aoe2record",
+                _reference_replay_bytes() if content is None else content,
+                "application/zip",
+            )
+        },
+    )
+
+
+async def _seed_held_candidate(
+    db_session: AsyncSession,
+    client: TestClient,
+    *,
+    game_id: int,
+    profile_id: int,
+    status: CaptureStatus | None,
+    object_key: str | None,
+    archival_objected: bool = False,
+) -> tuple[User, ReplayCapture | None]:
+    """A signed-in caller who played `game_id`, with at most one capture row of `status` naming
+    `object_key`; `status=None` seeds no row."""
+    user = await _seed_linked_profile(db_session, profile_id=profile_id)
+    if archival_objected:
+        user.archival_objected_at = datetime.now(UTC)
+    await _sign_in(client, db_session, user)
+    completed_at = datetime.now(UTC) - timedelta(days=40)
+    await _seed_match(db_session, game_id=game_id, completed_at=completed_at)
+    await _seed_match_player(db_session, game_id=game_id, profile_id=profile_id)
+    row = None
+    if status is not None:
+        row = ReplayCapture(
+            game_id=game_id,
+            profile_id=profile_id,
+            status=status,
+            capture_deadline_at=completed_at + timedelta(days=21),
+            source=CaptureSource.AUTOMATIC,
+            object_key=object_key,
+            zip_bytes=123456 if object_key is not None else None,
+            zip_sha256="b" * 64 if object_key is not None else None,
+        )
+        db_session.add(row)
+    await db_session.commit()
+    return user, row
+
+
+@pytest.mark.parametrize("status", [CaptureStatus.QUARANTINED, CaptureStatus.WITHDRAWN])
+async def test_upload_for_a_row_naming_an_object_is_refused_and_changes_nothing(
+    client: TestClient,
+    db_session: AsyncSession,
+    fake_object_store: _FakeObjectStore,
+    status: CaptureStatus,
+) -> None:
+    key = replay_object_key(_HELD_GAME_ID, _HELD_PROFILE_ID)
+    await _seed_held_candidate(
+        db_session,
+        client,
+        game_id=_HELD_GAME_ID,
+        profile_id=_HELD_PROFILE_ID,
+        status=status,
+        object_key=key,
+    )
+    fake_object_store.existing_keys.add(key)
+
+    response = _upload(client, _HELD_GAME_ID)
+
+    assert response.status_code == 409
+    error = response.json()["error"]
+    assert error["code"] == "replay_held"
+    assert error["message"] == _HELD_MESSAGE
+    assert fake_object_store.put_calls == []
+    row = await _capture_row(db_session, game_id=_HELD_GAME_ID, profile_id=_HELD_PROFILE_ID)
+    assert row is not None
+    assert (row.status, row.object_key, row.zip_sha256, row.source) == (
+        status,
+        key,
+        "b" * 64,
+        CaptureSource.AUTOMATIC,
+    )
+
+
+async def test_upload_where_an_object_exists_under_the_key_but_no_row_is_refused(
+    client: TestClient, db_session: AsyncSession, fake_object_store: _FakeObjectStore
+) -> None:
+    key = replay_object_key(_HELD_GAME_ID + 1, _HELD_PROFILE_ID + 1)
+    await _seed_held_candidate(
+        db_session,
+        client,
+        game_id=_HELD_GAME_ID + 1,
+        profile_id=_HELD_PROFILE_ID + 1,
+        status=None,
+        object_key=None,
+    )
+    fake_object_store.existing_keys.add(key)
+
+    response = _upload(client, _HELD_GAME_ID + 1)
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "replay_held"
+    assert fake_object_store.put_calls == []
+    assert (
+        await _capture_row(db_session, game_id=_HELD_GAME_ID + 1, profile_id=_HELD_PROFILE_ID + 1)
+        is None
+    ), "a refusal creates no row"
+
+
+async def test_upload_for_a_withdrawn_row_naming_no_object_is_stored_manual(
+    client: TestClient, db_session: AsyncSession, fake_object_store: _FakeObjectStore
+) -> None:
+    """Contrast: green before T723 as well (the route took any non-`stored` row)."""
+    await _seed_held_candidate(
+        db_session,
+        client,
+        game_id=_HELD_GAME_ID + 2,
+        profile_id=_HELD_PROFILE_ID + 2,
+        status=CaptureStatus.WITHDRAWN,
+        object_key=None,
+    )
+
+    response = _upload(client, _HELD_GAME_ID + 2)
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "stored", "source": "manual"}
+    assert len(fake_object_store.put_calls) == 1
+
+
+async def test_an_objectors_upload_is_refused_before_the_file_is_read_and_changes_nothing(
+    client: TestClient, db_session: AsyncSession, fake_object_store: _FakeObjectStore
+) -> None:
+    user, _ = await _seed_held_candidate(
+        db_session,
+        client,
+        game_id=_OBJECTOR_GAME_ID,
+        profile_id=_OBJECTOR_PROFILE_ID,
+        status=CaptureStatus.EXPIRED,
+        object_key=None,
+        archival_objected=True,
+    )
+
+    user_id = user.id
+    # Bytes that would answer 422 `invalid_replay` if the route got as far as validating them.
+    refused = _upload(client, _OBJECTOR_GAME_ID, b"not a replay")
+
+    assert refused.status_code == 409
+    error = refused.json()["error"]
+    assert error["code"] == "archival_objected"
+    assert error["message"] == _OBJECTED_MESSAGE
+    assert fake_object_store.put_calls == []
+    row = await _capture_row(db_session, game_id=_OBJECTOR_GAME_ID, profile_id=_OBJECTOR_PROFILE_ID)
+    assert row is not None
+    assert (row.status, row.object_key, row.source) == (
+        CaptureStatus.EXPIRED,
+        None,
+        CaptureSource.AUTOMATIC,
+    )
+
+    # Contrast: the objection lifted, the same request is accepted.
+    db_user = await db_session.get(User, user_id)
+    assert db_user is not None
+    db_user.archival_objected_at = None
+    await db_session.commit()
+
+    accepted = _upload(client, _OBJECTOR_GAME_ID)
+
+    assert accepted.status_code == 200
+    assert accepted.json() == {"status": "stored", "source": "manual"}

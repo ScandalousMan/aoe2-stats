@@ -312,6 +312,9 @@ class _FakeObjectStore:
         #: test can assert on this list directly, the same shape `apps/ingester`'s own
         #: `_FakeObjectStore` fakes (`test_idempotency.py`, `test_interruption.py`) already use.
         self.put_calls: list[tuple[str, bytes]] = []
+        #: Keys that held an object before the test's request (`test_manual_upload.py`, T723): a
+        #: `put_if_absent` for one answers `False` without being recorded in `put_calls`.
+        self.existing_keys: set[str] = set()
 
     async def list_keys(self, prefix: str = "") -> list[str]:
         if self._fails:
@@ -328,7 +331,7 @@ class _FakeObjectStore:
     ) -> bool:
         if self._fails:
             raise RuntimeError("simulated object store outage")
-        if any(existing == key for existing, _ in self.put_calls):
+        if key in self.existing_keys or any(existing == key for existing, _ in self.put_calls):
             return False
         self.put_calls.append((key, body))
         return True
@@ -355,9 +358,17 @@ def fake_object_store_class() -> type[_FakeObjectStore]:
 
 
 @pytest.fixture
+def fake_object_store() -> _FakeObjectStore:
+    """The one `_FakeObjectStore` the `client` fixture hands every request (T723): a test that
+    asks for it can seed `existing_keys` and read `put_calls` after the request."""
+    return _FakeObjectStore()
+
+
+@pytest.fixture
 def client(
     clean_database: None,
     session_factory: async_sessionmaker[AsyncSession],
+    fake_object_store: _FakeObjectStore,
 ) -> Iterator[TestClient]:
     """A `TestClient` over a fresh `create_app()`, its `get_session` dependency pointed at the
     real throwaway database and its `get_object_store` dependency faked out. `clean_database` is
@@ -377,7 +388,7 @@ def client(
             yield session
 
     app.dependency_overrides[get_session] = _get_session
-    app.dependency_overrides[get_object_store] = lambda: _FakeObjectStore()
+    app.dependency_overrides[get_object_store] = lambda: fake_object_store
 
     with TestClient(app, base_url="https://testserver") as test_client:
         yield test_client

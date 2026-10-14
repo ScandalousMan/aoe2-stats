@@ -17,10 +17,9 @@ describe('isUploadEligible', () => {
   )
 
   // T722: `withdrawn` is not one of the "Lost" statuses (capture-state-badge.md §3, "a fifth
-  // state"). Withheld because the row may hold an object the upload would overwrite (constitution
-  // IV, the reason `quarantined` is withheld), on that reason alone, pending T723. The allowlist
-  // already excludes it; this pins why.
-  it('is not eligible for withdrawn — the row may hold an object an upload would overwrite (IV)', () => {
+  // state"). Withheld because the row may hold an object and the match response does not say
+  // (T727); the allowlist already excludes it, this pins why.
+  it('is not eligible for withdrawn — the row may hold an object and the response does not say (T727)', () => {
     expect(isUploadEligible('withdrawn')).toBe(false)
   })
 

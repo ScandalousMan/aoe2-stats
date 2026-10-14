@@ -7,16 +7,18 @@ T080 docstring, once that task lands): the file is validated **before** anything
 store, so nothing is ever written for an upload that fails well-formedness (FR-030,
 `test_manual_upload.py`'s scenario 8.2 — "nothing stored, never even `quarantined`"). By the time
 `record_manual_upload` below runs, the router has already: checked the caller played `game_id`
-(FR-031), refused a call against an existing `stored` archive (FR-032), uploaded the now-validated
-blob to the object store, and run it through the same `ReplayValidator` engine interface the
+(FR-031), refused a caller with an archival objection and a row that is `stored` or names an
+`object_key` (FR-032, T723), written the now-validated blob to the object store only if nothing
+was there (`put_if_absent`), and run it through the same `ReplayValidator` engine interface the
 automatic capture pipeline uses. This method's whole job is the one write that follows all of that
 — the row, not the bytes.
 
 **Create-or-update, never a bare insert.** `data-model.md`'s "what this model deliberately does not
 have" section rules out a `replays` table separate from `replay_captures` — the intent to capture
 and the result of capturing are one row — so a match whose automatic capture already concluded
-`expired`/`unavailable`/`failed`/`quarantined` (T078's own scenario 8.1: an `expired` capture,
-rescued) has *that* row updated in place rather than gaining a second one alongside it: the
+`expired`/`unavailable`/`failed` (T078's own scenario 8.1: an `expired` capture, rescued), or
+is still `pending`/`downloading`, or is `withdrawn` with no `object_key`, has *that* row updated
+in place rather than gaining a second one alongside it: the
 `(game_id, profile_id)` unique constraint (`ReplayCapture.__table_args__`) would refuse a second
 row for the same pair outright, and even if it did not, two rows disagreeing about one capture is
 exactly the split state that section exists to forbid. Only a match discovery has never enqueued a
@@ -70,8 +72,9 @@ class CapturesRepository(Repository):
     ) -> ReplayCapture:
         """Record a manually supplied replay for `(game_id, profile_id)` as `stored`, `source =
         'manual'`, with `validated_by` set to the engine and version that vouched for it — creating
-        the row if discovery never enqueued one for this pair, or updating whichever terminal or
-        in-flight row already exists (module docstring).
+        the row if discovery never enqueued one for this pair, or updating the row that already
+        exists (module docstring). It does not check the row's status or `object_key`: the router
+        refused a `stored` row and one naming an object before this call.
 
         `stored_at` defaults to "now" (UTC), the moment this write happens — mirrors
         `RatingsRepository.record_snapshot`'s identical default and identical reasoning: the

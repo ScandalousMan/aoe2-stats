@@ -2256,7 +2256,7 @@ carries what T673's dry run read.
       its story's criterion claims the download only. **Two facts in the entries filed with
       T722:** a `quarantined` row names the key and may hold nothing under it; the claim has
       refused an objector's row since T089a, not T713
-- [ ] T723 Decide what the manual upload does to a row that holds an object (filed 2026-10-12 from
+- [x] T723 Decide what the manual upload does to a row that holds an object (filed 2026-10-12 from
       T722). `upload_replay` in `apps/api/src/aoe2stats_api/routers/replays.py` refuses a `stored`
       row only, then writes with the object store's `put`, which overwrites, under the key an
       automatic capture uses for the pair; `record_manual_upload` then marks the row `stored`. A
