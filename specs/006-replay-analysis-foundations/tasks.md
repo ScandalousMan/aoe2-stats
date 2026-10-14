@@ -2292,6 +2292,20 @@ carries what T673's dry run read.
       once it is lifted; a caller who does not object still sees the upload for an `expired` row.
       **Left as it is:** the interface still withholds the upload from every `withdrawn` row (T727),
       and the automatic capture's own write (T728)
+- [x] T723a Close #143's review of T723 (`reviewer` REJECT 2026-10-14, three blocking findings;
+      verified and not to be re-checked: the route's order and codes against the decision, the web
+      gate and its two tests, the citations and line counts, and that no other feature defines
+      T726–T729). **The row-level refusal is untested:** with the `object_key` check removed from
+      `upload_replay` the suite stays green, because the test seeds the store as well as the row and
+      `put_if_absent` refuses in its place. A row naming a key with no object under it exists: the
+      reclaim's integrity check quarantines one and keeps the key. Add that case, `quarantined` and
+      `withdrawn`, the store empty: `409` `replay_held`, no store write, the row unchanged; shown
+      red with the check removed. **Two sentences false:** the fake store's class docstring in
+      `apps/api/tests/conftest.py` says each request gets a fresh one and nothing can be asserted on
+      shared state, which the shared fixture this change added contradicts; and "`quarantined`
+      (bytes are already stored)" in `packages/design-system/specs/manual-upload.md` §2 and
+      `apps/web/src/features/replays/uploadEligibility.ts`, false for that same row. Also stale
+      since T723: `ObjectStore.put_if_absent`'s docstring names the analysis document as its one use
 - [x] T724 Decide what a `pending` capture reads for an objecting owner (filed 2026-10-12 from
       T722). `CaptureStateBadge` renders a `pending` row as "Still catchable" with "Captures
       automatically within N days" in `detail`; since T089a the claim refuses that row while the
@@ -2385,6 +2399,14 @@ carries what T673's dry run read.
       `archivalObjected` input for a `pending` or `downloading` row only (T724), so an objecting
       owner reads that sentence with no upload under it. The `product-designer` first; the spec's
       lines are cited, keep its line count
+- [ ] T730 Decide what an upload does when its row write fails after its object write (filed
+      2026-10-14 from #143's review). Since T723 `upload_replay` writes the object with
+      `put_if_absent` and then the row: if the row write or the request's commit fails after the
+      object is written, the object stays under the key and no row names it, and every retry of the
+      same upload is refused `replay_held`, which `UploadControl` shows as `failed` with "Try
+      again". Account erasure in `apps/api/src/aoe2stats_api/routers/privacy.py` deletes the objects
+      its rows name, so it does not delete that one. To decide first, by the user: what the route
+      does with an object under the key that no row names
 
 - [x] T706 Unstick an analysis whose lease expired (filed 2026-10-08; decided by the user the same
       day). Match 511523321's row stayed `running` from the 2026-10-05 crash until a manual

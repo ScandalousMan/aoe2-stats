@@ -525,6 +525,43 @@ async def test_upload_for_a_row_naming_an_object_is_refused_and_changes_nothing(
     )
 
 
+@pytest.mark.parametrize("status", [CaptureStatus.QUARANTINED, CaptureStatus.WITHDRAWN])
+async def test_upload_for_a_row_naming_a_key_with_no_object_is_refused_before_any_write(
+    client: TestClient,
+    db_session: AsyncSession,
+    fake_object_store: _FakeObjectStore,
+    status: CaptureStatus,
+) -> None:
+    # The reclaim's integrity check quarantines a row whose object is missing and keeps its key:
+    # the store holds nothing under it, so only the row check can refuse (no `put_if_absent`).
+    key = replay_object_key(_HELD_GAME_ID, _HELD_PROFILE_ID)
+    await _seed_held_candidate(
+        db_session,
+        client,
+        game_id=_HELD_GAME_ID,
+        profile_id=_HELD_PROFILE_ID,
+        status=status,
+        object_key=key,
+    )
+    assert fake_object_store.existing_keys == set()
+
+    response = _upload(client, _HELD_GAME_ID)
+
+    assert response.status_code == 409
+    error = response.json()["error"]
+    assert error["code"] == "replay_held"
+    assert error["message"] == _HELD_MESSAGE
+    assert fake_object_store.put_calls == []
+    row = await _capture_row(db_session, game_id=_HELD_GAME_ID, profile_id=_HELD_PROFILE_ID)
+    assert row is not None
+    assert (row.status, row.object_key, row.zip_sha256, row.source) == (
+        status,
+        key,
+        "b" * 64,
+        CaptureSource.AUTOMATIC,
+    )
+
+
 async def test_upload_where_an_object_exists_under_the_key_but_no_row_is_refused(
     client: TestClient, db_session: AsyncSession, fake_object_store: _FakeObjectStore
 ) -> None:

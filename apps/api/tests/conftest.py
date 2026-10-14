@@ -297,12 +297,13 @@ class _FakeObjectStore:
 
     `signed_get_url` (T066) never touches the network either: it deterministically encodes `key`,
     `expires_in` and, when given, `filename` into the returned string, so a test can assert on the
-    redirect target alone without needing the same instance the route handler received — the
-    `client` fixture builds a fresh one per request through a bare lambda, so nothing can be
-    asserted on shared state here. `filename` (2026-08-29 fix) is encoded as its own query
-    parameter, deliberately never folded into the path the way the real `response-content-
-    disposition` signed parameter would be for a caller — a test decodes it with `parse_qs`
-    exactly like `expires_in`, so the shape stays symmetric with the rest of this fake.
+    redirect target alone without needing the same instance the route handler received. Since
+    T723 the `client` fixture hands every request of a test the one `fake_object_store` instance,
+    so a test can also assert on its `put_calls` and seed its `existing_keys`. `filename`
+    (2026-08-29 fix) is encoded as its own query parameter, deliberately never folded into the
+    path the way the real `response-content-disposition` signed parameter would be for a caller —
+    a test decodes it with `parse_qs` exactly like `expires_in`, so the shape stays symmetric
+    with the rest of this fake.
     """
 
     def __init__(self, *, fails: bool = False) -> None:
