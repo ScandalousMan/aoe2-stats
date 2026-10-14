@@ -33,6 +33,17 @@ Each check gets one positive and one negative test:
   consumed by no task anywhere must still fail.
 - `register-commitments` (d): a launch item naming a task defined in another feature must pass; an
   item naming an id defined nowhere must still fail.
+- `task-collisions` (a2, a3, a4): an id two features both define must fail naming both files, and
+  a collision recorded in `RECORDED_TASK_ID_COLLISIONS` passes only while exactly its two recorded
+  features define it, asserted by the lint of each feature the entry names (an entry no two
+  features collide on fails too). `main` is run over a fixture tree so deleting the call from it
+  turns the suite red.
+- `task-checkbox` (a4): a definition whose checkbox holds an uppercase X must fail naming its id,
+  and is still read as a definition so it can collide; a lowercase tick, and an uppercase box on a
+  line that defines no task, must pass.
+- `alert-kinds` and `literals` readings of a definition line (b, c2): a producer counts only when
+  a space and a body follow its id, the last such definition winning; a line is labelled by its
+  task id only when a space follows the id.
 - `behavioural-section` (e): a `.env.example` section header ending in "tuning" other than the
   literal `Ingestion tuning` — feature 003's own `Search, favourites and analysis tuning` — must
   still mark its keys behavioural; a header that merely *contains* "tuning" without ending in it
@@ -217,6 +228,217 @@ def test_task_collisions_treats_a_letter_suffix_as_its_own_id(tmp_path: Path) ->
     assert _collisions_of(other) == []
 
 
+# ---------------------------------------------------- (a3) task-collisions: the record, both ways
+
+
+def test_task_collisions_fails_for_a_recorded_id_that_only_one_feature_defines(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Plant: a record entry for an id that no two features collide on fails nothing today, so an
+    entry added by hand would sit in the record unchallenged. The lint of either recorded feature
+    names the id and both recorded features."""
+    import scripts.checks.spec_lint as spec_lint
+
+    monkeypatch.setitem(
+        spec_lint.RECORDED_TASK_ID_COLLISIONS,
+        "T501",
+        frozenset({"002-under-test", "001-other"}),
+    )
+    mine, other = _two_features(tmp_path, "002-under-test", "001-other")
+    (mine / "tasks.md").write_text("- [ ] T501 Defined here only\n")
+    (other / "tasks.md").write_text("- [ ] T502 Something else\n")
+
+    for linted in (mine, other):
+        found = _collisions_of(linted)
+        assert len(found) == 1, found
+        assert "T501" in found[0]
+        assert "002-under-test" in found[0]
+        assert "001-other" in found[0]
+
+
+def test_task_collisions_fails_for_a_recorded_id_one_of_its_features_stopped_defining(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Plant: an entry left behind when one of its two features stops defining the id, after which
+    a third feature files a different task under the same id (the id is then defined by the wrong
+    pair). The remaining definer fails exactly once, with the message that names the recorded
+    pair: the unrecorded-collision message stays off a feature the record names."""
+    import scripts.checks.spec_lint as spec_lint
+
+    monkeypatch.setitem(
+        spec_lint.RECORDED_TASK_ID_COLLISIONS,
+        "T501",
+        frozenset({"002-under-test", "001-other"}),
+    )
+    mine, other = _two_features(tmp_path, "002-under-test", "001-other")
+    third = tmp_path / "specs" / "003-third"
+    third.mkdir()
+    (mine / "tasks.md").write_text("- [ ] T501 Still defined here\n")
+    (other / "tasks.md").write_text("- [ ] T999 No longer defines T501\n")
+    (third / "tasks.md").write_text("- [ ] T501 A different task under the same id\n")
+
+    found = _collisions_of(mine)
+    assert len(found) == 1, found
+    assert "T501" in found[0]
+    assert "001-other" in found[0]
+    assert "002-under-test" in found[0]
+    assert _collisions_of(other)
+    assert _collisions_of(third)
+
+
+def test_task_collisions_passes_for_a_recorded_collision_its_two_features_both_define(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Contrast: the record is asserted for the features it names and no others. An entry naming
+    two other features says nothing about the one being linted."""
+    import scripts.checks.spec_lint as spec_lint
+
+    monkeypatch.setitem(
+        spec_lint.RECORDED_TASK_ID_COLLISIONS,
+        "T501",
+        frozenset({"002-under-test", "001-other"}),
+    )
+    monkeypatch.setitem(
+        spec_lint.RECORDED_TASK_ID_COLLISIONS,
+        "T502",
+        frozenset({"003-third", "004-fourth"}),
+    )
+    mine, other = _two_features(tmp_path, "002-under-test", "001-other")
+    (mine / "tasks.md").write_text("- [ ] T501 Defined here\n")
+    (other / "tasks.md").write_text("- [x] T501 Defined there too\n")
+
+    assert _collisions_of(mine) == []
+    assert _collisions_of(other) == []
+
+
+# ------------------------------------------------------------- (a4) main, and the checkbox spelling
+
+
+def _lint_fixture(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tasks_by_feature: dict[str, str],
+    linted: str,
+) -> tuple[int, str]:
+    """Build a fixture repository, run `main` against `linted`, and return (exit code, output).
+
+    `REPO` is resolved because `main` resolves the feature directory and takes its path relative to
+    `REPO`; an unresolved temporary directory (a symlink on macOS) would make that raise.
+    """
+    import scripts.checks.spec_lint as spec_lint
+
+    repo = tmp_path.resolve()
+    for name, tasks in tasks_by_feature.items():
+        feature_dir = repo / "specs" / name
+        feature_dir.mkdir(parents=True)
+        (feature_dir / "spec.md").write_text("# Spec\n\n**FR-001**: A requirement.\n")
+        (feature_dir / "plan.md").write_text("# Plan\n")
+        (feature_dir / "tasks.md").write_text(f"{tasks}\nCovers FR-001.\n")
+    monkeypatch.setattr(spec_lint, "REPO", repo)
+    monkeypatch.setattr("sys.argv", ["spec_lint.py", "--feature", f"specs/{linted}"])
+    spec_lint.failures.clear()
+    spec_lint.notes.clear()
+    code = spec_lint.main()
+    return code, capsys.readouterr().out
+
+
+def test_main_exits_1_naming_an_id_two_features_define(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`main` is what CI runs. A test of `check_task_id_collisions` alone passes when the call is
+    deleted from `main`, and the lint then exits 0 for every feature."""
+    code, out = _lint_fixture(
+        tmp_path,
+        monkeypatch,
+        capsys,
+        {"001-other": "- [ ] T301 Defined there\n", "002-under-test": "- [ ] T301 Defined here\n"},
+        "002-under-test",
+    )
+
+    assert code == 1
+    assert "task-collisions" in out
+    assert "T301" in out
+
+
+def test_main_exits_0_when_no_two_features_define_one_id(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Contrast for the test above: the same fixture tree, with distinct ids, is clean, so the
+    exit code of 1 there is the collision and nothing else in the fixture."""
+    code, out = _lint_fixture(
+        tmp_path,
+        monkeypatch,
+        capsys,
+        {"001-other": "- [ ] T302 Defined there\n", "002-under-test": "- [ ] T301 Defined here\n"},
+        "002-under-test",
+    )
+
+    assert code == 0, out
+
+
+def test_task_checkbox_fails_for_a_definition_with_an_uppercase_x(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Plant: `- [X] T301` is a definition that neither `task-refs` nor `task-collisions` read, so
+    an id one feature ticks `[x]` and another ticks `[X]` passed both lints."""
+    code, out = _lint_fixture(
+        tmp_path,
+        monkeypatch,
+        capsys,
+        {"002-under-test": "- [X] T301 Ticked with a capital\n"},
+        "002-under-test",
+    )
+
+    assert code == 1
+    assert "T301" in out
+    assert "uppercase" in out
+
+
+def test_an_id_ticked_x_in_one_feature_and_capital_x_in_another_is_a_collision(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    code, out = _lint_fixture(
+        tmp_path,
+        monkeypatch,
+        capsys,
+        {"001-other": "- [x] T301 Defined there\n", "002-under-test": "- [X] T301 Defined here\n"},
+        "001-other",
+    )
+
+    assert code == 1
+    assert "task-collisions" in out
+    assert "T301" in out
+
+
+def test_task_checkbox_passes_for_a_ticked_lowercase_definition(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    code, out = _lint_fixture(
+        tmp_path,
+        monkeypatch,
+        capsys,
+        {"002-under-test": "- [x] T301 Ticked in lowercase\n"},
+        "002-under-test",
+    )
+
+    assert code == 0, out
+
+
+def test_task_checkbox_passes_for_an_uppercase_box_on_a_line_that_defines_no_task(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    code, out = _lint_fixture(
+        tmp_path,
+        monkeypatch,
+        capsys,
+        {"002-under-test": "- [ ] T301 A real task\n- [X] some launch item\n"},
+        "002-under-test",
+    )
+
+    assert code == 0, out
+
+
 # ------------------------------------------------------------------------------- (b) alert-kinds
 
 
@@ -274,6 +496,42 @@ def test_alert_kinds_fails_when_a_producer_uses_a_kind_outside_the_vocabulary(
         f.startswith("alert-kinds") and "baz" in f and "not in data-model.md's enum" in f
         for f in spec_lint.failures
     )
+
+
+def _alert_failures(data_model: str, tasks: str) -> list[str]:
+    import scripts.checks.spec_lint as spec_lint
+
+    spec_lint.failures.clear()
+    spec_lint.notes.clear()
+    spec_lint.check_alert_kinds(data_model, tasks)
+    return [f for f in spec_lint.failures if f.startswith("alert-kinds")]
+
+
+_ONE_KIND_DATA_MODEL = "# Data Model\n\n`kind` (enum: `foo`)\n\nProducers:\n- T701 `foo`\n"
+
+
+def test_alert_kinds_fails_for_a_producer_whose_only_definition_has_a_colon_after_its_id() -> None:
+    """Plant: a producer counts as defined only when a space and a body follow its id, as it did
+    before the single reader. `- [ ] T701: raise ...` is a definition for `task-refs` but was not a
+    producer's definition for this check."""
+    found = _alert_failures(_ONE_KIND_DATA_MODEL, "- [ ] T701: raise a `foo` alert\n")
+
+    assert len(found) == 1, found
+    assert "T701" in found[0]
+    assert "defined by no task" in found[0]
+
+
+def test_alert_kinds_passes_for_a_producer_defined_with_a_body_and_then_again_with_none() -> None:
+    """Plant: of several definitions that carry a body the last wins, and a definition with nothing
+    after its id carries none, so it replaces nothing."""
+    found = _alert_failures(_ONE_KIND_DATA_MODEL, "- [ ] T701 Raises a `foo` alert\n- [ ] T701\n")
+
+    assert found == []
+
+
+def test_alert_kinds_passes_for_a_producer_defined_with_a_space_and_a_body() -> None:
+    """Contrast: the ordinary shape still resolves."""
+    assert _alert_failures(_ONE_KIND_DATA_MODEL, "- [ ] T701 Raises a `foo` alert\n") == []
 
 
 # ------------------------------------------------------------------------------ (c) env-consumed
@@ -349,6 +607,39 @@ def test_env_consumed_fails_for_a_key_consumed_by_no_task_anywhere(
     assert any(
         f.startswith("env-consumed") and "SOME_BEHAVIOURAL_KEY" in f for f in spec_lint.failures
     )
+
+
+# ----------------------------------------------------------------------------- (c2) literals
+
+
+def _literal_failures(tasks: str) -> list[str]:
+    import scripts.checks.spec_lint as spec_lint
+
+    env_values, behavioural = spec_lint.parse_env(
+        "# --- Ingestion tuning -----------------------------------------------\n"
+        "SOME_WINDOW_DAYS=21\n"
+    )
+    spec_lint.failures.clear()
+    spec_lint.notes.clear()
+    spec_lint.check_literals({"tasks.md": tasks}, env_values, behavioural)
+    return [f for f in spec_lint.failures if f.startswith("literals")]
+
+
+def test_literals_labels_a_line_by_its_line_number_when_a_colon_follows_the_id() -> None:
+    """Plant: a line is labelled by its task id only when a space follows the id."""
+    found = _literal_failures("- [ ] T330: keep it for 21 days\n")
+
+    assert len(found) == 1, found
+    assert "tasks.md:1 " in found[0]
+    assert "T330" not in found[0]
+
+
+def test_literals_labels_a_line_by_its_task_id_when_a_space_follows_the_id() -> None:
+    """Contrast: the ordinary shape keeps its id label."""
+    found = _literal_failures("- [ ] T330 keep it for 21 days\n")
+
+    assert len(found) == 1, found
+    assert "tasks.md T330 " in found[0]
 
 
 # --------------------------------------------------------------------- (d) register-commitments
