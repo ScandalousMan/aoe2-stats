@@ -66,9 +66,9 @@ exists. A refusal is not an access and writes nothing to `replay_access_log`.
 
 **`POST /api/replays/{game_id}/upload` (T080/T081, FR-029 to FR-033).** The manual fallback for a
 replay the automatic pipeline never captured or has already given up on — `test_manual_upload.py`
-is this route's own specification, scenario 8 of quickstart.md. Multipart, one `file` field. Three
+is this route's own specification, scenario 8 of quickstart.md. Multipart, one `file` field. Five
 refusals, each the identical error shape FR-045 already establishes elsewhere in this module, and
-one non-negotiable ordering:
+one non-negotiable ordering — participation, objection, validation, held object, write:
 
 - **Participation (FR-031).** `_participant_match_for_upload` joins `match_players` to the caller's
   own active `profile_links` rows for `game_id` — the identical shape `_match_completed_at_for_
@@ -77,6 +77,11 @@ one non-negotiable ordering:
   found()` this module already raises for "no such match" and "a match the caller did not play"
   (module docstring's FR-045 precedent, reused verbatim rather than a fourth code for a fact this
   module already has one word for).
+- **Objection (T723, constitution IX).** An upload is a capture, and a caller whose
+  `users.archival_objected_at` is set has stopped captures: `409` `archival_objected`, whatever the
+  match's row. It runs right after participation and before the file is read, so a refused caller's
+  bytes are not validated and nothing is written. The same request is accepted once the objection
+  is lifted.
 - **Validation (FR-030), through the same engine interface capture uses.** `Aoe2RecValidator`
   (`packages/replay-engine`) is imported lazily, inside this handler, never at this module's own
   top level — mirrors `routers/cron.py`'s and `ingest_stages.py`'s own T018c discipline: the API
@@ -92,19 +97,24 @@ one non-negotiable ordering:
   minus that module's own containment barrier — a native panic (`BaseException`) is that module's
   concern for unattended, unauthenticated batch traffic, not this authenticated, one-file-at-a-time
   route's.
-- **Already archived (FR-032).** Checked only *after* validation succeeds, matching the task's own
-  ordering: `_existing_capture` reads whatever row already exists for `(game_id, profile_id)` and
-  refuses `409` `already_archived` only when it is already `stored` — every other terminal or
-  in-flight status (`expired`, `unavailable`, `failed`, `quarantined`, or none at all) is exactly
-  what `CapturesRepository.record_manual_upload` exists to rescue (that repository's own module
-  docstring: "create-or-update, never a bare insert"). Never overwritten: this check runs, and
-  refuses, before either write below.
+- **Already archived (FR-032) and held (T723).** Checked only *after* validation succeeds:
+  `_existing_capture` reads whatever row already exists for `(game_id, profile_id)`. A `stored` row
+  is refused `409` `already_archived`; any other row that names an `object_key` — a `quarantined`
+  or `withdrawn` one keeps the key it had — is refused `409` `replay_held`. A row of any other
+  status that names no key (`expired`, `unavailable`, `failed`, `pending`, `downloading`, or no row
+  at all) is what `CapturesRepository.record_manual_upload` exists to rescue (that repository's own
+  module docstring: "create-or-update, never a bare insert"). The refusals run before either write
+  below.
 - **Write ordering — blob first, row second, the identical non-negotiable order `capture.py`'s own
-  module docstring fixes for an automatic capture.** `object_store.put` under `replay_object_key`
-  (the same key scheme an automatic capture already uses for this pair — `replay_object_key`'s own
-  docstring: "shared by capture ... and manual upload ... both resolve to the same key") runs first;
-  `CapturesRepository.record_manual_upload` — the one write that follows, described in full in that
-  repository's own module docstring — runs only once the blob is durable.
+  module docstring fixes for an automatic capture.** `object_store.put_if_absent` under
+  `replay_object_key` (the same key scheme an automatic capture already uses for this pair —
+  `replay_object_key`'s own docstring: "shared by capture ... and manual upload ... both resolve to
+  the same key") runs first and answers whether it wrote; `False` means the key already holds an
+  object, and that is the same `409` `replay_held`, with no row created or changed — this is the
+  case of an object under the key that no row names. `CapturesRepository.record_manual_upload` —
+  the one write that follows, described in full in that repository's own module docstring — runs
+  only once the blob is durable. The automatic capture's own write uses `put` and is not touched by
+  this route's checks.
 
 **`GET /api/matches/{game_id}/replay/{profile_id}` (T337, 003) — a different route from the one
 above.** 001's route above is the caller's own dashboard download, reached by `game_id` alone; this
@@ -330,6 +340,7 @@ from aoe2stats_storage.models import (
     ReplayAccessLog,
     ReplayCapture,
     ReplayFetchMiss,
+    User,
 )
 from aoe2stats_storage.models import Session as SessionRow
 from aoe2stats_storage.objects import REPLAY_CONTENT_TYPE, replay_object_key
@@ -633,12 +644,35 @@ def _invalid_replay_error(reason: str) -> APIError:
 
 
 def _already_archived_error() -> APIError:
-    """FR-032: a `stored` capture already exists for this `(game_id, profile_id)` pair — refused,
-    never overwritten (module docstring's "Already archived" paragraph)."""
+    """FR-032: a `stored` capture already exists for this `(game_id, profile_id)` pair — refused
+    (module docstring's "Already archived" paragraph)."""
     return APIError(
         status_code=409,
         code="already_archived",
         message="A replay for this match has already been archived and cannot be overwritten.",
+    )
+
+
+def _archival_objected_error() -> APIError:
+    """T723: the caller has an archival objection on file, and an upload is a capture it stops
+    (module docstring's "Objection" paragraph)."""
+    return APIError(
+        status_code=409,
+        code="archival_objected",
+        message=(
+            "Archival is off for your account. "
+            "Turn it back on in your privacy settings to upload a replay."
+        ),
+    )
+
+
+def _replay_held_error() -> APIError:
+    """T723: the store or the row already holds a file for this pair (module docstring's "Already
+    archived" and "Write ordering" paragraphs)."""
+    return APIError(
+        status_code=409,
+        code="replay_held",
+        message="A file is already held for this match and cannot be replaced.",
     )
 
 
@@ -672,8 +706,8 @@ async def _existing_capture(
 ) -> ReplayCapture | None:
     """The `replay_captures` row already on file for `(game_id, profile_id)`, whatever its status
     — `None` if discovery never enqueued one for this pair. Read before either write below, so a
-    `stored` row is caught and refused before it is ever touched (module docstring's "Already
-    archived" paragraph)."""
+    `stored` row, or one naming an `object_key`, is refused before it is touched (module
+    docstring's "Already archived" paragraph)."""
     result = await db_session.execute(
         select(ReplayCapture).where(
             ReplayCapture.game_id == game_id, ReplayCapture.profile_id == profile_id
@@ -693,9 +727,9 @@ async def upload_replay(
     file: Annotated[UploadFile, File()],
 ) -> dict[str, Any]:
     """FR-029 to FR-033 (module docstring): the manual fallback for a replay the automatic pipeline
-    never captured or has already given up on. Participation, then validation, then the
-    already-archived refusal, then the blob-first-row-second write — in that order, exactly as the
-    module docstring describes.
+    never captured or has already given up on. Participation, then the objection refusal, then
+    validation, then the already-archived and held refusals, then the blob-first-row-second write
+    (a conditional `put_if_absent`) — in that order, exactly as the module docstring describes.
 
     **T102.** A successful upload changes the `capture_status` `routers/matches.py`'s list and
     detail routes both cache — `cache.invalidate_prefix` below drops every cached page for this
@@ -710,6 +744,11 @@ async def upload_replay(
     completed_at, profile_id = await _participant_match_for_upload(
         db_session, game_id=game_id, user_id=session_row.user_id
     )
+
+    # T723: an objector's upload is a capture the objection stops; refused before the file is read.
+    user = await db_session.get(User, session_row.user_id)
+    if user is not None and user.archival_objected_at is not None:
+        raise _archival_objected_error()
 
     content = await file.read()
 
@@ -726,9 +765,13 @@ async def upload_replay(
     existing = await _existing_capture(db_session, game_id=game_id, profile_id=profile_id)
     if existing is not None and existing.status is CaptureStatus.STORED:
         raise _already_archived_error()
+    if existing is not None and existing.object_key is not None:
+        raise _replay_held_error()
 
     key = replay_object_key(game_id, profile_id)
-    await object_store.put(key, content, content_type=REPLAY_CONTENT_TYPE)
+    # T723: a conditional write; an object already under the key is refused, nothing recorded.
+    if not await object_store.put_if_absent(key, content, content_type=REPLAY_CONTENT_TYPE):
+        raise _replay_held_error()
 
     capture = await CapturesRepository(db_session).record_manual_upload(
         game_id=game_id,

@@ -206,9 +206,10 @@ class ObjectStore:
 
         One `PutObject` carrying `If-None-Match: *` (supported by AWS S3 and by Cloudflare R2), so
         the check and the write are a single operation on the store: two writers racing for one key
-        cannot both succeed, which a head-then-put could not promise. It exists for the analysis
-        document, whose key is a function of its identity and, once written, is never written again
-        (specs/006 contracts/analysis-document.md, FR-042); `put` is unchanged and still overwrites.
+        cannot both succeed, which a head-then-put could not promise. The analysis document uses it:
+        its key is a function of its identity and, once written, is never written again (specs/006
+        contracts/analysis-document.md, FR-042). So does the manual upload (`upload_replay`, T723),
+        which refuses a key that already holds an object. `put` is unchanged and still overwrites.
 
         Only the store's `PreconditionFailed` (HTTP 412) means "already there". Every other error
         propagates, including `ConditionalRequestConflict` (HTTP 409, a concurrent write to the same

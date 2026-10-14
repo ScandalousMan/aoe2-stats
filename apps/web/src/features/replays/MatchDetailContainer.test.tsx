@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { meQueryOptions } from '../../lib/api'
 import type { ApiMatchDetail } from '../matches/api'
 import type { ApiProfile } from '../profile/api'
 
@@ -123,6 +124,8 @@ function linkedParticipantProfile(overrides: Partial<ApiProfile> = {}): ApiProfi
  * request/response contract rather than a mocked `api` module. */
 function installFakeApi(options: {
   session?: FakeSession
+  /** Replaces the `GET /api/me` answer — a promise that never settles is "unanswered" (T723). */
+  me?: () => Promise<Response>
   profiles?: ApiProfile[]
   detail?: () => Response
   upload?: () => Response
@@ -135,7 +138,7 @@ function installFakeApi(options: {
     const method = init?.method ?? 'GET'
 
     if (path === '/api/me' && method === 'GET') {
-      return jsonResponse(session)
+      return options.me ? options.me() : jsonResponse(session)
     }
     if (path === '/api/profiles' && method === 'GET') {
       return jsonResponse({ profiles })
@@ -161,7 +164,7 @@ function renderMatch(gameId = '700800900') {
   function wrapper({ children }: { children: ReactNode }) {
     return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   }
-  return render(<MatchDetailContainer gameId={gameId} />, { wrapper })
+  return { ...render(<MatchDetailContainer gameId={gameId} />, { wrapper }), queryClient }
 }
 
 describe('MatchDetailContainer', () => {
@@ -875,6 +878,50 @@ describe('MatchDetailContainer', () => {
       })
       renderMatch()
 
+      await screen.findByText('Arabia')
+      expect(screen.queryByText('Add the replay yourself')).not.toBeInTheDocument()
+    })
+
+    // T723 (manual-upload.md §2): the route refuses an objector's upload, so the interface offers
+    // none, for any status. The session is one the server can produce: the objector keeps a linked
+    // profile, which is the participant of this match.
+    it('hides "Add the replay yourself" for an expired capture when the session has objected', async () => {
+      installFakeApi({
+        session: baseSession({
+          archival_objected: true,
+          archival_objected_at: '2026-10-01T00:00:00Z',
+          profiles: [{ profile_id: 11, alias: 'aoe2villain', country: 'FR', is_primary: true }],
+        }),
+        profiles: [linkedParticipantProfile()],
+        detail: () => jsonResponse(baseDetail({ capture_status: 'expired' })),
+      })
+      const { queryClient } = renderMatch()
+
+      await screen.findByText('Arabia')
+      // The session has answered, so the absence below is the objection and not the fail-closed
+      // wait for `GET /api/me`.
+      await waitFor(() =>
+        expect(queryClient.getQueryData(meQueryOptions.queryKey)).toMatchObject({
+          archival_objected: true,
+        }),
+      )
+      expect(screen.queryByText('Add the replay yourself')).not.toBeInTheDocument()
+    })
+
+    // Contrast: the non-objecting caller's `expired` match still shows the control — the
+    // 'shows "Add the replay yourself" for the Lost capture status' cases above (default session,
+    // `archival_objected: false`) and 'contrast: stored still offers the download and expired
+    // still offers the upload' already pin it, so no duplicate here.
+
+    it('hides "Add the replay yourself" while GET /api/me is unanswered', async () => {
+      installFakeApi({
+        me: () => new Promise<Response>(() => {}),
+        profiles: [],
+        detail: () => jsonResponse(baseDetail({ capture_status: 'expired' })),
+      })
+      renderMatch()
+
+      // The match itself has arrived, so the control's absence is not "too early to tell".
       await screen.findByText('Arabia')
       expect(screen.queryByText('Add the replay yourself')).not.toBeInTheDocument()
     })
