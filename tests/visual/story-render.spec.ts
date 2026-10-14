@@ -147,3 +147,68 @@ test.describe('resolveCaptureClip: an unrendered part never drags the union to t
     expect(rect).toEqual({ x: 10, y: 20, width: 44, height: 44 })
   })
 })
+
+// T678: `textRange` clips a part to the element's own text (a DOM Range over its contents) rather
+// than to its box — what lets a `flex min-h-11` link be clipped to its words with no wrapper
+// element in the production markup. Planted page, as above; `--ds-space-0` plus `pad: '0'` keep the
+// arithmetic free of the token lookup.
+test.describe('resolveCaptureClip: textRange clips to the element text, not the element box (T678)', () => {
+  const plantedLink = `
+    <!doctype html>
+    <html>
+      <head>
+        <style>
+          :root { --ds-space-0: 0px; }
+          body { margin: 0; padding: 0; }
+          #link {
+            position: absolute; left: 10px; top: 20px; width: 400px; min-height: 44px;
+            display: flex; align-items: center; box-sizing: border-box; margin: 0; padding: 12px 0;
+            font: 16px/20px monospace;
+          }
+        </style>
+      </head>
+      <body><a id="link" href="#x">1. Who</a></body>
+    </html>
+  `
+
+  test('without textRange the clip is the whole full-width link box', async ({ page }) => {
+    await page.setContent(plantedLink)
+    const rect = await resolveCaptureClip(page, page.locator('body'), 'planted', {
+      parts: [{ role: 'link' }],
+      pad: '0',
+    })
+    expect(rect).toEqual({ x: 10, y: 20, width: 400, height: 44 })
+  })
+
+  test('with textRange the clip is the text run alone, narrower and shorter than the box', async ({
+    page,
+  }) => {
+    await page.setContent(plantedLink)
+    const rect = await resolveCaptureClip(page, page.locator('body'), 'planted', {
+      parts: [{ role: 'link', textRange: true }],
+      pad: '0',
+    })
+    // Never wider than the box it sits in, and strictly smaller than it on both axes; positioned
+    // inside it. Exact glyph metrics are the font's business, so the bounds are asserted, not the
+    // numbers.
+    expect(rect.x).toBe(10)
+    expect(rect.width).toBeGreaterThan(0)
+    expect(rect.width).toBeLessThan(400)
+    expect(rect.height).toBeGreaterThan(0)
+    expect(rect.height).toBeLessThan(44)
+    expect(rect.y).toBeGreaterThanOrEqual(20)
+    expect(rect.y + rect.height).toBeLessThanOrEqual(64)
+  })
+
+  test('textRange on an element with no text falls back to its own box', async ({ page }) => {
+    await page.setContent(plantedLink)
+    await page.locator('#link').evaluate((el) => {
+      el.textContent = ''
+    })
+    const rect = await resolveCaptureClip(page, page.locator('body'), 'planted', {
+      parts: [{ selector: '#link', textRange: true }],
+      pad: '0',
+    })
+    expect(rect).toEqual({ x: 10, y: 20, width: 400, height: 44 })
+  })
+})

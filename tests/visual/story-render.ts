@@ -45,6 +45,16 @@ export interface VisualCaptureClipPart {
   name?: string
   nth?: number
   fragment?: 'first'
+  /**
+   * T678 — clip to the element's own *text*, not its box. The part still locates one element
+   * (`selector`/`role`/`nth`), but its rect is that of a DOM `Range` selecting the element's
+   * contents (`Range.selectNodeContents`), so a full-width or `min-h-*` block (a `flex` anchor)
+   * clips to the words it actually paints. Needs no wrapper element in the production markup — the
+   * reason it exists: a test-only `<span>` around a `Contents` entry's label (T675 slice 4b, removed
+   * by T678). A no-op for an element with no text, which falls back to its own box. Composes with
+   * `fragment`: the range's own client rects are what `fragment: 'first'` then picks from.
+   */
+  textRange?: true
 }
 
 export interface VisualCaptureClip {
@@ -245,18 +255,31 @@ export async function resolveCaptureClip(
   for (const part of clip.parts) {
     const located = await locateClipPart(root, storyId, part)
     if (!(await isClipPartRendered(located))) continue
-    const { boundingRect, clientRects } = await located.evaluate((el) => {
+    const { boundingRect, clientRects } = await located.evaluate((el, textRange) => {
       const toEdges = (r: DOMRect) => ({
         left: r.left + window.scrollX,
         top: r.top + window.scrollY,
         right: r.right + window.scrollX,
         bottom: r.bottom + window.scrollY,
       })
+      // T678: measure the element's text through a Range instead of the element's own box. A Range
+      // over an element with no text reports an all-zero rect; keep the element's box then.
+      if (textRange) {
+        const range = document.createRange()
+        range.selectNodeContents(el)
+        const rangeBox = range.getBoundingClientRect()
+        if (rangeBox.width > 0 && rangeBox.height > 0) {
+          return {
+            boundingRect: toEdges(rangeBox),
+            clientRects: Array.from(range.getClientRects()).map(toEdges),
+          }
+        }
+      }
       return {
         boundingRect: toEdges(el.getBoundingClientRect()),
         clientRects: Array.from(el.getClientRects()).map(toEdges),
       }
-    })
+    }, part.textRange === true)
     const box = resolveClipPartRect(part.fragment, boundingRect, clientRects)
     union = union
       ? {
