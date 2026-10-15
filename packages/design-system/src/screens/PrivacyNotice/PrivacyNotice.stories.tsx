@@ -100,12 +100,12 @@ const FIRST_LINK_CLIP = { parts: [{ role: 'link', nth: 0 }], pad: '2' } as const
 // not the padded block around it. `FocusVisible`/`Active` above keep `FIRST_LINK_CLIP`: their own
 // signals (the ring, the fill) are real box-shaped marks that need the whole link's own box. `Hover`
 // alone narrows to the entry's own text. T678: it does so with `textRange` (`story-render.ts`'s
-// `VisualCaptureClipPart`) — the clip is the rect of a DOM `Range` over the link's own contents —
-// instead of the `<span>` T675 first wrapped the label in, which existed in production markup only
-// for this clip and is gone. `fragment: 'first'` could not do it: the link is a single-line
-// `flex min-h-11` block, so its first client rect is the whole box. A Range measures the glyphs
-// themselves, which the underline sits under. Same link as `FIRST_LINK_CLIP`'s (`role: 'link'`,
-// `nth: 0`), found the same way.
+// `VisualCaptureClipPart`), the rect of a DOM `Range` over the link's contents, instead of the
+// `<span>` T675 first wrapped the label in, which existed in production markup only for this clip
+// and is gone. `fragment: 'first'` could not do it: the link is a single-line `flex min-h-11`
+// block, so its first client rect is the whole box. A Range measures the inline content box
+// (ascent plus descent), not glyph ink: the underline fits inside only as far as this font's
+// descent allows for `underline-offset-2` + `decoration-2`; `pad: '1'` is the margin. Same link.
 const FIRST_LINK_TEXT_CLIP = {
   parts: [{ role: 'link', nth: 0, textRange: true }],
   pad: '1',

@@ -109,6 +109,14 @@ export const FragmentFirstClip: Story = {
   },
 }
 
+export const TextRangeClip: Story = {
+  args: { variant: 'actions', triggerLabel: 'Manage' },
+  parameters: {
+    visualForceState: { state: 'hover', role: 'link' },
+    visualCaptureClip: { parts: [{ role: 'link', textRange: true as const }], pad: '1' },
+  },
+}
+
 export const KeyboardEndsFocused: Story = {
   args: { variant: 'actions', triggerLabel: 'Manage' },
   play: async ({ canvasElement }) => {
@@ -150,7 +158,14 @@ test('extractVisualCaptureClip resolves a clip referenced by identifier, not onl
   const { byName } = fixtureStories()
   assert.deepEqual(byName.get('TriggerFocusVisibleByRef').clip, {
     parts: [
-      { selector: undefined, role: 'button', name: 'Manage', nth: undefined, fragment: undefined },
+      {
+        selector: undefined,
+        role: 'button',
+        name: 'Manage',
+        nth: undefined,
+        fragment: undefined,
+        textRange: undefined,
+      },
     ],
     pad: '2',
   })
@@ -160,7 +175,14 @@ test('extractVisualCaptureClip resolves a part role annotated "as const", not on
   const { byName } = fixtureStories()
   assert.deepEqual(byName.get('RoleAsConstClip').clip, {
     parts: [
-      { selector: undefined, role: 'link', name: undefined, nth: undefined, fragment: undefined },
+      {
+        selector: undefined,
+        role: 'link',
+        name: undefined,
+        nth: undefined,
+        fragment: undefined,
+        textRange: undefined,
+      },
     ],
     pad: '2',
   })
@@ -175,7 +197,14 @@ test('extractVisualCaptureClip resolves a clip referenced by identifier whose ow
   const { byName } = fixtureStories()
   assert.deepEqual(byName.get('TriggerHoverByRefAsConst').clip, {
     parts: [
-      { selector: undefined, role: 'button', name: 'Manage', nth: undefined, fragment: undefined },
+      {
+        selector: undefined,
+        role: 'button',
+        name: 'Manage',
+        nth: undefined,
+        fragment: undefined,
+        textRange: undefined,
+      },
     ],
     pad: '2',
   })
@@ -185,7 +214,14 @@ test('extractVisualCaptureClip resolves a clip written inline and annotated "as 
   const { byName } = fixtureStories()
   assert.deepEqual(byName.get('InlineAsConstClip').clip, {
     parts: [
-      { selector: undefined, role: 'button', name: 'Manage', nth: undefined, fragment: undefined },
+      {
+        selector: undefined,
+        role: 'button',
+        name: 'Manage',
+        nth: undefined,
+        fragment: undefined,
+        textRange: undefined,
+      },
     ],
     pad: '2',
   })
@@ -196,9 +232,35 @@ test('extractVisualCaptureClip resolves a part\'s own "fragment" option, not onl
   const { byName } = fixtureStories()
   assert.deepEqual(byName.get('FragmentFirstClip').clip, {
     parts: [
-      { selector: undefined, role: 'link', name: undefined, nth: undefined, fragment: 'first' },
+      {
+        selector: undefined,
+        role: 'link',
+        name: undefined,
+        nth: undefined,
+        fragment: 'first',
+        textRange: undefined,
+      },
     ],
     pad: '2',
+  })
+})
+
+// T678: `textRange` is read back too — the extracted clip is the real shape a story declares, and
+// a boolean literal (`true`, with or without `as const`) is carried, not dropped.
+test('extractVisualCaptureClip carries a part\'s own "textRange" option', () => {
+  const { byName } = fixtureStories()
+  assert.deepEqual(byName.get('TextRangeClip').clip, {
+    parts: [
+      {
+        selector: undefined,
+        role: 'link',
+        name: undefined,
+        nth: undefined,
+        fragment: undefined,
+        textRange: true,
+      },
+    ],
+    pad: '1',
   })
 })
 
