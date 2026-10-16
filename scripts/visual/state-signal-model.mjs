@@ -192,12 +192,16 @@ export function extractVisualCaptureClip(storyObj, constNodeMap = new Map()) {
     // all does not depend on which of its parts name `fragment` — so this is completeness, not a
     // second behaviour.
     const fragment = literalOf(getProp(el, 'fragment'))
+    // T678: `textRange` (a boolean literal), read back for the same reason — completeness of the
+    // declared shape, not a second behaviour.
+    const textRange = literalOf(getProp(el, 'textRange'))
     parts.push({
       selector: selector.present && selector.literal ? selector.value : undefined,
       role: role.present && role.literal ? role.value : undefined,
       name: name.present && name.literal ? name.value : undefined,
       nth: nth.present && nth.literal ? nth.value : undefined,
       fragment: fragment.present && fragment.literal ? fragment.value : undefined,
+      textRange: textRange.present && textRange.literal ? textRange.value : undefined,
     })
   }
   const pad = literalOf(getProp(clip, 'pad'))

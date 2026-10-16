@@ -45,6 +45,23 @@ export interface VisualCaptureClipPart {
   name?: string
   nth?: number
   fragment?: 'first'
+  /**
+   * T678 — clip to the rect of a DOM `Range` over the element's contents
+   * (`Range.selectNodeContents`) instead of the element's own box. The part still locates one
+   * element (`selector`/`role`/`nth`). When those contents are text only, the rect is tight to the
+   * text's line boxes (the inline content area, ascent plus descent — not glyph ink), so a
+   * full-width or `min-h-*` block (a `flex` anchor) clips to its words. When the contents include
+   * child elements, the Range includes those children's boxes too (an `<svg>` or a padded block
+   * child widens it), so use it on text-only elements. Needs no wrapper element in the production
+   * markup — the reason it exists: a test-only `<span>` around a `Contents` entry's label (T675
+   * slice 4b, removed by T678).
+   *
+   * Throws when the Range has no area (no text node, or only whitespace that collapses away): a
+   * clip never silently widens to the element's box. Also throws when combined with `fragment`: a
+   * Range reports one client rect per text node per line, not one per line, so `fragment: 'first'`
+   * would pick the first text node (the digit of an `{index}. {label}` anchor), not the first line.
+   */
+  textRange?: true
 }
 
 export interface VisualCaptureClip {
@@ -243,20 +260,50 @@ export async function resolveCaptureClip(
 
   let union: { left: number; top: number; right: number; bottom: number } | null = null
   for (const part of clip.parts) {
+    if (part.textRange && part.fragment !== undefined) {
+      throw new Error(
+        `visualCaptureClip: part ${JSON.stringify(part)} of story "${storyId}" names both ` +
+          '"textRange" and "fragment" — they do not compose (a Range reports one client rect per ' +
+          'text node per line, not one per line); name one.',
+      )
+    }
     const located = await locateClipPart(root, storyId, part)
     if (!(await isClipPartRendered(located))) continue
-    const { boundingRect, clientRects } = await located.evaluate((el) => {
-      const toEdges = (r: DOMRect) => ({
-        left: r.left + window.scrollX,
-        top: r.top + window.scrollY,
-        right: r.right + window.scrollX,
-        bottom: r.bottom + window.scrollY,
-      })
-      return {
-        boundingRect: toEdges(el.getBoundingClientRect()),
-        clientRects: Array.from(el.getClientRects()).map(toEdges),
-      }
-    })
+    const { boundingRect, clientRects, emptyTextRange } = await located.evaluate(
+      (el, textRange) => {
+        const toEdges = (r: DOMRect) => ({
+          left: r.left + window.scrollX,
+          top: r.top + window.scrollY,
+          right: r.right + window.scrollX,
+          bottom: r.bottom + window.scrollY,
+        })
+        // T678: measure the element's text through a Range instead of the element's own box. A Range
+        // with no area (no text, or whitespace that collapses away) is reported, not papered over.
+        if (textRange) {
+          const range = document.createRange()
+          range.selectNodeContents(el)
+          const rangeBox = range.getBoundingClientRect()
+          return {
+            boundingRect: toEdges(rangeBox),
+            clientRects: Array.from(range.getClientRects()).map(toEdges),
+            emptyTextRange: !(rangeBox.width > 0 && rangeBox.height > 0),
+          }
+        }
+        return {
+          boundingRect: toEdges(el.getBoundingClientRect()),
+          clientRects: Array.from(el.getClientRects()).map(toEdges),
+          emptyTextRange: false,
+        }
+      },
+      part.textRange === true,
+    )
+    if (emptyTextRange) {
+      throw new Error(
+        `visualCaptureClip: part ${JSON.stringify(part)} of story "${storyId}" asks for "textRange" ` +
+          'but its element has no text to measure (no text node, or only collapsed whitespace) — ' +
+          'a clip never falls back to the element box.',
+      )
+    }
     const box = resolveClipPartRect(part.fragment, boundingRect, clientRects)
     union = union
       ? {

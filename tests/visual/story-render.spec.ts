@@ -147,3 +147,130 @@ test.describe('resolveCaptureClip: an unrendered part never drags the union to t
     expect(rect).toEqual({ x: 10, y: 20, width: 44, height: 44 })
   })
 })
+
+// T678: `textRange` clips a part to the element's own text (a DOM Range over its contents) rather
+// than to its box — what lets a `flex min-h-11` link be clipped to its words with no wrapper
+// element in the production markup. Planted page, as above; `--ds-space-0` plus `pad: '0'` keep the
+// arithmetic free of the token lookup.
+test.describe('resolveCaptureClip: textRange clips to the element text, not the element box (T678)', () => {
+  const plantedLink = `
+    <!doctype html>
+    <html>
+      <head>
+        <style>
+          :root { --ds-space-0: 0px; }
+          body { margin: 0; padding: 0; }
+          #link {
+            position: absolute; left: 10px; top: 20px; width: 400px; min-height: 44px;
+            display: flex; align-items: center; box-sizing: border-box; margin: 0; padding: 12px 0;
+            font: 16px/20px monospace;
+          }
+        </style>
+      </head>
+      <body><a id="link" href="#x">1. Who</a></body>
+    </html>
+  `
+
+  test('without textRange the clip is the whole full-width link box', async ({ page }) => {
+    await page.setContent(plantedLink)
+    const rect = await resolveCaptureClip(page, page.locator('body'), 'planted', {
+      parts: [{ role: 'link' }],
+      pad: '0',
+    })
+    expect(rect).toEqual({ x: 10, y: 20, width: 400, height: 44 })
+  })
+
+  test('with textRange the clip is the text run alone, narrower and shorter than the box', async ({
+    page,
+  }) => {
+    await page.setContent(plantedLink)
+    const rect = await resolveCaptureClip(page, page.locator('body'), 'planted', {
+      parts: [{ role: 'link', textRange: true }],
+      pad: '0',
+    })
+    // Never wider than the box it sits in, and strictly smaller than it on both axes; positioned
+    // inside it. Exact glyph metrics are the font's business, so the bounds are asserted, not the
+    // numbers.
+    expect(rect.x).toBe(10)
+    expect(rect.width).toBeGreaterThan(0)
+    expect(rect.width).toBeLessThan(400)
+    expect(rect.height).toBeGreaterThan(0)
+    expect(rect.height).toBeLessThan(44)
+    expect(rect.y).toBeGreaterThanOrEqual(20)
+    expect(rect.y + rect.height).toBeLessThanOrEqual(64)
+  })
+
+  test('textRange over several adjacent text nodes clips to the whole label, not the first node', async ({
+    page,
+  }) => {
+    // The PrivacyNotice anchor shape: `{index + 1}. {section.label}` renders as three adjacent text
+    // nodes ("1", ". ", "Who"), so the Range reports one client rect per node. The clip is the
+    // Range's bounding rect — the union — so it must span all of them, not the digit alone.
+    await page.setContent(plantedLink)
+    await page.locator('#link').evaluate((el) => {
+      el.textContent = ''
+      for (const piece of ['1', '. ', 'Who']) el.appendChild(document.createTextNode(piece))
+    })
+    expect(await page.locator('#link').evaluate((el) => el.childNodes.length)).toBe(3)
+    const whole = await page.locator('#link').evaluate((el) => {
+      const range = document.createRange()
+      range.selectNodeContents(el)
+      const digit = document.createRange()
+      digit.selectNodeContents(el.firstChild as Node)
+      return {
+        count: range.getClientRects().length,
+        width: range.getBoundingClientRect().width,
+        digitWidth: digit.getBoundingClientRect().width,
+      }
+    })
+    expect(whole.count).toBeGreaterThan(1)
+    const rect = await resolveCaptureClip(page, page.locator('body'), 'planted', {
+      parts: [{ role: 'link', textRange: true }],
+      pad: '0',
+    })
+    // "1. Who" is six monospace characters: the clip is the whole label, not the digit's own node.
+    expect(rect.width).toBeCloseTo(whole.width, 5)
+    expect(rect.width).toBeGreaterThan(whole.digitWidth * 3)
+  })
+
+  // L1: a `textRange` part that has no area to clip to throws, as `resolveClipPartRect` does for bad
+  // input, rather than silently widening the clip to the element's whole box. Two shapes of "no
+  // text": an element with no text node at all, and one holding only whitespace that collapses away.
+  for (const [label, html] of [
+    ['an element with no text node', ''],
+    ['a whitespace-only element', '   \n\t  '],
+  ] as const) {
+    test(`textRange on ${label} throws instead of falling back to its box`, async ({ page }) => {
+      await page.setContent(plantedLink)
+      await page.locator('#link').evaluate((el, content) => {
+        el.textContent = content
+      }, html)
+      await expect(
+        resolveCaptureClip(page, page.locator('body'), 'planted', {
+          parts: [{ selector: '#link', textRange: true }],
+          pad: '0',
+        }),
+      ).rejects.toThrow(/textRange.*no text|no text.*textRange/s)
+    })
+  }
+
+  // M1: `textRange` and `fragment` do not compose (a Range reports one rect per text node per line,
+  // not one per line), so naming both is refused for every `fragment` value, defined or not.
+  for (const fragment of ['first', 'last'] as const) {
+    test(`textRange together with fragment "${fragment}" throws`, async ({ page }) => {
+      await page.setContent(plantedLink)
+      await expect(
+        resolveCaptureClip(page, page.locator('body'), 'planted', {
+          parts: [
+            {
+              role: 'link',
+              textRange: true,
+              fragment: fragment as unknown as 'first',
+            },
+          ],
+          pad: '0',
+        }),
+      ).rejects.toThrow(/textRange.*fragment|fragment.*textRange/s)
+    })
+  }
+})

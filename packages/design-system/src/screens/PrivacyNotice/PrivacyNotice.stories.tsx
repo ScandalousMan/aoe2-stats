@@ -99,15 +99,15 @@ const FIRST_LINK_CLIP = { parts: [{ role: 'link', nth: 0 }], pad: '2' } as const
 // measured under 1% on one unit — the underline it hovers is only ever under the entry's own text,
 // not the padded block around it. `FocusVisible`/`Active` above keep `FIRST_LINK_CLIP`: their own
 // signals (the ring, the fill) are real box-shaped marks that need the whole link's own box. `Hover`
-// alone narrows to the entry's own text span (`index.tsx`'s own wrapping `<span>`, added for exactly
-// this) — a CSS selector, since a bare `<span>` carries no ARIA role of its own; `li:first-child`,
-// never `a:first-of-type` (every entry's own `<a>` is the *first* `<a>` child of its *own* `<li>`, so
-// `:first-of-type` matched all nine, one per list item, confirmed the hard way — the sweep's own
-// `locateClipPart` throws on more than one match rather than silently picking one).
+// alone narrows to the entry's own text. T678: it does so with `textRange` (`story-render.ts`'s
+// `VisualCaptureClipPart`), the rect of a DOM `Range` over the link's contents, instead of the
+// `<span>` T675 first wrapped the label in, which existed in production markup only for this clip
+// and is gone. `fragment: 'first'` could not do it: the link is a single-line `flex min-h-11`
+// block, so its first client rect is the whole box. A Range measures the inline content box
+// (ascent plus descent), not glyph ink: the underline fits inside only as far as this font's
+// descent allows for `underline-offset-2` + `decoration-2`; `pad: '1'` is the margin. Same link.
 const FIRST_LINK_TEXT_CLIP = {
-  parts: [
-    { selector: 'nav[aria-labelledby="privacy-notice-contents-heading"] li:first-child span' },
-  ],
+  parts: [{ role: 'link', nth: 0, textRange: true }],
   pad: '1',
 } as const
 

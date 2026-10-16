@@ -285,6 +285,20 @@ describe('PrivacyNotice — contents navigation', () => {
       expect(link.className).toMatch(/\bactive:decoration-2\b/)
     }
   })
+
+  // T678: T675 slice 4b wrapped each entry's label in a `<span>` that existed only so a visual-test
+  // clip could target the text. The clip now measures the text through a Range (`textRange`,
+  // `tests/visual/story-render.ts`), so the entry is its anchor and a text label, nothing in between.
+  it('every Contents entry is a bare anchor with its label as direct text — no wrapper element in production markup (T678)', () => {
+    render(<PrivacyNotice lastUpdated="2026-08-30" hrefs={hrefs} />)
+    const nav = screen.getByRole('navigation')
+    const links = within(nav).getAllByRole('link')
+    expect(links).toHaveLength(9)
+    for (const link of links) {
+      expect(link.children).toHaveLength(0)
+      expect(link.textContent).toMatch(/^\d\. \S/)
+    }
+  })
 })
 
 // B5 remediation (fourth-pass adversarial review): every `SectionHeading`, including
