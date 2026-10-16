@@ -90,6 +90,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Query, Request
+from sqlalchemy import select
 from sqlalchemy.engine import Engine
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
@@ -117,7 +118,7 @@ from aoe2stats_providers.wiring import (
     build_async_client_resources,
     build_companion_breaker,
 )
-from aoe2stats_storage.models import AoeProfile, ProviderCall
+from aoe2stats_storage.models import AoeProfile, ProfileLink, ProviderCall
 from aoe2stats_storage.models import Session as SessionRow
 from aoe2stats_storage.repositories.matches import (
     DEFAULT_PAGE_SIZE,
@@ -508,6 +509,23 @@ def _require_session(session_row: SessionRow | None) -> SessionRow:
     return session_row
 
 
+async def _caller_holds_active_link(
+    db_session: AsyncSession, *, profile_id: int, user_id: Any
+) -> bool:
+    """T726: whether `user_id` holds an *active* `profile_links` row (`unlinked_at IS NULL`) on
+    `profile_id`. Always a database read, never cached, the same discipline as `routers/
+    matches.py`'s `_owned_active_link`; unlike that function it answers a boolean, because on
+    this route a caller without the link is served the page, only without its archival state."""
+    result = await db_session.execute(
+        select(ProfileLink.id).where(
+            ProfileLink.profile_id == profile_id,
+            ProfileLink.user_id == user_id,
+            ProfileLink.unlinked_at.is_(None),
+        )
+    )
+    return result.first() is not None
+
+
 def _profile_not_found() -> APIError:
     """The one `404` these routes have left after FR-004c's retirement (module docstring): a
     `profile_id` this service has never itself observed."""
@@ -754,6 +772,12 @@ async def get_player_match_history(
     `404` is reserved for a `profile_id` this service has never itself observed at all
     (`_profile_not_found`, the one remaining `404` module-wide).
 
+    **T726: a third party's row carries no capture state.** `capture_status` and
+    `capture_deadline_at` are `null` on every row unless the caller holds an active link on
+    `profile_id` (`_caller_holds_active_link`): another player's archival state, and through it
+    their objection, is not this route's to disclose. The owner who opens their own profile here
+    gets the same state `GET /api/matches` serves. A link that has been unlinked counts as none.
+
     **T453, FR-017.** `_fetch_profile_identity` runs alongside `_fetch_third_party_history`
     above — the identity refresh this route already shares with `GET /api/players/{profile_id}`
     (see that function's own docstring) — so a match history read through this route also carries
@@ -778,11 +802,18 @@ async def get_player_match_history(
     page, a no-op once every row is coloured) applies here unchanged, since both routes share the
     one implementation."""
     secret = settings.app_secret_key.get_secret_value()
-    _require_session(await _current_session_row(request, db_session, secret))
+    session_row = _require_session(await _current_session_row(request, db_session, secret))
 
     profile = await db_session.get(AoeProfile, profile_id)
     if profile is None:
         raise _profile_not_found()
+
+    # T726: a third party's row carries no capture state. The pair is served only to a caller
+    # holding an active link on this profile, the rule `GET /api/matches/{game_id}` applies
+    # through `owner_profile_ids`; read here, uncached, from the database.
+    capture_visible = await _caller_holds_active_link(
+        db_session, profile_id=profile_id, user_id=session_row.user_id
+    )
 
     repository = MatchesRepository(db_session)
 
@@ -831,6 +862,6 @@ async def get_player_match_history(
     page = await _read_page() if (raw_matches or identity.raw_profiles or fills) else stored_page
 
     return {
-        "matches": [match_row_json(row) for row in page.matches],
+        "matches": [match_row_json(row, capture_visible=capture_visible) for row in page.matches],
         "next_cursor": page.next_cursor,
     }

@@ -2353,7 +2353,7 @@ carries what T673's dry run read.
       old reading until a refetch. **Two tests that claimed more than they pin:** the third-party
       list test passes on `MatchList`'s gate alone, and the objecting fixture had no linked
       profile, a response the server cannot produce
-- [ ] T726 Decide what a third party's list shows for a capture the claim refuses (filed
+- [x] T726 Decide what a third party's list shows for a capture the claim refuses (filed
       2026-10-13 from T724, as T725 in #140; renumbered the same day, because #139 gave that id
       to a task of 005). `GET /api/players/{profile_id}/matches` serialises the status as it is
       for any signed-in caller, and `MatchList` with `subject="other"` renders it without the

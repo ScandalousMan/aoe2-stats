@@ -75,6 +75,16 @@ export function PlayerMatchHistoryContainer({ profileId }: PlayerMatchHistoryCon
     matchListStatus = 'empty'
   }
 
+  // T726 (match-history.md §11.3): the server serves a row's capture state to a caller actively
+  // linked to the profile viewed and as `null` to anyone else, so the caller's objection is
+  // forwarded only when the profile viewed is one of `GET /api/me`'s actively linked profiles —
+  // the same `me` query `MatchDetailContainer.tsx` reads `archival_objected` from. A cached value
+  // (the query's stale time): an objection changed in another tab reads as it was until a refetch.
+  const archivalObjected =
+    session?.authenticated === true &&
+    session.profiles.some((linked) => linked.profile_id === profileId) &&
+    session.archival_objected
+
   const matchRows = matchesQuery.data
     ? toMatchRowDataList(matchesQuery.data.matches, profileId)
     : []
@@ -119,6 +129,7 @@ export function PlayerMatchHistoryContainer({ profileId }: PlayerMatchHistoryCon
           matches={matchRows}
           subject="other"
           subjectAlias={profile?.alias}
+          archivalObjected={archivalObjected}
           onRetry={() => void matchesQuery.refetch()}
           onNavigate={(href) => void navigate({ to: href })}
         />

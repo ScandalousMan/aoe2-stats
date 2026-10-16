@@ -407,3 +407,144 @@ async def test_players_history_row_shape_matches_get_matches_row_shape(
         f"GET /api/matches row: {reference_row!r}\n"
         f"GET /api/players/.../matches row: {history_row!r}"
     )
+
+
+# --- T726: a third party's row carries no capture state ------------------------------------------
+
+_OTHER_CALLER_STEAM_ID64 = "76561197960287941"
+_REVOKED_STEAM_ID64 = "76561197960287942"
+
+
+async def _seed_profile_link_state(
+    db_session: AsyncSession,
+    *,
+    profile_id: int,
+    steam_id64: str,
+    active: bool,
+) -> User:
+    """A second signed-in user with one `profile_links` row on `profile_id`: active, or revoked
+    (`unlinked_at` set — the model's one inactive state)."""
+    now = datetime.now(UTC)
+    user = User(allowlisted_at=now)
+    db_session.add(user)
+    await db_session.flush()
+    db_session.add(
+        SteamIdentity(steam_id64=steam_id64, user_id=user.id, verified_at=now, last_sign_in_at=now)
+    )
+    if await db_session.get(AoeProfile, profile_id) is None:
+        db_session.add(AoeProfile(profile_id=profile_id, alias="Linked", country="FR"))
+    await db_session.flush()
+    db_session.add(
+        ProfileLink(
+            user_id=user.id,
+            profile_id=profile_id,
+            steam_id64=steam_id64,
+            is_primary=True,
+            linked_at=now - timedelta(days=2),
+            unlinked_at=None if active else now - timedelta(days=1),
+        )
+    )
+    await db_session.commit()
+    return user
+
+
+async def _seed_one_captured_row(
+    db_session: AsyncSession, *, status: CaptureStatus
+) -> tuple[int, datetime]:
+    """The caller's linked profile (`_CALLER_PROFILE_ID`) with one match whose capture row has
+    `status`. Returns the game id and the deadline the row carries."""
+    await _seed_profile(db_session, profile_id=_OPPONENT_PROFILE_ID, alias="Opponent")
+    completed_at = datetime.now(UTC) - timedelta(days=2)
+    game_id = 7_300
+    await _seed_full_match(
+        db_session,
+        game_id=game_id,
+        completed_at=completed_at,
+        subject_profile_id=_CALLER_PROFILE_ID,
+        with_capture=False,
+    )
+    deadline = completed_at + timedelta(days=21)
+    await _seed_capture(
+        db_session,
+        game_id=game_id,
+        profile_id=_CALLER_PROFILE_ID,
+        status=status,
+        capture_deadline_at=deadline,
+    )
+    await db_session.commit()
+    return game_id, deadline
+
+
+@pytest.mark.parametrize("status", list(CaptureStatus), ids=lambda status: status.value)
+async def test_players_history_serves_a_third_party_no_capture_state(
+    client: TestClient, db_session: AsyncSession, status: CaptureStatus
+) -> None:
+    """T726: a signed-in caller with no link on the profile gets `capture_status` and
+    `capture_deadline_at` as `null` for a row that carries a capture, whatever its status; every
+    other field of the row is still served. The CONTRAST (the profile's owner, same row, gets the
+    real pair) is `test_players_history_serves_the_owner_the_capture_state` below."""
+    await _seed_linked_profile(db_session)
+    third_party = await _seed_profile_link_state(
+        db_session,
+        profile_id=_THIRD_PARTY_PROFILE_ID,
+        steam_id64=_OTHER_CALLER_STEAM_ID64,
+        active=True,
+    )
+    game_id, _deadline = await _seed_one_captured_row(db_session, status=status)
+    await _sign_in(client, db_session, third_party)
+
+    response = client.get(f"/api/players/{_CALLER_PROFILE_ID}/matches")
+
+    assert response.status_code == 200, response.text
+    rows = response.json()["matches"]
+    assert [row["game_id"] for row in rows] == [game_id]
+    assert rows[0]["capture_status"] is None, (
+        f"a {status.value} row must carry no capture status for a caller with no link on the "
+        f"profile; got {rows[0]['capture_status']!r}"
+    )
+    assert rows[0]["capture_deadline_at"] is None
+    assert rows[0]["map_name"] == "Arabia", "only the capture pair is withheld, not the row"
+
+
+@pytest.mark.parametrize("status", list(CaptureStatus), ids=lambda status: status.value)
+async def test_players_history_serves_the_owner_the_capture_state(
+    client: TestClient, db_session: AsyncSession, status: CaptureStatus
+) -> None:
+    """T726, the contrast: the caller with an active link on the profile is served the real status
+    and deadline for the same row, unchanged by the third-party rule."""
+    caller = await _seed_linked_profile(db_session)
+    game_id, deadline = await _seed_one_captured_row(db_session, status=status)
+    await _sign_in(client, db_session, caller)
+
+    response = client.get(f"/api/players/{_CALLER_PROFILE_ID}/matches")
+
+    assert response.status_code == 200, response.text
+    row = response.json()["matches"][0]
+    assert row["game_id"] == game_id
+    assert row["capture_status"] == status.value
+    assert row["capture_deadline_at"] == deadline.isoformat()
+
+
+@pytest.mark.parametrize(
+    "status", [CaptureStatus.PENDING, CaptureStatus.STORED], ids=lambda status: status.value
+)
+async def test_players_history_serves_no_capture_state_for_a_revoked_link(
+    client: TestClient, db_session: AsyncSession, status: CaptureStatus
+) -> None:
+    """T726: a link that was unlinked (`unlinked_at` set) is no link. The caller once owned the
+    profile; the row is served to them without its capture pair."""
+    revoked_owner = await _seed_profile_link_state(
+        db_session,
+        profile_id=_CALLER_PROFILE_ID,
+        steam_id64=_REVOKED_STEAM_ID64,
+        active=False,
+    )
+    await _seed_one_captured_row(db_session, status=status)
+    await _sign_in(client, db_session, revoked_owner)
+
+    response = client.get(f"/api/players/{_CALLER_PROFILE_ID}/matches")
+
+    assert response.status_code == 200, response.text
+    row = response.json()["matches"][0]
+    assert row["capture_status"] is None
+    assert row["capture_deadline_at"] is None
