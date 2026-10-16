@@ -1034,7 +1034,7 @@ by these hues at any value; the 5.97–7.17 column is not permission to drop it.
 
 The interim being retired is quoted in the register: _"Until then no component paints a link on a
 raised surface."_ `privacy-notice.md` §6 records what that cost, and
-`packages/design-system/src/screens/PrivacyNotice/index.tsx:709` is where it was paid — inside
+`packages/design-system/src/screens/PrivacyNotice/index.tsx:795` is where it was paid — inside
 `ContactBlock`, which is `bg-surface-raised`, the contact route renders `text-text-primary underline`
 instead of a link colour. **A link the same colour as the sentence around it is a link found by
 mousing over the paragraph.** In a legal notice that anchor is the one route a reader has to a human
@@ -1044,12 +1044,12 @@ The concrete consequence, in order:
 
 | Where                                 | Was                                                           | Becomes                                                |
 | ------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------ |
-| `PrivacyNotice` `ContactBlock` (:709) | `text-text-primary underline` on `surface-raised`             | `text-link underline` — **7.17** light / **6.05** dark |
-| `PrivacyNotice` inline links (:204)   | `text-accent` / `hover:accent-hover` / `active:accent-active` | `text-link` / `hover:link-hover` / `active:link-hover` |
-| `PrivacyNotice` `Contents` (:454)     | the same accent triple                                        | the same link triple                                   |
-| `ThirdPartyObjectionForm` (:30)       | the same accent triple                                        | the same link triple                                   |
-| `AccountErasurePanel` (:272)          | the same accent triple                                        | the same link triple                                   |
-| `Footer` (:38, :46)                   | `text-text-secondary underline hover:text-accent-hover`       | rests at `link`; see the note below                    |
+| `PrivacyNotice` `ContactBlock` (:795) | `text-text-primary underline` on `surface-raised`             | `text-link underline` — **7.17** light / **6.05** dark |
+| `PrivacyNotice` inline links (:225)   | `text-accent` / `hover:accent-hover` / `active:accent-active` | `text-link` / `hover:link-hover` / `active:link-hover` |
+| `PrivacyNotice` `Contents` (:486)     | the same accent triple                                        | the same link triple                                   |
+| `ThirdPartyObjectionForm` (:214)      | the same accent triple                                        | the same link triple                                   |
+| `AccountErasurePanel` (:310)          | the same accent triple                                        | the same link triple                                   |
+| `Footer` (:45, :50)                   | `text-text-secondary underline hover:text-accent-hover`       | rests at `link`; see the note below                    |
 
 And in `privacy-notice.md` itself: §6's colour list drops `accent` / `accent-hover` / `accent-active`
 for `link` / `link-hover` / `link-visited` **and the parenthetical restriction "on `surface` only —
