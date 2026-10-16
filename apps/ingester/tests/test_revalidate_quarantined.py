@@ -108,9 +108,12 @@ class _RecordingObjectStore:
             raise ObjectNotFound(key)
         return self.objects[key]
 
-    async def put(self, key: str, body: bytes, *, content_type: str = "") -> None:
+    async def put_if_absent(self, key: str, body: bytes, *, content_type: str = "") -> bool:
         self.puts.append(key)
+        if key in self.objects:
+            return False
         self.objects[key] = body
+        return True
 
     async def delete(self, key: str) -> None:
         self.deletes.append(key)

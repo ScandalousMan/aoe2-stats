@@ -2382,7 +2382,7 @@ carries what T673's dry run read.
       After T726, so that whatever the response gains is served for the caller's own capture only.
       The `product-designer` first: what the response carries, and what
       `packages/design-system/specs/manual-upload.md` says of the row
-- [ ] T728 Decide what the automatic capture's write does to a key that holds an object (filed
+- [x] T728 Decide what the automatic capture's write does to a key that holds an object (filed
       2026-10-13 from T723). `CaptureDrain` in `apps/ingester/src/aoe2stats_ingester/capture.py`
       writes a downloaded blob with the object store's `put`, which overwrites, under the key a
       manual upload uses for the pair. T723 made the upload's write conditional; the drain's is not.

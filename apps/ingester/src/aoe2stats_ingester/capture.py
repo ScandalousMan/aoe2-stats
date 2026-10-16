@@ -8,7 +8,15 @@ nothing else replay-related).
 **The one ordering that is not negotiable** (`tasks.md`, data-model.md's write-ordering
 paragraph): a downloaded blob is uploaded to the object store, and *only once that upload has
 succeeded* are `object_key`, `zip_bytes` and `zip_sha256` committed to the row — while its status
-is still `downloading`. Validation runs after that commit, never before it, and the status only
+is still `downloading`. The upload is conditional (T728, `put_if_absent`): a manual upload writes
+the same key, so the drain never overwrites an object. When the key already holds one, the drain
+reads it back and records it, as for its own write, only if its SHA-256 equals the download's;
+a different object (likely an upload) gets no blob metadata, and the row is handed back as a failed
+attempt (`_handle_provider_unavailable`: backoff, or `failed` at the ceiling), as is one deleted
+between the two calls. Every row write the drain makes after its claim matches the row only while it
+is still `downloading`, so a row an upload has marked `stored` is never rewritten; the claim, the
+withdrawal sweep and `revalidate_quarantined` (guarded on `quarantined`) are not such writes.
+Validation runs after that commit, never before it, and the status only
 ever flips to `stored` or `quarantined` once validation has run (or, for a resumed reclaim, once
 its outcome has been decided not to be re-attempted — see below). A process that dies between the
 upload and the status flip leaves bytes that are already durable and already recorded; the next
@@ -346,6 +354,10 @@ DEFAULT_MAX_ATTEMPTS = 3
 #: second delay is strictly greater than the first for exactly this reason.
 _RETRY_BACKOFF_BASE_SECONDS = 60.0
 
+#: What `_process_one` answers when a write found the row no longer `downloading` (T728), or when
+#: the attempt was handed back: nothing this cycle concluded, and not a key of `report`.
+_NOT_CONCLUDED = "not_found"
+
 #: `ingest_runs`' own counter vocabulary (data-model.md) that this stage's report can ever move —
 #: the rest of that row's counters belong to discovery and reconciliation, not to the drain.
 _ZERO_COUNTERS: Mapping[str, int] = {
@@ -418,6 +430,14 @@ def _owner_is_archiving() -> ColumnElement[bool]:
     or past.
     """
     return ReplayCapture.profile_id.in_(archiving_links())
+
+
+def _still_downloading(capture_id: uuid.UUID) -> ColumnElement[bool]:
+    """The row `capture_id`, only while its status is still `downloading` (T728). Every write the
+    drain makes after its claim carries it, so a row an upload has since marked `stored` (or any
+    other writer has moved) is never rewritten. Not used by `revalidate_quarantined`, whose writes
+    are guarded on `quarantined`, nor by the claim, which is what makes a row `downloading`."""
+    return and_(ReplayCapture.id == capture_id, ReplayCapture.status == CaptureStatus.DOWNLOADING)
 
 
 def _stale_downloading(stale_before: datetime) -> ColumnElement[bool]:
@@ -602,16 +622,17 @@ class _StoreTransportError(Exception):
 
 
 class _ObjectPut(Protocol):
-    """The `ObjectStore` methods this module calls: `put` for a freshly downloaded blob, `get` to
-    read previously committed bytes back for the reclaim path's re-validation (see the module
-    docstring). Named as its own Protocol, structurally satisfied by the real
-    `aoe2stats_storage.objects.ObjectStore` and by every fake the test files construct.
-    `test_idempotency.py`'s `_FakeObjectStore` implements `put` alone — that test's traffic never
-    exercises a reclaim, so its `object_store` never needs `get` at runtime even though the type
-    hint below now names both.
+    """The `ObjectStore` methods this module calls: `put_if_absent` for a freshly downloaded blob
+    (T728: the drain never overwrites an object under the key, which a manual upload may have
+    written), `get` to read bytes back, both for the reclaim path's re-validation and for the
+    object `put_if_absent` found already there (see the module docstring). Named as its own
+    Protocol, structurally satisfied by the real `aoe2stats_storage.objects.ObjectStore` and by
+    every fake the test files construct. The drain calls no overwriting `put`. `test_idempotency.
+    py`'s `_FakeObjectStore` implements `put_if_absent` alone, since that test's traffic never
+    exercises a reclaim or a held key, so it never needs `get` at runtime.
     """
 
-    async def put(self, key: str, body: bytes, *, content_type: str = ...) -> None: ...
+    async def put_if_absent(self, key: str, body: bytes, *, content_type: str = ...) -> bool: ...
     async def get(self, key: str) -> bytes: ...
 
 
@@ -1135,22 +1156,70 @@ class CaptureDrain:
         key = replay_object_key(game_id, profile_id)
 
         # Upload before any mark, never the reverse (the module docstring's non-negotiable
-        # ordering). `object_key`/`zip_bytes`/`zip_sha256` are committed immediately after, while
-        # the row is still `downloading`.
-        await self._require_object_store().put(
+        # ordering), and never over an object that is already there (T728): a manual upload writes
+        # the same key. `object_key`/`zip_bytes`/`zip_sha256` are committed immediately after,
+        # while the row is still `downloading`.
+        store = self._require_object_store()
+        written = await store.put_if_absent(
             key, content, content_type=blob.content_type or REPLAY_CONTENT_TYPE
         )
-        await self._commit_blob_metadata(capture_id, key, len(content), sha256)
+        if not written:
+            # The key held an object. Nothing is written over it; it is recorded only when it is
+            # the very bytes the download returned.
+            held_reason = await self._held_object_reason(store, key, sha256)
+            if held_reason is not None:
+                return await self._handle_provider_unavailable(
+                    capture_id, attempts=capture.attempts, reason=held_reason
+                )
+        if not await self._commit_blob_metadata(capture_id, key, len(content), sha256):
+            # The row is no longer `downloading` (an upload marked it `stored`): not this drain's.
+            return _NOT_CONCLUDED
 
         result, error = await _validate_with_barrier(
             self._require_validator(), content, timeout_seconds=self._validation_timeout_seconds
         )
         if result is not None:
-            await self._mark_stored(capture_id, result)
-            return "stored_total"
+            return await self._mark_stored_by_drain(capture_id, result)
 
         reason = error or "validation failed for an unspecified reason"
         return await self._quarantine(capture_id, reason, game_id=game_id, profile_id=profile_id)
+
+    async def _held_object_reason(
+        self, store: _ObjectPut, key: str, download_sha256: str
+    ) -> str | None:
+        """`put_if_absent` found `key` held: read the object back and compare it with the download.
+
+        `None` when it hashes to `download_sha256`: those are the bytes the response carried, so the
+        row may record that object as its own write (the row's `source` and `http_status` stay
+        true). Otherwise the reason the attempt is handed back with, and the caller writes nothing
+        to the row's blob columns: the object may be a manual upload. An object deleted between the
+        two calls is read as the same failed attempt rather than retried in place: the next attempt
+        finds the key empty and writes, and the source keeps the recording for a bounded time, so
+        one attempt is what the loss costs. Any other store error propagates, as the write's would.
+        """
+        try:
+            held = await store.get(key)
+        except ObjectNotFound:
+            return (
+                f"the object under {key!r} was no longer there when read back; "
+                "nothing was recorded for it"
+            )
+        if hashlib.sha256(held).hexdigest() == download_sha256:
+            return None
+        return (
+            f"{key!r} already held a different object than the download; "
+            "nothing was written over it and nothing was recorded for it"
+        )
+
+    async def _mark_stored_by_drain(
+        self, capture_id: uuid.UUID, result: ReplayValidationResult
+    ) -> str:
+        """The drain's own `stored` write: matches the row only while it is still `downloading`
+        (T728). When it matches nothing, the row is not this drain's any more and nothing counts."""
+        written = await self._mark_stored(
+            capture_id, result, only_if_status=CaptureStatus.DOWNLOADING
+        )
+        return "stored_total" if written else _NOT_CONCLUDED
 
     async def _resume_reclaim(
         self,
@@ -1197,8 +1266,7 @@ class CaptureDrain:
             self._require_validator(), content, timeout_seconds=self._validation_timeout_seconds
         )
         if result is not None:
-            await self._mark_stored(capture_id, result)
-            return "stored_total"
+            return await self._mark_stored_by_drain(capture_id, result)
 
         reason = error or "validation failed for an unspecified reason"
         return await self._quarantine(capture_id, reason, game_id=game_id, profile_id=profile_id)
@@ -1490,7 +1558,12 @@ class CaptureDrain:
         """Mark `capture_id` `quarantined` with `reason` and raise the severity-2 alert every
         quarantine outcome carries, whichever path (normal validation or reclaim) produced it.
         """
-        await self._mark_quarantined(capture_id, reason)
+        written = await self._mark_quarantined(
+            capture_id, reason, only_if_status=CaptureStatus.DOWNLOADING
+        )
+        if not written:
+            # No longer `downloading` (T728): the row is not quarantined, so no alert says it is.
+            return _NOT_CONCLUDED
         await raise_alert(
             self._alert_sink,
             VALIDATION_FAILED_ALERT_KIND,
@@ -1547,7 +1620,9 @@ class CaptureDrain:
             return "not_found"
 
         if now > capture_deadline_at:
-            await self._mark_expired(capture_id, http_status)
+            if not await self._mark_expired(capture_id, http_status):
+                # No longer `downloading` (T728): the row is not lost, so no alert says it is.
+                return _NOT_CONCLUDED
             await raise_alert(
                 self._alert_sink,
                 EXPIRED_CAPTURE_ALERT_KIND,
@@ -1558,7 +1633,8 @@ class CaptureDrain:
             return "expired_total"
 
         if attempts >= _MINIMUM_ATTEMPTS_BEFORE_UNAVAILABLE:
-            await self._mark_unavailable(capture_id, http_status)
+            if not await self._mark_unavailable(capture_id, http_status):
+                return _NOT_CONCLUDED
             return "unavailable_total"
 
         await self._revert_to_pending(capture_id, http_status)
@@ -1587,7 +1663,8 @@ class CaptureDrain:
           a merely transient source outage would otherwise flood.
         """
         if attempts >= self._max_attempts:
-            await self._mark_failed(capture_id, reason)
+            if not await self._mark_failed(capture_id, reason):
+                return _NOT_CONCLUDED
             return "failed_total"
 
         delay = self._retry_backoff_seconds(attempts)
@@ -1606,14 +1683,17 @@ class CaptureDrain:
 
     async def _commit_blob_metadata(
         self, capture_id: uuid.UUID, object_key: str, zip_bytes: int, zip_sha256: str
-    ) -> None:
+    ) -> bool:
+        """Name the object on the row, while it is still `downloading` (T728). Returns whether a row
+        was written."""
         async with self._session_factory() as session:
-            await session.execute(
+            outcome = await session.execute(
                 update(ReplayCapture)
-                .where(ReplayCapture.id == capture_id)
+                .where(_still_downloading(capture_id))
                 .values(object_key=object_key, zip_bytes=zip_bytes, zip_sha256=zip_sha256)
             )
             await session.commit()
+        return bool(outcome.rowcount)  # type: ignore[attr-defined]
 
     async def _mark_stored(
         self,
@@ -1680,7 +1760,7 @@ class CaptureDrain:
         async with self._session_factory() as session:
             await session.execute(
                 update(ReplayCapture)
-                .where(ReplayCapture.id == capture_id)
+                .where(_still_downloading(capture_id))
                 .values(
                     status=CaptureStatus.PENDING,
                     claimed_at=None,
@@ -1708,7 +1788,7 @@ class CaptureDrain:
         async with self._session_factory() as session:
             await session.execute(
                 update(ReplayCapture)
-                .where(ReplayCapture.id == capture_id)
+                .where(_still_downloading(capture_id))
                 .values(
                     status=CaptureStatus.PENDING,
                     claimed_at=None,
@@ -1718,30 +1798,33 @@ class CaptureDrain:
             )
             await session.commit()
 
-    async def _mark_failed(self, capture_id: uuid.UUID, reason: str) -> None:
+    async def _mark_failed(self, capture_id: uuid.UUID, reason: str) -> bool:
         """T057's exhausted branch of `_handle_provider_unavailable`: the bounded-retry ceiling
         reached, terminal `failed` (FR-020) — never a further backoff. `attempts`/`claimed_at` are
         left as the claim already set them, exactly as `_mark_stored`/`_mark_quarantined`/
-        `_mark_expired` do for their own terminal outcomes.
+        `_mark_expired` do for their own terminal outcomes. Matches the row only while it is still
+        `downloading` (T728); returns whether a row was written.
         """
         async with self._session_factory() as session:
-            await session.execute(
+            outcome = await session.execute(
                 update(ReplayCapture)
-                .where(ReplayCapture.id == capture_id)
+                .where(_still_downloading(capture_id))
                 .values(status=CaptureStatus.FAILED, last_error=reason)
             )
             await session.commit()
+        return bool(outcome.rowcount)  # type: ignore[attr-defined]
 
-    async def _mark_expired(self, capture_id: uuid.UUID, http_status: int) -> None:
+    async def _mark_expired(self, capture_id: uuid.UUID, http_status: int) -> bool:
         """`_classify_not_found` (T056), third branch: past `capture_deadline_at` with no replay
         ever found — a provable, permanent loss. `attempts`/`claimed_at` are left as the claim
         already set them, exactly as `_mark_stored`/`_mark_quarantined` do for their own terminal
-        outcomes; only `status`, `http_status` and `last_error` change here.
+        outcomes; only `status`, `http_status` and `last_error` change here. Matches the row only
+        while it is still `downloading` (T728); returns whether a row was written.
         """
         async with self._session_factory() as session:
-            await session.execute(
+            outcome = await session.execute(
                 update(ReplayCapture)
-                .where(ReplayCapture.id == capture_id)
+                .where(_still_downloading(capture_id))
                 .values(
                     status=CaptureStatus.EXPIRED,
                     http_status=http_status,
@@ -1751,17 +1834,19 @@ class CaptureDrain:
                 )
             )
             await session.commit()
+        return bool(outcome.rowcount)  # type: ignore[attr-defined]
 
-    async def _mark_unavailable(self, capture_id: uuid.UUID, http_status: int) -> None:
+    async def _mark_unavailable(self, capture_id: uuid.UUID, http_status: int) -> bool:
         """`_classify_not_found` (T056), second branch: past the publication grace, still inside
         `capture_deadline_at`, and at least `_MINIMUM_ATTEMPTS_BEFORE_UNAVAILABLE` attempts have
         each found nothing — the game's own failure to ever publish the replay, not this system's,
-        so unlike `_mark_expired` this raises no alert.
+        so unlike `_mark_expired` this raises no alert. Matches the row only while it is still
+        `downloading` (T728); returns whether a row was written.
         """
         async with self._session_factory() as session:
-            await session.execute(
+            outcome = await session.execute(
                 update(ReplayCapture)
-                .where(ReplayCapture.id == capture_id)
+                .where(_still_downloading(capture_id))
                 .values(
                     status=CaptureStatus.UNAVAILABLE,
                     http_status=http_status,
@@ -1772,6 +1857,7 @@ class CaptureDrain:
                 )
             )
             await session.commit()
+        return bool(outcome.rowcount)  # type: ignore[attr-defined]
 
     async def _revert_claim(self, capture_id: uuid.UUID) -> None:
         """Undo `_claim_batch`'s own `status`/`claimed_at`/`attempts` writes for one claimed row,
@@ -1784,12 +1870,13 @@ class CaptureDrain:
         the row's owner was already over the per-run fairness cap, so this run never even attempts
         it). Both leave the row immediately eligible again (`next_attempt_at` untouched, already
         `<= now` from before this claim), for a caller that also excludes the id from this same
-        cycle's own further claims to decide when it may be reclaimed.
+        cycle's own further claims to decide when it may be reclaimed. Matches the row only while it
+        is still `downloading` (T728).
         """
         async with self._session_factory() as session:
             await session.execute(
                 update(ReplayCapture)
-                .where(ReplayCapture.id == capture_id)
+                .where(_still_downloading(capture_id))
                 .values(
                     status=CaptureStatus.PENDING,
                     claimed_at=None,

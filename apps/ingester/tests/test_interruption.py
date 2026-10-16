@@ -36,6 +36,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
+from botocore.exceptions import ClientError
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from tests.db import clean_database, database_url, db_session, engine, session_factory
@@ -119,6 +120,14 @@ class _FakeS3Client:
 
     def put_object(self, **kwargs: Any) -> Any:
         key = kwargs["Key"]
+        if kwargs.get("IfNoneMatch") == "*" and key in self.objects:
+            raise ClientError(
+                {
+                    "Error": {"Code": "PreconditionFailed"},
+                    "ResponseMetadata": {"HTTPStatusCode": 412},
+                },
+                "PutObject",
+            )
         self.put_calls.append(key)
         self.objects[key] = kwargs["Body"]
 
@@ -163,7 +172,9 @@ class _OrderCheckingObjectStore(ObjectStore):
         self._session_factory = session_factory
         self._status_before_upload = status_before_upload
 
-    async def put(self, key: str, body: bytes, *, content_type: str = REPLAY_CONTENT_TYPE) -> None:
+    async def put_if_absent(
+        self, key: str, body: bytes, *, content_type: str = REPLAY_CONTENT_TYPE
+    ) -> bool:
         game_id, profile_id = _parse_replay_key(key)
         async with self._session_factory() as session:
             row = (
@@ -175,7 +186,7 @@ class _OrderCheckingObjectStore(ObjectStore):
                 )
             ).scalar_one()
             self._status_before_upload[key] = row.status
-        await super().put(key, body, content_type=content_type)
+        return await super().put_if_absent(key, body, content_type=content_type)
 
 
 class _ConcurrencyRendezvous:

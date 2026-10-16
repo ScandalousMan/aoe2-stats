@@ -106,8 +106,11 @@ class _FakeObjectStore:
     def __init__(self) -> None:
         self.put_calls: list[tuple[str, bytes]] = []
 
-    async def put(self, key: str, body: bytes, *, content_type: str = "application/zip") -> None:
+    async def put_if_absent(
+        self, key: str, body: bytes, *, content_type: str = "application/zip"
+    ) -> bool:
         self.put_calls.append((key, body))
+        return True
 
     async def get(self, key: str) -> bytes:  # pragma: no cover - no reclaim in this scenario
         raise AssertionError("no capture in this scenario is ever a reclaim")
