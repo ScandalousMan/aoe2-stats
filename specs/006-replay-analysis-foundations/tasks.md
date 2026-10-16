@@ -2390,7 +2390,22 @@ carries what T673's dry run read.
       accepted while a claim on the row is in flight is followed by the drain's write over it. Not
       measured: whether the drain's row writes that follow are refused on a row the upload has
       marked `stored`. To decide first, by the user: whether the route refuses a row a claim holds,
-      or the drain's write becomes conditional, or both
+      or the drain's write becomes conditional, or both. **Decided (2026-10-16, by Claude on the
+      user's delegation).** **The drain's write becomes conditional; the route is unchanged.** Read
+      on the same day, closing what was not measured: the drain's row writes are not refused on a
+      row the upload has marked `stored`, because `_commit_blob_metadata` and an unguarded
+      `_mark_stored` match the row's id alone. `CaptureDrain` writes the downloaded blob with
+      `put_if_absent`. When the key already holds an object, the drain writes nothing over it: it
+      validates the object it finds through the same barrier a resumed reclaim uses, and records
+      that object's own size and hash, never the download's. Every row write the drain makes after
+      its claim matches the row only while it is still `downloading`, so a row an upload has marked
+      `stored` is never rewritten. The route does not refuse a row a claim holds: with both writes
+      conditional, the first object to land is the one kept, and a refusal there would only hand the
+      uploader an error they can do nothing about. **Tests, each red before:** an upload landing
+      between the drain's claim and its write leaves the uploaded bytes and the upload's row
+      unchanged; an object under the key of a `downloading` row that names no key is validated and
+      recorded with its own hash, and no download is written over it. **Contrast:** a key that holds
+      nothing is written and recorded as today
 - [ ] T729 Decide what an `expired` or `failed` capture reads for an objecting owner (filed
       2026-10-13 from T723). `CaptureStateBadge`'s `SecondaryLine` for both statuses ends "If you
       still have the file, you can upload it."
@@ -2398,7 +2413,14 @@ carries what T673's dry run read.
       offered no `UploadControl` and the route refuses their upload, and the badge reads its
       `archivalObjected` input for a `pending` or `downloading` row only (T724), so an objecting
       owner reads that sentence with no upload under it. The `product-designer` first; the spec's
-      lines are cited, keep its line count
+      lines are cited, keep its line count. **Decided (2026-10-16, by Claude on the user's
+      delegation).** **With `archivalObjected`, `expired` and `failed` read their first sentence
+      only.** The badge reads the input for those two statuses as well as for `pending` and
+      `downloading`, and drops "If you still have the file, you can upload it.", because no upload
+      is offered under it. Without the input both read as today. The `product-designer` amends §3
+      within its current line count. **Tests, each red before:** an objecting owner's `expired` and
+      `failed` rows show no upload sentence. **Contrast:** a caller who does not object still reads
+      it
 - [ ] T730 Decide what an upload does when its row write fails after its object write (filed
       2026-10-14 from #143's review). Since T723 `upload_replay` writes the object with
       `put_if_absent` and then the row: if the row write or the request's commit fails after the
@@ -2406,7 +2428,19 @@ carries what T673's dry run read.
       same upload is refused `replay_held`, which `UploadControl` shows as `failed` with "Try
       again". Account erasure in `apps/api/src/aoe2stats_api/routers/privacy.py` deletes the objects
       its rows name, so it does not delete that one. To decide first, by the user: what the route
-      does with an object under the key that no row names
+      does with an object under the key that no row names. **Decided (2026-10-16, by Claude on the
+      user's delegation).** **A retry of the same file completes the upload; nothing is deleted on
+      the failure path.** When `put_if_absent` finds the key held and no row names an object for the
+      pair, the route reads the object: if its SHA-256 equals the upload's, the route writes the row
+      as for a fresh upload; otherwise it refuses `replay_held` as today. A compensating delete is
+      refused, because the object is an original replay, which is never deleted. **Erasure:**
+      `erase_account` also deletes the object under the key of each of the erased user's `(game_id,
+      profile_id)` pairs that no row names, so an orphan does not outlive its owner's erasure; that
+      it fits the function's duration for the largest measured match history is shown before it is
+      written. **Tests, each red before:** with the object written and the row write failed, a retry
+      of the same bytes ends `stored`; erasure removes an object under one of the user's pairs that
+      no row names. **Contrast:** a retry with different bytes is refused `replay_held` and nothing
+      is written
 
 - [x] T706 Unstick an analysis whose lease expired (filed 2026-10-08; decided by the user the same
       day). Match 511523321's row stayed `running` from the 2026-10-05 crash until a manual
