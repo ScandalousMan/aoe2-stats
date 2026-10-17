@@ -357,7 +357,7 @@ jobs:
       # (`story-selection.test.mjs`), and the axis-defaults drift check between the tracked primitives'
       # sources and the preview's registry (`tracked-axes.test.mjs`). No build and no browser, same as
       # the suites above.
-      # T710: and the proof that the preview's decorator supplies a surface and no text colour
+      # 006 T710: and the proof that the preview's decorator supplies a surface and no text colour
       # (`preview-ink.test.mjs`), so a story shows the ink the application renders.
       - run: node --test scripts/visual/preview-ink.test.mjs scripts/visual/source-stamp.test.mjs scripts/visual/state-coverage-runtime-model.test.mjs scripts/visual/story-index.test.mjs scripts/visual/story-selection.test.mjs scripts/visual/tracked-axes.test.mjs
       # T109: none of the checks above ever resolves a route through vercel.json's rewrites, so

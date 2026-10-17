@@ -94,8 +94,8 @@ describe('MatchRow', () => {
     expect(within(links[0]).queryAllByRole('button')).toHaveLength(0)
   })
 
-  // T710: the application sets no text colour on its page, so the card supplies its own ink; the
-  // map and civilisation names inside it inherit it (`CivilisationIcon` by contract).
+  // 006 T710: the application sets no text colour on its page, so the card supplies its own ink;
+  // `CivilisationIcon`'s name inherits it by contract (`MapThumbnail` sets its own).
   it('sets its own text colour on the card, since nothing above it supplies one', () => {
     render(<MatchRow match={match} />)
     expect(screen.getByRole('link')).toHaveClass('text-text-primary')

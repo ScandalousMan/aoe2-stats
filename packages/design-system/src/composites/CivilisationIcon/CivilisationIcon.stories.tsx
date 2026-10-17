@@ -14,7 +14,7 @@ const meta: Meta<typeof CivilisationIcon> = {
       },
     },
   },
-  // T710: the name inherits its colour from the caller (civilisation-icon.md §5), and the
+  // 006 T710: the name inherits its colour from the caller (civilisation-icon.md §5), and the
   // application supplies none above a story's root, so the arg-driven stories pass the ink the
   // way `MatchDetailPanel` does. The stories that render their own markup carry it on a container.
   args: { className: 'text-text-primary' },

@@ -411,8 +411,8 @@ export function MatchRow({ match, onNavigate, archivalObjected, className }: Mat
       onClick={createRowLinkClickHandler(match.href, onNavigate)}
       className={cx(
         'group/row-link flex flex-col gap-2 rounded-panel border border-border bg-surface p-4',
-        // T710: nothing above the card sets a text colour in the application, so the map and
-        // civilisation names inside it (`CivilisationIcon` inherits by contract) take theirs here.
+        // 006 T710: the card is the whole row link and nothing above it sets ink in the app, so its
+        // root is where its ink belongs; `CivilisationIcon`'s name inherits it, by contract.
         'text-text-primary',
         // T560 (FR-038): `active` now paints the same fill as `hover` — a keyboard `Enter`
         // triggers `:active` with no pointer ever hovering (`Link`'s own rule, §9), and this row

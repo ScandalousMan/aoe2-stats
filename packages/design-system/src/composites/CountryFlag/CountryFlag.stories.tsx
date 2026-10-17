@@ -154,7 +154,7 @@ export const MostlyWhiteFlagPoland: Story = {
 // defect — no frame, no button, no tab stop, no tooltip, the name alone as plain text.
 export const UncoveredCountry: Story = {
   name: 'Empty — uncovered country (flagUrl undefined, not a defect)',
-  // T710: the name sets no colour of its own (country-flag.md), so the caller supplies the ink.
+  // 006 T710: the name sets no colour of its own (country-flag.md), so the caller supplies the ink.
   args: { countryName: 'Kiribati', className: 'text-text-primary' },
 }
 

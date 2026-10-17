@@ -17,7 +17,7 @@ import type { MenuProps } from '../../src/primitives/Menu'
 // reader of the built index that means "the stories this package publishes" skips the tag by name
 // (`scripts/visual/story-index.mjs`) — no capture unit, no accessibility scan, no baseline. This file
 // is not under `src/` on purpose, so the checks that walk `src/` never reach it. Plain markup, no
-// styling beyond the ink (T710: the preview supplies none, so a raw element names it): a plant is about
+// styling beyond the ink (006 T710: the preview supplies none, so a raw element names it): a plant is about
 // which element a force selects and who placed it, not how it looks.
 const meta: Meta = {
   id: 'state-coverage-fixture-plants',

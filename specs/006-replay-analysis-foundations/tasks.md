@@ -2592,18 +2592,24 @@ carries what T673's dry run read.
       accepts (T743). **Limits**: the comparator judges change, not correctness, so a new story's
       first baseline takes whatever it renders; the browser's default black differs visibly from
       the token ink in the dark theme only; a short span can stay under `maxDiffPixelRatio`.
-      **Exposed**, measured by rendering all 647 stories at 375 and 1280 with the inherited ink
-      replaced by a sentinel colour: 142 stories. Components lacking a token, given one:
-      `MatchRow`'s unknown outcome, unknown team result and zero rating change and
-      `MatchDetailPanel`'s unknown result (`text-secondary` to `text-text-secondary`);
-      `MatchRow`'s card, whose map and civilisation names inherited no ink below `xl`
-      (`text-text-primary`); `MapThumbnail`'s resolved name (`text-text-primary`,
-      `map-thumbnail.md` §5); `Panel`'s body (`text-text-primary`, `structural-tier.md`'s `Panel`
-      tokens). Inheriting by contract, their stories now supply the caller's ink:
-      `CivilisationIcon`, `CountryFlag`, `Tooltip`'s trigger child. Story markup given ink:
-      `Panel`, `Section`, `Badge`, `PlayerColourSwatch`, `CountryFlag`, the Foundations pages and
-      the `Plants` fixtures. No spec is amended. A unit test fails if the preview's decorator
-      supplies a text colour again
+      **Exposed**, measured by rendering all 647 stories with the decorator's and the page's ink
+      replaced by a sentinel colour and transitions off: 142 stories before (light theme, 375 and
+      1280), none after (both themes, 375, 768 and 1280).
+      Components lacking a token, given one: `MatchRow`'s unknown outcome, unknown team result
+      and zero rating change and `MatchDetailPanel`'s unknown result (`text-secondary` to
+      `text-text-secondary`); `MatchRow`'s card, whose civilisation name (`CivilisationIcon`
+      inherits) and map name inherited no ink below `xl` (`text-text-primary` on the card's root);
+      `MapThumbnail`'s resolved name (`text-text-primary`, `map-thumbnail.md` §5); `Panel`'s body
+      and footer (`text-text-primary` and `text-text-secondary`, `structural-tier.md`'s `Panel`
+      tokens). Their stories now supply the caller's ink: `CivilisationIcon` and `CountryFlag`,
+      which inherit by contract, and `Tooltip`, whose trigger renders the caller's child. Story
+      markup given ink: `Section`, `Badge`, `PlayerColourSwatch`, `CountryFlag`, the Foundations
+      pages and the `Plants` and `ThemePlants` fixtures. The card's ink is what every reviewed
+      baseline showed and what `match-history.md` §6 and §12.7 name; `civilisation-icon.md` §5
+      and `match-history.md` §8 still put those names at `text-secondary` in a 375 meta line, and
+      are amended to agree, each keeping its line count. `specs/README.md`'s citations of
+      `Section` and `CivilisationIcon` story lines are repointed. A unit test fails if the
+      preview's decorator markup carries a text colour again
 - [ ] T743 Refuse a class the design-system stylesheet does not define (filed 2026-10-17 from
       T710). `text-secondary` was the ink of an unknown or neutral fact in four places, three in
       `packages/design-system/src/composites/MatchRow/index.tsx` and one in
@@ -2615,7 +2621,8 @@ carries what T673's dry run read.
       source that the built stylesheet does not define, and replace substring class assertions in
       the package's tests with whole-class ones. Plant, red before: `text-secondary` in a
       component. Contrast: `text-text-secondary` and a variant-prefixed class such as
-      `group-hover/row-link:underline` pass
+      `group-hover/row-link:underline` pass. `scripts/checks/built-css.mjs` already reads the built
+      stylesheet
 - [x] T706a Close #127's review (`reviewer` REJECT 2026-10-08 on T706). **Lease shorter than the
       run**: the claim's lease is the run budget (240 s) while the function may run 300 s, so a
       live run reads expired for its last minute and T706's page now re-claims it: a second fetch,

@@ -336,10 +336,10 @@ family (`game-asset-tokens.md`), which is what §12's three marks size from.
 ## 8. Responsive
 
 - **375** — `MatchRow` renders as a stacked full-width card: outcome + opponent on the first line,
-  map / civilisation / duration wrapping onto a second line at `text-secondary`, `RatingChange`
-  right-aligned on the first line, `CaptureStateBadge` on its own line beneath (its `SecondaryLine`
-  wraps per `capture-state-badge.md` §7). `MatchDetailPanel`'s `ParticipantsTable` renders as one
-  card per participant, grouped under a `TeamGroup` heading.
+  map / civilisation / duration beneath (SUPERSEDED by §6, §12.7: map and civilisation names `text-primary`,
+  duration and ladder `text-secondary`), `RatingChange` right-aligned on the first line, `CaptureStateBadge`
+  on its own line beneath (its `SecondaryLine` wraps per `capture-state-badge.md` §7). `MatchDetailPanel`'s
+  `ParticipantsTable` renders as one card per participant, grouped under a `TeamGroup` heading.
 - **768** — `MatchRow` is unchanged from 375: still a single-column stacked card, just wider. A
   second column at this width (map/civilisation beside duration/when) is **not** used: an earlier
   draft of this section described one, but it was never built — the card carries no `md:` class

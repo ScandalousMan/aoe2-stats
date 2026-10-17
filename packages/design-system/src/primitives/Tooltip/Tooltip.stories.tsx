@@ -199,7 +199,7 @@ export const DescribeRelation: Story = {
     content: 'Ranked, 1v1 Random Map — this profile’s highest-rated ladder',
     relation: 'describe',
     children: 'Elo 1850',
-    // T710: the trigger wraps the caller's child and sets no colour of its own, so the caller
+    // 006 T710: the trigger wraps the caller's child and sets no colour of its own, so the caller
     // supplies the ink.
     className: 'text-text-primary',
   },

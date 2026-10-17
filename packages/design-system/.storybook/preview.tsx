@@ -80,10 +80,10 @@ window.__DS_TRACKED_PRIMITIVES__ = {
 
 // Every story renders inside this element so it always carries the theme's own background from
 // tokens — never a Storybook default that the token set doesn't own. It supplies no text colour
-// (T710): a story must render the ink the application renders, and nothing in the application
+// (006 T710): a story must render the ink the application renders, and nothing in the application
 // supplies one (neither `RootLayout` nor `Page` sets a text colour), so a component that carries no
 // ink of its own, or a story whose markup carries none, must show the browser's default here too.
-// `scripts/visual/preview-ink.test.mjs` fails if a text colour is added back.
+// `scripts/visual/preview-ink.test.mjs` fails if this decorator's own markup names a text colour.
 const withThemeAndSurface: Decorator = (Story, context) => {
   const theme = context.globals.theme === 'dark' ? 'dark' : 'light'
 

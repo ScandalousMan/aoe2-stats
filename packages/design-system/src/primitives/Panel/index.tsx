@@ -108,7 +108,9 @@ export function Panel({
         >
           {children}
         </div>
-        {footer && <div className="mt-4 flex flex-wrap items-center gap-3">{footer}</div>}
+        {footer && (
+          <div className="mt-4 flex flex-wrap items-center gap-3 text-text-secondary">{footer}</div>
+        )}
       </Tag>
     </PanelDepthContext.Provider>
   )

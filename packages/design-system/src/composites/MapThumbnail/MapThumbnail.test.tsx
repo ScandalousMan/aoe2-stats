@@ -52,7 +52,7 @@ describe('MapThumbnail', () => {
     expect(document.querySelector('img')).not.toBeInTheDocument()
   })
 
-  // T710: map-thumbnail.md §5 names `text-primary` for a resolved name, and nothing above the
+  // 006 T710: map-thumbnail.md §5 names `text-primary` for a resolved name, and nothing above the
   // component supplies ink in the application.
   it('gives a resolved name its own text colour', () => {
     render(<MapThumbnail thumbnailUrl={ARABIA_URL} mapName="Arabia" />)
