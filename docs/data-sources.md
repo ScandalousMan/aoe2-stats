@@ -295,6 +295,59 @@ nothing may be built on their being present. What V2 derives, it derives from wh
 carry (`operations`, `game_settings`, the command log), and it must not present a derivation as a
 recorded outcome.
 
+### Settled: each human player's starting resources sit at a self-verifying anchor in the header
+
+**Settled, within the scope below.** The recording's initial state is not unreadable. The header is
+the raw-deflate stream at `raw[8:header_len]`, where `header_len` is the recording's first
+little-endian `u32`, and in the inflated bytes each human player's starting resources are reachable
+without parsing anything else. `tests/test_starting_state_anchor.py` asserts it over every archive
+committed under `tests/fixtures/replays/` (three recordings on two game builds, per the fixtures
+README, holding 8 human players between them):
+
+- The player's name, as the pinned engine reports it, occurs framed as a `u16` little-endian length
+  that **counts the NUL terminator**, then the UTF-8 name, then one NUL byte. The length counts
+  bytes, so the non-ASCII names in the set (`Nordgefälle`, `Südgefälle`) frame correctly. This frame
+  occurs **exactly once per human player** in the inflated header, and the anchor sits at the
+  deepest occurrence of the name. That is what makes the anchor self-verifying: the bytes at the
+  anchor are the name the engine reported, not a pattern that merely looks right. (The name also
+  occurs earlier in the header with a different framing; that was observed and is not asserted.)
+- The first float starts **7 bytes after the end of the name** (the NUL, then six bytes that were
+  identical in every player of every committed recording when measured, and are not interpreted).
+  It begins a little-endian `float32` array whose first four values are the player's food, wood,
+  stone and gold at the start, in that order. The test asserts each is finite, a non-negative
+  integer, and that the number of anchors equals the number of human players the engine reports.
+- "Human" is `player_type == 2` in the engine's `game_settings.players`. That is the only value any
+  slot has in the committed recordings (observed, not asserted); the test examines only those slots.
+
+**Evidence, and what it does not say about the values.** The test, not this paragraph, is the
+evidence, and it also fails on planted absences (a corrupted terminator, a wrong length prefix, a
+duplicated frame, a non-integral resource). Reading the committed set while writing it, 6 of the 8
+players start at 200 food, 200 wood, 200 stone, 100 gold; one starts at 250 food and 250 wood, and
+one at 300 stone. In the engine's output every player has `handicap` 100 and the lobby's
+`starting_resources_id` is 0, so neither explains the difference, and each player has a distinct
+`civ_id`, so a civilisation effect cannot be told apart from a per-player one in this set. That
+paragraph is an observation and is **not** asserted: the test deliberately does not hard-code 200,
+200, 200, 100, and nothing here establishes why the values differ. D1 in
+[`specs/006-replay-analysis-foundations/research.md`](../specs/006-replay-analysis-foundations/research.md)
+called the difference "consistent with a civilisation or handicap multiplier"; the lobby handicap
+does not explain it in this set.
+
+**What the finding does not cover.** Not measured, and not asserted by anything: slots that are not
+human (AI or empty), because no committed recording has one and what the other `player_type` values
+mean is not evidenced; recordings from any other game build than the two committed; whether the
+anchor holds across a patch that changes the header, which is exactly what the test would show by
+failing; what any field after the four resources is; and the object table. The object table is
+stated here only on D1's authority and **no test asserts it**: it is behind a per-patch grammar,
+variable-length and variant-typed across roughly ten record kinds, and one community maintainer
+measured a single record kind growing by twenty-four bytes between two save versions. So starting
+objects and the map's resource geometry are not reachable by an anchor the way the resources are.
+This section records that the data is present and where, not a decoder: that is not built here.
+
+**What the answer decides.** The initial state must not be written off as unreadable: starting
+resources are reachable at the anchor above, and objects at a standing per-patch cost. D1 in the
+research file above is the historical record of how this was first found and is frozen; this
+section is the living text.
+
 ### Publication delay: distribution
 
 The single observation this section used to carry — 33 min after match end, one sample — is not a

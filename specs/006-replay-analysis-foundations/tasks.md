@@ -1550,7 +1550,7 @@ quickstart run, and the lint. `/speckit-implement` stops here when T670 exits 0.
       `scripts/checks/asset_packs.py` — T637 added two, and `docs/` must be true today. Add the
       verification-checklist line for T603's assertion under parsing. Tick no existing checklist
       item
-- [ ] T668 [P] Record the starting-state finding in `docs/data-sources.md` §2, which is where a
+- [x] T668 [P] Record the starting-state finding in `docs/data-sources.md` §2, which is where a
       measured property of the outside world lives — not in the risk register: the initial-state
       section is present in the header, per-player starting attributes are reachable at a
       self-verifying anchor, and the object table sits behind a per-patch grammar. A living fact in
