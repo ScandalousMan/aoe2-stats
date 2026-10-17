@@ -53,7 +53,7 @@ export const Overview: Story = {
               className="flex flex-col gap-3 rounded-panel border-hairline border-border p-4"
             >
               <div className="flex flex-wrap items-baseline gap-2">
-                <code className="type-machine rounded-control bg-surface-sunken px-1.5 py-0.5 text-xs">
+                <code className="type-machine rounded-control bg-surface-sunken px-1.5 py-0.5 text-xs text-text-primary">
                   {role}
                 </code>
                 <Text role="supporting">{radius[role]}</Text>

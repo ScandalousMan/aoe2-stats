@@ -217,6 +217,7 @@ describe('MatchDetailPanel', () => {
     }
     render(<MatchDetailPanel match={withUnknown} />)
     expect(screen.getByText('Unknown')).toBeInTheDocument()
+    expect(screen.getByText('Unknown')).toHaveClass('text-text-secondary')
     expect(screen.queryByText('Win')).not.toBeInTheDocument()
     expect(screen.getByText('Loss')).toBeInTheDocument()
   })
@@ -744,7 +745,7 @@ describe('MatchDetailPanel — §12.5: imagery, colour and rating (004, US1, T43
     for (const marker of markers) {
       expect(marker.className).not.toContain('text-danger')
       expect(marker.className).not.toContain('text-success')
-      expect(marker.className).toContain('text-secondary')
+      expect(marker).toHaveClass('text-text-secondary')
     }
     expect(screen.queryByText('Won')).not.toBeInTheDocument()
     expect(screen.queryByText('Lost')).not.toBeInTheDocument()

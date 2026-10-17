@@ -68,7 +68,7 @@ export const Overview: Story = {
                     )}
                   />
                 </div>
-                <code className="type-machine text-xs">{key}</code>
+                <code className="type-machine text-xs text-text-primary">{key}</code>
                 <Text role="supporting">{motion.duration[key]}</Text>
               </div>
             ))}
@@ -80,7 +80,7 @@ export const Overview: Story = {
           <div className="flex flex-col gap-2">
             {(Object.keys(motion.easing) as Easing[]).map((key) => (
               <div key={key} className="flex items-center gap-3">
-                <code className="type-machine w-24 shrink-0 rounded-control bg-surface-sunken px-1.5 py-0.5 text-xs">
+                <code className="type-machine w-24 shrink-0 rounded-control bg-surface-sunken px-1.5 py-0.5 text-xs text-text-primary">
                   {key}
                 </code>
                 <div className="h-6 w-40 overflow-hidden rounded-panel bg-surface-sunken">
@@ -119,7 +119,7 @@ export const Overview: Story = {
                     aria-hidden="true"
                   />
                 )}
-                <code className="type-machine text-xs">{name}</code>
+                <code className="type-machine text-xs text-text-primary">{name}</code>
                 <Text role="supporting">{ANIMATION_MEANING[name]}</Text>
                 <Text role="supporting">
                   <code className="type-machine text-xs">

@@ -122,7 +122,7 @@ const OUTCOME_LABEL_TEXT: Record<MatchOutcome, string> = {
 const OUTCOME_LABEL_TONE: Record<MatchOutcome, string> = {
   win: 'text-success',
   loss: 'text-danger',
-  unknown: 'text-secondary',
+  unknown: 'text-text-secondary',
 }
 
 function OutcomeLabel({ outcome }: { outcome: MatchOutcome }) {
@@ -216,7 +216,7 @@ const TEAM_RESULT_TEXT: Record<Exclude<TeamResultKind, null>, string> = {
 const TEAM_RESULT_TONE: Record<Exclude<TeamResultKind, null>, string> = {
   won: 'text-success',
   lost: 'text-danger',
-  'unknown-result': 'text-secondary',
+  'unknown-result': 'text-text-secondary',
 }
 
 /** Exported alongside `computeTeamResult` for the same reason (T431). */
@@ -313,7 +313,7 @@ function ratingSign(value: number): string {
 function ratingTone(value: number): string {
   if (value > 0) return 'text-success'
   if (value < 0) return 'text-danger'
-  return 'text-secondary'
+  return 'text-text-secondary'
 }
 
 function ratingMagnitude(delta: StatValueDelta): string {
@@ -411,6 +411,9 @@ export function MatchRow({ match, onNavigate, archivalObjected, className }: Mat
       onClick={createRowLinkClickHandler(match.href, onNavigate)}
       className={cx(
         'group/row-link flex flex-col gap-2 rounded-panel border border-border bg-surface p-4',
+        // T710: nothing above the card sets a text colour in the application, so the map and
+        // civilisation names inside it (`CivilisationIcon` inherits by contract) take theirs here.
+        'text-text-primary',
         // T560 (FR-038): `active` now paints the same fill as `hover` — a keyboard `Enter`
         // triggers `:active` with no pointer ever hovering (`Link`'s own rule, §9), and this row
         // is the same row-link category `Table` (structural-tier.md §10 "active") already gives

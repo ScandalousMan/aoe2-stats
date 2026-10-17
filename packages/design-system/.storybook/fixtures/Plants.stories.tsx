@@ -17,7 +17,8 @@ import type { MenuProps } from '../../src/primitives/Menu'
 // reader of the built index that means "the stories this package publishes" skips the tag by name
 // (`scripts/visual/story-index.mjs`) — no capture unit, no accessibility scan, no baseline. This file
 // is not under `src/` on purpose, so the checks that walk `src/` never reach it. Plain markup, no
-// styling: a plant is about which element a force selects and who placed it, not how it looks.
+// styling beyond the ink (T710: the preview supplies none, so a raw element names it): a plant is about
+// which element a force selects and who placed it, not how it looks.
 const meta: Meta = {
   id: 'state-coverage-fixture-plants',
   title: 'State coverage fixtures/Plants',
@@ -39,7 +40,7 @@ export const NoMatch: Story = {
 export const TwoMatches: Story = {
   parameters: { visualForceState: { state: 'hover', role: 'button' } },
   render: () => (
-    <div>
+    <div className="text-text-primary">
       <button type="button">Raw</button>
       <Button variant="primary" size="lg">
         Composed
@@ -65,7 +66,7 @@ export const StampOutsideThePrimitive: Story = {
 export const NoPlacingInstance: Story = {
   parameters: { visualForceState: { state: 'hover', role: 'menuitemradio' } },
   render: () => (
-    <div>
+    <div className="text-text-primary">
       <Menu variant="selection" triggerLabel="Profile" items={[]} />
       <div role="menuitemradio" aria-checked="false" tabIndex={0}>
         aoe2alt
@@ -183,7 +184,7 @@ export const DisabledControlInField: Story = {
 export const RawAnchorBesideLink: Story = {
   parameters: { visualForceState: { state: 'hover', role: 'link' } },
   render: () => (
-    <div>
+    <div className="text-text-primary">
       <a href="#raw">Raw</a>
       <Link href="#linked">Linked</Link>
     </div>
@@ -195,7 +196,7 @@ export const RawAnchorBesideLink: Story = {
 export const RawAnchorPickedByName: Story = {
   parameters: { visualForceState: { state: 'hover', role: 'link', name: 'Raw' } },
   render: () => (
-    <div>
+    <div className="text-text-primary">
       <a href="#raw">Raw</a>
       <Link href="#linked">Linked</Link>
     </div>
@@ -236,7 +237,7 @@ export const NthPastTheLast: Story = {
 export const GuardedMenuBesideRaw: Story = {
   parameters: { visualForceState: { state: 'hover', role: 'menuitemradio', name: 'aoe2alt' } },
   render: () => (
-    <div>
+    <div className="text-text-primary">
       {false && <Menu variant="selection" triggerLabel="Profile" items={[]} />}
       <div role="menuitemradio" aria-checked="false" tabIndex={0}>
         aoe2alt
@@ -312,7 +313,7 @@ export const SliderInsideButton: Story = {
 export const RawButtonPickedByName: Story = {
   parameters: { visualForceState: { state: 'hover', role: 'button', name: 'Raw' } },
   render: () => (
-    <div>
+    <div className="text-text-primary">
       <button type="button">Raw</button>
       <Button variant="primary" size="lg">
         Composed

@@ -180,7 +180,7 @@ const RESULT_LABEL_TEXT: Record<MatchOutcome, string> = {
 const RESULT_LABEL_TONE: Record<MatchOutcome, string> = {
   win: 'text-success',
   loss: 'text-danger',
-  unknown: 'text-secondary',
+  unknown: 'text-text-secondary',
 }
 
 function ResultLabel({ result }: { result: MatchOutcome }) {

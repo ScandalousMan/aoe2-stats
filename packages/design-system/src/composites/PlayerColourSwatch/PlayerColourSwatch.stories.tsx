@@ -73,7 +73,7 @@ export const AllEightColours: Story = {
           [8, 'Orange player'],
         ] as const
       ).map(([colorId, name]) => (
-        <li key={colorId} className="flex items-center gap-2">
+        <li key={colorId} className="flex items-center gap-2 text-text-primary">
           <PlayerColourSwatch colorId={colorId} playerName={name} />
           <span>{name}</span>
         </li>
@@ -87,7 +87,7 @@ export const AllEightColours: Story = {
 export const NotRecorded: Story = {
   name: 'Empty — colorId null (companion never heard of this match)',
   render: () => (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2 text-text-primary">
       <PlayerColourSwatch colorId={null} playerName="Some player" />
       <span>Some player</span>
     </div>
@@ -102,7 +102,7 @@ export const NotRecorded: Story = {
 export const OutOfRange: Story = {
   name: 'Error — colorId 99, out of range (must render identically to the empty story above)',
   render: () => (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2 text-text-primary">
       <PlayerColourSwatch colorId={99} playerName="Some player" />
       <span>Some player</span>
     </div>
@@ -127,7 +127,7 @@ export const BlankPlayerName: Story = {
 export const ColouredAndNeutralAligned: Story = {
   name: 'Coloured and neutral rows, checking alignment',
   render: () => (
-    <ul className="flex flex-col gap-2">
+    <ul className="flex flex-col gap-2 text-text-primary">
       <li className="flex items-center gap-2">
         <PlayerColourSwatch colorId={4} playerName="Yellow player" />
         <span>Yellow player</span>

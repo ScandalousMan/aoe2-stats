@@ -59,7 +59,7 @@ export const Overview: Story = {
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
             {LEVELS.map((level) => (
               <div key={level} className="flex flex-col gap-3 rounded-panel bg-surface p-4">
-                <code className="type-machine w-fit rounded-control bg-surface-sunken px-1.5 py-0.5 text-xs">
+                <code className="type-machine w-fit rounded-control bg-surface-sunken px-1.5 py-0.5 text-xs text-text-primary">
                   {level}
                 </code>
                 <Text role="supporting">{renderMarkdownCode(elevation.$meaning[level])}</Text>
@@ -69,7 +69,7 @@ export const Overview: Story = {
                 <div className="flex justify-center py-4">
                   <div
                     className={cx(
-                      'flex h-16 w-32 items-center justify-center rounded-panel bg-surface-raised text-xs',
+                      'flex h-16 w-32 items-center justify-center rounded-panel bg-surface-raised text-xs text-text-primary',
                       SHADOW_CLASS[level],
                     )}
                   >

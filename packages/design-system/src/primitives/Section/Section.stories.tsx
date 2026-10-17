@@ -26,14 +26,22 @@ export default meta
 type Story = StoryObj<typeof Section>
 
 export const Default: Story = {
-  render: (args) => <Section {...args}>Three matches this week.</Section>,
+  render: (args) => (
+    <Section {...args}>
+      <p className="text-text-primary">Three matches this week.</p>
+    </Section>
+  ),
 }
 
 export const WithDescription: Story = {
   args: {
     description: 'Every match this profile has played, most recent first.',
   },
-  render: (args) => <Section {...args}>Three matches this week.</Section>,
+  render: (args) => (
+    <Section {...args}>
+      <p className="text-text-primary">Three matches this week.</p>
+    </Section>
+  ),
 }
 
 export const WithActions: Story = {
@@ -44,7 +52,11 @@ export const WithActions: Story = {
       </Button>
     ),
   },
-  render: (args) => <Section {...args}>Three matches this week.</Section>,
+  render: (args) => (
+    <Section {...args}>
+      <p className="text-text-primary">Three matches this week.</p>
+    </Section>
+  ),
 }
 
 export const HeadingHidden: Story = {
@@ -53,8 +65,11 @@ export const HeadingHidden: Story = {
   },
   render: (args) => (
     <Section {...args}>
-      The heading above is present for a screen-reader user and absent from the picture — this story
-      stands in for a section whose heading would be visual noise beside a large visible element.
+      <p className="text-text-primary">
+        The heading above is present for a screen-reader user and absent from the picture — this
+        story stands in for a section whose heading would be visual noise beside a large visible
+        element.
+      </p>
     </Section>
   ),
 }

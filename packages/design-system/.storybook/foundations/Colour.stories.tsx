@@ -353,7 +353,7 @@ const PLAYER_COLOURS = [
 
 function RoleName({ children }: { children: ReactNode }) {
   return (
-    <code className="type-machine rounded-control bg-surface-sunken px-1.5 py-0.5 text-xs">
+    <code className="type-machine rounded-control bg-surface-sunken px-1.5 py-0.5 text-xs text-text-primary">
       {children}
     </code>
   )
