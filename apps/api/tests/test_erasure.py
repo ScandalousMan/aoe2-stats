@@ -39,6 +39,7 @@ requester removes a link and not a subject and a published analysis must stay re
 
 from __future__ import annotations
 
+import asyncio
 import secrets
 from datetime import UTC, datetime, timedelta
 
@@ -49,6 +50,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from aoe2stats_api import security
 from aoe2stats_api.deps import get_object_store
+from aoe2stats_api.routers import privacy
+from aoe2stats_api.routers.privacy import _ERASURE_DELETE_CONCURRENCY
 from aoe2stats_api.settings import get_settings
 from aoe2stats_storage.models import (
     AoeProfile,
@@ -70,6 +73,7 @@ from aoe2stats_storage.models import (
     User,
 )
 from aoe2stats_storage.models import Session as UserSession
+from aoe2stats_storage.objects import replay_object_key, retained_recording_object_key
 
 pytestmark = [pytest.mark.usefixtures("environment")]
 
@@ -89,6 +93,7 @@ _SHARED_MATCH_GAME_ID = 810_200_001
 _ANALYSIS_GAME_ID = 810_200_002
 _RETAINED_GAME_ID = 810_200_003
 _BYSTANDER_MATCH_GAME_ID = 810_200_004
+_ORPHAN_GAME_ID = 810_200_010  # four consecutive ids
 
 
 class _RecordingObjectStore:
@@ -366,6 +371,474 @@ async def test_confirmed_erasure_deletes_captures_and_verifies_the_blob_by_listi
     db_session.expire_all()  # `capture` is already in this session's identity map — see above
     capture_after = await db_session.get(ReplayCapture, capture_id)
     assert capture_after is None, "the replay_captures row must be gone, not merely its blob"
+
+
+async def test_confirmed_erasure_deletes_objects_under_the_users_pairs_that_no_row_names(
+    client: TestClient, db_session: AsyncSession
+) -> None:
+    """T730: an upload whose row write failed leaves an object under the pair's key that no
+    `object_key` names. Erasure removes it whether the pair has a `replay_captures` row naming no
+    key (a), a row and no `match_players` row (b), or only a `match_players` row (c); an object
+    under another person's pair, under a game the user did not play, and a retained recording
+    stay. Verified by listing the bucket."""
+    user = await _seed_linked_user(
+        db_session, profile_id=_OWNER_PROFILE_ID, steam_id64="76561197960280020"
+    )
+    db_session.add(AoeProfile(profile_id=_OTHER_USERS_PROFILE_ID, alias="Opponent", country="DE"))
+    games = {
+        "row_and_player": _ORPHAN_GAME_ID,
+        "row_only": _ORPHAN_GAME_ID + 1,
+        "player_only": _ORPHAN_GAME_ID + 2,
+        "not_played": _ORPHAN_GAME_ID + 3,
+    }
+    completed_at = datetime.now(UTC) - timedelta(days=40)
+    for game_id in games.values():
+        db_session.add(
+            Match(
+                game_id=game_id,
+                leaderboard_id=3,
+                completed_at=completed_at,
+                source="relic",
+                raw_payload={},
+            )
+        )
+    await db_session.flush()
+    for game_id in (games["row_and_player"], games["player_only"]):
+        db_session.add(
+            MatchPlayer(game_id=game_id, profile_id=_OWNER_PROFILE_ID, team_id=1, result="win")
+        )
+    db_session.add(
+        MatchPlayer(
+            game_id=games["not_played"], profile_id=_OTHER_USERS_PROFILE_ID, team_id=1, result="win"
+        )
+    )
+    for game_id in (games["row_and_player"], games["row_only"]):
+        db_session.add(
+            ReplayCapture(
+                game_id=game_id,
+                profile_id=_OWNER_PROFILE_ID,
+                status=CaptureStatus.FAILED,
+                capture_deadline_at=completed_at + timedelta(days=21),
+                source=CaptureSource.AUTOMATIC,
+            )
+        )
+    await db_session.commit()
+    await _sign_in(client, db_session, user)
+    store = _install_recording_object_store(client)
+
+    orphans = [
+        replay_object_key(games["row_and_player"], _OWNER_PROFILE_ID),
+        replay_object_key(games["row_only"], _OWNER_PROFILE_ID),
+        replay_object_key(games["player_only"], _OWNER_PROFILE_ID),
+    ]
+    kept = [
+        replay_object_key(games["not_played"], _OTHER_USERS_PROFILE_ID),
+        replay_object_key(games["not_played"], _OWNER_PROFILE_ID),
+        retained_recording_object_key(games["row_and_player"], _OWNER_PROFILE_ID),
+    ]
+    for key in [*orphans, *kept]:
+        await store.put(key, b"FAKE-REPLAY-BYTES")
+
+    token = _get_confirmation_token(client)
+    response = client.post(_ERASE_PATH, json={"confirmation_token": token})
+    assert response.status_code == 200, f"Got {response.status_code}: {response.text}"
+
+    assert sorted(await store.list_keys()) == sorted(kept)
+
+
+class _TimedObjectStore(_RecordingObjectStore):
+    """`_RecordingObjectStore` whose `delete` takes a moment and records the order of the calls and
+    how many were in flight at once (T730 remediation: the order of the two passes, and that the
+    named blobs are deleted concurrently too)."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.deleted: list[str] = []
+        self.in_flight = 0
+        self.max_in_flight = 0
+
+    async def delete(self, key: str) -> None:
+        self.deleted.append(key)
+        self.in_flight += 1
+        self.max_in_flight = max(self.max_in_flight, self.in_flight)
+        try:
+            await asyncio.sleep(0.02)
+            await super().delete(key)
+        finally:
+            self.in_flight -= 1
+
+
+async def _seed_stored_captures(
+    db_session: AsyncSession, *, first_game_id: int, count: int
+) -> list[str]:
+    """`count` matches the owner played, each with a `stored` capture; returns the object keys."""
+    completed_at = datetime.now(UTC) - timedelta(days=40)
+    keys = []
+    for game_id in range(first_game_id, first_game_id + count):
+        db_session.add(
+            Match(
+                game_id=game_id,
+                leaderboard_id=3,
+                completed_at=completed_at,
+                source="relic",
+                raw_payload={},
+            )
+        )
+    await db_session.flush()
+    for game_id in range(first_game_id, first_game_id + count):
+        db_session.add(
+            MatchPlayer(game_id=game_id, profile_id=_OWNER_PROFILE_ID, team_id=1, result="win")
+        )
+        key = replay_object_key(game_id, _OWNER_PROFILE_ID)
+        keys.append(key)
+        db_session.add(
+            ReplayCapture(
+                game_id=game_id,
+                profile_id=_OWNER_PROFILE_ID,
+                status=CaptureStatus.STORED,
+                capture_deadline_at=completed_at + timedelta(days=21),
+                source=CaptureSource.AUTOMATIC,
+                object_key=key,
+            )
+        )
+    await db_session.commit()
+    return keys
+
+
+async def test_erasure_deletes_the_objects_no_row_names_before_the_named_blobs(
+    client: TestClient, db_session: AsyncSession
+) -> None:
+    """T730 remediation: a function killed during the slow pass must leave no `stored` row naming
+    an object already deleted. The unnamed pass goes first, so a kill in it deletes only objects
+    no row names; the named blobs, which rows point at, go last."""
+    user = await _seed_linked_user(
+        db_session, profile_id=_OWNER_PROFILE_ID, steam_id64="76561197960280021"
+    )
+    await _sign_in(client, db_session, user)
+    named = await _seed_stored_captures(db_session, first_game_id=810_300_000, count=3)
+    unnamed_game_ids = (810_300_100, 810_300_101)
+    for game_id in unnamed_game_ids:
+        db_session.add(
+            Match(
+                game_id=game_id,
+                leaderboard_id=3,
+                completed_at=datetime.now(UTC) - timedelta(days=40),
+                source="relic",
+                raw_payload={},
+            )
+        )
+    await db_session.flush()
+    for game_id in unnamed_game_ids:
+        db_session.add(MatchPlayer(game_id=game_id, profile_id=_OWNER_PROFILE_ID, team_id=1))
+    await db_session.commit()
+    unnamed = [replay_object_key(game_id, _OWNER_PROFILE_ID) for game_id in unnamed_game_ids]
+    store = _TimedObjectStore()
+    client.app.dependency_overrides[get_object_store] = lambda: store  # type: ignore[attr-defined]
+    for key in [*named, *unnamed]:
+        await store.put(key, b"FAKE-REPLAY-BYTES")
+
+    token = _get_confirmation_token(client)
+    response = client.post(_ERASE_PATH, json={"confirmation_token": token})
+    assert response.status_code == 200, f"Got {response.status_code}: {response.text}"
+
+    assert sorted(store.deleted) == sorted([*named, *unnamed])
+    last_unnamed = max(store.deleted.index(key) for key in unnamed)
+    first_named = min(store.deleted.index(key) for key in named)
+    assert last_unnamed < first_named, f"named blobs went before unnamed objects: {store.deleted}"
+
+
+async def test_erasure_deletes_the_named_blobs_concurrently_up_to_the_bound(
+    client: TestClient, db_session: AsyncSession
+) -> None:
+    """T730 remediation: the named deletes were a serial loop, so a fully-`stored` history cost
+    N x one `DeleteObject`. They run under the same bounded semaphore as the unnamed ones."""
+    user = await _seed_linked_user(
+        db_session, profile_id=_OWNER_PROFILE_ID, steam_id64="76561197960280022"
+    )
+    await _sign_in(client, db_session, user)
+    named = await _seed_stored_captures(
+        db_session, first_game_id=810_400_000, count=_ERASURE_DELETE_CONCURRENCY + 4
+    )
+    store = _TimedObjectStore()
+    client.app.dependency_overrides[get_object_store] = lambda: store  # type: ignore[attr-defined]
+    for key in named:
+        await store.put(key, b"FAKE-REPLAY-BYTES")
+
+    token = _get_confirmation_token(client)
+    response = client.post(_ERASE_PATH, json={"confirmation_token": token})
+    assert response.status_code == 200, f"Got {response.status_code}: {response.text}"
+
+    assert await store.list_keys() == []
+    assert store.max_in_flight == _ERASURE_DELETE_CONCURRENCY
+
+
+async def _seed_unnamed_players(
+    db_session: AsyncSession, *, first_game_id: int, count: int
+) -> list[str]:
+    """`count` matches the owner played with no `replay_captures` row; returns the keys an upload
+    that failed after its object write would have left behind."""
+    game_ids = range(first_game_id, first_game_id + count)
+    for game_id in game_ids:
+        db_session.add(
+            Match(
+                game_id=game_id,
+                leaderboard_id=3,
+                completed_at=datetime.now(UTC) - timedelta(days=40),
+                source="relic",
+                raw_payload={},
+            )
+        )
+    await db_session.flush()
+    for game_id in game_ids:
+        db_session.add(MatchPlayer(game_id=game_id, profile_id=_OWNER_PROFILE_ID, team_id=1))
+    await db_session.commit()
+    return [replay_object_key(game_id, _OWNER_PROFILE_ID) for game_id in game_ids]
+
+
+@pytest.mark.parametrize(
+    ("unnamed", "named", "width", "waves"),
+    [
+        (0, 0, 5, 0),
+        (1, 0, 5, 1),
+        (0, 5, 5, 1),
+        (0, 6, 5, 2),
+        # The two passes run one after the other, so each rounds up on its own: 1 + 1, not 1.
+        (1, 1, 5, 2),
+        (2, 3, 2, 3),
+        # N = 177 at C = 5, the docstring's worst case: 1 unnamed and 176 named is 1 + 36.
+        (1, 176, 5, 37),
+        (0, 177, 5, 36),
+        (177, 0, 5, 36),
+        (88, 89, 5, 36),
+    ],
+)
+def test_erasure_delete_waves_rounds_each_pass_up_on_its_own(
+    monkeypatch: pytest.MonkeyPatch, unnamed: int, named: int, width: int, waves: int
+) -> None:
+    monkeypatch.setattr(privacy, "_erasure_delete_width", lambda: width)
+    assert privacy._erasure_delete_waves(unnamed=unnamed, named=named) == waves
+
+
+def test_erasure_delete_width_is_the_smaller_of_the_bound_and_the_default_thread_pool(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(privacy, "_ERASURE_DELETE_CONCURRENCY", 16)
+    monkeypatch.setattr(privacy.os, "process_cpu_count", lambda: 1)
+    assert privacy._erasure_delete_width() == 5
+    monkeypatch.setattr(privacy.os, "process_cpu_count", lambda: None)
+    assert privacy._erasure_delete_width() == 5
+    monkeypatch.setattr(privacy.os, "process_cpu_count", lambda: 64)
+    assert privacy._erasure_delete_width() == 16
+    monkeypatch.setattr(privacy, "_ERASURE_DELETE_CONCURRENCY", 100)
+    assert privacy._erasure_delete_width() == 32
+
+
+async def _seed_account_for_wave_budget(
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, *, steam: str
+) -> tuple[User, _TimedObjectStore, list[str]]:
+    """An account with 2 unnamed and 3 named keys, at a pinned width of 2: 1 + 2 = 3 waves."""
+    monkeypatch.setattr(privacy, "_ERASURE_DELETE_CONCURRENCY", 2)
+    user = await _seed_linked_user(db_session, profile_id=_OWNER_PROFILE_ID, steam_id64=steam)
+    await _sign_in(client, db_session, user)
+    named = await _seed_stored_captures(db_session, first_game_id=810_500_000, count=3)
+    unnamed = await _seed_unnamed_players(db_session, first_game_id=810_500_100, count=2)
+    store = _TimedObjectStore()
+    client.app.dependency_overrides[get_object_store] = lambda: store  # type: ignore[attr-defined]
+    for key in [*named, *unnamed]:
+        await store.put(key, b"FAKE-REPLAY-BYTES")
+    assert privacy._erasure_delete_waves(unnamed=2, named=3) == 3
+    return user, store, [*named, *unnamed]
+
+
+async def test_erasure_over_the_wave_budget_refuses_before_deleting_anything_and_records_it(
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The user's decision (2026-10-17): fail closed. A kill at the function limit during the named
+    pass rolls the database back with originals already deleted, which is irreversible, so an
+    account whose deletes cannot fit is refused before the first `DeleteObject`: 503
+    `erasure_too_large`, every object and row as it was, and one pending `data_requests` row
+    written through an independent session, so the rollback does not take it."""
+    monkeypatch.setattr(privacy, "_ERASURE_WAVE_BUDGET", 2)
+    user, store, keys = await _seed_account_for_wave_budget(
+        client, db_session, monkeypatch, steam="76561197960280030"
+    )
+    user_id = user.id
+    games_before = sorted(
+        (
+            await db_session.execute(
+                select(MatchPlayer.game_id, MatchPlayer.profile_id).order_by(MatchPlayer.game_id)
+            )
+        ).all()
+    )
+    captures_before = sorted(
+        (await db_session.execute(select(ReplayCapture.game_id, ReplayCapture.object_key))).all()
+    )
+    assert {profile for _, profile in games_before} == {_OWNER_PROFILE_ID}
+
+    token = _get_confirmation_token(client)
+    response = client.post(_ERASE_PATH, json={"confirmation_token": token})
+
+    assert response.status_code == 503, f"Got {response.status_code}: {response.text}"
+    error = response.json()["error"]
+    assert error["code"] == "erasure_too_large"
+    assert "nothing was erased" in error["message"].lower()
+    assert "recorded" in error["message"].lower()
+
+    assert store.deleted == [], f"a DeleteObject went out: {store.deleted}"
+    assert sorted(await store.list_keys()) == sorted(keys)
+
+    db_session.expire_all()
+    assert await db_session.get(User, user_id) is not None
+    assert (
+        await db_session.execute(select(func.count()).select_from(SteamIdentity))
+    ).scalar_one() == 1
+    assert (
+        await db_session.execute(
+            select(func.count()).select_from(ProfileLink).where(ProfileLink.user_id == user_id)
+        )
+    ).scalar_one() == 1
+    games_after = sorted(
+        (
+            await db_session.execute(
+                select(MatchPlayer.game_id, MatchPlayer.profile_id).order_by(MatchPlayer.game_id)
+            )
+        ).all()
+    )
+    assert games_after == games_before, "match_players was pseudonymised and not rolled back"
+    captures_after = sorted(
+        (await db_session.execute(select(ReplayCapture.game_id, ReplayCapture.object_key))).all()
+    )
+    assert captures_after == captures_before
+
+    requests = (
+        (
+            await db_session.execute(
+                select(DataRequest).where(DataRequest.kind == DataRequestKind.ERASURE)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(requests) == 1, "exactly one durable request row, not the rolled-back one as well"
+    assert requests[0].subject_user_id == user_id
+    assert requests[0].completed_at is None
+    assert requests[0].outcome == "refused: 5 keys need 3 waves, budget 2"
+
+
+def test_erasure_delete_concurrency_does_not_exceed_botocores_default_connection_pool() -> None:
+    assert privacy._ERASURE_DELETE_CONCURRENCY <= 10, (
+        "a wave wider than botocore's default connection pool (max_pool_connections = 10, which "
+        "`ObjectStore`'s client keeps) queues or opens connections, so the wave count is optimistic"
+    )
+
+
+async def test_repeated_refusals_keep_one_pending_row_with_the_latest_outcome(
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A refused account that retries must not grow `data_requests` by a row per attempt: the
+    one uncompleted erasure row is updated to the latest outcome."""
+    monkeypatch.setattr(privacy, "_ERASURE_WAVE_BUDGET", 2)
+    user, store, _ = await _seed_account_for_wave_budget(
+        client, db_session, monkeypatch, steam="76561197960280032"
+    )
+    user_id = user.id
+
+    token = _get_confirmation_token(client)
+    first = client.post(_ERASE_PATH, json={"confirmation_token": token})
+    assert first.status_code == 503, f"Got {first.status_code}: {first.text}"
+    first_requested_at = (
+        await db_session.execute(
+            select(DataRequest.requested_at).where(
+                DataRequest.kind == DataRequestKind.ERASURE,
+                DataRequest.subject_user_id == user_id,
+                DataRequest.completed_at.is_(None),
+            )
+        )
+    ).scalar_one()
+    db_session.expire_all()
+    monkeypatch.setattr(privacy, "_ERASURE_WAVE_BUDGET", 1)
+    second = client.post(_ERASE_PATH, json={"confirmation_token": token})
+    assert second.status_code == 503, f"Got {second.status_code}: {second.text}"
+    assert store.deleted == []
+
+    db_session.expire_all()
+    pending = (
+        (
+            await db_session.execute(
+                select(DataRequest).where(
+                    DataRequest.kind == DataRequestKind.ERASURE,
+                    DataRequest.subject_user_id == user_id,
+                    DataRequest.completed_at.is_(None),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(pending) == 1, f"expected one pending row, got {len(pending)}"
+    assert pending[0].outcome == "refused: 5 keys need 3 waves, budget 1"
+    # The 30-day deadline runs from `requested_at` (docs/privacy/processing-register.md), so a
+    # retry must never move it.
+    assert pending[0].requested_at == first_requested_at, "a retry moved requested_at"
+
+
+async def test_erasure_after_a_refusal_completes_the_earlier_pending_row(
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Refused once (row left uncompleted), budget raised, erased: no uncompleted erasure row may
+    survive for the subject to lose its `subject_user_id` and stay open forever."""
+    monkeypatch.setattr(privacy, "_ERASURE_WAVE_BUDGET", 2)
+    await _seed_account_for_wave_budget(client, db_session, monkeypatch, steam="76561197960280033")
+    token = _get_confirmation_token(client)
+    refused = client.post(_ERASE_PATH, json={"confirmation_token": token})
+    assert refused.status_code == 503, f"Got {refused.status_code}: {refused.text}"
+
+    monkeypatch.setattr(privacy, "_ERASURE_WAVE_BUDGET", 3)
+    erased = client.post(_ERASE_PATH, json={"confirmation_token": token})
+    assert erased.status_code == 200, f"Got {erased.status_code}: {erased.text}"
+
+    db_session.expire_all()
+    rows = (
+        (
+            await db_session.execute(
+                select(DataRequest).where(DataRequest.kind == DataRequestKind.ERASURE)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(rows) == 2, f"expected the resolved refusal and the erasure, got {len(rows)}"
+    assert all(row.completed_at is not None for row in rows), "an erasure row stayed uncompleted"
+    assert sorted(row.outcome or "" for row in rows)[0] == "account erased"
+    assert any((row.outcome or "").startswith("resolved by the erasure of ") for row in rows)
+
+
+async def test_erasure_exactly_at_the_wave_budget_is_erased_as_before(
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The contrast: the same account, budget equal to its wave count, is erased in full."""
+    monkeypatch.setattr(privacy, "_ERASURE_WAVE_BUDGET", 3)
+    user, store, keys = await _seed_account_for_wave_budget(
+        client, db_session, monkeypatch, steam="76561197960280031"
+    )
+    user_id = user.id
+
+    token = _get_confirmation_token(client)
+    response = client.post(_ERASE_PATH, json={"confirmation_token": token})
+
+    assert response.status_code == 200, f"Got {response.status_code}: {response.text}"
+    assert sorted(store.deleted) == sorted(keys)
+    assert await store.list_keys() == []
+    db_session.expire_all()
+    assert await db_session.get(User, user_id) is None
+    request = (
+        await db_session.execute(
+            select(DataRequest).where(DataRequest.kind == DataRequestKind.ERASURE)
+        )
+    ).scalar_one()
+    assert request.subject_user_id is None
+    assert request.completed_at is not None
+    assert request.outcome == "account erased"
 
 
 async def test_confirmed_erasure_deletes_replay_access_log_rows_for_the_erased_users_captures_only(

@@ -73,7 +73,7 @@ import uuid
 from collections.abc import AsyncIterator, Iterator, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import httpx
 import pytest
@@ -84,7 +84,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from aoe2stats_api import security
 from aoe2stats_api.app import create_app
-from aoe2stats_api.deps import get_session
+from aoe2stats_api.deps import get_object_store, get_session
 from aoe2stats_api.routers import matches as matches_router
 from aoe2stats_api.routers import players as players_router
 from aoe2stats_api.routers import privacy as privacy_router
@@ -115,6 +115,9 @@ from aoe2stats_storage.models import (
 )
 from aoe2stats_storage.models import Session as UserSession
 from aoe2stats_storage.repositories.base import session_scope
+
+if TYPE_CHECKING:
+    from conftest import _FakeObjectStore
 
 pytestmark = [pytest.mark.usefixtures("environment")]
 
@@ -158,7 +161,9 @@ async def fast_deadlock_detection(engine: AsyncEngine) -> AsyncIterator[None]:
 
 @pytest.fixture
 async def http(
-    clean_database: None, session_factory: async_sessionmaker[AsyncSession]
+    clean_database: None,
+    session_factory: async_sessionmaker[AsyncSession],
+    fake_object_store: _FakeObjectStore,
 ) -> AsyncIterator[httpx.AsyncClient]:
     """The real app, its `get_session` pointed at the throwaway database through `session_scope`
     (the identical commit-or-rollback unit of work production gets), driven through httpx's ASGI
@@ -172,6 +177,8 @@ async def http(
             yield session
 
     app.dependency_overrides[get_session] = _get_session
+    # T730: erasure deletes the key of every pair the user played, so it reaches the object store.
+    app.dependency_overrides[get_object_store] = lambda: fake_object_store
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="https://testserver") as client:
         yield client

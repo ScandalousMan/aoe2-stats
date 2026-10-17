@@ -84,15 +84,15 @@ rules out, a right turned into a penalty; hence `Badge`'s existing `neutral` var
 or pair (§8), and the label "Not archived", true of any row that is not `stored`. `SecondaryLine`,
 `detail` only: "Automatic capture ended for this match while archival was not running for this
 profile." `compact` shows the pill alone: one sentence repeated down an objector's list is that
-banner in small print. **No upload, no `MatchDetailPanel` `DownloadAction`**: it is `stored`'s alone
-(`match-history.md` §2), and `manual-upload.md` §2's gate stays the three "Lost" statuses, as the
-row may hold an object and the match response does not say which rows do (T727).
+banner in small print. **No `DownloadAction`**: it is `stored`'s alone (`match-history.md` §2). The
+upload is offered only where the match detail's `capture_object_held` is `false`, the row naming no
+object (`manual-upload.md` §2, T727); the badge's copy is the same either way.
 
-**An objecting owner reads "Not archived" on a `pending` or `downloading` row (T724).** The claim
-refuses that owner's `pending` row and stale `downloading` row, so a countdown would promise a
-capture it will not start. With `archivalObjected` (§4) both statuses read "Not archived" in
-`neutral`, the pill alone in `compact`; `detail` adds "Archival is off for your account." No upload
-or download is offered. A `downloading` row claimed before the objection can still end `stored`.
+**With `archivalObjected` (§4, T724, T729):** `expired`/`failed` stay "Lost" but drop "If you still
+have the file, you can upload it." in both variants, as `manual-upload.md` §2 offers no upload; the
+claim refuses an objector's `pending` and stale `downloading` rows, so a countdown would promise a
+capture it will not start: both read "Not archived" in `neutral`, with "Archival is off for your
+account." in `detail` only, no download; one claimed before the objection can still end `stored`.
 
 ## 4. Variants and sizes
 

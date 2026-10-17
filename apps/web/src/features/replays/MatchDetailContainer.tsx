@@ -229,9 +229,11 @@ export function MatchDetailContainer({ gameId, children }: MatchDetailContainerP
   // --- Manual upload (T084, US4, FR-029..FR-033) ----------------------------------------------
   //
   // `manual-upload.md` §2: rendered for the three "Lost" statuses `CaptureStateBadge` groups
-  // together, and for none of the others (`isUploadEligible`); gated on the same
-  // `matchDetail.captureStatus` the header's badge and `DownloadAction` derive off
-  // `GET /api/matches/{game_id}` (T070e), not a second read of the wire.
+  // together, and for `withdrawn` when the match says the row names no object
+  // (`capture_object_held` false, T727); for none of the others (`isUploadEligible`). Gated on the
+  // same `matchDetail.captureStatus` the header's badge and `DownloadAction` derive off
+  // `GET /api/matches/{game_id}` (T070e), not a second read of the wire; `capture_object_held` is
+  // read off that same response, and is `null` wherever `capture_status` is.
   // T723: an objecting caller is offered it for no status, because the route refuses their upload
   // (`archival_objected`). The session must have answered `archival_objected: false`, so the
   // control is absent while `GET /api/me` is unanswered. The value is a cached one.
@@ -239,7 +241,7 @@ export function MatchDetailContainer({ gameId, children }: MatchDetailContainerP
     matchDetail !== undefined &&
     session?.authenticated === true &&
     session.archival_objected === false &&
-    isUploadEligible(matchDetail.captureStatus)
+    isUploadEligible(matchDetail.captureStatus, matchQuery.data?.capture_object_held)
 
   async function handleUpload(file: File): Promise<void> {
     if (numericGameId === null) {

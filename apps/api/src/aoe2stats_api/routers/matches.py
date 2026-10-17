@@ -966,6 +966,10 @@ def _match_detail_json(
             if detail.capture_deadline_at is not None
             else None
         ),
+        # T727: whether the row `capture_status` is read from names an object. A boolean only,
+        # never the key; `null` exactly where `capture_status` is, so it is served for the
+        # caller's own capture alone. This route only: the list rows do not carry it.
+        "capture_object_held": detail.capture_object_held,
         # T368, SC-011: whether this match can still be analysed, until when, and why not —
         # one object per match, not per participant (module docstring).
         "analysis": analysis,

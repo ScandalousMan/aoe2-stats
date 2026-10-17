@@ -16,6 +16,7 @@ the event loop the rest of the application shares.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -38,6 +39,15 @@ DEFAULT_SIGNED_URL_EXPIRES_IN_SECONDS = 300
 _PRECONDITION_FAILED = "PreconditionFailed"
 _PRECONDITION_FAILED_STATUS = 412
 
+#: What `put_if_absent` reads as "a concurrent write to this key is still in flight": HTTP 409 with
+#: `ConditionalRequestConflict` (R2, S3) or `OperationAborted` (S3's other spelling of it). Neither
+#: "exists" nor "written": that writer may fail. A 409 with any other code (`InvalidBucketState`,
+#: ...) is a fault, not a race, and is not in this set. A 409 whose body carries no code at all is
+#: read as a race, as the 412 handling falls back on status; botocore then reports the status text
+#: as the code (`"409"`), so that is "no code" too.
+_CONFLICT_CODES = frozenset({"ConditionalRequestConflict", "OperationAborted"})
+_CONFLICT_STATUS = 409
+
 #: The error codes a `GetObject` carries when the key is not there. Read by **code**, never by the
 #: 404 status alone: `NoSuchBucket` is a 404 too, and a bucket that does not exist is a deployment
 #: fault, not a missing object (`"404"` and `NotFound` are what a bodyless response, a `HeadObject`
@@ -57,6 +67,22 @@ class ObjectNotFound(Exception):
     def __init__(self, key: str) -> None:
         self.key = key
         super().__init__(f"no object is stored under {key!r}")
+
+
+class ObjectWriteConflict(Exception):
+    """A conditional write to `key` was refused because another write to the same key is still in
+    flight (HTTP 409, `ConditionalRequestConflict` or `OperationAborted`, or a 409 with no code;
+    `__cause__` is the store's own error).
+
+    Not "the key exists": the other writer may yet fail, so reading it as held could record an
+    object that never lands. Not "written" either. A caller decides what a collision means for it
+    and retries later; the key either holds an object by then or does not. Every other store error
+    still propagates as the `ClientError` it is.
+    """
+
+    def __init__(self, key: str) -> None:
+        self.key = key
+        super().__init__(f"a concurrent write to {key!r} is in flight")
 
 
 def replay_object_key(game_id: int, profile_id: int) -> str:
@@ -200,7 +226,12 @@ class ObjectStore:
         )
 
     async def put_if_absent(
-        self, key: str, body: bytes, *, content_type: str = REPLAY_CONTENT_TYPE
+        self,
+        key: str,
+        body: bytes,
+        *,
+        content_type: str = REPLAY_CONTENT_TYPE,
+        metadata: Mapping[str, str] | None = None,
     ) -> bool:
         """Create `key` only if nothing is stored there: `True` if written, `False` if it existed.
 
@@ -208,18 +239,28 @@ class ObjectStore:
         the check and the write are a single operation on the store: two writers racing for one key
         cannot both succeed, which a head-then-put could not promise. The analysis document uses it:
         its key is a function of its identity and, once written, is never written again (specs/006
-        contracts/analysis-document.md, FR-042). So does the manual upload (`upload_replay`, T723),
-        which refuses a key that already holds an object. `put` is unchanged and still overwrites.
+        contracts/analysis-document.md, FR-042). So do the capture drain (T728), which never
+        writes over an object, and the manual upload (`upload_replay`, T723), which since T730
+        accepts a key that already holds an object only when its SHA-256 equals the upload's.
+        `put` is unchanged and still overwrites.
 
-        Only the store's `PreconditionFailed` (HTTP 412) means "already there". Every other error
-        propagates, including `ConditionalRequestConflict` (HTTP 409, a concurrent write to the same
-        key still in flight): that writer may yet fail, so reading it as "exists" could publish a
-        row naming an object that never lands. The caller's transaction rolls back and the request
-        is retried, by which time the key either exists or does not.
+        `metadata` becomes the object's user metadata (`x-amz-meta-*`), read back by
+        `get_with_metadata`. The capture drain marks its own objects with it; the manual upload
+        passes none.
+
+        Only the store's `PreconditionFailed` (HTTP 412) means "already there". A 409 whose code is
+        `ConditionalRequestConflict` or `OperationAborted`, or which carries no code at all (a
+        concurrent write to the same key still in flight), raises `ObjectWriteConflict`: that
+        writer may yet fail, so reading it as "exists" could publish a row naming an object that
+        never lands, and the caller retries later, by which time the key either exists or does not.
+        Every other error propagates as the `ClientError` it is, a 409 with another code
+        (`InvalidBucketState`, say) included: that is a persistent fault, not a race, and mapping it
+        to a conflict would hand every claim back unattempted, forever and silently.
 
         A store that does not implement conditional writes and ignores the header would overwrite
         silently; both stores this project targets honour it, and that is the assumption.
         """
+        extra: dict[str, Any] = {"Metadata": dict(metadata)} if metadata else {}
         try:
             await asyncio.to_thread(
                 self._client.put_object,
@@ -228,12 +269,17 @@ class ObjectStore:
                 Body=body,
                 ContentType=content_type,
                 IfNoneMatch="*",
+                **extra,
             )
         except ClientError as exc:
             code = exc.response.get("Error", {}).get("Code")
             status = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
             if code == _PRECONDITION_FAILED or status == _PRECONDITION_FAILED_STATUS:
                 return False
+            if code in _CONFLICT_CODES or (
+                status == _CONFLICT_STATUS and code in (None, "", str(_CONFLICT_STATUS))
+            ):
+                raise ObjectWriteConflict(key) from exc
             raise
         return True
 
@@ -249,9 +295,16 @@ class ObjectStore:
         external client is ever handed (the bucket is never public); this method is for the one
         caller that is the application itself.
         """
+        body, _ = await self.get_with_metadata(key)
+        return body
+
+    async def get_with_metadata(self, key: str) -> tuple[bytes, Mapping[str, str]]:
+        """`get`, and the object's user metadata (`put_if_absent`'s `metadata`) from the same
+        request; an empty mapping for an object written without any. Keys come back lower-cased, as
+        the store sends them. `ObjectNotFound` as for `get`."""
         return await asyncio.to_thread(self._get_sync, key)
 
-    def _get_sync(self, key: str) -> bytes:
+    def _get_sync(self, key: str) -> tuple[bytes, Mapping[str, str]]:
         try:
             response = self._client.get_object(Bucket=self._bucket, Key=key)
         except ClientError as exc:
@@ -259,7 +312,8 @@ class ObjectStore:
                 raise ObjectNotFound(key) from exc
             raise
         body: bytes = response["Body"].read()
-        return body
+        metadata: Mapping[str, str] = response.get("Metadata") or {}
+        return body, metadata
 
     async def signed_get_url(
         self,

@@ -327,30 +327,32 @@ describe('CaptureStateBadge', () => {
     describe.each(['compact', 'detail'] as const)(
       'every other status ignores it (%s)',
       (variant) => {
-        it.each([
-          'stored',
-          'quarantined',
-          'unavailable',
-          'expired',
-          'failed',
-          'withdrawn',
-          'a_future_status',
-        ])('%s renders identically with and without the flag', (status) => {
-          const off = render(
-            <CaptureStateBadge captureStatus={status} variant={variant} archivalObjected={false} />,
-          )
-          const offHtml = off.container.innerHTML.replace(
-            /id="[^"]*"|aria-describedby="[^"]*"/g,
-            '',
-          )
-          off.unmount()
-          const on = render(
-            <CaptureStateBadge captureStatus={status} variant={variant} archivalObjected />,
-          )
-          const onHtml = on.container.innerHTML.replace(/id="[^"]*"|aria-describedby="[^"]*"/g, '')
-          expect(onHtml).toBe(offHtml)
-          expect(on.container).not.toHaveTextContent(OBJECTED_SENTENCE)
-        })
+        it.each(['stored', 'quarantined', 'unavailable', 'withdrawn', 'a_future_status'])(
+          '%s renders identically with and without the flag',
+          (status) => {
+            const off = render(
+              <CaptureStateBadge
+                captureStatus={status}
+                variant={variant}
+                archivalObjected={false}
+              />,
+            )
+            const offHtml = off.container.innerHTML.replace(
+              /id="[^"]*"|aria-describedby="[^"]*"/g,
+              '',
+            )
+            off.unmount()
+            const on = render(
+              <CaptureStateBadge captureStatus={status} variant={variant} archivalObjected />,
+            )
+            const onHtml = on.container.innerHTML.replace(
+              /id="[^"]*"|aria-describedby="[^"]*"/g,
+              '',
+            )
+            expect(onHtml).toBe(offHtml)
+            expect(on.container).not.toHaveTextContent(OBJECTED_SENTENCE)
+          },
+        )
       },
     )
 
@@ -363,6 +365,55 @@ describe('CaptureStateBadge', () => {
     it('a null status still renders nothing', () => {
       const { container } = render(<CaptureStateBadge captureStatus={null} archivalObjected />)
       expect(container).toBeEmptyDOMElement()
+    })
+  })
+
+  // T729 (capture-state-badge.md §3): with `archivalObjected`, `expired` and `failed` stay "Lost" in
+  // `danger` and read their first sentence only, because no upload is offered under them. Without
+  // it both read the two sentences as before.
+  describe('archivalObjected — an expired or failed row of an objecting owner (T729)', () => {
+    const FIRST_SENTENCE = {
+      expired: 'The replay existed, but we did not capture it in time.',
+      failed: 'We could not capture this replay after repeated attempts.',
+    } as const
+    const UPLOAD_SENTENCE = 'If you still have the file, you can upload it.'
+
+    describe.each(['expired', 'failed'] as const)('%s', (status) => {
+      describe.each(['compact', 'detail'] as const)('%s', (variant) => {
+        it('keeps the "Lost" pill and reads the first sentence only, no upload sentence', () => {
+          const { container } = render(
+            <CaptureStateBadge captureStatus={status} variant={variant} archivalObjected />,
+          )
+          const pill = screen.getByText('Lost')
+          expect(pill.className).toContain('text-danger')
+          expect(screen.getByText(FIRST_SENTENCE[status])).toBeInTheDocument()
+          const wrapper = pill.closest('span[aria-describedby]')
+          const describedBy = wrapper?.getAttribute('aria-describedby')
+          expect(describedBy).toBeTruthy()
+          expect(document.getElementById(describedBy as string)).toHaveTextContent(
+            FIRST_SENTENCE[status],
+          )
+          expect(document.getElementById(describedBy as string)?.textContent).toBe(
+            FIRST_SENTENCE[status],
+          )
+          expect(container).not.toHaveTextContent(UPLOAD_SENTENCE)
+          expect(container).not.toHaveTextContent(/upload/i)
+        })
+
+        // The contrast: a caller who does not object still reads the recourse.
+        it.each([
+          ['archivalObjected={false}', { archivalObjected: false }],
+          ['the prop omitted', {}],
+        ])('with %s it still reads both sentences', (_name, props) => {
+          render(<CaptureStateBadge captureStatus={status} variant={variant} {...props} />)
+          expect(screen.getByText('Lost').className).toContain('text-danger')
+          const wrapper = screen.getByText('Lost').closest('span[aria-describedby]')
+          const describedBy = wrapper?.getAttribute('aria-describedby')
+          expect(document.getElementById(describedBy as string)?.textContent).toBe(
+            `${FIRST_SENTENCE[status]} ${UPLOAD_SENTENCE}`,
+          )
+        })
+      })
     })
   })
 })

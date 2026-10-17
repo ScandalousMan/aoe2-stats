@@ -42,11 +42,18 @@ never `aoe2stats_api.settings.Settings` directly).
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from ..models import CaptureSource, CaptureStatus, ReplayCapture
 from .base import Repository
+
+
+class CaptureNoLongerOpen(Exception):
+    """The row `record_manual_upload` meant to write is `stored` or names an `object_key` by the
+    time of the write (another writer, the drain, got there after the router's read), or is gone.
+    Nothing was written."""
 
 
 class CapturesRepository(Repository):
@@ -73,12 +80,18 @@ class CapturesRepository(Repository):
         """Record a manually supplied replay for `(game_id, profile_id)` as `stored`, `source =
         'manual'`, with `validated_by` set to the engine and version that vouched for it — creating
         the row if discovery never enqueued one for this pair, or updating the row that already
-        exists (module docstring). It does not check the row's status or `object_key`: the router
-        refused a `stored` row and one naming an object before this call.
+        exists (module docstring). The router refused a `stored` row and one naming an object before
+        this call, but the drain can adopt an object and mark the row between that read and this
+        write, so the `UPDATE` of an existing row also requires `object_key IS NULL` and a status
+        other than `stored`; when it matches no row, nothing is written and `CaptureNoLongerOpen`
+        is raised (the row is the other writer's, and is not relabelled `manual`).
 
         `stored_at` defaults to "now" (UTC), the moment this write happens — mirrors
         `RatingsRepository.record_snapshot`'s identical default and identical reasoning: the
         caller's own clock is never trusted for a timestamp this repository can produce itself.
+
+        An existing row is written with every column named, whatever state it was loaded in (the
+        body's comment says why).
 
         Flushes but never commits, the same discipline `RatingsRepository.record_snapshot` follows:
         this is one unit of work inside whichever `session_scope` (or request-scoped session) the
@@ -86,6 +99,19 @@ class CapturesRepository(Repository):
         ends.
         """
         resolved_stored_at = stored_at if stored_at is not None else datetime.now(UTC)
+        values: dict[str, Any] = {
+            "status": CaptureStatus.STORED,
+            "source": CaptureSource.MANUAL,
+            "stored_at": resolved_stored_at,
+            "object_key": object_key,
+            "zip_bytes": zip_bytes,
+            "zip_sha256": zip_sha256,
+            "inner_filename": inner_filename,
+            "inner_bytes": inner_bytes,
+            "validated_by": validated_by,
+            "http_status": 200,
+            "last_error": None,
+        }
 
         result = await self.session.execute(
             select(ReplayCapture).where(
@@ -99,20 +125,39 @@ class CapturesRepository(Repository):
                 game_id=game_id,
                 profile_id=profile_id,
                 capture_deadline_at=match_completed_at + timedelta(days=capture_budget_days),
+                **values,
             )
             self.session.add(capture)
+            await self.session.flush()
+            return capture
 
-        capture.status = CaptureStatus.STORED
-        capture.source = CaptureSource.MANUAL
-        capture.stored_at = resolved_stored_at
-        capture.object_key = object_key
-        capture.zip_bytes = zip_bytes
-        capture.zip_sha256 = zip_sha256
-        capture.inner_filename = inner_filename
-        capture.inner_bytes = inner_bytes
-        capture.validated_by = validated_by
-        capture.http_status = 200
-        capture.last_error = None
-
-        await self.session.flush()
+        # An existing row is written with a Core `UPDATE` that names every column in `values`, not
+        # by assigning attributes and flushing. An ORM flush emits only the columns whose value
+        # differs from the state the row was *loaded* in, so a column another writer changed in
+        # between (the automatic capture handing the row back with a `last_error`, say) but that
+        # this method means to leave `None` would be omitted and keep the other writer's value on a
+        # `stored` row. A re-read with `FOR UPDATE` would instead block that writer for the rest of
+        # the request's transaction, with an object write already made; the plain `UPDATE` takes the
+        # row lock at its own statement, held from there to the commit. `refresh` returns the row.
+        #
+        # The `UPDATE` also requires the row to still be open: no `object_key`, and not `stored`.
+        # The router checked that before the object write, and the drain may have adopted the
+        # equal-hash object and marked the row since; matching by id alone would relabel that row
+        # `manual`. A statement that matches no row is the other writer's win, not an error to
+        # paper over.
+        written = await self.session.execute(
+            update(ReplayCapture)
+            .where(
+                ReplayCapture.id == capture.id,
+                ReplayCapture.object_key.is_(None),
+                ReplayCapture.status != CaptureStatus.STORED,
+            )
+            .values(**values)
+            .returning(ReplayCapture.id)
+        )
+        if written.scalar_one_or_none() is None:
+            raise CaptureNoLongerOpen(
+                f"replay_captures row for ({game_id}, {profile_id}) is stored or names an object"
+            )
+        await self.session.refresh(capture)
         return capture

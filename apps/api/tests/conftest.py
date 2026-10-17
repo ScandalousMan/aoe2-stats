@@ -55,6 +55,7 @@ from aoe2stats_api.deps import get_object_store, get_response_cache, get_session
 from aoe2stats_api.routers import matches as matches_router
 from aoe2stats_api.routers import players as players_router
 from aoe2stats_api.settings import get_settings
+from aoe2stats_storage.objects import ObjectNotFound
 from aoe2stats_storage.repositories.base import session_scope
 from aoe2stats_storage.revision import EXPECTED_SCHEMA_REVISION
 
@@ -316,6 +317,13 @@ class _FakeObjectStore:
         #: Keys that held an object before the test's request (`test_manual_upload.py`, T723): a
         #: `put_if_absent` for one answers `False` without being recorded in `put_calls`.
         self.existing_keys: set[str] = set()
+        #: Objects that held bytes before the test's request (T730): like `existing_keys`, a
+        #: `put_if_absent` for one answers `False`, and `get` returns these bytes - the retry of an
+        #: upload whose row write failed reads the held object to compare it with its own file.
+        self.existing_objects: dict[str, bytes] = {}
+        #: Every key `delete` received, in call order (T730: erasure deletes the keys of a user's
+        #: pairs whether or not an object is there).
+        self.delete_calls: list[str] = []
 
     async def list_keys(self, prefix: str = "") -> list[str]:
         if self._fails:
@@ -332,10 +340,32 @@ class _FakeObjectStore:
     ) -> bool:
         if self._fails:
             raise RuntimeError("simulated object store outage")
-        if key in self.existing_keys or any(existing == key for existing, _ in self.put_calls):
+        if (
+            key in self.existing_keys
+            or key in self.existing_objects
+            or any(existing == key for existing, _ in self.put_calls)
+        ):
             return False
         self.put_calls.append((key, body))
         return True
+
+    async def delete(self, key: str) -> None:
+        if self._fails:
+            raise RuntimeError("simulated object store outage")
+        self.delete_calls.append(key)
+
+    async def get(self, key: str) -> bytes:
+        """The bytes under `key`: a seeded `existing_objects` entry, else the last `put`. A key in
+        `existing_keys` alone holds no known bytes: `put_if_absent` finds it held and reading it
+        raises `ObjectNotFound`, an object that vanished between the two calls."""
+        if self._fails:
+            raise RuntimeError("simulated object store outage")
+        if key in self.existing_objects:
+            return self.existing_objects[key]
+        for put_key, body in reversed(self.put_calls):
+            if put_key == key:
+                return body
+        raise ObjectNotFound(key)
 
     async def signed_get_url(
         self, key: str, *, expires_in: int = 300, filename: str | None = None

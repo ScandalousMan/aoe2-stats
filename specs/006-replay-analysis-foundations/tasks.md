@@ -2374,15 +2374,20 @@ carries what T673's dry run read.
       `subject="other"` alone. The `product-designer` amends
       `packages/design-system/specs/match-history.md` §11.3 and
       `packages/design-system/specs/capture-state-badge.md` first, keeping their line counts
-- [ ] T727 Offer the upload on a `withdrawn` row that holds no object (filed 2026-10-13 from
+- [x] T727 Offer the upload on a `withdrawn` row that holds no object (filed 2026-10-13 from
       T723). Since T723 the route accepts an upload for a `withdrawn` row that names no
       `object_key`, from a caller who does not object;
       `apps/web/src/features/replays/uploadEligibility.ts` still withholds `UploadControl` from
       every `withdrawn` row, because the match response does not say which rows hold an object.
       After T726, so that whatever the response gains is served for the caller's own capture only.
       The `product-designer` first: what the response carries, and what
-      `packages/design-system/specs/manual-upload.md` says of the row
-- [ ] T728 Decide what the automatic capture's write does to a key that holds an object (filed
+      `packages/design-system/specs/manual-upload.md` says of the row. **Decided (`product-designer`,
+      2026-10-17).** `GET /api/matches/{game_id}` alone serves `capture_object_held`, a boolean read
+      from the row `capture_status` is read from, `true` when it names an `object_key`, and `null`
+      exactly where `capture_status` is; the list routes do not carry it, as nothing there reads
+      it. The interface offers `UploadControl` for a `withdrawn` row only when it is `false`, and
+      withholds it for `true`, `null` or absent (`manual-upload.md` §2, `capture-state-badge.md`)
+- [x] T728 Decide what the automatic capture's write does to a key that holds an object (filed
       2026-10-13 from T723). `CaptureDrain` in `apps/ingester/src/aoe2stats_ingester/capture.py`
       writes a downloaded blob with the object store's `put`, which overwrites, under the key a
       manual upload uses for the pair. T723 made the upload's write conditional; the drain's is not.
@@ -2411,7 +2416,19 @@ carries what T673's dry run read.
       row that names no key, with the download's hash, is validated and recorded `automatic`; with a
       different hash, the row names no key, its attempt stands, and the object is unchanged.
       **Contrast:** a key that holds nothing is written and recorded as today
-- [ ] T729 Decide what an `expired` or `failed` capture reads for an objecting owner (filed
+      **Amended (2026-10-16, by Claude on the user's delegation, after #148's review).** The
+      drain's own object is told apart from an upload by a marker, not by its hash: the drain
+      writes its object with S3 user metadata naming the automatic capture, and when the key is
+      held by an object carrying that marker, the drain adopts it whatever its hash, recording that
+      object's own size and SHA-256, because a drain killed between its write and its row write
+      would otherwise strand a real replay if the source's bytes are not stable across downloads,
+      which is not measured. An object without the marker keeps the rule above. Objects written
+      before the marker existed carry none, so a row stranded that way recovers through the
+      equal-hash branch only. The blob metadata commit matches the row while it names no object,
+      whatever its status, so a row withdrawn or reverted after the drain's write still names the
+      drain's object and erasure reaches it. A 409 from the store (a concurrent conditional write
+      in flight) hands the row back without counting an attempt instead of aborting the run
+- [x] T729 Decide what an `expired` or `failed` capture reads for an objecting owner (filed
       2026-10-13 from T723). `CaptureStateBadge`'s `SecondaryLine` for both statuses ends "If you
       still have the file, you can upload it."
       (`packages/design-system/specs/capture-state-badge.md` §3). Since T723 an objecting caller is
@@ -2427,7 +2444,7 @@ carries what T673's dry run read.
       `packages/design-system/specs/manual-upload.md`, keeping that file's line count too (its lines
       are cited). **Tests, each red before:** an objecting owner's `expired` and `failed` rows show
       no upload sentence. **Contrast:** a caller who does not object still reads it
-- [ ] T730 Decide what an upload does when its row write fails after its object write (filed
+- [x] T730 Decide what an upload does when its row write fails after its object write (filed
       2026-10-14 from #143's review). Since T723 `upload_replay` writes the object with
       `put_if_absent` and then the row: if the row write or the request's commit fails after the
       object is written, the object stays under the key and no row names it, and every retry of the
@@ -2447,6 +2464,49 @@ carries what T673's dry run read.
       write failed, a retry of the same bytes ends `stored`; erasure removes an object no row's
       `object_key` names, under one of the user's pairs that has a row and under one that has none.
       **Contrast:** a retry with different bytes is refused `replay_held` and nothing is written
+- [ ] T740 Decide what a drain's late write does to a row a concurrent drain ended (filed
+      2026-10-17 from #148's second review, N1). Since T728 the blob metadata commit names the
+      drain's object on a row that names none whatever its status, and the `stored` mark matches
+      only a `downloading` row. When a drain's claim goes stale while it is still running, a second
+      drain can reclaim the row and end it `expired`, `failed` or `unavailable`; the first drain's
+      write and commit then land, and the row keeps that status while naming a replay that was
+      never validated. No claim selects it, the upload route answers `replay_held`, and the
+      `expired` case has already raised its severity-1 alert. Not reachable on Phase 1 hosting,
+      where the claim's stale age equals the function's maximum duration; reachable on a host
+      without that bound. To decide first: whether the drain's `stored` mark also matches those
+      three statuses when the row names the drain's own key, keeping `withdrawn` excluded
+- [x] T741 Close what #155's review and #148's review (N4) left on T730 (filed 2026-10-17; #155
+      merged at its first commit). **Erasure:** the keys no row names are deleted before the keys
+      rows name, both passes concurrently under one bound, so a kill or a delete error during the
+      first pass leaves no row naming a deleted original; the duration bound in `erase_account`'s
+      docstring counts both passes. **Upload:** `record_manual_upload`'s update of an existing row
+      also requires `object_key IS NULL` and a status other than `stored`, and `upload_replay`
+      refuses `replay_held`, writing nothing, when that update matches no row, when the held object
+      is gone before it is read, and when a twin upload's insert wins the pair's uniqueness. A held
+      object with the upload's SHA-256 is adopted as `manual` even when the drain wrote it: refusing
+      it under a terminal row, or a pair with no row, would leave it unnamed until erasure, and
+      `manual` records only that the user supplied those bytes (FR-033). **Tests, each red
+      before:** the drain adopting the object and marking the row `stored` between the route's read
+      and its write leaves the row `automatic`; the drain having committed only its blob metadata
+      is refused; the unnamed objects go before the named ones; the named deletes run concurrently.
+      **Contrast:** a retry over an object no row names still ends `stored`, `manual`
+- [x] T742 Refuse an erasure whose object deletes cannot fit the API function's limit (filed and
+      decided 2026-10-17 by the user, the most conservative of the options after T741: refuse
+      rather than bound the deletes or accept the risk). Neither how many keys an account's pairs
+      accumulate nor an R2 `DeleteObject`'s latency is measured, and a kill during the named pass
+      leaves rows naming originals already deleted. `erase_account` counts the waves of both passes
+      at the real delete width before the first `DeleteObject`; over a budget of 37 waves (about
+      7.4 s at an assumed 200 ms per delete) it answers `503` `erasure_too_large`, deletes nothing,
+      rolls the erasure back, and records the request on a `data_requests` row of kind `erasure`
+      left uncompleted, written through its own session. No alert kind is added: severity 1 is
+      reserved by constitution I and a new kind is a migration. Lifting the refusal needs the
+      largest account's key count measured, or a design that deletes outside the request. Measured
+      once, 2026-10-17, read by the user in production: the largest account's erasure touches 79
+      keys, at most 17 waves at the narrowest width, so no account is refused today; the count
+      grows with every match an account plays.
+      **Tests, each red before:** an account over the budget is refused with every object still
+      listed, the account and its `match_players` unchanged, and the request recorded.
+      **Contrast:** an account exactly at the budget is erased as before
 
 - [x] T706 Unstick an analysis whose lease expired (filed 2026-10-08; decided by the user the same
       day). Match 511523321's row stayed `running` from the 2026-10-05 crash until a manual

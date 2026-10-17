@@ -434,6 +434,9 @@ async def test_manual_upload_invalidates_the_match_detail_cache(
     warmed = client.get(f"/api/matches/{fixture_game_id}")
     assert warmed.status_code == 200
     assert warmed.json()["capture_status"] == CaptureStatus.EXPIRED.value
+    # T727: `capture_object_held` rides in the same cached body, under the same per-caller key as
+    # `capture_status`, so the upload that changes one invalidates the other.
+    assert warmed.json()["capture_object_held"] is False
 
     upload = client.post(
         f"/api/replays/{fixture_game_id}/upload",
@@ -453,6 +456,7 @@ async def test_manual_upload_invalidates_the_match_detail_cache(
         "invalidation, not the TTL, must make this visible immediately — the TTL alone (30s) far "
         "outlives this test"
     )
+    assert after_upload.json()["capture_object_held"] is True
 
 
 # --- Invalidation: a primary-profile change must not wait out the TTL --------------------------

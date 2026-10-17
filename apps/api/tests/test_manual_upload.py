@@ -61,16 +61,17 @@ renamed `.aoe2record`, exactly as the scenario itself describes.
 
 from __future__ import annotations
 
+import hashlib
 import secrets
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pytest
 from fastapi.testclient import TestClient
 from httpx import Response
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from aoe2stats_api import security
 from aoe2stats_api.settings import get_settings
@@ -562,9 +563,10 @@ async def test_upload_for_a_row_naming_a_key_with_no_object_is_refused_before_an
     )
 
 
-async def test_upload_where_an_object_exists_under_the_key_but_no_row_is_refused(
+async def test_upload_where_a_different_object_is_held_under_the_key_and_no_row_is_refused(
     client: TestClient, db_session: AsyncSession, fake_object_store: _FakeObjectStore
 ) -> None:
+    """T730 contrast: the held bytes are not the upload's, so nothing is recorded or written."""
     key = replay_object_key(_HELD_GAME_ID + 1, _HELD_PROFILE_ID + 1)
     await _seed_held_candidate(
         db_session,
@@ -574,17 +576,353 @@ async def test_upload_where_an_object_exists_under_the_key_but_no_row_is_refused
         status=None,
         object_key=None,
     )
-    fake_object_store.existing_keys.add(key)
+    fake_object_store.existing_objects[key] = b"someone else's bytes"
 
     response = _upload(client, _HELD_GAME_ID + 1)
 
     assert response.status_code == 409
     assert response.json()["error"]["code"] == "replay_held"
     assert fake_object_store.put_calls == []
+    assert fake_object_store.existing_objects == {key: b"someone else's bytes"}
     assert (
         await _capture_row(db_session, game_id=_HELD_GAME_ID + 1, profile_id=_HELD_PROFILE_ID + 1)
         is None
     ), "a refusal creates no row"
+
+
+async def test_upload_where_a_different_object_is_held_and_a_row_names_no_key_changes_no_row(
+    client: TestClient, db_session: AsyncSession, fake_object_store: _FakeObjectStore
+) -> None:
+    game_id, profile_id = _HELD_GAME_ID + 4, _HELD_PROFILE_ID + 4
+    key = replay_object_key(game_id, profile_id)
+    await _seed_held_candidate(
+        db_session,
+        client,
+        game_id=game_id,
+        profile_id=profile_id,
+        status=CaptureStatus.FAILED,
+        object_key=None,
+    )
+    fake_object_store.existing_objects[key] = b"someone else's bytes"
+
+    response = _upload(client, game_id)
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "replay_held"
+    assert fake_object_store.put_calls == []
+    assert fake_object_store.existing_objects == {key: b"someone else's bytes"}
+    row = await _capture_row(db_session, game_id=game_id, profile_id=profile_id)
+    assert row is not None
+    assert (row.status, row.object_key, row.zip_sha256, row.source) == (
+        CaptureStatus.FAILED,
+        None,
+        None,
+        CaptureSource.AUTOMATIC,
+    )
+
+
+@pytest.mark.parametrize(
+    ("offset", "seeded_status"), [(5, None), (6, CaptureStatus.FAILED), (7, CaptureStatus.EXPIRED)]
+)
+async def test_retry_of_the_same_file_completes_an_upload_whose_row_write_failed(
+    client: TestClient,
+    db_session: AsyncSession,
+    fake_object_store: _FakeObjectStore,
+    offset: int,
+    seeded_status: CaptureStatus | None,
+) -> None:
+    """T730: the previous attempt wrote the object and its row write failed, so the key holds the
+    same bytes and no row names it. The retry records the row; it writes no object."""
+    game_id, profile_id = _HELD_GAME_ID + offset, _HELD_PROFILE_ID + offset
+    key = replay_object_key(game_id, profile_id)
+    content = _reference_replay_bytes()
+    await _seed_held_candidate(
+        db_session,
+        client,
+        game_id=game_id,
+        profile_id=profile_id,
+        status=seeded_status,
+        object_key=None,
+    )
+    fake_object_store.existing_objects[key] = content
+
+    response = _upload(client, game_id)
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "stored", "source": "manual"}
+    assert fake_object_store.put_calls == [], "the held object is neither rewritten nor replaced"
+    assert fake_object_store.existing_objects == {key: content}
+    row = await _capture_row(db_session, game_id=game_id, profile_id=profile_id)
+    assert row is not None
+    assert (row.status, row.source, row.object_key, row.zip_sha256, row.zip_bytes) == (
+        CaptureStatus.STORED,
+        CaptureSource.MANUAL,
+        key,
+        hashlib.sha256(content).hexdigest(),
+        len(content),
+    )
+
+
+async def test_upload_whose_held_object_vanished_before_it_was_read_is_refused_as_held(
+    client: TestClient, db_session: AsyncSession, fake_object_store: _FakeObjectStore
+) -> None:
+    """T730 remediation: `put_if_absent` found the key held, and the object is gone by the time the
+    route reads it (a concurrent erasure, say). Nothing is written; the answer is `replay_held`,
+    not a 500."""
+    game_id, profile_id = _HELD_GAME_ID + 8, _HELD_PROFILE_ID + 8
+    key = replay_object_key(game_id, profile_id)
+    await _seed_held_candidate(
+        db_session, client, game_id=game_id, profile_id=profile_id, status=None, object_key=None
+    )
+    fake_object_store.existing_keys.add(key)  # held for `put_if_absent`, no bytes to read
+
+    response = _upload(client, game_id)
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "replay_held"
+    assert fake_object_store.put_calls == []
+    assert await _capture_row(db_session, game_id=game_id, profile_id=profile_id) is None
+
+
+async def test_upload_whose_identical_twin_stored_the_row_after_the_read_is_refused_as_held(
+    client: TestClient,
+    db_session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
+    fake_object_store: _FakeObjectStore,
+) -> None:
+    """T730 remediation: two overlapping identical uploads for a pair with no row. This one lost
+    `put_if_absent` and read the twin's identical bytes; the twin's `stored` row lands before this
+    one's write. The row is not relabelled (it was `200` / `manual`): `replay_held`, and the retry
+    then resolves against the row that won."""
+    game_id, profile_id = _HELD_GAME_ID + 9, _HELD_PROFILE_ID + 9
+    key = replay_object_key(game_id, profile_id)
+    content = _reference_replay_bytes()
+    await _seed_held_candidate(
+        db_session, client, game_id=game_id, profile_id=profile_id, status=None, object_key=None
+    )
+    fake_object_store.existing_objects[key] = content
+
+    async def get_after_the_twin_commits(requested: str) -> bytes:
+        async with session_factory() as other:
+            other.add(
+                ReplayCapture(
+                    game_id=game_id,
+                    profile_id=profile_id,
+                    status=CaptureStatus.STORED,
+                    capture_deadline_at=datetime.now(UTC) + timedelta(days=1),
+                    source=CaptureSource.MANUAL,
+                    object_key=key,
+                    zip_bytes=len(content),
+                    zip_sha256=hashlib.sha256(content).hexdigest(),
+                )
+            )
+            await other.commit()
+        return content
+
+    fake_object_store.get = get_after_the_twin_commits  # type: ignore[method-assign]
+
+    response = _upload(client, game_id)
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "replay_held"
+    row = await _capture_row(db_session, game_id=game_id, profile_id=profile_id)
+    assert row is not None
+    assert (row.status, row.source, row.object_key) == (
+        CaptureStatus.STORED,
+        CaptureSource.MANUAL,
+        key,
+    )
+
+    retry = _upload(client, game_id)
+
+    assert retry.status_code == 409
+    assert retry.json()["error"]["code"] == "already_archived"
+
+
+async def test_upload_losing_the_row_insert_to_an_identical_twin_is_refused_as_held(
+    client: TestClient,
+    db_session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
+    fake_object_store: _FakeObjectStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """T730 remediation: the twin's row commits after this upload looked for a row and found none,
+    and before its insert reaches the database: `UNIQUE (game_id, profile_id)` refuses the insert.
+    That is `replay_held` (before T730 it was; T730 made it a 500), and the retry resolves against
+    the row that won."""
+    game_id, profile_id = _HELD_GAME_ID + 11, _HELD_PROFILE_ID + 11
+    key = replay_object_key(game_id, profile_id)
+    content = _reference_replay_bytes()
+    await _seed_held_candidate(
+        db_session, client, game_id=game_id, profile_id=profile_id, status=None, object_key=None
+    )
+    fake_object_store.existing_objects[key] = content
+    original_flush = AsyncSession.flush
+    twin_committed = False
+
+    async def flush_after_the_twin_commits(self: AsyncSession, *args: Any, **kwargs: Any) -> None:
+        nonlocal twin_committed
+        if not twin_committed and any(
+            isinstance(pending, ReplayCapture) for pending in self.sync_session.new
+        ):
+            twin_committed = True
+            async with session_factory() as other:
+                other.add(
+                    ReplayCapture(
+                        game_id=game_id,
+                        profile_id=profile_id,
+                        status=CaptureStatus.STORED,
+                        capture_deadline_at=datetime.now(UTC) + timedelta(days=1),
+                        source=CaptureSource.MANUAL,
+                        object_key=key,
+                        zip_bytes=len(content),
+                        zip_sha256=hashlib.sha256(content).hexdigest(),
+                    )
+                )
+                await other.commit()
+        await original_flush(self, *args, **kwargs)
+
+    monkeypatch.setattr(AsyncSession, "flush", flush_after_the_twin_commits)
+
+    response = _upload(client, game_id)
+
+    assert twin_committed, "the interleaving did not happen"
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "replay_held"
+    monkeypatch.undo()
+    row = await _capture_row(db_session, game_id=game_id, profile_id=profile_id)
+    assert row is not None
+    assert (row.status, row.source, row.object_key) == (
+        CaptureStatus.STORED,
+        CaptureSource.MANUAL,
+        key,
+    )
+
+    retry = _upload(client, game_id)
+
+    assert retry.status_code == 409
+    assert retry.json()["error"]["code"] == "already_archived"
+
+
+async def test_upload_whose_row_is_adopted_by_the_drain_after_the_read_is_refused_and_unchanged(
+    client: TestClient,
+    db_session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
+    fake_object_store: _FakeObjectStore,
+) -> None:
+    """T730 remediation (PR #148, N4): between the route's read (no row names an object) and its
+    write, the drain adopts the equal-hash object and marks the row `stored` / `automatic`. The
+    upload must not relabel it `manual`: `replay_held`, the row as the drain left it."""
+    game_id, profile_id = _HELD_GAME_ID + 10, _HELD_PROFILE_ID + 10
+    key = replay_object_key(game_id, profile_id)
+    content = _reference_replay_bytes()
+    digest = hashlib.sha256(content).hexdigest()
+    await _seed_held_candidate(
+        db_session,
+        client,
+        game_id=game_id,
+        profile_id=profile_id,
+        status=CaptureStatus.DOWNLOADING,
+        object_key=None,
+    )
+    fake_object_store.existing_objects[key] = content
+
+    async def get_after_the_drain_adopts(requested: str) -> bytes:
+        async with session_factory() as other:
+            await other.execute(
+                update(ReplayCapture)
+                .where(ReplayCapture.game_id == game_id, ReplayCapture.profile_id == profile_id)
+                .values(
+                    status=CaptureStatus.STORED,
+                    source=CaptureSource.AUTOMATIC,
+                    object_key=key,
+                    zip_bytes=len(content),
+                    zip_sha256=digest,
+                    inner_filename="drain.aoe2record",
+                    validated_by="drain@1",
+                )
+            )
+            await other.commit()
+        return content
+
+    fake_object_store.get = get_after_the_drain_adopts  # type: ignore[method-assign]
+
+    response = _upload(client, game_id)
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "replay_held"
+    row = await _capture_row(db_session, game_id=game_id, profile_id=profile_id)
+    assert row is not None
+    assert (
+        row.status,
+        row.source,
+        row.object_key,
+        row.zip_sha256,
+        row.zip_bytes,
+        row.inner_filename,
+        row.validated_by,
+    ) == (
+        CaptureStatus.STORED,
+        CaptureSource.AUTOMATIC,
+        key,
+        digest,
+        len(content),
+        "drain.aoe2record",
+        "drain@1",
+    )
+
+
+async def test_upload_whose_row_got_the_drains_blob_metadata_after_the_read_is_refused_unchanged(
+    client: TestClient,
+    db_session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
+    fake_object_store: _FakeObjectStore,
+) -> None:
+    """T730 remediation: between the route's read (no row names an object) and its write, the drain
+    commits only `_commit_blob_metadata`'s effect: the row is still `downloading`, now naming the
+    object with its size and hash, `automatic`. The object's bytes are the upload's. The row names
+    an object, so the upload must not relabel it `manual` / `stored`: `replay_held`, no put, the
+    row as the drain left it."""
+    game_id, profile_id = _HELD_GAME_ID + 12, _HELD_PROFILE_ID + 12
+    key = replay_object_key(game_id, profile_id)
+    content = _reference_replay_bytes()
+    digest = hashlib.sha256(content).hexdigest()
+    await _seed_held_candidate(
+        db_session,
+        client,
+        game_id=game_id,
+        profile_id=profile_id,
+        status=CaptureStatus.DOWNLOADING,
+        object_key=None,
+    )
+    fake_object_store.existing_objects[key] = content
+
+    async def get_after_the_drain_commits_its_metadata(requested: str) -> bytes:
+        async with session_factory() as other:
+            await other.execute(
+                update(ReplayCapture)
+                .where(ReplayCapture.game_id == game_id, ReplayCapture.profile_id == profile_id)
+                .values(object_key=key, zip_bytes=len(content), zip_sha256=digest)
+            )
+            await other.commit()
+        return content
+
+    fake_object_store.get = get_after_the_drain_commits_its_metadata  # type: ignore[method-assign]
+
+    response = _upload(client, game_id)
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "replay_held"
+    assert fake_object_store.put_calls == []
+    row = await _capture_row(db_session, game_id=game_id, profile_id=profile_id)
+    assert row is not None
+    assert (row.status, row.source, row.object_key, row.zip_sha256, row.zip_bytes) == (
+        CaptureStatus.DOWNLOADING,
+        CaptureSource.AUTOMATIC,
+        key,
+        digest,
+        len(content),
+    )
 
 
 async def test_upload_for_a_withdrawn_row_naming_no_object_is_stored_manual(
