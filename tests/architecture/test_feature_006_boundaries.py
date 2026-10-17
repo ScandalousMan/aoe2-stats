@@ -23,8 +23,11 @@ anything. A baseline difference fails with the offending entry named. The checks
    request/lease path, and is deliberately not in the set - with one exception recorded in check
    2a: `staleness.py` reaches `extract.current_identity_digest` for the API's `stale` flag.
 2a. `apps/api/src` imports from `aoe2stats_analyzer` exactly two modules, each from exactly one
-   file (`_ALLOWED_API_ANALYZER_IMPORTS`, T666g and T709). See that constant for why it stays
-   inside FR-049.
+   file (`_ALLOWED_API_ANALYZER_IMPORTS`, T666g and T709): `staleness` from the match router and
+   `names` from the analysis router. The second is an exception to check 2 made in T709: `names`
+   is the one analyzer module that imports `aoe2stats_knowledge` (its `query` and `snapshot`) by
+   design, so the request path reaches the knowledge package through it, and only through it. See
+   that constant for why it stays inside FR-049.
 3. The new 006 code never names the capture budget: not `CAPTURE_BUDGET_DAYS`/`capture_budget_days`,
    not a capture deadline, not the `replay_captures` or `provider_calls` tables or their models, and
    it imports neither `aoe2stats_ingester` nor `aoe2stats_providers` (the budget's two homes).
@@ -144,11 +147,12 @@ _REQUEST_PATH_CODE: tuple[Path, ...] = (
 #
 # T709 adds a second grant, on the same reasoning: `routers/analysis.py` imports
 # `aoe2stats_analyzer.names` (lazily) to put names beside the stored document. What that brings is a
-# cached read of the installed snapshot tree, matched by the digest the document itself names - a
+# cached read of the installed snapshot tree, matched by the identity the document itself names - a
 # lookup, not an analysis. It reads the document the route already read; it fetches nothing, parses
 # no recording, loads no engine and `extract.py` is not reached (`names.py` imports only
-# `aoe2stats_knowledge.labels`, asserted below). The module sits outside `_REQUEST_PATH_CODE` for
-# the reason `extract.py` does: it is the one file that must import the knowledge package.
+# `aoe2stats_knowledge`'s `query` and `snapshot` and nothing of the analyzer's own, asserted
+# below). The module sits outside `_REQUEST_PATH_CODE` for the reason `extract.py` does: it is the
+# one file that must import the knowledge package.
 _ALLOWED_API_ANALYZER_IMPORTS: Mapping[str, frozenset[str]] = {
     "apps/api/src/aoe2stats_api/routers/matches.py": frozenset({"aoe2stats_analyzer.staleness"}),
     "apps/api/src/aoe2stats_api/routers/analysis.py": frozenset({"aoe2stats_analyzer.names"}),
@@ -478,7 +482,8 @@ def test_the_api_imports_only_the_granted_analyzer_modules_from_the_granted_file
     Anything else is request-path analysis work."""
     violations = _api_analyzer_violations(_ALLOWED_API_ANALYZER_IMPORTS)
     assert not violations, (
-        f"the API may import only the staleness verdict from the analyzer (FR-049): {violations}"
+        "the API may import only the granted analyzer modules from the granted files, "
+        f"`staleness` (match router) and `names` (analysis router) (FR-049): {violations}"
     )
 
 
@@ -748,16 +753,18 @@ def test_vocabulary_definitions_flag_a_restated_003_behaviour() -> None:
     assert vocabulary_definitions("def lookup(): ...\n") == []
 
 
-def test_the_names_module_reaches_nothing_but_the_label_lookup() -> None:
+def test_the_names_module_reaches_nothing_but_the_name_query_and_the_identity_type() -> None:
     """T709: `names.py` is what the analysis route imports, so what it imports is what a request
-    can reach. Only the knowledge package's label lookup: not the builder (`extract`, which loads
-    the engine adapter), not the run entry, not storage, the ingester or the providers."""
+    can reach. Only the knowledge package's `query` (the snapshot-addressed name query) and
+    `snapshot` (the identity type): not the builder (`extract`, which loads the engine adapter), not
+    the run entry, not storage, the ingester or the providers."""
     source = (_ANALYZER_SRC / "names.py").read_text(encoding="utf-8")
 
     assert {
-        module.removesuffix(".label_in_snapshot")
+        ".".join(module.split(".")[:2])
         for module in imports_of(source, ("aoe2stats_knowledge",))
-    } == {"aoe2stats_knowledge.labels"}
+        if module != "aoe2stats_knowledge"  # `from aoe2stats_knowledge import query` reports both
+    } == {"aoe2stats_knowledge.query", "aoe2stats_knowledge.snapshot"}
     for forbidden in (
         "aoe2stats_analyzer",
         "aoe2stats_core",

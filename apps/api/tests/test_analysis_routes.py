@@ -62,11 +62,13 @@ pass — the moment T368 makes one actually succeed.
 
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 import secrets
 from datetime import UTC, datetime, timedelta
 from importlib import metadata
-from typing import Any
+from typing import Any, NoReturn
 
 import pytest
 from fastapi.testclient import TestClient
@@ -76,7 +78,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from aoe2stats_api import ratelimit, security
 from aoe2stats_api.deps import get_object_store
 from aoe2stats_api.settings import get_settings
-from aoe2stats_knowledge.snapshot import Snapshot, snapshot_for
+from aoe2stats_knowledge import snapshot as knowledge_snapshot
+from aoe2stats_knowledge.snapshot import Snapshot, SnapshotError, snapshot_for
 from aoe2stats_replay_engine.aoe2rec import ENGINE_NAME
 from aoe2stats_storage.models import (
     AoeProfile,
@@ -404,7 +407,7 @@ async def test_published_analysis_answers_a_result_for_every_participant(
 
 _NAMES_GAME_ID_BASE = 930_700_000
 
-#: Ids no packaged snapshot names (`packages/knowledge/tests/test_labels.py` asserts it).
+#: Ids no packaged snapshot names (`packages/knowledge/tests/test_name_in_snapshot.py` asserts it).
 _UNNAMED_TECHNOLOGY = 987_654_321
 _UNNAMED_UNIT = 987_654_322
 _UNNAMED_BUILDING = 987_654_323
@@ -596,6 +599,150 @@ async def test_the_stored_object_is_served_byte_for_byte_and_never_modified(
     assert response.content.startswith(b'{"document":' + before + b',"names":')
     assert response.json()["document"] == json.loads(before)
     _assert_no_index(response)
+
+
+def _published_response_names(response: Any) -> dict[str, dict[str, str | None]]:
+    assert response.status_code == 200, f"Got {response.status_code}: {response.text}"
+    names: dict[str, dict[str, str | None]] = response.json()["names"]
+    return names
+
+
+async def test_the_name_is_a_label_not_the_vendored_markup(
+    client: TestClient, db_session: AsyncSession
+) -> None:
+    """T709: the pack vendors "Town<br>\nCenter" and "Circum-<br>\nnavigation"; the page gets
+    "Town Center" and "Circumnavigation"."""
+    game_id = _NAMES_GAME_ID_BASE + 6
+    document = json.loads(
+        _document_naming(game_id=game_id, knowledge=_knowledge_record(_snapshot_for_build(185872)))
+    )
+    document["participants"][0]["builds"] = [{"building_id": 109, "world_time_ms": 1}]
+    document["participants"][0]["researches"] = [{"technology_id": 1404, "world_time_ms": 2}]
+
+    response, _ = await _serve_document(
+        client, db_session, game_id=game_id, document=json.dumps(document).encode("utf-8")
+    )
+
+    names = _published_response_names(response)
+    assert names["building"] == {"109": "Town Center"}
+    assert names["technology"]["1404"] == "Circumnavigation"
+
+
+@pytest.mark.parametrize(
+    "fault,expected_log",
+    [
+        (SnapshotError("a packaged snapshot fails its digest"), "deployment fault"),
+        (OSError("a packaged snapshot file is missing"), "deployment fault"),
+        (RuntimeError("a defect"), "unexpected error"),
+    ],
+    ids=["SnapshotError", "OSError", "RuntimeError"],
+)
+async def test_a_snapshot_fault_degrades_the_names_and_never_the_analysis(
+    client: TestClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    fault: Exception,
+    expected_log: str,
+) -> None:
+    """T709, FR-048: any installed snapshot failing to load (the unrelated test stub included)
+    must not take the analysis down for its labels. The same envelope is answered: the document
+    byte for byte, every referenced id present and `null`. A deployment fault and a defect are
+    logged apart, as the staleness flag's are."""
+    game_id = _NAMES_GAME_ID_BASE + 7
+    document = _document_naming(
+        game_id=game_id, knowledge=_knowledge_record(_snapshot_for_build(185872))
+    )
+
+    def broken() -> NoReturn:
+        raise fault
+
+    monkeypatch.setattr(knowledge_snapshot, "load_all_snapshots", broken)
+    # The migrations' `fileConfig` disables loggers that already exist, which would hide the line.
+    logging.getLogger("aoe2stats_api").disabled = False
+    with caplog.at_level(logging.ERROR, logger="aoe2stats_api"):
+        response, stored = await _serve_document(
+            client, db_session, game_id=game_id, document=document
+        )
+
+    names = _published_response_names(response)
+    assert response.content.startswith(b'{"document":' + document + b',"names":')
+    assert set(names["technology"]) == {"101", "102", "22", str(_UNNAMED_TECHNOLOGY)}
+    assert set(names["building"]) == {"70", str(_UNNAMED_BUILDING)}
+    assert set(names["unit"]) == {"83", str(_UNNAMED_UNIT)}
+    assert all(value is None for table in names.values() for value in table.values())
+    messages = [record.getMessage() for record in caplog.records if record.name == "aoe2stats_api"]
+    assert any(expected_log in message for message in messages), messages
+    assert stored[f"analyses/{game_id}.json"] == document
+
+
+async def test_the_names_are_resolved_off_the_event_loop(
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """T709: parsing the stored object and reading the snapshot tree are blocking work, so they run
+    in a worker thread: there is no running event loop where `names_for_document` is called."""
+    from aoe2stats_analyzer import names as analyzer_names
+
+    game_id = _NAMES_GAME_ID_BASE + 8
+    document = _document_naming(
+        game_id=game_id, knowledge=_knowledge_record(_snapshot_for_build(185872))
+    )
+    on_a_loop: list[bool] = []
+    real = analyzer_names.names_for_document
+
+    def spy(parsed: Any) -> Any:
+        try:
+            asyncio.get_running_loop()
+            on_a_loop.append(True)
+        except RuntimeError:
+            on_a_loop.append(False)
+        return real(parsed)
+
+    monkeypatch.setattr(analyzer_names, "names_for_document", spy)
+
+    response, _ = await _serve_document(client, db_session, game_id=game_id, document=document)
+
+    assert response.status_code == 200, f"Got {response.status_code}: {response.text}"
+    assert on_a_loop == [False]
+
+
+_UNREADABLE_DOCUMENTS: tuple[tuple[str, bytes], ...] = (
+    ("byte-order-mark", b"\xef\xbb\xbf" + b'{"participants": []}'),
+    ("not-utf-8", b'{"participants": [], "x": "\xff"}'),
+    ("nan", b'{"participants": [], "x": NaN}'),
+    ("infinity", b'{"participants": [], "x": Infinity}'),
+    ("top-level-array", b"[]"),
+    ("not-json", b"<html>"),
+)
+
+
+@pytest.mark.parametrize(
+    "stored",
+    [case[1] for case in _UNREADABLE_DOCUMENTS],
+    ids=[case[0] for case in _UNREADABLE_DOCUMENTS],
+)
+async def test_a_stored_object_that_is_not_a_strict_json_object_is_not_served(
+    client: TestClient,
+    db_session: AsyncSession,
+    caplog: pytest.LogCaptureFixture,
+    stored: bytes,
+) -> None:
+    """T709: the stored bytes are spliced into a JSON body, and these would make that body one no
+    `JSON.parse` accepts (a byte-order mark, `NaN`, bytes that are not UTF-8) or no document at all
+    (a top-level array). Serving them would answer a corrupt body as a success; it is answered as
+    the stored object gone wrong - a `500` in the API's one error envelope - and logged as a
+    defect."""
+    game_id = _NAMES_GAME_ID_BASE + 9
+
+    # The migrations' `fileConfig` disables loggers that already exist, which would hide the line.
+    logging.getLogger("aoe2stats_api").disabled = False
+    with caplog.at_level(logging.ERROR, logger="aoe2stats_api"):
+        response, _ = await _serve_document(client, db_session, game_id=game_id, document=stored)
+
+    assert response.status_code == 500
+    assert response.json()["error"]["code"] == "internal_error"
+    messages = [record.getMessage() for record in caplog.records if record.name == "aoe2stats_api"]
+    assert any("not a readable JSON object" in message for message in messages), messages
 
 
 # ================================================================================================

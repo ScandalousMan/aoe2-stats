@@ -460,6 +460,29 @@ def available_to(entity: EntityRef, *, civilisation: str) -> Answer[bool] | Know
     return _civilisation_qualified(entity, civilisation=civilisation, field_name="available_to")
 
 
+def _name_answer(resolved: Snapshot, kind: str, entity_id: str) -> Answer[str]:
+    """The one lookup body `name` and `name_in_snapshot` share: `entity_id`'s display name within
+    `resolved`'s `rules.json`, exactly as vendored, or the bare id with `source="unresolved"` for
+    an id the snapshot does not name (003 FR-043a). Which snapshot is `resolved` is the only thing
+    the two public functions differ on."""
+    kind_table = _rules(resolved.directory).get("entities", {}).get(kind, {})
+    record = kind_table.get(entity_id)
+    display_name = record.get("name") if record is not None else None
+    if not display_name:
+        return Answer(
+            value=entity_id,
+            snapshot_identity=resolved.identity,
+            source=_UNRESOLVED_SOURCE,
+            effects=(),
+        )
+    return Answer(
+        value=display_name,
+        snapshot_identity=resolved.identity,
+        source=record["table_origin"],
+        effects=(),
+    )
+
+
 def name(entity: EntityRef) -> Answer[str] | KnowledgeGap:
     """`entity`'s display name — the one query in this surface that is **not**
     civilisation-qualified. An identifier the resolved snapshot does not recognise degrades to the
@@ -472,19 +495,38 @@ def name(entity: EntityRef) -> Answer[str] | KnowledgeGap:
     resolved = snapshot.snapshot_for(entity.build)
     if isinstance(resolved, KnowledgeGap):
         return resolved
-    kind_table = _rules(resolved.directory).get("entities", {}).get(entity.kind, {})
-    record = kind_table.get(entity.id)
-    display_name = record.get("name") if record is not None else None
-    if not display_name:
-        return Answer(
-            value=entity.id,
-            snapshot_identity=resolved.identity,
-            source=_UNRESOLVED_SOURCE,
-            effects=(),
-        )
-    return Answer(
-        value=display_name,
-        snapshot_identity=resolved.identity,
-        source=record["table_origin"],
-        effects=(),
+    return _name_answer(resolved, entity.kind, entity.id)
+
+
+def name_in_snapshot(
+    kind: str, entity_id: str, identity: SnapshotIdentity
+) -> Answer[str] | KnowledgeGap:
+    """`name`, addressed by a snapshot's **identity** instead of by build (T709): what the snapshot
+    a published document names calls this entity.
+
+    A document records the identity it was produced under (`identity.knowledge`), and reading it
+    back must not depend on which snapshot is promoted for its build today — a knowledge refresh
+    promotes a second snapshot and the first must stay answerable by the identity that recorded
+    it (FR-043). So this matches a loaded snapshot (promoted or not) on **all four** identity
+    fields, `source`, `source_version`, `describes_build` and `digest`, not the digest alone: two
+    snapshots can carry the same content under different identities. There is no nearest, no latest
+    and no build argument (FR-027).
+
+    No loaded snapshot has that identity: a gap, `cause="no-snapshot-for-build"` — the nearest
+    cause in the closed set (data-model.md §7), naming `identity.describes_build` as its build and
+    the full identity in `detail`; nothing about the identity asked for is known, whatever the build
+    has otherwise. An identifier the matched snapshot does not name is the same `Answer` `name`
+    gives, `source="unresolved"` and the bare id as its value.
+    """
+    for loaded in snapshot.load_all_snapshots():
+        if loaded.identity == identity:
+            return _name_answer(loaded, kind, entity_id)
+    return KnowledgeGap(
+        cause="no-snapshot-for-build",
+        build=identity.describes_build,
+        detail=(
+            f"no loaded snapshot has identity source={identity.source!r}, "
+            f"source_version={identity.source_version!r}, "
+            f"describes_build={identity.describes_build}, digest={identity.digest!r}"
+        ),
     )

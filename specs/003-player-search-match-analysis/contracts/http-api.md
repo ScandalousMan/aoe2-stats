@@ -200,10 +200,13 @@ enumerated here — and the response an API caller receives is unaffected.
 
 `GET /api/matches/{game_id}/analysis` answers an envelope (T709), `{"document": <the stored object,
 byte for byte>, "names": {"technology": {"101": "Feudal Age", "999": null}, "unit": {...},
-"building": {...}}}`. `names` has an entry for every technology, unit and building id the document
-references and nothing else; a name is `null` where the knowledge snapshot the document's own
-`identity.knowledge` names does not name the id, and every name is `null` when the document names no
-snapshot. The stored object is never modified.
+"building": {...}}}`. `names` has an entry for each id the analysis page names: every key of a participant's
+`age_up_commands`, every `researches[].technology_id`, every `builds[].building_id` and every
+`trainings[].unit_id`, and nothing else. A training's `building_id` is the producing building, which
+the page shows no name for, so it is not in `names`. A name is `null` where the knowledge snapshot
+the document's own `identity.knowledge` names does not name the id, and every name is `null` when
+the document names no snapshot or the snapshots cannot be read. A stored object that is not a
+strict-UTF-8 JSON object is `500 internal_error`, not served. The stored object is never modified.
 
 `POST /api/analyze` is the one route in this contract that `api/index.py` does not serve. It is
 `api/analyze.py`, resolved by the filesystem before the `/api/(.*)` rewrite, exactly as

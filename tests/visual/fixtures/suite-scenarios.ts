@@ -321,8 +321,9 @@ function analysisParticipant(profileId: number, teamId: number, civId: number, r
     civ_id: civId,
     resolved_team_id: teamId,
     // Every one of the four lists a participant card renders, non-empty: ids `ANALYSIS_NAMES`
-    // below leaves `null`, so each row is an `UnresolvedIdentifier`, as in production for an id the
-    // knowledge snapshot does not name.
+    // below deliberately leaves `null`, so each row is an `UnresolvedIdentifier`. In production the
+    // snapshot names these ids (Villager, House, Loom, ...); the fixture does not, so that no
+    // full-page baseline moves.
     builds: [
       { building_id: 70, world_time_ms: 15_000 },
       { building_id: 109, world_time_ms: 62_000 },

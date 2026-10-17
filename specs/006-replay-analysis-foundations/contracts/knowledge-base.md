@@ -94,6 +94,7 @@ def prerequisites(entity, *, civilisation) -> Answer[Sequence[EntityRef]] | Know
 def produced_at(entity, *, civilisation) -> Answer[EntityRef] | KnowledgeGap
 def available_to(entity, *, civilisation) -> Answer[bool] | KnowledgeGap
 def name(entity) -> Answer[str] | KnowledgeGap
+def name_in_snapshot(kind, entity_id, identity: SnapshotIdentity) -> Answer[str] | KnowledgeGap
 ```
 
 - `prerequisites` answers a gap with cause `field-absent` for every entity the snapshot names: the
@@ -133,6 +134,16 @@ recording's own header — every ally's civilisation, the participant's own incl
 so a team-conditioned effect is applied for real rather than merely treated as modelled, and an
 unmodelled ally is what gaps every cost and time query for that ally's teammates (step 1, above), not
 only the query naming the unmodelled civilisation directly.
+
+`name_in_snapshot` (T709) is `name` addressed by snapshot identity instead of by build: what the
+snapshot a published document names (`identity.knowledge`) calls an entity, so an old analysis keeps
+its names after a refresh promotes another snapshot for the same build. It matches a loaded snapshot,
+promoted or not, on all four identity fields (`source`, `source_version`, `describes_build`,
+`digest`), never on the digest or the build alone, and has no nearest or latest. No loaded snapshot
+with that identity is a gap, cause `no-snapshot-for-build`, naming the identity's build and carrying
+the identity in `detail`; no new cause, because the closed set is persisted. An id the snapshot does
+not name is `name`'s own answer, below. The name is returned as vendored: turning it into a label
+is the caller's presentation step.
 
 `name` is not civilisation-qualified and an unresolvable identifier degrades to the bare identifier
 at the presentation boundary, as 003 FR-043a already requires — it never gaps an analysis.

@@ -27,13 +27,13 @@ Three independent claims, each checked structurally rather than by review:
 (`parse_effects_toml`, `normalise_pack`, `rules_json_bytes`, ...) that answer no yes/no question at
 all. A blind walk of every public function in every module would demand `gaps.KnowledgeGap` as the
 second branch of all of these and fail on every one of them — not because they are wrong, but
-because they are not queries. The contract's own "query surface" section names exactly seven
+because they are not queries. The contract's own "query surface" section names exactly eight
 functions, all in `query.py`, as the surface this discipline governs.
 
 `snapshot.snapshot_for` is added deliberately even though it lives outside `query.py`: it already
 returns exactly `Snapshot | gaps.KnowledgeGap` (`query.py`'s own module docstring cites it as what
 every query resolves a build from), asks the same shape of yes/no question ("is there a promoted
-snapshot for this build") the seven `query.py` functions ask, and is a real, standalone entry point
+snapshot for this build") the eight `query.py` functions ask, and is a real, standalone entry point
 `query.py`'s own callers could reach directly. `snapshot.py`'s other public functions
 (`load_snapshot`, `load_all_snapshots`, `load_resolvable_snapshots`, `parse_identity`,
 `parse_promotion`, `compute_digest`, `list_snapshot_directories`) are excluded on purpose: they are
@@ -51,7 +51,7 @@ imported names (`_civilisations_modelled`, `_raw_value_for_field`, `_rules`), ra
 calling the six public functions this file already proves return the guaranteed union — so SC-008's
 "by construction rather than by inspection" did not, in fact, reach the pass that produces the
 published gap list, even though this paragraph, before T652b, read as though the exclusion made
-that harmless. `test_coverage_never_imports_a_private_name_from_query` below is the narrower
+that harmless. `test_no_module_of_the_package_takes_a_private_name_from_query` below is the narrower
 structural check this task adds to close that gap: `coverage.py` is swept too, for the one property
 that actually matters given its different return shape — that it imports no underscore-prefixed
 name from `query.py` at all, so every `gaps.KnowledgeGap` it can produce came from calling the
@@ -61,7 +61,7 @@ not, and structurally cannot, reach.
 Within the modules actually swept by the union check, the walk itself is general: it iterates
 every public, module-defined function `_QUERY_MODULES` names for a module, rather than importing
 and calling each one by name, so a new query added under an already-named function set is covered
-without this file changing. `query.py`'s own entry names its seven contract functions explicitly
+without this file changing. `query.py`'s own entry names its eight contract functions explicitly
 rather than sweeping every public function blindly (`only=None`, this file's shape before T652b):
 `rules_overrides` (T652b) is a real, public, module-level function in `query.py` that answers no
 yes/no question at all — a context-manager test/config seam, not a query — and a blind walk would
@@ -96,7 +96,7 @@ def _public_module_functions(module: types.ModuleType) -> list[tuple[str, object
     `inspect.unwrap` looks through any decorator (`functools.cache`, ...) before checking
     `__module__`, so a future public query wrapped in a decorator is still recognised as belonging
     to `module` rather than silently skipped — the walk stays general even if a later query gains
-    a decorator none of today's seven have.
+    a decorator none of today's eight have.
     """
     found: list[tuple[str, object]] = []
     for name, obj in vars(module).items():
@@ -148,11 +148,11 @@ def _assert_is_answer_or_gap_union(name: str, annotation: object) -> None:
     )
 
 
-#: `query.py`'s own seven contract functions (data-model.md's "The query surface") — named
+#: `query.py`'s own eight contract functions (data-model.md's "The query surface") — named
 #: explicitly here since T652b, rather than swept blindly (`only=None`), because `query.py` now also
 #: exposes `rules_overrides`, a context-manager test/config seam (this module's own docstring:
 #: "the guarantee was weaker than the test read") that answers no yes/no question at all and is not
-#: part of the contract's query surface. Naming the seven here, the same way `snapshot.py`'s own
+#: part of the contract's query surface. Naming the eight here, the same way `snapshot.py`'s own
 #: entry below already names its one, is what still lets a function silently regressing away from
 #: this set fail loudly (the `found_names == only` assertion), without demanding the answer-or-gap
 #: union of a helper that was never a query in the first place.
@@ -165,6 +165,7 @@ _QUERY_SURFACE_FUNCTION_NAMES: frozenset[str] = frozenset(
         "produced_at",
         "available_to",
         "name",
+        "name_in_snapshot",
     }
 )
 
@@ -194,16 +195,16 @@ def test_every_public_query_returns_the_answer_or_gap_union() -> None:
             _assert_is_answer_or_gap_union(f"{module.__name__}.{name}", _return_type_hint(fn))
             swept += 1
     # A walk that silently found nothing would make every assertion above vacuously true — the
-    # real query surface has seven functions in `query.py` alone, so anything under that proves
+    # real query surface has eight functions in `query.py` alone, so anything under that proves
     # the walk itself broke, not that the package shrank to nothing worth checking.
-    assert swept >= 7, (
+    assert swept >= 8, (
         f"only {swept} public quer{'y' if swept == 1 else 'ies'} were swept — the introspection "
         "walk itself looks broken (see _public_module_functions), not the package"
     )
 
 
-def test_query_py_defines_exactly_the_contracts_seven_query_functions() -> None:
-    """Guards against the walk quietly narrowing: `_QUERY_MODULES` names the seven explicitly
+def test_query_py_defines_exactly_the_contracts_eight_query_functions() -> None:
+    """Guards against the walk quietly narrowing: `_QUERY_MODULES` names the eight explicitly
     (T652b), so nothing would fail there if a function accidentally lost its `def`-level visibility
     or was renamed away from what the contract promises. This is the one hand-written name check
     this file keeps for exactly that regression.
@@ -221,50 +222,19 @@ def test_query_py_defines_exactly_the_contracts_seven_query_functions() -> None:
 # ------------------------------------------------------- coverage.py delegates, never reimplements
 
 
-def test_coverage_never_imports_a_private_name_from_query() -> None:
-    """T652b: `coverage.coverage` cannot be swept by
-    `test_every_public_query_returns_the_answer_or_gap_union` — its own return type is
-    `Sequence[gaps.KnowledgeGap]`, a list, not the single answer-or-gap union that check asserts
-    (module docstring, "`coverage.coverage` is excluded from the union sweep above"). SC-008's "by
-    construction rather than by inspection" still has to reach it somehow, so this is the narrower,
-    structural property that actually matters given the different shape: `coverage.py` must import
-    no underscore-prefixed name from `aoe2stats_knowledge.query` at all, so every
-    `gaps.KnowledgeGap` it can produce came from calling `query.py`'s public, already-swept
-    functions, never from a second, private construction of its own.
-
-    Before T652b, `coverage.py` imported three (`_civilisations_modelled`, `_raw_value_for_field`,
-    `_rules`) and reimplemented `query._civilisation_qualified`'s whole step order around them —
-    exactly the shape this assertion now refuses.
-
-    **T652k: `ast.ImportFrom` alone cannot see the module-import form.** `coverage.py` actually
-    reads `from aoe2stats_knowledge import effects, gaps, query, snapshot` — a module import, with
-    every call made by attribute (`query.cost(...)`, ...) — so the `ImportFrom` walk above forbids
-    exactly the import shape T652b removed and is structurally blind to the shape it introduced:
-    `query._civilisation_qualified(...)` or any other `query._foo(...)` call passes it today. The
-    second walk below closes that: any `ast.Attribute` whose value is the bare name `query` and
-    whose own attribute starts with `_` fails it, so a private call written as an attribute access
-    is caught the same way a private import already was. Both forms are checked; neither replaces
-    the other.
-    """
-    tree = ast.parse(
-        (_KNOWLEDGE_SRC_ROOT / "coverage.py").read_text(encoding="utf-8"),
-        filename="coverage.py",
-    )
-    private_query_imports = sorted(
+def _private_query_uses(source: str) -> tuple[list[str], list[str]]:
+    """The underscore-prefixed names `source` takes from `query.py`: by `from
+    aoe2stats_knowledge.query import _x` and by attribute access on the bare name `query`
+    (`query._x(...)`). The two forms are both checked; neither replaces the other."""
+    tree = ast.parse(source)
+    imported = sorted(
         alias.name
         for node in ast.walk(tree)
         if isinstance(node, ast.ImportFrom) and node.module == "aoe2stats_knowledge.query"
         for alias in node.names
         if alias.name.startswith("_")
     )
-    assert private_query_imports == [], (
-        f"coverage.py imports private name(s) {private_query_imports!r} from query.py — every gap "
-        "it produces must come from calling query.py's public, structurally-guaranteed "
-        "answer-or-gap functions instead (contracts/knowledge-base.md, 'The query surface'; "
-        "SC-008's 'by construction rather than by inspection')"
-    )
-
-    private_query_attribute_accesses = sorted(
+    accessed = sorted(
         node.attr
         for node in ast.walk(tree)
         if isinstance(node, ast.Attribute)
@@ -272,14 +242,50 @@ def test_coverage_never_imports_a_private_name_from_query() -> None:
         and node.value.id == "query"
         and node.attr.startswith("_")
     )
-    assert private_query_attribute_accesses == [], (
-        f"coverage.py reads private attribute(s) {private_query_attribute_accesses!r} off "
-        "query.py's module object (e.g. query._civilisation_qualified(...)) — the module-import "
-        "form of exactly the same defect an ImportFrom of a private name would be; every gap "
-        "coverage.py produces must come from calling query.py's public, structurally-guaranteed "
-        "answer-or-gap functions instead (contracts/knowledge-base.md, 'The query surface'; "
-        "SC-008's 'by construction rather than by inspection')"
+    return imported, accessed
+
+
+def test_no_module_of_the_package_takes_a_private_name_from_query() -> None:
+    """T652b, widened by T709: every module under `src/` other than `query.py` itself imports no
+    underscore-prefixed name from `query.py`, by `from ... import _x` or as `query._x`, so every
+    answer or gap it produces came from calling `query.py`'s public, already-swept functions, never
+    from a second, private construction of its own.
+
+    T652b wrote this for `coverage.py` alone, which reimplemented `_civilisation_qualified`'s whole
+    step order through three privately imported names - exactly the shape SC-008's "by
+    construction rather than by inspection" refuses - and could not be swept by the union check
+    (`coverage.coverage` returns a list). T709 found the same shape in a module the check did not
+    name: a label lookup that imported `query._rules` and copied `name`'s body, a second query
+    surface that returned a bare value. The check now reads the whole package.
+    """
+    modules = sorted(
+        path for path in _KNOWLEDGE_SRC_ROOT.glob("*.py") if path.name not in {"query.py"}
     )
+    assert "coverage.py" in {path.name for path in modules}, "the walk lost the package"
+    violations = {}
+    for path in modules:
+        imported, accessed = _private_query_uses(path.read_text(encoding="utf-8"))
+        if imported or accessed:
+            violations[path.name] = {"imports": imported, "attribute accesses": accessed}
+    assert violations == {}, (
+        f"private name(s) taken from query.py: {violations!r} - every answer or gap a module "
+        "produces must come from query.py's public, structurally-guaranteed answer-or-gap "
+        "functions instead (contracts/knowledge-base.md, 'The query surface'; SC-008's 'by "
+        "construction rather than by inspection')"
+    )
+
+
+def test_the_private_query_guard_sees_both_forms() -> None:
+    """The absence case, planted: both spellings of the same defect, and a public use that must
+    pass."""
+    assert _private_query_uses("from aoe2stats_knowledge.query import _rules\n") == (["_rules"], [])
+    assert _private_query_uses("from aoe2stats_knowledge import query\nquery._rules('x')\n") == (
+        [],
+        ["_rules"],
+    )
+    assert _private_query_uses(
+        "from aoe2stats_knowledge import query\nquery.name_in_snapshot('unit', '1', i)\n"
+    ) == ([], [])
 
 
 # ------------------------------------------------------- FR-026: no network import in the package

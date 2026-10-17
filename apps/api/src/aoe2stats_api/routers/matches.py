@@ -116,11 +116,12 @@ disagree (`contracts/analysis-document.md`: "a recompute has to be triggered"). 
 window (T666c) and a missing retained recording both read as not stale: a click would do nothing.
 That is one more small row read, no object-store read and no parse.
 
-**The import is lazy and is the API's one analyzer import (FR-049).** `_is_stale` and
+**The import is lazy and is this file's one analyzer import (FR-049).** `_is_stale` and
 `_installed_engine` import `aoe2stats_analyzer.staleness` inside the function, so importing the
 app still loads neither the analyzer nor `aoe2rec_py` (`test_engine_isolation.py`), and
 `tests/architecture/test_feature_006_boundaries.py` allows exactly that import from this file
-and no other.
+and no other. (The API's only other analyzer import is `routers/analysis.py`'s, of
+`aoe2stats_analyzer.names`, granted to that file alone.)
 `_installed_engine()` describes the engine from distribution metadata (`importlib.metadata`) and
 never imports `aoe2stats_replay_engine.aoe2rec`: that module imports `aoe2rec_py`, the native PyO3
 extension, at its own module scope, and anything reachable from `aoe2stats_api.app` doing that is
@@ -130,9 +131,9 @@ A deployment fault while computing the digest (a snapshot that fails its digest,
 requirement) is logged and reads as not stale: it must not take the match page down for a button,
 and the analyzer refuses the same fault before it recomputes anything (T666b).
 `routers/analysis.py`'s own `GET /api/matches/{game_id}/analysis` needs no such comparison — it
-only ever serves the published document whole or answers `404` — so this function and its query
-live here, not there (that router's own module docstring: "share no response shape to keep in
-sync").
+serves the published document whole, with the names its identifiers resolve to, or answers `404`
+— so this function and its query live here, not there (that router's own module docstring:
+"share no response shape to keep in sync").
 
 **Widened past `stored` alone (M12, third-round review).** The filter used to read `capture.status
 is not CaptureStatus.STORED or capture.profile_id in owned_profile_ids` — `stored` only.
