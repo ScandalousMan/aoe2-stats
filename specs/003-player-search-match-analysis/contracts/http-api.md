@@ -205,7 +205,8 @@ byte for byte>, "names": {"technology": {"101": "Feudal Age", "999": null}, "uni
 `trainings[].unit_id`, and nothing else. A training's `building_id` is the producing building, which
 the page shows no name for, so it is not in `names`. A name is `null` where the knowledge snapshot
 the document's own `identity.knowledge` names does not name the id, and every name is `null` when
-the document names no snapshot or the snapshots cannot be read. A stored object that is not a
+the document names no snapshot or the snapshots cannot be read. A client reads a missing entry as
+`null`: when the module that resolves names cannot be imported, the three tables are empty. A stored object that is not a
 strict-UTF-8 JSON object is `500 internal_error`, not served. The stored object is never modified.
 
 `POST /api/analyze` is the one route in this contract that `api/index.py` does not serve. It is

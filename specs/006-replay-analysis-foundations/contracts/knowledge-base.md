@@ -141,7 +141,9 @@ its names after a refresh promotes another snapshot for the same build. It match
 promoted or not, on all four identity fields (`source`, `source_version`, `describes_build`,
 `digest`), never on the digest or the build alone, and has no nearest or latest. No loaded snapshot
 with that identity is a gap, cause `no-snapshot-for-build`, naming the identity's build and carrying
-the identity in `detail`; no new cause, because the closed set is persisted. An id the snapshot does
+the identity in `detail`; no new cause, because the closed set is persisted. That build may well have
+a promoted snapshot (the identity differs in another field), so this gap is never published or
+recorded as a fact about build coverage; its one caller turns it into an unresolved name. An id the snapshot does
 not name is `name`'s own answer, below. The name is returned as vendored: turning it into a label
 is the caller's presentation step.
 
