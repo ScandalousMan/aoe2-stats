@@ -69,15 +69,15 @@ describe('Menu', () => {
     // The disabled colour must be the only one emitted: a naive concatenation of the primary
     // and disabled colour classes leaves the winner decided by stylesheet emission order rather
     // than by the component (T035c).
-    expect(trigger.className).toMatch(/\btext-text-disabled\b/)
-    expect(trigger.className).not.toMatch(/\btext-text-primary\b/)
+    expect(trigger).toHaveClass('text-text-disabled')
+    expect(trigger).not.toHaveClass('text-text-primary')
   })
 
   it('a non-empty trigger renders the primary text colour, never the disabled one', () => {
     render(<Menu variant="selection" triggerLabel="aoe2guy" items={items} />)
     const trigger = screen.getByRole('button', { name: 'aoe2guy' })
-    expect(trigger.className).toMatch(/\btext-text-primary\b/)
-    expect(trigger.className).not.toMatch(/\btext-text-disabled\b/)
+    expect(trigger).toHaveClass('text-text-primary')
+    expect(trigger).not.toHaveClass('text-text-disabled')
   })
 
   // T560 (FR-038): the trigger paints the same resting recipe as `Button`'s `secondary` variant
@@ -90,10 +90,10 @@ describe('Menu', () => {
   it('a non-empty trigger paints an active fill and boundary, and stops transitioning under reduced motion', () => {
     render(<Menu variant="selection" triggerLabel="aoe2guy" items={items} />)
     const trigger = screen.getByRole('button', { name: 'aoe2guy' })
-    expect(trigger.className).toMatch(/\bactive:bg-background\b/)
-    expect(trigger.className).toMatch(/\bactive:ring-2\b/)
-    expect(trigger.className).toMatch(/\bactive:ring-border-strong\b/)
-    expect(trigger.className).toMatch(/\bmotion-reduce:duration-0\b/)
+    expect(trigger).toHaveClass('active:bg-background')
+    expect(trigger).toHaveClass('active:ring-2')
+    expect(trigger).toHaveClass('active:ring-border-strong')
+    expect(trigger).toHaveClass('motion-reduce:duration-0')
   })
 
   // shared-primitives.md#Menu "active — item fill `background` with boundary `border-strong` on
@@ -104,11 +104,11 @@ describe('Menu', () => {
     render(<Menu variant="selection" triggerLabel="aoe2guy" items={items} />)
     await user.click(screen.getByRole('button', { name: 'aoe2guy' }))
     const current = screen.getByRole('menuitemradio', { name: /aoe2guy/ })
-    expect(current.className).toMatch(/\bhover:bg-surface-sunken\b/)
-    expect(current.className).toMatch(/\bactive:bg-background\b/)
-    expect(current.className).toMatch(/\bactive:border-l-border-strong\b/)
-    expect(current.className).toMatch(/\bborder-l-transparent\b/)
-    expect(current.className).toMatch(/\bmotion-reduce:duration-0\b/)
+    expect(current).toHaveClass('hover:bg-surface-sunken')
+    expect(current).toHaveClass('active:bg-background')
+    expect(current).toHaveClass('active:border-l-border-strong')
+    expect(current).toHaveClass('border-l-transparent')
+    expect(current).toHaveClass('motion-reduce:duration-0')
   })
 
   it('paints the footer item the same active/reduced-motion treatment as a regular menu item', async () => {
@@ -123,10 +123,10 @@ describe('Menu', () => {
     )
     await user.click(screen.getByRole('button', { name: 'Manage' }))
     const footer = screen.getByRole('menuitem', { name: 'Add another' })
-    expect(footer.className).toMatch(/\bhover:bg-surface-sunken\b/)
-    expect(footer.className).toMatch(/\bactive:bg-background\b/)
-    expect(footer.className).toMatch(/\bactive:border-l-border-strong\b/)
-    expect(footer.className).toMatch(/\bmotion-reduce:duration-0\b/)
+    expect(footer).toHaveClass('hover:bg-surface-sunken')
+    expect(footer).toHaveClass('active:bg-background')
+    expect(footer).toHaveClass('active:border-l-border-strong')
+    expect(footer).toHaveClass('motion-reduce:duration-0')
   })
 
   // shared-primitives.md §Menu "hover" — decided 2026-09-28: the trigger follows `Button`
@@ -135,10 +135,10 @@ describe('Menu', () => {
   it('a non-empty trigger underlines its label on hover and shifts on press (FR-037, 2026-09-28)', () => {
     render(<Menu variant="selection" triggerLabel="aoe2guy" items={items} />)
     const trigger = screen.getByRole('button', { name: 'aoe2guy' })
-    expect(trigger.className).toMatch(/\bhover:underline\b/)
-    expect(trigger.className).toMatch(/\bhover:decoration-2\b/)
-    expect(trigger.className).toMatch(/\bhover:underline-offset-2\b/)
-    expect(trigger.className).toMatch(/\bactive:underline-offset-4\b/)
+    expect(trigger).toHaveClass('hover:underline')
+    expect(trigger).toHaveClass('hover:decoration-2')
+    expect(trigger).toHaveClass('hover:underline-offset-2')
+    expect(trigger).toHaveClass('active:underline-offset-4')
   })
 
   // "Menu items' hover signal" (shared-primitives.md, decided 2026-09-28): the row-shaped item
@@ -149,11 +149,11 @@ describe('Menu', () => {
     render(<Menu variant="selection" triggerLabel="aoe2guy" items={items} />)
     await user.click(screen.getByRole('button', { name: 'aoe2guy' }))
     const current = screen.getByRole('menuitemradio', { name: /aoe2guy/ })
-    expect(current.className).toMatch(/\bgroup\/menu-item\b/)
+    expect(current).toHaveClass('group/menu-item')
     const label = within(current).getByText('aoe2guy')
-    expect(label.className).toMatch(/\bgroup-hover\/menu-item:underline\b/)
-    expect(label.className).toMatch(/\bgroup-hover\/menu-item:decoration-2\b/)
-    expect(label.className).toMatch(/\bgroup-hover\/menu-item:underline-offset-2\b/)
+    expect(label).toHaveClass('group-hover/menu-item:underline')
+    expect(label).toHaveClass('group-hover/menu-item:decoration-2')
+    expect(label).toHaveClass('group-hover/menu-item:underline-offset-2')
   })
 
   it('never underlines a disabled item label, even through the group', async () => {
@@ -169,7 +169,7 @@ describe('Menu', () => {
     )
     await user.click(screen.getByRole('button', { name: 'Manage' }))
     const label = screen.getByText('Unavailable action')
-    expect(label.className ?? '').not.toMatch(/group-hover\/menu-item:underline/)
+    expect(label).not.toHaveClass('group-hover/menu-item:underline')
   })
 
   // §16.2's sibling (structural-tier.md — the hover signal's "loading" exclusion): a loading item
@@ -193,14 +193,14 @@ describe('Menu', () => {
 
     const loadingItem = screen.getByRole('menuitem', { name: 'Fetching' })
     expect(loadingItem).toHaveAttribute('aria-busy', 'true')
-    expect(loadingItem.className).not.toMatch(/\bhover:bg-surface-sunken\b/)
+    expect(loadingItem).not.toHaveClass('hover:bg-surface-sunken')
     const loadingLabel = within(loadingItem).getByText('Fetching')
-    expect(loadingLabel.className ?? '').not.toMatch(/group-hover\/menu-item:underline/)
+    expect(loadingLabel).not.toHaveClass('group-hover/menu-item:underline')
 
     const readyItem = screen.getByRole('menuitem', { name: 'Ready action' })
-    expect(readyItem.className).toMatch(/\bhover:bg-surface-sunken\b/)
+    expect(readyItem).toHaveClass('hover:bg-surface-sunken')
     const readyLabel = within(readyItem).getByText('Ready action')
-    expect(readyLabel.className).toMatch(/\bgroup-hover\/menu-item:underline\b/)
+    expect(readyLabel).toHaveClass('group-hover/menu-item:underline')
   })
 
   it('underlines the footer item directly on its own button on hover (FR-037, 2026-09-28)', async () => {
@@ -215,9 +215,9 @@ describe('Menu', () => {
     )
     await user.click(screen.getByRole('button', { name: 'Manage' }))
     const footer = screen.getByRole('menuitem', { name: 'Add another' })
-    expect(footer.className).toMatch(/\bhover:underline\b/)
-    expect(footer.className).toMatch(/\bhover:decoration-2\b/)
-    expect(footer.className).toMatch(/\bhover:underline-offset-2\b/)
+    expect(footer).toHaveClass('hover:underline')
+    expect(footer).toHaveClass('hover:decoration-2')
+    expect(footer).toHaveClass('hover:underline-offset-2')
   })
 
   // T572 scenario 9 remediation (defect 1): shared-primitives.md#Menu's "selection" state used to
@@ -239,8 +239,8 @@ describe('Menu', () => {
     // Both items reserve the identical glyph slot (so labels stay aligned); only the checked one
     // is actually painted — neither relies on the focus ring, which only one item can carry at a
     // time and which is a separate outline, not part of this glyph at all.
-    expect(checkedGlyph?.getAttribute('class')).not.toMatch(/\binvisible\b/)
-    expect(uncheckedGlyph?.getAttribute('class')).toMatch(/\binvisible\b/)
+    expect(checkedGlyph).not.toHaveClass('invisible')
+    expect(uncheckedGlyph).toHaveClass('invisible')
   })
 
   // `actions` items never carry a checked concept (aria-checked is only meaningful on
@@ -334,7 +334,7 @@ describe('Menu', () => {
     // Scoped to the menu itself: the same text is also mirrored into the live region below.
     const message = within(screen.getByRole('menu')).getByText('We could not unlink that profile')
     expect(message.tagName).toBe('P')
-    expect(message.className).toMatch(/\btext-danger\b/)
+    expect(message).toHaveClass('text-danger')
     const item = screen.getByRole('menuitem', { name: 'Unlink this profile' })
     expect(item).toHaveAttribute('aria-describedby', message.id)
     expect(screen.getByRole('menu')).toBeInTheDocument()
@@ -442,8 +442,8 @@ describe('Menu', () => {
   it('the trigger clears the 44px touch floor at min-h-12, not md/h-10 (FR-018, FR-019)', () => {
     render(<Menu variant="selection" triggerLabel="aoe2guy" items={items} />)
     const trigger = screen.getByRole('button', { name: 'aoe2guy' })
-    expect(trigger.className).toMatch(/\bmin-h-12\b/)
-    expect(trigger.className).not.toMatch(/\bh-10\b/)
+    expect(trigger).toHaveClass('min-h-12')
+    expect(trigger).not.toHaveClass('h-10')
   })
 
   // Same shape as `MatchRow.test.tsx`'s own helper (`mockMatchMediaAt`): jsdom has no layout
@@ -485,15 +485,15 @@ describe('Menu', () => {
       const { rerender } = render(<Menu variant="selection" triggerLabel="aoe2guy" items={items} />)
       await user.click(screen.getByRole('button', { name: 'aoe2guy' }))
       const defaultSurface = screen.getByRole('menu')
-      expect(defaultSurface.className).toMatch(/\bstart-0\b/)
-      expect(defaultSurface.className).not.toMatch(/\bend-0\b/)
+      expect(defaultSurface).toHaveClass('start-0')
+      expect(defaultSurface).not.toHaveClass('end-0')
 
       await user.keyboard('{Escape}')
       rerender(<Menu variant="selection" triggerLabel="aoe2guy" items={items} align="end" />)
       await user.click(screen.getByRole('button', { name: 'aoe2guy' }))
       const endSurface = screen.getByRole('menu')
-      expect(endSurface.className).toMatch(/\bend-0\b/)
-      expect(endSurface.className).not.toMatch(/\bstart-0\b/)
+      expect(endSurface).toHaveClass('end-0')
+      expect(endSurface).not.toHaveClass('start-0')
     } finally {
       restore()
     }

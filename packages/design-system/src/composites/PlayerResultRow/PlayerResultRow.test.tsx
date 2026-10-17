@@ -53,7 +53,7 @@ describe('PlayerResultRow', () => {
     render(<PlayerResultRow result={base} />)
     const standing = screen.getByText('1042 games')
     expect(standing).toBeInTheDocument()
-    expect(standing.className).toMatch(/type-numeric/)
+    expect(standing).toHaveClass('type-numeric')
   })
 
   // §4: `aoe_profiles`, the local fallback, has no games-played column — the row must show no
@@ -83,7 +83,7 @@ describe('PlayerResultRow', () => {
 
   it('forwards a caller-supplied className onto the row', () => {
     render(<PlayerResultRow result={base} className="custom-marker" />)
-    expect(screen.getByRole('link').className).toMatch(/custom-marker/)
+    expect(screen.getByRole('link')).toHaveClass('custom-marker')
   })
 
   // T560 (FR-038): a keyboard Enter triggers `:active` with no pointer ever hovering, so the row's
@@ -92,8 +92,8 @@ describe('PlayerResultRow', () => {
   it('paints the same fill on active as on hover, matching the row-link category', () => {
     render(<PlayerResultRow result={base} />)
     const link = screen.getByRole('link')
-    expect(link.className).toMatch(/\bhover:bg-surface-sunken\b/)
-    expect(link.className).toMatch(/\bactive:bg-surface-sunken\b/)
+    expect(link).toHaveClass('hover:bg-surface-sunken')
+    expect(link).toHaveClass('active:bg-surface-sunken')
   })
 
   // T591 (FR-037): the fill and the inline-start rule alone were still indistinguishable from
@@ -102,9 +102,9 @@ describe('PlayerResultRow', () => {
   it('adds a full inset boundary ring to the active state', () => {
     render(<PlayerResultRow result={base} />)
     const link = screen.getByRole('link')
-    expect(link.className).toMatch(/\bactive:ring-2\b/)
-    expect(link.className).toMatch(/\bactive:ring-inset\b/)
-    expect(link.className).toMatch(/\bactive:ring-border-strong\b/)
+    expect(link).toHaveClass('active:ring-2')
+    expect(link).toHaveClass('active:ring-inset')
+    expect(link).toHaveClass('active:ring-border-strong')
   })
 
   // "Hover signals" (player-search.md, decided 2026-09-28): the fill alone measured zero surviving
@@ -113,12 +113,12 @@ describe('PlayerResultRow', () => {
   it('carries the named group on the row and the group-hover underline on the alias alone (FR-037, 2026-09-28)', () => {
     render(<PlayerResultRow result={base} />)
     const link = screen.getByRole('link')
-    expect(link.className).toMatch(/\bgroup\/row-link\b/)
-    expect(link.className).not.toMatch(/\bhover:underline\b/)
+    expect(link).toHaveClass('group/row-link')
+    expect(link).not.toHaveClass('hover:underline')
     const alias = screen.getByText(base.alias)
-    expect(alias.className).toMatch(/\bgroup-hover\/row-link:underline\b/)
-    expect(alias.className).toMatch(/\bgroup-hover\/row-link:decoration-2\b/)
-    expect(alias.className).toMatch(/\bgroup-hover\/row-link:underline-offset-2\b/)
+    expect(alias).toHaveClass('group-hover/row-link:underline')
+    expect(alias).toHaveClass('group-hover/row-link:decoration-2')
+    expect(alias).toHaveClass('group-hover/row-link:underline-offset-2')
   })
 
   // §4a, FR-004b, 001 FR-045's remaining half: the source's own Steam claim is carried and
@@ -129,7 +129,7 @@ describe('PlayerResultRow', () => {
       expect(screen.getByText(/Unverified Steam ID:/)).toBeInTheDocument()
       const value = screen.getByText('76561198012345678')
       expect(value).toBeInTheDocument()
-      expect(value.className).toMatch(/type-identifier/)
+      expect(value).toHaveClass('type-identifier')
     })
 
     it('renders no claim line at all when unverifiedSteamId is null, never a placeholder', () => {

@@ -64,13 +64,11 @@ describe('UploadControl — choosing a file (file-chosen)', () => {
     // that won (T035c/T038b, T531) — checked together with the sans body text elsewhere never
     // carrying it, so this is not a house-wide default that would pass regardless of this
     // component.
-    expect(name.className).toMatch(/\btype-machine\b/)
-    expect(screen.getByText(/marked as one you supplied by hand/).className).not.toMatch(
-      /\btype-machine\b/,
-    )
+    expect(name).toHaveClass('type-machine')
+    expect(screen.getByText(/marked as one you supplied by hand/)).not.toHaveClass('type-machine')
 
     const size = screen.getByText(/^\d/, { selector: 'p.text-text-secondary' })
-    expect(size.className).toMatch(/\btext-text-secondary\b/)
+    expect(size).toHaveClass('text-text-secondary')
 
     expect(screen.getByRole('button', { name: 'Remove' })).toBeEnabled()
     expect(screen.getByRole('button', { name: 'Upload and archive' })).toBeEnabled()
@@ -90,9 +88,9 @@ describe('UploadControl — choosing a file (file-chosen)', () => {
     // that actually applies, and the single-line `truncate` this regression came from must be
     // absent, not merely coexisting with it (the T035c lesson: two conflicting classes present
     // together leaves the winner to stylesheet emission order, not to this component).
-    expect(name.className).toMatch(/\bbreak-words\b/)
-    expect(name.className).toMatch(/\bwhitespace-normal\b/)
-    expect(name.className).not.toMatch(/\btruncate\b/)
+    expect(name).toHaveClass('break-words')
+    expect(name).toHaveClass('whitespace-normal')
+    expect(name).not.toHaveClass('truncate')
     // §8's "never cut without recourse": the full name stays in `title` and as real text content
     // even if a future style change re-introduces clipping.
     expect(name).toHaveAttribute('title', longName)
@@ -121,18 +119,18 @@ describe('UploadControl — choosing a file (file-chosen)', () => {
   it('drag-over renders the focus-ring boundary and drops the resting one — not both at once', () => {
     render(<UploadControl gameId={42} onUpload={() => new Promise<void>(() => {})} />)
     const dropZone = getDropZone()
-    expect(dropZone.className).toMatch(/\bborder-border-strong\b/)
-    expect(dropZone.className).not.toMatch(/\bborder-focus-ring\b/)
+    expect(dropZone).toHaveClass('border-border-strong')
+    expect(dropZone).not.toHaveClass('border-focus-ring')
 
     fireEvent.dragOver(dropZone)
     // The T035c lesson applied here: a naive concatenation would leave both boundary classes
     // present and the winner decided by stylesheet emission order, not by this component.
-    expect(dropZone.className).toMatch(/\bborder-focus-ring\b/)
-    expect(dropZone.className).not.toMatch(/\bborder-border-strong\b/)
+    expect(dropZone).toHaveClass('border-focus-ring')
+    expect(dropZone).not.toHaveClass('border-border-strong')
 
     fireEvent.dragLeave(dropZone)
-    expect(dropZone.className).toMatch(/\bborder-border-strong\b/)
-    expect(dropZone.className).not.toMatch(/\bborder-focus-ring\b/)
+    expect(dropZone).toHaveClass('border-border-strong')
+    expect(dropZone).not.toHaveClass('border-focus-ring')
   })
 })
 
@@ -377,15 +375,15 @@ describe('UploadControl — accessibility surface', () => {
     render(<UploadControl gameId={42} onUpload={() => new Promise<void>(() => {})} />)
     const chooseFileButton = screen.getByRole('button', { name: 'Choose file' })
     // `lg` is the only Button size that clears 44px (Button's own spec); `md` is pointer-only.
-    expect(chooseFileButton.className).toMatch(/\bh-12\b/)
-    expect(chooseFileButton.className).toMatch(/focus-visible:outline-2/)
-    expect(chooseFileButton.className).toMatch(/focus-visible:outline-focus-ring/)
+    expect(chooseFileButton).toHaveClass('h-12')
+    expect(chooseFileButton).toHaveClass('focus-visible:outline-2')
+    expect(chooseFileButton).toHaveClass('focus-visible:outline-focus-ring')
 
     chooseFile()
     for (const name of ['Remove', 'Upload and archive']) {
       const button = screen.getByRole('button', { name })
-      expect(button.className).toMatch(/\bh-12\b/)
-      expect(button.className).toMatch(/focus-visible:outline-2/)
+      expect(button).toHaveClass('h-12')
+      expect(button).toHaveClass('focus-visible:outline-2')
     }
   })
 

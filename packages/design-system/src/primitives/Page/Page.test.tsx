@@ -26,7 +26,7 @@ describe('Page', () => {
     )
     const heading = screen.getByRole('heading', { level: 1, name: 'Match history' })
     expect(heading).toBeInTheDocument()
-    expect(heading.className).toMatch(/sr-only/)
+    expect(heading).toHaveClass('sr-only')
   })
 
   it('renders an optional description under the title', () => {
@@ -93,6 +93,6 @@ describe('Page', () => {
 
   it('shows a visible focus-visible outline token on the landmark, not a removed outline', () => {
     render(<Page title="Match history">content</Page>)
-    expect(screen.getByRole('main').className).toMatch(/focus-visible:outline-focus-ring/)
+    expect(screen.getByRole('main')).toHaveClass('focus-visible:outline-focus-ring')
   })
 })

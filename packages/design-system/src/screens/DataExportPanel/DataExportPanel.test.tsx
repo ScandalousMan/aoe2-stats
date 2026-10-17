@@ -151,9 +151,9 @@ describe('DataExportPanel — download link non-colour states (T588, FR-037)', (
       />,
     )
     const link = screen.getByRole('link', { name: 'Download the archive' })
-    expect(link.className).toMatch(/\bhover:underline\b/)
-    expect(link.className).toMatch(/\bhover:decoration-2\b/)
-    expect(link.className).toMatch(/\bhover:underline-offset-2\b/)
+    expect(link).toHaveClass('hover:underline')
+    expect(link).toHaveClass('hover:decoration-2')
+    expect(link).toHaveClass('hover:underline-offset-2')
   })
 
   it('drops the underline position on press, distinct from the hover thickness signal', () => {
@@ -164,8 +164,8 @@ describe('DataExportPanel — download link non-colour states (T588, FR-037)', (
         initialState="ready"
       />,
     )
-    expect(screen.getByRole('link', { name: 'Download the archive' }).className).toMatch(
-      /\bactive:underline-offset-4\b/,
+    expect(screen.getByRole('link', { name: 'Download the archive' })).toHaveClass(
+      'active:underline-offset-4',
     )
   })
 
@@ -178,9 +178,9 @@ describe('DataExportPanel — download link non-colour states (T588, FR-037)', (
       />,
     )
     const link = screen.getByRole('link', { name: 'Download the archive' })
-    expect(link.className).not.toMatch(/active:ring-2/)
-    expect(link.className).not.toMatch(/active:ring-offset/)
-    expect(link.className).not.toMatch(/active:ring-accent-contrast/)
+    expect(link).not.toHaveClass('active:ring-2')
+    expect(Array.from(link.classList).filter((c) => /(^|:)active:ring-offset/.test(c))).toEqual([])
+    expect(link).not.toHaveClass('active:ring-accent-contrast')
   })
 })
 

@@ -18,8 +18,8 @@ describe('Badge', () => {
     (variant) => {
       render(<Badge variant={variant}>Label</Badge>)
       const badge = screen.getByText('Label')
-      expect(badge.className).toContain('bg-surface-raised')
-      expect(badge.className).toContain(`text-${variant}`)
+      expect(badge).toHaveClass('bg-surface-raised')
+      expect(badge).toHaveClass(`text-${variant}`)
     },
   )
 })

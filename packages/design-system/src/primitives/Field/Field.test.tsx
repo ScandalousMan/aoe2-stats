@@ -175,7 +175,7 @@ describe('Field', () => {
       </Field>,
     )
     const label = screen.getByText('Search for a player')
-    expect(label.className).toMatch(/sr-only/)
+    expect(label).toHaveClass('sr-only')
     expect(screen.getByLabelText('Search for a player')).toBeInTheDocument()
   })
 
@@ -214,14 +214,14 @@ describe('Field', () => {
         <input />
       </Field>,
     )
-    expect(screen.getByLabelText('Display name').className).toMatch(/\bh-10\b/)
+    expect(screen.getByLabelText('Display name')).toHaveClass('h-10')
 
     rerender(
       <Field label="Display name" size="lg">
         <input />
       </Field>,
     )
-    expect(screen.getByLabelText('Display name').className).toMatch(/\bh-12\b/)
+    expect(screen.getByLabelText('Display name')).toHaveClass('h-12')
   })
 
   it('preserves a className already on the control alongside the injected size class', () => {
@@ -231,8 +231,8 @@ describe('Field', () => {
       </Field>,
     )
     const input = screen.getByLabelText('Display name')
-    expect(input.className).toMatch(/caller-class/)
-    expect(input.className).toMatch(/\bh-10\b/)
+    expect(input).toHaveClass('caller-class')
+    expect(input).toHaveClass('h-10')
   })
 
   // §16.2 (structural-tier.md, decided 2026-09-28): the boundary thickens inward on hover in the
@@ -241,10 +241,10 @@ describe('Field', () => {
   it('thickens the demonstration control boundary inward on hover in border-strong ink while valid', () => {
     render(<Default />)
     const input = screen.getByLabelText('Display name')
-    expect(input.className).toMatch(/\benabled:hover:ring-1\b/)
-    expect(input.className).toMatch(/\benabled:hover:ring-inset\b/)
-    expect(input.className).toMatch(/\benabled:hover:ring-border-strong\b/)
-    expect(input.className).not.toMatch(/\benabled:hover:ring-danger\b/)
+    expect(input).toHaveClass('enabled:hover:ring-1')
+    expect(input).toHaveClass('enabled:hover:ring-inset')
+    expect(input).toHaveClass('enabled:hover:ring-border-strong')
+    expect(input).not.toHaveClass('enabled:hover:ring-danger')
   })
 
   // §16.2's invalid branch: the same inward-thickening ring switches to the danger ink once the
@@ -254,9 +254,9 @@ describe('Field', () => {
     render(<ErrorStory />)
     const input = screen.getByLabelText('Your Age of Empires II profile id')
     expect(input).toHaveAttribute('aria-invalid', 'true')
-    expect(input.className).toMatch(/\benabled:hover:ring-1\b/)
-    expect(input.className).toMatch(/\benabled:hover:ring-inset\b/)
-    expect(input.className).toMatch(/\benabled:hover:ring-danger\b/)
-    expect(input.className).not.toMatch(/\benabled:hover:ring-border-strong\b/)
+    expect(input).toHaveClass('enabled:hover:ring-1')
+    expect(input).toHaveClass('enabled:hover:ring-inset')
+    expect(input).toHaveClass('enabled:hover:ring-danger')
+    expect(input).not.toHaveClass('enabled:hover:ring-border-strong')
   })
 })

@@ -71,7 +71,7 @@ describe('Button', () => {
 
   it('shows a visible focus-visible outline token, not a removed outline', () => {
     render(<Button>Continue with Steam</Button>)
-    expect(screen.getByRole('button').className).toMatch(/focus-visible:outline-focus-ring/)
+    expect(screen.getByRole('button')).toHaveClass('focus-visible:outline-focus-ring')
   })
 
   // T588 (README's gap register, row 6/H3): `primary` used to distinguish rest, hover and press by
@@ -81,14 +81,14 @@ describe('Button', () => {
   it('primary carries a non-colour hover signal — the label underlines, thicker than rest (FR-037)', () => {
     render(<Button variant="primary">Continue with Steam</Button>)
     const button = screen.getByRole('button')
-    expect(button.className).toMatch(/\bhover:underline\b/)
-    expect(button.className).toMatch(/\bhover:decoration-2\b/)
-    expect(button.className).toMatch(/\bhover:underline-offset-2\b/)
+    expect(button).toHaveClass('hover:underline')
+    expect(button).toHaveClass('hover:decoration-2')
+    expect(button).toHaveClass('hover:underline-offset-2')
   })
 
   it('primary carries a non-colour press signal — the underline drops position, never relying on the fill step alone (FR-037)', () => {
     render(<Button variant="primary">Continue with Steam</Button>)
-    expect(screen.getByRole('button').className).toMatch(/\bactive:underline-offset-4\b/)
+    expect(screen.getByRole('button')).toHaveClass('active:underline-offset-4')
   })
 
   it('primary never shows the underline rule while disabled or loading', () => {
@@ -97,7 +97,7 @@ describe('Button', () => {
         Continue with Steam
       </Button>,
     )
-    expect(screen.getByRole('button').className).toMatch(/\bdisabled:no-underline\b/)
+    expect(screen.getByRole('button')).toHaveClass('disabled:no-underline')
   })
 
   // The underline signal moved from `primary`'s own variant string into the shared base on
@@ -106,11 +106,11 @@ describe('Button', () => {
     ;(['secondary', 'ghost', 'destructive'] as const).forEach((variant) => {
       render(<Button variant={variant}>Continue with Steam</Button>)
       const button = screen.getAllByRole('button').at(-1)
-      expect(button?.className).toMatch(/\bhover:underline\b/)
-      expect(button?.className).toMatch(/\bhover:decoration-2\b/)
-      expect(button?.className).toMatch(/\bhover:underline-offset-2\b/)
-      expect(button?.className).toMatch(/\bactive:underline-offset-4\b/)
-      expect(button?.className).toMatch(/\bdisabled:no-underline\b/)
+      expect(button).toHaveClass('hover:underline')
+      expect(button).toHaveClass('hover:decoration-2')
+      expect(button).toHaveClass('hover:underline-offset-2')
+      expect(button).toHaveClass('active:underline-offset-4')
+      expect(button).toHaveClass('disabled:no-underline')
     })
   })
 })

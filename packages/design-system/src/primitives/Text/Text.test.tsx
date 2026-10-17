@@ -7,10 +7,10 @@ describe('Text', () => {
     render(<Text role="display">Match history</Text>)
     const heading = screen.getByRole('heading', { level: 2, name: 'Match history' })
     expect(heading.tagName).toBe('H2')
-    expect(heading.className).toMatch(/\btype-display\b/)
-    expect(heading.className).toMatch(/\btext-2xl\b/)
-    expect(heading.className).toMatch(/\bfont-semibold\b/)
-    expect(heading.className).toMatch(/\btracking-tight\b/)
+    expect(heading).toHaveClass('type-display')
+    expect(heading).toHaveClass('text-2xl')
+    expect(heading).toHaveClass('font-semibold')
+    expect(heading).toHaveClass('tracking-tight')
   })
 
   it('overrides the display element within the heading level set via `as`', () => {
@@ -22,23 +22,23 @@ describe('Text', () => {
     const heading = screen.getByRole('heading', { level: 1, name: 'Page title' })
     expect(heading.tagName).toBe('H1')
     // The size step does not change with the level — one size per role (§8).
-    expect(heading.className).toMatch(/\btext-2xl\b/)
+    expect(heading).toHaveClass('text-2xl')
   })
 
   it('renders body as a <p> in type-body at text-md', () => {
     render(<Text role="body">Every match this profile has played.</Text>)
     const paragraph = screen.getByText('Every match this profile has played.')
     expect(paragraph.tagName).toBe('P')
-    expect(paragraph.className).toMatch(/\btype-body\b/)
-    expect(paragraph.className).toMatch(/\btext-md\b/)
+    expect(paragraph).toHaveClass('type-body')
+    expect(paragraph).toHaveClass('text-md')
   })
 
   it('renders supporting as a <p> in type-supporting at text-sm', () => {
     render(<Text role="supporting">Most recent first.</Text>)
     const paragraph = screen.getByText('Most recent first.')
     expect(paragraph.tagName).toBe('P')
-    expect(paragraph.className).toMatch(/\btype-supporting\b/)
-    expect(paragraph.className).toMatch(/\btext-sm\b/)
+    expect(paragraph).toHaveClass('type-supporting')
+    expect(paragraph).toHaveClass('text-sm')
   })
 
   it('renders numeric as a <span> in type-numeric, distinct from machine and identifier', () => {
@@ -53,9 +53,9 @@ describe('Text', () => {
     const machine = screen.getByText('upload_failed')
     const identifier = screen.getByText('1807091')
     expect(numeric.tagName).toBe('SPAN')
-    expect(numeric.className).toMatch(/\btype-numeric\b/)
-    expect(machine.className).toMatch(/\btype-machine\b/)
-    expect(identifier.className).toMatch(/\btype-identifier\b/)
+    expect(numeric).toHaveClass('type-numeric')
+    expect(machine).toHaveClass('type-machine')
+    expect(identifier).toHaveClass('type-identifier')
     // The split DS-8 existed to make: three roles, three distinguishable class sets.
     expect(numeric.className).not.toBe(machine.className)
     expect(machine.className).not.toBe(identifier.className)
@@ -64,13 +64,13 @@ describe('Text', () => {
   it('gives identifier no separate text-secondary class — type-identifier carries the colour by contract', () => {
     render(<Text role="identifier">unresolved</Text>)
     const identifier = screen.getByText('unresolved')
-    expect(identifier.className).not.toMatch(/\btext-text-secondary\b/)
-    expect(identifier.className).not.toMatch(/\btext-text-primary\b/)
+    expect(identifier).not.toHaveClass('text-text-secondary')
+    expect(identifier).not.toHaveClass('text-text-primary')
   })
 
   it('every other role paints text-primary', () => {
     render(<Text role="body">primary ink</Text>)
-    expect(screen.getByText('primary ink').className).toMatch(/\btext-text-primary\b/)
+    expect(screen.getByText('primary ink')).toHaveClass('text-text-primary')
   })
 
   it('renders nothing at all — not an empty element — when there are no children', () => {
@@ -92,7 +92,7 @@ describe('Text', () => {
       </Text>,
     )
     const heading = screen.getByRole('heading', { level: 3 })
-    expect(heading.className).toMatch(/focus-visible:outline-focus-ring/)
+    expect(heading).toHaveClass('focus-visible:outline-focus-ring')
     expect(heading).toHaveAttribute('tabindex', '-1')
   })
 

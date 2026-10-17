@@ -97,7 +97,7 @@ describe('PlayerAvatar', () => {
     const { container: smContainer } = render(<PlayerAvatar avatarHash={HASH} size="sm" />)
     const smFrame = smContainer.firstElementChild as HTMLElement
     expect(smFrame.style.width).toBe('var(--ds-icon-lg)')
-    expect(smFrame.className).not.toMatch(/\bw-\d/)
+    expect(Array.from(smFrame.classList).filter((c) => /(^|[:-])w-\d/.test(c))).toEqual([])
 
     const { container: mdContainer } = render(<PlayerAvatar avatarHash={HASH} size="md" />)
     const mdFrame = mdContainer.firstElementChild as HTMLElement
@@ -117,15 +117,15 @@ describe('PlayerAvatar', () => {
   it('uses border-md radius, border-strong frame and surface-sunken fill in both loaded and empty states', () => {
     const { container: loaded } = render(<PlayerAvatar avatarHash={HASH} />)
     const loadedFrame = loaded.firstElementChild as HTMLElement
-    expect(loadedFrame.className).toContain('rounded-control')
-    expect(loadedFrame.className).toContain('border-border-strong')
-    expect(loadedFrame.className).toContain('bg-surface-sunken')
+    expect(loadedFrame).toHaveClass('rounded-control')
+    expect(loadedFrame).toHaveClass('border-border-strong')
+    expect(loadedFrame).toHaveClass('bg-surface-sunken')
 
     const { container: empty } = render(<PlayerAvatar avatarHash={undefined} />)
     const emptyFrame = empty.firstElementChild as HTMLElement
-    expect(emptyFrame.className).toContain('rounded-control')
-    expect(emptyFrame.className).toContain('border-border-strong')
-    expect(emptyFrame.className).toContain('bg-surface-sunken')
+    expect(emptyFrame).toHaveClass('rounded-control')
+    expect(emptyFrame).toHaveClass('border-border-strong')
+    expect(emptyFrame).toHaveClass('bg-surface-sunken')
   })
 
   it('marks the frame aria-hidden — the avatar never announces itself, the heading beside it does', () => {

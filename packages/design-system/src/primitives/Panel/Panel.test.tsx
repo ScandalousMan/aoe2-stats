@@ -63,8 +63,8 @@ describe('Panel', () => {
     )
     const outer = screen.getByRole('region', { name: 'Outer' })
     const inner = screen.getByRole('region', { name: 'Inner' })
-    expect(outer.className).toMatch(/bg-surface\b/)
-    expect(inner.className).toMatch(/bg-surface-raised/)
+    expect(outer).toHaveClass('bg-surface')
+    expect(inner).toHaveClass('bg-surface-raised')
   })
 
   it('throws rendering a third level of nesting', () => {
@@ -140,8 +140,8 @@ describe('Panel', () => {
   it('draws no border-radius or elevation override — always the panel role, always no shadow', () => {
     const { container } = render(<Panel density="dense">content</Panel>)
     const panel = container.firstElementChild
-    expect(panel?.className).toMatch(/rounded-panel/)
-    expect(panel?.className).not.toMatch(/shadow-/)
+    expect(panel).toHaveClass('rounded-panel')
+    expect(Array.from(panel?.classList ?? []).filter((c) => /(^|[:-])shadow-/.test(c))).toEqual([])
   })
 
   // Regression guard for the `landmark-unique` violation axe found in

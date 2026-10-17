@@ -63,8 +63,8 @@ describe('FavouritesList', () => {
       render(<FavouritesList entries={[entries[0]]} />)
       const row = screen.getAllByRole('listitem')[0]
       const link = within(row).getByRole('link')
-      expect(link.className).toMatch(/\bhover:bg-surface-sunken\b/)
-      expect(link.className).toMatch(/\bactive:bg-surface-sunken\b/)
+      expect(link).toHaveClass('hover:bg-surface-sunken')
+      expect(link).toHaveClass('active:bg-surface-sunken')
     })
 
     // T591 (FR-037): the fill and the inline-start rule alone were still indistinguishable from
@@ -76,9 +76,9 @@ describe('FavouritesList', () => {
       render(<FavouritesList entries={[entries[0]]} />)
       const row = screen.getAllByRole('listitem')[0]
       const link = within(row).getByRole('link')
-      expect(link.className).toMatch(/\bactive:ring-2\b/)
-      expect(link.className).toMatch(/\bactive:ring-border-strong\b/)
-      expect(link.className).not.toMatch(/\bactive:outline\b/)
+      expect(link).toHaveClass('active:ring-2')
+      expect(link).toHaveClass('active:ring-border-strong')
+      expect(Array.from(link.classList).filter((c) => /(^|:)active:outline/.test(c))).toEqual([])
     })
 
     // §5 (favourites-list.md, decided 2026-09-28): the fill alone measured zero surviving pixels
@@ -88,12 +88,12 @@ describe('FavouritesList', () => {
       render(<FavouritesList entries={[entries[0]]} />)
       const row = screen.getAllByRole('listitem')[0]
       const link = within(row).getByRole('link')
-      expect(link.className).toMatch(/\bgroup\/row-link\b/)
-      expect(link.className).not.toMatch(/\bhover:underline\b/)
+      expect(link).toHaveClass('group/row-link')
+      expect(link).not.toHaveClass('hover:underline')
       const alias = within(row).getByText(entries[0].alias)
-      expect(alias.className).toMatch(/\bgroup-hover\/row-link:underline\b/)
-      expect(alias.className).toMatch(/\bgroup-hover\/row-link:decoration-2\b/)
-      expect(alias.className).toMatch(/\bgroup-hover\/row-link:underline-offset-2\b/)
+      expect(alias).toHaveClass('group-hover/row-link:underline')
+      expect(alias).toHaveClass('group-hover/row-link:decoration-2')
+      expect(alias).toHaveClass('group-hover/row-link:underline-offset-2')
     })
 
     it('shows a bracketed clan beside the alias when present, and none when absent', () => {
@@ -114,7 +114,7 @@ describe('FavouritesList', () => {
       const heraRow = within(rows[1])
       expect(heraRow.queryByText('—')).not.toBeInTheDocument()
       const reason = heraRow.getByText('Not ranked yet')
-      expect(reason.className).toMatch(/text-text-secondary/)
+      expect(reason).toHaveClass('text-text-secondary')
       expect(heraRow.queryByText('0')).not.toBeInTheDocument()
     })
 

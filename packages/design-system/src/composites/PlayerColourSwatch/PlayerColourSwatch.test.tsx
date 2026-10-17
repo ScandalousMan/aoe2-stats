@@ -26,7 +26,7 @@ describe('PlayerColourSwatch', () => {
         <PlayerColourSwatch colorId={colorId} playerName="Some player" />,
       )
       const chip = container.querySelector('[aria-hidden="true"]') as HTMLElement
-      expect(chip.className).toContain(`bg-player-${colorId}`)
+      expect(chip).toHaveClass(`bg-player-${colorId}`)
       expect(container).toHaveTextContent(`Colour: ${name}`)
     },
   )
@@ -34,7 +34,7 @@ describe('PlayerColourSwatch', () => {
   it('renders a neutral surface-sunken chip and "Colour: not recorded" when colorId is null', () => {
     const { container } = render(<PlayerColourSwatch colorId={null} playerName="Some player" />)
     const chip = container.querySelector('[aria-hidden="true"]') as HTMLElement
-    expect(chip.className).toContain('bg-surface-sunken')
+    expect(chip).toHaveClass('bg-surface-sunken')
     expect(container).toHaveTextContent('Colour: not recorded')
   })
 
@@ -88,7 +88,7 @@ describe('PlayerColourSwatch', () => {
   it('frames every chip in border-strong, in both themes alike (the same token name)', () => {
     const { container } = render(<PlayerColourSwatch colorId={1} playerName="P" />)
     const chip = container.querySelector('[aria-hidden="true"]') as HTMLElement
-    expect(chip.className).toContain('border-border-strong')
+    expect(chip).toHaveClass('border-border-strong')
   })
 
   it('contains no hex string anywhere in its source', () => {
