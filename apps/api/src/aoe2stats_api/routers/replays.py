@@ -110,11 +110,16 @@ one non-negotiable ordering — participation, objection, validation, held objec
   `replay_object_key` (the same key scheme an automatic capture already uses for this pair —
   `replay_object_key`'s own docstring: "shared by capture ... and manual upload ... both resolve to
   the same key") runs first and answers whether it wrote; `False` means the key already holds an
-  object that no row names (the refusals above ran first). That is what a previous attempt leaves
-  when its row write or commit failed after its object write (T730), so the route reads the held
-  object: when its SHA-256 equals the upload's, the object *is* this file and the route goes on to
-  the row write exactly as for a fresh upload; otherwise it is `409` `replay_held`, with no row
-  created or changed. Nothing is ever deleted or overwritten on either path - the object is an
+  object that no row names (the refusals above ran first). A previous attempt leaves one when its
+  row write or commit failed after its object write (T730), and the ingester can too (an object
+  written, its metadata committed in a separate transaction), so the route reads the held object:
+  when its SHA-256 equals the upload's, the object *is* this file and the route goes on to the row
+  write exactly as for a fresh upload; otherwise it is `409` `replay_held`, with no row created or
+  changed. An object that is gone by the time it is read (a concurrent erasure) is the same `409`
+  `replay_held`, and so is a row that is `stored` or names an object by the time of the row write
+  (the drain adopted the object, or a twin upload stored it) or that a twin upload inserted first
+  (`UNIQUE (game_id, profile_id)`): the retry resolves against whichever row won. Nothing is ever
+  deleted or overwritten on either path - the object is an
   original replay (constitution IV), so there is no compensating delete; an object an upload
   orphaned and nobody retried is removed by the owner's account erasure (`routers/privacy.py`).
   `CapturesRepository.record_manual_upload` — the one write that follows, described in full in that
@@ -311,6 +316,7 @@ from fastapi.responses import RedirectResponse, Response
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from aoe2stats_api import security
@@ -348,8 +354,8 @@ from aoe2stats_storage.models import (
     User,
 )
 from aoe2stats_storage.models import Session as SessionRow
-from aoe2stats_storage.objects import REPLAY_CONTENT_TYPE, replay_object_key
-from aoe2stats_storage.repositories.captures import CapturesRepository
+from aoe2stats_storage.objects import REPLAY_CONTENT_TYPE, ObjectNotFound, replay_object_key
+from aoe2stats_storage.repositories.captures import CaptureNoLongerOpen, CapturesRepository
 
 router = APIRouter(tags=["replays"])
 
@@ -721,6 +727,10 @@ async def _existing_capture(
     return result.scalar_one_or_none()
 
 
+#: The constraint (`ReplayCapture.__table_args__`) a twin upload's insert can lose to.
+_PAIR_UNIQUE = "uq_replay_captures_game_id_profile_id"
+
+
 @router.post("/replays/{game_id}/upload")
 async def upload_replay(
     game_id: int,
@@ -736,10 +746,15 @@ async def upload_replay(
     validation, then the already-archived and held refusals, then the blob-first-row-second write
     (a conditional `put_if_absent`) — in that order, exactly as the module docstring describes.
 
-    **T730.** When `put_if_absent` finds the key held, the object was written by an earlier
-    attempt whose row write failed (no row names it). The route reads it: the same SHA-256 means
-    the retry completes the upload (the row is written, nothing is put); a different one is
-    `replay_held`, as for any object this upload did not write. No path deletes or overwrites.
+    **T730.** When `put_if_absent` finds the key held, no row names the object, so it is one an
+    earlier attempt left, for example one whose row write failed. The route reads it: the same
+    SHA-256 means the retry completes the upload (the row is written, nothing is put); a different
+    one is `replay_held`, as for any object this upload did not write, and so is one that vanished
+    before the read. The row write is a SAVEPOINT (`begin_nested`): a `UNIQUE (game_id,
+    profile_id)` violation from an identical twin's insert, or `CaptureNoLongerOpen` from a row
+    the drain or a twin stored in the meantime, rolls back only the write and answers
+    `replay_held`; the request-scoped session stays usable until its own rollback. No path
+    deletes or overwrites.
 
     **T102.** A successful upload changes the `capture_status` `routers/matches.py`'s list and
     detail routes both cache — `cache.invalidate_prefix` below drops every cached page for this
@@ -783,22 +798,37 @@ async def upload_replay(
     # T723: a conditional write; an object already under the key is never replaced. T730: it is
     # accepted only when it is this very file - an earlier attempt's object, whose row write failed.
     if not await object_store.put_if_absent(key, content, content_type=REPLAY_CONTENT_TYPE):
-        held = await object_store.get(key)
+        try:
+            held = await object_store.get(key)
+        except ObjectNotFound:  # gone since `put_if_absent` found it (a concurrent erasure)
+            raise _replay_held_error() from None
         if hashlib.sha256(held).hexdigest() != zip_sha256:
             raise _replay_held_error()
 
-    capture = await CapturesRepository(db_session).record_manual_upload(
-        game_id=game_id,
-        profile_id=profile_id,
-        object_key=key,
-        zip_bytes=len(content),
-        zip_sha256=zip_sha256,
-        inner_filename=result.inner_filename,
-        inner_bytes=result.inner_bytes,
-        validated_by=f"{result.engine_name}@{result.engine_version}",
-        match_completed_at=completed_at,
-        capture_budget_days=settings.capture_budget_days,
-    )
+    # A SAVEPOINT around the write alone: a twin upload's insert that wins `UNIQUE (game_id,
+    # profile_id)` rolls back only this, and the answer is the `replay_held` it was before T730.
+    try:
+        async with db_session.begin_nested():
+            capture = await CapturesRepository(db_session).record_manual_upload(
+                game_id=game_id,
+                profile_id=profile_id,
+                object_key=key,
+                zip_bytes=len(content),
+                zip_sha256=zip_sha256,
+                inner_filename=result.inner_filename,
+                inner_bytes=result.inner_bytes,
+                validated_by=f"{result.engine_name}@{result.engine_version}",
+                match_completed_at=completed_at,
+                capture_budget_days=settings.capture_budget_days,
+            )
+    except CaptureNoLongerOpen:
+        raise _replay_held_error() from None
+    except IntegrityError as exc:
+        # Only the twin's insert winning the pair's uniqueness is `replay_held`; any other
+        # integrity error is a defect and stays a 500.
+        if getattr(getattr(exc.orig, "diag", None), "constraint_name", None) != _PAIR_UNIQUE:
+            raise
+        raise _replay_held_error() from None
 
     # T102: this upload's `capture_status` is exactly what `routers/matches.py`'s list and detail
     # routes cache — invalidate both namespaces now rather than leave the caller waiting out

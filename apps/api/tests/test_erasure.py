@@ -39,6 +39,7 @@ requester removes a link and not a subject and a published analysis must stay re
 
 from __future__ import annotations
 
+import asyncio
 import secrets
 from datetime import UTC, datetime, timedelta
 
@@ -49,6 +50,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from aoe2stats_api import security
 from aoe2stats_api.deps import get_object_store
+from aoe2stats_api.routers.privacy import _ERASURE_DELETE_CONCURRENCY
 from aoe2stats_api.settings import get_settings
 from aoe2stats_storage.models import (
     AoeProfile,
@@ -441,6 +443,132 @@ async def test_confirmed_erasure_deletes_objects_under_the_users_pairs_that_no_r
     assert response.status_code == 200, f"Got {response.status_code}: {response.text}"
 
     assert sorted(await store.list_keys()) == sorted(kept)
+
+
+class _TimedObjectStore(_RecordingObjectStore):
+    """`_RecordingObjectStore` whose `delete` takes a moment and records the order of the calls and
+    how many were in flight at once (T730 remediation: the order of the two passes, and that the
+    named blobs are deleted concurrently too)."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.deleted: list[str] = []
+        self.in_flight = 0
+        self.max_in_flight = 0
+
+    async def delete(self, key: str) -> None:
+        self.deleted.append(key)
+        self.in_flight += 1
+        self.max_in_flight = max(self.max_in_flight, self.in_flight)
+        try:
+            await asyncio.sleep(0.02)
+            await super().delete(key)
+        finally:
+            self.in_flight -= 1
+
+
+async def _seed_stored_captures(
+    db_session: AsyncSession, *, first_game_id: int, count: int
+) -> list[str]:
+    """`count` matches the owner played, each with a `stored` capture; returns the object keys."""
+    completed_at = datetime.now(UTC) - timedelta(days=40)
+    keys = []
+    for game_id in range(first_game_id, first_game_id + count):
+        db_session.add(
+            Match(
+                game_id=game_id,
+                leaderboard_id=3,
+                completed_at=completed_at,
+                source="relic",
+                raw_payload={},
+            )
+        )
+    await db_session.flush()
+    for game_id in range(first_game_id, first_game_id + count):
+        db_session.add(
+            MatchPlayer(game_id=game_id, profile_id=_OWNER_PROFILE_ID, team_id=1, result="win")
+        )
+        key = replay_object_key(game_id, _OWNER_PROFILE_ID)
+        keys.append(key)
+        db_session.add(
+            ReplayCapture(
+                game_id=game_id,
+                profile_id=_OWNER_PROFILE_ID,
+                status=CaptureStatus.STORED,
+                capture_deadline_at=completed_at + timedelta(days=21),
+                source=CaptureSource.AUTOMATIC,
+                object_key=key,
+            )
+        )
+    await db_session.commit()
+    return keys
+
+
+async def test_erasure_deletes_the_objects_no_row_names_before_the_named_blobs(
+    client: TestClient, db_session: AsyncSession
+) -> None:
+    """T730 remediation: a function killed during the slow pass must leave no `stored` row naming
+    an object already deleted. The unnamed pass goes first, so a kill in it deletes only objects
+    no row names; the named blobs, which rows point at, go last."""
+    user = await _seed_linked_user(
+        db_session, profile_id=_OWNER_PROFILE_ID, steam_id64="76561197960280021"
+    )
+    await _sign_in(client, db_session, user)
+    named = await _seed_stored_captures(db_session, first_game_id=810_300_000, count=3)
+    unnamed_game_ids = (810_300_100, 810_300_101)
+    for game_id in unnamed_game_ids:
+        db_session.add(
+            Match(
+                game_id=game_id,
+                leaderboard_id=3,
+                completed_at=datetime.now(UTC) - timedelta(days=40),
+                source="relic",
+                raw_payload={},
+            )
+        )
+    await db_session.flush()
+    for game_id in unnamed_game_ids:
+        db_session.add(MatchPlayer(game_id=game_id, profile_id=_OWNER_PROFILE_ID, team_id=1))
+    await db_session.commit()
+    unnamed = [replay_object_key(game_id, _OWNER_PROFILE_ID) for game_id in unnamed_game_ids]
+    store = _TimedObjectStore()
+    client.app.dependency_overrides[get_object_store] = lambda: store  # type: ignore[attr-defined]
+    for key in [*named, *unnamed]:
+        await store.put(key, b"FAKE-REPLAY-BYTES")
+
+    token = _get_confirmation_token(client)
+    response = client.post(_ERASE_PATH, json={"confirmation_token": token})
+    assert response.status_code == 200, f"Got {response.status_code}: {response.text}"
+
+    assert sorted(store.deleted) == sorted([*named, *unnamed])
+    last_unnamed = max(store.deleted.index(key) for key in unnamed)
+    first_named = min(store.deleted.index(key) for key in named)
+    assert last_unnamed < first_named, f"named blobs went before unnamed objects: {store.deleted}"
+
+
+async def test_erasure_deletes_the_named_blobs_concurrently_up_to_the_bound(
+    client: TestClient, db_session: AsyncSession
+) -> None:
+    """T730 remediation: the named deletes were a serial loop, so a fully-`stored` history cost
+    N x one `DeleteObject`. They run under the same bounded semaphore as the unnamed ones."""
+    user = await _seed_linked_user(
+        db_session, profile_id=_OWNER_PROFILE_ID, steam_id64="76561197960280022"
+    )
+    await _sign_in(client, db_session, user)
+    named = await _seed_stored_captures(
+        db_session, first_game_id=810_400_000, count=_ERASURE_DELETE_CONCURRENCY + 4
+    )
+    store = _TimedObjectStore()
+    client.app.dependency_overrides[get_object_store] = lambda: store  # type: ignore[attr-defined]
+    for key in named:
+        await store.put(key, b"FAKE-REPLAY-BYTES")
+
+    token = _get_confirmation_token(client)
+    response = client.post(_ERASE_PATH, json={"confirmation_token": token})
+    assert response.status_code == 200, f"Got {response.status_code}: {response.text}"
+
+    assert await store.list_keys() == []
+    assert store.max_in_flight == _ERASURE_DELETE_CONCURRENCY
 
 
 async def test_confirmed_erasure_deletes_replay_access_log_rows_for_the_erased_users_captures_only(
