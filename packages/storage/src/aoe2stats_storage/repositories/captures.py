@@ -50,6 +50,12 @@ from ..models import CaptureSource, CaptureStatus, ReplayCapture
 from .base import Repository
 
 
+class CaptureNoLongerOpen(Exception):
+    """The row `record_manual_upload` meant to write is `stored` or names an `object_key` by the
+    time of the write (another writer, the drain, got there after the router's read), or is gone.
+    Nothing was written."""
+
+
 class CapturesRepository(Repository):
     """Writes the one `replay_captures` row a manual upload produces or rescues. See the module
     docstring for the write ordering this method assumes has already happened (validate, then
@@ -74,8 +80,11 @@ class CapturesRepository(Repository):
         """Record a manually supplied replay for `(game_id, profile_id)` as `stored`, `source =
         'manual'`, with `validated_by` set to the engine and version that vouched for it — creating
         the row if discovery never enqueued one for this pair, or updating the row that already
-        exists (module docstring). It does not check the row's status or `object_key`: the router
-        refused a `stored` row and one naming an object before this call.
+        exists (module docstring). The router refused a `stored` row and one naming an object before
+        this call, but the drain can adopt an object and mark the row between that read and this
+        write, so the `UPDATE` of an existing row also requires `object_key IS NULL` and a status
+        other than `stored`; when it matches no row, nothing is written and `CaptureNoLongerOpen`
+        is raised (the row is the other writer's, and is not relabelled `manual`).
 
         `stored_at` defaults to "now" (UTC), the moment this write happens — mirrors
         `RatingsRepository.record_snapshot`'s identical default and identical reasoning: the
@@ -130,8 +139,25 @@ class CapturesRepository(Repository):
         # `stored` row. A re-read with `FOR UPDATE` would instead block that writer for the rest of
         # the request's transaction, with an object write already made; the plain `UPDATE` takes the
         # row lock at its own statement, held from there to the commit. `refresh` returns the row.
-        await self.session.execute(
-            update(ReplayCapture).where(ReplayCapture.id == capture.id).values(**values)
+        #
+        # The `UPDATE` also requires the row to still be open: no `object_key`, and not `stored`.
+        # The router checked that before the object write, and the drain may have adopted the
+        # equal-hash object and marked the row since; matching by id alone would relabel that row
+        # `manual`. A statement that matches no row is the other writer's win, not an error to
+        # paper over.
+        written = await self.session.execute(
+            update(ReplayCapture)
+            .where(
+                ReplayCapture.id == capture.id,
+                ReplayCapture.object_key.is_(None),
+                ReplayCapture.status != CaptureStatus.STORED,
+            )
+            .values(**values)
+            .returning(ReplayCapture.id)
         )
+        if written.scalar_one_or_none() is None:
+            raise CaptureNoLongerOpen(
+                f"replay_captures row for ({game_id}, {profile_id}) is stored or names an object"
+            )
         await self.session.refresh(capture)
         return capture

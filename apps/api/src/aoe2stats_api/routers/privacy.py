@@ -109,6 +109,8 @@ within what delay.
 from __future__ import annotations
 
 import asyncio
+import math
+import os
 import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
@@ -117,7 +119,8 @@ from typing import Any
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
 from sqlalchemy import delete, func, select, update
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.engine import Engine
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from aoe2stats_api import security
 from aoe2stats_api.deps import ObjectStoreDep, SessionDep, SettingsDep
@@ -556,8 +559,15 @@ async def start_erasure(
     return {"confirmation_token": token}
 
 
-async def _pseudonymise_profile_ids(db_session: AsyncSession, profile_ids: Sequence[int]) -> None:
-    """The I/O half of `aoe2stats_core.privacy.erasure.pseudonymise_profile`, which computes only
+async def _pseudonymise_profile_ids(
+    db_session: AsyncSession, profile_ids: Sequence[int]
+) -> list[tuple[int, int]]:
+    """Returns the `(game_id, profile_id)` pairs of the `match_players` rows it retargets, as they
+    were under the originals (T730: erasure deletes the objects under those keys). They are read
+    under the step-1 locks below, so a concurrent insert cannot add one between the read and the
+    retarget. A caller that has no use for them ignores the return value.
+
+    The I/O half of `aoe2stats_core.privacy.erasure.pseudonymise_profile`, which computes only
     the plan (that module's own docstring), run over every id in `profile_ids` in one transaction:
     insert the placeholder `aoe_profiles` row each `profile_id`'s `match_players` rows are about
     to be retargeted onto (idempotent — a second call over the same `profile_id` finds it already
@@ -598,7 +608,7 @@ async def _pseudonymise_profile_ids(db_session: AsyncSession, profile_ids: Seque
     `packages/core`'s `PseudonymisationPlan` for a field that needs no computation at all."""
     plans = {profile_id: pseudonymise_profile(profile_id) for profile_id in profile_ids}
     if not plans:
-        return
+        return []
     placeholders = {plan.pseudonymous_profile_id: plan for plan in plans.values()}
 
     originals: list[AoeProfile] = []
@@ -632,7 +642,8 @@ async def _pseudonymise_profile_ids(db_session: AsyncSession, profile_ids: Seque
             )
         )
     ).all()
-    await discover.lock_match_players(db_session, [(game_id, owner) for game_id, owner in held])
+    pairs = [(game_id, owner) for game_id, owner in held]
+    await discover.lock_match_players(db_session, pairs)
 
     for profile_id, plan in plans.items():
         await db_session.execute(
@@ -647,23 +658,105 @@ async def _pseudonymise_profile_ids(db_session: AsyncSession, profile_ids: Seque
         original_profile.country = plan.country
         original_profile.avatar_hash = None
 
+    return pairs
 
-#: How many `DeleteObject` requests `_delete_unnamed_objects` keeps in flight. `asyncio.to_thread`
+
+#: How many `DeleteObject` requests `_delete_objects` keeps in flight. `asyncio.to_thread`
 #: runs each on the default executor, so the effective width is the smaller of this and that pool's
-#: size, `min(32, cpu_count + 4)`: at least 5 on any host.
-_ERASURE_DELETE_CONCURRENCY = 16
+#: size, `min(32, cpu_count + 4)`: at least 5 on any host. 10 is botocore's default connection pool
+#: (`max_pool_connections`, which `ObjectStore`'s client keeps), so a wave never outnumbers the
+#: connections: a wider one would queue or open connections and make the wave count optimistic.
+_ERASURE_DELETE_CONCURRENCY = 10
 
 
-async def _delete_unnamed_objects(
-    object_store: ObjectStore, pairs: Sequence[tuple[int, int]], *, named_keys: set[str]
-) -> None:
-    """Delete the object under each pair's `replay_object_key` that no row's `object_key` names
-    (T730). An upload whose row write failed after its object write leaves exactly that object,
-    and it is the erased user's own file. `ObjectStore.delete` succeeds on a key that holds
-    nothing, so a pair that never had an object costs one cheap request, not a lookup first. The
-    requests run concurrently, bounded by `_ERASURE_DELETE_CONCURRENCY`."""
-    keys = sorted({replay_object_key(game_id, profile_id) for game_id, profile_id in pairs})
-    keys = [key for key in keys if key not in named_keys]
+def _erasure_delete_width() -> int:
+    """How many `DeleteObject` requests actually run at once: the smaller of
+    `_ERASURE_DELETE_CONCURRENCY` and the default thread pool `asyncio.to_thread` runs them on,
+    `min(32, cpu_count + 4)` (Python 3.13's `ThreadPoolExecutor` default, which reads
+    `os.process_cpu_count`), so at least 5 on any host."""
+    pool = min(32, (os.process_cpu_count() or 1) + 4)
+    return min(_ERASURE_DELETE_CONCURRENCY, pool)
+
+
+def _erasure_delete_waves(*, unnamed: int, named: int) -> int:
+    """How many rounds of concurrent `DeleteObject` requests erasing `unnamed` then `named` keys
+    takes. The two passes run one after the other, so each rounds up on its own."""
+    width = _erasure_delete_width()
+    return math.ceil(unnamed / width) + math.ceil(named / width)
+
+
+#: The most waves (`_erasure_delete_waves`) erasure accepts; past it, `erase_account` refuses
+#: before the first `DeleteObject`. 37 is the docstring's worst case: N = 177 pairs, the largest
+#: measured history, at C = 5, one key unnamed and 176 named, so 1 + 36 waves. At 200 ms per
+#: `DeleteObject` that is about 7.4 s of the function's 10 s `maxDuration`, leaving the rest for
+#: the database work. The 200 ms is an assumption, not a measurement: neither the R2 latency
+#: from `cdg1` nor how many keys an account accumulates across windows has been measured. A
+#: wrong guess must not be found out by a kill during the named pass, which rolls the database
+#: back with originals already deleted, so the budget is checked first and the cost of a wrong
+#: guess is a refusal, never a loss. Raising it needs a measured latency, or a different design.
+_ERASURE_WAVE_BUDGET = 37
+
+
+def _independent_session(db_session: AsyncSession) -> AsyncSession:
+    """A session bound to the same engine as `db_session`, independent of its transaction; what
+    `routers/replays.py`'s `_audit_session` is, kept local so no router imports another's private
+    name. Anything written through it before a `raise APIError(...)` survives the rollback
+    `deps.py`'s `session_scope` performs on `db_session`."""
+    bind = db_session.get_bind()
+    assert isinstance(bind, Engine), f"expected an Engine bind, got {type(bind)}"
+    return AsyncSession(bind=AsyncEngine(bind))
+
+
+async def _refuse_erasure_too_large(
+    db_session: AsyncSession, *, user_id: uuid.UUID, keys: int, waves: int
+) -> APIError:
+    """Records the refusal as a pending `data_requests` row of kind `erasure`
+    (`completed_at` NULL) on an independent session, and returns the error to raise. One pending
+    row per account: a retry updates the existing uncompleted row's `outcome` and never its
+    `requested_at`, from which the 30-day deadline runs (`docs/privacy/processing-register.md`),
+    instead of inserting another. No alert: severity 1 is reserved (constitution I) and a new
+    alert kind needs a migration."""
+    outcome = f"refused: {keys} keys need {waves} waves, budget {_ERASURE_WAVE_BUDGET}"
+    async with _independent_session(db_session) as audit_session:
+        pending = (
+            (
+                await audit_session.execute(
+                    select(DataRequest)
+                    .where(
+                        DataRequest.kind == DataRequestKind.ERASURE,
+                        DataRequest.subject_user_id == user_id,
+                        DataRequest.completed_at.is_(None),
+                    )
+                    .order_by(DataRequest.requested_at)
+                    .limit(1)
+                    .with_for_update()
+                )
+            )
+            .scalars()
+            .first()
+        )
+        if pending is None:
+            audit_session.add(
+                DataRequest(kind=DataRequestKind.ERASURE, subject_user_id=user_id, outcome=outcome)
+            )
+        else:
+            pending.outcome = outcome
+        await audit_session.commit()
+    return APIError(
+        status_code=503,
+        code="erasure_too_large",
+        message="Your account could not be erased: its stored replays cannot all be deleted "
+        "within this service's time limit. Nothing was erased or deleted, and your account is "
+        "unchanged. Your request has been recorded.",
+        detail={"waves": waves, "budget": _ERASURE_WAVE_BUDGET},
+    )
+
+
+async def _delete_objects(object_store: ObjectStore, keys: Sequence[str]) -> None:
+    """Delete every key in `keys`, concurrently, at most `_ERASURE_DELETE_CONCURRENCY` in flight
+    (T730). `ObjectStore.delete` succeeds on a key that holds nothing, so a key whose object never
+    existed costs one cheap request, not a lookup first. Used for the keys no row names, then for
+    the keys rows name (`erase_account`)."""
     gate = asyncio.Semaphore(_ERASURE_DELETE_CONCURRENCY)
 
     async def delete_one(key: str) -> None:
@@ -716,22 +809,37 @@ async def erase_account(
     moment the user is deleted, which is what lets SC-008's own requirement (verifiably resolved
     even once the subject is gone) point at something once this call returns.
 
-    **Objects no row names (T730).** An upload whose row write failed after its object write leaves
-    an object under `replay_object_key(game_id, profile_id)` that no `object_key` names, with or
-    without a `replay_captures` row for the pair. After the named blobs, one `DeleteObject` goes to
-    each such key of every pair in `match_players` for the user's profiles (read before the
-    pseudonymisation retargets them) or in `replay_captures`.
+    **Objects no row names (T730), then the named blobs.** An upload whose row write failed after
+    its object write leaves an object under `replay_object_key(game_id, profile_id)` that no
+    `object_key` names, with or without a `replay_captures` row for the pair. The pairs are those
+    of `match_players` for the user's profiles (returned by `_pseudonymise_profile_ids`, as they
+    were before it retargets them) and of `replay_captures`. One `DeleteObject` goes to each such
+    key that no row names, **first**; then one to each key a row names. A function killed at the
+    limit, or a `DeleteObject` error partway through a pass, rolls the database back (after the
+    idle-in-transaction timeout for a kill), and what that leaves depends on the pass: during the
+    unnamed pass only objects no row names are gone, so no row points at a missing original; during
+    the named pass the rolled-back rows still name objects already deleted - originals gone while
+    the account survives - narrowed to that pass. A retry repeats the idempotent deletes.
 
-    **Duration.** Every `/api/*` route, this one included, runs in `api/index.py`, whose limit is
-    `maxDuration: 10` in `vercel.json`. The largest measured history is 177 matches for one profile
-    in one Relic window (`specs/004-visual-parity/tasks.md`, the 2026-10-04 amendment above T459);
-    how many `match_players` rows a profile accumulates across many windows, and the latency of an
-    R2 `DeleteObject` from `cdg1`, are not measured. The added cost is one SELECT and
-    ceil(N / C) waves of `DeleteObject`, C being the smaller of `_ERASURE_DELETE_CONCURRENCY` and
-    the default thread pool (at least 5). For N = 177 and C = 5 that is 36 waves, which fits in
-    the 10 s limit with the rest of erasure provided one `DeleteObject` completes in well under
-    ~200 ms. That is the condition, not a measurement. A function killed at the limit rolls the
-    database back, and a retry repeats the idempotent deletes.
+    **Duration.** Erasure's route runs in `api/index.py`, whose limit is `maxDuration: 10` in
+    `vercel.json` (`api/cron/ingest.py` and `api/analyze.py` are separate functions). Both passes
+    delete concurrently through `_delete_objects`, at most C in flight, C being the smaller of
+    `_ERASURE_DELETE_CONCURRENCY` and the default thread pool (at least 5). With U unnamed and K
+    named keys, U + K <= N pairs, the deletes take ceil(U / C) + ceil(K / C) waves: at most 37 for
+    N = 177 at C = 5, about 7.4 s at 200 ms per `DeleteObject`, so the condition is one
+    `DeleteObject` well under ~200 ms. That is the condition, not a measurement. The largest
+    measured history is 177 matches for one profile in one Relic window
+    (`specs/004-visual-parity/tasks.md`, the 2026-10-04 amendment above T459); how many
+    `match_players` rows a profile accumulates across many windows, and the latency of an R2
+    `DeleteObject` from `cdg1`, are not measured. **Past the bound, erasure refuses before it
+    deletes anything.** After both key sets are known and before the first `DeleteObject`, the
+    waves are counted (`_erasure_delete_waves`); over `_ERASURE_WAVE_BUDGET` the route answers 503
+    `erasure_too_large`, the database transaction rolls back, and one `data_requests` row of kind
+    `erasure` with `completed_at` NULL and the outcome `refused: ...` is written through an
+    independent session so the rollback does not take it. A refused account stays whole and is
+    recorded; a kill mid-pass, which would have deleted originals the account's rows still name, is
+    never risked. It fails every retry identically (the set is re-read each time), and lifting the
+    refusal needs a measured bound or a different design.
     """
     secret = settings.app_secret_key.get_secret_value()
     session_row = _require_session(await _current_session_row(request, db_session, secret))
@@ -754,19 +862,7 @@ async def erase_account(
     await db_session.flush()
 
     if profile_ids:
-        # Before the pseudonymisation retargets them. A plain SELECT takes no row lock, so the lock
-        # order documented below is undisturbed.
-        played = [
-            (game_id, profile_id)
-            for game_id, profile_id in (
-                await db_session.execute(
-                    select(MatchPlayer.game_id, MatchPlayer.profile_id).where(
-                        MatchPlayer.profile_id.in_(profile_ids)
-                    )
-                )
-            ).all()
-        ]
-        await _pseudonymise_profile_ids(db_session, profile_ids)
+        played = await _pseudonymise_profile_ids(db_session, profile_ids)
 
         # After the pseudonymisation, never before: `replay_captures` is the fourth table in the
         # global lock order (the notes above `touch_aoe_profiles` in
@@ -787,20 +883,49 @@ async def erase_account(
             .scalars()
             .all()
         )
-        for capture in captures:
-            if capture.object_key is not None:
-                await object_store.delete(capture.object_key)
-        await _delete_unnamed_objects(
-            object_store,
-            [*played, *((capture.game_id, capture.profile_id) for capture in captures)],
-            named_keys={c.object_key for c in captures if c.object_key is not None},
-        )
+        named_keys = {c.object_key for c in captures if c.object_key is not None}
+        pairs = [*played, *((capture.game_id, capture.profile_id) for capture in captures)]
+        unnamed_keys = {replay_object_key(game_id, owner) for game_id, owner in pairs} - named_keys
+        # Before any `DeleteObject` (docstring, "Duration"): an erasure that cannot fit is
+        # refused whole, since a kill in the named pass is irreversible.
+        waves = _erasure_delete_waves(unnamed=len(unnamed_keys), named=len(named_keys))
+        if waves > _ERASURE_WAVE_BUDGET:
+            raise await _refuse_erasure_too_large(
+                db_session,
+                user_id=user_id,
+                keys=len(unnamed_keys) + len(named_keys),
+                waves=waves,
+            )
+        # The unnamed pass first (docstring): a kill in the slow pass must not leave rows naming
+        # objects already deleted.
+        await _delete_objects(object_store, sorted(unnamed_keys))
+        await _delete_objects(object_store, sorted(named_keys))
         await db_session.execute(
             delete(ReplayCapture).where(ReplayCapture.profile_id.in_(profile_ids))
         )
 
-    data_request.completed_at = datetime.now(UTC)
+    completed_at = datetime.now(UTC)
+    data_request.completed_at = completed_at
     data_request.outcome = "account erased"
+    # Earlier refusals (`_refuse_erasure_too_large`) of this same account are resolved by this
+    # erasure: left uncompleted they would stay open forever once `SET NULL` takes their subject.
+    # Last, after every table in the global lock order (`matches`, `aoe_profiles`, `match_players`,
+    # `replay_captures`) has been locked and written, and just before the user delete: no writer
+    # takes a `data_requests` lock while waiting on those, bar `_refuse_erasure_too_large`, which
+    # for this user only runs after the `replay_captures` lock above, so it waits there instead.
+    await db_session.execute(
+        update(DataRequest)
+        .where(
+            DataRequest.kind == DataRequestKind.ERASURE,
+            DataRequest.subject_user_id == user_id,
+            DataRequest.completed_at.is_(None),
+            DataRequest.id != data_request.id,
+        )
+        .values(
+            completed_at=completed_at,
+            outcome=f"resolved by the erasure of {completed_at.isoformat()}",
+        )
+    )
 
     await db_session.execute(delete(User).where(User.id == user_id))
 

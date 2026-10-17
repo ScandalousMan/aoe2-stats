@@ -13,12 +13,13 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import pytest
 from sqlalchemy import Update, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from tests.db import clean_database, database_url, db_session, engine, session_factory
 
 from aoe2stats_storage.models import AoeProfile, CaptureSource, CaptureStatus, Match, ReplayCapture
-from aoe2stats_storage.repositories.captures import CapturesRepository
+from aoe2stats_storage.repositories.captures import CaptureNoLongerOpen, CapturesRepository
 
 # Re-exported so ruff sees these names used, exactly as `test_ratings.py` does: pytest discovers a
 # fixture imported into a module exactly as if it had been defined there.
@@ -238,3 +239,120 @@ async def test_record_manual_upload_writes_every_column_it_sets_whatever_the_loa
     # What the caller gets back is the row as written, not the loaded state.
     assert returned.last_error is None
     assert returned.status == CaptureStatus.STORED
+
+
+async def _seed_existing_row(
+    session: AsyncSession,
+    *,
+    game_id: int,
+    profile_id: int,
+    status: CaptureStatus,
+    object_key: str | None,
+    completed_at: datetime,
+) -> None:
+    await _seed_match_and_profile(
+        session, game_id=game_id, profile_id=profile_id, completed_at=completed_at
+    )
+    session.add(
+        ReplayCapture(
+            game_id=game_id,
+            profile_id=profile_id,
+            status=status,
+            capture_deadline_at=completed_at + timedelta(days=_CAPTURE_BUDGET_DAYS),
+            source=CaptureSource.AUTOMATIC,
+            object_key=object_key,
+            zip_sha256="a" * 64 if object_key is not None else None,
+        )
+    )
+    await session.commit()
+
+
+async def _record(session: AsyncSession, *, game_id: int, profile_id: int) -> ReplayCapture:
+    return await CapturesRepository(session).record_manual_upload(
+        game_id=game_id,
+        profile_id=profile_id,
+        object_key=f"replays/{game_id}/{profile_id}.zip",
+        zip_bytes=10,
+        zip_sha256="d" * 64,
+        inner_filename="x.aoe2record",
+        inner_bytes=9,
+        validated_by="aoe2rec-py 0.1.21",
+        match_completed_at=datetime(2026, 7, 1, 12, 0, tzinfo=UTC),
+        capture_budget_days=_CAPTURE_BUDGET_DAYS,
+    )
+
+
+@pytest.mark.parametrize(
+    ("offset", "status", "object_key"),
+    [
+        (0, CaptureStatus.STORED, "replays/1/1.zip"),
+        (1, CaptureStatus.STORED, None),
+        (2, CaptureStatus.QUARANTINED, "replays/1/1.zip"),
+        (3, CaptureStatus.WITHDRAWN, "replays/1/1.zip"),
+        (4, CaptureStatus.DOWNLOADING, "replays/1/1.zip"),
+    ],
+)
+async def test_record_manual_upload_refuses_a_row_that_is_stored_or_names_an_object(
+    db_session: AsyncSession, offset: int, status: CaptureStatus, object_key: str | None
+) -> None:
+    """The drain can adopt an object and mark the row between the router's read and this write
+    (PR #148, N4): a row that is `stored`, or names an `object_key`, is not written."""
+    game_id, profile_id = 600100200 + offset, 600100300 + offset
+    await _seed_existing_row(
+        db_session,
+        game_id=game_id,
+        profile_id=profile_id,
+        status=status,
+        object_key=object_key,
+        completed_at=datetime(2026, 7, 1, 12, 0, tzinfo=UTC),
+    )
+
+    with pytest.raises(CaptureNoLongerOpen):
+        await _record(db_session, game_id=game_id, profile_id=profile_id)
+
+    db_session.expire_all()
+    row = (
+        await db_session.execute(
+            select(ReplayCapture).where(
+                ReplayCapture.game_id == game_id, ReplayCapture.profile_id == profile_id
+            )
+        )
+    ).scalar_one()
+    assert (row.status, row.source, row.object_key, row.zip_sha256) == (
+        status,
+        CaptureSource.AUTOMATIC,
+        object_key,
+        "a" * 64 if object_key is not None else None,
+    )
+
+
+@pytest.mark.parametrize(
+    ("offset", "status"),
+    [
+        (0, CaptureStatus.WITHDRAWN),
+        (1, CaptureStatus.FAILED),
+        (2, CaptureStatus.EXPIRED),
+        (3, CaptureStatus.PENDING),
+    ],
+)
+async def test_record_manual_upload_still_writes_a_row_that_is_open(
+    db_session: AsyncSession, offset: int, status: CaptureStatus
+) -> None:
+    """Contrast: a row in any other status that names no key is written, as before."""
+    game_id, profile_id = 600100400 + offset, 600100500 + offset
+    await _seed_existing_row(
+        db_session,
+        game_id=game_id,
+        profile_id=profile_id,
+        status=status,
+        object_key=None,
+        completed_at=datetime(2026, 7, 1, 12, 0, tzinfo=UTC),
+    )
+
+    capture = await _record(db_session, game_id=game_id, profile_id=profile_id)
+
+    assert (capture.status, capture.source, capture.object_key) == (
+        CaptureStatus.STORED,
+        CaptureSource.MANUAL,
+        f"replays/{game_id}/{profile_id}.zip",
+    )

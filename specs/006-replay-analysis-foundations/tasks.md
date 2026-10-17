@@ -2470,6 +2470,35 @@ carries what T673's dry run read.
       where the claim's stale age equals the function's maximum duration; reachable on a host
       without that bound. To decide first: whether the drain's `stored` mark also matches those
       three statuses when the row names the drain's own key, keeping `withdrawn` excluded
+- [x] T741 Close what #155's review and #148's review (N4) left on T730 (filed 2026-10-17; #155
+      merged at its first commit). **Erasure:** the keys no row names are deleted before the keys
+      rows name, both passes concurrently under one bound, so a kill or a delete error during the
+      first pass leaves no row naming a deleted original; the duration bound in `erase_account`'s
+      docstring counts both passes. **Upload:** `record_manual_upload`'s update of an existing row
+      also requires `object_key IS NULL` and a status other than `stored`, and `upload_replay`
+      refuses `replay_held`, writing nothing, when that update matches no row, when the held object
+      is gone before it is read, and when a twin upload's insert wins the pair's uniqueness. A held
+      object with the upload's SHA-256 is adopted as `manual` even when the drain wrote it: refusing
+      it under a terminal row, or a pair with no row, would leave it unnamed until erasure, and
+      `manual` records only that the user supplied those bytes (FR-033). **Tests, each red
+      before:** the drain adopting the object and marking the row `stored` between the route's read
+      and its write leaves the row `automatic`; the drain having committed only its blob metadata
+      is refused; the unnamed objects go before the named ones; the named deletes run concurrently.
+      **Contrast:** a retry over an object no row names still ends `stored`, `manual`
+- [x] T742 Refuse an erasure whose object deletes cannot fit the API function's limit (filed and
+      decided 2026-10-17 by the user, the most conservative of the options after T741: refuse
+      rather than bound the deletes or accept the risk). Neither how many keys an account's pairs
+      accumulate nor an R2 `DeleteObject`'s latency is measured, and a kill during the named pass
+      leaves rows naming originals already deleted. `erase_account` counts the waves of both passes
+      at the real delete width before the first `DeleteObject`; over a budget of 37 waves (about
+      7.4 s at an assumed 200 ms per delete) it answers `503` `erasure_too_large`, deletes nothing,
+      rolls the erasure back, and records the request on a `data_requests` row of kind `erasure`
+      left uncompleted, written through its own session. No alert kind is added: severity 1 is
+      reserved by constitution I and a new kind is a migration. Lifting the refusal needs the
+      largest account's key count measured, or a design that deletes outside the request.
+      **Tests, each red before:** an account over the budget is refused with every object still
+      listed, the account and its `match_players` unchanged, and the request recorded.
+      **Contrast:** an account exactly at the budget is erased as before
 
 - [x] T706 Unstick an analysis whose lease expired (filed 2026-10-08; decided by the user the same
       day). Match 511523321's row stayed `running` from the 2026-10-05 crash until a manual

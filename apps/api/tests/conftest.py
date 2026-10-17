@@ -356,7 +356,8 @@ class _FakeObjectStore:
 
     async def get(self, key: str) -> bytes:
         """The bytes under `key`: a seeded `existing_objects` entry, else the last `put`. A key in
-        `existing_keys` alone holds no known bytes, so reading it is the test's own mistake."""
+        `existing_keys` alone holds no known bytes: `put_if_absent` finds it held and reading it
+        raises `ObjectNotFound`, an object that vanished between the two calls."""
         if self._fails:
             raise RuntimeError("simulated object store outage")
         if key in self.existing_objects:
