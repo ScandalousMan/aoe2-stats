@@ -727,11 +727,11 @@ async def erase_account(
     of `match_players` for the user's profiles (returned by `_pseudonymise_profile_ids`, as they
     were before it retargets them) and of `replay_captures`. One `DeleteObject` goes to each such
     key that no row names, **first**; then one to each key a row names. A function killed at the
-    limit rolls the database back (after the idle-in-transaction timeout), and what that leaves
-    depends on the pass: during the unnamed pass only objects no row names are gone, so no row
-    points at a missing original; during the named pass the rolled-back rows still name objects
-    already deleted - originals gone while the account survives - narrowed to that pass. A retry
-    repeats the idempotent deletes.
+    limit, or a `DeleteObject` error partway through a pass, rolls the database back (after the
+    idle-in-transaction timeout for a kill), and what that leaves depends on the pass: during the
+    unnamed pass only objects no row names are gone, so no row points at a missing original; during
+    the named pass the rolled-back rows still name objects already deleted - originals gone while
+    the account survives - narrowed to that pass. A retry repeats the idempotent deletes.
 
     **Duration.** Erasure's route runs in `api/index.py`, whose limit is `maxDuration: 10` in
     `vercel.json` (`api/cron/ingest.py` and `api/analyze.py` are separate functions). Both passes

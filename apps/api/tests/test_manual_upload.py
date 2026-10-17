@@ -872,6 +872,59 @@ async def test_upload_whose_row_is_adopted_by_the_drain_after_the_read_is_refuse
     )
 
 
+async def test_upload_whose_row_got_the_drains_blob_metadata_after_the_read_is_refused_unchanged(
+    client: TestClient,
+    db_session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
+    fake_object_store: _FakeObjectStore,
+) -> None:
+    """T730 remediation: between the route's read (no row names an object) and its write, the drain
+    commits only `_commit_blob_metadata`'s effect: the row is still `downloading`, now naming the
+    object with its size and hash, `automatic`. The object's bytes are the upload's. The row names
+    an object, so the upload must not relabel it `manual` / `stored`: `replay_held`, no put, the
+    row as the drain left it."""
+    game_id, profile_id = _HELD_GAME_ID + 12, _HELD_PROFILE_ID + 12
+    key = replay_object_key(game_id, profile_id)
+    content = _reference_replay_bytes()
+    digest = hashlib.sha256(content).hexdigest()
+    await _seed_held_candidate(
+        db_session,
+        client,
+        game_id=game_id,
+        profile_id=profile_id,
+        status=CaptureStatus.DOWNLOADING,
+        object_key=None,
+    )
+    fake_object_store.existing_objects[key] = content
+
+    async def get_after_the_drain_commits_its_metadata(requested: str) -> bytes:
+        async with session_factory() as other:
+            await other.execute(
+                update(ReplayCapture)
+                .where(ReplayCapture.game_id == game_id, ReplayCapture.profile_id == profile_id)
+                .values(object_key=key, zip_bytes=len(content), zip_sha256=digest)
+            )
+            await other.commit()
+        return content
+
+    fake_object_store.get = get_after_the_drain_commits_its_metadata  # type: ignore[method-assign]
+
+    response = _upload(client, game_id)
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "replay_held"
+    assert fake_object_store.put_calls == []
+    row = await _capture_row(db_session, game_id=game_id, profile_id=profile_id)
+    assert row is not None
+    assert (row.status, row.source, row.object_key, row.zip_sha256, row.zip_bytes) == (
+        CaptureStatus.DOWNLOADING,
+        CaptureSource.AUTOMATIC,
+        key,
+        digest,
+        len(content),
+    )
+
+
 async def test_upload_for_a_withdrawn_row_naming_no_object_is_stored_manual(
     client: TestClient, db_session: AsyncSession, fake_object_store: _FakeObjectStore
 ) -> None:

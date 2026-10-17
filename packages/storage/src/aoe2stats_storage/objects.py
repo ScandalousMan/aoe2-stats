@@ -239,8 +239,10 @@ class ObjectStore:
         the check and the write are a single operation on the store: two writers racing for one key
         cannot both succeed, which a head-then-put could not promise. The analysis document uses it:
         its key is a function of its identity and, once written, is never written again (specs/006
-        contracts/analysis-document.md, FR-042). So does the manual upload (`upload_replay`, T723),
-        which refuses a key that already holds an object. `put` is unchanged and still overwrites.
+        contracts/analysis-document.md, FR-042). So do the capture drain (T728), which never
+        writes over an object, and the manual upload (`upload_replay`, T723), which since T730
+        accepts a key that already holds an object only when its SHA-256 equals the upload's.
+        `put` is unchanged and still overwrites.
 
         `metadata` becomes the object's user metadata (`x-amz-meta-*`), read back by
         `get_with_metadata`. The capture drain marks its own objects with it; the manual upload

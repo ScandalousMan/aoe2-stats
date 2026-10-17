@@ -123,8 +123,10 @@ one non-negotiable ordering — participation, objection, validation, held objec
   original replay (constitution IV), so there is no compensating delete; an object an upload
   orphaned and nobody retried is removed by the owner's account erasure (`routers/privacy.py`).
   `CapturesRepository.record_manual_upload` — the one write that follows, described in full in that
-  repository's own module docstring — runs only once the blob is durable. The automatic
-  capture's own write uses `put` and is not touched by this route's checks.
+  repository's own module docstring — runs only once the blob is durable. The automatic capture
+  drain (T728) writes with `put_if_absent` too, never over an object, and marks its own object with
+  the user metadata `source=automatic` (`_DRAIN_OBJECT_METADATA` in the ingester's `capture.py`);
+  this route writes none and does not read that marker.
 
 **`GET /api/matches/{game_id}/replay/{profile_id}` (T337, 003) — a different route from the one
 above.** 001's route above is the caller's own dashboard download, reached by `game_id` alone; this
@@ -754,7 +756,11 @@ async def upload_replay(
     profile_id)` violation from an identical twin's insert, or `CaptureNoLongerOpen` from a row
     the drain or a twin stored in the meantime, rolls back only the write and answers
     `replay_held`; the request-scoped session stays usable until its own rollback. No path
-    deletes or overwrites.
+    deletes or overwrites. A held object with the upload's SHA-256 is adopted as `manual` even when
+    the drain wrote it, and its marker is not read, deliberately: the drain revisits a key only
+    while its row is live, so refusing it under a terminal row or none would strand the replay
+    unnamed until erasure, and `manual` records only that the user supplied these bytes (FR-033),
+    which the equal hash proves.
 
     **T102.** A successful upload changes the `capture_status` `routers/matches.py`'s list and
     detail routes both cache — `cache.invalidate_prefix` below drops every cached page for this
@@ -796,7 +802,8 @@ async def upload_replay(
     key = replay_object_key(game_id, profile_id)
     zip_sha256 = hashlib.sha256(content).hexdigest()
     # T723: a conditional write; an object already under the key is never replaced. T730: it is
-    # accepted only when it is this very file - an earlier attempt's object, whose row write failed.
+    # accepted only when it is this very file - for example an earlier attempt's object, whose row
+    # write failed, or one the ingester wrote.
     if not await object_store.put_if_absent(key, content, content_type=REPLAY_CONTENT_TYPE):
         try:
             held = await object_store.get(key)

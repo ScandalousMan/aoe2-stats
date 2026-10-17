@@ -2470,6 +2470,21 @@ carries what T673's dry run read.
       where the claim's stale age equals the function's maximum duration; reachable on a host
       without that bound. To decide first: whether the drain's `stored` mark also matches those
       three statuses when the row names the drain's own key, keeping `withdrawn` excluded
+- [x] T741 Close what #155's review and #148's review (N4) left on T730 (filed 2026-10-17; #155
+      merged at its first commit). **Erasure:** the keys no row names are deleted before the keys
+      rows name, both passes concurrently under one bound, so a kill or a delete error during the
+      first pass leaves no row naming a deleted original; the duration bound in `erase_account`'s
+      docstring counts both passes. **Upload:** `record_manual_upload`'s update of an existing row
+      also requires `object_key IS NULL` and a status other than `stored`, and `upload_replay`
+      refuses `replay_held`, writing nothing, when that update matches no row, when the held object
+      is gone before it is read, and when a twin upload's insert wins the pair's uniqueness. A held
+      object with the upload's SHA-256 is adopted as `manual` even when the drain wrote it: refusing
+      it under a terminal row, or a pair with no row, would leave it unnamed until erasure, and
+      `manual` records only that the user supplied those bytes (FR-033). **Tests, each red
+      before:** the drain adopting the object and marking the row `stored` between the route's read
+      and its write leaves the row `automatic`; the drain having committed only its blob metadata
+      is refused; the unnamed objects go before the named ones; the named deletes run concurrently.
+      **Contrast:** a retry over an object no row names still ends `stored`, `manual`
 
 - [x] T706 Unstick an analysis whose lease expired (filed 2026-10-08; decided by the user the same
       day). Match 511523321's row stayed `running` from the 2026-10-05 crash until a manual
