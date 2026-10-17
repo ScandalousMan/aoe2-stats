@@ -41,6 +41,13 @@ whole module is never granted: `query.cost` called from here fails the guard. Th
 itself still imports no knowledge package; that import lives here, behind the same seam
 `staleness.py` uses.
 
+**A served label is cleaned; the snapshot is not.** The vendored names carry the source's line-break
+markup (building 109 is `"Town<br>\nCenter"`, technology 1404 `"Circum-<br>\nnavigation"`,
+technology 454 `"Counter- weights"`), and the page renders text escaped, so a raw value would show a
+literal `<br>`. `clean_label` turns the value into the label a reader would write, in the block
+only: `query.name` still returns the vendored value, and the snapshots, which are digested and
+frozen, are never edited. A label that is nothing once cleaned is left out like an unresolved id.
+
 **The served leaves are published data (FR-006, FR-007).** The block's leaves have register entries
 (`names.*` in `register.toml`, tier derived) and the block carries its own `provenance` (tier,
 method and inputs per datum present, read from the register), both checked over the served bytes and
@@ -50,6 +57,7 @@ not only over the stored body (`apps/analyzer/tests/test_names.py`).
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Iterable, Mapping
 from typing import Any, Final
 
@@ -65,7 +73,7 @@ from aoe2stats_knowledge.snapshot import (
     pinned_snapshot,
 )
 
-__all__ = ["FAULT_ERRORS", "NAMES_KEY", "with_names"]
+__all__ = ["FAULT_ERRORS", "NAMES_KEY", "clean_label", "with_names"]
 
 #: The top-level key the block is served under. Not a field of the stored document: it is absent
 #: from every stored object, and a stored object that has it is served as it is.
@@ -89,6 +97,28 @@ _SNAPSHOT_DATA: Final[tuple[str, ...]] = ("names.snapshot.describes_build", "nam
 
 #: The entity kinds a page shows a name for, as `rules.json` keys them.
 _KINDS: Final[tuple[str, ...]] = ("technology", "unit", "building")
+
+
+#: A word-wrap hyphen: a hyphen followed by a line break or whitespace and then a lower-case letter
+#: continues one word (`Circum-<br>\nnavigation`, `Counter- weights`), so the break is dropped with
+#: it. A compound's hyphen (`Double-Bit<br>\nAxe`, `Man-at-Arms`) is followed by a capital or by
+#: nothing, and stays.
+_BROKEN_WORD: Final[re.Pattern[str]] = re.compile(r"-(?:\s*(?i:<br\s*/?>)\s*|\s+)(?=[a-z])")
+#: Any other line break is a space between two words.
+_LINE_BREAK: Final[re.Pattern[str]] = re.compile(r"<br\s*/?>", re.IGNORECASE)
+_WHITESPACE: Final[re.Pattern[str]] = re.compile(r"\s+")
+
+
+def clean_label(vendored: str) -> str | None:
+    """The label a reader would write for a vendored name: word-wrap hyphens joined, other line
+    breaks a space, whitespace collapsed and trimmed. `None` when nothing is left, so that the
+    caller leaves the id unresolved; emptiness is decided after the collapse, so markup alone, with
+    or without a stray hyphen, is empty."""
+    label = _BROKEN_WORD.sub("", vendored)
+    label = _LINE_BREAK.sub(" ", label)
+    label = _WHITESPACE.sub(" ", label).strip()
+    # A label with no letter or digit is no name: markup around a lone hyphen (`-<br>`) leaves `-`.
+    return label if any(character.isalnum() for character in label) else None
 
 
 def with_names(stored: bytes) -> bytes:
@@ -185,7 +215,9 @@ def _block(snapshot: Snapshot, document: Mapping[str, Any]) -> dict[str, Any]:
                 answer = query_name(EntityRef(kind=kind, id=entity_id, build=build))
                 if isinstance(answer, KnowledgeGap) or answer.source == UNRESOLVED_SOURCE:
                     continue
-                resolved[kind][entity_id] = answer.value
+                label = clean_label(answer.value)
+                if label is not None:
+                    resolved[kind][entity_id] = label
     return {
         "snapshot": {"describes_build": build, "digest": snapshot.identity.digest},
         **resolved,

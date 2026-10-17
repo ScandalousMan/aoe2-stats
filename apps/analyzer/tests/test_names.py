@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import re
 from datetime import UTC, datetime
+from importlib import resources
 from pathlib import Path
 from typing import Any
 
@@ -27,11 +28,13 @@ from tests.snapshot_refresh import (
 
 from aoe2stats_analyzer.canonical import canonical_bytes
 from aoe2stats_analyzer.extract import _method_for, build_document
-from aoe2stats_analyzer.names import NAMES_KEY, with_names
+from aoe2stats_analyzer.names import NAMES_KEY, clean_label, with_names
 from aoe2stats_core.truth.register import REGISTER
 from aoe2stats_core.truth.validate import DocumentInvalid, present_data, validate
 from aoe2stats_knowledge import snapshot as snapshot_module
 from aoe2stats_knowledge.gaps import KnowledgeGap
+from aoe2stats_knowledge.query import EntityRef
+from aoe2stats_knowledge.query import name as query_name
 from aoe2stats_knowledge.snapshot import load_all_snapshots, load_resolvable_snapshots
 from aoe2stats_replay_engine.aoe2rec import Aoe2RecExtractor
 
@@ -494,3 +497,134 @@ def test_the_contracts_example_block_is_complete_against_its_own_rules() -> None
 
     assert set(json.loads(served)[NAMES_KEY]["provenance"]) == _NAMES_DATA
     assert _served_shape_violations(served) == []
+
+
+# --- the served label is the vendored name cleaned of its line-break markup ----------------------
+
+_BUILD_WITH_MARKUP = 185872
+
+
+def _document_naming(
+    *,
+    buildings: tuple[int, ...] = (),
+    technologies: tuple[int, ...] = (),
+    units: tuple[int, ...] = (),
+) -> dict[str, Any]:
+    document = _document(_knowledge_identity(_BUILD_WITH_MARKUP))
+    (participant,) = document["participants"]
+    participant["builds"] = [{"building_id": i, "world_time_ms": 1} for i in buildings]
+    participant["researches"] = [{"technology_id": i, "world_time_ms": 1} for i in technologies]
+    participant["trainings"] = [
+        {"unit_id": i, "amount": 1, "building_id": 12, "world_time_ms": 1} for i in units
+    ]
+    participant["age_up_commands"] = {}
+    return document
+
+
+def test_a_vendored_name_with_markup_is_served_as_a_clean_label() -> None:
+    """Building 109 is `"Town<br>\\nCenter"` in the snapshot, technology 1404
+    `"Circum-<br>\\nnavigation"` and technology 454 `"Counter- weights"`; a compound's hyphen
+    stays."""
+    document = _document_naming(
+        buildings=(109,), technologies=(1404, 454, 202, 217, 222), units=(473, 75)
+    )
+
+    names = _served_names(with_names(_stored(document)))
+
+    assert names["building"]["109"] == "Town Center"
+    assert names["technology"] == {
+        "202": "Double-Bit Axe",
+        "217": "Two-Handed Swordsman",
+        "222": "Man-at-Arms",
+        "454": "Counterweights",
+        "1404": "Circumnavigation",
+    }
+    assert names["unit"] == {"473": "Two-Handed Swordsman", "75": "Man-at-Arms"}
+
+
+def test_the_snapshot_itself_still_returns_the_vendored_name() -> None:
+    """The cleaning is the block's: `query.name` and the frozen snapshot are untouched."""
+    answer = query_name(EntityRef(kind="building", id="109", build=_BUILD_WITH_MARKUP))
+
+    assert not isinstance(answer, KnowledgeGap)
+    assert answer.value == "Town<br>\nCenter"
+
+
+def test_no_label_served_for_a_real_recording_carries_markup() -> None:
+    document = build_document(
+        Aoe2RecExtractor(max_raw_bytes=_MAX_RAW_BYTES),
+        (_REPLAYS / "AgeIIDE_Replay_511523321.zip").read_bytes(),
+        game_id=511_523_321,
+        object_key="retained-recordings/511523321/1.zip",
+        zip_sha256="ab" * 32,
+        extracted_at=datetime(2026, 10, 17, 12, 0, tzinfo=UTC),
+    )
+
+    names = _served_names(with_names(canonical_bytes(document)))
+
+    assert names["technology"]["202"] == "Double-Bit Axe"
+    labels = [
+        label for kind in ("technology", "unit", "building") for label in names[kind].values()
+    ]
+    assert labels
+    assert [label for label in labels if "<" in label or ">" in label] == []
+
+
+def _every_vendored_name() -> list[tuple[str, str, str, str]]:
+    """(snapshot directory, kind, id, name) for every entity of every installed snapshot."""
+    found = []
+    for snapshot in load_all_snapshots():
+        rules = json.loads(
+            resources.files("aoe2stats_knowledge")
+            .joinpath("snapshots", snapshot.directory, "rules.json")
+            .read_text(encoding="utf-8")
+        )
+        for kind, records in rules.get("entities", {}).items():
+            for entity_id, record in records.items():
+                if record.get("name"):
+                    found.append((snapshot.directory, kind, entity_id, record["name"]))
+    return found
+
+
+def test_the_sweep_reaches_names_with_markup_in_more_than_one_snapshot() -> None:
+    """The sweep below proves nothing over a table with no markup in it."""
+    with_markup = {d for d, _, _, name in _every_vendored_name() if "<br" in name.lower()}
+
+    assert len(with_markup) >= 2
+
+
+def test_every_vendored_name_of_every_snapshot_cleans_to_a_plain_label() -> None:
+    problems = []
+    for directory, kind, entity_id, vendored in _every_vendored_name():
+        label = clean_label(vendored)
+        if (
+            label is None
+            or "<" in label
+            or ">" in label
+            or "- " in label
+            or label != label.strip()
+            or "  " in label
+            or "\n" in label
+        ):
+            problems.append((directory, kind, entity_id, vendored, label))
+    assert problems == []
+
+
+@pytest.mark.parametrize("markup", ["<br>", " <br/> ", "-<br>", "<BR />", "", "  \n "])
+def test_a_label_with_nothing_but_markup_is_left_out(markup: str) -> None:
+    assert clean_label(markup) is None
+
+
+@pytest.mark.parametrize(
+    ("vendored", "label"),
+    [
+        ("Town<br>\nCenter", "Town Center"),
+        ("Circum-<br>\nnavigation", "Circumnavigation"),
+        ("Counter- weights", "Counterweights"),
+        ("Double-Bit<br>\nAxe", "Double-Bit Axe"),
+        ("Man-at-Arms", "Man-at-Arms"),
+        ("Feudal Age", "Feudal Age"),
+    ],
+)
+def test_clean_label_joins_word_wrap_hyphens_and_keeps_compounds(vendored: str, label: str) -> None:
+    assert clean_label(vendored) == label

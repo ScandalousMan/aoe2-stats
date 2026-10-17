@@ -288,7 +288,7 @@ describe('readKnowledgeNames and the block provenance (T709a)', () => {
   const provenance = {
     'names.technology': {
       tier: 'derived',
-      method: 'knowledge-snapshot.name@1',
+      method: 'knowledge-snapshot.name@2',
       inputs: ['participant.researches.technology_id'],
     },
   }
