@@ -475,18 +475,6 @@ async function stubMatchDetailAnalysis(
   )
 }
 
-/** Puts the sequential-focus starting point back at the top of the document, whether or not
- * anything is focused (`resetFocusToDocumentStart` leaves a page with nothing focused alone). */
-async function returnFocusToDocumentStart(page: Page): Promise<void> {
-  await page.evaluate(() => {
-    const sentinel = document.createElement('span')
-    sentinel.setAttribute('tabindex', '-1')
-    document.body.insertBefore(sentinel, document.body.firstChild)
-    sentinel.focus()
-    sentinel.remove()
-  })
-}
-
 // --- The two success-branch controls that are neither list nor dialog (T682) --------------------
 //
 // `ArchivalControl`'s `objected` state and `DataExportPanel`'s `ready` state. Every at-rest fixture
@@ -507,7 +495,7 @@ export const OBJECTED_ME = {
 const EXPORT_JOB_ID = 'visual-suite-export'
 // Same-origin and relative: the suites fail any request to another host, and nothing here ever
 // follows the link (its presence is asserted, never a click).
-const EXPORT_DOWNLOAD_PATH = `/api/privacy/export/${EXPORT_JOB_ID}/download`
+export const EXPORT_DOWNLOAD_PATH = `/api/privacy/export/${EXPORT_JOB_ID}/download`
 
 /** The export API in the state a finished job leaves it: `POST` answers with the job id, and the
  * first `GET` of that job already reads `completed`, so the panel goes `requesting` -> `preparing`
@@ -702,11 +690,6 @@ export const POPULATED_SCENARIOS: readonly PopulatedScenario[] = [
         .locator('main a[download]:has-text("Download the archive")')
         .waitFor({ state: 'visible', timeout: 5_000 })
         .catch(() => undefined)
-      // The request button disables while the export is built, which drops focus to `body` but
-      // leaves Chromium's sequential-focus starting point on that button. `walkTabOrder` only
-      // resets focus when something is focused, so without this the Tab walk would start mid-page
-      // and visit the 4 stops after the button instead of all of them.
-      await returnFocusToDocumentStart(page)
     },
   }),
 ]
@@ -942,10 +925,11 @@ export interface TooltipScenario extends SuiteScenario {
 //   file that no table entry names fails;
 // - routes: it reads `apps/web/src/routes/*.tsx` for the routes that import a container that
 //   renders a `ProfileSummary`, so a new route mounting one fails until it is listed here (a route
-//   that reaches a container through another component is not seen);
+//   that reaches a container through another component, by a default import, by a lazy `import()`
+//   or from a nested route directory is not seen: only braced named imports in the flat directory);
 // - runtime: `openTooltipByKeyboard` fails when `main` holds a second tooltip trigger, so a second
-//   `Tooltip` rendered on one of these routes fails — but only as that route's at-rest stubs render
-//   it. A tooltip that renders only in a populated list (one added to `MatchRow`, whose at-rest
+//   `Tooltip` rendered on one of these routes fails — but only as rendered when the first trigger
+//   attaches. A tooltip that renders only in a populated list (one added to `MatchRow`, whose at-rest
 //   `/matches` list is empty) is a new usage the source level fails on, yet a table entry naming
 //   `/matches` satisfies that level, and the count never sees it: it stays unjudged until a
 //   populated scenario opens it.

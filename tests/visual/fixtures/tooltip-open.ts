@@ -39,9 +39,9 @@ const TOOLTIPS_A_SCENARIO_OPENS = 1
 
 /** Fails when `main` holds more tooltip triggers than the scenario opens, so a second `Tooltip` on
  * a covered route cannot ride on the first one's scenario: its motion and Escape contract would
- * never be judged. This is counted in the rendered page, so no table can satisfy it. It sees only
- * what the scenario's at-rest stubs render; a tooltip that appears in a populated list is not in the
- * page here. */
+ * never be judged. This is counted in the rendered page, so no table can satisfy it. It counts once, as
+ * rendered when the first trigger attaches; a tooltip that renders later, or only in a populated
+ * list, is not in the page then. */
 export async function assertOneTooltipTrigger(page: Page, label: string): Promise<void> {
   await page
     .locator(TOOLTIP_TRIGGER_SELECTOR)

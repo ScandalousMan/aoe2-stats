@@ -20,11 +20,13 @@
 //    `<ProfileSummary`, so a usage in a file no table entry names fails; and the route files are
 //    read for the containers they import, so a new route importing a container that renders a
 //    `ProfileSummary` fails until it has a scenario. A third level lives at runtime, in
-//    `./tooltip-open`: a second tooltip trigger in `main` fails the scenario, as that route's
-//    at-rest stubs render it. Not caught by any level: a tooltip that renders only in a populated
+//    `./tooltip-open`: a second tooltip trigger in `main` fails the scenario, counted once, as
+//    rendered when the first trigger attaches. Not caught by any level: a tooltip that renders only in a populated
 //    list (a `<Tooltip>` in `MatchRow`, whose at-rest `/matches` list is empty) — the source level
 //    fails on it but a table entry naming `/matches` satisfies it — and a route that reaches a
-//    container through another component rather than importing it.
+//    container through another component rather than importing it, through a default import or a
+//    lazy `import()`, or from a nested route directory (the derivation reads braced named imports
+//    in the flat `apps/web/src/routes/` directory only).
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { expect, test } from '@playwright/test'
@@ -42,6 +44,7 @@ import {
 import {
   enterScenario,
   findAvatarHashes,
+  EXPORT_DOWNLOAD_PATH,
   OBJECTED_ME,
   POPULATED_FIXTURES,
   POPULATED_SCENARIOS,
@@ -222,6 +225,10 @@ test.describe('suite scenarios', () => {
   test('the objected fixture is objected, with a timestamp, and the export link is same-origin', () => {
     expect(OBJECTED_ME.archival_objected).toBe(true)
     expect(OBJECTED_ME.archival_objected_at).not.toBeNull()
+    // Same-origin: a path on the application's own host, never an absolute URL or a `//host` one.
+    expect(EXPORT_DOWNLOAD_PATH.startsWith('/') && !EXPORT_DOWNLOAD_PATH.startsWith('//')).toBe(
+      true,
+    )
     const exportReady = POPULATED_SCENARIOS.find(
       (scenario) => scenario.label === '/privacy (export ready)',
     )
@@ -922,7 +929,8 @@ function routeLabelOfFile(file: string): string | null {
 }
 
 /** The routes whose file imports `container`. Comments are blanked first, so a docstring naming it
- * is not an import. */
+ * is not an import. Braced named imports only: a default import, a lazy `import()` and a route in
+ * a nested directory are not derived. */
 function routesImporting(container: string, routes: readonly RouteText[]): string[] {
   const importPattern = new RegExp(
     `import\\s*(?:type\\s+)?\\{[^}]*\\b${container}\\b[^}]*\\}\\s*from`,

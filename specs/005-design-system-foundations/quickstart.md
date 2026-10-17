@@ -1219,12 +1219,13 @@ a second tooltip trigger in `main`) each fail naming the broken clause. The guar
 per tooltip. `tests/visual/fixtures/suite-scenarios.test.ts` fails when a `<Tooltip>`,
 `<CountryFlag>` or `<ProfileSummary>` usage appears in a file no table entry names, and when a route
 file under `apps/web/src/routes/` imports a container that renders a `ProfileSummary` and its route
-has no tooltip scenario; the scenario itself fails when `main` holds a second tooltip trigger, as
-that route's at-rest stubs render it. A tooltip that renders only in a populated list (one added to
+has no tooltip scenario; the scenario itself fails when `main` holds a second tooltip trigger, counted once, as
+rendered when the first trigger attaches. A tooltip that renders only in a populated list (one added to
 `MatchRow`, whose at-rest `/matches` list is empty) fails the source check only until a table entry
 naming `/matches` is added, and the count never sees it: it stays unjudged until a populated
 scenario opens it. A route that reaches a container through another component, rather than
-importing it, is not derived. Dropping `motion-reduce:duration-0` from the component, and disabling its Escape
+importing it, is not derived, nor is one that imports it by a default import or a lazy `import()`,
+or from a nested route directory (only braced named imports in the flat routes directory are read). Dropping `motion-reduce:duration-0` from the component, and disabling its Escape
 handling, were each shown to fail the route suites locally before this note was written. The tooltip
 scenarios run in the keyboard and reduced-motion suites only, the two T681 names: the focus-visibility
 and touch-footprint suites already measure the flag trigger at rest on those routes. **Item 13 stays
@@ -1233,9 +1234,10 @@ partly met** until T682's row of the same register is deleted: the `objected` `A
 that shows T681's part: RUN-PENDING.
 
 **Widened, 2026-10-17 (T682).** T682's own row of `packages/design-system/specs/README.md`'s
-"Verification-coverage gap register" is deleted, which leaves the register with no row, and the
+"Verification-coverage gap register" is deleted, and the
 sentences above that the `objected` `ArchivalControl` and `DataExportPanel`'s `ready` link are not
-rendered, and that item 13 stays partly met until this row is deleted, are superseded. `SUITE_SCENARIOS`
+rendered, and that item 13 stays partly met until this row is deleted, are superseded. The register
+is not empty: the review of #163 filed T744's row in that register. `SUITE_SCENARIOS`
 in `tests/visual/fixtures/suite-scenarios.ts` now holds three more populated scenarios, so all four
 suites run each of them in both themes: `/dashboard (archival objected)` and `/privacy (archival
 objected)` stub `/api/me` with `archival_objected: true` and an `archival_objected_at` timestamp, and
@@ -1248,24 +1250,29 @@ no error callout or loading region, and `tests/visual/fixtures/suite-scenarios.t
 a scenario or its inventory entry is removed (`/privacy` is no longer listed there as a route without a
 list). Planted pages with `archival_objected` false, with no `archival_objected_at`, and with an export that
 stays queued each fail that assertion naming the missing control; the same two absences, planted by hand in the
-scenarios, were shown to fail the keyboard suite. One fault of the scenarios' own surfaced while writing them: after the export finishes, the request button has been disabled and focus is on `body` but
-Chromium keeps the sequential-focus starting point on that button, so the Tab walk began mid-page and
-visited 4 of 15 stops until `prepare` put the starting point back at the top of the document.
-**Item 13 is Met**, on the head carrying T681 and T682, for every route in both themes: routes at rest,
-the populated scenarios in that inventory including the two success-branch controls, every `Dialog` and
-`Menu` open, and the country `Tooltip` open. Read against item 13's own wording (keyboard operation, focus
-visibility, touch footprints and reduced motion on every route in both themes), that is the claim the four
-suites make, and no route or control group the inventory names is left unrendered. What stays narrower is
-stated rather than hidden, and none of it is a route or a property item 13 names: the two loading states
-(`ProfileSummary`'s `Skeleton`, the erase button's `Spinner`) are held in the reduced-motion suite only,
-since only that suite has a contract for an animation loop; the tooltip scenarios run in the keyboard and
-reduced-motion suites only, because the focus-visibility and touch-footprint suites already measure the flag
-trigger at rest; and the scenarios render the success branch of each route, so the error, empty and
-transient branches (a failed export, `ArchivalControl` while submitting or after a resume, the analysis
-section's `queued`, `running` and `failed` states) meet none of the four suites, as the inventory's own header
-says. Local run only, macOS Chromium, until the run named here backs it: route-keyboard 90,
+scenarios, were shown to fail the keyboard suite. Two separate facts surfaced while writing them. First, product behaviour: after the export finishes,
+focus is on `body`, because `Button`'s `loading` state sets the native `disabled` attribute
+(`packages/design-system/specs/shared-primitives.md:206`, `packages/design-system/src/primitives/Button/index.tsx:216`)
+and the focused request button drops focus. No route suite judges where focus lands after an action; that is filed as T745.
+Second, a harness fault: the Tab walk's start-of-document reset skipped a page whose focus was already on `body`,
+leaving Chromium's sequential-focus starting point on the disabled button, so the walk visited 4 of 15 stops. That is
+fixed in the harness, not in the scenario: `resetFocusToDocumentStart` in `tests/visual/fixtures/keyboard-walk.ts` now
+always puts the starting point at the top (a planted page where a focused button becomes `disabled` failed it before the
+fix and passes after; a page with that button never focused is its control), except on a page that declares a positive
+`tabindex`, where a sentinel would skip the positive-tabindex stops and the reset only blurs. `tabTo` shares it.
+**Item 13 is partly met.** It is Met for every route's success branch, at rest and populated, with every `Dialog`,
+`Menu` and the country `Tooltip` open, in both themes, on the head carrying T681 and T682; it stays partly met overall
+until T744's row of `packages/design-system/specs/README.md`'s "Verification-coverage gap register" is deleted. What
+the four suites do not reach is stated rather than hidden: the error and transient branches meet none of them (filed as
+T744: `DataExportPanel`'s `failed` state and its "Try again" button, `ArchivalControl` while its write is in flight
+and after a resume, the match page's analysis section in its `queued`, `running` and `failed` states), and the two
+loading states (`ProfileSummary`'s `Skeleton`, the erase button's `Spinner`) run in the reduced-motion suite only
+(also T744). Empty branches are not in that gap: the at-rest route scenarios render them (`/matches` renders its
+`EmptyState`), and a refused non-success state ("Try requesting analysis") is in the inventory. The tooltip scenarios
+run in the keyboard and reduced-motion suites only, because the focus-visibility and touch-footprint suites already
+measure the flag trigger at rest. Local run only, macOS Chromium, until the run named here backs it: route-keyboard 90,
 route-focus-visibility 82, route-touch-footprint 82, route-reduced-motion 94, `tests/visual/fixtures`
-177, all passed. The run that shows T681's and T682's parts together: RUN-PENDING.
+190, all passed. The run that shows T681's and T682's parts together: RUN-PENDING.
 
 ### Item 15's general-reviewer half — outstanding, no pull request covers this head
 
