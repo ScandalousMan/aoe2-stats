@@ -96,6 +96,8 @@ export const MATCH_DETAIL_RESPONSE = {
   participants: [],
   capture_status: null,
   capture_deadline_at: null,
+  // T727: `null` exactly where `capture_status` is.
+  capture_object_held: null,
 }
 
 export async function fulfillJson(route: Route, body: unknown): Promise<void> {

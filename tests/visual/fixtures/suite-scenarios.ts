@@ -278,6 +278,7 @@ const MATCH_DETAIL_POPULATED = {
   ...MATCH_DETAIL_RESPONSE,
   leaderboard_name: 'Team Random Map',
   capture_status: 'stored',
+  capture_object_held: true,
   participants: [
     participant(VIEWER_ID, 'VisualSuitePlayer', 1, 1, 'Franks', 'archived'),
     participant(ALLY_ID, 'FixtureAlly', 1, 3, 'Mongols', 'obtainable'),
@@ -359,7 +360,13 @@ const ANALYSIS_DOCUMENT = {
 /** The match-detail body with its `analysis` summary, optionally with a different capture status
  * (`expired` is one of the three "Lost" statuses that render `UploadControl`). */
 function matchDetailWith(analysis: ReturnType<typeof analysisSummary>, captureStatus = 'stored') {
-  return { ...MATCH_DETAIL_POPULATED, capture_status: captureStatus, analysis }
+  // T727: a `stored` row holds its object; the lost statuses this takes (`expired`) hold none.
+  return {
+    ...MATCH_DETAIL_POPULATED,
+    capture_status: captureStatus,
+    capture_object_held: captureStatus === 'stored',
+    analysis,
+  }
 }
 
 // Every populated body in one place, so `suite-scenarios.test.ts` can assert what the fixtures

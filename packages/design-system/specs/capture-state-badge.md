@@ -84,9 +84,9 @@ rules out, a right turned into a penalty; hence `Badge`'s existing `neutral` var
 or pair (§8), and the label "Not archived", true of any row that is not `stored`. `SecondaryLine`,
 `detail` only: "Automatic capture ended for this match while archival was not running for this
 profile." `compact` shows the pill alone: one sentence repeated down an objector's list is that
-banner in small print. **No upload, no `MatchDetailPanel` `DownloadAction`**: it is `stored`'s alone
-(`match-history.md` §2), and `manual-upload.md` §2's gate stays the three "Lost" statuses, as the
-row may hold an object and the match response does not say which rows do (T727).
+banner in small print. **No `DownloadAction`**: it is `stored`'s alone (`match-history.md` §2). The
+upload is offered only where the match detail's `capture_object_held` is `false`, the row naming no
+object (`manual-upload.md` §2, T727); the badge's copy is the same either way.
 
 **With `archivalObjected` (§4, T724, T729):** `expired`/`failed` stay "Lost" but drop "If you still
 have the file, you can upload it." in both variants, as `manual-upload.md` §2 offers no upload; the

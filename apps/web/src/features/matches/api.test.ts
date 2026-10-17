@@ -255,6 +255,24 @@ describe('assertMatchDetailResponse', () => {
     expect(() => assertMatchDetailResponse(body)).toThrow(MatchDetailResponseShapeError)
   })
 
+  // T727: `capture_object_held` is a boolean, `null` where `capture_status` is, and tolerated as
+  // absent (read as `null`).
+  it.each([true, false, null])('accepts capture_object_held %s', (held) => {
+    expect(() =>
+      assertMatchDetailResponse({ ...validDetail(), capture_object_held: held }),
+    ).not.toThrow()
+  })
+
+  it('accepts a body with no capture_object_held at all', () => {
+    expect(() => assertMatchDetailResponse(validDetail())).not.toThrow()
+  })
+
+  it.each(['false', 0, {}])('rejects a non-boolean, non-null capture_object_held %j', (held) => {
+    expect(() =>
+      assertMatchDetailResponse({ ...validDetail(), capture_object_held: held }),
+    ).toThrow(MatchDetailResponseShapeError)
+  })
+
   // T338/T341: the per-participant `replay` object (FR-023, `contracts/http-api.md`'s "Recorded
   // games, per point of view").
 

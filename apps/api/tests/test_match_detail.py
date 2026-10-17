@@ -285,6 +285,7 @@ async def _seed_capture(
     profile_id: int,
     status: CaptureStatus = CaptureStatus.STORED,
     capture_deadline_at: datetime,
+    object_key: str | None = None,
 ) -> None:
     """Mirrors `test_matches_list.py`'s own `_seed_capture` — one `replay_captures` row, whose
     point of view is `profile_id` (`ReplayCapture`'s own docstring)."""
@@ -296,6 +297,7 @@ async def _seed_capture(
             capture_deadline_at=capture_deadline_at,
             first_seen_at=capture_deadline_at - timedelta(days=21),
             source=CaptureSource.AUTOMATIC,
+            object_key=object_key,
         )
     )
 
@@ -1094,3 +1096,133 @@ async def test_match_detail_shows_raw_identifiers_never_a_guess_for_the_unnamed(
         "FR-020: an unrecognised civilisation id must yield a label built from the raw "
         f"identifier, never a guessed name. Got {unnamed['civ_name']!r}."
     )
+
+
+# --- T727: `capture_object_held`, the one boolean the upload gate reads --------------------------
+
+_T727_GAME_ID = 700_800_910
+_T727_OTHER_PROFILE_ID = 200_100_850
+_T727_OBJECT_KEY = "replays/t727/held.zip"
+
+
+async def _seed_t727_match(
+    db_session: AsyncSession, *, game_id: int = _T727_GAME_ID, other_profile_id: int
+) -> datetime:
+    """A two-player match whose participants are the caller and `other_profile_id`; returns its
+    `completed_at`. The caller's capture row, if any, is the test's to seed."""
+    await _seed_profile(db_session, profile_id=other_profile_id, alias="T727Other")
+    completed_at = datetime.now(UTC)
+    await _seed_match(db_session, game_id=game_id, completed_at=completed_at)
+    await _seed_match_player(
+        db_session,
+        game_id=game_id,
+        profile_id=_CALLER_PROFILE_ID,
+        team_id=1,
+        civ_id=1,
+        color_id=1,
+        result="win",
+        rating=1500,
+        rating_diff=18,
+    )
+    await _seed_match_player(
+        db_session,
+        game_id=game_id,
+        profile_id=other_profile_id,
+        team_id=2,
+        civ_id=2,
+        color_id=2,
+        result="loss",
+        rating=1480,
+        rating_diff=-18,
+    )
+    return completed_at
+
+
+@pytest.mark.parametrize(
+    ("status", "object_key", "expected"),
+    [
+        (CaptureStatus.WITHDRAWN, None, False),
+        (CaptureStatus.WITHDRAWN, _T727_OBJECT_KEY, True),
+        (CaptureStatus.STORED, _T727_OBJECT_KEY, True),
+        (CaptureStatus.EXPIRED, None, False),
+    ],
+    ids=["withdrawn-no-object", "withdrawn-with-object", "stored", "expired-no-object"],
+)
+async def test_match_detail_says_whether_the_callers_own_capture_holds_an_object(
+    client: TestClient,
+    db_session: AsyncSession,
+    status: CaptureStatus,
+    object_key: str | None,
+    expected: bool,
+) -> None:
+    """T727: `capture_object_held` is true when the row `capture_status` is read from names an
+    `object_key`, false when it names none — the fact `uploadEligibility.ts` needs to offer the
+    upload on a `withdrawn` row that holds nothing (`manual-upload.md` §2)."""
+    caller = await _seed_linked_caller(db_session)
+    await _sign_in(client, db_session, caller)
+    completed_at = await _seed_t727_match(db_session, other_profile_id=_T727_OTHER_PROFILE_ID)
+    await _seed_capture(
+        db_session,
+        game_id=_T727_GAME_ID,
+        profile_id=_CALLER_PROFILE_ID,
+        status=status,
+        capture_deadline_at=completed_at + timedelta(days=21),
+        object_key=object_key,
+    )
+    await db_session.commit()
+
+    response = client.get(f"/api/matches/{_T727_GAME_ID}")
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["capture_status"] == status.value
+    assert body["capture_object_held"] is expected
+    assert _T727_OBJECT_KEY not in response.text, "a boolean only, never the key"
+
+
+async def test_match_detail_capture_object_held_is_null_for_a_caller_without_a_capture_row(
+    client: TestClient, db_session: AsyncSession
+) -> None:
+    """T727: no capture row of the caller's own, so `capture_object_held` is `null` exactly where
+    `capture_status` is."""
+    caller = await _seed_linked_caller(db_session)
+    await _sign_in(client, db_session, caller)
+    await _seed_t727_match(db_session, other_profile_id=_T727_OTHER_PROFILE_ID)
+    await db_session.commit()
+
+    response = client.get(f"/api/matches/{_T727_GAME_ID}")
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["capture_status"] is None
+    assert "capture_object_held" in body
+    assert body["capture_object_held"] is None
+
+
+async def test_match_detail_capture_object_held_is_null_for_a_caller_without_an_active_link(
+    client: TestClient, db_session: AsyncSession
+) -> None:
+    """T727: another participant's `withdrawn` row that holds no object is not the caller's, and
+    the caller has no active link on that profile: `capture_status` is `null` and so is
+    `capture_object_held`, whatever the other participant's row says — the field discloses
+    nothing about a capture that is not the caller's own (the T726 rule)."""
+    caller = await _seed_linked_caller(db_session, profile_id=_STRANGER_CALLER_PROFILE_ID)
+    await _sign_in(client, db_session, caller)
+    await _seed_profile(db_session, profile_id=_CALLER_PROFILE_ID, alias="NotTheCaller")
+    completed_at = await _seed_t727_match(db_session, other_profile_id=_T727_OTHER_PROFILE_ID)
+    await _seed_capture(
+        db_session,
+        game_id=_T727_GAME_ID,
+        profile_id=_T727_OTHER_PROFILE_ID,
+        status=CaptureStatus.WITHDRAWN,
+        capture_deadline_at=completed_at + timedelta(days=21),
+        object_key=None,
+    )
+    await db_session.commit()
+
+    response = client.get(f"/api/matches/{_T727_GAME_ID}")
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["capture_status"] is None
+    assert body["capture_object_held"] is None

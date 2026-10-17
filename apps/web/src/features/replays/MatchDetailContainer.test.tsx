@@ -759,13 +759,14 @@ describe('MatchDetailContainer', () => {
       },
     )
 
-    // T722 (download: capture-state-badge.md §12, match-history.md §10; upload: manual-upload.md §2):
-    // "Not archived" offers neither affordance; the contrast cases show the gate still opens for
-    // the statuses it is meant for.
-    it('shows neither a download nor an upload for a withdrawn capture, and reads "Not archived"', async () => {
+    // T722 (capture-state-badge.md §12, match-history.md §10): "Not archived" offers no download.
+    // The row holds an object here, so the upload is withheld too, but that gate is proven by the
+    // T727 tests below; this one pins the badge copy and the absent download.
+    it('reads "Not archived" with its one sentence and shows no download for a withdrawn capture', async () => {
       installFakeApi({
         profiles: [],
-        detail: () => jsonResponse(baseDetail({ capture_status: 'withdrawn' })),
+        detail: () =>
+          jsonResponse(baseDetail({ capture_status: 'withdrawn', capture_object_held: true })),
       })
       renderMatch()
 
@@ -778,7 +779,83 @@ describe('MatchDetailContainer', () => {
       ).toBeInTheDocument()
       expect(screen.queryByText(/withdrawn/i)).not.toBeInTheDocument()
       expect(screen.queryByRole('button', { name: 'Download replay' })).not.toBeInTheDocument()
+    })
+
+    // T727 (manual-upload.md §2): a `withdrawn` row offers the upload exactly where the match says
+    // the row names no object (`capture_object_held` false), to a caller who does not object.
+    it('offers "Add the replay yourself" for a withdrawn capture that holds no object', async () => {
+      installFakeApi({
+        profiles: [],
+        detail: () =>
+          jsonResponse(baseDetail({ capture_status: 'withdrawn', capture_object_held: false })),
+      })
+      renderMatch()
+
+      expect(await screen.findByText('Add the replay yourself')).toBeInTheDocument()
+      // The badge's copy is the same either way, and there is still no download.
+      expect(screen.getByText('Not archived')).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Download replay' })).not.toBeInTheDocument()
+    })
+
+    it('contrast: withholds the upload for a withdrawn capture that holds an object', async () => {
+      installFakeApi({
+        profiles: [],
+        detail: () =>
+          jsonResponse(baseDetail({ capture_status: 'withdrawn', capture_object_held: true })),
+      })
+      renderMatch()
+
+      await screen.findByText('Arabia')
       expect(screen.queryByText('Add the replay yourself')).not.toBeInTheDocument()
+    })
+
+    it.each([null, undefined])(
+      'contrast: withholds the upload for a withdrawn capture when capture_object_held is %s',
+      async (held) => {
+        installFakeApi({
+          profiles: [],
+          detail: () =>
+            jsonResponse(baseDetail({ capture_status: 'withdrawn', capture_object_held: held })),
+        })
+        renderMatch()
+
+        await screen.findByText('Arabia')
+        expect(screen.queryByText('Add the replay yourself')).not.toBeInTheDocument()
+      },
+    )
+
+    it('contrast: withholds the upload for an objecting caller on a withdrawn capture that holds no object', async () => {
+      installFakeApi({
+        session: baseSession({
+          archival_objected: true,
+          archival_objected_at: '2026-10-01T00:00:00Z',
+          profiles: [{ profile_id: 11, alias: 'aoe2villain', country: 'FR', is_primary: true }],
+        }),
+        profiles: [linkedParticipantProfile()],
+        detail: () =>
+          jsonResponse(baseDetail({ capture_status: 'withdrawn', capture_object_held: false })),
+      })
+      const { queryClient } = renderMatch()
+
+      await screen.findByText('Arabia')
+      // The session has answered, so the absence is the objection and not the wait for `/me`.
+      await waitFor(() =>
+        expect(queryClient.getQueryData(meQueryOptions.queryKey)).toMatchObject({
+          archival_objected: true,
+        }),
+      )
+      expect(screen.queryByText('Add the replay yourself')).not.toBeInTheDocument()
+    })
+
+    it('contrast: expired still offers the upload to a non-objector whatever capture_object_held says', async () => {
+      installFakeApi({
+        profiles: [],
+        detail: () =>
+          jsonResponse(baseDetail({ capture_status: 'expired', capture_object_held: true })),
+      })
+      renderMatch()
+
+      expect(await screen.findByText('Add the replay yourself')).toBeInTheDocument()
     })
 
     // T724 (capture-state-badge.md §4): `GET /api/me`'s `archival_objected` is forwarded to the

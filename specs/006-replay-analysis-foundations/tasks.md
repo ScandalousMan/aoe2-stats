@@ -2374,14 +2374,19 @@ carries what T673's dry run read.
       `subject="other"` alone. The `product-designer` amends
       `packages/design-system/specs/match-history.md` §11.3 and
       `packages/design-system/specs/capture-state-badge.md` first, keeping their line counts
-- [ ] T727 Offer the upload on a `withdrawn` row that holds no object (filed 2026-10-13 from
+- [x] T727 Offer the upload on a `withdrawn` row that holds no object (filed 2026-10-13 from
       T723). Since T723 the route accepts an upload for a `withdrawn` row that names no
       `object_key`, from a caller who does not object;
       `apps/web/src/features/replays/uploadEligibility.ts` still withholds `UploadControl` from
       every `withdrawn` row, because the match response does not say which rows hold an object.
       After T726, so that whatever the response gains is served for the caller's own capture only.
       The `product-designer` first: what the response carries, and what
-      `packages/design-system/specs/manual-upload.md` says of the row
+      `packages/design-system/specs/manual-upload.md` says of the row. **Decided (`product-designer`,
+      2026-10-17).** `GET /api/matches/{game_id}` alone serves `capture_object_held`, a boolean read
+      from the row `capture_status` is read from, `true` when it names an `object_key`, and `null`
+      exactly where `capture_status` is; the list routes do not carry it, as nothing there reads
+      it. The interface offers `UploadControl` for a `withdrawn` row only when it is `false`, and
+      withholds it for `true`, `null` or absent (`manual-upload.md` §2, `capture-state-badge.md`)
 - [x] T728 Decide what the automatic capture's write does to a key that holds an object (filed
       2026-10-13 from T723). `CaptureDrain` in `apps/ingester/src/aoe2stats_ingester/capture.py`
       writes a downloaded blob with the object store's `put`, which overwrites, under the key a
