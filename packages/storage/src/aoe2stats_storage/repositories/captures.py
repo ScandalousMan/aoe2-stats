@@ -42,8 +42,9 @@ never `aoe2stats_api.settings.Settings` directly).
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from ..models import CaptureSource, CaptureStatus, ReplayCapture
 from .base import Repository
@@ -80,12 +81,28 @@ class CapturesRepository(Repository):
         `RatingsRepository.record_snapshot`'s identical default and identical reasoning: the
         caller's own clock is never trusted for a timestamp this repository can produce itself.
 
+        An existing row is written with every column named, whatever state it was loaded in (the
+        body's comment says why).
+
         Flushes but never commits, the same discipline `RatingsRepository.record_snapshot` follows:
         this is one unit of work inside whichever `session_scope` (or request-scoped session) the
         caller already opened, and this repository never decides on its own when that unit of work
         ends.
         """
         resolved_stored_at = stored_at if stored_at is not None else datetime.now(UTC)
+        values: dict[str, Any] = {
+            "status": CaptureStatus.STORED,
+            "source": CaptureSource.MANUAL,
+            "stored_at": resolved_stored_at,
+            "object_key": object_key,
+            "zip_bytes": zip_bytes,
+            "zip_sha256": zip_sha256,
+            "inner_filename": inner_filename,
+            "inner_bytes": inner_bytes,
+            "validated_by": validated_by,
+            "http_status": 200,
+            "last_error": None,
+        }
 
         result = await self.session.execute(
             select(ReplayCapture).where(
@@ -99,20 +116,22 @@ class CapturesRepository(Repository):
                 game_id=game_id,
                 profile_id=profile_id,
                 capture_deadline_at=match_completed_at + timedelta(days=capture_budget_days),
+                **values,
             )
             self.session.add(capture)
+            await self.session.flush()
+            return capture
 
-        capture.status = CaptureStatus.STORED
-        capture.source = CaptureSource.MANUAL
-        capture.stored_at = resolved_stored_at
-        capture.object_key = object_key
-        capture.zip_bytes = zip_bytes
-        capture.zip_sha256 = zip_sha256
-        capture.inner_filename = inner_filename
-        capture.inner_bytes = inner_bytes
-        capture.validated_by = validated_by
-        capture.http_status = 200
-        capture.last_error = None
-
-        await self.session.flush()
+        # An existing row is written with a Core `UPDATE` that names every column in `values`, not
+        # by assigning attributes and flushing. An ORM flush emits only the columns whose value
+        # differs from the state the row was *loaded* in, so a column another writer changed in
+        # between (the automatic capture handing the row back with a `last_error`, say) but that
+        # this method means to leave `None` would be omitted and keep the other writer's value on a
+        # `stored` row. A re-read with `FOR UPDATE` would instead block that writer for the rest of
+        # the request's transaction, with an object write already made; the plain `UPDATE` takes the
+        # row lock at its own statement, held from there to the commit. `refresh` returns the row.
+        await self.session.execute(
+            update(ReplayCapture).where(ReplayCapture.id == capture.id).values(**values)
+        )
+        await self.session.refresh(capture)
         return capture
