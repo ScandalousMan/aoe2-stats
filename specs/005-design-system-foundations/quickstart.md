@@ -1265,10 +1265,10 @@ fix and passes after; a page with that button never focused is its control), exc
 until T744's row of `packages/design-system/specs/README.md`'s "Verification-coverage gap register" is deleted. What
 the four suites do not reach is stated rather than hidden: the error and transient branches meet none of them (filed as
 T744: `DataExportPanel`'s `failed` state and its "Try again" button, `ArchivalControl` while its write is in flight
-and after a resume, the match page's analysis section in its `queued`, `running` and `failed` states), and the two
+and after a resume, the match page's analysis section in its `queued`, `running`, `failed` and `unavailable` states, `/dashboard`'s no-profile `EmptyState`, `/search`'s empty-results branches), and the two
 loading states (`ProfileSummary`'s `Skeleton`, the erase button's `Spinner`) run in the reduced-motion suite only
-(also T744). Empty branches are not in that gap: the at-rest route scenarios render them (`/matches` renders its
-`EmptyState`), and a refused non-success state ("Try requesting analysis") is in the inventory. The tooltip scenarios
+(also T744). Of the empty branches, the at-rest route scenarios render only the empty match and favourites lists (`/matches`
+renders its `EmptyState`), and a refused non-success state ("Try requesting analysis") is in the inventory. The tooltip scenarios
 run in the keyboard and reduced-motion suites only, because the focus-visibility and touch-footprint suites already
 measure the flag trigger at rest. Local run only, macOS Chromium, until the run named here backs it: route-keyboard 90,
 route-focus-visibility 82, route-touch-footprint 82, route-reduced-motion 94, `tests/visual/fixtures`
