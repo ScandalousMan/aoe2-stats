@@ -100,10 +100,17 @@ export function Panel({
             )}
           </div>
         )}
-        <div className={cx('flex flex-col', density === 'dense' ? 'gap-3' : 'gap-4 max-w-measure')}>
+        <div
+          className={cx(
+            'flex flex-col text-text-primary',
+            density === 'dense' ? 'gap-3' : 'gap-4 max-w-measure',
+          )}
+        >
           {children}
         </div>
-        {footer && <div className="mt-4 flex flex-wrap items-center gap-3">{footer}</div>}
+        {footer && (
+          <div className="mt-4 flex flex-wrap items-center gap-3 text-text-secondary">{footer}</div>
+        )}
       </Tag>
     </PanelDepthContext.Provider>
   )

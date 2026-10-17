@@ -103,7 +103,7 @@ export const Overview: Story = {
                 className="flex flex-col gap-2 rounded-panel border-hairline border-border p-4"
               >
                 <div className="flex flex-wrap items-baseline gap-2">
-                  <code className="type-machine rounded-control bg-surface-sunken px-1.5 py-0.5 text-xs">
+                  <code className="type-machine rounded-control bg-surface-sunken px-1.5 py-0.5 text-xs text-text-primary">
                     type-{role}
                   </code>
                   <Text role="supporting">family: {font.role[role].family}</Text>
@@ -129,7 +129,7 @@ export const Overview: Story = {
           <div className="flex flex-col gap-3">
             {(Object.keys(font.size) as (keyof typeof font.size)[]).map((size) => (
               <div key={size} className="flex flex-wrap items-baseline gap-3">
-                <code className="type-machine w-16 shrink-0 rounded-control bg-surface-sunken px-1.5 py-0.5 text-xs">
+                <code className="type-machine w-16 shrink-0 rounded-control bg-surface-sunken px-1.5 py-0.5 text-xs text-text-primary">
                   {size}
                 </code>
                 <span className={cx('type-body text-text-primary', SIZE_CLASS[size])}>
@@ -179,7 +179,7 @@ export const Overview: Story = {
                 className="flex flex-col gap-2 rounded-panel border-hairline border-border p-4"
               >
                 <div className="flex flex-wrap items-baseline gap-2">
-                  <code className="type-machine rounded-control bg-surface-sunken px-1.5 py-0.5 text-xs">
+                  <code className="type-machine rounded-control bg-surface-sunken px-1.5 py-0.5 text-xs text-text-primary">
                     {name}
                   </code>
                   <Text role="supporting">{font.face[name].family}</Text>

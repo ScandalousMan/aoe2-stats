@@ -94,6 +94,13 @@ describe('MatchRow', () => {
     expect(within(links[0]).queryAllByRole('button')).toHaveLength(0)
   })
 
+  // 006 T710: the application sets no text colour on its page, so the card supplies its own ink;
+  // `CivilisationIcon`'s name inherits it by contract (`MapThumbnail` sets its own).
+  it('sets its own text colour on the card, since nothing above it supplies one', () => {
+    render(<MatchRow match={match} />)
+    expect(screen.getByRole('link')).toHaveClass('text-text-primary')
+  })
+
   // T560 (FR-038): match-history.md §5 states "active — per link": a keyboard Enter triggers
   // `:active` with no pointer ever hovering, so the row's press feedback must not depend on the
   // hover fill alone. `Table`'s identical row-link category already paints both.
@@ -151,7 +158,7 @@ describe('MatchRow', () => {
     const label = screen.getByText('Unknown')
     expect(label.className).not.toContain('text-success')
     expect(label.className).not.toContain('text-danger')
-    expect(label.className).toContain('text-secondary')
+    expect(label).toHaveClass('text-text-secondary')
   })
 
   it('shows the map and civilisation name text when no imagery is resolved (§12.1 rule 3)', () => {
@@ -270,7 +277,7 @@ describe('MatchRow', () => {
     it('renders a reported zero movement as "(0)" with no sign, in a neutral tone', () => {
       render(<MatchRow match={{ ...match, rating: 922, ratingChange: { value: 0 } }} />)
       const figure = screen.getByText(fullText('922 (0)'))
-      expect(figure.querySelector('span')?.className).toContain('text-secondary')
+      expect(figure.querySelector('span')).toHaveClass('text-text-secondary')
       expect(figure.querySelector('span')?.className).not.toContain('text-success')
       expect(figure.querySelector('span')?.className).not.toContain('text-danger')
     })
@@ -382,7 +389,7 @@ describe('MatchRow', () => {
       for (const marker of markers) {
         expect(marker.className).not.toContain('text-danger')
         expect(marker.className).not.toContain('text-success')
-        expect(marker.className).toContain('text-secondary')
+        expect(marker).toHaveClass('text-text-secondary')
       }
     })
 

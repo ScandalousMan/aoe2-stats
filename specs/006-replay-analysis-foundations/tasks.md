@@ -2580,7 +2580,49 @@ carries what T673's dry run read.
       `AnalysisTimeline`'s lists did, on the match page, in production. Either stop the preview
       supplying ink, so a story shows what the component itself declares, or add a check that
       refuses text without a token; decide which, list every component the change exposes, and
-      say which baselines move
+      say which baselines move.
+      **Decided 2026-10-17 by Claude on the user's delegation: the preview stops supplying ink.**
+      The decorator keeps `bg-background`, which the app's `Page` paints, and drops
+      `text-text-primary`, which nothing in the app supplies (neither `RootLayout` nor `Page` sets
+      a text colour), so a story renders the ink the app renders. A check was rejected: inheriting
+      ink is a contract for some components (`civilisation-icon.md` §5; `country-flag.md`, "the
+      name sets no colour of its own"), so it would need an allowlist and would have to follow a
+      class through `cx()` and props; and four of the defects below carry `text-secondary`, a
+      token-shaped class that generates no CSS, which a check for a present `text-*` class
+      accepts (T743). **Limits**: the comparator judges change, not correctness, so a new story's
+      first baseline takes whatever it renders; the browser's default black differs visibly from
+      the token ink in the dark theme only; a short span can stay under `maxDiffPixelRatio`.
+      **Exposed**, measured by rendering all 647 stories with the decorator's and the page's ink
+      replaced by a sentinel colour and transitions off: 142 stories before (light theme, 375 and
+      1280), none after (both themes, 375, 768 and 1280).
+      Components lacking a token, given one: `MatchRow`'s unknown outcome, unknown team result
+      and zero rating change and `MatchDetailPanel`'s unknown result (`text-secondary` to
+      `text-text-secondary`); `MatchRow`'s card, whose civilisation name (`CivilisationIcon`
+      inherits) and map name inherited no ink below `xl` (`text-text-primary` on the card's root);
+      `MapThumbnail`'s resolved name (`text-text-primary`, `map-thumbnail.md` §5); `Panel`'s body
+      and footer (`text-text-primary` and `text-text-secondary`, `structural-tier.md`'s `Panel`
+      tokens). Their stories now supply the caller's ink: `CivilisationIcon` and `CountryFlag`,
+      which inherit by contract, and `Tooltip`, whose trigger renders the caller's child. Story
+      markup given ink: `Section`, `Badge`, `PlayerColourSwatch`, `CountryFlag`, the Foundations
+      pages and the `Plants` and `ThemePlants` fixtures. The card's ink is what every reviewed
+      baseline showed and what `match-history.md` §6 and §12.7 name; `civilisation-icon.md` §5
+      and `match-history.md` §8 still put those names at `text-secondary` in a 375 meta line, and
+      are amended to agree, each keeping its line count. `specs/README.md`'s citations of
+      `Section` and `CivilisationIcon` story lines are repointed. A unit test fails if the
+      preview's decorator markup carries a text colour again
+- [ ] T743 Refuse a class the design-system stylesheet does not define (filed 2026-10-17 from
+      T710). `text-secondary` was the ink of an unknown or neutral fact in four places, three in
+      `packages/design-system/src/composites/MatchRow/index.tsx` and one in
+      `packages/design-system/src/composites/MatchDetailPanel/index.tsx`. Tailwind emits nothing for
+      it (the colour role's utility is `text-text-secondary`), so the text took whatever ink
+      surrounded it. `scripts/checks/token-scale.mjs` refuses raw values and never asks whether a
+      class exists, and each unit test asserted `toContain('text-secondary')`, which
+      `text-text-secondary` also satisfies. Fail the build on a class in the package's component
+      source that the built stylesheet does not define, and replace substring class assertions in
+      the package's tests with whole-class ones. Plant, red before: `text-secondary` in a
+      component. Contrast: `text-text-secondary` and a variant-prefixed class such as
+      `group-hover/row-link:underline` pass. `scripts/checks/built-css.mjs` already reads the built
+      stylesheet
 - [x] T706a Close #127's review (`reviewer` REJECT 2026-10-08 on T706). **Lease shorter than the
       run**: the claim's lease is the run budget (240 s) while the function may run 300 s, so a
       live run reads expired for its last minute and T706's page now re-claims it: a second fetch,

@@ -70,7 +70,7 @@ export const AllTones: Story = {
 
 export const InAList: Story = {
   render: () => (
-    <ul className="flex flex-col gap-2">
+    <ul className="flex flex-col gap-2 text-text-primary">
       <li className="flex items-center gap-2">
         aoe2guy <Badge variant="accent">Primary</Badge>
       </li>

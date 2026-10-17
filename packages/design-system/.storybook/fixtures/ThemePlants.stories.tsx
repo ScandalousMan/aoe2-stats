@@ -74,7 +74,13 @@ export const ForceCountDiffersInDark: Story = {
 export const ForceElementDiffersInDark: Story = {
   parameters: { visualForceState: { state: 'hover', role: 'button', name: 'Go' } },
   render: (_args, { globals }) =>
-    globals.theme === 'dark' ? <button type="button">Go</button> : go,
+    globals.theme === 'dark' ? (
+      <button type="button" className="text-text-primary">
+        Go
+      </button>
+    ) : (
+      go
+    ),
 }
 
 // The contrast: the same forced `Button` in both themes. The two answers are equal, so the record is

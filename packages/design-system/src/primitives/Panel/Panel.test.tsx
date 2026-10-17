@@ -23,6 +23,31 @@ describe('Panel', () => {
     expect(screen.getByRole('heading', { level: 3, name: 'Recent matches' })).toBeInTheDocument()
   })
 
+  // 006 T710: structural-tier.md's `Panel` tokens name `text-primary` for the heading and the body; the
+  // application sets no text colour above a panel, so the body supplies its own.
+  it('gives its body text colour, with and without a heading', () => {
+    const { rerender } = render(<Panel density="dense">body text</Panel>)
+    expect(screen.getByText('body text')).toHaveClass('text-text-primary')
+    rerender(
+      <Panel density="dense" heading="Recent matches">
+        body text
+      </Panel>,
+    )
+    expect(screen.getByText('body text')).toHaveClass('text-text-primary')
+  })
+
+  // 006 T710: the same file names `text-secondary` for the description and the footer.
+  it('gives its footer secondary text colour, not the body’s', () => {
+    render(
+      <Panel density="dense" footer={<span>Two profiles</span>}>
+        body text
+      </Panel>,
+    )
+    const footer = screen.getByText('Two profiles').parentElement
+    expect(footer).toHaveClass('text-text-secondary')
+    expect(footer).not.toHaveClass('text-text-primary')
+  })
+
   it('renders nothing at all when given no children', () => {
     const { container } = render(<Panel density="dense" heading="Recent matches" />)
     expect(container).toBeEmptyDOMElement()

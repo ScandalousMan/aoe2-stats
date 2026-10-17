@@ -14,6 +14,10 @@ const meta: Meta<typeof CivilisationIcon> = {
       },
     },
   },
+  // 006 T710: the name inherits its colour from the caller (civilisation-icon.md §5), and the
+  // application supplies none above a story's root, so the arg-driven stories pass the ink the
+  // way `MatchDetailPanel` does. The stories that render their own markup carry it on a container.
+  args: { className: 'text-text-primary' },
 }
 
 export default meta
@@ -40,7 +44,7 @@ export const SizeLg: Story = {
 export const BothSizes: Story = {
   name: 'Both sizes in one frame',
   render: () => (
-    <div className="flex items-center gap-6">
+    <div className="flex items-center gap-6 text-text-primary">
       <CivilisationIcon iconUrl={BRITONS_URL} name="Britons" size="md" />
       <CivilisationIcon iconUrl={BRITONS_URL} name="Britons" size="lg" />
     </div>
@@ -99,7 +103,7 @@ export const Loading: Story = {
 export const CombinedRow: Story = {
   name: 'Combined — covered, uncovered and failed side by side',
   render: () => (
-    <ul className="flex flex-col gap-3">
+    <ul className="flex flex-col gap-3 text-text-primary">
       <li>
         <CivilisationIcon iconUrl={BRITONS_URL} name="Britons" />
       </li>
@@ -125,7 +129,7 @@ export const HoverFocusActiveDisabledNotApplicable: Story = {
         This mark has no hover, focus, active or disabled rendering of its own — it is a fact, not a
         control. The enclosing row's own link owns the hover fill.
       </p>
-      <CivilisationIcon iconUrl={BRITONS_URL} name="Britons" />
+      <CivilisationIcon iconUrl={BRITONS_URL} name="Britons" className="text-text-primary" />
     </div>
   ),
 }

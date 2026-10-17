@@ -52,6 +52,18 @@ describe('MapThumbnail', () => {
     expect(document.querySelector('img')).not.toBeInTheDocument()
   })
 
+  // 006 T710: map-thumbnail.md §5 names `text-primary` for a resolved name, and nothing above the
+  // component supplies ink in the application.
+  it('gives a resolved name its own text colour', () => {
+    render(<MapThumbnail thumbnailUrl={ARABIA_URL} mapName="Arabia" />)
+    expect(screen.getByText('Arabia')).toHaveClass('text-text-primary')
+  })
+
+  it('leaves the unresolved fallback to its identifier treatment, which carries its own ink', () => {
+    render(<MapThumbnail thumbnailUrl={ARABIA_URL} mapName={null} />)
+    expect(screen.getByText('Map — unresolved')).not.toHaveClass('text-text-primary')
+  })
+
   it('renders no thumbnail and the UnresolvedIdentifier treatment when mapName is null', () => {
     render(<MapThumbnail thumbnailUrl={ARABIA_URL} mapName={null} />)
     expect(document.querySelector('img')).not.toBeInTheDocument()

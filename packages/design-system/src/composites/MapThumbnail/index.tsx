@@ -78,7 +78,7 @@ export function MapThumbnail({ thumbnailUrl, mapName, size = 'md', className }: 
           />
         </span>
       )}
-      <span>{mapName}</span>
+      <span className="text-text-primary">{mapName}</span>
     </span>
   )
 }

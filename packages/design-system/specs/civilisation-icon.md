@@ -110,12 +110,12 @@ smaller size and never shrinks responsively (§7).
 
 ## 5. Tokens used
 
-Colour: `text-primary` (the name, in a row's primary line and in the participants table);
-`text-secondary` when the caller places the pair inside a secondary metadata line (`MatchRow`'s
-375 meta line — the caller's context decides, and the component inherits `currentColor` rather than
-setting a colour of its own). No colour is applied to the mark: a pack image is shown as authored,
-never tinted, filtered or theme-adjusted (README rule 6 — a component never branches on the theme,
-and a tint would also alter a licensed asset).
+Colour: none of its own. The name inherits `currentColor` and the caller's context decides — that
+contract is why this component holds no colour token. `MatchRow`'s card supplies `text-primary` to
+the name at every width (`match-history.md` §6, §12.7 — at 375 the pair sits on its own line, not
+in a meta line), as does the participants table. No colour is applied to the mark: a pack image is
+shown as authored, never tinted, filtered or theme-adjusted (README rule 6 — a component never
+branches on the theme, and a tint would also alter a licensed asset).
 
 Typography: `sans`, weight normal, at the size of the text the pair sits in (`sm` in a match row and
 in the participants table, `md` in a detail header). The name never uses `mono`: it is prose, not an

@@ -71,7 +71,7 @@ function RhythmDemo({ rhythmKey }: { rhythmKey: RhythmKey }) {
   return (
     <div className="flex flex-col gap-2 rounded-panel border-hairline border-border p-4">
       <div className="flex flex-wrap items-baseline gap-2">
-        <code className="type-machine rounded-control bg-surface-sunken px-1.5 py-0.5 text-xs">
+        <code className="type-machine rounded-control bg-surface-sunken px-1.5 py-0.5 text-xs text-text-primary">
           {rhythmKey}
         </code>
         <Text role="supporting">
@@ -116,7 +116,7 @@ export const Overview: Story = {
           <div className="flex flex-col gap-2">
             {Object.entries(space.scale).map(([step, value]) => (
               <div key={step} className="flex items-center gap-3">
-                <code className="type-machine w-10 shrink-0 rounded-control bg-surface-sunken px-1.5 py-0.5 text-xs">
+                <code className="type-machine w-10 shrink-0 rounded-control bg-surface-sunken px-1.5 py-0.5 text-xs text-text-primary">
                   {step}
                 </code>
                 <div

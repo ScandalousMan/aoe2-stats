@@ -59,7 +59,7 @@ export const Overview: Story = {
             {SIZES.map((size) => (
               <div key={size} className="flex flex-col items-center gap-2">
                 <Glyph className={cx(ICON_CLASS[size], 'text-text-primary')} />
-                <code className="type-machine text-xs">icon-{size}</code>
+                <code className="type-machine text-xs text-text-primary">icon-{size}</code>
                 <Text role="supporting">{icon[size]}</Text>
               </div>
             ))}

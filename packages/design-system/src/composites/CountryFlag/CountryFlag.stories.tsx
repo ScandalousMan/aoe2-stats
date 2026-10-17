@@ -154,7 +154,8 @@ export const MostlyWhiteFlagPoland: Story = {
 // defect — no frame, no button, no tab stop, no tooltip, the name alone as plain text.
 export const UncoveredCountry: Story = {
   name: 'Empty — uncovered country (flagUrl undefined, not a defect)',
-  args: { countryName: 'Kiribati' },
+  // 006 T710: the name sets no colour of its own (country-flag.md), so the caller supplies the ink.
+  args: { countryName: 'Kiribati', className: 'text-text-primary' },
 }
 
 // §11.4 — `flagUrl` resolved but the image fails to load/decode. Must be pixel-identical to
@@ -165,7 +166,11 @@ export const UncoveredCountry: Story = {
 // together.
 export const FailedImage: Story = {
   name: 'Error — image fails to load (must render identically to the empty story above)',
-  args: { flagUrl: '/game-assets/flags/does-not-exist.svg', countryName: 'Kiribati' },
+  args: {
+    flagUrl: '/game-assets/flags/does-not-exist.svg',
+    countryName: 'Kiribati',
+    className: 'text-text-primary',
+  },
 }
 
 // §4 "empty" (third case) — no country at all: the component renders null, nothing reserved.
@@ -186,7 +191,7 @@ export const NoCountryAtAll: Story = {
 export const CombinedList: Story = {
   name: 'Combined — covered, uncovered, failed and no-country side by side',
   render: () => (
-    <ul className="flex flex-col gap-3">
+    <ul className="flex flex-col gap-3 text-text-primary">
       <li>
         <CountryFlag flagUrl={FRANCE_URL} countryName="France" />
       </li>
