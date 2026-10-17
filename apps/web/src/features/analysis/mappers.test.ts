@@ -56,6 +56,19 @@ function document(participants: ApiAnalysisDocumentParticipant[]): ApiAnalysisDo
   }
 }
 
+/** The `identity` a real document carries for the snapshot `block` records (T709a): the server
+ * names that snapshot and no other, so the page accepts a block only beside such an identity. */
+function identityNaming(block: ApiKnowledgeNames): Record<string, unknown> {
+  return {
+    knowledge: {
+      source: 'aoe2techtree',
+      source_version: '3bb43b1439eef88dfe7fe892d7f7dc41ac9dd76f',
+      describes_build: block.snapshot.describes_build,
+      digest: block.snapshot.digest,
+    },
+  }
+}
+
 function names(overrides: Partial<ApiKnowledgeNames> = {}): ApiKnowledgeNames {
   return {
     snapshot: { describes_build: 185_872, digest: 'sha256:abc' },
@@ -184,6 +197,7 @@ describe('toAnalysisTeamGroups', () => {
           docParticipant({ profile_id: 1, age_up_commands: { '101': 1000 } }),
           docParticipant({ profile_id: 2, resolved_team_id: 2, age_up_commands: { '102': 2000 } }),
         ]),
+        identity: identityNaming(names()),
         knowledge_names: names(),
       },
       [matchParticipant({ profile_id: 1 }), matchParticipant({ profile_id: 2 })],
@@ -192,10 +206,35 @@ describe('toAnalysisTeamGroups', () => {
     expect(teams[1]?.participants[0]?.ageUps[0]?.ageName).toBe('Castle Age')
   })
 
+  it.each([
+    [
+      'a digest that differs from the identity',
+      { knowledge: { describes_build: 185_872, digest: 'sha256:other' } },
+    ],
+    [
+      'a build that differs from the identity',
+      { knowledge: { describes_build: 180_059, digest: 'sha256:abc' } },
+    ],
+    ['an identity recording no snapshot', { knowledge: { absent: 'no-snapshot-for-build' } }],
+    ['an identity with no knowledge component', {}],
+    ['no identity at all', undefined],
+  ])('shows no name from a block beside %s', (_label, identity) => {
+    const teams = toAnalysisTeamGroups(
+      {
+        ...document([docParticipant({ profile_id: 1, age_up_commands: { '101': 1000 } })]),
+        identity,
+        knowledge_names: names(),
+      },
+      [matchParticipant({ profile_id: 1 })],
+    )
+    expect(teams[0]?.participants[0]?.ageUps[0]?.ageName).toBeNull()
+  })
+
   it('treats a malformed names block as no names rather than failing the page', () => {
     const teams = toAnalysisTeamGroups(
       {
         ...document([docParticipant({ profile_id: 1, age_up_commands: { '101': 1000 } })]),
+        identity: identityNaming(names()),
         knowledge_names: { technology: { '101': 42 } },
       },
       [matchParticipant({ profile_id: 1 })],

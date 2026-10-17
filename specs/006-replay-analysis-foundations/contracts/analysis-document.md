@@ -141,7 +141,11 @@ closing brace. A reader that ignores unknown keys, as the web reader does, is un
   "snapshot": { "describes_build": 0, "digest": "…" },
   "technology": { "101": "Feudal Age" },
   "unit": { "83": "Villager" },
-  "building": { "70": "House" }
+  "building": { "70": "House" },
+  "provenance": {
+    "names.snapshot.describes_build": { "tier": "derived", "method": "knowledge-snapshot.name@1", "inputs": [] },
+    "names.technology": { "tier": "derived", "method": "knowledge-snapshot.name@1", "inputs": ["participant.researches.technology_id", "participant.age_up_commands"] }
+  }
 }
 ```
 
@@ -155,3 +159,34 @@ closing brace. A reader that ignores unknown keys, as the web reader does, is un
   installed or is installed under another digest, or when the document has no `identity` (version
   1). The body is then the stored bytes exactly.
 - **It never fails the read.** A fault resolving names is logged and the stored bytes are served.
+- **Resolved on the request path, by decision (2026-10-17, T709a).** The lookup runs when the
+  document is served, in `apps/analyzer`'s `names.py`, not when it is analysed: writing names into
+  the document would change its bytes and its identity digest (FR-042). It is a read of package
+  data - no fetch, no recording parse, no engine, no capture-budget name - and the boundary test
+  holds it to that, granting it seven named symbols (six of `aoe2stats_knowledge`, and the register itself, which the
+  block's provenance reads) and no other import of the knowledge or truth packages (plan.md, Constraints).
+- **The served leaves are published data (FR-006, FR-007).** Each has a register entry, in
+  `register.toml`: `names.snapshot.describes_build`, `names.snapshot.digest`, `names.technology`,
+  `names.unit` and `names.building`, tier `derived`, requiring the knowledge field `name`, the
+  snapshot as source. Their paths are `knowledge_names.*`, the three kinds being wildcards over the
+  stringified id. Rule 1 above is checked over the served bytes as well as the stored body
+  (`apps/analyzer/tests/test_names.py`), so a field added to the block with no entry fails.
+- **The block carries its tier as data (FR-007, FR-009), in a `provenance` map of its own.** Keyed by
+  the same register ids as the stored one, each entry is `{tier, method, inputs}` in the stored
+  provenance's shape, for exactly the data the block holds: the two `snapshot` fields always, and a
+  kind's datum only when at least one name of that kind resolved (an empty record is not a value).
+  The tier and inputs are read from the register entry and the method is the one the analyzer's
+  methods table assigns the `names.` family; nothing is typed again. The stored document's own
+  `provenance` is not extended and not changed: it is part of the bytes the digest vouches for. The
+  validator reads a document's top-level `provenance`, so the check presents the block as the
+  document it is the provenance of (its data under `knowledge_names`, its map as `provenance`) and
+  asks rules 1 to 4 of it over the served bytes: every leaf has a datum, every datum present has an
+  entry and every entry's key is present, each tier equals the register's, each entry names a
+  method. Rules 8 to 10 stay the stored body's.
+- **The reader accepts the block only beside the identity it came from.** The web reader ignores a
+  `knowledge_names` block whose `snapshot` (`describes_build`, `digest`) is not the one the
+  document's own `identity.knowledge` names, and every id then renders unresolved, as it did
+  before names were served. The page shows no tier, so the reader does not read the block's
+  `provenance`: a block with the key is accepted as before, and a block whose `provenance` is
+  malformed still renders its names, because a defect in an annotation does not make a name wrong
+  (the opposite choice from a malformed `snapshot` or kind record, which reads as no names).

@@ -7,7 +7,7 @@ import type {
   TrainingEventData,
 } from 'design-system'
 import type { ApiMatchParticipant } from '../matches/api'
-import { readKnowledgeNames } from './api'
+import { readDocumentNames } from './api'
 import type {
   ApiAnalysisBuildEvent,
   ApiAnalysisDocument,
@@ -131,7 +131,7 @@ export function toAnalysisTeamGroups(
   document: ApiAnalysisDocument,
   matchParticipants: readonly ApiMatchParticipant[],
 ): AnalysisTeamGroupData[] {
-  const names = readKnowledgeNames(document.knowledge_names)
+  const names = readDocumentNames(document)
   const byProfileId = new Map(
     matchParticipants.map((participant) => [participant.profile_id, participant] as const),
   )

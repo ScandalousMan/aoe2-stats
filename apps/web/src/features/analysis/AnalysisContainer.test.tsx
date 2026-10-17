@@ -229,6 +229,9 @@ describe('AnalysisContainer', () => {
       { building_id: 70, world_time_ms: 15_000 },
       { building_id: 490, world_time_ms: 16_000 },
     ]
+    document.identity = {
+      knowledge: { describes_build: 185_872, digest: 'sha256:abc' },
+    }
     document.knowledge_names = {
       snapshot: { describes_build: 185_872, digest: 'sha256:abc' },
       technology: { '101': 'Feudal Age', '102': 'Castle Age' },

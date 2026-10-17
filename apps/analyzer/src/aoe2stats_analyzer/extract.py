@@ -48,6 +48,8 @@ from datetime import datetime
 from typing import Any, Protocol, cast
 
 from aoe2stats_analyzer.canonical import WALL_CLOCK_FIELDS, canonical_bytes, compared_body
+from aoe2stats_analyzer.names import METHOD_ID as NAMES_METHOD_ID
+from aoe2stats_analyzer.names import METHOD_VERSION as NAMES_METHOD_VERSION
 from aoe2stats_core.replay.analysis import AnalysisExtractor, MatchTimeline, ReplayExtractor
 from aoe2stats_core.replay.events import (
     CanonicalEvent,
@@ -112,6 +114,10 @@ _METHODS: tuple[tuple[str, Method], ...] = (
     # canonical stream (`packages/replay-engine`), the parser's own name and version being in the
     # identity.
     ("participant.", Method("timeline.fold", "1")),
+    # The names served beside a stored document (T709a, `names.py`). They are never written into the
+    # document, so the stored provenance never names this method; the served block's own provenance
+    # does, and every datum the register publishes at a path must resolve to a method (FR-009).
+    ("names.", Method(NAMES_METHOD_ID, NAMES_METHOD_VERSION)),
 )
 
 # `DocumentInvalid`, `TierPlacementError` and `SnapshotError` are re-exported for `run.py`: the

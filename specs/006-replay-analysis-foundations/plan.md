@@ -90,8 +90,14 @@ single-digit megabytes.
 **Constraints**: The memory ceiling in `specs/003-player-search-match-analysis/contracts/analysis.md`
 binds the new entry point exactly as it binds the old one — the operation stream is never copied and
 never retained past the fold. The wheel materialises it before this code runs, which no design here
-can change, and peak memory is measured, not inferred from the input-size refusal (research D10). No scheduled job, no request-path work, nothing that draws on the capture budget
-(FR-049). No network at build, test or run time. No default, average or neighbouring value, ever.
+can change, and peak memory is measured, not inferred from the input-size refusal (research D10). No
+scheduled job, nothing that draws on the capture budget (FR-049), and no request-path work but one,
+decided on 2026-10-17 (T709a): the analysis route appends the display names of a stored document's
+ids, resolved by `names.py` in `apps/analyzer` from the knowledge snapshot the document's own identity
+names. It is a lookup in package data: no fetch, no recording parse, no engine, no capture-budget
+name, and the stored bytes untouched. That module is request-path code held to the boundary test,
+which grants it seven named symbols (six of `aoe2stats_knowledge`, and the truth register) and nothing else. No network at build, test
+or run time. No default, average or neighbouring value, ever.
 
 **Scale/Scope**: 6 user stories, 53 functional requirements, 14 success criteria. One new package,
 two existing packages extended, one application touched at two functions. One vendored pack of three

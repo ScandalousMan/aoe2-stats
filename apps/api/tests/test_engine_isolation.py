@@ -40,12 +40,20 @@ because nothing in `apps/api/src` imports `aoe2stats_analyzer`, and it stays mea
 same reason the second assertion does — a regression that reaches for it from a router would turn
 this test red on the next run, in-process or not.
 
-**The one exception, and why it is lazy (T666g).** `routers/matches.py` imports
+**The first exception, and why it is lazy (T666g).** `routers/matches.py` imports
 `aoe2stats_analyzer.staleness` - the analyzer's staleness verdict, which the match-detail `stale`
 flag shares with `run.py` - inside the function that needs it, never at module scope, so the
 assertion above still holds for importing the app. The second test pins what that import and a
 call into it may and may not load: the analyzer's verdict module and the installed-engine
 description are importable and callable with `aoe2rec_py` (the native extension) never loaded.
+
+**The second exception, and why it is request-path code (T709, T709a).** `routers/analysis.py`
+imports `aoe2stats_analyzer.names` inside the function that serves a published analysis, to append
+the display names of the ids a stored document carries. Unlike `staleness` it imports the knowledge
+package, which the request-path rule forbids to everything else and grants to this one module by
+name (`tests/architecture/test_feature_006_boundaries.py`). The third test below runs `with_names`
+on a named document in a fresh interpreter and asserts that doing so loads no native engine and
+neither the providers nor the ingester: the capture budget's two homes stay out of a read.
 """
 
 from __future__ import annotations
@@ -93,6 +101,53 @@ def test_the_staleness_verdict_and_the_installed_engine_load_no_native_engine() 
     module that imports it."""
     result = subprocess.run(
         [sys.executable, "-c", _STALENESS_CHECK],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.strip() == "ok"
+
+
+_NAMES_CHECK = (
+    "import json, sys\n"
+    "import aoe2stats_api.routers.analysis\n"
+    "from aoe2stats_analyzer.names import NAMES_KEY, with_names\n"
+    "from aoe2stats_knowledge.snapshot import load_all_snapshots\n"
+    "named = next(s for s in load_all_snapshots() if s.promoted).identity\n"
+    "document = {\n"
+    "    'schema_version': 2,\n"
+    "    'identity': {'knowledge': {\n"
+    "        'source': named.source, 'source_version': named.source_version,\n"
+    "        'describes_build': named.describes_build, 'digest': named.digest}},\n"
+    "    'participants': [{'age_up_commands': {'101': 1}, 'researches': [], 'trainings': [],\n"
+    "                      'builds': [{'building_id': 70, 'world_time_ms': 1}]}],\n"
+    "}\n"
+    "stored = json.dumps(document).encode()\n"
+    "served = with_names(stored)\n"
+    "assert served != stored, 'the document was not named: the check proves nothing'\n"
+    "names = json.loads(served)[NAMES_KEY]\n"
+    "assert names['technology']['101'] == 'Feudal Age', names\n"
+    "assert names['building']['70'] == 'House', names\n"
+    "forbidden = ('aoe2rec_py', 'aoe2stats_replay_engine.aoe2rec', 'aoe2stats_providers',\n"
+    "             'aoe2stats_ingester')\n"
+    "loaded = sorted(\n"
+    "    m for m in sys.modules if any(m == f or m.startswith(f + '.') for f in forbidden)\n"
+    ")\n"
+    "assert not loaded, loaded\n"
+    "print('ok')\n"
+)
+
+
+def test_naming_a_document_loads_no_native_engine_provider_or_ingester_module() -> None:
+    """T709a, FR-049: `with_names` is request-path code, and a read of a published analysis may not
+    reach the engine, the providers or the ingester (the capture budget's homes). It runs on a
+    named document in a fresh interpreter, because `sys.modules` of this process holds whatever
+    earlier tests imported, and it asserts the document really was named, so a `with_names` that
+    returned its input would not pass for having loaded nothing."""
+    result = subprocess.run(
+        [sys.executable, "-c", _NAMES_CHECK],
         capture_output=True,
         text=True,
         timeout=60,

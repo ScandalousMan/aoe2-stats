@@ -174,6 +174,10 @@ export interface ApiKnowledgeNames {
   technology: Record<string, string>
   unit: Record<string, string>
   building: Record<string, string>
+  /** The block's own tier, method and inputs per datum (FR-007). The page shows no tier, so
+   * `readKnowledgeNames` does not read it and never fails on it: names render whether this is
+   * present, absent or malformed. */
+  provenance?: unknown
 }
 
 function isNameRecord(value: unknown): value is Record<string, string> {
@@ -214,6 +218,40 @@ export function readKnowledgeNames(value: unknown): ApiKnowledgeNames | null {
   }
 }
 
+/** Reads the names a document carries, or `null` when it carries none it can vouch for (T709a).
+ *
+ * The block is accepted only when its `snapshot` is the one the document's own `identity.knowledge`
+ * names - the same `describes_build` and `digest`. The server resolves names from that snapshot and
+ * from no other (FR-027), so a block that records another one did not come from this document's
+ * identity, and is read as "no names" rather than shown under a stored document it does not
+ * belong to. A document with no `identity.knowledge` that records a snapshot (a version 1 document,
+ * or an identity recording the absence of one) names nothing, so a block beside it is ignored. */
+export function readDocumentNames(document: {
+  knowledge_names?: unknown
+  identity?: unknown
+}): ApiKnowledgeNames | null {
+  const names = readKnowledgeNames(document.knowledge_names)
+  if (names === null) {
+    return null
+  }
+  const identity = document.identity
+  const knowledge =
+    typeof identity === 'object' && identity !== null
+      ? (identity as Record<string, unknown>).knowledge
+      : undefined
+  if (typeof knowledge !== 'object' || knowledge === null) {
+    return null
+  }
+  const named = knowledge as Record<string, unknown>
+  if (
+    named.describes_build !== names.snapshot.describes_build ||
+    named.digest !== names.snapshot.digest
+  ) {
+    return null
+  }
+  return names
+}
+
 /** `contracts/analysis.md`'s "The published analysis" — `MatchTimeline` serialised plus the
  * provenance that makes FR-041 mechanical. */
 export interface ApiAnalysisDocument {
@@ -228,6 +266,10 @@ export interface ApiAnalysisDocument {
    * `readKnowledgeNames`, which validates it; it is never asserted, because a malformed block
    * must cost the page its names and nothing more. */
   knowledge_names?: unknown
+  /** The stored identity block, typed `unknown` for the same reason: this reader needs only its
+   * `knowledge` component, to check that a names block belongs to this document
+   * (`readDocumentNames`), and asserts nothing else of it. */
+  identity?: unknown
 }
 
 function assertAnalysisBuildEvent(

@@ -290,6 +290,65 @@ depends_on = []
 validation = "packages/replay-engine/tests/test_extract.py — golden timeline"
 evidence = "specs/006-replay-analysis-foundations/research.md D11"
 
+# The display names served beside a stored document (T709a). They are not part of the stored object:
+# `GET /api/matches/{game_id}/analysis` appends them under `knowledge_names`, so these paths are the
+# served shape's. The snapshot that names them is the one the document's own identity names (FR-027).
+
+[datum."names.snapshot.describes_build"]
+classification = "derived"
+status = "published"
+path = "knowledge_names.snapshot.describes_build"
+source = "the knowledge snapshot the document's own identity names, among every packaged snapshot"
+method = "copied from that snapshot's identity when the stored document is served; absent when the identity names no installed snapshot"
+requires_knowledge = ["name"]
+depends_on = []
+validation = "apps/analyzer/tests/test_names.py"
+evidence = "docs/data-sources.md §6"
+
+[datum."names.snapshot.digest"]
+classification = "derived"
+status = "published"
+path = "knowledge_names.snapshot.digest"
+source = "the knowledge snapshot the document's own identity names, among every packaged snapshot"
+method = "copied from that snapshot's identity when the stored document is served; it equals the digest the document's identity records, which is how the snapshot is matched"
+requires_knowledge = ["name"]
+depends_on = []
+validation = "apps/analyzer/tests/test_names.py"
+evidence = "docs/data-sources.md §6"
+
+[datum."names.technology"]
+classification = "derived"
+status = "published"
+path = "knowledge_names.technology.*"
+source = "the display name the named knowledge snapshot gives a technology id"
+method = "the snapshot's own name for each technology id the document researched or age-upped, keyed by the stringified id; an id the snapshot does not name is left out, never replaced"
+requires_knowledge = ["name"]
+depends_on = ["participant.researches.technology_id", "participant.age_up_commands"]
+validation = "apps/analyzer/tests/test_names.py"
+evidence = "docs/data-sources.md §6"
+
+[datum."names.unit"]
+classification = "derived"
+status = "published"
+path = "knowledge_names.unit.*"
+source = "the display name the named knowledge snapshot gives a unit id"
+method = "the snapshot's own name for each unit id the document trained, keyed by the stringified id; an id the snapshot does not name is left out, never replaced"
+requires_knowledge = ["name"]
+depends_on = ["participant.trainings.unit_id"]
+validation = "apps/analyzer/tests/test_names.py"
+evidence = "docs/data-sources.md §6"
+
+[datum."names.building"]
+classification = "derived"
+status = "published"
+path = "knowledge_names.building.*"
+source = "the display name the named knowledge snapshot gives a building id"
+method = "the snapshot's own name for each building id the document built, keyed by the stringified id; an id the snapshot does not name is left out, never replaced"
+requires_knowledge = ["name"]
+depends_on = ["participant.builds.building_id"]
+validation = "apps/analyzer/tests/test_names.py"
+evidence = "docs/data-sources.md §6"
+
 [datum."event.clock_ms"]
 classification = "observed"
 status = "planned"

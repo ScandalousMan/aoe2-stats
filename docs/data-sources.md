@@ -529,9 +529,9 @@ against keeping one measurement in two homes.
   corrected them to the ones whose bonuses were transcribed and validated) — and everything else surfaces as
   a gap on first use rather than as an unvalidated value (FR-022a). Assessed 2026-10-08, the build
   185872 snapshot models no civilisation at all: names resolve through the knowledge query
-  (`query.name`) and are served beside the stored analysis document, from the snapshot its identity
-  names (T709), and no baseline query answers, because every other query takes a civilisation and
-  refuses an unmodelled one.
+  (`query.name`), and no baseline query answers, because every other query takes a civilisation and
+  refuses an unmodelled one. Since 2026-10-17 (T709) those names are served beside the stored
+  analysis document, from the snapshot its identity names, at the moment it is read.
 - **Known limitations**: no civilisation-specific bonus data as structured values, no build/version
   field of its own, no combat attributes (attack, armour, hit points, range) — halfon carries those
   (below). Three builds (178524, 179158, 180059) unimplemented by the first pinned commit as of this

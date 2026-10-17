@@ -25,13 +25,24 @@ renders the identifier as it did before (003 FR-043a: "a confident wrong name is
 id"). Nothing is substituted for it. Resolution is `query.name`, so what counts as unresolved is
 that function's own verdict (`query.UNRESOLVED_SOURCE`), not a second opinion kept here.
 
-**On the API's request path (FR-049).** The API imports this module lazily, from the analysis
-route, and it is the second analyzer module the API may import
-(`tests/architecture/test_feature_006_boundaries.py`). What it adds to a request is a parse of the
-document, `functools.cache`d snapshot lookups and dictionary reads from package data. Nothing is
-fetched, no recording or object is read beyond the document the route already holds, no engine is
-loaded and none of the capture budget is touched. The API itself still imports no knowledge package:
-that import lives here, behind the same seam `staleness.py` uses.
+**On the API's request path, by decision (FR-049, T709a).** Names are resolved when the document is
+served, not when it is analysed, and this module is request-path code
+(`tests/architecture/test_feature_006_boundaries.py`'s `_REQUEST_PATH_CODE`). The API imports it
+lazily, from the analysis route, and it is the second analyzer module the API may import. What it
+adds to a request is a parse of the document, `functools.cache`d snapshot lookups and dictionary
+reads from package data. Nothing is fetched, no recording or object is read beyond the document the
+route already holds, no engine is loaded and none of the capture budget is touched
+(`apps/api/tests/test_engine_isolation.py` runs it and asserts as much). The rule that keeps the
+knowledge package off the request path is amended for this module alone: the guard grants it the
+seven symbols imported above by name (six of the knowledge package and the truth `REGISTER`, which
+the block's provenance reads), and any other import of either package from here fails it. The API
+itself still imports no knowledge package; that import lives here, behind the same seam
+`staleness.py` uses.
+
+**The served leaves are published data (FR-006, FR-007).** The block's leaves have register entries
+(`names.*` in `register.toml`, tier derived) and the block carries its own `provenance` (tier,
+method and inputs per datum present, read from the register), both checked over the served bytes and
+not only over the stored body (`apps/analyzer/tests/test_names.py`).
 """
 
 from __future__ import annotations
@@ -40,6 +51,7 @@ import json
 from collections.abc import Iterable, Mapping
 from typing import Any, Final
 
+from aoe2stats_core.truth.register import REGISTER
 from aoe2stats_knowledge import gaps, query
 from aoe2stats_knowledge.snapshot import (
     Snapshot,
@@ -48,7 +60,7 @@ from aoe2stats_knowledge.snapshot import (
     pinned_snapshot,
 )
 
-__all__ = ["FAULT_ERRORS", "NAMES_KEY", "with_names"]
+__all__ = ["FAULT_ERRORS", "METHOD_ID", "METHOD_VERSION", "NAMES_KEY", "with_names"]
 
 #: The top-level key the block is served under. Not a field of the stored document: it is absent
 #: from every stored object, and a stored object that has it is served as it is.
@@ -61,6 +73,20 @@ FAULT_ERRORS: Final[tuple[type[Exception], ...]] = (SnapshotError, OSError)
 
 #: The four fields a snapshot is named by in an identity's `knowledge` component.
 _SNAPSHOT_FIELDS: Final[tuple[str, ...]] = ("source", "source_version", "describes_build", "digest")
+
+#: The method behind every `names.` datum (FR-009), as `extract._METHODS` assigns it: that table
+#: reads these two constants, so the method a block records and the one the register's publication
+#: gate resolves are one value and not two spellings.
+METHOD_ID: Final[str] = "knowledge-snapshot.name"
+METHOD_VERSION: Final[str] = "1"
+
+#: The register datum behind each kind's record, and behind the two fields of `snapshot`.
+_KIND_DATUM: Final[Mapping[str, str]] = {
+    "technology": "names.technology",
+    "unit": "names.unit",
+    "building": "names.building",
+}
+_SNAPSHOT_DATA: Final[tuple[str, ...]] = ("names.snapshot.describes_build", "names.snapshot.digest")
 
 #: The entity kinds a page shows a name for, as `rules.json` keys them.
 _KINDS: Final[tuple[str, ...]] = ("technology", "unit", "building")
@@ -167,7 +193,32 @@ def _block(snapshot: Snapshot, document: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "snapshot": {"describes_build": build, "digest": snapshot.identity.digest},
         **resolved,
+        "provenance": _provenance(resolved),
     }
+
+
+def _provenance(resolved: Mapping[str, Mapping[str, str]]) -> dict[str, dict[str, Any]]:
+    """The block's own provenance (FR-007, FR-009), in the shape the stored document's uses: per
+    datum present, its tier, its method and its inputs.
+
+    Tier and inputs are the register's entry's, read here and never typed again; the method is the
+    one `extract._METHODS` assigns the `names.` family. A kind with no resolved name leaves no leaf
+    in the block, so its datum is not present and has no entry - the same reading of presence the
+    validator makes (`apps/analyzer/tests/test_names.py` runs rules 1 to 4 over the served bytes).
+    It lives in the block, not in the stored `provenance`, whose bytes the identity digest vouches
+    for."""
+    present = [*_SNAPSHOT_DATA, *(_KIND_DATUM[kind] for kind in _KINDS if resolved.get(kind))]
+    provenance: dict[str, dict[str, Any]] = {}
+    for datum in present:
+        entry = REGISTER[datum]
+        if entry.tier is None:
+            raise ValueError(f"{datum} is non-determinable and cannot be served")
+        provenance[datum] = {
+            "tier": entry.tier.value,
+            "method": f"{METHOD_ID}@{METHOD_VERSION}",
+            "inputs": list(entry.depends_on),
+        }
+    return provenance
 
 
 def _sorted_ids(ids: Iterable[str]) -> list[str]:

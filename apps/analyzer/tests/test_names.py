@@ -13,16 +13,26 @@ names exactly the identity it is about. Both promoted snapshots are used (builds
 from __future__ import annotations
 
 import json
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.snapshot_refresh import (
+    REAL_SNAPSHOT_DIRECTORY,
+    clear_snapshot_resolution_caches,
+    isolate_snapshot_root,
+)
 
 from aoe2stats_analyzer.canonical import canonical_bytes
-from aoe2stats_analyzer.extract import build_document
+from aoe2stats_analyzer.extract import _method_for, build_document
 from aoe2stats_analyzer.names import NAMES_KEY, with_names
-from aoe2stats_knowledge.snapshot import load_all_snapshots
+from aoe2stats_core.truth.register import REGISTER
+from aoe2stats_core.truth.validate import DocumentInvalid, present_data, validate
+from aoe2stats_knowledge import snapshot as snapshot_module
+from aoe2stats_knowledge.gaps import KnowledgeGap
+from aoe2stats_knowledge.snapshot import load_all_snapshots, load_resolvable_snapshots
 from aoe2stats_replay_engine.aoe2rec import Aoe2RecExtractor
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -225,3 +235,243 @@ def test_a_document_built_from_a_real_recording_is_named_by_its_own_snapshot(
     }
     for kind, ids_of_kind in ids.items():
         assert set(names[kind]) <= ids_of_kind
+
+
+# --- FR-006: the served shape is published data, so every leaf of it has a register entry --------
+
+_NAMES_DATA = frozenset(
+    {
+        "names.snapshot.describes_build",
+        "names.snapshot.digest",
+        "names.technology",
+        "names.unit",
+        "names.building",
+    }
+)
+
+
+def _served_shape_violations(served: bytes) -> list[tuple[int, str]]:
+    """Rules 1 to 4 of the document validator, run over the bytes that are served and not over the
+    stored body: every leaf resolves to a published register datum (1), every datum present has a
+    provenance entry and every provenance key is present (2), each tier is the register's (3) and
+    each entry names a method (4).
+
+    The validator reads a document's top-level `provenance`, and the served block carries its own
+    one level down (`knowledge_names.provenance`, because the stored provenance is part of the bytes
+    the digest vouches for and is not extended). The block is therefore presented as the document it
+    is the provenance of: its data under `knowledge_names`, its map as `provenance`. Rules 8 to 10
+    are the stored body's (it has the identity and the gaps)."""
+    block = dict(json.loads(served)[NAMES_KEY])
+    view: dict[str, Any] = {NAMES_KEY: block}
+    if "provenance" in block:
+        view["provenance"] = block.pop("provenance")
+    try:
+        validate(view, REGISTER.entries)
+    except DocumentInvalid as exc:
+        return [(rule, text) for rule, text in exc.violations if rule <= 4]
+    return []
+
+
+def _leaves_without_a_register_datum(served: bytes) -> list[str]:
+    return [text for rule, text in _served_shape_violations(served) if rule == 1]
+
+
+@pytest.mark.parametrize("build", _PROMOTED_BUILDS)
+def test_every_leaf_of_a_served_block_resolves_to_a_published_register_datum(build: int) -> None:
+    served = with_names(_stored(_document(_knowledge_identity(build))))
+
+    assert _leaves_without_a_register_datum(served) == []
+    assert present_data(json.loads(served), REGISTER.entries) >= _NAMES_DATA
+
+
+def test_an_empty_kind_of_a_served_block_still_resolves_to_a_register_datum() -> None:
+    """A document with no ids names nothing: three empty records, which are not values but must
+    not read as an unregistered leaf either."""
+    document = _document(_knowledge_identity(180059))
+    document["participants"] = []
+
+    served = with_names(_stored(document))
+
+    assert _served_shape_violations(served) == []
+    # Nothing is present of the three kinds, so none has a provenance entry either.
+    assert set(json.loads(served)[NAMES_KEY]["provenance"]) == {
+        "names.snapshot.describes_build",
+        "names.snapshot.digest",
+    }
+
+
+@pytest.mark.parametrize(("game_id", "build"), _RECORDINGS, ids=["build-180059", "build-185872"])
+def test_the_block_served_for_a_real_document_has_a_register_entry_for_every_leaf(
+    game_id: int, build: int
+) -> None:
+    document = build_document(
+        Aoe2RecExtractor(max_raw_bytes=_MAX_RAW_BYTES),
+        (_REPLAYS / f"AgeIIDE_Replay_{game_id}.zip").read_bytes(),
+        game_id=game_id,
+        object_key=f"retained-recordings/{game_id}/1.zip",
+        zip_sha256="ab" * 32,
+        extracted_at=datetime(2026, 10, 17, 12, 0, tzinfo=UTC),
+    )
+
+    served = with_names(canonical_bytes(document))
+
+    assert NAMES_KEY in json.loads(served)
+    assert _served_shape_violations(served) == []
+
+
+def test_a_served_leaf_with_no_register_entry_is_named_by_the_check() -> None:
+    """The contrast: the check can fail. A block carrying a kind the register does not know is
+    reported leaf by leaf, so a green run above is not a check that matches nothing."""
+    served = json.loads(with_names(_stored(_document(_knowledge_identity(180059)))))
+    served[NAMES_KEY]["civilisation"] = {"1": "Franks"}
+
+    problems = _leaves_without_a_register_datum(json.dumps(served).encode("utf-8"))
+
+    assert any("knowledge_names.civilisation.1" in problem for problem in problems), problems
+
+
+# --- SC-005: a superseded snapshot stays answerable by the identity that names it ---------------
+
+
+def test_names_resolve_from_a_snapshot_that_is_installed_but_not_promoted_for_its_build(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A knowledge refresh promotes a second snapshot and demotes the first, and a document the
+    first one named must keep its names (SC-005, FR-027: the snapshot its identity names, never the
+    one promoted now). The named snapshot is demoted in place - its digest covers `rules.json` and
+    `effects.toml` only - so it is installed, matches the identity on all four fields, and is not
+    promoted for its build: `snapshot_for` reports no snapshot for it at all.
+
+    A `names.py` that read `load_resolvable_snapshots` instead of every installed snapshot would
+    find nothing here and serve the stored bytes, which is what this asserts it does not."""
+    root = isolate_snapshot_root(monkeypatch, tmp_path)
+    identity_file = root / REAL_SNAPSHOT_DIRECTORY / snapshot_module.IDENTITY_FILENAME
+    text = identity_file.read_text(encoding="utf-8")
+    demoted, count = re.subn(r"^promoted = true", "promoted = false", text, flags=re.MULTILINE)
+    assert count == 1
+    identity_file.write_text(demoted, encoding="utf-8")
+    clear_snapshot_resolution_caches()
+
+    (installed,) = load_all_snapshots()
+    assert not installed.promoted
+    assert load_resolvable_snapshots() == ()
+    assert isinstance(
+        snapshot_module.snapshot_for(installed.identity.describes_build), KnowledgeGap
+    )
+    identity = installed.identity
+    stored = _stored(
+        _document(
+            {
+                "source": identity.source,
+                "source_version": identity.source_version,
+                "describes_build": identity.describes_build,
+                "digest": identity.digest,
+            }
+        )
+    )
+
+    names = _served_names(with_names(stored))
+
+    assert names["technology"]["101"] == "Feudal Age"
+    assert names["building"]["70"] == "House"
+    assert names["snapshot"] == {
+        "describes_build": identity.describes_build,
+        "digest": identity.digest,
+    }
+
+
+# --- FR-007: the served block carries its tier as data, in a provenance map of its own ------------
+
+
+def _block_of(build: int = 180059) -> dict[str, Any]:
+    return _served_names(with_names(_stored(_document(_knowledge_identity(build)))))
+
+
+def _serve(block: dict[str, Any]) -> bytes:
+    return json.dumps({NAMES_KEY: block}).encode("utf-8")
+
+
+@pytest.mark.parametrize("build", _PROMOTED_BUILDS)
+def test_the_block_carries_a_provenance_entry_for_every_datum_it_holds(build: int) -> None:
+    provenance = _block_of(build)["provenance"]
+
+    assert set(provenance) == _NAMES_DATA
+    for datum, entry in provenance.items():
+        register_entry = REGISTER[datum]
+        assert entry == {
+            "tier": "derived",
+            "method": _method_for(datum),
+            "inputs": list(register_entry.depends_on),
+        }
+        assert register_entry.tier is not None
+        assert entry["tier"] == register_entry.tier.value
+
+
+def test_the_provenance_is_read_from_the_register_and_the_methods_table_not_retyped() -> None:
+    """The tier and inputs are the register's entry's and the method is the one `extract`'s
+    `_METHODS` assigns the `names.` family: a change to either shows here, in the served block."""
+    provenance = _block_of()["provenance"]
+
+    for datum in _NAMES_DATA:
+        assert provenance[datum]["method"] == _method_for(datum)
+        assert provenance[datum]["tier"] == REGISTER[datum].classification
+        assert provenance[datum]["inputs"] == list(REGISTER[datum].depends_on)
+
+
+def test_a_provenance_entry_removed_from_the_block_is_named_by_rule_2() -> None:
+    block = _block_of()
+    del block["provenance"]["names.unit"]
+
+    problems = _served_shape_violations(_serve(block))
+
+    assert (2, "'names.unit' is present without a provenance entry") in problems
+
+
+def test_a_block_tier_that_is_not_the_registers_is_named_by_rule_3() -> None:
+    block = _block_of()
+    block["provenance"]["names.technology"]["tier"] = "observed"
+
+    problems = _served_shape_violations(_serve(block))
+
+    assert any(rule == 3 and "'names.technology'" in text for rule, text in problems), problems
+
+
+def test_a_provenance_key_for_a_path_the_block_lacks_is_named_by_rule_2() -> None:
+    block = _block_of()
+    block["unit"] = {}
+
+    problems = _served_shape_violations(_serve(block))
+
+    assert (2, "provenance names 'names.unit', which is not in the document") in problems
+
+
+def test_a_block_with_no_provenance_at_all_is_named_by_rule_2() -> None:
+    block = _block_of()
+    del block["provenance"]
+
+    problems = _served_shape_violations(_serve(block))
+
+    assert {text for rule, text in problems if rule == 2} >= {
+        f"{datum!r} is present without a provenance entry" for datum in sorted(_NAMES_DATA)
+    }
+
+
+def test_the_stored_documents_own_provenance_is_untouched_and_still_validates() -> None:
+    """The contrast: the block's provenance is the block's. The stored document - its provenance
+    included - is the same bytes it was, and validates as the extractor wrote it."""
+    document = build_document(
+        Aoe2RecExtractor(max_raw_bytes=_MAX_RAW_BYTES),
+        (_REPLAYS / "AgeIIDE_Replay_500546441.zip").read_bytes(),
+        game_id=500_546_441,
+        object_key="retained-recordings/500546441/1.zip",
+        zip_sha256="ab" * 32,
+        extracted_at=datetime(2026, 10, 17, 12, 0, tzinfo=UTC),
+    )
+    stored = canonical_bytes(document)
+
+    served = json.loads(with_names(stored))
+
+    validate(json.loads(stored), REGISTER.entries)
+    assert served["provenance"] == json.loads(stored)["provenance"]
+    assert not any(datum.startswith("names.") for datum in json.loads(stored)["provenance"])
+    assert {k: v for k, v in served.items() if k != NAMES_KEY} == json.loads(stored)

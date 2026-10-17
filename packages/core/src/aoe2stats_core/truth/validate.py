@@ -58,6 +58,11 @@ class DocumentInvalid(ValueError):
 _WILDCARD_VALUES: dict[str, type] = {
     "engine.deps.*": str,
     "participants[].age_up_commands.*": int,
+    # The display names served beside a stored document (T709a): an id to the snapshot's name for
+    # it, one block per entity kind.
+    "knowledge_names.technology.*": str,
+    "knowledge_names.unit.*": str,
+    "knowledge_names.building.*": str,
 }
 
 

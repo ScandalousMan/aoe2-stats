@@ -776,9 +776,64 @@ Rebuilt from several recorded facts.
 - validation: feature 007 golden reconstruction fixtures and reconstruction invariants
 - evidence: specs/006-replay-analysis-foundations/spec.md (Out of Scope: feature 007)
 
-## derived (1)
+## derived (6)
 
 Computed from other published data.
+
+### `names.snapshot.describes_build`
+
+- status: published
+- source: the knowledge snapshot the document's own identity names, among every packaged snapshot
+- method: copied from that snapshot's identity when the stored document is served; absent when the identity names no installed snapshot
+- document path: `knowledge_names.snapshot.describes_build`
+- requires knowledge: `name`
+- depends on: none
+- validation: apps/analyzer/tests/test_names.py
+- evidence: docs/data-sources.md §6
+
+### `names.snapshot.digest`
+
+- status: published
+- source: the knowledge snapshot the document's own identity names, among every packaged snapshot
+- method: copied from that snapshot's identity when the stored document is served; it equals the digest the document's identity records, which is how the snapshot is matched
+- document path: `knowledge_names.snapshot.digest`
+- requires knowledge: `name`
+- depends on: none
+- validation: apps/analyzer/tests/test_names.py
+- evidence: docs/data-sources.md §6
+
+### `names.technology`
+
+- status: published
+- source: the display name the named knowledge snapshot gives a technology id
+- method: the snapshot's own name for each technology id the document researched or age-upped, keyed by the stringified id; an id the snapshot does not name is left out, never replaced
+- document path: `knowledge_names.technology.*`
+- requires knowledge: `name`
+- depends on: `participant.researches.technology_id`, `participant.age_up_commands`
+- validation: apps/analyzer/tests/test_names.py
+- evidence: docs/data-sources.md §6
+
+### `names.unit`
+
+- status: published
+- source: the display name the named knowledge snapshot gives a unit id
+- method: the snapshot's own name for each unit id the document trained, keyed by the stringified id; an id the snapshot does not name is left out, never replaced
+- document path: `knowledge_names.unit.*`
+- requires knowledge: `name`
+- depends on: `participant.trainings.unit_id`
+- validation: apps/analyzer/tests/test_names.py
+- evidence: docs/data-sources.md §6
+
+### `names.building`
+
+- status: published
+- source: the display name the named knowledge snapshot gives a building id
+- method: the snapshot's own name for each building id the document built, keyed by the stringified id; an id the snapshot does not name is left out, never replaced
+- document path: `knowledge_names.building.*`
+- requires knowledge: `name`
+- depends on: `participant.builds.building_id`
+- validation: apps/analyzer/tests/test_names.py
+- evidence: docs/data-sources.md §6
 
 ### `reconstruction.ordered_army_cost`
 
