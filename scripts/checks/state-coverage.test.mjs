@@ -911,6 +911,238 @@ test('contrast: a bare group-hover: is not credited to an ancestor carrying a na
   assert.equal(anchor.hover, null)
 })
 
+// --- T680: a `group-hover` mark held by a separately declared helper component ----------------------
+//
+// `MatchRow`'s `OutcomeLabel` carries `group-hover/row-link:underline`; the row's own `<a>` carries
+// `group/row-link`; the helper is invoked as a JSX child of that `<a>`. The two are disjoint JSX
+// trees in the file's source text, so the literal-nesting pass above cannot see the pair. The helper
+// pass credits the mark to the enclosing group at each call site, but only when every step is provable
+// from this one file; every refusal below is an under-credit by design (a false credit is worse than a
+// missed one).
+
+const HELPER_TOKEN = 'group-hover/row-link:underline'
+const helperFixture = (helperDeclaration, widgetBody, extra = '') =>
+  `${helperDeclaration}\n${extra}\nfunction Widget() {\n  return (\n${widgetBody}\n  )\n}\n`
+const FN_HELPER = `function OutcomeLabel() {
+  return <span className="font-sans group-hover/row-link:underline">Won</span>
+}`
+const GROUPED_CALL = `<a href="/match/1" className="group/row-link flex"><OutcomeLabel /></a>`
+const hoverOfAnchors = (source) =>
+  findLocalElements(parse(source), 'fixture.tsx', buildConstStringMap(parse(source)))
+    .filter((el) => el.tag === 'a')
+    .map((el) => el.hover)
+
+test('T680: a function-declaration helper holding group-hover/<name> is credited to the group enclosing its call site', () => {
+  const source = helperFixture(FN_HELPER, GROUPED_CALL)
+  const sourceFile = parse(source)
+  const found = findLocalElements(sourceFile, 'fixture.tsx', buildConstStringMap(sourceFile))
+  assert.equal(found.length, 1, 'the helper-held span must never become a row of its own')
+  assert.equal(found[0].tag, 'a')
+  assert.equal(found[0].hover, HELPER_TOKEN)
+})
+
+test('T680: sibling shape, a const arrow helper with bare group / group-hover, is credited the same way', () => {
+  const source = helperFixture(
+    `const Label = () => <span className="group-hover:underline">Won</span>`,
+    `<a href="/match/1" className="group flex"><Label /></a>`,
+  )
+  assert.deepEqual(hoverOfAnchors(source), ['group-hover:underline'])
+})
+
+test('T680: a const function-expression helper is credited too', () => {
+  const source = helperFixture(
+    `const Label = function () { return <span className="group-hover/row-link:underline">Won</span> }`,
+    GROUPED_CALL.replaceAll('OutcomeLabel', 'Label'),
+  )
+  assert.deepEqual(hoverOfAnchors(source), [HELPER_TOKEN])
+})
+
+test('T680: every group-hover utility the helper holds is credited, and the descendant gains no hover of its own', () => {
+  const source = helperFixture(
+    `function OutcomeLabel() {
+  return <span className="group-hover/row-link:underline group-hover/row-link:decoration-2">Won</span>
+}`,
+    GROUPED_CALL,
+  )
+  assert.deepEqual(hoverOfAnchors(source), [
+    'group-hover/row-link:underline group-hover/row-link:decoration-2',
+  ])
+})
+
+// Contrasts: each is a shape that must credit nothing.
+const HELPER_NO_CREDIT_CASES = {
+  'a helper invoked outside any group': helperFixture(
+    FN_HELPER,
+    `<div><OutcomeLabel /><a href="/match/1" className="group/row-link flex">text</a></div>`,
+  ),
+  'a helper invoked inside a group of a different name': helperFixture(
+    FN_HELPER,
+    `<a href="/match/1" className="group/other-link flex"><OutcomeLabel /></a>`,
+  ),
+  'a named group-hover paired with a bare group': helperFixture(
+    FN_HELPER,
+    `<a href="/match/1" className="group flex"><OutcomeLabel /></a>`,
+  ),
+  'an exported helper (export modifier)': helperFixture(`export ${FN_HELPER}`, GROUPED_CALL),
+  'an exported const helper (export modifier)': helperFixture(
+    `export const OutcomeLabel = () => <span className="group-hover/row-link:underline">Won</span>`,
+    GROUPED_CALL,
+  ),
+  'an exported helper (export list)': helperFixture(
+    FN_HELPER,
+    GROUPED_CALL,
+    `export { OutcomeLabel }`,
+  ),
+  'an exported helper (aliased export list)': helperFixture(
+    FN_HELPER,
+    GROUPED_CALL,
+    `export { OutcomeLabel as Label }`,
+  ),
+  'an exported helper (export default)': helperFixture(
+    FN_HELPER,
+    GROUPED_CALL,
+    `export default OutcomeLabel`,
+  ),
+  'a helper whose name a parameter shadows': helperFixture(
+    FN_HELPER,
+    GROUPED_CALL,
+    `function Other({ OutcomeLabel }) {
+  return <a href="/other" className="group/row-link"><OutcomeLabel /></a>
+}`,
+  ),
+  'a helper whose name a local const shadows': helperFixture(
+    FN_HELPER,
+    GROUPED_CALL,
+    `function Other() {
+  const OutcomeLabel = () => <b>x</b>
+  return <a href="/other" className="group/row-link"><OutcomeLabel /></a>
+}`,
+  ),
+  'a helper whose name an import also binds': `import { OutcomeLabel } from './elsewhere'\n${helperFixture(FN_HELPER, GROUPED_CALL)}`,
+  'a helper that is reassigned': helperFixture(
+    FN_HELPER,
+    GROUPED_CALL,
+    `OutcomeLabel = () => null`,
+  ),
+  'a let-declared helper': helperFixture(
+    `let OutcomeLabel = () => <span className="group-hover/row-link:underline">Won</span>`,
+    GROUPED_CALL,
+  ),
+  'a lower-case helper name': helperFixture(
+    `function outcomeLabel() { return <span className="group-hover/row-link:underline">Won</span> }`,
+    `<a href="/match/1" className="group/row-link flex">{outcomeLabel()}</a>`,
+  ),
+  'a mark inside a callback nested in the helper': helperFixture(
+    `function OutcomeLabel() {
+  return <ul>{[1].map(() => <li className="group-hover/row-link:underline">x</li>)}</ul>
+}`,
+    GROUPED_CALL,
+  ),
+  'a helper reached through a second helper (two hops)': helperFixture(
+    FN_HELPER,
+    `<a href="/match/1" className="group/row-link flex"><Outer /></a>`,
+    `function Outer() {
+  return <div><OutcomeLabel /></div>
+}`,
+  ),
+  'a value-position reference only': helperFixture(
+    FN_HELPER,
+    `<a href="/match/1" className="group/row-link flex">{columns.length}</a>`,
+    `const columns = [{ render: OutcomeLabel }]`,
+  ),
+  'a member-expression tag that is not the helper itself': helperFixture(
+    FN_HELPER,
+    `<a href="/match/1" className="group/row-link flex"><OutcomeLabel.Inner /></a>`,
+  ),
+}
+for (const [label, source] of Object.entries(HELPER_NO_CREDIT_CASES)) {
+  test(`T680 contrast: ${label} credits nothing`, () => {
+    const anchors = hoverOfAnchors(source)
+    assert.ok(anchors.length >= 1, 'the fixture must contain at least one anchor')
+    for (const hover of anchors) assert.equal(hover, null)
+  })
+}
+
+test('T680 contrast: group-hover JSX passed as children into a helper whose marker wraps {children} is not credited', () => {
+  const source = `
+function Card({ children }) {
+  return <a href="/match/1" className="group/row-link flex">{children}</a>
+}
+export function Widget() {
+  return (
+    <Card>
+      <span className="group-hover/row-link:underline">Won</span>
+    </Card>
+  )
+}
+`
+  assert.deepEqual(hoverOfAnchors(source), [null])
+})
+
+test('T680: a reference in value position does not block another call site of the same helper', () => {
+  const source = helperFixture(
+    FN_HELPER,
+    GROUPED_CALL,
+    `const columns = [{ render: OutcomeLabel }]`,
+  )
+  assert.deepEqual(hoverOfAnchors(source), [HELPER_TOKEN])
+})
+
+test('T680: a helper invoked once inside a group and once outside credits only the enclosing anchor', () => {
+  const source = helperFixture(
+    FN_HELPER,
+    `<div>
+      <a href="/match/1" className="group/row-link flex"><OutcomeLabel /></a>
+      <OutcomeLabel />
+      <button type="button" className="px-2">Other</button>
+    </div>`,
+  )
+  const sourceFile = parse(source)
+  const found = findLocalElements(sourceFile, 'fixture.tsx', buildConstStringMap(sourceFile))
+  assert.equal(found.length, 2, 'neither helper-held span nor the bare call site becomes a row')
+  assert.equal(found.find((el) => el.tag === 'a').hover, HELPER_TOKEN)
+  assert.equal(found.find((el) => el.tag === 'button').hover, null)
+})
+
+test('T680: a matching group inside the helper keeps the credit there, the call site group gains nothing (innermost only)', () => {
+  const source = helperFixture(
+    `function Inner() {
+  return (
+    <a href="/inner" className="group/row-link">
+      <span className="group-hover/row-link:underline">Won</span>
+    </a>
+  )
+}`,
+    `<a href="/outer" className="group/row-link"><Inner /></a>`,
+  )
+  const sourceFile = parse(source)
+  const found = findLocalElements(sourceFile, 'fixture.tsx', buildConstStringMap(sourceFile))
+  // The helper is declared before `Widget`, so source order is [inner anchor, outer anchor].
+  const [innerEl, outerEl] = [...found].sort((x, y) => x.nodeStart - y.nodeStart)
+  assert.equal(found.length, 2)
+  assert.equal(innerEl.hover, HELPER_TOKEN)
+  assert.equal(outerEl.hover, null)
+})
+
+test("T680: MatchRow's row link now carries the three group-hover/row-link utilities its OutcomeLabel helper holds", () => {
+  const file = path.join(REPO_SRC_DIR, 'composites', 'MatchRow', 'index.tsx')
+  const sourceFile = parse(readFileSync(file, 'utf8'), file)
+  const found = findLocalElements(sourceFile, file, buildConstStringMap(sourceFile))
+  const row = found.find((el) => el.tag === 'a')
+  assert.ok(row, 'MatchRow renders a row link')
+  const tokens = row.hover.split(' ')
+  for (const token of [
+    'group-hover/row-link:underline',
+    'group-hover/row-link:decoration-2',
+    'group-hover/row-link:underline-offset-2',
+  ]) {
+    assert.ok(tokens.includes(token), `${token} missing from ${row.hover}`)
+  }
+  assert.ok(tokens.includes('hover:bg-surface-sunken'), 'its own hover fill is kept')
+  // The helper's span is not itself a row, and no second element picked up a hover from this.
+  assert.equal(found.filter((el) => (el.hover ?? '').includes('group-hover')).length, 1)
+})
+
 // --- Orchestrator remediation 2b: a story's own `args` (merged with the meta's default `args`)
 // supplies a literal name a `visualForceState` matches even when the JSX itself renders only
 // `{primaryAction.label}` — Dialog's own shape. -----------------------------------------------

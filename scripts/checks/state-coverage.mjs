@@ -820,7 +820,7 @@ export function findLocalElements(sourceFile, filePath, constMap) {
       (m) => m.kind === 'group',
     )
     if (ownGroupHoverMatches.length > 0) {
-      groupHoverDescendants.push({ nodeStart, nodeEnd, matches: ownGroupHoverMatches })
+      groupHoverDescendants.push({ node, nodeStart, nodeEnd, matches: ownGroupHoverMatches })
     }
     const pseudo = extractPseudoClasses(parts)
     // T671: a state-conditional `active` class (`findStateConditionalClass`, above) is read from
@@ -888,6 +888,7 @@ export function findLocalElements(sourceFile, filePath, constMap) {
     })
   })
   creditGroupHoverToAncestors(found, groupMarkerCandidates, groupHoverDescendants)
+  creditHelperGroupHoverToCallSites(sourceFile, found, groupMarkerCandidates, groupHoverDescendants)
   return found
 }
 
@@ -908,38 +909,234 @@ export function findLocalElements(sourceFile, filePath, constMap) {
 // in `found` to credit — left uncredited rather than guessed, the same bar every other pass in this
 // file holds; not a real case yet (every `group/<name>` marker found in this repository, 2026-09-30,
 // sits on the row's own `<a>`, already a Record 1 row for its intrinsic tag alone). A descendant
-// reached only through a *separately declared* helper component invoked as a JSX child — `MatchRow`'s
-// `OutcomeLabel`, whose own `<span>` and whose caller's `<a href="...group/row-link">` are two
-// disjoint JSX trees in the file's own source text, never one nested inside the other — is invisible
-// to this containment test and stays uncredited too; a real, known, reported gap, not a silent one
-// (T675 M2 remediation report), and not fixed here — resolving a JSX composition boundary this way
-// would need call-site substitution this file does not otherwise do anywhere, guessed rather than
-// found.
+// reached only through a *separately declared* helper component — `MatchRow`'s `OutcomeLabel`,
+// whose own `<span>` and whose caller's `<a href="...group/row-link">` are two disjoint JSX trees in
+// the file's source text — is invisible to this containment test; `creditHelperGroupHoverToCallSites`
+// below is the second pass that closes that gap (T680), under refusals stated there.
 function creditGroupHoverToAncestors(found, groupMarkerCandidates, groupHoverDescendants) {
   for (const descendant of groupHoverDescendants) {
     for (const match of descendant.matches) {
-      let bestMarker = null
-      for (const marker of groupMarkerCandidates) {
-        if (marker.nodeStart > descendant.nodeStart || marker.nodeEnd < descendant.nodeEnd) continue
-        if (!marker.names.includes(match.groupName)) continue
-        if (
-          !bestMarker ||
-          marker.nodeEnd - marker.nodeStart < bestMarker.nodeEnd - bestMarker.nodeStart
-        ) {
-          bestMarker = marker
-        }
-      }
-      if (!bestMarker) continue
-      const target = found.find(
-        (el) => el.nodeStart === bestMarker.nodeStart && el.nodeEnd === bestMarker.nodeEnd,
-      )
-      if (!target) continue
-      const already = (target.hover ?? '').split(' ').filter(Boolean)
-      if (!already.includes(match.token)) {
-        target.hover = already.length > 0 ? `${target.hover} ${match.token}` : match.token
+      const bestMarker = innermostGroupMarker(groupMarkerCandidates, descendant, match.groupName)
+      if (bestMarker) appendGroupHoverCredit(found, bestMarker, match.token)
+    }
+  }
+}
+
+// The innermost (smallest range) `group`/`group/<name>` marker whose own JSX node contains `range`
+// (`{ nodeStart, nodeEnd }`) with the same name (`null` pairs only with `null`), or `null`. Shared by
+// the literal pass above and the helper pass below, so both apply one containment and one name rule.
+function innermostGroupMarker(groupMarkerCandidates, range, groupName) {
+  let bestMarker = null
+  for (const marker of groupMarkerCandidates) {
+    if (marker.nodeStart > range.nodeStart || marker.nodeEnd < range.nodeEnd) continue
+    if (!marker.names.includes(groupName)) continue
+    if (
+      !bestMarker ||
+      marker.nodeEnd - marker.nodeStart < bestMarker.nodeEnd - bestMarker.nodeStart
+    ) {
+      bestMarker = marker
+    }
+  }
+  return bestMarker
+}
+
+// Appends `token` onto the `hover` of the Record 1 row that is `marker`'s element, if there is one.
+// Only ever the ancestor: the descendant that holds the utility never gains a `hover` of its own.
+function appendGroupHoverCredit(found, marker, token) {
+  const target = found.find(
+    (el) => el.nodeStart === marker.nodeStart && el.nodeEnd === marker.nodeEnd,
+  )
+  if (!target) return
+  const already = (target.hover ?? '').split(' ').filter(Boolean)
+  if (!already.includes(token)) {
+    target.hover = already.length > 0 ? `${target.hover} ${token}` : token
+  }
+}
+
+// T680: the helper pass. `creditGroupHoverToAncestors` sees only literal nesting; a `group-hover`
+// mark held by a helper component declared elsewhere in the file (`MatchRow`'s `OutcomeLabel`) is
+// credited here to the group enclosing each of the helper's *call sites* — `<OutcomeLabel />` as a JSX
+// element — by letting the call site's JSX node stand in for the mark's own element in the same
+// containment, innermost-marker and name test (bare `group-hover` pairs only with bare `group`, a
+// named one only with the same name). Each call site credits independently: one inside a matching
+// group credits that group, one outside any group credits nothing, and neither affects the other.
+//
+// The safe error direction is UNDER-credit — a false credit is worse than a missed one — so every
+// credit must be provable from this file's source alone, and every shape that is not is refused:
+//   - the helper must be a top-level, PascalCase function declaration or `const` arrow/function
+//     expression (`findLocalHelperComponents`); the file must never export it (an exported helper is
+//     also invoked from files this pass cannot see) and must bind its name exactly once (which is how
+//     shadowing is refused without a type checker); it must never be reassigned;
+//   - the mark's nearest enclosing function must be the helper itself, so a mark inside a callback
+//     or inner component the helper merely contains (rendered by a call this pass cannot trace) is
+//     not credited;
+//   - a mark that already has a matching `group` marker inside the helper's own JSX is left to the
+//     literal pass, and the call site's group is not credited for it (the innermost-only rule);
+//   - a reference in any position other than a JSX tag (`render: OutcomeLabel`) credits nothing, and
+//     does not block the helper's other call sites.
+// Resolved one hop only: if helper A invokes helper B, which holds the mark, and A is invoked inside
+// a group, nothing is credited — a known, accepted under-credit; B's only call site is not inside
+// that group's JSX in this file's source, and following A's own call sites would be the transitive
+// resolution this file deliberately does not do. Likewise a `group-hover` element passed as
+// `children` into a helper whose marker wraps `{children}` stays uncredited: the mark is not in the
+// helper's source, and neither is the group in the caller's, so no containment ever holds.
+function creditHelperGroupHoverToCallSites(
+  sourceFile,
+  found,
+  groupMarkerCandidates,
+  groupHoverDescendants,
+) {
+  if (groupHoverDescendants.length === 0) return
+  const helpers = findLocalHelperComponents(sourceFile)
+  if (helpers.size === 0) return
+  const callSites = new Map([...helpers.keys()].map((name) => [name, []]))
+  const collect = (node) => {
+    if (isJsxTag(node)) {
+      const sites = callSites.get(tagNameOf(node))
+      if (sites) sites.push({ nodeStart: node.getStart(sourceFile), nodeEnd: node.getEnd() })
+    }
+    ts.forEachChild(node, collect)
+  }
+  collect(sourceFile)
+  for (const descendant of groupHoverDescendants) {
+    const owner = nearestFunctionLike(descendant.node)
+    const helperName = [...helpers].find(([, fn]) => fn === owner)?.[0]
+    if (!helperName) continue
+    for (const match of descendant.matches) {
+      if (innermostGroupMarker(groupMarkerCandidates, descendant, match.groupName)) continue
+      for (const site of callSites.get(helperName)) {
+        const marker = innermostGroupMarker(groupMarkerCandidates, site, match.groupName)
+        if (marker) appendGroupHoverCredit(found, marker, match.token)
       }
     }
   }
+}
+
+function nearestFunctionLike(node) {
+  for (let parent = node.parent; parent; parent = parent.parent) {
+    if (ts.isFunctionLike(parent)) return parent
+  }
+  return null
+}
+
+const HELPER_NAME_RE = /^[A-Z][A-Za-z0-9]*$/
+
+// Every local helper component `creditHelperGroupHoverToCallSites` may resolve, as a map from its
+// name to its function node (the declaration itself, or the arrow/function expression a `const`
+// holds). Conditions, all of which must hold (a failure leaves the name out, never guessed):
+//   1. declared at the top level of the file, as a function declaration or a `const X = <arrow or
+//      function expression>`, with a PascalCase name, and without an `export` modifier;
+//   2. not exported otherwise: no `export { X }` / `export { X as Y }` specifier naming it, and no
+//      `export default X` / `export = X` expression mentioning it (over-refusal is the safe side);
+//   3. bound exactly once in the whole file: any other binding of the identifier anywhere (a
+//      parameter, a local, an import, a destructured name, a class/type declaration) refuses it;
+//   4. never the target of an assignment (a function declaration can be reassigned).
+export function findLocalHelperComponents(sourceFile) {
+  const candidates = new Map()
+  for (const statement of sourceFile.statements) {
+    if (statement.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)) continue
+    if (ts.isFunctionDeclaration(statement) && statement.name && statement.body) {
+      if (HELPER_NAME_RE.test(statement.name.text)) candidates.set(statement.name.text, statement)
+    } else if (
+      ts.isVariableStatement(statement) &&
+      (statement.declarationList.flags & ts.NodeFlags.Const) !== 0
+    ) {
+      for (const decl of statement.declarationList.declarations) {
+        if (
+          ts.isIdentifier(decl.name) &&
+          HELPER_NAME_RE.test(decl.name.text) &&
+          decl.initializer &&
+          (ts.isArrowFunction(decl.initializer) || ts.isFunctionExpression(decl.initializer))
+        ) {
+          candidates.set(decl.name.text, decl.initializer)
+        }
+      }
+    }
+  }
+  if (candidates.size === 0) return candidates
+  const refused = new Set()
+  const bindings = new Map()
+  const visit = (node) => {
+    if (ts.isExportDeclaration(node) && node.exportClause && ts.isNamedExports(node.exportClause)) {
+      for (const el of node.exportClause.elements) refused.add((el.propertyName ?? el.name).text)
+    } else if (ts.isExportAssignment(node)) {
+      const mention = (inner) => {
+        if (ts.isIdentifier(inner)) refused.add(inner.text)
+        ts.forEachChild(inner, mention)
+      }
+      mention(node.expression)
+    } else if (ts.isIdentifier(node) && candidates.has(node.text)) {
+      if (isBindingIdentifier(node)) bindings.set(node.text, (bindings.get(node.text) ?? 0) + 1)
+      else if (isAssignmentTarget(node)) refused.add(node.text)
+    }
+    ts.forEachChild(node, visit)
+  }
+  visit(sourceFile)
+  for (const name of [...candidates.keys()]) {
+    if (refused.has(name) || bindings.get(name) !== 1) candidates.delete(name)
+  }
+  return candidates
+}
+
+// Whether `id` sits in a position that introduces a binding of its name. A property name, a
+// destructuring `propertyName`, an import's `propertyName` and a JSX tag are references, not bindings.
+function isBindingIdentifier(id) {
+  const parent = id.parent
+  return (
+    (ts.isVariableDeclaration(parent) ||
+      ts.isParameter(parent) ||
+      ts.isBindingElement(parent) ||
+      ts.isFunctionDeclaration(parent) ||
+      ts.isFunctionExpression(parent) ||
+      ts.isClassDeclaration(parent) ||
+      ts.isClassExpression(parent) ||
+      ts.isImportClause(parent) ||
+      ts.isImportSpecifier(parent) ||
+      ts.isNamespaceImport(parent) ||
+      ts.isImportEqualsDeclaration(parent) ||
+      ts.isTypeParameterDeclaration(parent) ||
+      ts.isInterfaceDeclaration(parent) ||
+      ts.isTypeAliasDeclaration(parent) ||
+      ts.isEnumDeclaration(parent) ||
+      ts.isModuleDeclaration(parent)) &&
+    parent.name === id
+  )
+}
+
+// Whether `id` is written to: the left of an assignment (also inside a destructuring target), the
+// operand of `++`/`--`, or a `for (X of/in ...)` head.
+function isAssignmentTarget(id) {
+  let node = id
+  for (
+    let parent = node.parent;
+    parent &&
+    (ts.isParenthesizedExpression(parent) ||
+      ts.isArrayLiteralExpression(parent) ||
+      ts.isObjectLiteralExpression(parent) ||
+      ts.isSpreadElement(parent) ||
+      ts.isSpreadAssignment(parent) ||
+      ts.isShorthandPropertyAssignment(parent) ||
+      ts.isPropertyAssignment(parent));
+    parent = node.parent
+  ) {
+    node = parent
+  }
+  const parent = node.parent
+  if (!parent) return false
+  if (ts.isBinaryExpression(parent)) {
+    return (
+      parent.left === node &&
+      parent.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
+      parent.operatorToken.kind <= ts.SyntaxKind.LastAssignment
+    )
+  }
+  if (ts.isPrefixUnaryExpression(parent) || ts.isPostfixUnaryExpression(parent)) {
+    return (
+      parent.operator === ts.SyntaxKind.PlusPlusToken ||
+      parent.operator === ts.SyntaxKind.MinusMinusToken
+    )
+  }
+  return (ts.isForInStatement(parent) || ts.isForOfStatement(parent)) && parent.initializer === node
 }
 
 // --- Record 3: primitive instances --------------------------------------------------------------
