@@ -936,10 +936,21 @@ export interface TooltipScenario extends SuiteScenario {
 
 // The only `Tooltip` an application route renders is `CountryFlag`'s, and the only component that
 // renders a `CountryFlag` is `ProfileSummary` — so these are the routes whose container renders a
-// `ProfileSummary` for a profile with a country. `suite-scenarios.test.ts` reads the source for
-// `<Tooltip`, `<CountryFlag` and `<ProfileSummary` and fails when a usage appears that no entry
-// here covers. The at-rest `ROUTE_SCENARIOS` stubs already carry a country (`FR`, `DE`), so the
-// flag and its tooltip render without a populated list.
+// `ProfileSummary` for a profile with a country. `suite-scenarios.test.ts` guards this list at three
+// levels, none of which reaches further than it says:
+// - source: it reads the source for `<Tooltip`, `<CountryFlag` and `<ProfileSummary`, so a usage in a
+//   file that no table entry names fails;
+// - routes: it reads `apps/web/src/routes/*.tsx` for the routes that import a container that
+//   renders a `ProfileSummary`, so a new route mounting one fails until it is listed here (a route
+//   that reaches a container through another component is not seen);
+// - runtime: `openTooltipByKeyboard` fails when `main` holds a second tooltip trigger, so a second
+//   `Tooltip` rendered on one of these routes fails — but only as that route's at-rest stubs render
+//   it. A tooltip that renders only in a populated list (one added to `MatchRow`, whose at-rest
+//   `/matches` list is empty) is a new usage the source level fails on, yet a table entry naming
+//   `/matches` satisfies that level, and the count never sees it: it stays unjudged until a
+//   populated scenario opens it.
+// The at-rest `ROUTE_SCENARIOS` stubs already carry a country (`FR`, `DE`), so the flag and its
+// tooltip render without a populated list.
 export const TOOLTIP_ROUTES: readonly string[] = [
   '/dashboard',
   '/matches',
@@ -954,7 +965,7 @@ export const TOOLTIP_SCENARIOS: readonly TooltipScenario[] = TOOLTIP_ROUTES.map(
     ...base,
     route,
     label: `${route} — country tooltip open`,
-    prepare: openTooltipByKeyboard,
+    prepare: (page) => openTooltipByKeyboard(page, route),
   }
 })
 

@@ -3906,10 +3906,10 @@ transition is present without the preference and, with it switched on live, abse
 (`assertTooltipMotionContract` in `tests/visual/fixtures/tooltip-open.ts`); the keyboard suite asserts Escape dismisses
 the surface and focus stays on the trigger (`packages/design-system/specs/tooltip.md` §8). Both assertions are shared with
 `tests/visual/fixtures/tooltip-open.test.ts`, whose planted pages (a surface lacking the `motion-reduce:` utility, one that
-never transitions, one that is closed, an ignored Escape, an Escape that loses focus) each fail the assertion naming the
-broken clause. `tests/visual/fixtures/suite-scenarios.test.ts` fails when a `<Tooltip>`, `<CountryFlag>` or
-`<ProfileSummary>` usage appears in the source that no tooltip scenario covers. The row is deleted rather than kept as a
-second copy of the fact.
+never transitions, one that is closed, an ignored Escape, an Escape that loses focus, a second tooltip trigger in `main`) each fail the assertion naming the broken clause.
+The guard is per route, not per tooltip: `suite-scenarios.test.ts` fails when a `<Tooltip>`, `<CountryFlag>` or `<ProfileSummary>` usage appears in a file no table entry names, and when a route file imports a container that renders a `ProfileSummary` and has no tooltip scenario; the scenario itself fails when `main` holds a second tooltip trigger, as that route's at-rest stubs render it.
+A tooltip that renders only in a populated list (one added to `MatchRow`, whose at-rest `/matches` list is empty) fails the source check only until a table entry naming `/matches` is added, and the count never sees it: it stays unjudged until a populated scenario opens it.
+The row is deleted rather than kept as a second copy of the fact.
 
 T682 (2026-10-17) closed the last of those rows the same way: all four suites now also render the two success-branch
 controls T676 left out, in both themes, as populated scenarios in `tests/visual/fixtures/suite-scenarios.ts`. The

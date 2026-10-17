@@ -34,10 +34,35 @@ export function tooltipSurface(page: Page): Locator {
   return page.locator(TOOLTIP_SURFACE_SELECTOR).first()
 }
 
+/** How many tooltips a scenario opens: `tooltipTrigger` and `tooltipSurface` both take `.first()`. */
+const TOOLTIPS_A_SCENARIO_OPENS = 1
+
+/** Fails when `main` holds more tooltip triggers than the scenario opens, so a second `Tooltip` on
+ * a covered route cannot ride on the first one's scenario: its motion and Escape contract would
+ * never be judged. This is counted in the rendered page, so no table can satisfy it. It sees only
+ * what the scenario's at-rest stubs render; a tooltip that appears in a populated list is not in the
+ * page here. */
+export async function assertOneTooltipTrigger(page: Page, label: string): Promise<void> {
+  await page
+    .locator(TOOLTIP_TRIGGER_SELECTOR)
+    .first()
+    .waitFor({ state: 'attached', timeout: 5_000 })
+    .catch(() => undefined)
+  const count = await page.locator(TOOLTIP_TRIGGER_SELECTOR).count()
+  if (count > TOOLTIPS_A_SCENARIO_OPENS) {
+    throw new Error(
+      `${label}: ${count} tooltip triggers in main, the scenario opens ${TOOLTIPS_A_SCENARIO_OPENS} ` +
+        `— a second Tooltip needs its own scenario`,
+    )
+  }
+}
+
 /** Opens the route's tooltip the way a keyboard user does: Tab to its trigger, and `:focus-visible`
- * opens it. Never a hover, never a programmatic `focus()`. Throws if Tab reached the trigger and
- * nothing opened. */
-export async function openTooltipByKeyboard(page: Page): Promise<void> {
+ * opens it. Never a hover, never a programmatic `focus()`. Throws if `main` holds more than one
+ * tooltip trigger, and if Tab reached the trigger and nothing opened. `label` names the route in
+ * the failure. */
+export async function openTooltipByKeyboard(page: Page, label = page.url()): Promise<void> {
+  await assertOneTooltipTrigger(page, label)
   await tabTo(page, tooltipTrigger(page))
   await tooltipSurface(page)
     .waitFor({ state: 'visible', timeout: 5_000 })
@@ -106,7 +131,19 @@ export async function assertTooltipMotionContract(page: Page, context: string): 
     after.visible,
     `${context}: the tooltip surface closed when the preference switched on`,
   ).toBe(true)
-  for (const ms of parseDurationListMs(after.transitionDuration)) {
+  assertReducedDurations(after.transitionDuration, context)
+}
+
+/** The reduced half, on a `transition-duration` reading: every parsed entry is (near) zero, and at
+ * least one entry parsed, since a loop over nothing passes for free. */
+export function assertReducedDurations(reading: string, context: string): void {
+  const durations = parseDurationListMs(reading)
+  expect(
+    durations.length,
+    `${context}: the open tooltip surface under prefers-reduced-motion reads transition-duration ` +
+      `"${reading}" — no duration parsed, so "stops under the preference" would pass for free`,
+  ).toBeGreaterThan(0)
+  for (const ms of durations) {
     expect(
       ms,
       `${context}: the open tooltip surface keeps a ${ms}ms transition under ` +

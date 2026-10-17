@@ -6,6 +6,7 @@
 // classes compute (`transition-opacity duration-120` open, plus or minus `motion-reduce:duration-0`).
 import { expect, test, type Page } from '@playwright/test'
 import {
+  assertReducedDurations,
   assertTooltipKeyboard,
   assertTooltipMotionContract,
   openTooltipByKeyboard,
@@ -40,6 +41,9 @@ interface KeyboardOptions {
   escapeIgnored?: boolean
   /** Escape dismisses the surface but moves focus off the trigger. */
   escapeLosesFocus?: boolean
+  /** A second, unrelated tooltip trigger sits in `main` after the first: the shape of a second
+   * `<Tooltip>` added to a route that already has a tooltip scenario. */
+  secondTooltip?: boolean
 }
 
 function keyboardPage(options: KeyboardOptions = {}): string {
@@ -48,6 +52,11 @@ function keyboardPage(options: KeyboardOptions = {}): string {
     <main>
       <button id="trigger" type="button">Flag</button>
       <span id="surface" role="tooltip" hidden>France</span>
+      ${
+        options.secondTooltip
+          ? '<button id="other" type="button">Rank</button><span id="other-surface" role="tooltip" hidden>Elo</span>'
+          : ''
+      }
     </main>
     <script>
       const trigger = document.getElementById('trigger')
@@ -104,8 +113,30 @@ test.describe('tooltip keyboard contract, planted pages', () => {
     page,
   }) => {
     await load(page, keyboardPage())
-    await openTooltipByKeyboard(page)
+    await openTooltipByKeyboard(page, '/planted')
     assertTooltipKeyboard(await walkOpenTooltip(page), 'planted')
+  })
+
+  test('a second tooltip trigger in main fails, naming the count the scenario cannot judge', async ({
+    page,
+  }) => {
+    await load(page, keyboardPage({ secondTooltip: true }))
+    await expect(openTooltipByKeyboard(page, '/planted')).rejects.toThrow(
+      /\/planted: 2 tooltip triggers in main, the scenario opens 1 — a second Tooltip needs its own scenario/,
+    )
+  })
+
+  test('a tooltip trigger outside main is not counted: the header chrome is not a route', async ({
+    page,
+  }) => {
+    await load(
+      page,
+      keyboardPage().replace(
+        '<main>',
+        '<header><button type="button">Menu</button><span role="tooltip" hidden>Theme</span></header><main>',
+      ),
+    )
+    await openTooltipByKeyboard(page, '/planted')
   })
 
   test('a trigger whose focus does not open the surface fails', async ({ page }) => {
@@ -132,6 +163,27 @@ test.describe('tooltip keyboard contract, planted pages', () => {
     expect(walk.closedByEscape).toBe(true)
     expect(() => assertTooltipKeyboard(walk, 'planted')).toThrow(
       /moved focus off the tooltip's trigger/,
+    )
+  })
+})
+
+// `getComputedStyle(...).transitionDuration` never reads empty on a real element ("0s" at the least),
+// so no page can build the shape this guard names; it is judged on a fake reading instead, the
+// string `readSurfaceTransition` would hand it.
+test.describe('tooltip reduced-motion durations, fake readings', () => {
+  test('a reading that stops every transition passes', () => {
+    expect(() => assertReducedDurations('0s, 0s', 'planted')).not.toThrow()
+  })
+
+  test('an empty reading fails by name rather than passing over zero entries', () => {
+    expect(() => assertReducedDurations('', 'planted')).toThrow(
+      /planted: the open tooltip surface under prefers-reduced-motion reads transition-duration "" — no duration parsed, so "stops under the preference" would pass for free/,
+    )
+  })
+
+  test('a reading that keeps a transition fails, naming it', () => {
+    expect(() => assertReducedDurations('0s, 0.12s', 'planted')).toThrow(
+      /keeps a 120ms transition under prefers-reduced-motion: reduce/,
     )
   })
 })

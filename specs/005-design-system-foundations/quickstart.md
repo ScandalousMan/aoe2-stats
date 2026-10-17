@@ -1214,10 +1214,17 @@ keyboard suite asserts Escape dismisses the surface and focus stays on the trigg
 (`packages/design-system/specs/tooltip.md` §8). Both assertions live in
 `tests/visual/fixtures/tooltip-open.ts` and are shared with `tests/visual/fixtures/tooltip-open.test.ts`,
 whose planted pages (a surface lacking the `motion-reduce:` utility, one that never transitions, one
-that is closed, an ignored Escape, an Escape that loses focus, a trigger whose focus opens nothing)
-each fail naming the broken clause. `tests/visual/fixtures/suite-scenarios.test.ts` fails when a
-`<Tooltip>`, `<CountryFlag>` or `<ProfileSummary>` usage appears in the source that no tooltip
-scenario covers. Dropping `motion-reduce:duration-0` from the component, and disabling its Escape
+that is closed, an ignored Escape, an Escape that loses focus, a trigger whose focus opens nothing,
+a second tooltip trigger in `main`) each fail naming the broken clause. The guard is per route, not
+per tooltip. `tests/visual/fixtures/suite-scenarios.test.ts` fails when a `<Tooltip>`,
+`<CountryFlag>` or `<ProfileSummary>` usage appears in a file no table entry names, and when a route
+file under `apps/web/src/routes/` imports a container that renders a `ProfileSummary` and its route
+has no tooltip scenario; the scenario itself fails when `main` holds a second tooltip trigger, as
+that route's at-rest stubs render it. A tooltip that renders only in a populated list (one added to
+`MatchRow`, whose at-rest `/matches` list is empty) fails the source check only until a table entry
+naming `/matches` is added, and the count never sees it: it stays unjudged until a populated
+scenario opens it. A route that reaches a container through another component, rather than
+importing it, is not derived. Dropping `motion-reduce:duration-0` from the component, and disabling its Escape
 handling, were each shown to fail the route suites locally before this note was written. The tooltip
 scenarios run in the keyboard and reduced-motion suites only, the two T681 names: the focus-visibility
 and touch-footprint suites already measure the flag trigger at rest on those routes. **Item 13 stays

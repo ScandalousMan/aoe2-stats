@@ -15,9 +15,16 @@
 //    fails here until someone adds one;
 // 4. scenario labels are unique (they are Playwright test titles);
 // 5. every surface scenario knows how to open its surface;
-// 6. (T681) every route that can render a `Tooltip` has a tooltip scenario: the source is read for
-//    `<Tooltip`, `<CountryFlag` and `<ProfileSummary` — the chain that puts one on a route — and a
-//    new usage fails until a scenario and a table entry exist.
+// 6. (T681) every route that renders a `Tooltip` through the `ProfileSummary` chain has a tooltip
+//    scenario. Two levels live here: the source is read for `<Tooltip`, `<CountryFlag` and
+//    `<ProfileSummary`, so a usage in a file no table entry names fails; and the route files are
+//    read for the containers they import, so a new route importing a container that renders a
+//    `ProfileSummary` fails until it has a scenario. A third level lives at runtime, in
+//    `./tooltip-open`: a second tooltip trigger in `main` fails the scenario, as that route's
+//    at-rest stubs render it. Not caught by any level: a tooltip that renders only in a populated
+//    list (a `<Tooltip>` in `MatchRow`, whose at-rest `/matches` list is empty) — the source level
+//    fails on it but a table entry naming `/matches` satisfies it — and a route that reaches a
+//    container through another component rather than importing it.
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { expect, test } from '@playwright/test'
@@ -859,20 +866,107 @@ function countTooltipChainUsages(
   }
 }
 
-function findTooltipChainUsages(): SurfaceUsage[] {
+interface SourceText {
+  /** Repository-rooted, forward-slashed. */
+  relative: string
+  text: string
+}
+
+function readSourceTexts(): SourceText[] {
+  return ['packages/design-system/src', 'apps/web/src'].flatMap((directory) =>
+    sourceFiles(path.join(rootDir, directory)).map((file) => ({
+      relative: path.relative(rootDir, file).split(path.sep).join('/'),
+      text: readFileSync(file, 'utf8'),
+    })),
+  )
+}
+
+/** The scanner proper, over source text rather than the disk, so a planted file goes through the
+ * very function the real check calls. */
+function findTooltipChainUsages(files: readonly SourceText[]): SurfaceUsage[] {
   const found: SurfaceUsage[] = []
-  for (const directory of ['packages/design-system/src', 'apps/web/src']) {
-    for (const file of sourceFiles(path.join(rootDir, directory))) {
-      const usages = countTooltipChainUsages(readFileSync(file, 'utf8'))
-      const relative = path.relative(rootDir, file).split(path.sep).join('/')
-      // `Tooltip` is the primitive itself; it renders no other tooltip.
-      if (/primitives\/Tooltip\//.test(relative)) continue
-      for (const tag of TOOLTIP_CHAIN_TAGS) {
-        if (usages[tag] > 0) found.push({ source: relative, tag, count: usages[tag] })
-      }
+  for (const { relative, text } of files) {
+    // `Tooltip` is the primitive itself; it renders no other tooltip.
+    if (/primitives\/Tooltip\//.test(relative)) continue
+    const usages = countTooltipChainUsages(text)
+    for (const tag of TOOLTIP_CHAIN_TAGS) {
+      if (usages[tag] > 0) found.push({ source: relative, tag, count: usages[tag] })
     }
   }
   return found
+}
+
+interface RouteText {
+  /** The file name under `apps/web/src/routes/`. */
+  file: string
+  text: string
+}
+
+function readRouteTexts(): RouteText[] {
+  const directory = path.join(rootDir, 'apps/web/src/routes')
+  return readdirSync(directory)
+    .filter((file) => /\.tsx$/.test(file) && !/\.test\.tsx$/.test(file))
+    .map((file) => ({ file, text: readFileSync(path.join(directory, file), 'utf8') }))
+}
+
+/** TanStack's flat file naming to the `ROUTE_SCENARIOS` label: `matches.index.tsx` is `/matches`,
+ * `players.$profileId.matches.tsx` is `/players/$profileId/matches`. `null` for the files that are
+ * not an application route (`__root`, `index`, which only redirects). */
+function routeLabelOfFile(file: string): string | null {
+  const name = file.replace(/\.tsx$/, '')
+  if (name === '__root' || name === 'index') return null
+  return `/${name
+    .replace(/\.index$/, '')
+    .split('.')
+    .join('/')}`
+}
+
+/** The routes whose file imports `container`. Comments are blanked first, so a docstring naming it
+ * is not an import. */
+function routesImporting(container: string, routes: readonly RouteText[]): string[] {
+  const importPattern = new RegExp(
+    `import\\s*(?:type\\s+)?\\{[^}]*\\b${container}\\b[^}]*\\}\\s*from`,
+  )
+  return routes
+    .filter(({ text }) =>
+      importPattern.test(text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')),
+    )
+    .flatMap(({ file }) => routeLabelOfFile(file) ?? [])
+    .sort((a, b) => a.localeCompare(b))
+}
+
+const containerName = (host: CoveredTooltipHost) => path.basename(host.source, '.tsx')
+
+/** The containers that render a `ProfileSummary` (the covered hosts under `apps/web`). */
+const isContainerHost = (host: CoveredTooltipHost) =>
+  host.tag === 'ProfileSummary' && host.source.startsWith('apps/web/src/')
+
+/** What `COVERED_TOOLTIP_HOSTS` cannot tell on its own: every route file that imports a container
+ * rendering a `ProfileSummary`, whose route has no tooltip scenario, and every such container no
+ * route file imports (its routes could not be derived, so nothing would be checked). */
+function derivedRouteProblems(
+  hosts: readonly CoveredTooltipHost[],
+  routes: readonly RouteText[],
+  scenarios: readonly TooltipScenario[],
+): string[] {
+  const opened = new Set(scenarios.map((scenario) => scenario.route))
+  const problems: string[] = []
+  for (const host of hosts.filter(isContainerHost)) {
+    const container = containerName(host)
+    const mounting = routesImporting(container, routes)
+    if (mounting.length === 0) {
+      problems.push(`${container}: no route file imports it, so its routes cannot be derived`)
+    }
+    for (const route of mounting) {
+      if (!opened.has(route)) {
+        problems.push(
+          `${route}: mounts ${container}, which renders a ProfileSummary, and no tooltip scenario ` +
+            `opens a tooltip on it`,
+        )
+      }
+    }
+  }
+  return problems
 }
 
 /** Every route a covered usage claims that no tooltip scenario opens a tooltip on, and every
@@ -896,22 +990,36 @@ function tooltipScenarioProblems(
 test.describe('tooltips', () => {
   test('finds exactly the covered tooltip usages', () => {
     expect(
-      surfaceLines(findTooltipChainUsages()),
+      surfaceLines(findTooltipChainUsages(readSourceTexts())),
       'a <Tooltip>, <CountryFlag> or <ProfileSummary> usage appeared or disappeared: add or retire ' +
         'its tooltip scenario in tests/visual/fixtures/suite-scenarios.ts (TOOLTIP_ROUTES) and ' +
         'update COVERED_TOOLTIP_HOSTS here',
     ).toEqual(surfaceLines(COVERED_TOOLTIP_HOSTS))
   })
 
-  test('a planted new Tooltip consumer, or a retired one, makes the comparison differ', () => {
+  test('a planted new Tooltip consumer, or a retired one, makes the scan differ', () => {
+    const real = readSourceTexts()
     const covered = surfaceLines(COVERED_TOOLTIP_HOSTS)
-    const planted: SurfaceUsage = {
-      source: 'packages/design-system/src/composites/MatchRow/index.tsx',
+    const matchRow: SourceText = {
+      relative: 'packages/design-system/src/composites/MatchRow/index.tsx',
+      text: 'export const MatchRow = () => <Tooltip content="Elo"><button>1200</button></Tooltip>',
+    }
+    // The scanner, run over the real source plus the planted file, finds the planted usage...
+    expect(findTooltipChainUsages([...real, matchRow])).toContainEqual({
+      source: matchRow.relative,
       tag: 'Tooltip',
       count: 1,
-    }
-    expect(surfaceLines([...COVERED_TOOLTIP_HOSTS, planted])).not.toEqual(covered)
-    expect(surfaceLines(COVERED_TOOLTIP_HOSTS.slice(1))).not.toEqual(covered)
+    })
+    // ...so its lines no longer equal the table's.
+    expect(surfaceLines(findTooltipChainUsages([...real, matchRow]))).not.toEqual(covered)
+    // A retired consumer: the same scan without CountryFlag's file.
+    const withoutFlag = real.filter(({ relative }) => !/composites\/CountryFlag\//.test(relative))
+    expect(withoutFlag.length).toBeLessThan(real.length)
+    expect(surfaceLines(findTooltipChainUsages(withoutFlag))).not.toEqual(covered)
+    // And the planted file in a comment only is not a usage.
+    expect(findTooltipChainUsages([{ ...matchRow, text: '// <Tooltip content="Elo">' }])).toEqual(
+      [],
+    )
   })
 
   test('every route a covered usage claims has a tooltip scenario, and none is unclaimed', () => {
@@ -946,12 +1054,83 @@ test.describe('tooltips', () => {
     ).toEqual({ Tooltip: 1, CountryFlag: 1, ProfileSummary: 0 })
   })
 
-  test('every tooltip scenario opens its own tooltip, and a planted one that does not is caught', () => {
-    const withoutPrepare = (scenarios: readonly TooltipScenario[]) =>
-      scenarios.filter((scenario) => !scenario.prepare).map((scenario) => scenario.label)
-    expect(withoutPrepare(TOOLTIP_SCENARIOS)).toEqual([])
-    expect(withoutPrepare([{ ...TOOLTIP_SCENARIOS[0], prepare: undefined }])).toEqual([
+  test('tooltip scenario labels are unique, and a planted duplicate is caught', () => {
+    // Labels are Playwright test titles in the keyboard and reduced-motion suites.
+    expect(duplicateLabels(TOOLTIP_SCENARIOS)).toEqual([])
+    expect(duplicateLabels([TOOLTIP_SCENARIOS[0], TOOLTIP_SCENARIOS[0]])).toEqual([
       TOOLTIP_SCENARIOS[0].label,
     ])
+  })
+})
+
+// --- Routes derived from the route files (T681) ---------------------------------------------------
+
+const PLAYER_PROFILE_IMPORT =
+  "import { PlayerProfileContainer } from '../features/players/PlayerProfileContainer'"
+
+test.describe('tooltip routes derived from the route files', () => {
+  test('a route file name becomes its ROUTE_SCENARIOS label', () => {
+    expect(routeLabelOfFile('dashboard.tsx')).toBe('/dashboard')
+    expect(routeLabelOfFile('matches.index.tsx')).toBe('/matches')
+    expect(routeLabelOfFile('matches.$gameId.tsx')).toBe('/matches/$gameId')
+    expect(routeLabelOfFile('players.$profileId.index.tsx')).toBe('/players/$profileId')
+    expect(routeLabelOfFile('players.$profileId.matches.tsx')).toBe('/players/$profileId/matches')
+    expect(routeLabelOfFile('__root.tsx')).toBeNull()
+    expect(routeLabelOfFile('index.tsx')).toBeNull()
+  })
+
+  test('every route importing a container that renders a ProfileSummary has a tooltip scenario', () => {
+    expect(
+      derivedRouteProblems(COVERED_TOOLTIP_HOSTS, readRouteTexts(), TOOLTIP_SCENARIOS),
+    ).toEqual([])
+  })
+
+  test('the derivation finds exactly the routes the table claims for each container', () => {
+    const routes = readRouteTexts()
+    for (const host of COVERED_TOOLTIP_HOSTS.filter(isContainerHost)) {
+      expect(routesImporting(containerName(host), routes), containerName(host)).toEqual(
+        [...host.routes].sort((a, b) => a.localeCompare(b)),
+      )
+    }
+  })
+
+  test('a planted new route that imports PlayerProfileContainer is caught by name', () => {
+    const planted: RouteText = {
+      file: 'players.$profileId.settings.tsx',
+      text: `${PLAYER_PROFILE_IMPORT}\nexport const Route = () => <PlayerProfileContainer profileId={1} />`,
+    }
+    expect(
+      derivedRouteProblems(
+        COVERED_TOOLTIP_HOSTS,
+        [...readRouteTexts(), planted],
+        TOOLTIP_SCENARIOS,
+      ),
+    ).toEqual([
+      '/players/$profileId/settings: mounts PlayerProfileContainer, which renders a ProfileSummary, ' +
+        'and no tooltip scenario opens a tooltip on it',
+    ])
+  })
+
+  test('a commented-out import is not a mount', () => {
+    const planted: RouteText = {
+      file: 'players.$profileId.settings.tsx',
+      text: `// ${PLAYER_PROFILE_IMPORT}\n/* ${PLAYER_PROFILE_IMPORT} */`,
+    }
+    expect(
+      derivedRouteProblems(
+        COVERED_TOOLTIP_HOSTS,
+        [...readRouteTexts(), planted],
+        TOOLTIP_SCENARIOS,
+      ),
+    ).toEqual([])
+  })
+
+  test('a container no route file imports is caught, so a failed derivation cannot pass for free', () => {
+    expect(derivedRouteProblems(COVERED_TOOLTIP_HOSTS, [], TOOLTIP_SCENARIOS)).toEqual(
+      COVERED_TOOLTIP_HOSTS.filter(isContainerHost).map(
+        (host) =>
+          `${containerName(host)}: no route file imports it, so its routes cannot be derived`,
+      ),
+    )
   })
 })
