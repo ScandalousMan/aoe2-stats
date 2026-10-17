@@ -14,6 +14,12 @@ uv sync
 ```
 
 ```bash
+pnpm install --frozen-lockfile
+```
+
+Phase 5's web test needs it; a clean checkout has no `node_modules`.
+
+```bash
 PYTEST_DISABLE_NETWORK=1 uv run pytest -q
 ```
 
@@ -28,8 +34,8 @@ and its checksum recorded:
 shasum -a 256 tests/fixtures/replays/*.zip
 ```
 
-Expected: two archives, each matching the checksum in `tests/fixtures/replays/README.md`, each
-holding exactly one recording. A fixture test asserts, for **every** committed archive, that the
+Expected: one line per committed archive, each matching the checksum in
+`tests/fixtures/replays/README.md`, each holding exactly one recording. A fixture test asserts, for **every** committed archive, that the
 post-game block list contains no statistics block — which is what lets
 `docs/data-sources.md` §2 stop being an open question (FR-045).
 
@@ -91,19 +97,22 @@ uv run scripts/checks/asset_packs.py
 Expected: the licence check now sees `packages/knowledge/packs/aoe2techtree` and passes; remove one
 of the five fields and it fails.
 
-**US2, by hand** — a discounted building, for the civilisation that discounts it (raw id 9 is
-Saracens, T652m; Saracens' Market costs 175 wood, discounted by 100):
+**US2, by hand** — a discounted building, for the civilisation that discounts it (Saracens, T652m;
+Saracens' Market costs 175 wood, discounted by 100). A query takes the civilisation by name, not by
+its raw id, and resolves the snapshot from the build the entity reference carries:
 
 ```bash
-uv run python -c "from aoe2stats_knowledge import open_snapshot_for; kb = open_snapshot_for(180059); print(kb.cost(('building', 84), civilisation=9))"
+uv run python -c "from aoe2stats_knowledge.query import EntityRef, cost; print(cost(EntityRef(kind='building', id='84', build=180059), civilisation='Saracens'))"
 ```
 
 Expected: an answer whose value is the civilisation-adjusted cost, carrying the snapshot identity
 and the one effect applied, with its source sentence. Ask the same of a civilisation that is not
-modelled and expect a gap with cause `civilisation-not-modelled`, never the baseline.
+modelled (`civilisation='Britons'`) and expect a gap with cause `civilisation-not-modelled`, never
+the baseline.
 
-**No nearest snapshot** — ask for a build one higher than any snapshot describes and expect a gap
-with cause `no-snapshot-for-build`.
+**No nearest snapshot** — ask for a build one higher than any snapshot describes (the highest
+`describes_build` under `packages/knowledge/snapshots/`, plus one) and expect a gap with cause
+`no-snapshot-for-build`.
 
 **SC-007a** — the coverage pass over every committed recording reports no blocking gap outside
 FR-022b's enumerated list, which lives in `packages/knowledge/tests/test_coverage.py`; every entry is
@@ -146,3 +155,31 @@ digest, and a gap list that is empty or explains itself.
 No resource curve, no population, no loss figure, no starting state. If any of those appears in a
 document, the register gate has failed — that is a defect in this feature, not an early delivery of
 the next one.
+
+## Run record (T669, 2026-10-17)
+
+Run on a clean checkout: a detached worktree of `origin/main` at `17293807`, with no
+`node_modules`, no virtual environment and no local environment file. Every command was run as
+written, then checked by its exit code. The three steps marked **corrected** have since been
+amended in place above; this section records what the old text said and what actually happened.
+
+| Step                            | Result                                                                                                                                                                                                                                                                                                                                                       |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Prerequisites                   | `uv sync` exit 0. The whole suite with the network blocked: 2653 passed, exit 0                                                                                                                                                                                                                                                                              |
+| Phase 1, the fixtures           | **Corrected.** Expected "two archives"; there are three, since T672 committed match 511523321's recording. Each matches its README checksum and holds one recording; `tests/test_reference_recordings.py` passes for all three                                                                                                                               |
+| Phase 1, the corrections        | `grep` printed nothing (exit 1). The skill's placement paragraph and `packages/replay-engine/tests/test_aoe2rec.py`'s docstring agree: that package alone imports the engine                                                                                                                                                                                 |
+| Phase 2                         | Exit 0. Each of the contract's eight loader refusals has a planted-defect test. Drift gate: editing one `impact` line failed the view test and printed `uv run python -m aoe2stats_core.truth.register`; running it went green. SC-012: `participant.units_lost` in the view states its reason, impact, `approximation_acceptable: no` and `would change if` |
+| Phase 3                         | Exit 0, golden files untouched. The collapse, no-silent-drop, deny-list, peak-memory and declared-only tests each run over every committed recording                                                                                                                                                                                                         |
+| Phase 4, the suite and licences | Exit 0 and `clean.`; deleting `aoe2techtree`'s `Checked` field made the licence check fail, exit 1                                                                                                                                                                                                                                                           |
+| Phase 4, US2 by hand            | **Corrected.** The command failed with `ImportError`: `aoe2stats_knowledge` never exported `open_snapshot_for`, and a query takes the civilisation's name, not raw id 9. The corrected command answered `{'wood': 75}` with the snapshot identity and the one Saracens effect, source sentence included; Britons answered `civilisation-not-modelled`        |
+| Phase 4, no snapshot            | Build 185873 answered `no-snapshot-for-build`                                                                                                                                                                                                                                                                                                                |
+| Phase 5, Python                 | Exit 0. SC-003, SC-004, SC-005 and SC-011 each have a named test in `apps/analyzer/tests` or `packages/core/tests`                                                                                                                                                                                                                                           |
+| Phase 5, web                    | **Corrected.** Failed with `vitest: command not found`: the prerequisites never installed the JavaScript workspace. After `pnpm install --frozen-lockfile`, 4 files and 88 tests passed, `api.next-version.test.ts` among them                                                                                                                               |
+| After deploy, health            | `GET /api/health` answered 200, `status` `ok`                                                                                                                                                                                                                                                                                                                |
+| After deploy, one analysis      | **Not run.** `GET /api/matches/{game_id}/analysis` answers 401 without a signed-in session, so reading a published document's dependency record, identity digest and gap list needs the user                                                                                                                                                                 |
+
+Two things this run showed that no step asks about. A raw id passed as a civilisation
+(`civilisation='9'`) is answered `civilisation-not-modelled`, the same gap a real unmodelled
+civilisation gets, so a caller that forgets to map ids to names sees a coverage gap rather than an
+error. And the snapshot for build 185872 models no civilisation, as its own `snapshot.toml` says, so
+every civilisation-qualified query for a current-build recording is a gap today.
