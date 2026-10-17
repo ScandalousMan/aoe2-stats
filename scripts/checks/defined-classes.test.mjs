@@ -143,6 +143,8 @@ for (const typo of [
   'hovr:underline',
   'dakr:bg-surface',
   'group-hovr/row-link:underline',
+  'focus-visble:rounded',
+  'hovr:border',
   'type-numerc',
   'icon-smm',
 ]) {
@@ -159,6 +161,7 @@ test('contrast: URLs, times and the correctly spelt variants and utilities pass'
       "export const a = 'https://example.com'",
       "export const b = '12:30'",
       "export const c = 'Note: see https://example.com/a:b at 12:30'",
+      "export const e = 'Note: to'",
       "export const d = 'type-numeric focus-visible:outline-2 hover:underline icon-sm'",
       '',
     ].join('\n'),

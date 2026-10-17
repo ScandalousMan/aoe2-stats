@@ -88,9 +88,9 @@ describe('Link', () => {
     render(<Link href="/players/1807091">View profile</Link>)
     const link = screen.getByRole('link')
     // Under any variant prefix, as the substring assertions these replace forbade.
-    expect(Array.from(link.classList).filter((c) => /(^|:)active:ring-2/.test(c))).toEqual([])
+    expect(Array.from(link.classList).filter((c) => /(^|[:-])active:ring-2/.test(c))).toEqual([])
     expect(
-      Array.from(link.classList).filter((c) => /(^|:)active:ring-border-strong/.test(c)),
+      Array.from(link.classList).filter((c) => /(^|[:-])active:ring-border-strong/.test(c)),
     ).toEqual([])
   })
 

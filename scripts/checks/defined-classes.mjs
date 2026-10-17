@@ -25,8 +25,10 @@
 //     'group/row-link', but also a typo: 'focus-visble:outline-2'). Two rules, nothing wider,
 //     tell the typos from the prose; every other `[]` is prose and skipped.
 //       A. Unknown variant. The token contains `:`, parses as nothing, and the part after its LAST
-//          `:` parses as a non-bare candidate: `focus-visble:outline-2`, `hovr:underline`,
-//          `group-hovr/row-link:underline`. `https://example.com` and `12:30` stay prose, because
+//          `:` either parses as a non-bare candidate or compiles to CSS (a bare root with a
+//          default, `rounded`, `border`, `shadow`, compiles though it is bare): `focus-visble:outline-2`,
+//          `hovr:underline`, `group-hovr/row-link:underline`, `focus-visble:rounded`. Prose such as
+//          `Note: to` stays prose, because `to` neither is a non-bare candidate nor compiles. `https://example.com` and `12:30` stay prose, because
 //          what follows their last colon is not a candidate.
 //       B. Misspelt custom utility. The part after the last `:` (or the whole token) starts with
 //          the first `-`-segment of an `@utility` the stylesheet declares (`type-`, `icon-`,
@@ -251,7 +253,7 @@ export async function checkDefinedClasses(srcDir = defaultSrcDir) {
     if (parsed.length === 0) {
       // Prose, unless it is a typo of something the stylesheet defines (header, rules A and B).
       const tail = token.slice(token.lastIndexOf(':') + 1)
-      if (token.includes(':') && isNonBareCandidate(tail)) v = 'undefined'
+      if (token.includes(':') && (isNonBareCandidate(tail) || compiles(tail))) v = 'undefined'
       else if (customPrefixes.some((prefix) => tail.startsWith(prefix))) v = 'undefined'
       else v = 'not-a-class'
     } else if (design.candidatesToCss([token])[0] != null) v = 'defined'

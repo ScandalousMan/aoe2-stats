@@ -2677,13 +2677,15 @@ carries what T673's dry run read.
       compiles), rather than searching the built file: it needs no build and no selector escaping,
       and whether the build scans a file at all stays `built-css.mjs`'s question. A token of a
       string literal in component source is a hit when it parses as a utility that emits nothing,
-      when an unknown variant precedes a utility that parses, or when it starts with a prefix of the
-      stylesheet's own `@utility` families (`type-`, `icon-`) and parses as nothing. Skipped: a bare
-      functional root (`to`, `text`), an equality operand or `case` label, and a member of a closed
-      set of string literals none of which compiles (`Tooltip`'s placement). An unknown root such as
-      `txt-secondary`, and a bare root whose default the theme removed, pass. 336 class assertions
-      in 36 test files are whole-class (`toHaveClass`), or a family check over class tokens where
-      the substring forbade a family
+      when an unknown variant precedes a utility that compiles or names a value, or when it starts
+      with a prefix of the stylesheet's own `@utility` families (`type-`, `icon-`) and parses as
+      nothing. Skipped: a bare functional root (`to`, `text`), an equality operand or `case` label,
+      and a member of a closed set of string literals none of which compiles (`Tooltip`'s
+      placement). An unknown root such as `txt-secondary`, and a bare root whose default the theme
+      removed, pass. 336 class assertions
+      in 36 test files are whole-class (`toHaveClass`); a single-class negative no longer forbids
+      the class under a variant, as its substring did. A negative that forbade a family, and
+      `Link`'s two whose test says "never", are a check over class tokens
 - [x] T706a Close #127's review (`reviewer` REJECT 2026-10-08 on T706). **Lease shorter than the
       run**: the claim's lease is the run budget (240 s) while the function may run 300 s, so a
       live run reads expired for its last minute and T706's page now re-claims it: a second fetch,
