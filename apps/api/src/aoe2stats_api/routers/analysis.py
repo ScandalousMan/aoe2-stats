@@ -2,7 +2,16 @@
 
 `contracts/http-api.md`'s "Analysis" section and `contracts/analysis.md`'s "The published
 analysis" section are ground truth for this route's one job: serve the already-published analysis
-document whole, straight from the object store, and answer `404` in every other state.
+document whole, straight from the object store, beside the names its identifiers resolve to, and
+answer `404` in every other state.
+
+**The envelope (T709).** The answer is `{"document": <the stored bytes>, "names": {...}}`. The
+stored object carries ids and no names, and it is never modified: its digest is part of the
+analysis identity, and a name added to it would change what the identity says it is. So the
+`document` value is the stored bytes, spliced into the body as they are and never parsed back out
+and re-serialised, and `names` is built beside it from the knowledge snapshot the document's own
+`identity.knowledge` names (`aoe2stats_analyzer.names`, never the nearest snapshot, FR-027). An id
+that snapshot does not name is `null`.
 `apps/api/tests/test_analysis_routes.py` (T367) is this router's own specification.
 
 **This router reads state and never performs analysis work (FR-042, constitution V).** The work
@@ -39,6 +48,8 @@ answer two different questions from the same table and share no response shape t
 """
 
 from __future__ import annotations
+
+import json
 
 from fastapi import APIRouter, Request, Response
 from sqlalchemy import select
@@ -111,10 +122,11 @@ async def get_match_analysis(
     object_store: ObjectStoreDep,
 ) -> Response:
     """FR-030: the published analysis document, read whole from the object store at `match_
-    analyses.result_key` and served verbatim — never a redirect to a signed URL (`contracts/
-    analysis.md`'s "The published document" note: this is this service's own derived JSON, meant
-    for a direct `fetch().then(r => r.json())`, unlike a `.aoe2record` download). `404` for every
-    state but `published` (module docstring)."""
+    analyses.result_key` and embedded byte-for-byte in the `{"document", "names"}` envelope
+    (module docstring) — never a redirect to a signed URL (`contracts/analysis.md`'s "The
+    published document" note: this is this service's own derived JSON, meant for a direct
+    `fetch().then(r => r.json())`, unlike a `.aoe2record` download). `404` for every state but
+    `published` (module docstring)."""
     secret = settings.app_secret_key.get_secret_value()
     _require_session(await _current_session_row(request, db_session, secret))
 
@@ -123,4 +135,11 @@ async def get_match_analysis(
         raise _analysis_not_found()
 
     document = await object_store.get(row.result_key)
-    return Response(content=document, media_type="application/json")
+    # Imported here, not at module scope: importing the app must load none of the analyzer
+    # (`names.py`'s docstring; `tests/architecture/test_feature_006_boundaries.py` allows exactly
+    # this import from exactly this file).
+    from aoe2stats_analyzer.names import names_for_document
+
+    names = names_for_document(json.loads(document))
+    body = b'{"document":' + document + b',"names":' + json.dumps(names).encode("utf-8") + b"}"
+    return Response(content=body, media_type="application/json")

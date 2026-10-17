@@ -194,6 +194,23 @@ test.describe('suite scenarios', () => {
     expect(
       POPULATED_FIXTURES.analysisDocument.participants.map((entry) => entry.profile_id).sort(),
     ).toEqual(POPULATED_FIXTURES.matchDetail.participants.map((entry) => entry.profile_id).sort())
+    // T709: the envelope lists every id the document references, so the reader's strict shape
+    // check passes and the table is the one the endpoint serves (each left `null`, see the fixture).
+    const { participants } = POPULATED_FIXTURES.analysisDocument
+    const listed = (table: Record<string, string | null>) => Object.keys(table).sort()
+    const sorted = (ids: number[]) => [...new Set(ids)].map(String).sort()
+    expect(listed(POPULATED_FIXTURES.analysisNames.building)).toEqual(
+      sorted(participants.flatMap((entry) => entry.builds.map((event) => event.building_id))),
+    )
+    expect(listed(POPULATED_FIXTURES.analysisNames.unit)).toEqual(
+      sorted(participants.flatMap((entry) => entry.trainings.map((event) => event.unit_id))),
+    )
+    expect(listed(POPULATED_FIXTURES.analysisNames.technology)).toEqual(
+      sorted([
+        ...participants.flatMap((entry) => entry.researches.map((event) => event.technology_id)),
+        ...participants.flatMap((entry) => Object.keys(entry.age_up_commands).map(Number)),
+      ]),
+    )
   })
 
   test('no fixture player carries an avatar_hash', () => {

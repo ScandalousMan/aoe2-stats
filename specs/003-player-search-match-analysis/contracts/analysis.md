@@ -118,6 +118,11 @@ makes FR-041 mechanical:
   "participants": [ ... ] }
 ```
 
+The route serves it inside `{"document": <these bytes, unmodified>, "names": {...}}` (T709): the
+stored object stays ids-only and its digest unchanged, and the names are resolved on read from the
+knowledge snapshot its `identity.knowledge` names (never the nearest one), as
+[`http-api.md`](./http-api.md)'s Analysis section says.
+
 `schema_version` exists because this document will be wrong eventually. A published analysis that
 cannot say which shape it is in cannot be migrated or compared, and R5 and R13 both describe work
 that will change this shape when it lands.

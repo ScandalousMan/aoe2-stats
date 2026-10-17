@@ -22,8 +22,9 @@ anything. A baseline difference fails with the offending entry named. The checks
    `aoe2stats_core.truth`. The analyzer's `extract.py` is the parse step itself, off the
    request/lease path, and is deliberately not in the set - with one exception recorded in check
    2a: `staleness.py` reaches `extract.current_identity_digest` for the API's `stale` flag.
-2a. `apps/api/src` imports from `aoe2stats_analyzer` exactly one module, from exactly one file
-   (`_ALLOWED_API_ANALYZER_IMPORTS`, T666g). See that constant for why it stays inside FR-049.
+2a. `apps/api/src` imports from `aoe2stats_analyzer` exactly two modules, each from exactly one
+   file (`_ALLOWED_API_ANALYZER_IMPORTS`, T666g and T709). See that constant for why it stays
+   inside FR-049.
 3. The new 006 code never names the capture budget: not `CAPTURE_BUDGET_DAYS`/`capture_budget_days`,
    not a capture deadline, not the `replay_captures` or `provider_calls` tables or their models, and
    it imports neither `aoe2stats_ingester` nor `aoe2stats_providers` (the budget's two homes).
@@ -140,8 +141,17 @@ _REQUEST_PATH_CODE: tuple[Path, ...] = (
 # and no capture-budget name is touched. The import is lazy, inside the function that needs it, so
 # importing the app loads none of it. Adding any other analyzer import to the API - `run`,
 # `extract`, `reproduce` - is request-path work and fails the check below.
+#
+# T709 adds a second grant, on the same reasoning: `routers/analysis.py` imports
+# `aoe2stats_analyzer.names` (lazily) to put names beside the stored document. What that brings is a
+# cached read of the installed snapshot tree, matched by the digest the document itself names - a
+# lookup, not an analysis. It reads the document the route already read; it fetches nothing, parses
+# no recording, loads no engine and `extract.py` is not reached (`names.py` imports only
+# `aoe2stats_knowledge.labels`, asserted below). The module sits outside `_REQUEST_PATH_CODE` for
+# the reason `extract.py` does: it is the one file that must import the knowledge package.
 _ALLOWED_API_ANALYZER_IMPORTS: Mapping[str, frozenset[str]] = {
     "apps/api/src/aoe2stats_api/routers/matches.py": frozenset({"aoe2stats_analyzer.staleness"}),
+    "apps/api/src/aoe2stats_api/routers/analysis.py": frozenset({"aoe2stats_analyzer.names"}),
 }
 _API_SRC = _REPO_ROOT / "apps" / "api" / "src"
 
@@ -462,10 +472,10 @@ def _api_analyzer_violations(
     return violations
 
 
-def test_the_api_imports_exactly_one_analyzer_module_from_exactly_one_file() -> None:
-    """T666g, FR-049: `apps/api/src` reaches the analyzer only through `staleness`, and only from
-    the match router (`_ALLOWED_API_ANALYZER_IMPORTS`). Anything else is request-path analysis
-    work."""
+def test_the_api_imports_only_the_granted_analyzer_modules_from_the_granted_files() -> None:
+    """T666g, T709, FR-049: `apps/api/src` reaches the analyzer only through `staleness` (from the
+    match router) and `names` (from the analysis router) (`_ALLOWED_API_ANALYZER_IMPORTS`).
+    Anything else is request-path analysis work."""
     violations = _api_analyzer_violations(_ALLOWED_API_ANALYZER_IMPORTS)
     assert not violations, (
         f"the API may import only the staleness verdict from the analyzer (FR-049): {violations}"
@@ -736,3 +746,42 @@ def test_vocabulary_definitions_flag_a_restated_003_behaviour() -> None:
     assert vocabulary_definitions("class RateLimiter: ...\n") == ["RateLimiter"]
     assert vocabulary_definitions("class Retention: ...\n") == ["Retention"]
     assert vocabulary_definitions("def lookup(): ...\n") == []
+
+
+def test_the_names_module_reaches_nothing_but_the_label_lookup() -> None:
+    """T709: `names.py` is what the analysis route imports, so what it imports is what a request
+    can reach. Only the knowledge package's label lookup: not the builder (`extract`, which loads
+    the engine adapter), not the run entry, not storage, the ingester or the providers."""
+    source = (_ANALYZER_SRC / "names.py").read_text(encoding="utf-8")
+
+    assert {
+        module.removesuffix(".label_in_snapshot")
+        for module in imports_of(source, ("aoe2stats_knowledge",))
+    } == {"aoe2stats_knowledge.labels"}
+    for forbidden in (
+        "aoe2stats_analyzer",
+        "aoe2stats_core",
+        "aoe2stats_storage",
+        "aoe2stats_ingester",
+        "aoe2stats_providers",
+        "aoe2stats_replay_engine",
+        "aoe2rec_py",
+    ):
+        assert imports_of(source, (forbidden,)) == [], forbidden
+
+
+def test_the_names_grant_is_for_the_analysis_router_only() -> None:
+    """Contrast cases for T709: `names` is granted to `routers/analysis.py` and nowhere else, and
+    the staleness grant of the match router is not widened by it."""
+    analysis = "apps/api/src/aoe2stats_api/routers/analysis.py"
+    matches = "apps/api/src/aoe2stats_api/routers/matches.py"
+    allowed = _ALLOWED_API_ANALYZER_IMPORTS
+    lazy = "def f():\n    from aoe2stats_analyzer.names import names_for_document\n"
+
+    assert analyzer_imports_outside_allowlist(analysis, lazy, allowed) == []
+    assert analyzer_imports_outside_allowlist(matches, lazy, allowed) != []
+    staleness = "from aoe2stats_analyzer.staleness import is_stale\n"
+    assert analyzer_imports_outside_allowlist(analysis, staleness, allowed) != []
+    assert analyzer_imports_outside_allowlist(
+        analysis, "from aoe2stats_analyzer.extract import build_document\n", allowed
+    )

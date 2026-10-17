@@ -5,8 +5,8 @@ Match 511523321 (game build 185872, `tests/fixtures/replays/README.md`) was anal
 on 2026-10-08 with only a build 180059 snapshot installed, so the analysis named no knowledge
 snapshot. Built here from the committed recording and the real adapter, exactly as
 `test_document_build.py` does for the first recording. As of 2026-10-08 the stored document carried
-identifiers only and the page showed them (T709): this file proves the snapshot can name them, not
-that anything does.
+identifiers only and the page showed them; the snapshot names them, and the route serves those
+names (T709).
 """
 
 from __future__ import annotations
@@ -73,3 +73,21 @@ def test_every_age_up_and_building_the_recording_shows_resolves_to_a_name(
     # An id the pack carries nowhere (building 490, an age-upgraded visual variant) degrades to
     # the bare identifier, which is `name()`'s contract; nothing else may.
     assert set(unresolved) <= {("building", "490")}, unresolved
+
+
+def test_the_names_served_with_the_document_resolve_from_its_own_identity(
+    document: dict[str, Any],
+) -> None:
+    """T709: the table `GET /api/matches/{game_id}/analysis` serves beside the real document names
+    Feudal Age, Castle Age and House, and leaves building 490 (absent from the pack) `None`."""
+    from aoe2stats_analyzer.names import names_for_document
+
+    names = names_for_document(document)
+
+    assert names["technology"]["101"] == "Feudal Age"
+    assert names["technology"]["102"] == "Castle Age"
+    assert names["building"]["70"] == "House"
+    assert names["building"]["490"] is None
+    assert {id_ for table in names.values() for id_, value in table.items() if value is None} <= {
+        "490"
+    }

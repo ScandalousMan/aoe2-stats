@@ -198,6 +198,13 @@ enumerated here — and the response an API caller receives is unaffected.
 | `POST` | `/api/analyze`                    | **A separate Vercel function, not the API app.** Body `{"game_id": ...}`. Claims and runs. `maxDuration: 300` |
 | `GET`  | `/api/matches/{game_id}/analysis` | The published analysis (FR-030). `404` in every state but `published`                                         |
 
+`GET /api/matches/{game_id}/analysis` answers an envelope (T709), `{"document": <the stored object,
+byte for byte>, "names": {"technology": {"101": "Feudal Age", "999": null}, "unit": {...},
+"building": {...}}}`. `names` has an entry for every technology, unit and building id the document
+references and nothing else; a name is `null` where the knowledge snapshot the document's own
+`identity.knowledge` names does not name the id, and every name is `null` when the document names no
+snapshot. The stored object is never modified.
+
 `POST /api/analyze` is the one route in this contract that `api/index.py` does not serve. It is
 `api/analyze.py`, resolved by the filesystem before the `/api/(.*)` rewrite, exactly as
 `api/cron/ingest.py` already is. R6 records why: `api/index.py` is capped at `maxDuration: 10`, and a

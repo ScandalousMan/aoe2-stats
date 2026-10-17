@@ -6,8 +6,8 @@ import { matchDetailQueryOptions } from '../matches/api'
 import { formatPlayedAtAbsolute } from '../matches/format'
 import { parseGameId } from '../replays/gameId'
 import {
-  analysisDocumentQueryOptions,
   extractAnalysisSummary,
+  publishedAnalysisQueryOptions,
   requestAnalysis,
   type ApiAnalysisSummary,
 } from './api'
@@ -15,7 +15,7 @@ import { toAnalysisTeamGroups } from './mappers'
 
 // T372, US4: wires `AnalysisTimeline` (packages/design-system) onto the match page, from the
 // `analysis` object `GET /api/matches/{game_id}` already carries (T368) and, once `published`, the
-// full document `GET /api/matches/{game_id}/analysis` serves (FR-030). Rendered as its own section,
+// full document and its names `GET /api/matches/{game_id}/analysis` serves (FR-030, T709). Rendered as its own section,
 // mounted by `routes/matches.$gameId.tsx` as `MatchDetailContainer.tsx`'s (`features/replays/`)
 // trailing child (T558) rather than as a route-level sibling — the two share exactly one `Page`,
 // one main landmark and one width/padding/rhythm, none of which this component declares itself
@@ -164,7 +164,7 @@ export function AnalysisContainer({ gameId }: AnalysisContainerProps) {
   }, [numericGameId, serverState, takeOver])
 
   const documentQuery = useQuery({
-    ...analysisDocumentQueryOptions(numericGameId ?? -1),
+    ...publishedAnalysisQueryOptions(numericGameId ?? -1),
     enabled: numericGameId !== null && effectiveState === 'published',
   })
 
@@ -248,10 +248,14 @@ export function AnalysisContainer({ gameId }: AnalysisContainerProps) {
       <AnalysisTimeline
         state="published"
         stale={summary.stale}
-        engineName={documentQuery.data.engine.name}
-        engineVersion={documentQuery.data.engine.version}
-        analysedAtLabel={formatPlayedAtAbsolute(documentQuery.data.extracted_at)}
-        teams={toAnalysisTeamGroups(documentQuery.data, matchQuery.data.participants)}
+        engineName={documentQuery.data.document.engine.name}
+        engineVersion={documentQuery.data.document.engine.version}
+        analysedAtLabel={formatPlayedAtAbsolute(documentQuery.data.document.extracted_at)}
+        teams={toAnalysisTeamGroups(
+          documentQuery.data.document,
+          matchQuery.data.participants,
+          documentQuery.data.names,
+        )}
         // FR-041: offered only while `stale` — `AnalysisTimeline` itself already renders
         // `StaleRecomputeNotice` exactly when `stale` is true and never otherwise, so this handler
         // is passed unconditionally and simply goes unused when `stale` is `false`.

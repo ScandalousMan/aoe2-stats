@@ -4,7 +4,9 @@ import {
   assertAnalysisDocument,
   assertAnalysisSummary,
   extractAnalysisSummary,
-  fetchAnalysisDocument,
+  fetchPublishedAnalysis,
+  assertPublishedAnalysis,
+  assertAnalysisNames,
   requestAnalysis,
   type ApiAnalysisDocument,
 } from './api'
@@ -192,18 +194,69 @@ function jsonResponse(body: unknown, status = 200) {
   } as Response
 }
 
-describe('fetchAnalysisDocument', () => {
+function validNames() {
+  return { technology: { '101': 'Feudal Age', '999': null }, unit: {}, building: { '70': 'House' } }
+}
+
+describe('assertAnalysisNames', () => {
+  it('accepts a table of names and nulls, empty kinds included', () => {
+    expect(() => assertAnalysisNames(validNames())).not.toThrow()
+  })
+
+  it.each(['technology', 'unit', 'building'])('rejects a names table missing "%s"', (kind) => {
+    const names: Record<string, unknown> = validNames()
+    delete names[kind]
+    expect(() => assertAnalysisNames(names)).toThrow(AnalysisResponseShapeError)
+  })
+
+  it('rejects a name that is neither a string nor null', () => {
+    const names = { ...validNames(), unit: { '83': 7 } }
+    expect(() => assertAnalysisNames(names)).toThrow(/names\.unit\.83 was not string\|null/)
+  })
+
+  it('rejects names that are not an object', () => {
+    expect(() => assertAnalysisNames(null)).toThrow(AnalysisResponseShapeError)
+    expect(() => assertAnalysisNames([])).toThrow(AnalysisResponseShapeError)
+  })
+})
+
+describe('assertPublishedAnalysis', () => {
+  it('accepts the {document, names} envelope', () => {
+    expect(() =>
+      assertPublishedAnalysis({ document: validDocument(), names: validNames() }),
+    ).not.toThrow()
+  })
+
+  it('rejects the bare document the endpoint answered before T709', () => {
+    expect(() => assertPublishedAnalysis(validDocument())).toThrow(AnalysisResponseShapeError)
+  })
+
+  it('rejects an envelope without names, and one whose document is malformed', () => {
+    expect(() => assertPublishedAnalysis({ document: validDocument() })).toThrow(
+      /"names" was not an object/,
+    )
+    const { engine: _engine, ...broken } = validDocument()
+    expect(() => assertPublishedAnalysis({ document: broken, names: validNames() })).toThrow(
+      /"engine" was not an object/,
+    )
+  })
+})
+
+describe('fetchPublishedAnalysis', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
   })
 
-  it('GETs /api/matches/{game_id}/analysis and returns the validated document', async () => {
-    const fetchMock = vi.fn(async () => jsonResponse(validDocument()))
+  it('GETs /api/matches/{game_id}/analysis and returns the validated document and names', async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({ document: validDocument(), names: validNames() }),
+    )
     vi.stubGlobal('fetch', fetchMock)
 
-    const document = await fetchAnalysisDocument(500_546_441)
+    const published = await fetchPublishedAnalysis(500_546_441)
 
-    expect(document.participants).toHaveLength(1)
+    expect(published.document.participants).toHaveLength(1)
+    expect(published.names.technology['101']).toBe('Feudal Age')
     expect(fetchMock).toHaveBeenCalledExactlyOnceWith(
       '/api/matches/500546441/analysis',
       expect.objectContaining({ method: 'GET' }),

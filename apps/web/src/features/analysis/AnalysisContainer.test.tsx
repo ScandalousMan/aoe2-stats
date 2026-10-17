@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { ApiAnalysisDocument } from './api'
+import type { ApiAnalysisDocument, ApiPublishedAnalysis } from './api'
 
 const { AnalysisContainer } = await import('./AnalysisContainer')
 
@@ -150,6 +150,17 @@ function baseDocument(): ApiAnalysisDocument {
   }
 }
 
+/** What `GET /api/matches/{game_id}/analysis` answers (T709): the document and its names. */
+function basePublished(
+  names: ApiPublishedAnalysis['names'] = {
+    technology: { '101': 'Feudal Age' },
+    unit: {},
+    building: {},
+  },
+): ApiPublishedAnalysis {
+  return { document: baseDocument(), names }
+}
+
 function installFakeApi(options: {
   detail: () => Response
   document?: () => Response
@@ -163,7 +174,7 @@ function installFakeApi(options: {
       return options.detail()
     }
     if (/^\/api\/matches\/\d+\/analysis$/.test(path) && method === 'GET') {
-      return options.document ? options.document() : jsonResponse(baseDocument())
+      return options.document ? options.document() : jsonResponse(basePublished())
     }
     if (path === '/api/analyze' && method === 'POST') {
       return options.analyze ? options.analyze() : jsonResponse(baseDetail().analysis)
@@ -225,7 +236,7 @@ describe('AnalysisContainer', () => {
   it('renders the published timeline with no recompute offered when not stale', async () => {
     installFakeApi({
       detail: () => jsonResponse(baseDetail({ state: 'published', parser_version: '0.1.21' })),
-      document: () => jsonResponse(baseDocument()),
+      document: () => jsonResponse(basePublished()),
     })
     renderAnalysis()
 
@@ -234,11 +245,31 @@ describe('AnalysisContainer', () => {
     expect(screen.queryByRole('button', { name: 'Recompute' })).not.toBeInTheDocument()
   })
 
+  it('shows the names the API served for the ids in the document, and an unnamed id as an identifier (T709)', async () => {
+    installFakeApi({
+      detail: () => jsonResponse(baseDetail({ state: 'published', parser_version: '0.1.21' })),
+      document: () => jsonResponse(basePublished()),
+    })
+    const named = renderAnalysis()
+    expect(await screen.findByText('Feudal Age')).toBeInTheDocument()
+    expect(screen.queryByText(/Technology ID 101/)).not.toBeInTheDocument()
+    named.unmount()
+
+    installFakeApi({
+      detail: () => jsonResponse(baseDetail({ state: 'published', parser_version: '0.1.21' })),
+      document: () =>
+        jsonResponse(basePublished({ technology: { '101': null }, unit: {}, building: {} })),
+    })
+    renderAnalysis()
+    expect(await screen.findByText(/Technology ID/)).toBeInTheDocument()
+    expect(screen.queryByText('Feudal Age')).not.toBeInTheDocument()
+  })
+
   it('offers Recompute only while the summary reports stale: true (FR-041)', async () => {
     installFakeApi({
       detail: () =>
         jsonResponse(baseDetail({ state: 'published', stale: true, parser_version: '0.1.0' })),
-      document: () => jsonResponse(baseDocument()),
+      document: () => jsonResponse(basePublished()),
     })
     renderAnalysis()
 
@@ -322,7 +353,7 @@ describe('AnalysisContainer', () => {
     const fetchMock = installFakeApi({
       detail: () =>
         jsonResponse(baseDetail({ state: 'published', stale: true, parser_version: '0.1.0' })),
-      document: () => jsonResponse(baseDocument()),
+      document: () => jsonResponse(basePublished()),
     })
     renderAnalysis()
 
@@ -349,7 +380,7 @@ describe('AnalysisContainer', () => {
             ? jsonResponse(baseDetail({ state: 'running' }))
             : jsonResponse(baseDetail({ state: 'published', parser_version: '0.1.21' }))
         },
-        document: () => jsonResponse(baseDocument()),
+        document: () => jsonResponse(basePublished()),
       })
       renderAnalysis()
 

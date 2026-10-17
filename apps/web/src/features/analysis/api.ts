@@ -3,7 +3,7 @@ import { api } from '../../lib/api'
 
 // T372, US4: the analysis summary carried on `GET /api/matches/{game_id}` (`routers/matches.py`'s
 // `_analysis_json`, T368) and the published document served whole by `GET /api/matches/{game_id}/
-// analysis` (`routers/analysis.py`, T368) — `contracts/http-api.md`'s "Analysis" section and
+// analysis` (`routers/analysis.py`, T368, T709) — `contracts/http-api.md`'s "Analysis" section and
 // `contracts/analysis.md`'s "The published analysis" section are ground truth for both shapes.
 //
 // This module deliberately does not import anything from `features/matches/api.ts` for the
@@ -296,6 +296,22 @@ function assertAnalysisDocumentParticipant(
   }
 }
 
+/** The display names the API resolved for the ids the document references (T709), by entity kind:
+ * a JSON object keyed by the stringified id, valued by the name or `null` where the knowledge
+ * snapshot the document names does not name that id (`routers/analysis.py`). */
+export interface ApiAnalysisNames {
+  technology: Record<string, string | null>
+  unit: Record<string, string | null>
+  building: Record<string, string | null>
+}
+
+/** `GET /api/matches/{game_id}/analysis` (T709): the stored document, unmodified, beside the names
+ * its identifiers resolve to. */
+export interface ApiPublishedAnalysis {
+  document: ApiAnalysisDocument
+  names: ApiAnalysisNames
+}
+
 export function assertAnalysisDocument(payload: unknown): asserts payload is ApiAnalysisDocument {
   if (typeof payload !== 'object' || payload === null) {
     throw new AnalysisResponseShapeError('document response body was not an object')
@@ -334,21 +350,54 @@ export function assertAnalysisDocument(payload: unknown): asserts payload is Api
   )
 }
 
+function assertAnalysisNameTable(
+  value: unknown,
+  path: string,
+): asserts value is Record<string, string | null> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new AnalysisResponseShapeError(`${path} was not an object`)
+  }
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+    if (!isNullableString(entry)) {
+      throw new AnalysisResponseShapeError(`${path}.${key} was not string|null`)
+    }
+  }
+}
+
+export function assertAnalysisNames(value: unknown): asserts value is ApiAnalysisNames {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new AnalysisResponseShapeError('"names" was not an object')
+  }
+  const names = value as Record<string, unknown>
+  assertAnalysisNameTable(names.technology, 'names.technology')
+  assertAnalysisNameTable(names.unit, 'names.unit')
+  assertAnalysisNameTable(names.building, 'names.building')
+}
+
+export function assertPublishedAnalysis(payload: unknown): asserts payload is ApiPublishedAnalysis {
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+    throw new AnalysisResponseShapeError('analysis response body was not an object')
+  }
+  const body = payload as Record<string, unknown>
+  assertAnalysisDocument(body.document)
+  assertAnalysisNames(body.names)
+}
+
 /** `GET /api/matches/{game_id}/analysis` (`contracts/http-api.md`'s Analysis table, FR-030) — the
- * published document, read only while `analysis.state === 'published'` (`AnalysisContainer.tsx`'s
- * own `enabled` gate). `404` in every other state, which this function never calls into (the
- * caller checks `state` first). */
-export function fetchAnalysisDocument(gameId: number): Promise<ApiAnalysisDocument> {
+ * published document and its names, read only while `analysis.state === 'published'`
+ * (`AnalysisContainer.tsx`'s own `enabled` gate). `404` in every other state, which this function
+ * never calls into (the caller checks `state` first). */
+export function fetchPublishedAnalysis(gameId: number): Promise<ApiPublishedAnalysis> {
   return api.get<unknown>(`/api/matches/${gameId}/analysis`).then((payload) => {
-    assertAnalysisDocument(payload)
+    assertPublishedAnalysis(payload)
     return payload
   })
 }
 
-export function analysisDocumentQueryOptions(gameId: number) {
+export function publishedAnalysisQueryOptions(gameId: number) {
   return queryOptions({
     queryKey: ['matches', 'detail', gameId, 'analysis-document'] as const,
-    queryFn: () => fetchAnalysisDocument(gameId),
+    queryFn: () => fetchPublishedAnalysis(gameId),
     enabled: gameId > 0,
   })
 }

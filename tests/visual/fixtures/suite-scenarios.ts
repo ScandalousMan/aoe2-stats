@@ -294,7 +294,7 @@ const MATCH_DETAIL_POPULATED = {
 // `analysis` key at all (it predates the section), so `extractAnalysisSummary` throws on it and the
 // container renders `<AnalysisTimeline error>` — which is what the routes-at-rest scenario shows,
 // and exactly what a "populated" match page must not. Both bodies below are shaped by
-// `apps/web/src/features/analysis/api.ts` (`assertAnalysisSummary`, `assertAnalysisDocument`). A
+// `apps/web/src/features/analysis/api.ts` (`assertAnalysisSummary`, `assertPublishedAnalysis`). A
 // field renamed there makes the container render its error state again, which
 // `assertPopulatedScenario` (below, run by `suite-scenarios.test.ts`) fails on by name.
 
@@ -320,8 +320,9 @@ function analysisParticipant(profileId: number, teamId: number, civId: number, r
     player_number: civId,
     civ_id: civId,
     resolved_team_id: teamId,
-    // Every one of the four lists a participant card renders, non-empty: ids no lookup names, so
-    // each row is an `UnresolvedIdentifier` (`mappers.ts`'s `UNRESOLVED_NAME`), as in production.
+    // Every one of the four lists a participant card renders, non-empty: ids `ANALYSIS_NAMES`
+    // below leaves `null`, so each row is an `UnresolvedIdentifier`, as in production for an id the
+    // knowledge snapshot does not name.
     builds: [
       { building_id: 70, world_time_ms: 15_000 },
       { building_id: 109, world_time_ms: 62_000 },
@@ -357,6 +358,18 @@ const ANALYSIS_DOCUMENT = {
   ],
 }
 
+// T709: `GET /api/matches/{game_id}/analysis` answers `{ document, names }`. Every id the document
+// references is listed and left `null`, which `apps/web/src/features/analysis/api.ts` requires of
+// the shape and which keeps these rows unresolved: naming them would move the full-page baselines,
+// which are captured in CI, so a named page is the Storybook stories' and the unit tests' to show.
+const ANALYSIS_NAMES = {
+  technology: { '22': null, '101': null, '102': null, '213': null },
+  unit: { '74': null, '83': null },
+  building: { '70': null, '109': null },
+}
+
+const ANALYSIS_PUBLICATION = { document: ANALYSIS_DOCUMENT, names: ANALYSIS_NAMES }
+
 /** The match-detail body with its `analysis` summary, optionally with a different capture status
  * (`expired` is one of the three "Lost" statuses that render `UploadControl`). */
 function matchDetailWith(analysis: ReturnType<typeof analysisSummary>, captureStatus = 'stored') {
@@ -380,6 +393,7 @@ export const POPULATED_FIXTURES = {
   search: SEARCH_POPULATED,
   matchDetail: matchDetailWith(analysisSummary('published')),
   analysisDocument: ANALYSIS_DOCUMENT,
+  analysisNames: ANALYSIS_NAMES,
   analysisSummaries: {
     published: analysisSummary('published'),
     stale: analysisSummary('published', true),
@@ -468,7 +482,7 @@ async function stubMatchDetailAnalysis(
     fulfillJson(route, matchDetailWith(analysis, captureStatus)),
   )
   await page.route(`**/api/matches/${SAMPLE_GAME_ID}/analysis`, (route) =>
-    fulfillJson(route, ANALYSIS_DOCUMENT),
+    fulfillJson(route, ANALYSIS_PUBLICATION),
   )
 }
 

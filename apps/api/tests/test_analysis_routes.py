@@ -76,6 +76,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from aoe2stats_api import ratelimit, security
 from aoe2stats_api.deps import get_object_store
 from aoe2stats_api.settings import get_settings
+from aoe2stats_knowledge.snapshot import Snapshot, snapshot_for
 from aoe2stats_replay_engine.aoe2rec import ENGINE_NAME
 from aoe2stats_storage.models import (
     AoeProfile,
@@ -389,12 +390,212 @@ async def test_published_analysis_answers_a_result_for_every_participant(
 
     assert response.status_code == 200, f"Got {response.status_code}: {response.text}"
     _assert_no_index(response)
-    body = response.json()
+    body = response.json()["document"]
     result_profile_ids = {entry["profile_id"] for entry in body["participants"]}
     assert result_profile_ids == set(participant_ids), (
         "FR-030: the analysis must show a result for every participant, never fewer — got "
         f"{result_profile_ids}"
     )
+
+
+# ================================================================================================
+# T709 — the names beside the document, resolved from the snapshot the document itself names
+# ================================================================================================
+
+_NAMES_GAME_ID_BASE = 930_700_000
+
+#: Ids no packaged snapshot names (`packages/knowledge/tests/test_labels.py` asserts it).
+_UNNAMED_TECHNOLOGY = 987_654_321
+_UNNAMED_UNIT = 987_654_322
+_UNNAMED_BUILDING = 987_654_323
+
+
+def _snapshot_for_build(build: int) -> Snapshot:
+    """The real, promoted, packaged snapshot for `build` - not a stub (T709)."""
+    resolved = snapshot_for(build)
+    assert isinstance(resolved, Snapshot), f"no promoted snapshot for build {build}"
+    return resolved
+
+
+def _knowledge_record(snapshot: Snapshot, *, digest: str | None = None) -> dict[str, Any]:
+    identity = snapshot.identity
+    return {
+        "source": identity.source,
+        "source_version": identity.source_version,
+        "describes_build": identity.describes_build,
+        "digest": digest if digest is not None else identity.digest,
+    }
+
+
+def _document_naming(
+    *, game_id: int, knowledge: dict[str, Any] | None, indent: int | None = None
+) -> bytes:
+    """A published document carrying the ids T709 names - Feudal (101) and Castle (102) as age-up
+    commands, a House (70) build, a Villager (83) training and a Loom (22) research - and one id of
+    each kind no snapshot names. `knowledge=None` is a document with no `identity.knowledge` at
+    all."""
+    document: dict[str, Any] = json.loads(
+        _published_document(
+            game_id=game_id,
+            point_of_view_profile_id=_PARTICIPANT_A,
+            engine_version=_RUNNING_ENGINE_VERSION,
+            participant_ids=(_PARTICIPANT_A,),
+        )
+    )
+    participant = document["participants"][0]
+    participant["age_up_commands"] = {"101": 540_000, "102": 1_020_000}
+    participant["builds"] = [
+        {"building_id": 70, "world_time_ms": 15_000},
+        {"building_id": _UNNAMED_BUILDING, "world_time_ms": 16_000},
+    ]
+    participant["trainings"] = [
+        {"unit_id": 83, "amount": 1, "building_id": 109, "world_time_ms": 20_000},
+        {"unit_id": _UNNAMED_UNIT, "amount": 1, "building_id": 109, "world_time_ms": 21_000},
+    ]
+    participant["researches"] = [
+        {"technology_id": 22, "world_time_ms": 95_000},
+        {"technology_id": _UNNAMED_TECHNOLOGY, "world_time_ms": 96_000},
+    ]
+    if knowledge is not None:
+        document["identity"] = {"digest": "sha256:" + "0" * 64, "knowledge": knowledge}
+    return json.dumps(document, indent=indent).encode("utf-8")
+
+
+async def _serve_document(
+    client: TestClient, db_session: AsyncSession, *, game_id: int, document: bytes
+) -> tuple[Any, dict[str, bytes]]:
+    """Seed a published row over `document`, sign in, and GET its analysis. Returns the response
+    and the store's contents, so a test can compare the stored bytes with what was served."""
+    caller = await _seed_user(db_session)
+    await _sign_in(client, db_session, caller)
+    await _seed_two_participant_match(
+        db_session, game_id=game_id, participant_ids=(_PARTICIPANT_A, _PARTICIPANT_B)
+    )
+    result_key = f"analyses/{game_id}.json"
+    await _seed_analysis(
+        db_session,
+        game_id=game_id,
+        state=MatchAnalysisState.PUBLISHED,
+        point_of_view_profile_id=_PARTICIPANT_A,
+        parser_name=_RUNNING_ENGINE_NAME,
+        parser_version=_RUNNING_ENGINE_VERSION,
+        result_key=result_key,
+    )
+    stored = {result_key: document}
+    client.app.dependency_overrides[get_object_store] = lambda: _FakeAnalysisObjectStore(  # type: ignore[attr-defined]
+        stored
+    )
+    return client.get(f"/api/matches/{game_id}/analysis"), stored
+
+
+@pytest.mark.parametrize("build", [185872, 180059])
+async def test_names_come_from_the_snapshot_the_document_names(
+    client: TestClient, db_session: AsyncSession, build: int
+) -> None:
+    """T709: a document produced under the snapshot for build 185872, and one for build 180059,
+    each serve Feudal Age, Castle Age and House - the real, promoted, packaged snapshots, resolved
+    by the document's own `identity.knowledge`."""
+    document = _document_naming(
+        game_id=_NAMES_GAME_ID_BASE + build % 1000,
+        knowledge=_knowledge_record(_snapshot_for_build(build)),
+    )
+
+    response, _ = await _serve_document(
+        client, db_session, game_id=_NAMES_GAME_ID_BASE + build % 1000, document=document
+    )
+
+    assert response.status_code == 200, f"Got {response.status_code}: {response.text}"
+    names = response.json()["names"]
+    assert names["technology"]["101"] == "Feudal Age"
+    assert names["technology"]["102"] == "Castle Age"
+    assert names["building"]["70"] == "House"
+    assert names["unit"]["83"] == "Villager"
+    assert names["technology"]["22"] == "Loom"
+
+
+async def test_an_id_outside_the_snapshot_is_null(
+    client: TestClient, db_session: AsyncSession
+) -> None:
+    """T709: an id the snapshot does not name is `null` on the wire, never the id echoed back the
+    way `query.name` does, and the names table covers exactly the ids the document references."""
+    game_id = _NAMES_GAME_ID_BASE + 1
+    document = _document_naming(
+        game_id=game_id, knowledge=_knowledge_record(_snapshot_for_build(185872))
+    )
+
+    response, _ = await _serve_document(client, db_session, game_id=game_id, document=document)
+
+    names = response.json()["names"]
+    assert names["technology"][str(_UNNAMED_TECHNOLOGY)] is None
+    assert names["unit"][str(_UNNAMED_UNIT)] is None
+    assert names["building"][str(_UNNAMED_BUILDING)] is None
+    assert set(names) == {"technology", "unit", "building"}
+    assert set(names["technology"]) == {"101", "102", "22", str(_UNNAMED_TECHNOLOGY)}
+    assert set(names["unit"]) == {"83", str(_UNNAMED_UNIT)}
+    assert set(names["building"]) == {"70", str(_UNNAMED_BUILDING)}
+
+
+async def test_a_digest_no_loaded_snapshot_has_names_nothing_even_for_a_build_that_has_one(
+    client: TestClient, db_session: AsyncSession
+) -> None:
+    """T709, FR-027: the document names build 185872 (a promoted snapshot exists for it) but a
+    digest no loaded snapshot has. Every name stays `null` - never the nearest or the build's
+    snapshot."""
+    snapshot = _snapshot_for_build(185872)
+    game_id = _NAMES_GAME_ID_BASE + 2
+    document = _document_naming(
+        game_id=game_id, knowledge=_knowledge_record(snapshot, digest="sha256:" + "ab" * 32)
+    )
+
+    response, _ = await _serve_document(client, db_session, game_id=game_id, document=document)
+
+    names = response.json()["names"]
+    assert names["technology"]["101"] is None
+    assert names["building"]["70"] is None
+    assert all(value is None for table in names.values() for value in table.values())
+
+
+@pytest.mark.parametrize(
+    "knowledge",
+    [None, {"absent": "no-snapshot-for-build", "build": 999}],
+    ids=["no-knowledge", "absent-record"],
+)
+async def test_a_document_that_names_no_snapshot_names_nothing(
+    client: TestClient, db_session: AsyncSession, knowledge: dict[str, Any] | None
+) -> None:
+    """T709: no `identity.knowledge`, or the explicit `{"absent": ...}` record - every name is
+    `null`, and the ids are still listed."""
+    game_id = _NAMES_GAME_ID_BASE + (3 if knowledge is None else 4)
+    document = _document_naming(game_id=game_id, knowledge=knowledge)
+
+    response, _ = await _serve_document(client, db_session, game_id=game_id, document=document)
+
+    names = response.json()["names"]
+    assert names["technology"]["101"] is None
+    assert names["building"]["70"] is None
+    assert all(value is None for table in names.values() for value in table.values())
+
+
+async def test_the_stored_object_is_served_byte_for_byte_and_never_modified(
+    client: TestClient, db_session: AsyncSession
+) -> None:
+    """T709: the stored bytes are the same before and after the request, and the response's
+    `document` is exactly those bytes - a pretty-printed document with its own whitespace, so a
+    re-serialisation could not reproduce them."""
+    game_id = _NAMES_GAME_ID_BASE + 5
+    document = _document_naming(
+        game_id=game_id, knowledge=_knowledge_record(_snapshot_for_build(185872)), indent=3
+    )
+    before = bytes(document)
+
+    response, stored = await _serve_document(client, db_session, game_id=game_id, document=document)
+
+    assert response.status_code == 200, f"Got {response.status_code}: {response.text}"
+    assert stored[f"analyses/{game_id}.json"] == before
+    assert document == before
+    assert response.content.startswith(b'{"document":' + before + b',"names":')
+    assert response.json()["document"] == json.loads(before)
+    _assert_no_index(response)
 
 
 # ================================================================================================

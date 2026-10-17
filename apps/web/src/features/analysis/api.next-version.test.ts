@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   AnalysisResponseShapeError,
   assertAnalysisDocument,
-  fetchAnalysisDocument,
+  fetchPublishedAnalysis,
   type ApiAnalysisDocument,
 } from './api'
 
@@ -146,11 +146,16 @@ describe('the reader against the next document version (contracts/analysis-docum
     expect(typed.extracted_at).toBe('2026-10-03T10:00:00Z')
   })
 
-  it('parses the same document end to end through fetchAnalysisDocument', async () => {
-    const fetchMock = vi.fn(async () => jsonResponse(nextVersionDocument()))
+  it('parses the same document end to end through fetchPublishedAnalysis', async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({
+        document: nextVersionDocument(),
+        names: { technology: {}, unit: {}, building: {} },
+      }),
+    )
     vi.stubGlobal('fetch', fetchMock)
 
-    const document = await fetchAnalysisDocument(500_546_441)
+    const { document } = await fetchPublishedAnalysis(500_546_441)
 
     expect(document.schema_version).toBe(2)
     expect(document.participants).toHaveLength(1)
@@ -224,15 +229,17 @@ describe('the reader against the next document version (contracts/analysis-docum
       )
     })
 
-    it('rejects, through fetchAnalysisDocument, a document missing a required field', async () => {
+    it('rejects, through fetchPublishedAnalysis, a document missing a required field', async () => {
       const document = nextVersionDocument()
       delete document.engine
       vi.stubGlobal(
         'fetch',
-        vi.fn(async () => jsonResponse(document)),
+        vi.fn(async () =>
+          jsonResponse({ document, names: { technology: {}, unit: {}, building: {} } }),
+        ),
       )
 
-      await expect(fetchAnalysisDocument(500_546_441)).rejects.toBeInstanceOf(
+      await expect(fetchPublishedAnalysis(500_546_441)).rejects.toBeInstanceOf(
         AnalysisResponseShapeError,
       )
     })
