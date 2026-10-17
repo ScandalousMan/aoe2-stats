@@ -725,6 +725,50 @@ async def test_erasure_over_the_wave_budget_refuses_before_deleting_anything_and
     assert requests[0].outcome == "refused: 5 keys need 3 waves, budget 2"
 
 
+def test_erasure_delete_concurrency_does_not_exceed_botocores_default_connection_pool() -> None:
+    assert privacy._ERASURE_DELETE_CONCURRENCY <= 10, (
+        "a wave wider than botocore's default connection pool (max_pool_connections = 10, which "
+        "`ObjectStore`'s client keeps) queues or opens connections, so the wave count is optimistic"
+    )
+
+
+async def test_repeated_refusals_keep_one_pending_row_with_the_latest_outcome(
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A refused account that retries must not grow `data_requests` by a row per attempt: the
+    one uncompleted erasure row is updated to the latest outcome."""
+    monkeypatch.setattr(privacy, "_ERASURE_WAVE_BUDGET", 2)
+    user, store, _ = await _seed_account_for_wave_budget(
+        client, db_session, monkeypatch, steam="76561197960280032"
+    )
+    user_id = user.id
+
+    token = _get_confirmation_token(client)
+    first = client.post(_ERASE_PATH, json={"confirmation_token": token})
+    assert first.status_code == 503, f"Got {first.status_code}: {first.text}"
+    monkeypatch.setattr(privacy, "_ERASURE_WAVE_BUDGET", 1)
+    second = client.post(_ERASE_PATH, json={"confirmation_token": token})
+    assert second.status_code == 503, f"Got {second.status_code}: {second.text}"
+    assert store.deleted == []
+
+    db_session.expire_all()
+    pending = (
+        (
+            await db_session.execute(
+                select(DataRequest).where(
+                    DataRequest.kind == DataRequestKind.ERASURE,
+                    DataRequest.subject_user_id == user_id,
+                    DataRequest.completed_at.is_(None),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(pending) == 1, f"expected one pending row, got {len(pending)}"
+    assert pending[0].outcome == "refused: 5 keys need 3 waves, budget 1"
+
+
 async def test_erasure_exactly_at_the_wave_budget_is_erased_as_before(
     client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:

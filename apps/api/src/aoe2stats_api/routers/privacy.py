@@ -663,8 +663,10 @@ async def _pseudonymise_profile_ids(
 
 #: How many `DeleteObject` requests `_delete_objects` keeps in flight. `asyncio.to_thread`
 #: runs each on the default executor, so the effective width is the smaller of this and that pool's
-#: size, `min(32, cpu_count + 4)`: at least 5 on any host.
-_ERASURE_DELETE_CONCURRENCY = 16
+#: size, `min(32, cpu_count + 4)`: at least 5 on any host. 10 is botocore's default connection pool
+#: (`max_pool_connections`, which `ObjectStore`'s client keeps), so a wave never outnumbers the
+#: connections: a wider one would queue or open connections and make the wave count optimistic.
+_ERASURE_DELETE_CONCURRENCY = 10
 
 
 def _erasure_delete_width() -> int:
@@ -709,16 +711,36 @@ async def _refuse_erasure_too_large(
     db_session: AsyncSession, *, user_id: uuid.UUID, keys: int, waves: int
 ) -> APIError:
     """Records the refusal as a pending `data_requests` row of kind `erasure`
-    (`completed_at` NULL) on an independent session, and returns the error to raise. No alert:
-    severity 1 is reserved (constitution I) and a new alert kind needs a migration."""
+    (`completed_at` NULL) on an independent session, and returns the error to raise. One pending
+    row per account: a retry updates the existing uncompleted row's `outcome` and `requested_at`
+    instead of inserting another. No alert: severity 1 is reserved (constitution I) and a new
+    alert kind needs a migration."""
+    outcome = f"refused: {keys} keys need {waves} waves, budget {_ERASURE_WAVE_BUDGET}"
     async with _independent_session(db_session) as audit_session:
-        audit_session.add(
-            DataRequest(
-                kind=DataRequestKind.ERASURE,
-                subject_user_id=user_id,
-                outcome=f"refused: {keys} keys need {waves} waves, budget {_ERASURE_WAVE_BUDGET}",
+        pending = (
+            (
+                await audit_session.execute(
+                    select(DataRequest)
+                    .where(
+                        DataRequest.kind == DataRequestKind.ERASURE,
+                        DataRequest.subject_user_id == user_id,
+                        DataRequest.completed_at.is_(None),
+                    )
+                    .order_by(DataRequest.requested_at)
+                    .limit(1)
+                    .with_for_update()
+                )
             )
+            .scalars()
+            .first()
         )
+        if pending is None:
+            audit_session.add(
+                DataRequest(kind=DataRequestKind.ERASURE, subject_user_id=user_id, outcome=outcome)
+            )
+        else:
+            pending.outcome = outcome
+            pending.requested_at = datetime.now(UTC)
         await audit_session.commit()
     return APIError(
         status_code=503,
