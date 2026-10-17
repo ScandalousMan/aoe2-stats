@@ -404,18 +404,31 @@ class _QuotaFakeReplayProvider:
 
 
 class _QuotaFakeObjectStore:
-    """Satisfies `CaptureDrain`'s `_ObjectPut` protocol (`put`/`get`) in memory — no bucket, no
-    network (constitution III). `get` is never actually exercised by this scenario (nothing here
-    triggers a resumed reclaim), but the protocol names both."""
+    """Satisfies `CaptureDrain`'s `_ObjectPut` protocol (`put_if_absent`/`get`) in memory — no
+    bucket, no network (constitution III). `get` is never actually exercised by this scenario
+    (nothing here triggers a resumed reclaim), but the protocol names both."""
 
     def __init__(self) -> None:
         self.objects: dict[str, bytes] = {}
 
-    async def put(self, key: str, body: bytes, *, content_type: str = "application/zip") -> None:
+    async def put_if_absent(
+        self,
+        key: str,
+        body: bytes,
+        *,
+        content_type: str = "application/zip",
+        metadata: Mapping[str, str] | None = None,
+    ) -> bool:
+        if key in self.objects:
+            return False
         self.objects[key] = body
+        return True
 
     async def get(self, key: str) -> bytes:
         return self.objects[key]
+
+    async def get_with_metadata(self, key: str) -> tuple[bytes, Mapping[str, str]]:
+        return self.objects[key], {}
 
 
 class _QuotaFakeReplayValidator:
