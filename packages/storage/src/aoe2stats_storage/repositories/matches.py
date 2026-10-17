@@ -403,6 +403,10 @@ class MatchDetail:
     #: otherwise, never collapsed (module docstring, "capture status travels intact").
     capture_status: CaptureStatus | None = None
     capture_deadline_at: datetime | None = None
+    #: T727: whether the one capture row `capture_status` is read from names an `object_key`. A
+    #: boolean only, never the key. `None` exactly when `capture_status` is: no capture row of the
+    #: caller's own, so there is no row to say anything about.
+    capture_object_held: bool | None = None
 
 
 def _encode_cursor(completed_at: datetime, game_id: int) -> str:
@@ -428,19 +432,21 @@ def _decode_cursor(cursor: str) -> tuple[datetime, int]:
 
 
 def _pick_capture_state(
-    candidates: Iterable[tuple[CaptureStatus, datetime]],
-) -> tuple[CaptureStatus | None, datetime | None]:
+    candidates: Iterable[tuple[CaptureStatus, datetime, bool]],
+) -> tuple[CaptureStatus | None, datetime | None, bool | None]:
     """`get_match_detail`'s own note: among the caller's own `replay_captures` rows for one match
     (ordinarily exactly one), prefer `stored` — the one status `replays.py`'s own
     `_stored_capture_for_caller` looks for — so this route's badge and the download control it
-    gates never disagree. `(None, None)` for no candidates at all, the same "not yet acquired a
-    capture row" case `MatchListRow` already leaves unfilled."""
-    best: tuple[CaptureStatus, datetime] | None = None
-    for status, deadline in candidates:
+    gates never disagree. The third element (T727) is whether that same row names an
+    `object_key`, so it is read from the row the status is. `(None, None, None)` for no
+    candidates at all, the same "not yet acquired a capture row" case `MatchListRow` already
+    leaves unfilled."""
+    best: tuple[CaptureStatus, datetime, bool] | None = None
+    for status, deadline, object_held in candidates:
         if best is None or (status is CaptureStatus.STORED and best[0] is not CaptureStatus.STORED):
-            best = (status, deadline)
+            best = (status, deadline, object_held)
     if best is None:
-        return None, None
+        return None, None, None
     return best
 
 
@@ -702,6 +708,7 @@ class MatchesRepository(Repository):
                 AoeProfile.country,
                 ReplayCapture.status,
                 ReplayCapture.capture_deadline_at,
+                ReplayCapture.object_key.is_not(None),
             )
             .join(AoeProfile, AoeProfile.profile_id == MatchPlayer.profile_id)
             .outerjoin(
@@ -728,12 +735,12 @@ class MatchesRepository(Repository):
                 rating=player.rating,
                 rating_diff=player.rating_diff,
             )
-            for player, alias, country, _status, _deadline in rows
+            for player, alias, country, _status, _deadline, _held in rows
         ]
 
-        capture_status, capture_deadline_at = _pick_capture_state(
-            (status, deadline)
-            for _player, _alias, _country, status, deadline in rows
+        capture_status, capture_deadline_at, capture_object_held = _pick_capture_state(
+            (status, deadline, bool(held))
+            for _player, _alias, _country, status, deadline, held in rows
             if status is not None
         )
 
@@ -748,4 +755,5 @@ class MatchesRepository(Repository):
             participants=participants,
             capture_status=capture_status,
             capture_deadline_at=capture_deadline_at,
+            capture_object_held=capture_object_held,
         )

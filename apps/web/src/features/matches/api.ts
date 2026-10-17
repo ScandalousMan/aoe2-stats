@@ -111,6 +111,10 @@ function isNullableString(value: unknown): value is string | null {
   return value === null || typeof value === 'string'
 }
 
+function isNullableBoolean(value: unknown): value is boolean | null {
+  return value === null || typeof value === 'boolean'
+}
+
 function isNullableNumber(value: unknown): value is number | null {
   return value === null || typeof value === 'number'
 }
@@ -352,6 +356,11 @@ export interface ApiMatchDetail {
    * otherwise, unmodified: same shape and same rule as `ApiMatchListRow.capture_status` above. */
   capture_status: string | null
   capture_deadline_at: string | null
+  /** T727: whether the capture row `capture_status` is read from names an object — a boolean
+   * only, never the key. `null` exactly where `capture_status` is; absent is read as `null`.
+   * Only `false` on a `withdrawn` row opens the upload (`uploadEligibility.ts`). Not on the list
+   * rows (`ApiMatchListRow`). */
+  capture_object_held?: boolean | null
 }
 
 /** Thrown by `assertMatchDetailResponse` when `GET /api/matches/{game_id}`'s body does not match
@@ -471,6 +480,9 @@ export function assertMatchDetailResponse(payload: unknown): asserts payload is 
   }
   if (!isNullableString(body.capture_deadline_at)) {
     throw new MatchDetailResponseShapeError('"capture_deadline_at" was not string|null')
+  }
+  if (body.capture_object_held !== undefined && !isNullableBoolean(body.capture_object_held)) {
+    throw new MatchDetailResponseShapeError('"capture_object_held" was not boolean|null')
   }
 }
 

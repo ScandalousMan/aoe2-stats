@@ -36,7 +36,7 @@ from aoe2stats_storage.models import (
     MatchPlayer,
     ReplayCapture,
 )
-from aoe2stats_storage.repositories.matches import MatchesRepository
+from aoe2stats_storage.repositories.matches import MatchesRepository, _pick_capture_state
 
 # Re-exported so ruff sees these names used, exactly as `test_ratings.py` does: pytest discovers a
 # fixture imported into a module exactly as if it had been defined there.
@@ -112,6 +112,7 @@ async def _seed_capture(
     profile_id: int,
     status: CaptureStatus,
     capture_deadline_at: datetime,
+    object_key: str | None = None,
 ) -> None:
     session.add(
         ReplayCapture(
@@ -121,6 +122,7 @@ async def _seed_capture(
             capture_deadline_at=capture_deadline_at,
             first_seen_at=capture_deadline_at - timedelta(days=21),
             source=CaptureSource.AUTOMATIC,
+            object_key=object_key,
         )
     )
     await session.flush()
@@ -533,3 +535,64 @@ async def test_get_match_detail_is_readable_for_an_empty_owner_set_since_t327(
         f"archival state. Got {detail.capture_status!r}."
     )
     assert detail.capture_deadline_at is None
+
+
+async def test_get_match_detail_reads_object_held_from_the_row_the_status_is_read_from(
+    db_session: AsyncSession,
+) -> None:
+    """T727: `capture_object_held` is the object-key fact of the one row `capture_status` comes
+    from. With two owned rows, `stored` wins (`_pick_capture_state`) and its flag is the one
+    served, not the `withdrawn` row's. With no owned row, both are `None`."""
+    await _seed_callers_and_opponent(db_session)
+    secondary_profile_id = 501_000_003
+    await _seed_profile(db_session, profile_id=secondary_profile_id, alias="Secondary")
+    now = datetime(2026, 8, 20, 12, 0, tzinfo=UTC)
+    await _seed_match(db_session, game_id=905_001, completed_at=now)
+    await _seed_match_player(db_session, game_id=905_001, profile_id=_CALLER_PROFILE_ID)
+    await _seed_match_player(db_session, game_id=905_001, profile_id=secondary_profile_id)
+    await _seed_capture(
+        db_session,
+        game_id=905_001,
+        profile_id=_CALLER_PROFILE_ID,
+        status=CaptureStatus.WITHDRAWN,
+        capture_deadline_at=now + timedelta(days=21),
+        object_key=None,
+    )
+    await _seed_capture(
+        db_session,
+        game_id=905_001,
+        profile_id=secondary_profile_id,
+        status=CaptureStatus.STORED,
+        capture_deadline_at=now + timedelta(days=21),
+        object_key="replays/905001.zip",
+    )
+    await db_session.commit()
+
+    repository = MatchesRepository(db_session)
+    both = await repository.get_match_detail(
+        game_id=905_001, owner_profile_ids=[_CALLER_PROFILE_ID, secondary_profile_id]
+    )
+    withdrawn_only = await repository.get_match_detail(
+        game_id=905_001, owner_profile_ids=[_CALLER_PROFILE_ID]
+    )
+    nobody = await repository.get_match_detail(game_id=905_001, owner_profile_ids=[])
+
+    assert both is not None and withdrawn_only is not None and nobody is not None
+    assert (both.capture_status, both.capture_object_held) == (CaptureStatus.STORED, True)
+    assert (withdrawn_only.capture_status, withdrawn_only.capture_object_held) == (
+        CaptureStatus.WITHDRAWN,
+        False,
+    )
+    assert (nobody.capture_status, nobody.capture_object_held) == (None, None)
+
+
+def test_pick_capture_state_takes_status_deadline_and_object_flag_from_one_row() -> None:
+    """T727: the object flag travels with the row the status is read from, whichever order the
+    rows arrive in (the query has no ORDER BY, so the integration test above cannot pin this)."""
+    deadline = datetime(2026, 8, 20, 12, 0, tzinfo=UTC)
+    withdrawn = (CaptureStatus.WITHDRAWN, deadline, False)
+    stored = (CaptureStatus.STORED, deadline + timedelta(days=1), True)
+
+    assert _pick_capture_state([withdrawn, stored]) == stored
+    assert _pick_capture_state([stored, withdrawn]) == stored
+    assert _pick_capture_state([]) == (None, None, None)

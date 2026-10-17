@@ -523,6 +523,8 @@ async def test_players_history_serves_the_owner_the_capture_state(
     assert row["game_id"] == game_id
     assert row["capture_status"] == status.value
     assert row["capture_deadline_at"] == deadline.isoformat()
+    # T727: the object-held boolean is the match detail's alone, even for the owner.
+    assert "capture_object_held" not in row
 
 
 @pytest.mark.parametrize(

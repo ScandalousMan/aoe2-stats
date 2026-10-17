@@ -414,6 +414,8 @@ async def test_matches_list_newest_first_with_fr010_fields(
     assert newest_row["duration_seconds"] == 1800
     assert newest_row["capture_status"] == CaptureStatus.STORED.value
     assert "capture_deadline_at" in newest_row
+    # T727: the object-held boolean is the match detail's alone.
+    assert "capture_object_held" not in newest_row
 
     opponent_ids = {opponent["profile_id"] for opponent in newest_row["opponents"]}
     assert opponent_ids == {_OPPONENT_PROFILE_ID}, (

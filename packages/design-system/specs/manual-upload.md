@@ -61,13 +61,13 @@ UploadControl                               <section aria-labelledby>; inside Ma
 ```
 
 `UploadControl` is **not** rendered when the match has a `stored` archive — `DownloadAction` is there
-instead ([`match-history.md`](./match-history.md) §2). The interface's gate is the three terminal-failure
-statuses `capture-state-badge.md` groups as "Lost" — `unavailable`, `expired`, `failed` — and **not**
-`pending`/`downloading` (capture may still succeed on its own; an upload would race it), `quarantined`
-(it may hold an object) or `withdrawn` (it may hold an object and the match response does not say;
-T727 has the row holding none). **An objecting caller is offered it for no status** (T723): it waits
-for `GET /api/me` to answer `archival_objected` false, a cached session value, stale after a change in
-another tab. Behind this gate the route refuses on its own (§4.4); they do not agree row for row (T727).
+instead ([`match-history.md`](./match-history.md) §2). Gate: the three "Lost" statuses (`unavailable`,
+`expired`, `failed`), and `withdrawn` when the match's `capture_object_held` is `false` (T727); **not**
+`pending`/`downloading` (capture may still succeed) or `quarantined` (it may hold an object). That
+boolean, only on `GET /api/matches/{game_id}` (what this gate reads), is `true` when the row behind
+`capture_status` names an object key, never the key itself, and `null` wherever `capture_status` is;
+`null` or absent withholds. **An objecting caller is offered it for no status** (T723): it waits
+for `GET /api/me`'s `archival_objected` false, a cached value. The route refuses on its own (§4.4).
 
 **The reason line is not repeated here.** `CaptureStateBadge`'s `SecondaryLine` already tells the user
 _why_ this match is lost and whether a local copy is likely to exist. `Heading` and `Explanation` speak
