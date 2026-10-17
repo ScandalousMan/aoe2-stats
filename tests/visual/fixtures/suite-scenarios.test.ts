@@ -6,9 +6,9 @@
 // 1. every entry of the per-route list inventory in `./suite-scenarios` is declared by a populated
 //    scenario of *that route* (exact match, never a label prefix), and in a browser each populated
 //    scenario renders what it declares and shows no error callout or loading region, judged inside
-//    `enterScenario` so the four route suites cannot skip it. Two success-branch controls (the
-//    `objected` `ArchivalControl`, the `DataExportPanel` `ready` link) are not reached, and belong
-//    to T682;
+//    `enterScenario` so the four route suites cannot skip it. The inventory also holds (T682) the
+//    two success-branch controls that are not lists: the `objected` `ArchivalControl` on
+//    `/dashboard` and `/privacy`, and `DataExportPanel`'s `ready` download link on `/privacy`;
 // 2. no fixture player carries an `avatar_hash` (constitution III: no suite reaches
 //    `avatars.steamstatic.com`);
 // 3. every `<Menu>` and `<Dialog>` an application route can open has a scenario — a new consumer
@@ -35,6 +35,7 @@ import {
 import {
   enterScenario,
   findAvatarHashes,
+  OBJECTED_ME,
   POPULATED_FIXTURES,
   POPULATED_SCENARIOS,
   type PopulatedScenario,
@@ -49,10 +50,10 @@ import {
 
 const rootDir = path.resolve(__dirname, '..', '..', '..')
 
-// Routes whose body holds no list: nothing to populate.
+// Routes whose body holds no list and no success-branch control: nothing to populate. `/privacy`
+// is not here since T682: it holds the `objected` `ArchivalControl` and the export's `ready` link.
 const ROUTES_WITHOUT_A_LIST: ReadonlySet<string> = new Set([
   '/sign-in',
-  '/privacy',
   '/privacy-notice',
   '/object',
 ])
@@ -176,10 +177,61 @@ test.describe('suite scenarios', () => {
 
   test("the dashboard's declared lists are the data-driven ones only", () => {
     // `main ul > li` on the dashboard matched the archival explanation's static copy, which renders
-    // whatever the data is, so declaring it proved nothing.
-    expect(ROUTE_REQUIRED_LISTS['/dashboard']).toEqual(['rating rows'])
-    const dashboard = POPULATED_SCENARIOS.find((scenario) => scenario.route === '/dashboard')
+    // whatever the data is, so declaring it proved nothing. The two `objected` entries (T682) are
+    // controls that exist only when `archival_objected` is true, so they prove the data arrived.
+    expect(ROUTE_REQUIRED_LISTS['/dashboard']).toEqual([
+      'rating rows',
+      'Resume archival button',
+      'objected callout',
+    ])
+    const dashboard = POPULATED_SCENARIOS.find(
+      (scenario) => scenario.label === '/dashboard (two linked profiles)',
+    )
     expect(dashboard?.renders.map((entry) => entry.name)).toEqual(['rating rows'])
+  })
+
+  // T682: the planted absence cases for the two success-branch controls. Each removal must fail by
+  // naming what is lost, on the route that loses it and not on the other one.
+  test('removing the objected dashboard scenario is caught, and /privacy still has its own', () => {
+    expect(unpopulatedLists(without('/dashboard (archival objected)'))).toEqual([
+      '/dashboard: Resume archival button',
+      '/dashboard: objected callout',
+    ])
+  })
+
+  test('removing the objected privacy scenario is caught, and the dashboard one does not stand in', () => {
+    expect(unpopulatedLists(without('/privacy (archival objected)'))).toEqual([
+      '/privacy: Resume archival button',
+      '/privacy: objected callout',
+    ])
+  })
+
+  test('removing the export-ready scenario is caught', () => {
+    expect(unpopulatedLists(without('/privacy (export ready)'))).toEqual([
+      '/privacy: export download link',
+    ])
+  })
+
+  test('the objected fixture is objected, with a timestamp, and the export link is same-origin', () => {
+    expect(OBJECTED_ME.archival_objected).toBe(true)
+    expect(OBJECTED_ME.archival_objected_at).not.toBeNull()
+    const exportReady = POPULATED_SCENARIOS.find(
+      (scenario) => scenario.label === '/privacy (export ready)',
+    )
+    // It is a flow, not a state the page lands in: `prepare` must request the export.
+    expect(exportReady?.prepare).toBeDefined()
+    expect(exportReady?.listsNeedPrepare).toBe(true)
+  })
+
+  test('every T682 scenario is in SUITE_SCENARIOS, so all four route suites run it', () => {
+    const labels = SUITE_SCENARIOS.map((scenario) => scenario.label)
+    expect(labels).toEqual(
+      expect.arrayContaining([
+        '/dashboard (archival objected)',
+        '/privacy (archival objected)',
+        '/privacy (export ready)',
+      ]),
+    )
   })
 
   test('the populated fixtures are populated', () => {
@@ -347,6 +399,65 @@ test.describe('populated scenarios render their success branch', () => {
       }
       await expect(enterScenario(page, planted, harness.baseUrl, 'light')).rejects.toThrow(
         /\(populated\): match rows \(main table tbody tr\) rendered fewer than 3 item\(s\)/,
+      )
+    })
+
+    // T682: the in-browser assertion fails by name when the control is absent. Each planted page is
+    // the real scenario with one stub changed, so everything else on it is exactly what ships.
+    function scenarioNamed(label: string): PopulatedScenario {
+      const found = POPULATED_SCENARIOS.find((scenario) => scenario.label === label)
+      if (!found) throw new Error(`${label} is gone`)
+      return found
+    }
+
+    for (const label of ['/dashboard (archival objected)', '/privacy (archival objected)']) {
+      test(`planted: ${label} with archival_objected false renders no Resume button and fails`, async ({
+        page,
+      }) => {
+        const base = scenarioNamed(label)
+        const planted: PopulatedScenario = {
+          ...base,
+          stub: async (target) => {
+            await base.stub(target)
+            // Registered after the scenario's own stub, so it wins (Playwright matches the last).
+            await stubMe(target, { ...OBJECTED_ME, archival_objected: false })
+          },
+        }
+        await expect(enterScenario(page, planted, harness.baseUrl, 'light')).rejects.toThrow(
+          /\(archival objected\): Resume archival button \(main button:has-text\("Resume archival"\)\) rendered fewer than 1 item\(s\)/,
+        )
+      })
+
+      test(`planted: ${label} with no archival_objected_at loses the dated callout and fails`, async ({
+        page,
+      }) => {
+        const base = scenarioNamed(label)
+        const planted: PopulatedScenario = {
+          ...base,
+          stub: async (target) => {
+            await base.stub(target)
+            await stubMe(target, { ...OBJECTED_ME, archival_objected_at: null })
+          },
+        }
+        await expect(enterScenario(page, planted, harness.baseUrl, 'light')).rejects.toThrow(
+          /\(archival objected\): objected callout/,
+        )
+      })
+    }
+
+    test('planted: an export that stays queued never reaches ready and fails', async ({ page }) => {
+      const base = scenarioNamed('/privacy (export ready)')
+      const planted: PopulatedScenario = {
+        ...base,
+        stub: async (target) => {
+          await base.stub(target)
+          await target.route('**/api/privacy/export/visual-suite-export', (route) =>
+            fulfillJson(route, { id: 'visual-suite-export', status: 'queued' }),
+          )
+        },
+      }
+      await expect(enterScenario(page, planted, harness.baseUrl, 'light')).rejects.toThrow(
+        /\(export ready\): export download link \(main a\[download\]:has-text\("Download the archive"\)\) rendered fewer than 1 item\(s\)/,
       )
     })
 

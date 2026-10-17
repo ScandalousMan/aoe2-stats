@@ -3837,19 +3837,11 @@ both themes — see quickstart.md's own walk for the verdict, its scope, and the
 That run backs item 13 only for what those scenarios render at rest; what they did not render
 was owned by T676, whose own row is deleted too (2026-10-03; see the closing paragraphs below), as is the
 comparator row (T675, 2026-10-02). The adversarial reviews of #107 then filed what T676 does not reach,
-below under its owning tasks (T681, T682); T681's row is deleted too (2026-10-17, see the closing paragraphs below). The register stays because it is where a gap in this
+under its owning tasks (T681, T682); both rows are deleted too (2026-10-17, see the closing paragraphs below), and the register
+holds no row today. It stays because it is where a gap in this
 package's own verification harness — never in a component or a token — is filed when it is found, for the
 reason the four registers above already are: the subject is this package's own tooling, so a future task
 changing that tooling needs its row updated, and it does not belong in a spec written once.
-
-1. **T676's route suites never render two success-branch controls — found by the second adversarial
-   review of #107 (2026-10-03, M1).** Every fixture in `tests/visual/fixtures/app-routes-harness.ts`
-   sets `archival_objected: false`, so `ArchivalControl`'s `objected` state (its "Resume archival"
-   button and callout) on `/dashboard` and `/privacy` meets none of the four suites, and
-   `DataExportPanel`'s `ready` state, the download link a user reaches after requesting an export on
-   `/privacy`, is never rendered. Neither is a list, so the per-route list inventory in
-   `tests/visual/fixtures/suite-scenarios.ts` has no entry for either. Production-readiness item 13 is
-   partly met overall until this row is deleted. **Owner: T682. Fix by 2026-10-16.**
 
 T674 (2026-09-28) runs all four of item 13's sub-suites in CI against every route scenario at rest,
 in both themes, and the sizing row this task's own filing opened (formerly in the Verification-coverage gap
@@ -3886,8 +3878,8 @@ than kept as a second copy of the fact.
 T676 (2026-10-03) closed the last row the same way: the four sub-suites now also run the populated scenarios in
 `tests/visual/fixtures/suite-scenarios.ts` (matches, favourites, search results, match participants and the
 analysis section's lists, a second linked profile), each asserted in a browser by `enterScenario` against that
-file's per-route list inventory. Two success-branch controls are not
-reached, the `objected` `ArchivalControl` and `DataExportPanel`'s `ready` link (T682). No
+file's per-route list inventory. Two success-branch controls were not
+reached then, the `objected` `ArchivalControl` and `DataExportPanel`'s `ready` link; T682 closed that (below). No
 fixture player carries an `avatar_hash`, and every suite fails if a page requests a host other than the application's own, so none can
 reach `avatars.steamstatic.com`; it adds one scenario per `Dialog` and `Menu`, opened by keyboard — the theme
 `Menu` on every route, `ProfileSummary`'s switcher and Manage `Menu`s, the unlink `Dialog` and the
@@ -3902,7 +3894,7 @@ same element still on screen (`tests/visual/fixtures/loading-state.ts`); those t
 reduced-motion suite only. The suites run in
 `.github/workflows/pr.yml`'s `visual` job (named there) and in `.github/workflows/nightly.yml`'s
 `visual-full` job (every `tests/visual` spec), both themes, and needed no workflow edit to keep doing so. The
-row is deleted rather than kept as a second copy of the fact; the reviews of #107 then filed the T681 and T682 rows above.
+row is deleted rather than kept as a second copy of the fact; the reviews of #107 then filed the T681 and T682 rows, both since deleted (below).
 
 T681 (2026-10-17) closed the first of those rows the same way: the keyboard and reduced-motion suites now also open the
 `Tooltip` every route that renders one carries, by Tab to its trigger (`:focus-visible` opens it), on `/dashboard`,
@@ -3918,3 +3910,16 @@ never transitions, one that is closed, an ignored Escape, an Escape that loses f
 broken clause. `tests/visual/fixtures/suite-scenarios.test.ts` fails when a `<Tooltip>`, `<CountryFlag>` or
 `<ProfileSummary>` usage appears in the source that no tooltip scenario covers. The row is deleted rather than kept as a
 second copy of the fact.
+
+T682 (2026-10-17) closed the last of those rows the same way: all four suites now also render the two success-branch
+controls T676 left out, in both themes, as populated scenarios in `tests/visual/fixtures/suite-scenarios.ts`. The
+`objected` `ArchivalControl` (its "Resume archival" button and the callout reading "Archival is off. You objected on
+...") is rendered on `/dashboard` and on `/privacy` by stubbing `/api/me` with `archival_objected: true` and a non-null
+`archival_objected_at`. `DataExportPanel`'s `ready` link is reached on `/privacy` by its own flow, by keyboard: Tab to
+"Export my data", Enter, against a stubbed export API whose `POST` answers with a job id and whose first `GET` reads
+`completed` with a same-origin relative `download_url` (the link is asserted present and never followed). Each is declared
+in `ROUTE_REQUIRED_LISTS`, so `enterScenario` asserts in the browser that the button, the dated callout or the link is on
+screen with no error callout or loading region, and `tests/visual/fixtures/suite-scenarios.test.ts` fails by name when
+a scenario or its inventory entry is removed; its planted pages (`archival_objected` false, no `archival_objected_at`, an
+export that stays queued) each fail the same assertion. `/privacy` is therefore no longer a route "without a list" in
+that file. The row is deleted rather than kept as a second copy of the fact.

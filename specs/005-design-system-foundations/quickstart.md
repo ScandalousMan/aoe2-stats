@@ -1225,6 +1225,41 @@ partly met** until T682's row of the same register is deleted: the `objected` `A
 `DataExportPanel`'s `ready` link are still not rendered, and T682 states the final verdict. The run
 that shows T681's part: RUN-PENDING.
 
+**Widened, 2026-10-17 (T682).** T682's own row of `packages/design-system/specs/README.md`'s
+"Verification-coverage gap register" is deleted, which leaves the register with no row, and the
+sentences above that the `objected` `ArchivalControl` and `DataExportPanel`'s `ready` link are not
+rendered, and that item 13 stays partly met until this row is deleted, are superseded. `SUITE_SCENARIOS`
+in `tests/visual/fixtures/suite-scenarios.ts` now holds three more populated scenarios, so all four
+suites run each of them in both themes: `/dashboard (archival objected)` and `/privacy (archival
+objected)` stub `/api/me` with `archival_objected: true` and an `archival_objected_at` timestamp, and
+`/privacy (export ready)` drives `DataExportPanel` to `ready` by its own flow, by keyboard (Tab to
+"Export my data", Enter) against a stubbed export API (`POST /api/privacy/export`, then
+`GET /api/privacy/export/{id}` reading `completed` with a same-origin relative `download_url`). Each is
+declared in the per-route list inventory (`ROUTE_REQUIRED_LISTS`), so `enterScenario` asserts in the
+browser that the "Resume archival" button and the dated callout, or the download link, are on screen with
+no error callout or loading region, and `tests/visual/fixtures/suite-scenarios.test.ts` fails by name when
+a scenario or its inventory entry is removed (`/privacy` is no longer listed there as a route without a
+list). Planted pages with `archival_objected` false, with no `archival_objected_at`, and with an export that
+stays queued each fail that assertion naming the missing control; the same two absences, planted by hand in the
+scenarios, were shown to fail the keyboard suite. One fault of the scenarios' own surfaced while writing them: after the export finishes, the request button has been disabled and focus is on `body` but
+Chromium keeps the sequential-focus starting point on that button, so the Tab walk began mid-page and
+visited 4 of 15 stops until `prepare` put the starting point back at the top of the document.
+**Item 13 is Met**, on the head carrying T681 and T682, for every route in both themes: routes at rest,
+the populated scenarios in that inventory including the two success-branch controls, every `Dialog` and
+`Menu` open, and the country `Tooltip` open. Read against item 13's own wording (keyboard operation, focus
+visibility, touch footprints and reduced motion on every route in both themes), that is the claim the four
+suites make, and no route or control group the inventory names is left unrendered. What stays narrower is
+stated rather than hidden, and none of it is a route or a property item 13 names: the two loading states
+(`ProfileSummary`'s `Skeleton`, the erase button's `Spinner`) are held in the reduced-motion suite only,
+since only that suite has a contract for an animation loop; the tooltip scenarios run in the keyboard and
+reduced-motion suites only, because the focus-visibility and touch-footprint suites already measure the flag
+trigger at rest; and the scenarios render the success branch of each route, so the error, empty and
+transient branches (a failed export, `ArchivalControl` while submitting or after a resume, the analysis
+section's `queued`, `running` and `failed` states) meet none of the four suites, as the inventory's own header
+says. Local run only, macOS Chromium, until the run named here backs it: route-keyboard 90,
+route-focus-visibility 82, route-touch-footprint 82, route-reduced-motion 94, `tests/visual/fixtures`
+177, all passed. The run that shows T681's and T682's parts together: RUN-PENDING.
+
 ### Item 15's general-reviewer half — outstanding, no pull request covers this head
 
 The `visual-reviewer` half is T595/T596/T600/T671's own, by their own words ("Production-readiness

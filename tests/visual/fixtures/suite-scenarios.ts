@@ -5,7 +5,9 @@
 // meeting none of the four suites. This file adds, on top of the same stubs:
 //
 // 1. POPULATED_SCENARIOS — the lists in `ROUTE_REQUIRED_LISTS` below, populated (matches,
-//    favourites, search results, match participants, a second linked profile). The empty `ROUTE_SCENARIOS` are kept as
+//    favourites, search results, match participants, a second linked profile), and (T682) the two
+//    success-branch controls that are not lists: the `objected` `ArchivalControl` and
+//    `DataExportPanel`'s `ready` download link. The empty `ROUTE_SCENARIOS` are kept as
 //    they are: an empty state is a state too, and leaving them untouched keeps the full-page
 //    screenshots `app-routes.spec.ts` takes (CI-authoritative baselines) exactly where they were.
 // 2. SURFACE_SCENARIOS — one scenario per `Dialog` and `Menu`, opened by keyboard: the theme `Menu` in
@@ -473,6 +475,63 @@ async function stubMatchDetailAnalysis(
   )
 }
 
+/** Puts the sequential-focus starting point back at the top of the document, whether or not
+ * anything is focused (`resetFocusToDocumentStart` leaves a page with nothing focused alone). */
+async function returnFocusToDocumentStart(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const sentinel = document.createElement('span')
+    sentinel.setAttribute('tabindex', '-1')
+    document.body.insertBefore(sentinel, document.body.firstChild)
+    sentinel.focus()
+    sentinel.remove()
+  })
+}
+
+// --- The two success-branch controls that are neither list nor dialog (T682) --------------------
+//
+// `ArchivalControl`'s `objected` state and `DataExportPanel`'s `ready` state. Every at-rest fixture
+// sets `archival_objected: false`, so the first never rendered in a route suite; the second is only
+// reached by requesting an export, so it needs a `prepare` that does it by keyboard. Neither is a
+// list, but each is a control a user reaches and the four suites measure: they are declared in
+// `ROUTE_REQUIRED_LISTS` like one, so the same guard fails on their removal and the same in-browser
+// assertion fails when the control is absent.
+
+/** `GET /api/me` for a signed-in user who has objected to archival: the shape `AuthenticatedSession`
+ * carries, with a timestamp so the callout reads "You objected on ...". */
+export const OBJECTED_ME = {
+  ...SIGNED_IN_ME,
+  archival_objected: true,
+  archival_objected_at: '2026-09-15T12:00:00Z',
+}
+
+const EXPORT_JOB_ID = 'visual-suite-export'
+// Same-origin and relative: the suites fail any request to another host, and nothing here ever
+// follows the link (its presence is asserted, never a click).
+const EXPORT_DOWNLOAD_PATH = `/api/privacy/export/${EXPORT_JOB_ID}/download`
+
+/** The export API in the state a finished job leaves it: `POST` answers with the job id, and the
+ * first `GET` of that job already reads `completed`, so the panel goes `requesting` -> `preparing`
+ * -> `ready` on its own flow with no timer to wait out. Shapes are `features/privacy/api.ts`'s. */
+async function stubExportCompleted(page: Page): Promise<void> {
+  await page.route('**/api/privacy/export', (route) =>
+    fulfillJson(route, { id: EXPORT_JOB_ID, status: 'queued' }),
+  )
+  await page.route(`**/api/privacy/export/${EXPORT_JOB_ID}`, (route) =>
+    fulfillJson(route, {
+      id: EXPORT_JOB_ID,
+      status: 'completed',
+      download_url: EXPORT_DOWNLOAD_PATH,
+    }),
+  )
+}
+
+const OBJECTED_CONTROLS: readonly ListExpectation[] = [
+  { name: 'Resume archival button', selector: 'main button:has-text("Resume archival")', min: 1 },
+  // The callout's heading carries the timestamp, so this fails if `archival_objected_at` is lost on
+  // the way to the component and the heading falls back to a bare "Archival is off.".
+  { name: 'objected callout', selector: 'main :text("Archival is off. You objected on")', min: 1 },
+]
+
 export const POPULATED_SCENARIOS: readonly PopulatedScenario[] = [
   populated('/dashboard', 'two linked profiles', {
     path: '/',
@@ -600,17 +659,69 @@ export const POPULATED_SCENARIOS: readonly PopulatedScenario[] = [
       )
     },
   }),
+  // T682: `ArchivalControl`'s `objected` state, on the two routes that render it.
+  populated('/dashboard', 'archival objected', {
+    path: '/',
+    landedPath: '/dashboard',
+    renders: OBJECTED_CONTROLS,
+    stub: async (page) => {
+      await stubMe(page, OBJECTED_ME)
+      await stubPopulatedProfiles(page, PROFILES_RESPONSE)
+    },
+  }),
+  populated('/privacy', 'archival objected', {
+    path: '/privacy',
+    renders: OBJECTED_CONTROLS,
+    stub: async (page) => {
+      await stubMe(page, OBJECTED_ME)
+    },
+  }),
+  // T682: `DataExportPanel`'s `ready` state, reached the way a user reaches it: Tab to "Export my
+  // data", Enter, and the panel's own request/poll flow against the stubbed export API.
+  populated('/privacy', 'export ready', {
+    path: '/privacy',
+    listsNeedPrepare: true,
+    renders: [
+      {
+        name: 'export download link',
+        selector: 'main a[download]:has-text("Download the archive")',
+        min: 1,
+      },
+    ],
+    stub: async (page) => {
+      await stubMe(page, SIGNED_IN_ME)
+      await stubExportCompleted(page)
+    },
+    prepare: async (page) => {
+      await tabTo(page, page.getByRole('button', { name: 'Export my data' }))
+      await page.keyboard.press('Enter')
+      // Wait for the flow to finish, but never fail on the wait itself: `listsNeedPrepare` makes
+      // `enterScenario` assert the link right after this, by name ("export download link rendered
+      // fewer than 1 item(s)"), which is the failure message worth having.
+      await page
+        .locator('main a[download]:has-text("Download the archive")')
+        .waitFor({ state: 'visible', timeout: 5_000 })
+        .catch(() => undefined)
+      // The request button disables while the export is built, which drops focus to `body` but
+      // leaves Chromium's sequential-focus starting point on that button. `walkTabOrder` only
+      // resets focus when something is focused, so without this the Tab walk would start mid-page
+      // and visit the 4 stops after the button instead of all of them.
+      await returnFocusToDocumentStart(page)
+    },
+  }),
 ]
 
 // The per-route list inventory, by `ROUTE_SCENARIOS` label: the one the guards below check, and
-// nothing more. Error, empty and transient branches are not in it, and neither are two success-
-// branch controls (the `objected` `ArchivalControl`, `DataExportPanel`'s `ready` link; T682).
+// nothing more. Error, empty and transient branches are not in it. Two success-branch controls that
+// are not lists are (T682): the `objected` `ArchivalControl`'s "Resume archival" button and callout
+// on `/dashboard` and `/privacy`, and `DataExportPanel`'s `ready` download link on `/privacy`.
 // `unpopulatedLists` fails by name for
 // any entry no populated scenario of *that route* declares, and `assertPopulatedScenario` asserts
 // each declaration in the browser. A route absent here and from `ROUTES_WITHOUT_A_LIST`
 // (`suite-scenarios.test.ts`) fails there.
 export const ROUTE_REQUIRED_LISTS: Readonly<Record<string, readonly string[]>> = {
-  '/dashboard': ['rating rows'],
+  '/dashboard': ['rating rows', 'Resume archival button', 'objected callout'],
+  '/privacy': ['Resume archival button', 'objected callout', 'export download link'],
   '/search': ['search results', 'search result links'],
   '/favourites': ['favourite rows', 'favourite row links', 'remove buttons'],
   '/matches': ['match rows', 'match row links'],
