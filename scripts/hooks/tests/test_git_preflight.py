@@ -24,9 +24,24 @@ import pytest
 HOOK = Path(__file__).resolve().parents[1] / "git-preflight.sh"
 
 
+# The layout is module-scoped, so it is built before any function-scoped fixture could set an
+# identity; and a CI runner has no global one. Each call carries its own, and signing is off so a
+# user's signing configuration cannot fail the planted commits either.
+_IDENTITY = {
+    f"{role}_{field}": value
+    for role in ("GIT_AUTHOR", "GIT_COMMITTER")
+    for field, value in (("NAME", "Preflight Test"), ("EMAIL", "preflight@example.invalid"))
+}
+
+
 def _git(*args: str, cwd: Path) -> str:
     return subprocess.run(
-        ["git", *args], cwd=cwd, check=True, capture_output=True, text=True
+        ["git", "-c", "commit.gpgsign=false", *args],
+        cwd=cwd,
+        env={**os.environ, **_IDENTITY},
+        check=True,
+        capture_output=True,
+        text=True,
     ).stdout.strip()
 
 
@@ -51,10 +66,7 @@ def layout(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Path]:
 
 
 @pytest.fixture(autouse=True)
-def _identity(monkeypatch: pytest.MonkeyPatch) -> None:
-    for key in ("GIT_AUTHOR", "GIT_COMMITTER"):
-        monkeypatch.setenv(f"{key}_NAME", "Preflight Test")
-        monkeypatch.setenv(f"{key}_EMAIL", "preflight@example.invalid")
+def _no_ambient_escape_hatch(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("NO_GIT_PREFLIGHT", raising=False)
 
 
