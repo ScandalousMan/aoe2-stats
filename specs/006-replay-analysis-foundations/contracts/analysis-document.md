@@ -143,11 +143,11 @@ closing brace. A reader that ignores unknown keys, as the web reader does, is un
   "unit": { "83": "Villager" },
   "building": { "70": "House" },
   "provenance": {
-    "names.snapshot.describes_build": { "tier": "derived", "method": "knowledge-snapshot.name@1", "inputs": [] },
-    "names.snapshot.digest": { "tier": "derived", "method": "knowledge-snapshot.name@1", "inputs": [] },
-    "names.technology": { "tier": "derived", "method": "knowledge-snapshot.name@1", "inputs": ["participant.researches.technology_id", "participant.age_up_commands"] },
-    "names.unit": { "tier": "derived", "method": "knowledge-snapshot.name@1", "inputs": ["participant.trainings.unit_id"] },
-    "names.building": { "tier": "derived", "method": "knowledge-snapshot.name@1", "inputs": ["participant.builds.building_id"] }
+    "names.snapshot.describes_build": { "tier": "derived", "method": "knowledge-snapshot.name@2", "inputs": [] },
+    "names.snapshot.digest": { "tier": "derived", "method": "knowledge-snapshot.name@2", "inputs": [] },
+    "names.technology": { "tier": "derived", "method": "knowledge-snapshot.name@2", "inputs": ["participant.researches.technology_id", "participant.age_up_commands"] },
+    "names.unit": { "tier": "derived", "method": "knowledge-snapshot.name@2", "inputs": ["participant.trainings.unit_id"] },
+    "names.building": { "tier": "derived", "method": "knowledge-snapshot.name@2", "inputs": ["participant.builds.building_id"] }
   }
 }
 ```
@@ -158,6 +158,16 @@ closing brace. A reader that ignores unknown keys, as the web reader does, is un
   FR-038). `snapshot` records which one answered.
 - **An id the snapshot does not name is absent from its kind's record**, and the page shows the
   identifier (003 FR-043a). Nothing is substituted.
+- **A name is the snapshot's, cleaned of the source's line-break markup.** The vendored value is
+  `"Town<br>\nCenter"`; the label served is `"Town Center"`. One rule: a hyphen directly after a
+  letter, followed by a break (a line-break tag or whitespace) and then a lower-case letter, joins
+  the word (`Circum-<br>\nnavigation` is `Circumnavigation`); the same hyphen followed by a break
+  and then any other character keeps the hyphen and drops the break with no space
+  (`Man-at-<br>\nArms` is `Man-at-Arms`); a hyphen not directly after a letter is left alone
+  (`Foo - bar` stays); every other break becomes one space (`Double-Bit<br>\nAxe` is
+  `Double-Bit Axe`), whitespace collapses and the label is trimmed. A label with no letter or
+  digit left is not served, and its id is left out like an unresolved one. The snapshot is not
+  edited, and the method is `knowledge-snapshot.name@2`.
 - **No block at all** when the identity names no snapshot (`absent`), names one that is not
   installed or is installed under another digest, or when the document has no `identity` (version
   1). The body is then the stored bytes exactly.
