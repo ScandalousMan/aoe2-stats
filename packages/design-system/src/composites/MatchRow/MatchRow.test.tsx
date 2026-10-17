@@ -693,7 +693,7 @@ describe('MatchList', () => {
   })
 
   // T724 (capture-state-badge.md §4): `MatchList` forwards `archivalObjected` to every badge of
-  // its card and table layouts unless `subject="other"`, which withholds it (match-history.md §11.3).
+  // its card and table layouts whatever its `subject` (match-history.md §11.3, T726).
   describe('archivalObjected (T724)', () => {
     const pendingMatch: MatchRowData = {
       ...match,
@@ -733,10 +733,10 @@ describe('MatchList', () => {
     )
 
     it.each([1280, 375])(
-      'subject="other" never forwards it: a pending row reads "Still catchable" (%ipx)',
+      'subject="other" forwards it too: a pending row reads "Not archived", not "Still catchable" (%ipx)',
       (width) => {
         const restore = mockMatchMediaAt(width)
-        render(
+        const { container } = render(
           <MatchList
             matches={[pendingMatch]}
             subject="other"
@@ -744,8 +744,30 @@ describe('MatchList', () => {
             archivalObjected
           />,
         )
-        expect(screen.getByText('Still catchable')).toBeInTheDocument()
-        expect(screen.queryByText('Not archived')).not.toBeInTheDocument()
+        expect(screen.getByText('Not archived')).toBeInTheDocument()
+        expect(screen.queryByText('Still catchable')).not.toBeInTheDocument()
+        expect(container).not.toHaveTextContent(/left|window closing/i)
+        restore()
+      },
+    )
+
+    // T726: a third party's row arrives with a `null` status (the server serves it only to a caller
+    // actively linked to the profile), and the badge's own empty state renders nothing.
+    it.each([1280, 375])(
+      'subject="other" with a null status renders no badge, objection or not (%ipx)',
+      (width) => {
+        const restore = mockMatchMediaAt(width)
+        const { container } = render(
+          <MatchList
+            matches={[{ ...pendingMatch, captureStatus: null, captureDeadlineAt: null }]}
+            subject="other"
+            subjectAlias="aoe2villain"
+            archivalObjected
+          />,
+        )
+        expect(container).not.toHaveTextContent(
+          /Still catchable|Not archived|Archived|Lost|left|window closing/i,
+        )
         restore()
       },
     )

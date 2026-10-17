@@ -99,9 +99,9 @@ or download is offered. A `downloading` row claimed before the objection can sti
 **Tone** — one of `success`, `warning`, `danger`, `info` or `neutral`, set by §3, never chosen by
 the caller. The data inputs are `captureStatus`, `captureDeadlineAt` (ISO 8601 or `null`) and
 `archivalObjected` (boolean, default `false`); the badge derives tone, label and `SecondaryLine`
-itself, so two call sites given the same inputs agree. `MatchDetailPanel` passes `GET /api/me`'s
-`archival_objected` for every match; one no linked profile of the caller played has a `null` status,
-so nothing renders. `MatchList` withholds it for `subject="other"` (`match-history.md` §11.3).
+itself, so two call sites given the same inputs agree. `MatchDetailPanel` and `MatchList` pass
+`GET /api/me`'s `archival_objected`; every match route serves a status only for a profile the
+caller is actively linked to, `null` (nothing renders) elsewhere (`match-history.md` §11.3).
 
 **Variant** — `compact` (inside `MatchRow`: pill and `SecondaryLine` may sit on one line or wrap to
 two, whichever the row's own width forces) and `detail` (inside `MatchDetailPanel`: they always

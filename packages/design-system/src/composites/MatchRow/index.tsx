@@ -98,7 +98,7 @@ export interface MatchRowProps {
    * modified click or the absence of `onNavigate` falls through to native handling. */
   onNavigate?: (href: string) => void
   /** The caller's own `archival_objected`, forwarded to `CaptureStateBadge` (T724). `MatchList`
-   * sets it; a row of a third party's list never receives it (capture-state-badge.md §4). */
+   * sets it whatever its `subject`; a `null` status renders no badge (capture-state-badge.md §4). */
   archivalObjected?: boolean
   className?: string
 }
@@ -496,8 +496,9 @@ export interface MatchListProps {
   subjectAlias?: string
   /** The caller's own `GET /api/me` `archival_objected` (T724, capture-state-badge.md §4),
    * forwarded to every badge in the card and the table layout so an objecting owner's `pending`
-   * row reads "Not archived". Never forwarded when `subject="other"`, even if a caller passes
-   * it: a third-party list withholds the input (match-history.md §11.3). */
+   * row reads "Not archived". Forwarded whatever the `subject` (T726): `subject` changes the two
+   * strings of match-history.md §11.3, never the badge. A third party's rows carry a `null` status,
+   * which the badge renders as nothing, so the input has nothing to act on there. */
   archivalObjected?: boolean
   className?: string
 }
@@ -525,9 +526,8 @@ export function MatchList({
   // users do, from the same string").
   const caption = subject === 'other' ? `${subjectAlias}'s recent matches` : 'Your recent matches'
 
-  // T724: a `subject="other"` list withholds the input (match-history.md §11.3); the badge alone
-  // maps it to a reading.
-  const forwardedObjection = subject === 'self' && archivalObjected
+  // T724/T726: forwarded whatever the `subject` (match-history.md §11.3); the badge alone maps it
+  // to a reading, and a row without a status renders none.
 
   if (status === 'loading') {
     return (
@@ -579,7 +579,7 @@ export function MatchList({
         matches={matches}
         onNavigate={onNavigate}
         caption={caption}
-        archivalObjected={forwardedObjection}
+        archivalObjected={archivalObjected}
         className={className}
       />
     )
@@ -589,7 +589,7 @@ export function MatchList({
     <ul className={cx('flex flex-col gap-3', className)} aria-label={caption}>
       {matches.map((match) => (
         <li key={match.gameId}>
-          <MatchRow match={match} onNavigate={onNavigate} archivalObjected={forwardedObjection} />
+          <MatchRow match={match} onNavigate={onNavigate} archivalObjected={archivalObjected} />
         </li>
       ))}
     </ul>

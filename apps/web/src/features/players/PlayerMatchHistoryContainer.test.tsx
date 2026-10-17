@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { AuthenticatedSession } from '../../lib/api'
 import type { ApiMatchListRow } from '../matches/api'
 import type { ApiPlayerProfile } from './api'
 
@@ -27,7 +28,7 @@ function jsonResponse(body: unknown, status = 200) {
 // `archival_objected: false` here is the translation of the retired `ingest_consent: true` — a
 // user whose ingestion runs, which constitution IX 4.0.0 made the default rather than something
 // consented to (session.ts, DashboardContainer.test.tsx's `baseSession`).
-const authenticatedSession = {
+const authenticatedSession: AuthenticatedSession = {
   authenticated: true,
   user_id: 'user-1',
   allowlisted: true,
@@ -112,7 +113,7 @@ function baseRow(overrides: Partial<ApiMatchListRow> = {}): ApiMatchListRow {
 function installFakeApi(options: {
   profileHandler?: () => Response
   matchesHandler?: () => Response
-  session?: typeof authenticatedSession
+  session?: AuthenticatedSession
 }) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const path = String(input)
@@ -173,29 +174,61 @@ describe('PlayerMatchHistoryContainer', () => {
     expect(screen.queryByText('Your recent matches')).not.toBeInTheDocument()
   })
 
-  // T724 (match-history.md §11.3, capture-state-badge.md §4): an objecting caller reads a
-  // `pending` row on a third party's list as "Still catchable". This pins the whole path; it does
-  // not isolate the container, as `MatchList`'s `subject="other"` gate withholds the input too.
-  it('an objecting caller still reads "Still catchable" on a third party\'s list', async () => {
+  // T726 (match-history.md §11.3, capture-state-badge.md §4): the owner who opens their own
+  // actively linked profile through this route is served the capture state, and the page forwards
+  // the caller's objection, so a `pending` row reads "Not archived" rather than "Still catchable".
+  const pendingRow = () =>
+    baseRow({
+      capture_status: 'pending',
+      capture_deadline_at: new Date(Date.now() + 6 * 24 * 60 * 60_000 + 60_000).toISOString(),
+    })
+
+  it('an objecting owner viewing their own linked profile has the objection forwarded', async () => {
+    installFakeApi({
+      session: {
+        ...authenticatedSession,
+        archival_objected: true,
+        profiles: [{ profile_id: 87654321, alias: 'rival_ace', country: 'de', is_primary: true }],
+      },
+      matchesHandler: () => jsonResponse({ matches: [pendingRow()], next_cursor: null }),
+    })
+    renderHistory(87654321)
+
+    expect(await screen.findByText('Not archived')).toBeInTheDocument()
+    expect(screen.queryByText('Still catchable')).not.toBeInTheDocument()
+  })
+
+  it("an objecting viewer of someone else's profile does not have the objection forwarded", async () => {
+    // The viewer is linked to a different profile: their objection says nothing about this one.
+    // The row is the unreal case of a server that served a status anyway; the page must not
+    // reinterpret it with the caller's objection.
+    installFakeApi({
+      session: {
+        ...authenticatedSession,
+        archival_objected: true,
+        profiles: [{ profile_id: 11111111, alias: 'me', country: 'fr', is_primary: true }],
+      },
+      matchesHandler: () => jsonResponse({ matches: [pendingRow()], next_cursor: null }),
+    })
+    renderHistory(87654321)
+
+    expect(await screen.findByText('Still catchable')).toBeInTheDocument()
+    expect(screen.queryByText('Not archived')).not.toBeInTheDocument()
+  })
+
+  it("renders no capture badge on a third party's list, where the server serves a null status", async () => {
     installFakeApi({
       session: { ...authenticatedSession, archival_objected: true },
       matchesHandler: () =>
         jsonResponse({
-          matches: [
-            baseRow({
-              capture_status: 'pending',
-              capture_deadline_at: new Date(
-                Date.now() + 6 * 24 * 60 * 60_000 + 60_000,
-              ).toISOString(),
-            }),
-          ],
+          matches: [baseRow({ capture_status: null, capture_deadline_at: null })],
           next_cursor: null,
         }),
     })
-    renderHistory()
+    const { container } = renderHistory()
 
-    expect(await screen.findByText('Still catchable')).toBeInTheDocument()
-    expect(screen.queryByText('Not archived')).not.toBeInTheDocument()
+    await screen.findByText('someone_else')
+    expect(container).not.toHaveTextContent(/Still catchable|Not archived|Archived|Needs review/)
   })
 
   it('shows the third-party empty-state sentence for a player with no matches', async () => {

@@ -63,7 +63,10 @@ below carries the raw `CaptureStatus` value verbatim, including all three status
 and `quarantined`, which FR-026 keeps out of both the archived and the lost columns — both
 `match_row_json` and `_match_detail_json` carry the identical `capture_status`/
 `capture_deadline_at` pair (T070e, FR-027: per match, not only per list), so the client reads one
-vocabulary from either route rather than two.
+vocabulary from either route rather than two. **Unmodified is a statement about the value, not
+about who is served it (T726):** `GET /api/players/{profile_id}/matches` serves the pair as `null`
+unless the caller holds an active link on that profile (`match_row_json`'s `capture_visible`), the
+rule the detail route already applies through `owner_profile_ids`.
 
 **Cursor validation.** `MatchesRepository._decode_cursor` raises `ValueError` for any cursor this
 repository did not itself issue — malformed, tampered, or built for a different shape — which this
@@ -868,7 +871,7 @@ def _participant_json(participant: MatchParticipant) -> dict[str, Any]:
     }
 
 
-def match_row_json(row: MatchListRow) -> dict[str, Any]:
+def match_row_json(row: MatchListRow, *, capture_visible: bool) -> dict[str, Any]:
     """Public (no leading underscore): `routers/players.py`'s `GET /api/players/{profile_id}/
     matches` (T328) imports this directly rather than restating it, so the two routes can never
     drift apart on the one shape `contracts/http-api.md` promises is identical — see
@@ -879,7 +882,13 @@ def match_row_json(row: MatchListRow) -> dict[str, Any]:
     `MatchListRow` already carries all three (T423) but nobody read them onto the wire until now.
     `participants` is `opponents`'s sibling, not a replacement for it (`MatchesRepository`'s own
     module docstring): every field already served is unchanged, so a client built against the
-    narrower shape keeps working."""
+    narrower shape keeps working.
+
+    **T726.** `capture_visible` is required, not defaulted: a caller of this function decides, in
+    its own text, whether the archival state of this row is the caller's to read. `False` serves
+    `capture_status` and `capture_deadline_at` as `null` — the badge's own empty state — whatever
+    the row carries, so a third party's list discloses nothing of another player's archival state
+    or objection. `GET /api/matches` is owner-scoped (`_owned_active_link`) and passes `True`."""
     return {
         "game_id": row.game_id,
         "started_at": row.started_at.isoformat() if row.started_at is not None else None,
@@ -899,9 +908,13 @@ def match_row_json(row: MatchListRow) -> dict[str, Any]:
         "participants": [_participant_json(participant) for participant in row.participants],
         # Every raw `CaptureStatus` value, unmodified — the badge's collapse is a front-end
         # concern (module docstring).
-        "capture_status": row.capture_status.value if row.capture_status is not None else None,
+        "capture_status": (
+            row.capture_status.value if capture_visible and row.capture_status is not None else None
+        ),
         "capture_deadline_at": (
-            row.capture_deadline_at.isoformat() if row.capture_deadline_at is not None else None
+            row.capture_deadline_at.isoformat()
+            if capture_visible and row.capture_deadline_at is not None
+            else None
         ),
     }
 
@@ -1011,7 +1024,7 @@ async def list_matches(
         # T409: the route's own `profile_id` is companion's required query parameter.
         await enrich_colours(db_session, [profile_id], [row.game_id for row in page.matches])
         return {
-            "matches": [match_row_json(row) for row in page.matches],
+            "matches": [match_row_json(row, capture_visible=True) for row in page.matches],
             "next_cursor": page.next_cursor,
         }
 

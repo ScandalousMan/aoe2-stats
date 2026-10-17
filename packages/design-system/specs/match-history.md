@@ -542,14 +542,14 @@ being viewed beyond having opened their profile — the empty state is a fact ab
 once, the same discipline `profile-summary.md` §11.2 already applies to its own reused-verbatim empty
 case.
 
-**`CaptureStateBadge` inside a third-party row shows that player's own archival state with this
-service, exactly as `match_row_json` reports it — unmodified, the same "capture state travels intact"
-rule §§1–10 already state for the caller's own list.** This is not a new disclosure this task
-introduces: `GET /api/players/{profile_id}/matches` (T328) already answers with the identical field,
-for any profile. A `subject="other"` list never passes `archivalObjected` (`capture-state-badge.md`
-§4), the caller's own objection: an objecting player's `pending` row reads "Still catchable" here.
-There is no `DownloadAction` on `MatchRow` at any point (§2: `MatchDetailPanel` only, the caller's
-own point of view per §11.1) — a third party's badge is informational, never an action on offer.
+**A third party's row shows no `CaptureStateBadge` (T726, decided 2026-10-13).**
+`GET /api/players/{profile_id}/matches` serves `capture_status` and `capture_deadline_at` as `null`
+unless the caller holds an active link on that profile, the rule §11.1 point 2 states for the
+detail route, so the row takes the badge's own empty state (`capture-state-badge.md` §6): no pill,
+no placeholder, nothing of another player's archival state or objection. The owner who opens their
+own profile by this route is served the state, and the page passes `GET /api/me`'s
+`archival_objected` when the profile viewed is one of that response's actively linked profiles;
+`MatchList` forwards it whatever its `subject`, which changes the two strings above, never the badge.
 
 ### 11.4 States §5 did not need to name
 
