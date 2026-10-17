@@ -1541,7 +1541,7 @@ destroys its predecessor.
 **Purpose**: the living documents that can only be written once the rest is true, the end-to-end
 quickstart run, and the lint. `/speckit-implement` stops here when T670 exits 0.
 
-- [ ] T667 [P] Update `docs/risks.md`: correct R3's fallback list, which names the fast alternative
+- [x] T667 [P] Update `docs/risks.md`: correct R3's fallback list, which names the fast alternative
       parser as a fallback although [research.md](./research.md) **D1** measured that it cannot open
       the current build; and add a row for the dependency class this feature creates —
       community-maintained knowledge sources that may stop, one of which already has, plus the
