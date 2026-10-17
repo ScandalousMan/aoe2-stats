@@ -1231,7 +1231,8 @@ scenarios run in the keyboard and reduced-motion suites only, the two T681 names
 and touch-footprint suites already measure the flag trigger at rest on those routes. **Item 13 stays
 partly met** until T682's row of the same register is deleted: the `objected` `ArchivalControl` and
 `DataExportPanel`'s `ready` link are still not rendered, and T682 states the final verdict. The run
-that shows T681's part: RUN-PENDING.
+that shows T681's part is PR #163's run [39061381397](https://github.com/ScandalousMan/aoe2-stats/actions/runs/39061381397) at `b2da596e`, which also carries T682: no run on
+T681's own head completed, each being cancelled by the next push.
 
 **Widened, 2026-10-17 (T682).** T682's own row of `packages/design-system/specs/README.md`'s
 "Verification-coverage gap register" is deleted, and the
@@ -1270,9 +1271,10 @@ loading states (`ProfileSummary`'s `Skeleton`, the erase button's `Spinner`) run
 (also T744). Of the empty branches, the at-rest route scenarios render only the empty match and favourites lists, and
 a refused non-success state ("Try requesting analysis") is in the inventory. The tooltip scenarios
 run in the keyboard and reduced-motion suites only, because the focus-visibility and touch-footprint suites already
-measure the flag trigger at rest. Local run only, macOS Chromium, until the run named here backs it: route-keyboard 90,
-route-focus-visibility 82, route-touch-footprint 82, route-reduced-motion 94, `tests/visual/fixtures`
-190, all passed. The run that shows T681's and T682's parts together: RUN-PENDING.
+measure the flag trigger at rest. The run that shows T681's and T682's parts together is PR #163's run
+[39061381397](https://github.com/ScandalousMan/aoe2-stats/actions/runs/39061381397) at `b2da596e`, green in every job: its `visual` job's route-level step ran 560 tests with none
+skipped, the 22 of `tests/visual/app-routes.spec.ts`, route-keyboard 90, route-focus-visibility 82, route-touch-footprint 82,
+route-reduced-motion 94 and the 190 under `tests/visual/fixtures/`, the same counts a local macOS Chromium run reported.
 
 ### Item 15's general-reviewer half — outstanding, no pull request covers this head
 
