@@ -96,7 +96,7 @@ decided on 2026-10-17 (T709a): the analysis route appends the display names of a
 ids, resolved by `names.py` in `apps/analyzer` from the knowledge snapshot the document's own identity
 names. It is a lookup in package data: no fetch, no recording parse, no engine, no capture-budget
 name, and the stored bytes untouched. That module is request-path code held to the boundary test,
-which grants it seven named symbols (six of `aoe2stats_knowledge`, and the truth register) and nothing else. No network at build, test
+which grants it eight named symbols (seven of `aoe2stats_knowledge`, and the truth register) and nothing else. No network at build, test
 or run time. No default, average or neighbouring value, ever.
 
 **Scale/Scope**: 6 user stories, 53 functional requirements, 14 success criteria. One new package,

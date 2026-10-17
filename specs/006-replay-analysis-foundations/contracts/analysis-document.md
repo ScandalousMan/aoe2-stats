@@ -144,7 +144,10 @@ closing brace. A reader that ignores unknown keys, as the web reader does, is un
   "building": { "70": "House" },
   "provenance": {
     "names.snapshot.describes_build": { "tier": "derived", "method": "knowledge-snapshot.name@1", "inputs": [] },
-    "names.technology": { "tier": "derived", "method": "knowledge-snapshot.name@1", "inputs": ["participant.researches.technology_id", "participant.age_up_commands"] }
+    "names.snapshot.digest": { "tier": "derived", "method": "knowledge-snapshot.name@1", "inputs": [] },
+    "names.technology": { "tier": "derived", "method": "knowledge-snapshot.name@1", "inputs": ["participant.researches.technology_id", "participant.age_up_commands"] },
+    "names.unit": { "tier": "derived", "method": "knowledge-snapshot.name@1", "inputs": ["participant.trainings.unit_id"] },
+    "names.building": { "tier": "derived", "method": "knowledge-snapshot.name@1", "inputs": ["participant.builds.building_id"] }
   }
 }
 ```
@@ -163,8 +166,8 @@ closing brace. A reader that ignores unknown keys, as the web reader does, is un
   document is served, in `apps/analyzer`'s `names.py`, not when it is analysed: writing names into
   the document would change its bytes and its identity digest (FR-042). It is a read of package
   data - no fetch, no recording parse, no engine, no capture-budget name - and the boundary test
-  holds it to that, granting it seven named symbols (six of `aoe2stats_knowledge`, and the register itself, which the
-  block's provenance reads) and no other import of the knowledge or truth packages (plan.md, Constraints).
+  holds it to that, granting it eight named symbols (seven of `aoe2stats_knowledge`, and the register itself, which
+  the block's provenance reads) and no other import of the knowledge or truth packages (plan.md, Constraints).
 - **The served leaves are published data (FR-006, FR-007).** Each has a register entry, in
   `register.toml`: `names.snapshot.describes_build`, `names.snapshot.digest`, `names.technology`,
   `names.unit` and `names.building`, tier `derived`, requiring the knowledge field `name`, the

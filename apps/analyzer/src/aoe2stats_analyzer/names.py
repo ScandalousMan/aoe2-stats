@@ -23,7 +23,8 @@ that already carries `NAMES_KEY` are all returned as they were.
 **An id the snapshot does not name stays unresolved.** It is left out of the block, and the page
 renders the identifier as it did before (003 FR-043a: "a confident wrong name is worse than a bare
 id"). Nothing is substituted for it. Resolution is `query.name`, so what counts as unresolved is
-that function's own verdict (`query.UNRESOLVED_SOURCE`), not a second opinion kept here.
+that function's own verdict (`query.UNRESOLVED_SOURCE`, imported by name), not a second opinion
+kept here.
 
 **On the API's request path, by decision (FR-049, T709a).** Names are resolved when the document is
 served, not when it is analysed, and this module is request-path code
@@ -34,8 +35,9 @@ reads from package data. Nothing is fetched, no recording or object is read beyo
 route already holds, no engine is loaded and none of the capture budget is touched
 (`apps/api/tests/test_engine_isolation.py` runs it and asserts as much). The rule that keeps the
 knowledge package off the request path is amended for this module alone: the guard grants it the
-seven symbols imported above by name (six of the knowledge package and the truth `REGISTER`, which
-the block's provenance reads), and any other import of either package from here fails it. The API
+eight symbols imported above by name (seven of the knowledge package, and the truth `REGISTER`,
+which the block's provenance reads), and any other import of either package from here fails it. A
+whole module is never granted: `query.cost` called from here fails the guard. The API
 itself still imports no knowledge package; that import lives here, behind the same seam
 `staleness.py` uses.
 
@@ -51,8 +53,11 @@ import json
 from collections.abc import Iterable, Mapping
 from typing import Any, Final
 
+from aoe2stats_analyzer.methods import NAMES_METHOD_ID, NAMES_METHOD_VERSION
 from aoe2stats_core.truth.register import REGISTER
-from aoe2stats_knowledge import gaps, query
+from aoe2stats_knowledge.gaps import KnowledgeGap
+from aoe2stats_knowledge.query import UNRESOLVED_SOURCE, EntityRef
+from aoe2stats_knowledge.query import name as query_name
 from aoe2stats_knowledge.snapshot import (
     Snapshot,
     SnapshotError,
@@ -60,7 +65,7 @@ from aoe2stats_knowledge.snapshot import (
     pinned_snapshot,
 )
 
-__all__ = ["FAULT_ERRORS", "METHOD_ID", "METHOD_VERSION", "NAMES_KEY", "with_names"]
+__all__ = ["FAULT_ERRORS", "NAMES_KEY", "with_names"]
 
 #: The top-level key the block is served under. Not a field of the stored document: it is absent
 #: from every stored object, and a stored object that has it is served as it is.
@@ -73,12 +78,6 @@ FAULT_ERRORS: Final[tuple[type[Exception], ...]] = (SnapshotError, OSError)
 
 #: The four fields a snapshot is named by in an identity's `knowledge` component.
 _SNAPSHOT_FIELDS: Final[tuple[str, ...]] = ("source", "source_version", "describes_build", "digest")
-
-#: The method behind every `names.` datum (FR-009), as `extract._METHODS` assigns it: that table
-#: reads these two constants, so the method a block records and the one the register's publication
-#: gate resolves are one value and not two spellings.
-METHOD_ID: Final[str] = "knowledge-snapshot.name"
-METHOD_VERSION: Final[str] = "1"
 
 #: The register datum behind each kind's record, and behind the two fields of `snapshot`.
 _KIND_DATUM: Final[Mapping[str, str]] = {
@@ -183,11 +182,8 @@ def _block(snapshot: Snapshot, document: Mapping[str, Any]) -> dict[str, Any]:
     with pinned_snapshot(snapshot):
         for kind, ids in _ids(document).items():
             for entity_id in _sorted_ids(ids):
-                answer = query.name(query.EntityRef(kind=kind, id=entity_id, build=build))
-                if (
-                    isinstance(answer, gaps.KnowledgeGap)
-                    or answer.source == query.UNRESOLVED_SOURCE
-                ):
+                answer = query_name(EntityRef(kind=kind, id=entity_id, build=build))
+                if isinstance(answer, KnowledgeGap) or answer.source == UNRESOLVED_SOURCE:
                     continue
                 resolved[kind][entity_id] = answer.value
     return {
@@ -215,7 +211,7 @@ def _provenance(resolved: Mapping[str, Mapping[str, str]]) -> dict[str, dict[str
             raise ValueError(f"{datum} is non-determinable and cannot be served")
         provenance[datum] = {
             "tier": entry.tier.value,
-            "method": f"{METHOD_ID}@{METHOD_VERSION}",
+            "method": f"{NAMES_METHOD_ID}@{NAMES_METHOD_VERSION}",
             "inputs": list(entry.depends_on),
         }
     return provenance

@@ -48,8 +48,7 @@ from datetime import datetime
 from typing import Any, Protocol, cast
 
 from aoe2stats_analyzer.canonical import WALL_CLOCK_FIELDS, canonical_bytes, compared_body
-from aoe2stats_analyzer.names import METHOD_ID as NAMES_METHOD_ID
-from aoe2stats_analyzer.names import METHOD_VERSION as NAMES_METHOD_VERSION
+from aoe2stats_analyzer.methods import NAMES_METHOD_ID, NAMES_METHOD_VERSION
 from aoe2stats_core.replay.analysis import AnalysisExtractor, MatchTimeline, ReplayExtractor
 from aoe2stats_core.replay.events import (
     CanonicalEvent,

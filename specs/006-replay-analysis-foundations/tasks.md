@@ -2577,6 +2577,22 @@ carries what T673's dry run read.
       `load_resolvable_snapshots` fails the demoted-snapshot test; a `names.py` import that loads
       `aoe2stats_providers` fails the isolation check; a block whose snapshot digest differs from the
       identity's renders no name. **Contrast**: the T709 tests unchanged
+- [x] T709b Close #160's re-review notes (`reviewer` APPROVE 2026-10-17 on T709a, three
+      non-blocking notes, none live). **Grant by symbol, not module** (N1): two of the seven grants
+      to `apps/analyzer/src/aoe2stats_analyzer/names.py` in
+      `tests/architecture/test_feature_006_boundaries.py` are whole modules (`query`, `gaps`), which
+      reach every attribute the guard's own comment refuses a plain `import` for. Import the
+      symbols `names.py` uses by name (`query.name`, `query.EntityRef`, the unresolved-source constant,
+      `gaps.KnowledgeGap`) and grant those instead, so every sentence that says "symbols" is
+      true; correct the count wherever it is stated. **Dependency direction** (N2):
+      `apps/analyzer/src/aoe2stats_analyzer/extract.py` imports the names method id and version
+      from `names.py` at module scope, so the analysis path loads request-path code for two
+      constants; move them to a module both already depend on. **Contract example** (N3): the
+      names section of `specs/006-replay-analysis-foundations/contracts/analysis-document.md`
+      shows a `provenance` covering two of the five data its block holds, against the rule it
+      states; make the example complete. **Plants, each red before**: a `names.py` calling a
+      `query` function it was not granted (for instance `query.cost`) fails check 2, which passes
+      today. **Contrast**: the T709 and T709a tests unchanged
 - [x] T707a Close #126's review (`reviewer` REJECT 2026-10-08 on T707). **Frozen prose first**:
       `packages/knowledge/snapshots/aoe2techtree-185872/effects.toml`'s header is covered by the
       digest and says the snapshot resolves the labels an analysis shows and a

@@ -475,3 +475,22 @@ def test_the_stored_documents_own_provenance_is_untouched_and_still_validates() 
     assert served["provenance"] == json.loads(stored)["provenance"]
     assert not any(datum.startswith("names.") for datum in json.loads(stored)["provenance"])
     assert {k: v for k, v in served.items() if k != NAMES_KEY} == json.loads(stored)
+
+
+def test_the_contracts_example_block_is_complete_against_its_own_rules() -> None:
+    """T709b: the example in `contracts/analysis-document.md` is a block the served-shape check
+    accepts - a provenance entry for every datum it holds and none for a datum it lacks."""
+    contract = (
+        _REPO_ROOT
+        / "specs"
+        / "006-replay-analysis-foundations"
+        / "contracts"
+        / "analysis-document.md"
+    ).read_text(encoding="utf-8")
+    start = contract.index('"knowledge_names": {')
+    example = contract[start : contract.index("```", start)]
+
+    served = ("{" + example.strip() + "}").encode("utf-8")
+
+    assert set(json.loads(served)[NAMES_KEY]["provenance"]) == _NAMES_DATA
+    assert _served_shape_violations(served) == []

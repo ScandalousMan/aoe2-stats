@@ -20,7 +20,7 @@ anything. A baseline difference fails with the offending entry named. The checks
 2. No module on the request path (`api/`, `apps/api/src`, the analyzer's request/lease/dedupe/
    admission/run/staleness/names code, and the ingester's capture code) imports
    `aoe2stats_knowledge` or `aoe2stats_core.truth`, with one grant (`_KNOWLEDGE_GRANTS`, T709a):
-   `names.py` imports the seven named symbols it uses and nothing else from either package. The
+   `names.py` imports the eight named symbols it uses and nothing else from either package. The
    analyzer's `extract.py` is the parse step itself, off the request/lease path, and is
    deliberately not in the set; `staleness.py` reaches `extract.current_identity_digest` for the
    API's `stale` flag (check 2a).
@@ -177,8 +177,10 @@ _KNOWLEDGE_GRANTS: Mapping[str, frozenset[str]] = {
     "apps/analyzer/src/aoe2stats_analyzer/names.py": frozenset(
         {
             "aoe2stats_core.truth.register.REGISTER",
-            "aoe2stats_knowledge.gaps",
-            "aoe2stats_knowledge.query",
+            "aoe2stats_knowledge.gaps.KnowledgeGap",
+            "aoe2stats_knowledge.query.EntityRef",
+            "aoe2stats_knowledge.query.UNRESOLVED_SOURCE",
+            "aoe2stats_knowledge.query.name",
             "aoe2stats_knowledge.snapshot.Snapshot",
             "aoe2stats_knowledge.snapshot.SnapshotError",
             "aoe2stats_knowledge.snapshot.load_all_snapshots",
@@ -864,7 +866,10 @@ def test_the_granted_knowledge_symbols_pass_and_any_other_knowledge_import_fails
     `names.py` and nowhere else, and a second knowledge import added to it is refused - however it
     is spelled."""
     granted = (
-        "from aoe2stats_knowledge import gaps, query\n"
+        "from aoe2stats_knowledge.gaps import KnowledgeGap\n"
+        "from aoe2stats_knowledge.query import UNRESOLVED_SOURCE, EntityRef\n"
+        "from aoe2stats_knowledge.query import name as query_name\n"
+        "from aoe2stats_core.truth.register import REGISTER\n"
         "from aoe2stats_knowledge.snapshot import (\n"
         "    Snapshot,\n    SnapshotError,\n    load_all_snapshots,\n    pinned_snapshot,\n)\n"
     )
@@ -885,7 +890,15 @@ def test_the_granted_knowledge_symbols_pass_and_any_other_knowledge_import_fails
             "aoe2stats_knowledge.snapshot.load_resolvable_snapshots",
         ),
         ("from aoe2stats_knowledge import effects\n", "aoe2stats_knowledge.effects"),
-        ("from aoe2stats_knowledge.query import name\n", "aoe2stats_knowledge.query.name"),
+        ("from aoe2stats_knowledge.query import cost\n", "aoe2stats_knowledge.query.cost"),
+        ("from aoe2stats_knowledge.query import cost as c\n", "aoe2stats_knowledge.query.cost"),
+        # A whole module is not granted: it would reach every attribute, `query.cost` included.
+        ("from aoe2stats_knowledge import query\n", "aoe2stats_knowledge.query"),
+        ("from aoe2stats_knowledge import gaps\n", "aoe2stats_knowledge.gaps"),
+        (
+            "from aoe2stats_knowledge.gaps import compute_gaps\n",
+            "aoe2stats_knowledge.gaps.compute_gaps",
+        ),
         ("from aoe2stats_knowledge.snapshot import *\n", "aoe2stats_knowledge.snapshot.*"),
         ("from aoe2stats_core.truth import tiers\n", "aoe2stats_core.truth.tiers"),
         ("import aoe2stats_knowledge.snapshot\n", "aoe2stats_knowledge.snapshot"),
@@ -939,3 +952,34 @@ def test_vocabulary_definitions_flag_a_restated_003_behaviour() -> None:
     assert vocabulary_definitions("class RateLimiter: ...\n") == ["RateLimiter"]
     assert vocabulary_definitions("class Retention: ...\n") == ["Retention"]
     assert vocabulary_definitions("def lookup(): ...\n") == []
+
+
+def test_a_query_function_names_py_was_not_granted_fails_check_2_while_its_own_ones_pass() -> None:
+    """T709b, the plant: `query.cost` called from `names.py` is the shape the module-wide grant let
+    through. Imported by name it is refused, and the three `query` symbols `names.py` really uses
+    still pass."""
+    granted_use = (
+        "from aoe2stats_knowledge.query import UNRESOLVED_SOURCE, EntityRef\n"
+        "from aoe2stats_knowledge.query import name as query_name\n"
+    )
+    assert new_package_imports_outside_grant(_NAMES, granted_use, _KNOWLEDGE_GRANTS) == []
+    for extra in (
+        "from aoe2stats_knowledge.query import cost\n",
+        "from aoe2stats_knowledge import query\nx = query.cost\n",
+    ):
+        assert new_package_imports_outside_grant(_NAMES, granted_use + extra, _KNOWLEDGE_GRANTS)
+
+
+def test_the_analysis_path_does_not_load_the_request_path_for_the_names_method() -> None:
+    """T709b: `extract.py` and `names.py` share the names method through `methods.py`, which
+    imports nothing of ours. `extract.py` does not import `names.py` (the analysis path loads no
+    request-path code for two constants) and `methods.py` adds no knowledge, truth or request-path
+    import."""
+    extract = (_ANALYZER_SRC / "extract.py").read_text(encoding="utf-8")
+    methods = (_ANALYZER_SRC / "methods.py").read_text(encoding="utf-8")
+    names = (_ANALYZER_SRC / "names.py").read_text(encoding="utf-8")
+
+    assert "aoe2stats_analyzer.names" not in imports_of(extract, ("aoe2stats_analyzer",))
+    assert "aoe2stats_analyzer.methods" in imports_of(extract, ("aoe2stats_analyzer",))
+    assert "aoe2stats_analyzer.methods" in imports_of(names, ("aoe2stats_analyzer",))
+    assert not [m for m in _imported_modules(ast.parse(methods)) if m.startswith("aoe2stats")]
