@@ -2595,6 +2595,39 @@ carries what T673's dry run read.
       states; make the example complete. **Plants, each red before**: a `names.py` calling a
       `query` function it was not granted (for instance `query.cost`) fails check 2, which passes
       today. **Contrast**: the T709 and T709a tests unchanged
+- [x] T709c Serve the snapshot names as labels, not as vendored markup (filed 2026-10-17 after
+      #160 merged; ported from the superseded #159, then made precise after review). The vendored
+      names carry the source's line-break markup (`"Town<br>\nCenter"`, `"Circum-<br>\nnavigation"`,
+      `"Counter- weights"`; over 300 per snapshot), and `apps/analyzer/src/aoe2stats_analyzer/names.py`
+      served them as stored, so the page printed `<br>` literally. Clean the label where the block
+      is built, never in the frozen snapshot data; `query.name` keeps returning the vendored value.
+      **The rule**: a hyphen directly after a letter, followed by a run of line-break tags and
+      whitespace and then a lower-case letter (any Unicode lower-case letter), joins the word, the
+      hyphen and the whole run going (`Circum-<br>\nnavigation` is `Circumnavigation`); the same
+      hyphen followed by such a run and then any other character keeps the hyphen and drops the run
+      with no space (`Man-at-<br>\nArms` is `Man-at-Arms`); a hyphen not directly after a letter is
+      left alone (`Foo - bar` stays); every other break becomes one space, whitespace collapses,
+      the label is trimmed; a label with no letter or digit left is
+      not served, as an unresolved id is not. The served value changes, so the names method is
+      `knowledge-snapshot.name@2` (not yet released when the rule was made precise, so it stays),
+      and the rule is stated in the `method` text of `names.technology`, `names.unit` and
+      `names.building` in `packages/core/src/aoe2stats_core/truth/register.toml` and in the
+      contract's names section. **Tests, each red before**: building 109 is served as
+      `Town Center` and a real recording's labels carry no markup; a sweep over every name in
+      every snapshot finds no `<`, no hyphen-after-a-letter-then-space, no stray whitespace and no
+      empty label; markup-only names (`<br>`, ` <br/> `, `-<br>`) are not served; `clean_label`
+      cases on the deciding clause (`Man-at-<br>\nArms`, `Anti-<br>\nCavalry`, `Foo - bar`,
+      doubled breaks, and the Unicode cases `Anti-<br>\nécole` and `Anti- Élite`) fail if the
+      lower-case lookahead or the after-a-letter condition is removed. **Guards**: the set of names
+      across every snapshot the join applies to equals
+      exactly `{"Circum-<br>\nnavigation", "Counter- weights"}`, decided by the code's own
+      `_unwrap` and not by a second pattern (a planted `Anti-<br>\nécole` fails it), and its
+      message says a new entry needs a person to confirm it is a word-wrap and not a compound
+      (`Anti-<br>\ncavalry`); a name that cleans to nothing is absent from the block, its kind's
+      datum is absent from the block's
+      `provenance`, and the served-shape rules 1 to 4 find no violation. **Contrast**: compound
+      hyphens stay (`Double-Bit Axe`, `Two-Handed Swordsman`, `Man-at-Arms`), the same id with a
+      normal name is served with its datum, and the snapshot itself still returns the vendored name
 - [x] T707a Close #126's review (`reviewer` REJECT 2026-10-08 on T707). **Frozen prose first**:
       `packages/knowledge/snapshots/aoe2techtree-185872/effects.toml`'s header is covered by the
       digest and says the snapshot resolves the labels an analysis shows and a

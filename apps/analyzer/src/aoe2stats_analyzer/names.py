@@ -41,6 +41,13 @@ whole module is never granted: `query.cost` called from here fails the guard. Th
 itself still imports no knowledge package; that import lives here, behind the same seam
 `staleness.py` uses.
 
+**A served label is cleaned; the snapshot is not.** The vendored names carry the source's line-break
+markup (building 109 is `"Town<br>\nCenter"`, technology 1404 `"Circum-<br>\nnavigation"`,
+technology 454 `"Counter- weights"`), and the page renders text escaped, so a raw value would show a
+literal `<br>`. `clean_label` turns the value into the label a reader would write, in the block
+only: `query.name` still returns the vendored value, and the snapshots, which are digested and
+frozen, are never edited. A label that is nothing once cleaned is left out like an unresolved id.
+
 **The served leaves are published data (FR-006, FR-007).** The block's leaves have register entries
 (`names.*` in `register.toml`, tier derived) and the block carries its own `provenance` (tier,
 method and inputs per datum present, read from the register), both checked over the served bytes and
@@ -50,6 +57,7 @@ not only over the stored body (`apps/analyzer/tests/test_names.py`).
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Iterable, Mapping
 from typing import Any, Final
 
@@ -65,7 +73,7 @@ from aoe2stats_knowledge.snapshot import (
     pinned_snapshot,
 )
 
-__all__ = ["FAULT_ERRORS", "NAMES_KEY", "with_names"]
+__all__ = ["FAULT_ERRORS", "NAMES_KEY", "clean_label", "with_names"]
 
 #: The top-level key the block is served under. Not a field of the stored document: it is absent
 #: from every stored object, and a stored object that has it is served as it is.
@@ -89,6 +97,35 @@ _SNAPSHOT_DATA: Final[tuple[str, ...]] = ("names.snapshot.describes_build", "nam
 
 #: The entity kinds a page shows a name for, as `rules.json` keys them.
 _KINDS: Final[tuple[str, ...]] = ("technology", "unit", "building")
+
+
+#: A hyphen directly after a letter and followed by a break (a `<br>`, whitespace, or a run of
+#: both) and then another character. The next character decides it (`_unwrap`): a lower-case letter
+#: continues one word (`Circum-<br>\nnavigation`, `Counter- weights`), so the hyphen and the break
+#: go; anything else is a compound's hyphen (`Man-at-<br>\nArms`) and keeps the hyphen, dropping the
+#: break with no space. A hyphen that does not follow a letter (`Foo - bar`) is never matched.
+_WRAPPED_HYPHEN: Final[re.Pattern[str]] = re.compile(r"(?<=[^\W\d_])-(?:\s|(?i:<br\s*/?>))+")
+#: Any other line break is a space between two words.
+_LINE_BREAK: Final[re.Pattern[str]] = re.compile(r"<br\s*/?>", re.IGNORECASE)
+_WHITESPACE: Final[re.Pattern[str]] = re.compile(r"\s+")
+
+
+def _unwrap(match: re.Match[str]) -> str:
+    following = match.string[match.end() : match.end() + 1]
+    return "" if following.islower() else "-"
+
+
+def clean_label(vendored: str) -> str | None:
+    """The label a reader would write for a vendored name (the rule `register.toml` states for
+    `names.*`). A hyphen directly after a letter and followed by a break then a lower-case letter
+    joins the word; followed by a break then any other character it stays, with the break dropped
+    and no space; a hyphen not directly after a letter is left alone. Every other break becomes a
+    space, whitespace collapses and the label is trimmed. `None` when no letter or digit is left
+    (markup alone, or around a lone hyphen), so that the caller leaves the id unresolved."""
+    label = _WRAPPED_HYPHEN.sub(_unwrap, vendored)
+    label = _LINE_BREAK.sub(" ", label)
+    label = _WHITESPACE.sub(" ", label).strip()
+    return label if any(character.isalnum() for character in label) else None
 
 
 def with_names(stored: bytes) -> bytes:
@@ -185,7 +222,9 @@ def _block(snapshot: Snapshot, document: Mapping[str, Any]) -> dict[str, Any]:
                 answer = query_name(EntityRef(kind=kind, id=entity_id, build=build))
                 if isinstance(answer, KnowledgeGap) or answer.source == UNRESOLVED_SOURCE:
                     continue
-                resolved[kind][entity_id] = answer.value
+                label = clean_label(answer.value)
+                if label is not None:
+                    resolved[kind][entity_id] = label
     return {
         "snapshot": {"describes_build": build, "digest": snapshot.identity.digest},
         **resolved,

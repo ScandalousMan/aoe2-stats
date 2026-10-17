@@ -12,9 +12,11 @@ names exactly the identity it is about. Both promoted snapshots are used (builds
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import re
 from datetime import UTC, datetime
+from importlib import resources
 from pathlib import Path
 from typing import Any
 
@@ -25,13 +27,22 @@ from tests.snapshot_refresh import (
     isolate_snapshot_root,
 )
 
+from aoe2stats_analyzer import names as names_module
 from aoe2stats_analyzer.canonical import canonical_bytes
 from aoe2stats_analyzer.extract import _method_for, build_document
-from aoe2stats_analyzer.names import NAMES_KEY, with_names
+from aoe2stats_analyzer.names import (
+    _WRAPPED_HYPHEN,
+    NAMES_KEY,
+    _unwrap,
+    clean_label,
+    with_names,
+)
 from aoe2stats_core.truth.register import REGISTER
 from aoe2stats_core.truth.validate import DocumentInvalid, present_data, validate
 from aoe2stats_knowledge import snapshot as snapshot_module
 from aoe2stats_knowledge.gaps import KnowledgeGap
+from aoe2stats_knowledge.query import EntityRef
+from aoe2stats_knowledge.query import name as query_name
 from aoe2stats_knowledge.snapshot import load_all_snapshots, load_resolvable_snapshots
 from aoe2stats_replay_engine.aoe2rec import Aoe2RecExtractor
 
@@ -493,4 +504,236 @@ def test_the_contracts_example_block_is_complete_against_its_own_rules() -> None
     served = ("{" + example.strip() + "}").encode("utf-8")
 
     assert set(json.loads(served)[NAMES_KEY]["provenance"]) == _NAMES_DATA
+    assert _served_shape_violations(served) == []
+
+
+# --- the served label is the vendored name cleaned of its line-break markup ----------------------
+
+_BUILD_WITH_MARKUP = 185872
+
+
+def _document_naming(
+    *,
+    buildings: tuple[int, ...] = (),
+    technologies: tuple[int, ...] = (),
+    units: tuple[int, ...] = (),
+) -> dict[str, Any]:
+    document = _document(_knowledge_identity(_BUILD_WITH_MARKUP))
+    (participant,) = document["participants"]
+    participant["builds"] = [{"building_id": i, "world_time_ms": 1} for i in buildings]
+    participant["researches"] = [{"technology_id": i, "world_time_ms": 1} for i in technologies]
+    participant["trainings"] = [
+        {"unit_id": i, "amount": 1, "building_id": 12, "world_time_ms": 1} for i in units
+    ]
+    participant["age_up_commands"] = {}
+    return document
+
+
+def test_a_vendored_name_with_markup_is_served_as_a_clean_label() -> None:
+    """Building 109 is `"Town<br>\\nCenter"` in the snapshot, technology 1404
+    `"Circum-<br>\\nnavigation"` and technology 454 `"Counter- weights"`; a compound's hyphen
+    stays."""
+    document = _document_naming(
+        buildings=(109,), technologies=(1404, 454, 202, 217, 222), units=(473, 75)
+    )
+
+    names = _served_names(with_names(_stored(document)))
+
+    assert names["building"]["109"] == "Town Center"
+    assert names["technology"] == {
+        "202": "Double-Bit Axe",
+        "217": "Two-Handed Swordsman",
+        "222": "Man-at-Arms",
+        "454": "Counterweights",
+        "1404": "Circumnavigation",
+    }
+    assert names["unit"] == {"473": "Two-Handed Swordsman", "75": "Man-at-Arms"}
+
+
+def test_the_snapshot_itself_still_returns_the_vendored_name() -> None:
+    """The cleaning is the block's: `query.name` and the frozen snapshot are untouched."""
+    answer = query_name(EntityRef(kind="building", id="109", build=_BUILD_WITH_MARKUP))
+
+    assert not isinstance(answer, KnowledgeGap)
+    assert answer.value == "Town<br>\nCenter"
+
+
+def test_no_label_served_for_a_real_recording_carries_markup() -> None:
+    document = build_document(
+        Aoe2RecExtractor(max_raw_bytes=_MAX_RAW_BYTES),
+        (_REPLAYS / "AgeIIDE_Replay_511523321.zip").read_bytes(),
+        game_id=511_523_321,
+        object_key="retained-recordings/511523321/1.zip",
+        zip_sha256="ab" * 32,
+        extracted_at=datetime(2026, 10, 17, 12, 0, tzinfo=UTC),
+    )
+
+    names = _served_names(with_names(canonical_bytes(document)))
+
+    assert names["technology"]["202"] == "Double-Bit Axe"
+    labels = [
+        label for kind in ("technology", "unit", "building") for label in names[kind].values()
+    ]
+    assert labels
+    assert [label for label in labels if "<" in label or ">" in label] == []
+
+
+def _every_vendored_name() -> list[tuple[str, str, str, str]]:
+    """(snapshot directory, kind, id, name) for every entity of every installed snapshot."""
+    found = []
+    for snapshot in load_all_snapshots():
+        rules = json.loads(
+            resources.files("aoe2stats_knowledge")
+            .joinpath("snapshots", snapshot.directory, "rules.json")
+            .read_text(encoding="utf-8")
+        )
+        for kind, records in rules.get("entities", {}).items():
+            for entity_id, record in records.items():
+                if record.get("name"):
+                    found.append((snapshot.directory, kind, entity_id, record["name"]))
+    return found
+
+
+def test_the_sweep_reaches_names_with_markup_in_more_than_one_snapshot() -> None:
+    """The sweep below proves nothing over a table with no markup in it."""
+    with_markup = {d for d, _, _, name in _every_vendored_name() if "<br" in name.lower()}
+
+    assert len(with_markup) >= 2
+
+
+#: A hyphen right after a letter and then a space is a break left behind (`Counter- weights`). A
+#: spaced dash between words (`Foo - bar`) is not one: its hyphen follows a space.
+_DANGLING_HYPHEN = re.compile(r"[^\W\d_]-\s")
+
+
+def test_every_vendored_name_of_every_snapshot_cleans_to_a_plain_label() -> None:
+    problems = []
+    for directory, kind, entity_id, vendored in _every_vendored_name():
+        label = clean_label(vendored)
+        if (
+            label is None
+            or "<" in label
+            or ">" in label
+            or _DANGLING_HYPHEN.search(label)
+            or label != label.strip()
+            or "  " in label
+            or "\n" in label
+        ):
+            problems.append((directory, kind, entity_id, vendored, label))
+    assert problems == []
+
+
+@pytest.mark.parametrize("markup", ["<br>", " <br/> ", "-<br>", "<BR />", "", "  \n "])
+def test_a_label_with_nothing_but_markup_is_left_out(markup: str) -> None:
+    assert clean_label(markup) is None
+
+
+@pytest.mark.parametrize(
+    ("vendored", "label"),
+    [
+        ("Town<br>\nCenter", "Town Center"),
+        ("Circum-<br>\nnavigation", "Circumnavigation"),
+        ("Counter- weights", "Counterweights"),
+        ("Double-Bit<br>\nAxe", "Double-Bit Axe"),
+        ("Man-at-Arms", "Man-at-Arms"),
+        ("Feudal Age", "Feudal Age"),
+        # The deciding clause: after a letter, a hyphen then a break then ...
+        ("Man-at-<br>\nArms", "Man-at-Arms"),  # ... a capital: the hyphen stays, no space
+        ("Anti-<br>\nCavalry", "Anti-Cavalry"),
+        ("Anti- Cavalry", "Anti-Cavalry"),
+        ("Foo - bar", "Foo - bar"),  # a hyphen not after a letter is not touched
+        ("Foo -<br>\nbar", "Foo - bar"),
+        ("Foo<br><br>\nbar", "Foo bar"),
+        ("Circum-<br><br>\nnavigation", "Circumnavigation"),
+        # Lower case is Unicode's, not ASCII's: this documents the join rule.
+        ("Anti-<br>\nécole", "Antiécole"),
+        ("Anti- Élite", "Anti-Élite"),
+    ],
+)
+def test_clean_label_joins_word_wrap_hyphens_and_keeps_compounds(vendored: str, label: str) -> None:
+    assert clean_label(vendored) == label
+
+
+#: The names the join applies to, across every snapshot. A name belongs here only once a person has
+#: confirmed it is a word split across lines and not a compound whose second half starts in lower
+#: case.
+_CONFIRMED_WORD_WRAPS = {"Circum-<br>\nnavigation", "Counter- weights"}
+
+
+def _joins_a_word(name: str) -> bool:
+    """Whether `clean_label` joins two halves of `name`: the module's own decision (`_unwrap`
+    answering with no hyphen at one of the sites `_WRAPPED_HYPHEN` finds), not a second reading."""
+    return any(_unwrap(site) == "" for site in _WRAPPED_HYPHEN.finditer(name))
+
+
+def test_the_names_a_hyphen_join_applies_to_are_exactly_the_confirmed_word_wraps() -> None:
+    joined = {name for _, _, _, name in _every_vendored_name() if _joins_a_word(name)}
+
+    assert joined == _CONFIRMED_WORD_WRAPS, (
+        "a name the hyphen join applies to is not one a person has confirmed: a new entry needs "
+        "a person to confirm it is a word-wrap and not a compound (for example "
+        "`Anti-<br>\\ncavalry`, which would be served as `Anticavalry`), then to be added to "
+        "_CONFIRMED_WORD_WRAPS. "
+        f"Unconfirmed: {sorted(joined - _CONFIRMED_WORD_WRAPS)}; "
+        f"gone: {sorted(_CONFIRMED_WORD_WRAPS - joined)}"
+    )
+
+
+def test_the_word_wrap_guard_sees_a_join_the_code_makes_on_a_non_ascii_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The guard reads the code's own decision, so a name the code would join (`Anti-<br>\\nécole`
+    is served as `Antiécole`) that no person has confirmed fails it, ASCII or not."""
+    real = _every_vendored_name
+    monkeypatch.setitem(
+        globals(),
+        "_every_vendored_name",
+        lambda: [*real(), ("planted", "unit", "0", "Anti-<br>\nécole")],
+    )
+
+    with pytest.raises(AssertionError, match=r"Unconfirmed: .*Anti-<br>"):
+        test_the_names_a_hyphen_join_applies_to_are_exactly_the_confirmed_word_wraps()
+
+
+# --- a name that cleans to nothing is left out of the block, and its datum with it ---------------
+
+
+def _serve_with_unit_83_named(monkeypatch: pytest.MonkeyPatch, value: str | None) -> bytes:
+    """The block served for a document whose only id is unit 83, with `query.name` answering
+    `value` for it (the real answer when `value` is `None`)."""
+    real = names_module.query_name
+
+    def stubbed(entity: EntityRef) -> Any:
+        answer = real(entity)
+        if value is None or isinstance(answer, KnowledgeGap):
+            return answer
+        return dataclasses.replace(answer, value=value)
+
+    monkeypatch.setattr(names_module, "query_name", stubbed)
+    return with_names(_stored(_document_naming(units=(83,))))
+
+
+def test_a_name_that_is_only_markup_is_left_out_and_so_is_its_kinds_datum(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    served = _serve_with_unit_83_named(monkeypatch, "<br>")
+
+    block = _served_names(served)
+    assert block["unit"] == {}
+    assert "names.unit" not in block["provenance"]
+    assert set(block["provenance"]) == {
+        "names.snapshot.describes_build",
+        "names.snapshot.digest",
+    }
+    assert _served_shape_violations(served) == []
+
+
+def test_the_same_id_with_a_normal_name_is_served_with_its_datum(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    served = _serve_with_unit_83_named(monkeypatch, None)
+
+    block = _served_names(served)
+    assert block["unit"] == {"83": "Villager"}
+    assert "names.unit" in block["provenance"]
     assert _served_shape_violations(served) == []
