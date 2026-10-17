@@ -88,11 +88,11 @@ banner in small print. **No upload, no `MatchDetailPanel` `DownloadAction`**: it
 (`match-history.md` §2), and `manual-upload.md` §2's gate stays the three "Lost" statuses, as the
 row may hold an object and the match response does not say which rows do (T727).
 
-**An objecting owner (`archivalObjected`, §4) is shown no countdown and no upload (T724, T729).**
-The claim refuses their `pending` and stale `downloading` rows: both read "Not archived" in
-`neutral`, alone in `compact`, above "Archival is off for your account." in `detail`, with no
-download; a `downloading` row claimed before the objection can still end `stored`. `expired` and
-`failed` stay "Lost" and, in both variants, drop "If you still have the file, you can upload it."
+**With `archivalObjected` (§4, T724, T729):** `expired`/`failed` stay "Lost" but drop "If you still
+have the file, you can upload it." in both variants, as `manual-upload.md` §2 offers no upload; the
+claim refuses an objector's `pending` and stale `downloading` rows, so a countdown would promise a
+capture it will not start: both read "Not archived" in `neutral`, with "Archival is off for your
+account." in `detail` only, no download; one claimed before the objection can still end `stored`.
 
 ## 4. Variants and sizes
 

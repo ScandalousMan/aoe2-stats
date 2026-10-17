@@ -338,9 +338,35 @@
       "1280": { "clip": false, "fullPage": false, "mounts": [] }
     }
   },
+  "composite-capturestatebadge--lost-expired-objected": {
+    "importPath": "./src/composites/CaptureStateBadge/CaptureStateBadge.stories.tsx",
+    "exportName": "LostExpiredObjected",
+    "files": [
+      "packages/design-system/src/composites/CaptureStateBadge/index.tsx",
+      "packages/design-system/src/primitives/Badge/index.tsx"
+    ],
+    "widths": {
+      "375": { "clip": false, "fullPage": false, "mounts": [] },
+      "768": { "clip": false, "fullPage": false, "mounts": [] },
+      "1280": { "clip": false, "fullPage": false, "mounts": [] }
+    }
+  },
   "composite-capturestatebadge--lost-failed": {
     "importPath": "./src/composites/CaptureStateBadge/CaptureStateBadge.stories.tsx",
     "exportName": "LostFailed",
+    "files": [
+      "packages/design-system/src/composites/CaptureStateBadge/index.tsx",
+      "packages/design-system/src/primitives/Badge/index.tsx"
+    ],
+    "widths": {
+      "375": { "clip": false, "fullPage": false, "mounts": [] },
+      "768": { "clip": false, "fullPage": false, "mounts": [] },
+      "1280": { "clip": false, "fullPage": false, "mounts": [] }
+    }
+  },
+  "composite-capturestatebadge--lost-failed-objected": {
+    "importPath": "./src/composites/CaptureStateBadge/CaptureStateBadge.stories.tsx",
+    "exportName": "LostFailedObjected",
     "files": [
       "packages/design-system/src/composites/CaptureStateBadge/index.tsx",
       "packages/design-system/src/primitives/Badge/index.tsx"

@@ -35,8 +35,9 @@ export interface CaptureStateBadgeProps {
   captureDeadlineAt?: string | null
   /** `GET /api/me`'s `archival_objected` (§4, T724, T729). `MatchDetailPanel` passes it for every
    * match: the detail route joins a capture row only for the caller's linked profiles, so any
-   * other match has a `null` `captureStatus` and renders nothing. `MatchList` withholds it for
-   * `subject="other"`. With it a `pending`/`downloading` row reads "Not archived" as `withdrawn`
+   * other match has a `null` `captureStatus` and renders nothing. `MatchList` forwards it whatever
+   * the `subject` (T726): a third party's rows carry a `null` status, so it reaches only the
+   * caller's own. With it a `pending`/`downloading` row reads "Not archived" as `withdrawn`
    * does, with "Archival is off for your account." in `detail` and no countdown or interval; an
    * `expired`/`failed` row stays "Lost" and drops the upload sentence, as no upload is offered
    * under it. Every other status ignores it. */

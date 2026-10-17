@@ -251,3 +251,13 @@ export const LostExpiredObjected: Story = {
     variant: 'detail',
   },
 }
+
+// T729 (§3): the same rule for `failed`, in `compact` — the variant an objector reads down a whole
+// list. The pill and the first sentence only. Appended last for the same reason as above.
+export const LostFailedObjected: Story = {
+  name: 'Lost — failed, archival objected, compact (no upload sentence)',
+  args: {
+    captureStatus: 'failed',
+    archivalObjected: true,
+  },
+}
