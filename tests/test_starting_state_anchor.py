@@ -1,7 +1,7 @@
 """The starting-state anchor in the committed reference recordings (T668).
 
-Evidence for `docs/data-sources.md` §2, "Settled: each human player's starting resources sit at a
-self-verifying anchor in the decompressed header". Parameterised over every `*.zip` under
+Evidence for `docs/data-sources.md` §2, "Settled: each human player's starting-attribute array is
+reachable at a self-verifying anchor in the header". Parameterised over every `*.zip` under
 `tests/fixtures/replays/`, never over named files, so a further recording is covered the moment it
 is committed.
 
@@ -14,12 +14,14 @@ What is measured here, and only this:
   self-verification: the bytes at the anchor are the name the engine reported, not a pattern that
   merely looks right. The framed form occurs exactly once per human player.
 - Seven bytes after the end of the name begins an array of little-endian float32 values. Its first
-  four are the player's food, wood, stone and gold at the start, each a finite, non-negative
-  integer.
+  four are each a finite, non-negative integer.
+- The number of anchors equals the number of human players the engine reports.
 
-What is NOT claimed: what any later field is, what the six bytes between the NUL and the array
-are, why two players in the committed set start with different values, or anything about the
-object table. The tests below only read the four resources.
+What is NOT asserted, and rests on D1 in `specs/006-replay-analysis-foundations/research.md` plus
+the values observed in the committed set: that those four values are food, wood, stone and gold,
+in that order. Nor is anything else claimed: what any later field is, what the six bytes between
+the NUL and the array are, why two players in the committed set start with different values, or
+anything about the object table. The tests below only read the four numbers.
 """
 
 from __future__ import annotations
@@ -42,10 +44,12 @@ HUMAN_PLAYER_TYPE = 2
 
 # Bytes between the end of the name string and the first float: the NUL terminator, then six
 # bytes that are identical in every player of every committed recording and are not interpreted.
-BYTES_NAME_END_TO_RESOURCES = 7
-RESOURCE_COUNT = 4  # food, wood, stone, gold, in the engine's own order
+BYTES_NAME_END_TO_ARRAY = 7
+LEADING_VALUE_COUNT = (
+    4  # the four leading values; their meaning is not asserted (see the docstring)
+)
 
-Resources = tuple[float, float, float, float]
+LeadingValues = tuple[float, float, float, float]
 
 
 def inflate_header(raw: bytes) -> bytes:
@@ -61,20 +65,20 @@ def framed_name(name: str) -> bytes:
 
 
 def find_anchors(header: bytes, name: str) -> list[int]:
-    """Offsets of the first resource float of every framed occurrence of `name` in `header`."""
+    """Offsets of the first float of the array of every framed occurrence of `name` in `header`."""
     frame = framed_name(name)
     offsets: list[int] = []
     start = 0
     while (hit := header.find(frame, start)) >= 0:
         name_end = hit + len(frame) - 1  # the NUL is the byte after the name
-        offsets.append(name_end + BYTES_NAME_END_TO_RESOURCES)
+        offsets.append(name_end + BYTES_NAME_END_TO_ARRAY)
         start = hit + 1
     return offsets
 
 
-def read_resources(header: bytes, offset: int) -> Resources:
-    food, wood, stone, gold = struct.unpack_from(f"<{RESOURCE_COUNT}f", header, offset)
-    return food, wood, stone, gold
+def read_leading_values(header: bytes, offset: int) -> LeadingValues:
+    a, b, c, d = struct.unpack_from(f"<{LEADING_VALUE_COUNT}f", header, offset)
+    return a, b, c, d
 
 
 def is_integral_non_negative(values: tuple[float, ...]) -> bool:
@@ -151,8 +155,8 @@ def test_the_first_four_floats_are_finite_non_negative_integers(
 
     for name in names:
         (anchor,) = find_anchors(header, name)
-        resources = read_resources(header, anchor)
-        assert is_integral_non_negative(resources), f"{archive.name}: {name!r}: {resources}"
+        values = read_leading_values(header, anchor)
+        assert is_integral_non_negative(values), f"{archive.name}: {name!r}: {values}"
 
 
 def test_a_non_ascii_name_is_among_the_anchored_players(
@@ -178,7 +182,7 @@ def sample(recordings: dict[str, tuple[bytes, list[str]]]) -> tuple[bytes, str]:
 def test_corrupting_the_terminator_removes_the_anchor(sample: tuple[bytes, str]) -> None:
     header, name = sample
     (anchor,) = find_anchors(header, name)
-    nul_at = anchor - BYTES_NAME_END_TO_RESOURCES
+    nul_at = anchor - BYTES_NAME_END_TO_ARRAY
     assert header[nul_at] == 0
     corrupted = header[:nul_at] + b"\x01" + header[nul_at + 1 :]
 
@@ -196,7 +200,7 @@ def test_a_length_prefix_that_does_not_count_the_terminator_is_not_an_anchor(
 ) -> None:
     header, name = sample
     (anchor,) = find_anchors(header, name)
-    prefix_at = anchor - BYTES_NAME_END_TO_RESOURCES - len(name.encode("utf-8")) - 2
+    prefix_at = anchor - BYTES_NAME_END_TO_ARRAY - len(name.encode("utf-8")) - 2
     wrong = struct.pack("<H", len(name.encode("utf-8")))
     corrupted = header[:prefix_at] + wrong + header[prefix_at + 2 :]
 
@@ -208,12 +212,12 @@ def test_a_length_prefix_that_does_not_count_the_terminator_is_not_an_anchor(
     [float("nan"), float("inf"), -1.0, 100.5],
     ids=["nan", "inf", "negative", "fractional"],
 )
-def test_a_resource_that_is_not_a_non_negative_integer_is_rejected(
+def test_a_value_that_is_not_a_non_negative_integer_is_rejected(
     sample: tuple[bytes, str], bad: float
 ) -> None:
     header, name = sample
     (anchor,) = find_anchors(header, name)
     corrupted = header[:anchor] + struct.pack("<f", bad) + header[anchor + 4 :]
 
-    assert not is_integral_non_negative(read_resources(corrupted, anchor))
-    assert is_integral_non_negative(read_resources(header, anchor))
+    assert not is_integral_non_negative(read_leading_values(corrupted, anchor))
+    assert is_integral_non_negative(read_leading_values(header, anchor))
