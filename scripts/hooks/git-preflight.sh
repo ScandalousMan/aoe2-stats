@@ -15,99 +15,122 @@
 #
 # Escape hatch: NO_GIT_PREFLIGHT=1 for the genuine exception (a deliberate WIP commit, a docs-only
 # branch where the suite is irrelevant). Use it consciously; it is not the default for a reason.
+# Written inline (`NO_GIT_PREFLIGHT=1 git commit ...`) it is read from the command text, and applies
+# only to the git invocation it prefixes, exactly as the shell would scope it (T735).
+#
+# Where it looks: the repository each `git commit`/`git push` will act on — the payload's `cwd`
+# followed through any `cd` and `git -C` in the command — not CLAUDE_PROJECT_DIR. From a
+# `.claude/worktrees/<name>` session the project directory is the main checkout, and on 2026-10-17
+# that checked whatever branch the main checkout had and refused every commit of a fresh worktree.
+# `git_preflight_targets.py` does the parsing; this file does the checking.
 set -uo pipefail
 
-cd "${CLAUDE_PROJECT_DIR:-.}" || exit 0
 [ "${NO_GIT_PREFLIGHT:-0}" = "1" ] && exit 0
 command -v git >/dev/null 2>&1 || exit 0
-git rev-parse --git-dir >/dev/null 2>&1 || exit 0
+command -v python3 >/dev/null 2>&1 || exit 0
 
 # The command the agent is about to run arrives as JSON on stdin.
 payload="$(cat 2>/dev/null || true)"
-cmd="$(printf '%s' "$payload" | python3 -c 'import json,sys
-try: print(json.load(sys.stdin).get("tool_input",{}).get("command",""))
-except Exception: print("")' 2>/dev/null)"
-[ -z "$cmd" ] && exit 0
+[ -z "$payload" ] && exit 0
+targets="$(printf '%s' "$payload" | python3 "$(dirname "$0")/git_preflight_targets.py" 2>/dev/null)"
+[ -z "$targets" ] && exit 0
 
-is_commit=0
-is_push=0
-printf '%s' "$cmd" | grep -qE '(^|[;&|]|\s)git\s+(-[^ ]+\s+)*commit(\s|$)' && is_commit=1
-printf '%s' "$cmd" | grep -qE '(^|[;&|]|\s)git\s+(-[^ ]+\s+)*push(\s|$)'   && is_push=1
-[ "$is_commit" -eq 0 ] && [ "$is_push" -eq 0 ] && exit 0
+# macOS ships no `timeout`; without one the fetch below failed and freshness was never checked.
+with_timeout() {
+  if command -v timeout >/dev/null 2>&1; then timeout "$@"; else shift; "$@"; fi
+}
 
-branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)"
+# check <directory> <is_push>: exit 2 with the reason if the repository there must not commit/push.
+check() {
+  local is_push="$2"
+  cd "$1" 2>/dev/null || return 0
+  git rev-parse --git-dir >/dev/null 2>&1 || return 0
+  local branch
+  branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)"
 
-# --- Freshness: is this branch built on a stale view of the remote? ----------------------------
-# Cheap, and the check that would have prevented a phase being reimplemented over an already-merged
-# PR. Never blocks on a network failure — offline is not a reason to refuse a commit.
-if git remote get-url origin >/dev/null 2>&1; then
-  if timeout 20 git fetch --quiet origin 2>/dev/null; then
-    base="origin/main"
-    if git rev-parse --verify --quiet "$base" >/dev/null; then
-      if [ "$branch" != "main" ] && ! git merge-base --is-ancestor "$base" HEAD 2>/dev/null; then
-        behind="$(git rev-list --count "HEAD..$base" 2>/dev/null || echo '?')"
-        {
-          echo "This branch is $behind commit(s) behind $base."
-          echo
-          echo "CLAUDE.md and the git-workflow skill: orient against the remote before committing."
-          echo "A branch cut from a stale view reimplements work that has already merged — that cost"
-          echo "a whole phase on 2026-08-27."
-          echo
-          echo "Check what you are missing, then rebase or branch again:"
-          echo "  git log --oneline HEAD..$base"
-          echo "  git rebase $base"
-          echo
-          echo "If the divergence is intentional, re-run with NO_GIT_PREFLIGHT=1."
-        } >&2
-        exit 2
+  # --- Freshness: is this branch built on a stale view of the remote? ----------------------------
+  # Cheap, and the check that would have prevented a phase being reimplemented over an
+  # already-merged PR. Never blocks on a network failure — offline is not a reason to refuse a commit.
+  if git remote get-url origin >/dev/null 2>&1; then
+    if with_timeout 20 git fetch --quiet origin 2>/dev/null; then
+      base="origin/main"
+      if git rev-parse --verify --quiet "$base" >/dev/null; then
+        if [ "$branch" != "main" ] && ! git merge-base --is-ancestor "$base" HEAD 2>/dev/null; then
+          behind="$(git rev-list --count "HEAD..$base" 2>/dev/null || echo '?')"
+          {
+            echo "Branch '$branch' in $PWD is $behind commit(s) behind $base."
+            echo
+            echo "CLAUDE.md and the git-workflow skill: orient against the remote before committing."
+            echo "A branch cut from a stale view reimplements work that has already merged — that cost"
+            echo "a whole phase on 2026-08-27."
+            echo
+            echo "Check what you are missing, then rebase or branch again:"
+            echo "  git log --oneline HEAD..$base"
+            echo "  git rebase $base"
+            echo
+            echo "If the divergence is intentional, prefix the git command: NO_GIT_PREFLIGHT=1 git commit ..."
+          } >&2
+          return 2
+        fi
       fi
     fi
   fi
-fi
 
-# --- Merged-branch check: never stack new work on a branch whose PR already landed --------------
-if [ "$is_push" -eq 1 ] && [ "$branch" != "main" ] && command -v gh >/dev/null 2>&1; then
-  merged="$(timeout 20 gh pr list --state merged --head "$branch" --limit 1 \
-              --json number --jq '.[0].number' 2>/dev/null || true)"
-  if [ -n "$merged" ] && [ "$merged" != "null" ]; then
-    {
-      echo "Branch '$branch' already has a merged PR (#$merged)."
-      echo
-      echo "Pushing more commits here does not reopen it, and the branch name no longer describes"
-      echo "what it carries. Cut a new branch from origin/main for this work:"
-      echo "  git switch -c <new-branch> origin/main"
-      echo
-      echo "If you really mean to update this branch, re-run with NO_GIT_PREFLIGHT=1."
-    } >&2
-    exit 2
-  fi
-fi
-
-# --- The suite, on push only --------------------------------------------------------------------
-if [ "$is_push" -eq 1 ]; then
-  range="origin/main..HEAD"
-  git rev-parse --verify --quiet origin/main >/dev/null || range="HEAD"
-  changed="$(git diff --name-only "$range" 2>/dev/null)"
-
-  if printf '%s' "$changed" | grep -qE '\.py$' && command -v uv >/dev/null 2>&1; then
-    if ! out="$(uv run --quiet pytest -q 2>&1)"; then
+  # --- Merged-branch check: never stack new work on a branch whose PR already landed --------------
+  if [ "$is_push" = "1" ] && [ "$branch" != "main" ] && command -v gh >/dev/null 2>&1; then
+    merged="$(with_timeout 20 gh pr list --state merged --head "$branch" --limit 1 \
+                --json number --jq '.[0].number' 2>/dev/null || true)"
+    if [ -n "$merged" ] && [ "$merged" != "null" ]; then
       {
-        echo "Python tests are failing. Do not push a red tree (CLAUDE.md, Commits)."
-        printf '%s\n' "$out" | tail -30
+        echo "Branch '$branch' already has a merged PR (#$merged)."
+        echo
+        echo "Pushing more commits here does not reopen it, and the branch name no longer describes"
+        echo "what it carries. Cut a new branch from origin/main for this work:"
+        echo "  git switch -c <new-branch> origin/main"
+        echo
+        echo "If you really mean to update this branch, prefix it: NO_GIT_PREFLIGHT=1 git push ..."
       } >&2
-      exit 2
+      return 2
     fi
   fi
 
-  if printf '%s' "$changed" | grep -qE '\.(ts|tsx)$' && command -v pnpm >/dev/null 2>&1; then
-    if ! out="$(pnpm test 2>&1)"; then
-      {
-        echo "Front-end tests are failing. Do not push a red tree (CLAUDE.md, Commits)."
-        printf '%s\n' "$out" | tail -30
-      } >&2
-      exit 2
+  # --- The suite, on push only --------------------------------------------------------------------
+  if [ "$is_push" = "1" ]; then
+    local range="origin/main..HEAD"
+    git rev-parse --verify --quiet origin/main >/dev/null || range="HEAD"
+    changed="$(git diff --name-only "$range" 2>/dev/null)"
+
+    if printf '%s' "$changed" | grep -qE '\.py$' && command -v uv >/dev/null 2>&1; then
+      if ! out="$(uv run --quiet pytest -q 2>&1)"; then
+        {
+          echo "Python tests are failing. Do not push a red tree (CLAUDE.md, Commits)."
+          printf '%s\n' "$out" | tail -30
+        } >&2
+        return 2
+      fi
+    fi
+
+    if printf '%s' "$changed" | grep -qE '\.(ts|tsx)$' && command -v pnpm >/dev/null 2>&1; then
+      if ! out="$(pnpm test 2>&1)"; then
+        {
+          echo "Front-end tests are failing. Do not push a red tree (CLAUDE.md, Commits)."
+          printf '%s\n' "$out" | tail -30
+        } >&2
+        return 2
+      fi
     fi
   fi
-fi
 
-exit 0
+  return 0
+}
+
+# One check per repository, push first: a push runs everything a commit does, and more.
+status=0
+while IFS=$'\t' read -r kind directory; do
+  is_push=0
+  [ "$kind" = "push" ] && is_push=1
+  ( check "$directory" "$is_push" ) || { status=$?; break; }
+done < <(printf '%s\n' "$targets" | awk -F'\t' '$2 != "1" { print $1 "\t" $3 }' \
+           | sort -r | awk -F'\t' '!seen[$2]++')
+
+exit "$status"

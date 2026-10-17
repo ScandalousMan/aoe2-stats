@@ -94,15 +94,15 @@ dev = [
 # --- pytest --------------------------------------------------------------------------------------
 # One session, one config, for the whole workspace: `.github/workflows/pr.yml` runs a single
 # `uv run pytest -q` from the repository root with `PYTEST_DISABLE_NETWORK=1`. `testpaths` lists
-# every workspace member's `tests/` directory plus `scripts/checks/tests`, `scripts/ops/tests` and
-# `tests/architecture` — none of the three is a uv workspace member (all deliberately excluded from
-# `[tool.uv.workspace]` above, predating this config for the first two), so without naming them
-# here T048's liveness-check test, `acknowledge_alerts.py`'s own tests, and T018d's architecture
-# guards would never be collected. `tests/architecture` holds only import-graph guards that span
-# more than one workspace member (constitution III, V, XII) and so cannot live inside any single
-# member's own `tests/`. Most of these directories do not exist yet; pytest does not error on a
-# `testpaths` entry that is missing, it simply finds nothing there until the story that owns it
-# lands.
+# every workspace member's `tests/` directory plus `scripts/checks/tests`, `scripts/ops/tests`,
+# `tests/architecture` and `scripts/hooks/tests` — none of the four is a uv workspace member (all
+# deliberately excluded from `[tool.uv.workspace]` above, predating this config for the first two),
+# so without naming them here T048's liveness-check test, `acknowledge_alerts.py`'s own tests,
+# T018d's architecture guards and T735's hook tests would never be collected. `tests/architecture`
+# holds only import-graph guards that span more than one workspace member (constitution III, V,
+# XII) and so cannot live inside any single member's own `tests/`. Most of these directories do not
+# exist yet; pytest does not error on a `testpaths` entry that is missing, it simply finds nothing
+# there until the story that owns it lands.
 [tool.pytest.ini_options]
 testpaths = [
   "packages/core/tests",
@@ -114,6 +114,7 @@ testpaths = [
   "apps/ingester/tests",
   "apps/analyzer/tests",
   "scripts/checks/tests",
+  "scripts/hooks/tests",
   "scripts/ops/tests",
   "tests/architecture",
   "tests/test_reference_recordings.py",
