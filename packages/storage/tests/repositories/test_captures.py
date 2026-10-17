@@ -11,8 +11,9 @@ exists in a terminal, non-`stored` state (the rescue scenario `test_manual_uploa
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import Update, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from tests.db import clean_database, database_url, db_session, engine, session_factory
 
@@ -158,3 +159,82 @@ async def test_record_manual_upload_updates_an_existing_row_in_place(
         .all()
     )
     assert len(rows) == 1, "the pre-existing row is updated in place, never duplicated"
+
+
+async def test_record_manual_upload_writes_every_column_it_sets_whatever_the_loaded_state(
+    db_session: AsyncSession,
+) -> None:
+    """The row is loaded, then something else writes it before the upload does (the automatic
+    capture handing it back with a reason, in practice). An ORM flush emits only the columns that
+    differ from the loaded state, so `last_error` None -> None would be omitted and the other
+    writer's text would survive on a `stored` manual row."""
+    completed_at = datetime(2026, 7, 1, 12, 0, tzinfo=UTC)
+    await _seed_match_and_profile(
+        db_session, game_id=500546442, profile_id=196241, completed_at=completed_at
+    )
+    capture = ReplayCapture(
+        game_id=500546442,
+        profile_id=196241,
+        capture_deadline_at=completed_at + timedelta(days=_CAPTURE_BUDGET_DAYS),
+        status=CaptureStatus.PENDING,
+        source=CaptureSource.AUTOMATIC,
+    )
+    db_session.add(capture)
+    await db_session.commit()
+    db_session.expunge_all()
+
+    original_execute, original_flush = db_session.execute, db_session.flush
+    fired = False
+
+    async def write_in_between() -> None:
+        nonlocal fired
+        if not fired:
+            fired = True
+            with db_session.no_autoflush:  # the repository's pending changes must not go first
+                await original_execute(
+                    update(ReplayCapture)
+                    .where(ReplayCapture.game_id == 500546442)
+                    .values(
+                        status=CaptureStatus.FAILED,
+                        last_error="written in between",
+                        http_status=500,
+                    )
+                    .execution_options(synchronize_session=False)
+                )
+
+    async def execute(statement: Any, *args: Any, **kwargs: Any) -> Any:
+        if isinstance(statement, Update):
+            await write_in_between()
+        return await original_execute(statement, *args, **kwargs)
+
+    async def flush(*args: Any, **kwargs: Any) -> None:
+        await write_in_between()
+        await original_flush(*args, **kwargs)
+
+    # The row is loaded by now; the write lands before the repository's own write does.
+    db_session.execute = execute  # type: ignore[method-assign]
+    db_session.flush = flush  # type: ignore[method-assign]
+    returned = await CapturesRepository(db_session).record_manual_upload(
+        game_id=500546442,
+        profile_id=196241,
+        object_key="replays/500546442/196241.zip",
+        zip_bytes=10,
+        zip_sha256="c" * 64,
+        inner_filename="AgeIIDE_Replay_500546442.aoe2record",
+        inner_bytes=9,
+        validated_by="aoe2rec-py 0.1.21",
+        match_completed_at=completed_at,
+        capture_budget_days=_CAPTURE_BUDGET_DAYS,
+    )
+
+    stored = (
+        await db_session.execute(
+            select(ReplayCapture.status, ReplayCapture.last_error, ReplayCapture.http_status)
+            .where(ReplayCapture.game_id == 500546442)
+            .execution_options(populate_existing=True)
+        )
+    ).one()
+    assert tuple(stored) == (CaptureStatus.STORED, None, 200)
+    # What the caller gets back is the row as written, not the loaded state.
+    assert returned.last_error is None
+    assert returned.status == CaptureStatus.STORED
