@@ -9,19 +9,29 @@ nothing else replay-related).
 paragraph): a downloaded blob is uploaded to the object store, and *only once that upload has
 succeeded* are `object_key`, `zip_bytes` and `zip_sha256` committed to the row — while its status
 is still `downloading`. The upload is conditional (T728, `put_if_absent`): a manual upload writes
-the same key, so the drain never overwrites an object. When the key already holds one, the drain
-reads it back and records it, as for its own write, only if its SHA-256 equals the download's;
-a different object (likely an upload) gets no blob metadata, and the row is handed back as a failed
-attempt (`_handle_provider_unavailable`: backoff, or `failed` at the ceiling), as is one deleted
-between the two calls. Every row write the drain makes after its claim matches the row only while it
-is still `downloading`, so a row an upload has marked `stored` is never rewritten; the claim, the
+the same key, so the drain never overwrites an object, and it writes its own with user metadata
+(`_DRAIN_OBJECT_METADATA`) that the upload does not set. When the key already holds an object, the
+drain reads it back and tells it from an upload by that marker: an object carrying it is this
+drain's own earlier write, adopted whatever its hash (the source need not return byte-identical
+zips); an object without it is adopted only if its SHA-256 equals the download's (which also
+recovers an object written before the marker existed). The row records the adopted object's own size
+and hash, and its bytes are the ones validated. Any other object is not ours, gets no blob metadata,
+and the row is handed back as a failed attempt (`_handle_provider_unavailable`: backoff, or
+`failed` at the ceiling), as is one deleted between the two calls. A concurrent conditional write
+(`ObjectWriteConflict`) hands the claim back unattempted. The metadata commit names the object on
+the row whatever the row's status, and only while it names none (`_commit_blob_metadata`), so an
+object this drain wrote is never left unnamed by a row withdrawn meanwhile, and one object is never
+named over another. Every other row write the drain makes after its claim matches the row only while
+it is still `downloading`, so a row an upload has marked `stored` is never rewritten; the claim, the
 withdrawal sweep and `revalidate_quarantined` (guarded on `quarantined`) are not such writes.
-Validation runs after that commit, never before it, and the status only
-ever flips to `stored` or `quarantined` once validation has run (or, for a resumed reclaim, once
-its outcome has been decided not to be re-attempted — see below). A process that dies between the
-upload and the status flip leaves bytes that are already durable and already recorded; the next
-run's reclaim resumes from there instead of losing anything or re-fetching a replay it already
-holds. `test_interruption.py`'s `test_the_blob_is_durably_written_before_the_row_is_ever_marked_
+Validation runs after that commit, never before it, and the status only ever flips to `stored` or
+`quarantined` once validation has run (or, for a resumed reclaim, once its outcome has been decided
+not to be re-attempted — see below). A process that dies between the upload and the commit leaves
+an object under the key that the next attempt adopts by its marker
+(`test_drain_conditional_write.py`'s kill test); one that dies between the commit and the status
+flip leaves bytes that are already durable and already recorded, and the next run's reclaim resumes
+from there. Either way nothing is lost and no replay already held is re-fetched in vain.
+`test_interruption.py`'s `test_the_blob_is_durably_written_before_the_row_is_ever_marked_
 stored` is what a mark-then-upload regression would fail.
 
 **Containment (constitution V).** `aoe2rec-py`'s PyO3 bridge can raise `pyo3_runtime.
@@ -220,7 +230,12 @@ from aoe2stats_providers.base import (
 )
 from aoe2stats_storage.models import Alert as AlertRow
 from aoe2stats_storage.models import CaptureStatus, Match, ProfileLink, ReplayCapture, User
-from aoe2stats_storage.objects import REPLAY_CONTENT_TYPE, ObjectNotFound, replay_object_key
+from aoe2stats_storage.objects import (
+    REPLAY_CONTENT_TYPE,
+    ObjectNotFound,
+    ObjectWriteConflict,
+    replay_object_key,
+)
 
 #: `alerts.kind` for a quarantine (`AlertKind.VALIDATION_FAILED` in
 #: `packages/storage/src/aoe2stats_storage/models.py`, named here as a plain string for the same
@@ -354,9 +369,16 @@ DEFAULT_MAX_ATTEMPTS = 3
 #: second delay is strictly greater than the first for exactly this reason.
 _RETRY_BACKOFF_BASE_SECONDS = 60.0
 
-#: What `_process_one` answers when a write found the row no longer `downloading` (T728), or when
-#: the attempt was handed back: nothing this cycle concluded, and not a key of `report`.
+#: What `_process_one` answers when nothing was concluded this cycle, and so no key of `report`
+#: moves: a 404 reverted to `pending`, a failed attempt handed back, a claim handed back
+#: unattempted, or a write that found the row no longer `downloading` (T728). The value is shared
+#: with the 404 revert's answer on purpose: the report has no key for any of them.
 _NOT_CONCLUDED = "not_found"
+
+#: The user metadata the drain writes with its own object (T728), read back by
+#: `_held_object_or_reason` to tell that object from any other: the manual upload passes no
+#: metadata, so an object carrying this is the automatic capture's earlier write.
+_DRAIN_OBJECT_METADATA: Mapping[str, str] = {"source": "automatic"}
 
 #: `ingest_runs`' own counter vocabulary (data-model.md) that this stage's report can ever move —
 #: the rest of that row's counters belong to discovery and reconciliation, not to the drain.
@@ -624,16 +646,25 @@ class _StoreTransportError(Exception):
 class _ObjectPut(Protocol):
     """The `ObjectStore` methods this module calls: `put_if_absent` for a freshly downloaded blob
     (T728: the drain never overwrites an object under the key, which a manual upload may have
-    written), `get` to read bytes back, both for the reclaim path's re-validation and for the
-    object `put_if_absent` found already there (see the module docstring). Named as its own
+    written) with the drain's marker as user metadata, `get` to read bytes back for the reclaim
+    path's re-validation, `get_with_metadata` to read the object `put_if_absent` found already
+    there together with its marker (see the module docstring). Named as its own
     Protocol, structurally satisfied by the real `aoe2stats_storage.objects.ObjectStore` and by
     every fake the test files construct. The drain calls no overwriting `put`. `test_idempotency.
     py`'s `_FakeObjectStore` implements `put_if_absent` alone, since that test's traffic never
     exercises a reclaim or a held key, so it never needs `get` at runtime.
     """
 
-    async def put_if_absent(self, key: str, body: bytes, *, content_type: str = ...) -> bool: ...
+    async def put_if_absent(
+        self,
+        key: str,
+        body: bytes,
+        *,
+        content_type: str = ...,
+        metadata: Mapping[str, str] | None = ...,
+    ) -> bool: ...
     async def get(self, key: str) -> bytes: ...
+    async def get_with_metadata(self, key: str) -> tuple[bytes, Mapping[str, str]]: ...
 
 
 class _DatabaseAlertSink:
@@ -1095,10 +1126,15 @@ class CaptureDrain:
 
     async def _process_one(self, capture_id: uuid.UUID) -> str:
         """Download (unless already resumed), upload, commit the blob metadata, then validate and
-        mark. Returns the report key this outcome belongs under. A 404 that reverts to `pending`
-        (still inside the grace, or past it but short of the two-attempt floor —
-        `_classify_not_found`) answers `"not_found"`, which is not itself a report key: nothing
-        this cycle concluded, so nothing in `report` moves for it.
+        mark. Returns the report key this outcome belongs under. `"not_found"` is not itself a
+        report key: it answers every case where nothing was concluded this cycle, so nothing in
+        `report` moves for it. Those are a 404 that reverts to `pending` (still inside the grace,
+        or past it but short of the two-attempt floor — `_classify_not_found`); a
+        `ProviderUnavailable` or a held object that is not this capture's, handed back below the
+        attempt ceiling; a
+        concurrent conditional write (`ObjectWriteConflict`), where the claim is handed back
+        unattempted; and a write that found the row no longer `downloading`, or already naming an
+        object (`_NOT_CONCLUDED`).
         """
         async with self._session_factory() as session:
             capture = await session.get(ReplayCapture, capture_id)
@@ -1160,19 +1196,34 @@ class CaptureDrain:
         # the same key. `object_key`/`zip_bytes`/`zip_sha256` are committed immediately after,
         # while the row is still `downloading`.
         store = self._require_object_store()
-        written = await store.put_if_absent(
-            key, content, content_type=blob.content_type or REPLAY_CONTENT_TYPE
-        )
+        try:
+            written = await store.put_if_absent(
+                key,
+                content,
+                content_type=blob.content_type or REPLAY_CONTENT_TYPE,
+                metadata=_DRAIN_OBJECT_METADATA,
+            )
+        except ObjectWriteConflict:
+            # Another conditional write to this key is in flight (an upload racing this drain) and
+            # may yet fail: nothing is recorded, and the claim goes back unattempted so the row is
+            # tried again, rather than the error ending the whole run.
+            await self._revert_claim(capture_id)
+            return _NOT_CONCLUDED
         if not written:
-            # The key held an object. Nothing is written over it; it is recorded only when it is
-            # the very bytes the download returned.
-            held_reason = await self._held_object_reason(store, key, sha256)
-            if held_reason is not None:
+            # The key held an object. Nothing is written over it. It is adopted when it carries
+            # this drain's marker (an earlier attempt of ours that died before its commit), or when
+            # it is the very bytes the download returned; otherwise the attempt is handed back.
+            held, held_reason = await self._held_object_or_reason(store, key, sha256)
+            if held is None:
+                assert held_reason is not None
                 return await self._handle_provider_unavailable(
                     capture_id, attempts=capture.attempts, reason=held_reason
                 )
+            # The row records the object that is there, not the fresh download.
+            content = held
+            sha256 = hashlib.sha256(content).hexdigest()
         if not await self._commit_blob_metadata(capture_id, key, len(content), sha256):
-            # The row is no longer `downloading` (an upload marked it `stored`): not this drain's.
+            # The row already names an object, or is gone: this drain does not name another.
             return _NOT_CONCLUDED
 
         result, error = await _validate_with_barrier(
@@ -1184,29 +1235,37 @@ class CaptureDrain:
         reason = error or "validation failed for an unspecified reason"
         return await self._quarantine(capture_id, reason, game_id=game_id, profile_id=profile_id)
 
-    async def _held_object_reason(
+    async def _held_object_or_reason(
         self, store: _ObjectPut, key: str, download_sha256: str
-    ) -> str | None:
-        """`put_if_absent` found `key` held: read the object back and compare it with the download.
+    ) -> tuple[bytes | None, str | None]:
+        """`put_if_absent` found `key` held: read the object back and decide whether it is this
+        capture's own. Returns `(bytes, None)` to adopt it, or `(None, reason)` for the failed
+        attempt the caller hands the row back with.
 
-        `None` when it hashes to `download_sha256`: those are the bytes the response carried, so the
-        row may record that object as its own write (the row's `source` and `http_status` stay
-        true). Otherwise the reason the attempt is handed back with, and the caller writes nothing
-        to the row's blob columns: the object may be a manual upload. An object deleted between the
-        two calls is read as the same failed attempt rather than retried in place: the next attempt
-        finds the key empty and writes, and the source keeps the recording for a bounded time, so
-        one attempt is what the loss costs. Any other store error propagates, as the write's would.
+        Adopted when it carries `_DRAIN_OBJECT_METADATA` (whatever its hash: the source need not
+        return byte-identical zips, and an attempt that died between its object write and its
+        commit must not strand the real replay), or when it hashes to `download_sha256` (those are
+        the bytes the response carried, so the row's `source` and `http_status` stay true; this is
+        also how an object written before the marker existed is recovered). The caller records the
+        adopted object's own size and SHA-256 and validates its bytes. Otherwise the object is not
+        this drain's, may be a manual upload, and gets no blob metadata. An object deleted between
+        the two calls is read as the same failed attempt rather than retried in place: the next
+        attempt finds the key empty and writes, and the source keeps the recording for a bounded
+        time, so one attempt is what the loss costs. Any other store error propagates, as the
+        write's would.
         """
         try:
-            held = await store.get(key)
+            held, metadata = await store.get_with_metadata(key)
         except ObjectNotFound:
-            return (
+            return None, (
                 f"the object under {key!r} was no longer there when read back; "
                 "nothing was recorded for it"
             )
+        if all(metadata.get(name) == value for name, value in _DRAIN_OBJECT_METADATA.items()):
+            return held, None
         if hashlib.sha256(held).hexdigest() == download_sha256:
-            return None
-        return (
+            return held, None
+        return None, (
             f"{key!r} already held a different object than the download; "
             "nothing was written over it and nothing was recorded for it"
         )
@@ -1684,12 +1743,15 @@ class CaptureDrain:
     async def _commit_blob_metadata(
         self, capture_id: uuid.UUID, object_key: str, zip_bytes: int, zip_sha256: str
     ) -> bool:
-        """Name the object on the row, while it is still `downloading` (T728). Returns whether a row
-        was written."""
+        """Name the object on the row, if the row names none yet, whatever its status (T728). The
+        object is already under the key, so a row withdrawn or handed back meanwhile still ends up
+        naming it (erasure deletes only what a row names, and an unnamed object blocks every later
+        upload); what is refused is naming an object over one the row already names. Returns
+        whether a row was written."""
         async with self._session_factory() as session:
             outcome = await session.execute(
                 update(ReplayCapture)
-                .where(_still_downloading(capture_id))
+                .where(ReplayCapture.id == capture_id, ReplayCapture.object_key.is_(None))
                 .values(object_key=object_key, zip_bytes=zip_bytes, zip_sha256=zip_sha256)
             )
             await session.commit()
@@ -1700,14 +1762,15 @@ class CaptureDrain:
         capture_id: uuid.UUID,
         result: ReplayValidationResult | None,
         *,
-        only_if_status: CaptureStatus | None = None,
+        only_if_status: CaptureStatus,
         only_if_archiving: bool = False,
     ) -> bool:
-        """Mark `stored`. `only_if_status` guards the write on the row's current status (T673's
-        re-validation, which must not overwrite a row another process moved);
-        `only_if_archiving` adds `_owner_is_archiving` to the same `WHERE`, so a user who objected
-        or unlinked after the page was selected is not written. Returns whether a row was
-        written. Unguarded, it matches the id alone, as before."""
+        """Mark `stored`, only while the row's status is `only_if_status`: `downloading` for the
+        drain's own write, `quarantined` for T673's re-validation, so a row another process has
+        moved is never overwritten. Required, with no id-only default (T728): the default is how a
+        row an upload had marked `stored` came to be rewritten. `only_if_archiving` adds
+        `_owner_is_archiving` to the same `WHERE`, so a user who objected or unlinked after the
+        page was selected is not written. Returns whether a row was written."""
         values: dict[str, Any] = {
             "status": CaptureStatus.STORED,
             "stored_at": datetime.now(UTC),
@@ -1718,9 +1781,11 @@ class CaptureDrain:
             values["inner_filename"] = result.inner_filename
             values["inner_bytes"] = result.inner_bytes
             values["validated_by"] = f"{result.engine_name}@{result.engine_version}"
-        statement = update(ReplayCapture).where(ReplayCapture.id == capture_id).values(**values)
-        if only_if_status is not None:
-            statement = statement.where(ReplayCapture.status == only_if_status)
+        statement = (
+            update(ReplayCapture)
+            .where(ReplayCapture.id == capture_id, ReplayCapture.status == only_if_status)
+            .values(**values)
+        )
         if only_if_archiving:
             statement = statement.where(_owner_is_archiving())
         async with self._session_factory() as session:
@@ -1733,17 +1798,16 @@ class CaptureDrain:
         capture_id: uuid.UUID,
         reason: str,
         *,
-        only_if_status: CaptureStatus | None = None,
+        only_if_status: CaptureStatus,
         only_if_archiving: bool = False,
     ) -> bool:
-        """Mark `quarantined` with `reason`; both guards and the return as `_mark_stored`."""
+        """Mark `quarantined` with `reason`; both guards and the return as `_mark_stored`,
+        including the required `only_if_status`."""
         statement = (
             update(ReplayCapture)
-            .where(ReplayCapture.id == capture_id)
+            .where(ReplayCapture.id == capture_id, ReplayCapture.status == only_if_status)
             .values(status=CaptureStatus.QUARANTINED, last_error=reason)
         )
-        if only_if_status is not None:
-            statement = statement.where(ReplayCapture.status == only_if_status)
         if only_if_archiving:
             statement = statement.where(_owner_is_archiving())
         async with self._session_factory() as session:

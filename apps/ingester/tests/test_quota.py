@@ -412,7 +412,12 @@ class _QuotaFakeObjectStore:
         self.objects: dict[str, bytes] = {}
 
     async def put_if_absent(
-        self, key: str, body: bytes, *, content_type: str = "application/zip"
+        self,
+        key: str,
+        body: bytes,
+        *,
+        content_type: str = "application/zip",
+        metadata: Mapping[str, str] | None = None,
     ) -> bool:
         if key in self.objects:
             return False
@@ -421,6 +426,9 @@ class _QuotaFakeObjectStore:
 
     async def get(self, key: str) -> bytes:
         return self.objects[key]
+
+    async def get_with_metadata(self, key: str) -> tuple[bytes, Mapping[str, str]]:
+        return self.objects[key], {}
 
 
 class _QuotaFakeReplayValidator:

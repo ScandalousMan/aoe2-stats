@@ -100,7 +100,12 @@ class _FakeObjectStore:
         self.put_calls: list[tuple[str, bytes]] = []
 
     async def put_if_absent(
-        self, key: str, body: bytes, *, content_type: str = "application/zip"
+        self,
+        key: str,
+        body: bytes,
+        *,
+        content_type: str = "application/zip",
+        metadata: Mapping[str, str] | None = None,
     ) -> bool:
         self.put_calls.append((key, body))
         return True

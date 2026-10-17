@@ -44,6 +44,7 @@ reach `stored` for the run to have done real work.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
@@ -107,13 +108,23 @@ class _FakeObjectStore:
         self.put_calls: list[tuple[str, bytes]] = []
 
     async def put_if_absent(
-        self, key: str, body: bytes, *, content_type: str = "application/zip"
+        self,
+        key: str,
+        body: bytes,
+        *,
+        content_type: str = "application/zip",
+        metadata: Mapping[str, str] | None = None,
     ) -> bool:
         self.put_calls.append((key, body))
         return True
 
     async def get(self, key: str) -> bytes:  # pragma: no cover - no reclaim in this scenario
         raise AssertionError("no capture in this scenario is ever a reclaim")
+
+    async def get_with_metadata(  # pragma: no cover - no key is ever held in this scenario
+        self, key: str
+    ) -> tuple[bytes, Mapping[str, str]]:
+        raise AssertionError("no key in this scenario is ever held")
 
 
 class _FakeReplayEngine:

@@ -167,9 +167,18 @@ class _WireRecorder:
     implementation passes, including one the real client would reject or never turn into a header.
     """
 
-    def __init__(self, *, status: int, code: str = "") -> None:
+    def __init__(
+        self,
+        *,
+        status: int,
+        code: str = "",
+        body: bytes = b"",
+        headers: dict[str, str] | None = None,
+    ) -> None:
         self.status = status
         self.code = code
+        self.body = body
+        self.headers = headers or {}
         self.requests: list[Any] = []
 
     def __call__(self, request: Any, **kwargs: Any) -> Any:
@@ -180,12 +189,12 @@ class _WireRecorder:
         body = (
             f"<Error><Code>{self.code}</Code><Message>x</Message></Error>".encode()
             if self.code
-            else b""
+            else self.body
         )
         raw = HTTPResponse(
-            body=io.BytesIO(body), status=self.status, preload_content=False, headers={}
+            body=io.BytesIO(body), status=self.status, preload_content=False, headers=self.headers
         )
-        return AWSResponse(request.url, self.status, {}, raw)
+        return AWSResponse(request.url, self.status, self.headers, raw)
 
 
 def _header(request: Any, name: str) -> str | None:
@@ -251,7 +260,6 @@ async def test_put_if_absent_does_not_treat_another_error_as_exists(
 @pytest.mark.parametrize(
     ("status", "code"),
     [
-        (409, "ConditionalRequestConflict"),  # a concurrent write in flight: it may yet fail
         (403, "AccessDenied"),
         (404, "NoSuchBucket"),
         (500, "InternalError"),
@@ -263,8 +271,51 @@ async def test_put_if_absent_propagates_every_other_status(
 ) -> None:
     store = _store_over_a_real_client(config, _WireRecorder(status=status, code=code))
 
-    with pytest.raises(ClientError):
+    with pytest.raises(ClientError) as raised:
         await store.put_if_absent("analyses/1/abc.json", b"{}", content_type="application/json")
+
+    assert not isinstance(raised.value, objects.ObjectWriteConflict)
+
+
+async def test_put_if_absent_raises_the_typed_conflict_for_a_409(
+    config: ObjectStoreConfig,
+) -> None:
+    """A concurrent conditional write to the key is in flight: that writer may yet fail, so this is
+    neither "exists" nor "written", and a caller must be able to tell it from every other error."""
+    store = _store_over_a_real_client(
+        config, _WireRecorder(status=409, code="ConditionalRequestConflict")
+    )
+
+    with pytest.raises(objects.ObjectWriteConflict) as raised:
+        await store.put_if_absent("replays/1/2.zip", b"{}", content_type="application/zip")
+
+    assert raised.value.key == "replays/1/2.zip"
+    assert isinstance(raised.value.__cause__, ClientError)
+
+
+async def test_put_if_absent_sends_user_metadata_as_amz_meta_headers(
+    config: ObjectStoreConfig,
+) -> None:
+    recorder = _WireRecorder(status=200)
+    store = _store_over_a_real_client(config, recorder)
+
+    await store.put_if_absent(
+        "replays/1/2.zip", b"zip", content_type="application/zip", metadata={"source": "automatic"}
+    )
+
+    assert _header(recorder.requests[0], "x-amz-meta-source") == "automatic"
+
+
+async def test_put_if_absent_without_metadata_sends_none(config: ObjectStoreConfig) -> None:
+    """The manual upload passes none: its object must not look like the automatic capture's."""
+    recorder = _WireRecorder(status=200)
+    store = _store_over_a_real_client(config, recorder)
+
+    await store.put_if_absent("replays/1/2.zip", b"zip", content_type="application/zip")
+
+    assert [
+        name for name in recorder.requests[0].headers if name.lower().startswith("x-amz-meta")
+    ] == []
 
 
 async def test_put_if_absent_maps_a_bare_412_to_not_written(config: ObjectStoreConfig) -> None:
@@ -383,6 +434,48 @@ async def test_get_propagates_a_connection_error(config: ObjectStoreConfig) -> N
 
     with pytest.raises(EndpointConnectionError):
         await ObjectStore(config, client=_Unreachable()).get("a/b.json")
+
+
+# --- get_with_metadata ------------------------------------------------------------------------
+
+
+async def test_get_with_metadata_reads_the_body_and_the_user_metadata_in_one_request(
+    config: ObjectStoreConfig,
+) -> None:
+    recorder = _WireRecorder(
+        status=200, body=b"zip-bytes", headers={"x-amz-meta-source": "automatic"}
+    )
+    store = _store_over_a_real_client(config, recorder, operation="GetObject")
+
+    body, metadata = await store.get_with_metadata("replays/1/2.zip")
+
+    assert body == b"zip-bytes"
+    assert dict(metadata) == {"source": "automatic"}
+    assert len(recorder.requests) == 1
+
+
+async def test_get_with_metadata_answers_an_empty_mapping_for_an_object_without_any(
+    config: ObjectStoreConfig,
+) -> None:
+    store = _store_over_a_real_client(
+        config, _WireRecorder(status=200, body=b"zip-bytes"), operation="GetObject"
+    )
+
+    body, metadata = await store.get_with_metadata("replays/1/2.zip")
+
+    assert body == b"zip-bytes"
+    assert dict(metadata) == {}
+
+
+async def test_get_with_metadata_raises_object_not_found_for_a_missing_key(
+    config: ObjectStoreConfig,
+) -> None:
+    store = _store_over_a_real_client(
+        config, _WireRecorder(status=404, code="NoSuchKey"), operation="GetObject"
+    )
+
+    with pytest.raises(objects.ObjectNotFound):
+        await store.get_with_metadata("replays/1/2.zip")
 
 
 # --- the analysis key layout and read-by-identity (T666e) ---------------------------------------

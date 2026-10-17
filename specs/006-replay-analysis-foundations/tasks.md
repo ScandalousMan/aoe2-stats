@@ -2411,6 +2411,18 @@ carries what T673's dry run read.
       row that names no key, with the download's hash, is validated and recorded `automatic`; with a
       different hash, the row names no key, its attempt stands, and the object is unchanged.
       **Contrast:** a key that holds nothing is written and recorded as today
+      **Amended (2026-10-16, by Claude on the user's delegation, after #148's review).** The
+      drain's own object is told apart from an upload by a marker, not by its hash: the drain
+      writes its object with S3 user metadata naming the automatic capture, and when the key is
+      held by an object carrying that marker, the drain adopts it whatever its hash, recording that
+      object's own size and SHA-256, because a drain killed between its write and its row write
+      would otherwise strand a real replay if the source's bytes are not stable across downloads,
+      which is not measured. An object without the marker keeps the rule above. Objects written
+      before the marker existed carry none, so a row stranded that way recovers through the
+      equal-hash branch only. The blob metadata commit matches the row while it names no object,
+      whatever its status, so a row withdrawn or reverted after the drain's write still names the
+      drain's object and erasure reaches it. A 409 from the store (a concurrent conditional write
+      in flight) hands the row back without counting an attempt instead of aborting the run
 - [ ] T729 Decide what an `expired` or `failed` capture reads for an objecting owner (filed
       2026-10-13 from T723). `CaptureStateBadge`'s `SecondaryLine` for both statuses ends "If you
       still have the file, you can upload it."

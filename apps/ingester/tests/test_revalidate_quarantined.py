@@ -39,6 +39,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import uuid
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -108,7 +109,17 @@ class _RecordingObjectStore:
             raise ObjectNotFound(key)
         return self.objects[key]
 
-    async def put_if_absent(self, key: str, body: bytes, *, content_type: str = "") -> bool:
+    async def get_with_metadata(self, key: str) -> tuple[bytes, Mapping[str, str]]:
+        return await self.get(key), {}
+
+    async def put_if_absent(
+        self,
+        key: str,
+        body: bytes,
+        *,
+        content_type: str = "",
+        metadata: Mapping[str, str] | None = None,
+    ) -> bool:
         self.puts.append(key)
         if key in self.objects:
             return False

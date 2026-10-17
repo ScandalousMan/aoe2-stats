@@ -32,6 +32,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import io
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -116,10 +117,14 @@ class _FakeS3Client:
 
     def __init__(self) -> None:
         self.objects: dict[str, bytes] = {}
+        self.metadata: dict[str, dict[str, str]] = {}
         self.put_calls: list[str] = []
 
     def put_object(self, **kwargs: Any) -> Any:
         key = kwargs["Key"]
+        # Every attempt is recorded, including one the precondition refuses, so "never written
+        # twice" assertions count a re-upload that was attempted and not only one that landed.
+        self.put_calls.append(key)
         if kwargs.get("IfNoneMatch") == "*" and key in self.objects:
             raise ClientError(
                 {
@@ -128,14 +133,14 @@ class _FakeS3Client:
                 },
                 "PutObject",
             )
-        self.put_calls.append(key)
         self.objects[key] = kwargs["Body"]
+        self.metadata[key] = kwargs.get("Metadata", {})
 
     def get_object(self, **kwargs: Any) -> Any:
         key = kwargs["Key"]
         if key not in self.objects:
             raise KeyError(f"no object stored under {key!r}")
-        return {"Body": io.BytesIO(self.objects[key])}
+        return {"Body": io.BytesIO(self.objects[key]), "Metadata": self.metadata.get(key, {})}
 
     def delete_object(self, **kwargs: Any) -> Any:
         self.objects.pop(kwargs["Key"], None)
@@ -173,7 +178,12 @@ class _OrderCheckingObjectStore(ObjectStore):
         self._status_before_upload = status_before_upload
 
     async def put_if_absent(
-        self, key: str, body: bytes, *, content_type: str = REPLAY_CONTENT_TYPE
+        self,
+        key: str,
+        body: bytes,
+        *,
+        content_type: str = REPLAY_CONTENT_TYPE,
+        metadata: Mapping[str, str] | None = None,
     ) -> bool:
         game_id, profile_id = _parse_replay_key(key)
         async with self._session_factory() as session:
@@ -186,7 +196,7 @@ class _OrderCheckingObjectStore(ObjectStore):
                 )
             ).scalar_one()
             self._status_before_upload[key] = row.status
-        return await super().put_if_absent(key, body, content_type=content_type)
+        return await super().put_if_absent(key, body, content_type=content_type, metadata=metadata)
 
 
 class _ConcurrencyRendezvous:
