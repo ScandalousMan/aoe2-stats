@@ -806,7 +806,7 @@ Computed from other published data.
 
 - status: published
 - source: the display name the named knowledge snapshot gives a technology id
-- method: the snapshot's own name for each technology id the document researched or age-upped, keyed by the stringified id; an id the snapshot does not name is left out, never replaced
+- method: the snapshot's own name for each technology id the document researched or age-upped, keyed by the stringified id, with the source's line-break markup removed (a word-wrap hyphen joins the word, any other break is a space); an id the snapshot does not name, or whose name is nothing but markup, is left out, never replaced
 - document path: `knowledge_names.technology.*`
 - requires knowledge: `name`
 - depends on: `participant.researches.technology_id`, `participant.age_up_commands`
@@ -817,7 +817,7 @@ Computed from other published data.
 
 - status: published
 - source: the display name the named knowledge snapshot gives a unit id
-- method: the snapshot's own name for each unit id the document trained, keyed by the stringified id; an id the snapshot does not name is left out, never replaced
+- method: the snapshot's own name for each unit id the document trained, keyed by the stringified id, with the source's line-break markup removed (a word-wrap hyphen joins the word, any other break is a space); an id the snapshot does not name, or whose name is nothing but markup, is left out, never replaced
 - document path: `knowledge_names.unit.*`
 - requires knowledge: `name`
 - depends on: `participant.trainings.unit_id`
@@ -828,7 +828,7 @@ Computed from other published data.
 
 - status: published
 - source: the display name the named knowledge snapshot gives a building id
-- method: the snapshot's own name for each building id the document built, keyed by the stringified id; an id the snapshot does not name is left out, never replaced
+- method: the snapshot's own name for each building id the document built, keyed by the stringified id, with the source's line-break markup removed (a word-wrap hyphen joins the word, any other break is a space); an id the snapshot does not name, or whose name is nothing but markup, is left out, never replaced
 - document path: `knowledge_names.building.*`
 - requires knowledge: `name`
 - depends on: `participant.builds.building_id`

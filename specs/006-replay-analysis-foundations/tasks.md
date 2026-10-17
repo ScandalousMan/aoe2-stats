@@ -2595,6 +2595,20 @@ carries what T673's dry run read.
       states; make the example complete. **Plants, each red before**: a `names.py` calling a
       `query` function it was not granted (for instance `query.cost`) fails check 2, which passes
       today. **Contrast**: the T709 and T709a tests unchanged
+- [x] T709c Serve the snapshot names as labels, not as vendored markup (filed 2026-10-17 after
+      #160 merged; ported from the superseded #159, whose review accepted the rule). The vendored
+      names carry the source's line-break markup (`"Town<br>\nCenter"`, `"Circum-<br>\nnavigation"`,
+      `"Counter- weights"`; over 300 per snapshot), and `apps/analyzer/src/aoe2stats_analyzer/names.py`
+      served them as stored, so the page printed `<br>` literally. Clean the label where the block
+      is built, never in the frozen snapshot data: a hyphen followed by a break and a lowercase
+      letter joins the word, every other break is one space, whitespace collapses, and a label with
+      no letter or digit left is not served, as an unresolved id is not. `query.name` keeps
+      returning the vendored value. The served value changes, so the names method is
+      `knowledge-snapshot.name@2`. **Tests, each red before**: building 109 is served as
+      `Town Center` and technology 1404 as `Circumnavigation`; a real recording's labels carry no
+      markup; a sweep over every name in every snapshot finds no `<`, no `- `, no stray whitespace
+      and no empty label; markup-only names are not served. **Contrast**: compound hyphens stay
+      (`Two-Handed Swordsman`), and the snapshot itself still returns the vendored name
 - [x] T707a Close #126's review (`reviewer` REJECT 2026-10-08 on T707). **Frozen prose first**:
       `packages/knowledge/snapshots/aoe2techtree-185872/effects.toml`'s header is covered by the
       digest and says the snapshot resolves the labels an analysis shows and a

@@ -17,6 +17,8 @@ from typing import Final
 __all__ = ["NAMES_METHOD_ID", "NAMES_METHOD_VERSION"]
 
 #: The method behind every `names.` datum: a lookup of the display name a knowledge snapshot gives
-#: an identifier. `extract._METHODS` assigns it and `names.py` records it in the block it serves.
+#: an identifier, cleaned of the source's line-break markup. `extract._METHODS` assigns it and
+#: `names.py` records it in the block it serves. Version 2: the served label is the cleaned
+#: one (`names.clean_label`), where version 1 served the vendored value as it stood.
 NAMES_METHOD_ID: Final[str] = "knowledge-snapshot.name"
-NAMES_METHOD_VERSION: Final[str] = "1"
+NAMES_METHOD_VERSION: Final[str] = "2"
