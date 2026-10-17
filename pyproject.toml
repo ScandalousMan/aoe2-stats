@@ -102,7 +102,9 @@ dev = [
 # holds only import-graph guards that span more than one workspace member (constitution III, V,
 # XII) and so cannot live inside any single member's own `tests/`. Most of these directories do not
 # exist yet; pytest does not error on a `testpaths` entry that is missing, it simply finds nothing
-# there until the story that owns it lands.
+# there until the story that owns it lands. The two files at the end are the fixture tests over
+# `tests/fixtures/replays/`; a test file added directly under `tests/` must be named here too, or
+# no gate collects it.
 [tool.pytest.ini_options]
 testpaths = [
   "packages/core/tests",
@@ -118,6 +120,7 @@ testpaths = [
   "scripts/ops/tests",
   "tests/architecture",
   "tests/test_reference_recordings.py",
+  "tests/test_starting_state_anchor.py",
 ]
 # `tests/conftest.py` (the network-blocking autouse fixture, constitution III) is not an ancestor
 # directory of any path above, so pytest would never load it as a plain per-directory conftest.

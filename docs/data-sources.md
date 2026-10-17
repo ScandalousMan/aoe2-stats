@@ -273,7 +273,8 @@ records that the parser's type table carries an `Achievements` post-game block t
 recording did not have. That was a single negative sample. It is now corroborated: a second recording
 differs from the first in match size (a 1v1 and a 2v2), in match date (2026-08-19 and 2026-09-06) and
 in players and civilisations, and its `PostGame` operation carries the same two blocks and nothing
-else. Both are described in `tests/fixtures/replays/README.md` as ranked, on the same game build.
+else. Both are described in `tests/fixtures/replays/README.md` as ranked, on the same game build; a
+third recording on a later build has been committed since.
 `tests/test_reference_recordings.py` asserts it over every archive committed there: the `PostGame`
 block list is exactly `{Leaderboards, WorldTime}`, and no block kind name suggests statistics,
 achievements or scores. That test, not this paragraph, is the evidence; the archives cannot be
@@ -281,8 +282,8 @@ re-downloaded, which is why they are committed.
 
 **What the finding does not cover.** Still unmeasured: unranked and custom recordings, which this
 section's earlier form called ideal rather than required and which this repository does not hold;
-ranked team games larger than 2v2; and any other game build. "Ranked" is the fixtures README's
-description of where the two files came from, not something the files prove. The test also reads only
+ranked team games larger than 2v2; and any game build the fixtures README does not list. "Ranked" is
+the fixtures README's description of where the files came from, not something the files prove. The test also reads only
 the block kinds the pinned parser reports for `PostGame`, so it does not assert that no unit-death or
 score data exists elsewhere in the file, or that the parser would surface an unknown block kind. If a
 recording from an unmeasured mode is ever committed under `tests/fixtures/replays/`, the test covers
@@ -294,6 +295,60 @@ recordings measured, that data is not there, so outcome-shaped facts are not rea
 nothing may be built on their being present. What V2 derives, it derives from what the recording does
 carry (`operations`, `game_settings`, the command log), and it must not present a derivation as a
 recorded outcome.
+
+### Settled: each human player's starting-attribute array is reachable at a self-verifying anchor in the header
+
+**Settled, within the scope below.** The recording's initial state is not unreadable. The header is
+the raw-deflate stream at `raw[8:header_len]`, where `header_len` is the recording's first
+little-endian `u32`, and in the inflated bytes each human player's starting attributes begin at an
+anchor that needs no other parsing to find. `tests/test_starting_state_anchor.py` asserts the
+following over every archive committed under `tests/fixtures/replays/`, and that test, not this
+section, is the evidence. The archives and their builds are described in
+`tests/fixtures/replays/README.md`, not counted here.
+
+**Asserted by the test.**
+
+- The player's name, as the pinned engine reports it, occurs framed as a `u16` little-endian length
+  that **counts the NUL terminator**, then the UTF-8 name, then one NUL byte. The length counts
+  bytes, so the non-ASCII names in the set (two, as of 2026-10-17) frame correctly. This frame
+  occurs **exactly once per human player** in the inflated header, and the anchor sits at the
+  deepest occurrence of the name. That is what makes the anchor self-verifying: the bytes at the
+  anchor are the name the engine reported, not a pattern that merely looks right.
+- A little-endian `float32` array starts **7 bytes after the end of the name**, and its first four
+  values are each finite, non-negative integers.
+- The number of anchors equals the number of human players the engine reports. "Human" is
+  `player_type == 2` in the engine's `game_settings.players`; the test examines only those slots.
+- The test also fails on planted absences: a corrupted terminator, a wrong length prefix, a
+  duplicated frame, a non-integral value.
+
+**Not asserted by any test.** What the four values are, and what follows them. D1 in
+[`specs/006-replay-analysis-foundations/research.md`](../specs/006-replay-analysis-foundations/research.md)
+read them as food, wood, stone and gold in the engine's resource order, which is consistent with
+what was observed as of 2026-10-17 in the committed set: most players' four values are 200, 200,
+200, 100 (the standard start), one player's first two are 250 and one player's third is 300. The
+test deliberately hard-codes none of these, so that identity rests on D1 and that observation and
+nothing else. Also observed on that date and not asserted: the six bytes between the NUL and the
+array were identical for every player; the name also occurs earlier in the header with a different
+framing; every slot had `player_type` 2; every player had `handicap` 100, the lobby's
+`starting_resources_id` was 0, and each player a distinct `civ_id`. So the lobby handicap does not
+explain the players who differ, a civilisation effect cannot be told apart from a per-player one in
+this set (D1 said "consistent with a civilisation or handicap multiplier"), and nothing here
+establishes why the values differ.
+
+**What the finding does not cover.** Slots that are not human (AI or empty): no committed recording
+has one, and what the other `player_type` values mean is not evidenced. Game builds other than those
+the fixtures README lists. Whether the anchor holds across a patch that changes the header, which
+is exactly what the test would show by failing. And the object table, stated here only on D1's
+authority with **no test asserting it**: it is behind a per-patch grammar, variable-length and
+variant-typed across roughly ten record kinds, and one community maintainer measured a single record
+kind growing by twenty-four bytes between two save versions. So starting objects and the map's
+resource geometry are not reachable by an anchor the way the starting attributes are. This section
+records that the data is present and where, not a decoder: that is not built here.
+
+**What the answer decides.** The initial state must not be written off as unreadable: starting
+attributes are reachable at the anchor above, and objects at a standing per-patch cost. D1 in the
+research file above is the historical record of how this was first found and is frozen; this
+section is the living text.
 
 ### Publication delay: distribution
 

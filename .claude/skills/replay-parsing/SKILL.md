@@ -115,9 +115,10 @@ feature's `tasks.md` for the rule this was written against.
 **The initial-state section is not empty, only unexposed.** The pinned wheel returns it as three
 scalars and stops, but the decompressed header does contain each player's starting attributes,
 findable by an anchor without a full grammar, and the lobby presets are already named fields in the
-wheel's output. Do not conclude that the starting state is unreadable: the anchor and what was
-measured are in `specs/006-replay-analysis-foundations/research.md` D1. A repository-local decoder
-is planned for feature 007; none exists yet.
+wheel's output. Do not conclude that the starting state is unreadable: the anchor and what is
+asserted of it are in `docs/data-sources.md` §2; D1 in
+`specs/006-replay-analysis-foundations/research.md` is the history. A repository-local decoder is
+planned for feature 007; none exists yet.
 
 **A `.aoe2record` is a command log, not a state log.** It records what a player told the game to do,
 never the game's derived response — resources, population, units lost. Anything about _state_ is a
