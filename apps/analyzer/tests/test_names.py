@@ -12,6 +12,7 @@ names exactly the identity it is about. Both promoted snapshots are used (builds
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import re
 from datetime import UTC, datetime
@@ -26,6 +27,7 @@ from tests.snapshot_refresh import (
     isolate_snapshot_root,
 )
 
+from aoe2stats_analyzer import names as names_module
 from aoe2stats_analyzer.canonical import canonical_bytes
 from aoe2stats_analyzer.extract import _method_for, build_document
 from aoe2stats_analyzer.names import NAMES_KEY, clean_label, with_names
@@ -593,6 +595,11 @@ def test_the_sweep_reaches_names_with_markup_in_more_than_one_snapshot() -> None
     assert len(with_markup) >= 2
 
 
+#: A hyphen right after a letter and then a space is a break left behind (`Counter- weights`). A
+#: spaced dash between words (`Foo - bar`) is not one: its hyphen follows a space.
+_DANGLING_HYPHEN = re.compile(r"[^\W\d_]-\s")
+
+
 def test_every_vendored_name_of_every_snapshot_cleans_to_a_plain_label() -> None:
     problems = []
     for directory, kind, entity_id, vendored in _every_vendored_name():
@@ -601,7 +608,7 @@ def test_every_vendored_name_of_every_snapshot_cleans_to_a_plain_label() -> None
             label is None
             or "<" in label
             or ">" in label
-            or "- " in label
+            or _DANGLING_HYPHEN.search(label)
             or label != label.strip()
             or "  " in label
             or "\n" in label
@@ -624,7 +631,79 @@ def test_a_label_with_nothing_but_markup_is_left_out(markup: str) -> None:
         ("Double-Bit<br>\nAxe", "Double-Bit Axe"),
         ("Man-at-Arms", "Man-at-Arms"),
         ("Feudal Age", "Feudal Age"),
+        # The deciding clause: after a letter, a hyphen then a break then ...
+        ("Man-at-<br>\nArms", "Man-at-Arms"),  # ... a capital: the hyphen stays, no space
+        ("Anti-<br>\nCavalry", "Anti-Cavalry"),
+        ("Anti- Cavalry", "Anti-Cavalry"),
+        ("Foo - bar", "Foo - bar"),  # a hyphen not after a letter is not touched
+        ("Foo -<br>\nbar", "Foo - bar"),
+        ("Foo<br><br>\nbar", "Foo bar"),
+        ("Circum-<br><br>\nnavigation", "Circumnavigation"),
     ],
 )
 def test_clean_label_joins_word_wrap_hyphens_and_keeps_compounds(vendored: str, label: str) -> None:
     assert clean_label(vendored) == label
+
+
+#: The names the join applies to, across every snapshot. A name belongs here only once a person has
+#: confirmed it is a word split across lines and not a compound whose second half starts in lower
+#: case.
+_CONFIRMED_WORD_WRAPS = {"Circum-<br>\nnavigation", "Counter- weights"}
+_JOIN_SITE = re.compile(r"(?<=[^\W\d_])-(?:\s|(?i:<br\s*/?>))+[a-z]")
+
+
+def test_the_names_a_hyphen_join_applies_to_are_exactly_the_confirmed_word_wraps() -> None:
+    joined = {name for _, _, _, name in _every_vendored_name() if _JOIN_SITE.search(name)}
+
+    assert joined == _CONFIRMED_WORD_WRAPS, (
+        "a name the hyphen join applies to is not one a person has confirmed: a new entry needs "
+        "a person to confirm it is a word-wrap and not a compound (for example "
+        "`Anti-<br>\\ncavalry`, which would be served as `Anticavalry`), then to be added to "
+        "_CONFIRMED_WORD_WRAPS. "
+        f"Unconfirmed: {sorted(joined - _CONFIRMED_WORD_WRAPS)}; "
+        f"gone: {sorted(_CONFIRMED_WORD_WRAPS - joined)}"
+    )
+
+
+# --- a name that cleans to nothing is left out of the block, and its datum with it ---------------
+
+
+def _serve_with_unit_83_named(monkeypatch: pytest.MonkeyPatch, value: str | None) -> bytes:
+    """The block served for a document whose only id is unit 83, with `query.name` answering
+    `value` for it (the real answer when `value` is `None`)."""
+    real = names_module.query_name
+
+    def stubbed(entity: EntityRef) -> Any:
+        answer = real(entity)
+        if value is None or isinstance(answer, KnowledgeGap):
+            return answer
+        return dataclasses.replace(answer, value=value)
+
+    monkeypatch.setattr(names_module, "query_name", stubbed)
+    return with_names(_stored(_document_naming(units=(83,))))
+
+
+def test_a_name_that_is_only_markup_is_left_out_and_so_is_its_kinds_datum(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    served = _serve_with_unit_83_named(monkeypatch, "<br>")
+
+    block = _served_names(served)
+    assert block["unit"] == {}
+    assert "names.unit" not in block["provenance"]
+    assert set(block["provenance"]) == {
+        "names.snapshot.describes_build",
+        "names.snapshot.digest",
+    }
+    assert _served_shape_violations(served) == []
+
+
+def test_the_same_id_with_a_normal_name_is_served_with_its_datum(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    served = _serve_with_unit_83_named(monkeypatch, None)
+
+    block = _served_names(served)
+    assert block["unit"] == {"83": "Villager"}
+    assert "names.unit" in block["provenance"]
+    assert _served_shape_violations(served) == []
