@@ -45,8 +45,9 @@ own set-equality assertion against FR-022b's enumeration is what now catches a s
 new, unenumerated blocker.
 
 **Field vocabulary.** `register.toml`'s real `requires_knowledge` values are `cost`,
-`production_time`, `produced_at`, `age_requirement`, `prerequisites`, `available_to` and
-`line_of_sight`. `line_of_sight` belongs to a different reconstruction domain (map control /
+`production_time`, `produced_at`, `age_requirement`, `prerequisites`, `available_to`,
+`line_of_sight` and `name` (T709a, never gapped: it is the query that degrades to the bare
+identifier). `line_of_sight` belongs to a different reconstruction domain (map control /
 exploration, blocked on the unread starting state — feature 007's territory, research.md D1) and is
 not one of `query.py`'s six query-surface fields (`cost`, `production_time`, `age_requirement`,
 `prerequisites`, `produced_at`, `available_to`). The coverage pass over *this* package's knowledge

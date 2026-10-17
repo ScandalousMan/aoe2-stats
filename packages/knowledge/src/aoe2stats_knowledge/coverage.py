@@ -54,9 +54,10 @@ case T652k's own per-civilisation merge could not see: the same civilisation sea
 teams (a mirror matchup) hitting an identical entity-absent/field-absent gap once per team.
 
 **The six fields this pass asks about, and why exactly these six.** `packages/core/src/
-aoe2stats_core/truth/register.toml`'s `requires_knowledge` vocabulary is, read directly (there is
-no third field this repository's register ever names): `cost`, `production_time`, `produced_at`,
-`age_requirement`, `prerequisites`, `available_to` and `line_of_sight`. The first six are exactly
+aoe2stats_core/truth/register.toml`'s `requires_knowledge` vocabulary is, read directly: `cost`,
+`production_time`, `produced_at`, `age_requirement`, `prerequisites`, `available_to`,
+`line_of_sight` and, since T709a, `name` (the display names served beside a stored document, which
+this pass does not ask about: see the end of this paragraph). The first six are exactly
 `query.py`'s civilisation-qualified query surface (`cost`, `production_time`, `age_requirement`,
 `prerequisites`, `produced_at`, `available_to` — `query.py`'s own module docstring). `line_of_sight`
 names no query this package exposes at all: it belongs to map control and exploration, blocked on

@@ -222,6 +222,35 @@ describe('AnalysisContainer', () => {
     expect(screen.queryByRole('button')).not.toBeInTheDocument()
   })
 
+  it('shows the names the document response carries and leaves an unnamed id as its identifier (T709)', async () => {
+    const document = baseDocument()
+    document.participants[0]!.age_up_commands = { '101': 401_000, '102': 720_000 }
+    document.participants[0]!.builds = [
+      { building_id: 70, world_time_ms: 15_000 },
+      { building_id: 490, world_time_ms: 16_000 },
+    ]
+    document.identity = {
+      knowledge: { describes_build: 185_872, digest: 'sha256:abc' },
+    }
+    document.knowledge_names = {
+      snapshot: { describes_build: 185_872, digest: 'sha256:abc' },
+      technology: { '101': 'Feudal Age', '102': 'Castle Age' },
+      unit: {},
+      building: { '70': 'House' },
+    }
+    installFakeApi({
+      detail: () => jsonResponse(baseDetail({ state: 'published', parser_version: '0.1.21' })),
+      document: () => jsonResponse(document),
+    })
+    renderAnalysis()
+
+    expect(await screen.findByText('Feudal Age')).toBeInTheDocument()
+    expect(screen.getByText('Castle Age')).toBeInTheDocument()
+    expect(screen.getByText('House')).toBeInTheDocument()
+    // Building 490 sits beside House in the same list and is not named: it stays its identifier.
+    expect(screen.getByText(/490/)).toBeInTheDocument()
+  })
+
   it('renders the published timeline with no recompute offered when not stale', async () => {
     installFakeApi({
       detail: () => jsonResponse(baseDetail({ state: 'published', parser_version: '0.1.21' })),

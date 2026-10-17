@@ -76,6 +76,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from aoe2stats_api import ratelimit, security
 from aoe2stats_api.deps import get_object_store
 from aoe2stats_api.settings import get_settings
+from aoe2stats_knowledge.snapshot import SnapshotError
 from aoe2stats_replay_engine.aoe2rec import ENGINE_NAME
 from aoe2stats_storage.models import (
     AoeProfile,
@@ -395,6 +396,168 @@ async def test_published_analysis_answers_a_result_for_every_participant(
         "FR-030: the analysis must show a result for every participant, never fewer — got "
         f"{result_profile_ids}"
     )
+
+
+# ================================================================================================
+# T709 — names are served beside the stored document, never written into it
+# ================================================================================================
+
+
+def _named_document(*, game_id: int, build: int, participant_ids: tuple[int, ...]) -> bytes:
+    """A version-2-shaped document whose identity names the promoted snapshot for `build`, carrying
+    Feudal Age and Castle Age (age-ups), a House (building 70) and building 490, which neither
+    promoted snapshot carries."""
+    from aoe2stats_knowledge.snapshot import load_all_snapshots
+
+    (snapshot,) = (
+        s for s in load_all_snapshots() if s.promoted and s.identity.describes_build == build
+    )
+    document = json.loads(
+        _published_document(
+            game_id=game_id,
+            point_of_view_profile_id=participant_ids[0],
+            engine_version=_RUNNING_ENGINE_VERSION,
+            participant_ids=participant_ids,
+        )
+    )
+    document["schema_version"] = 2
+    document["identity"] = {
+        "digest": "sha256:" + "1" * 64,
+        "knowledge": {
+            "source": snapshot.identity.source,
+            "source_version": snapshot.identity.source_version,
+            "describes_build": build,
+            "digest": snapshot.identity.digest,
+        },
+    }
+    participant = document["participants"][0]
+    participant["age_up_commands"] = {"101": 600_000, "102": 1_200_000}
+    participant["builds"] = [
+        {"building_id": 70, "world_time_ms": 1000},
+        {"building_id": 490, "world_time_ms": 2000},
+    ]
+    return json.dumps(document, sort_keys=True, indent=1).encode("utf-8") + b"\n"
+
+
+@pytest.mark.parametrize("build", [180059, 185872])
+async def test_names_are_served_beside_the_stored_document_and_the_stored_bytes_are_unchanged(
+    client: TestClient, db_session: AsyncSession, build: int
+) -> None:
+    """T709: a build 180059 and a build 185872 document each show Feudal Age, Castle Age and
+    House; building 490, outside both snapshots, stays unresolved while 70 beside it resolves; the
+    stored object is byte-identical before and after the read, and is the prefix of the body."""
+    import hashlib
+
+    caller = await _seed_user(db_session)
+    await _sign_in(client, db_session, caller)
+    game_id = _PUBLISHED_GAME_ID + build % 1000
+    participant_ids = (_PARTICIPANT_A, _PARTICIPANT_B)
+    await _seed_two_participant_match(db_session, game_id=game_id, participant_ids=participant_ids)
+    result_key = f"analyses/{game_id}.json"
+    stored = _named_document(game_id=game_id, build=build, participant_ids=participant_ids)
+    digest_before = hashlib.sha256(stored).hexdigest()
+    store = _FakeAnalysisObjectStore({result_key: stored})
+    await _seed_analysis(
+        db_session,
+        game_id=game_id,
+        state=MatchAnalysisState.PUBLISHED,
+        point_of_view_profile_id=participant_ids[0],
+        parser_name=_RUNNING_ENGINE_NAME,
+        parser_version=_RUNNING_ENGINE_VERSION,
+        result_key=result_key,
+    )
+    client.app.dependency_overrides[get_object_store] = lambda: store  # type: ignore[attr-defined]
+
+    response = client.get(f"/api/matches/{game_id}/analysis")
+
+    assert response.status_code == 200, f"Got {response.status_code}: {response.text}"
+    _assert_no_index(response)
+    names = response.json()["knowledge_names"]
+    assert names["technology"]["101"] == "Feudal Age"
+    assert names["technology"]["102"] == "Castle Age"
+    assert names["building"]["70"] == "House"
+    assert "490" not in names["building"]
+    assert names["snapshot"]["describes_build"] == build
+    assert response.content.startswith(stored.rstrip()[:-1])
+    assert hashlib.sha256(store._documents[result_key]).hexdigest() == digest_before
+    assert store._documents[result_key] == stored
+
+
+async def test_a_document_that_names_no_snapshot_is_served_byte_for_byte(
+    client: TestClient, db_session: AsyncSession
+) -> None:
+    """T709 contrast: a document whose identity names no snapshot (here, one without an identity
+    at all) gets no names block, and the body is the stored object exactly."""
+    caller = await _seed_user(db_session)
+    await _sign_in(client, db_session, caller)
+    game_id = _PUBLISHED_GAME_ID + 7
+    participant_ids = (_PARTICIPANT_A, _PARTICIPANT_B)
+    await _seed_two_participant_match(db_session, game_id=game_id, participant_ids=participant_ids)
+    result_key = f"analyses/{game_id}.json"
+    stored = _published_document(
+        game_id=game_id,
+        point_of_view_profile_id=participant_ids[0],
+        engine_version=_RUNNING_ENGINE_VERSION,
+        participant_ids=participant_ids,
+    )
+    await _seed_analysis(
+        db_session,
+        game_id=game_id,
+        state=MatchAnalysisState.PUBLISHED,
+        point_of_view_profile_id=participant_ids[0],
+        parser_name=_RUNNING_ENGINE_NAME,
+        parser_version=_RUNNING_ENGINE_VERSION,
+        result_key=result_key,
+    )
+    client.app.dependency_overrides[get_object_store] = lambda: _FakeAnalysisObjectStore(  # type: ignore[attr-defined]
+        {result_key: stored}
+    )
+
+    response = client.get(f"/api/matches/{game_id}/analysis")
+
+    assert response.status_code == 200
+    assert response.content == stored
+
+
+@pytest.mark.parametrize("fault", [OSError, SnapshotError, RuntimeError])
+async def test_a_failure_resolving_names_serves_the_stored_document(
+    client: TestClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    fault: type[Exception],
+) -> None:
+    """Names are decoration: a fault in resolving them must not take the page down - the stored
+    document is served as it is and the ids render unresolved, as they did before."""
+    from aoe2stats_analyzer import names
+
+    def _boom(document: bytes) -> bytes:
+        raise fault("a packaged snapshot cannot be read")
+
+    monkeypatch.setattr(names, "with_names", _boom)
+    caller = await _seed_user(db_session)
+    await _sign_in(client, db_session, caller)
+    game_id = _PUBLISHED_GAME_ID + 8
+    participant_ids = (_PARTICIPANT_A, _PARTICIPANT_B)
+    await _seed_two_participant_match(db_session, game_id=game_id, participant_ids=participant_ids)
+    result_key = f"analyses/{game_id}.json"
+    stored = _named_document(game_id=game_id, build=180059, participant_ids=participant_ids)
+    await _seed_analysis(
+        db_session,
+        game_id=game_id,
+        state=MatchAnalysisState.PUBLISHED,
+        point_of_view_profile_id=participant_ids[0],
+        parser_name=_RUNNING_ENGINE_NAME,
+        parser_version=_RUNNING_ENGINE_VERSION,
+        result_key=result_key,
+    )
+    client.app.dependency_overrides[get_object_store] = lambda: _FakeAnalysisObjectStore(  # type: ignore[attr-defined]
+        {result_key: stored}
+    )
+
+    response = client.get(f"/api/matches/{game_id}/analysis")
+
+    assert response.status_code == 200
+    assert response.content == stored
 
 
 # ================================================================================================

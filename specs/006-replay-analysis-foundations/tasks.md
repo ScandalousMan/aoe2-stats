@@ -2537,7 +2537,7 @@ carries what T673's dry run read.
       unresolved-identifier style against the contrast table, and record that no baseline can
       move: Storybook's preview wraps every story in the primary ink, so the stories never showed
       the defect (#126's visual job: 478 passed, none moved); the unit test is the guard (T710)
-- [ ] T709 Show names on the analysis page. Found closing T707 (2026-10-08): no stage maps an id to
+- [x] T709 Show names on the analysis page. Found closing T707 (2026-10-08): no stage maps an id to
       a name for any build — the stored document carries ids only, and
       `apps/web/src/features/analysis/mappers.ts` renders every technology, unit and building
       unresolved under 003's FR-043a ("until such a table ships"). The knowledge snapshots are that
@@ -2547,6 +2547,52 @@ carries what T673's dry run read.
       them; an id the snapshot does not name stays unresolved as today. Tests: a build 185872 and
       a build 180059 document each show Feudal Age, Castle Age and House; an id outside the
       snapshot stays unresolved; the stored object is byte-identical before and after
+- [x] T709a Close #160's review (`reviewer` REJECT 2026-10-17 on T709). **Request path, decided by
+      the user 2026-10-17**: names are resolved on the request path, and the rule says so rather
+      than being stepped around. Amend `specs/006-replay-analysis-foundations/plan.md`'s "no
+      request-path work" constraint and check 2 of
+      `tests/architecture/test_feature_006_boundaries.py` with that decision: put
+      `apps/analyzer/src/aoe2stats_analyzer/names.py` in `_REQUEST_PATH_CODE`, and grant it, and
+      only it, the named `aoe2stats_knowledge` symbols it imports, so any other knowledge or truth
+      import from it fails; drop the "for the reason `extract.py` is" justification and the test
+      asserting `names.py` is outside the set. **Register, decided by the user the same day**: the
+      served `knowledge_names` leaves are published data (FR-006, FR-007). Give them an entry in
+      `packages/core/src/aoe2stats_core/truth/register.toml` (tier derived, requiring knowledge,
+      the snapshot as source), regenerate `REGISTER.md` from it, and make the check that fails a
+      publishable field with no entry reach the served shape, not only the stored body; amend
+      `specs/006-replay-analysis-foundations/contracts/analysis-document.md`'s names section to
+      say so. **Isolation**: a subprocess check, beside the staleness one in
+      `apps/api/tests/test_engine_isolation.py`, that imports `aoe2stats_analyzer.names`, calls
+      `with_names` on a named document and asserts no native engine, `aoe2stats_providers` or
+      `aoe2stats_ingester` module is loaded. **Demoted snapshot**: a test whose identity names a
+      snapshot that is installed but not promoted for its build and asserts names resolve from it
+      (SC-005). **Prose made false by T709**: `apps/api/src/aoe2stats_api/routers/analysis.py`'s module docstring ("no
+      `apps/analyzer`") and "served verbatim"; the boundary file's "exactly one module, from exactly
+      one file" and "with one exception"; `test_engine_isolation.py`'s "the one exception"; the
+      T709 sentence of `docs/data-sources.md` §6 dated under "Assessed 2026-10-08" (date it, keeping
+      the section's line count). **Client**: `readKnowledgeNames` ignores a block whose snapshot
+      does not match the document's `identity.knowledge`. **Plants, each red before**: a second
+      knowledge import added to `names.py` fails check 2; a served `knowledge_names` leaf with no
+      register entry fails the register check; a `names.py` that resolves through
+      `load_resolvable_snapshots` fails the demoted-snapshot test; a `names.py` import that loads
+      `aoe2stats_providers` fails the isolation check; a block whose snapshot digest differs from the
+      identity's renders no name. **Contrast**: the T709 tests unchanged
+- [x] T709b Close #160's re-review notes (`reviewer` APPROVE 2026-10-17 on T709a, three
+      non-blocking notes, none live). **Grant by symbol, not module** (N1): two of the seven grants
+      to `apps/analyzer/src/aoe2stats_analyzer/names.py` in
+      `tests/architecture/test_feature_006_boundaries.py` are whole modules (`query`, `gaps`), which
+      reach every attribute the guard's own comment refuses a plain `import` for. Import the
+      symbols `names.py` uses by name (`query.name`, `query.EntityRef`, the unresolved-source constant,
+      `gaps.KnowledgeGap`) and grant those instead, so every sentence that says "symbols" is
+      true; correct the count wherever it is stated. **Dependency direction** (N2):
+      `apps/analyzer/src/aoe2stats_analyzer/extract.py` imports the names method id and version
+      from `names.py` at module scope, so the analysis path loads request-path code for two
+      constants; move them to a module both already depend on. **Contract example** (N3): the
+      names section of `specs/006-replay-analysis-foundations/contracts/analysis-document.md`
+      shows a `provenance` covering two of the five data its block holds, against the rule it
+      states; make the example complete. **Plants, each red before**: a `names.py` calling a
+      `query` function it was not granted (for instance `query.cost`) fails check 2, which passes
+      today. **Contrast**: the T709 and T709a tests unchanged
 - [x] T707a Close #126's review (`reviewer` REJECT 2026-10-08 on T707). **Frozen prose first**:
       `packages/knowledge/snapshots/aoe2techtree-185872/effects.toml`'s header is covered by the
       digest and says the snapshot resolves the labels an analysis shows and a

@@ -164,6 +164,94 @@ export interface ApiAnalysisSourceRecording {
   sha256: string
 }
 
+/** T709: the display names of the ids a stored document carries, served beside it by `GET
+ * /api/matches/{game_id}/analysis` under `knowledge_names` and never part of the stored object.
+ * Resolved from the knowledge snapshot the document's own identity names (`snapshot` records
+ * which); an id that snapshot does not name is absent from its kind's record, and the page renders
+ * the identifier. Each kind is keyed by the stringified id. */
+export interface ApiKnowledgeNames {
+  snapshot: { describes_build: number; digest: string }
+  technology: Record<string, string>
+  unit: Record<string, string>
+  building: Record<string, string>
+  /** The block's own tier, method and inputs per datum (FR-007). The page shows no tier, so
+   * `readKnowledgeNames` does not read it and never fails on it: names render whether this is
+   * present, absent or malformed. */
+  provenance?: unknown
+}
+
+function isNameRecord(value: unknown): value is Record<string, string> {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    !Array.isArray(value) &&
+    Object.values(value).every((entry) => typeof entry === 'string')
+  )
+}
+
+/** Reads the `knowledge_names` block of a document, or `null` when it is absent or not the shape
+ * above. Names are decoration, so a malformed block reads as "no names" - every id then renders
+ * unresolved, as it did before names were served - rather than failing the page the way a
+ * malformed participant does. Nothing is guessed from a block that does not validate. */
+export function readKnowledgeNames(value: unknown): ApiKnowledgeNames | null {
+  if (typeof value !== 'object' || value === null) {
+    return null
+  }
+  const block = value as Record<string, unknown>
+  const snapshot = block.snapshot as Record<string, unknown> | null | undefined
+  if (
+    typeof snapshot !== 'object' ||
+    snapshot === null ||
+    typeof snapshot.describes_build !== 'number' ||
+    typeof snapshot.digest !== 'string' ||
+    !isNameRecord(block.technology) ||
+    !isNameRecord(block.unit) ||
+    !isNameRecord(block.building)
+  ) {
+    return null
+  }
+  return {
+    snapshot: { describes_build: snapshot.describes_build, digest: snapshot.digest },
+    technology: block.technology,
+    unit: block.unit,
+    building: block.building,
+  }
+}
+
+/** Reads the names a document carries, or `null` when it carries none it can vouch for (T709a).
+ *
+ * The block is accepted only when its `snapshot` is the one the document's own `identity.knowledge`
+ * names - the same `describes_build` and `digest`. The server resolves names from that snapshot and
+ * from no other (FR-027), so a block that records another one did not come from this document's
+ * identity, and is read as "no names" rather than shown under a stored document it does not
+ * belong to. A document with no `identity.knowledge` that records a snapshot (a version 1 document,
+ * or an identity recording the absence of one) names nothing, so a block beside it is ignored. */
+export function readDocumentNames(document: {
+  knowledge_names?: unknown
+  identity?: unknown
+}): ApiKnowledgeNames | null {
+  const names = readKnowledgeNames(document.knowledge_names)
+  if (names === null) {
+    return null
+  }
+  const identity = document.identity
+  const knowledge =
+    typeof identity === 'object' && identity !== null
+      ? (identity as Record<string, unknown>).knowledge
+      : undefined
+  if (typeof knowledge !== 'object' || knowledge === null) {
+    return null
+  }
+  const named = knowledge as Record<string, unknown>
+  if (
+    named.describes_build !== names.snapshot.describes_build ||
+    named.digest !== names.snapshot.digest
+  ) {
+    return null
+  }
+  return names
+}
+
 /** `contracts/analysis.md`'s "The published analysis" — `MatchTimeline` serialised plus the
  * provenance that makes FR-041 mechanical. */
 export interface ApiAnalysisDocument {
@@ -174,6 +262,14 @@ export interface ApiAnalysisDocument {
   source_recording: ApiAnalysisSourceRecording
   extracted_at: string
   participants: ApiAnalysisDocumentParticipant[]
+  /** T709: served beside the stored document, absent from it. Typed `unknown` and read through
+   * `readKnowledgeNames`, which validates it; it is never asserted, because a malformed block
+   * must cost the page its names and nothing more. */
+  knowledge_names?: unknown
+  /** The stored identity block, typed `unknown` for the same reason: this reader needs only its
+   * `knowledge` component, to check that a names block belongs to this document
+   * (`readDocumentNames`), and asserts nothing else of it. */
+  identity?: unknown
 }
 
 function assertAnalysisBuildEvent(

@@ -5,6 +5,8 @@ import {
   assertAnalysisSummary,
   extractAnalysisSummary,
   fetchAnalysisDocument,
+  readDocumentNames,
+  readKnowledgeNames,
   requestAnalysis,
   type ApiAnalysisDocument,
 } from './api'
@@ -230,5 +232,113 @@ describe('requestAnalysis', () => {
         body: JSON.stringify({ game_id: 500_546_441 }),
       }),
     )
+  })
+})
+
+describe('readKnowledgeNames', () => {
+  const valid = {
+    snapshot: { describes_build: 180_059, digest: 'sha256:abc' },
+    technology: { '101': 'Feudal Age' },
+    unit: {},
+    building: { '70': 'House' },
+  }
+
+  it('reads a well-formed block as it is', () => {
+    expect(readKnowledgeNames(valid)).toEqual(valid)
+  })
+
+  it('reads an absent block as no names', () => {
+    expect(readKnowledgeNames(undefined)).toBeNull()
+    expect(readKnowledgeNames(null)).toBeNull()
+  })
+
+  it.each([
+    ['a non-object', 'Feudal Age'],
+    ['a missing kind', { ...valid, unit: undefined }],
+    ['a non-string name', { ...valid, technology: { '101': 101 } }],
+    ['an array for a kind', { ...valid, building: ['House'] }],
+    ['a missing snapshot record', { ...valid, snapshot: undefined }],
+    ['a non-numeric build', { ...valid, snapshot: { describes_build: '180059', digest: 'x' } }],
+  ])('reads %s as no names, not as a partial answer', (_label, block) => {
+    expect(readKnowledgeNames(block)).toBeNull()
+  })
+
+  it('does not make a document that carries names, or a malformed block, fail validation', () => {
+    const document = {
+      schema_version: 2,
+      game_id: 1,
+      point_of_view_profile_id: 1,
+      engine: { name: 'aoe2rec-py', version: '0.1.21', deps: {} },
+      source_recording: { object_key: 'k', sha256: 'a'.repeat(64) },
+      extracted_at: '2026-08-23T10:00:00Z',
+      participants: [],
+    }
+    expect(() => assertAnalysisDocument({ ...document, knowledge_names: valid })).not.toThrow()
+    expect(() => assertAnalysisDocument({ ...document, knowledge_names: 'garbage' })).not.toThrow()
+  })
+})
+
+describe('readKnowledgeNames and the block provenance (T709a)', () => {
+  const valid = {
+    snapshot: { describes_build: 180_059, digest: 'sha256:abc' },
+    technology: { '101': 'Feudal Age' },
+    unit: {},
+    building: {},
+  }
+  const provenance = {
+    'names.technology': {
+      tier: 'derived',
+      method: 'knowledge-snapshot.name@1',
+      inputs: ['participant.researches.technology_id'],
+    },
+  }
+
+  it('accepts a block that carries the provenance key', () => {
+    expect(readKnowledgeNames({ ...valid, provenance })).toEqual(valid)
+  })
+
+  it.each([
+    ['a string', 'garbage'],
+    ['an array', []],
+    ['null', null],
+    ['an entry that is not an object', { 'names.technology': 7 }],
+  ])('still renders its names when the provenance is %s', (_label, bad) => {
+    expect(readKnowledgeNames({ ...valid, provenance: bad })).toEqual(valid)
+  })
+})
+
+describe('readDocumentNames', () => {
+  const block = {
+    snapshot: { describes_build: 180_059, digest: 'sha256:abc' },
+    technology: { '101': 'Feudal Age' },
+    unit: {},
+    building: {},
+  }
+  const identity = { knowledge: { describes_build: 180_059, digest: 'sha256:abc' } }
+
+  it('accepts a block whose snapshot is the one the document identity names', () => {
+    expect(readDocumentNames({ identity, knowledge_names: block })).toEqual(block)
+  })
+
+  it('ignores a block whose snapshot digest differs from the identity', () => {
+    const other = { knowledge: { describes_build: 180_059, digest: 'sha256:def' } }
+    expect(readDocumentNames({ identity: other, knowledge_names: block })).toBeNull()
+  })
+
+  it('ignores a block whose snapshot build differs from the identity', () => {
+    const other = { knowledge: { describes_build: 185_872, digest: 'sha256:abc' } }
+    expect(readDocumentNames({ identity: other, knowledge_names: block })).toBeNull()
+  })
+
+  it('ignores a block beside an identity that names no snapshot, or none at all', () => {
+    const absent = { knowledge: { absent: 'no-snapshot-for-build', build: 180_059 } }
+    expect(readDocumentNames({ identity: absent, knowledge_names: block })).toBeNull()
+    expect(readDocumentNames({ identity: null, knowledge_names: block })).toBeNull()
+    expect(readDocumentNames({ knowledge_names: block })).toBeNull()
+  })
+
+  it('reads no names when the block is absent or malformed', () => {
+    expect(readDocumentNames({ identity })).toBeNull()
+    expect(readDocumentNames({ identity, knowledge_names: 'garbage' })).toBeNull()
   })
 })

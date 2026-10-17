@@ -11,9 +11,13 @@ replay-engine` is `api/analyze.py` (T366) — a separate Vercel function, not pa
 at all (`contracts/http-api.md`: "`POST /api/analyze` ... A separate Vercel function, not the API
 app"). Constitution V's isolation ("the API never loads an engine at all") is obtained here simply
 by this module never importing anything below `packages/core`'s `ReplayValidator`/`ReplayExtractor`
-Protocols: no `packages/replay-engine`, no `apps/analyzer`, and no engine-specific vocabulary at
-all. `test_engine_isolation.py`'s subprocess check — importing `aoe2stats_api.app` must never load
-`aoe2rec_py` — is what this discipline keeps green.
+Protocols: no `packages/replay-engine`, no engine-specific vocabulary at all, and from `apps/
+analyzer` one module only, imported inside the function that serves a read: `aoe2stats_analyzer.
+names`, which appends the display names of the document's ids (T709, T709a). That is a lookup in
+package data, not analysis, and it is request-path code by decision, held to the 006 boundary guard
+(`tests/architecture/test_feature_006_boundaries.py`). `test_engine_isolation.py`'s subprocess
+checks — importing `aoe2stats_api.app` must never load `aoe2rec_py`, and naming a document loads no
+engine, provider or ingester module — are what this discipline keeps green.
 
 **`404` in every state but `published`, never a differentiated code per state.** `contracts/
 http-api.md`'s own table: "The published analysis (FR-030). `404` in every state but `published`".
@@ -40,6 +44,8 @@ answer two different questions from the same table and share no response shape t
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Request, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -51,6 +57,8 @@ from aoe2stats_storage.models import MatchAnalysis, MatchAnalysisState
 from aoe2stats_storage.models import Session as SessionRow
 
 router = APIRouter(tags=["analysis"])
+
+logger = logging.getLogger("aoe2stats_api")
 
 
 # --- Session resolution, the same discipline every other router in this feature establishes
@@ -111,10 +119,12 @@ async def get_match_analysis(
     object_store: ObjectStoreDep,
 ) -> Response:
     """FR-030: the published analysis document, read whole from the object store at `match_
-    analyses.result_key` and served verbatim — never a redirect to a signed URL (`contracts/
-    analysis.md`'s "The published document" note: this is this service's own derived JSON, meant
-    for a direct `fetch().then(r => r.json())`, unlike a `.aoe2record` download). `404` for every
-    state but `published` (module docstring)."""
+    analyses.result_key` and served whole - the stored bytes unchanged, with one `knowledge_names`
+    block appended after them when the document's identity names an installed snapshot (T709,
+    `contracts/analysis-document.md`) - never a redirect to a signed URL (`contracts/analysis.md`'s
+    "The published document" note: this is this service's own derived JSON, meant for a direct
+    `fetch().then(r => r.json())`, unlike a `.aoe2record` download). `404` for every state but
+    `published` (module docstring)."""
     secret = settings.app_secret_key.get_secret_value()
     _require_session(await _current_session_row(request, db_session, secret))
 
@@ -123,4 +133,30 @@ async def get_match_analysis(
         raise _analysis_not_found()
 
     document = await object_store.get(row.result_key)
-    return Response(content=document, media_type="application/json")
+    return Response(content=_with_names(document, game_id=game_id), media_type="application/json")
+
+
+def _with_names(document: bytes, *, game_id: int) -> bytes:
+    """T709: the stored document with the display names of its ids served beside it.
+
+    The stored bytes are never changed and nothing is written back: `aoe2stats_analyzer.names`
+    appends one block after them, resolved from the knowledge snapshot the document's own identity
+    names (FR-027), and returns the stored bytes as they were when that identity names none. The
+    import is inside the function, so importing the app loads none of it (FR-049; the same seam
+    `routers/matches.py` uses for the staleness verdict).
+
+    **Never raises.** Names are decoration: a deployment fault or a defect in resolving them is
+    logged with its traceback, under a line that says which, and the stored document is served as
+    it is, so the page shows identifiers as it did before names existed.
+    """
+    try:
+        from aoe2stats_analyzer.names import FAULT_ERRORS, with_names
+
+        try:
+            return with_names(document)
+        except FAULT_ERRORS:
+            logger.exception("names not served for game_id=%s: a snapshot cannot be read", game_id)
+            return document
+    except Exception:
+        logger.exception("names not served for game_id=%s: unexpected naming error", game_id)
+        return document

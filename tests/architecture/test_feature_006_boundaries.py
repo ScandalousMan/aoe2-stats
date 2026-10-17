@@ -18,12 +18,15 @@ anything. A baseline difference fails with the offending entry named. The checks
    scheduled units*, never on the steps inside a job: T663 adds one step to `nightly.yml`'s existing
    job set to run the gap-rate report, which is not a new scheduled job and must stay allowed.
 2. No module on the request path (`api/`, `apps/api/src`, the analyzer's request/lease/dedupe/
-   admission/run/staleness code, and the ingester's capture code) imports `aoe2stats_knowledge` or
-   `aoe2stats_core.truth`. The analyzer's `extract.py` is the parse step itself, off the
-   request/lease path, and is deliberately not in the set - with one exception recorded in check
-   2a: `staleness.py` reaches `extract.current_identity_digest` for the API's `stale` flag.
-2a. `apps/api/src` imports from `aoe2stats_analyzer` exactly one module, from exactly one file
-   (`_ALLOWED_API_ANALYZER_IMPORTS`, T666g). See that constant for why it stays inside FR-049.
+   admission/run/staleness/names code, and the ingester's capture code) imports
+   `aoe2stats_knowledge` or `aoe2stats_core.truth`, with one grant (`_KNOWLEDGE_GRANTS`, T709a):
+   `names.py` imports the eight named symbols it uses and nothing else from either package. The
+   analyzer's `extract.py` is the parse step itself, off the request/lease path, and is
+   deliberately not in the set; `staleness.py` reaches `extract.current_identity_digest` for the
+   API's `stale` flag (check 2a).
+2a. `apps/api/src` imports from `aoe2stats_analyzer` only the modules
+   `_ALLOWED_API_ANALYZER_IMPORTS` grants, each to its own file (T666g, T709). See that constant for
+   why it stays inside FR-049.
 3. The new 006 code never names the capture budget: not `CAPTURE_BUDGET_DAYS`/`capture_budget_days`,
    not a capture deadline, not the `replay_captures` or `provider_calls` tables or their models, and
    it imports neither `aoe2stats_ingester` nor `aoe2stats_providers` (the budget's two homes).
@@ -120,13 +123,18 @@ _REQUEST_PATH_CODE: tuple[Path, ...] = (
     # T666g: reached from the API's match-detail through one lazy import; it must reach the
     # knowledge identity only through `extract.py`, never import `aoe2stats_knowledge` itself.
     _ANALYZER_SRC / "staleness.py",
+    # T709a: reached from the API's analysis route through one lazy import, on every read of a
+    # published analysis. It is request-path code and is held to the rule as such; the one thing it
+    # may import from the knowledge package is granted by name below.
+    _ANALYZER_SRC / "names.py",
     # The capture path: constitution I's other side of the tie-break.
     _REPO_ROOT / "apps" / "ingester" / "src",
 )
 
 # T666g: the API's `stale` flag is the analyzer's own verdict, so the one function both ask
 # (`aoe2stats_analyzer.staleness.is_stale`) is imported by exactly one request-path file, and no
-# other `aoe2stats_analyzer` module is imported by anything under `apps/api/src`. The decision is
+# other `aoe2stats_analyzer` module is imported by anything under `apps/api/src` - except the one
+# T709 added, below. The decision is
 # 2026-10-04 (T666g): the button and the recompute must not be able to disagree, which two copies of
 # the condition could not guarantee.
 #
@@ -140,8 +148,45 @@ _REQUEST_PATH_CODE: tuple[Path, ...] = (
 # and no capture-budget name is touched. The import is lazy, inside the function that needs it, so
 # importing the app loads none of it. Adding any other analyzer import to the API - `run`,
 # `extract`, `reproduce` - is request-path work and fails the check below.
+#
+# T709 (2026-10-17) grants one more module to one more file: `aoe2stats_analyzer.names`, imported
+# lazily by `routers/analysis.py` to serve the display names of a stored document's ids beside it.
+# Why this stays inside FR-049: it is a lookup, not analysis. It parses the document the route has
+# already read, matches the snapshot the document's own identity names among the packaged ones
+# (`functools.cache`d, from package data) and reads names out of that snapshot's `rules.json`.
+# Nothing is fetched, no recording is read, no engine is loaded, and the capture budget is not
+# touched (`test_engine_isolation.py` runs `with_names` in a subprocess and asserts as much).
+#
+# T709a (2026-10-17, decided by the user) states what T709 first stepped around: names are resolved
+# **on the request path**, and `names.py` is request-path code (`_REQUEST_PATH_CODE`). The rule is
+# amended, not bypassed: `names.py` alone is granted the named `aoe2stats_knowledge` symbols below,
+# and any other knowledge or truth import from it fails check 2. The alternative - resolving names
+# when the analysis runs and storing them in the document - would change the stored bytes and the
+# identity digest (FR-042).
 _ALLOWED_API_ANALYZER_IMPORTS: Mapping[str, frozenset[str]] = {
     "apps/api/src/aoe2stats_api/routers/matches.py": frozenset({"aoe2stats_analyzer.staleness"}),
+    "apps/api/src/aoe2stats_api/routers/analysis.py": frozenset({"aoe2stats_analyzer.names"}),
+}
+
+# T709a: the one request-path file granted knowledge symbols, and exactly which. A grant is the
+# fully qualified name of what a `from` import binds (`from a.b import c` binds `a.b.c`), so a
+# second symbol from the same module, or any symbol from another module, is not covered. A plain
+# `import aoe2stats_knowledge...` or a dynamic import is never covered: it would reach every
+# attribute of the module.
+_KNOWLEDGE_GRANTS: Mapping[str, frozenset[str]] = {
+    "apps/analyzer/src/aoe2stats_analyzer/names.py": frozenset(
+        {
+            "aoe2stats_core.truth.register.REGISTER",
+            "aoe2stats_knowledge.gaps.KnowledgeGap",
+            "aoe2stats_knowledge.query.EntityRef",
+            "aoe2stats_knowledge.query.UNRESOLVED_SOURCE",
+            "aoe2stats_knowledge.query.name",
+            "aoe2stats_knowledge.snapshot.Snapshot",
+            "aoe2stats_knowledge.snapshot.SnapshotError",
+            "aoe2stats_knowledge.snapshot.load_all_snapshots",
+            "aoe2stats_knowledge.snapshot.pinned_snapshot",
+        }
+    ),
 }
 _API_SRC = _REPO_ROOT / "apps" / "api" / "src"
 
@@ -428,12 +473,75 @@ def test_the_scanned_roots_exist() -> None:
     assert _python_files(_REQUEST_PATH_CODE), "no request-path source files found"
 
 
-def test_no_request_path_module_imports_the_new_packages() -> None:
-    """FR-049: analysis knowledge and truth types never reach the request path or capture path."""
-    violations = _violations(_REQUEST_PATH_CODE, lambda source: imports_of(source, _NEW_PACKAGES))
+def new_package_imports_outside_grant(
+    relative_path: str, source: str, grants: Mapping[str, frozenset[str]]
+) -> list[str]:
+    """Every import of `aoe2stats_knowledge` or `aoe2stats_core.truth` this file makes that the
+    grants do not give to *this* file, by the name of what it binds.
+
+    A `from` import is judged symbol by symbol (`from a.b import c, d` binds `a.b.c` and `a.b.d`),
+    so a second symbol from a granted module is refused. A plain `import` and a dynamic import are
+    judged by the module they name, and are never granted: they reach every attribute."""
+    granted = grants.get(relative_path, frozenset())
+    tree = ast.parse(source)
+    found: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module is not None and node.level == 0:
+            for alias in node.names:
+                bound = f"{node.module}.{alias.name}"
+                if _is_under(bound, _NEW_PACKAGES) and bound not in granted:
+                    found.add(bound)
+        elif isinstance(node, ast.Import):
+            found.update(a.name for a in node.names if _is_under(a.name, _NEW_PACKAGES))
+        elif isinstance(node, ast.Call):
+            found.update(m for m in _dynamic_import(node) if _is_under(m, _NEW_PACKAGES))
+    return sorted(found)
+
+
+def _dynamic_import(node: ast.Call) -> list[str]:
+    func = node.func
+    dynamic = (isinstance(func, ast.Name) and func.id == "__import__") or (
+        isinstance(func, ast.Attribute) and func.attr == "import_module"
+    )
+    first = node.args[0] if node.args else None
+    if dynamic and isinstance(first, ast.Constant) and isinstance(first.value, str):
+        return [first.value]
+    return []
+
+
+def test_no_request_path_module_imports_the_new_packages_beyond_its_grant() -> None:
+    """FR-049: analysis knowledge and truth types never reach the request path or capture path,
+    except the named symbols `_KNOWLEDGE_GRANTS` gives `names.py` (T709a)."""
+    violations: dict[str, list[str]] = {}
+    for path in _python_files(_REQUEST_PATH_CODE):
+        relative = path.relative_to(_REPO_ROOT).as_posix()
+        found = new_package_imports_outside_grant(
+            relative, path.read_text(encoding="utf-8"), _KNOWLEDGE_GRANTS
+        )
+        if found:
+            violations[relative] = found
     assert not violations, (
         f"006 packages must stay off the request/capture path (FR-049): {violations}"
     )
+
+
+def test_the_knowledge_grant_is_to_names_only_and_every_symbol_of_it_is_used() -> None:
+    """A grant nothing uses is an exception waiting to be misused: the one granted file imports
+    exactly the granted symbols, and no other request-path file is granted anything."""
+    assert set(_KNOWLEDGE_GRANTS) == {"apps/analyzer/src/aoe2stats_analyzer/names.py"}
+    for relative, granted in _KNOWLEDGE_GRANTS.items():
+        assert (_REPO_ROOT / relative) in _python_files(_REQUEST_PATH_CODE)
+        source = (_REPO_ROOT / relative).read_text(encoding="utf-8")
+        bound = {
+            f"{node.module}.{alias.name}"
+            for node in ast.walk(ast.parse(source))
+            if isinstance(node, ast.ImportFrom) and node.module is not None
+            for alias in node.names
+            if _is_under(f"{node.module}.{alias.name}", _NEW_PACKAGES)
+        }
+        assert bound == granted, (
+            f"{relative}: unused grant {granted - bound}, ungranted {bound - granted}"
+        )
 
 
 def analyzer_imports_outside_allowlist(
@@ -462,13 +570,14 @@ def _api_analyzer_violations(
     return violations
 
 
-def test_the_api_imports_exactly_one_analyzer_module_from_exactly_one_file() -> None:
-    """T666g, FR-049: `apps/api/src` reaches the analyzer only through `staleness`, and only from
-    the match router (`_ALLOWED_API_ANALYZER_IMPORTS`). Anything else is request-path analysis
-    work."""
+def test_the_api_imports_only_the_granted_analyzer_modules_from_the_granted_files() -> None:
+    """T666g, T709, FR-049: `apps/api/src` reaches the analyzer only through `staleness` (from the
+    match router) and `names` (from the analysis router) - `_ALLOWED_API_ANALYZER_IMPORTS`.
+    Anything else is request-path analysis work."""
     violations = _api_analyzer_violations(_ALLOWED_API_ANALYZER_IMPORTS)
     assert not violations, (
-        f"the API may import only the staleness verdict from the analyzer (FR-049): {violations}"
+        "the API may import only the staleness verdict and the names lookup from the analyzer "
+        f"(FR-049): {violations}"
     )
 
 
@@ -714,6 +823,113 @@ def test_the_allowlist_grants_the_staleness_import_to_the_match_router_only() ->
     assert imports_of("from aoe2stats_core.truth.identity import AnalysisIdentity\n", _NEW_PACKAGES)
 
 
+def test_the_names_grant_is_for_the_analysis_router_only_and_grants_nothing_else() -> None:
+    """Contrast cases for T709: each grant is to its own file. The names lookup is refused in the
+    match router and in any other file, the staleness verdict is refused in the analysis router,
+    and a sibling module of `names` is refused even in the file that holds the grant."""
+    analysis = "apps/api/src/aoe2stats_api/routers/analysis.py"
+    matches = "apps/api/src/aoe2stats_api/routers/matches.py"
+    other = "apps/api/src/aoe2stats_api/routers/players.py"
+    allowed = _ALLOWED_API_ANALYZER_IMPORTS
+    names = "def f():\n    from aoe2stats_analyzer.names import with_names\n"
+    staleness = "def f():\n    from aoe2stats_analyzer.staleness import is_stale\n"
+
+    assert analyzer_imports_outside_allowlist(analysis, names, allowed) == []
+    assert analyzer_imports_outside_allowlist(matches, names, allowed) != []
+    assert analyzer_imports_outside_allowlist(other, names, allowed) != []
+    assert analyzer_imports_outside_allowlist(analysis, staleness, allowed) != []
+    for source in (
+        "from aoe2stats_analyzer.extract import build_document\n",
+        "from aoe2stats_analyzer.names_other import x\n",
+    ):
+        assert analyzer_imports_outside_allowlist(analysis, source, allowed), source
+
+
+def test_the_names_module_is_on_the_request_path_and_reaches_no_capture_code() -> None:
+    """`names.py` is served on every read of a published analysis, so it is in the request-path
+    set (T709a) and holds to it; it reaches neither the capture budget's homes nor 003's storage
+    repositories."""
+    path = _ANALYZER_SRC / "names.py"
+    source = path.read_text(encoding="utf-8")
+
+    assert path in _REQUEST_PATH_CODE
+    assert imports_of(source, _CAPTURE_BUDGET_PACKAGES) == []
+    assert imports_of(source, ("aoe2stats_storage",)) == []
+    assert capture_budget_mentions(source) == []
+
+
+_NAMES = "apps/analyzer/src/aoe2stats_analyzer/names.py"
+
+
+def test_the_granted_knowledge_symbols_pass_and_any_other_knowledge_import_fails() -> None:
+    """Contrast cases for T709a's check 2: the symbols `names.py` is granted are accepted, in
+    `names.py` and nowhere else, and a second knowledge import added to it is refused - however it
+    is spelled."""
+    granted = (
+        "from aoe2stats_knowledge.gaps import KnowledgeGap\n"
+        "from aoe2stats_knowledge.query import UNRESOLVED_SOURCE, EntityRef\n"
+        "from aoe2stats_knowledge.query import name as query_name\n"
+        "from aoe2stats_core.truth.register import REGISTER\n"
+        "from aoe2stats_knowledge.snapshot import (\n"
+        "    Snapshot,\n    SnapshotError,\n    load_all_snapshots,\n    pinned_snapshot,\n)\n"
+    )
+    assert new_package_imports_outside_grant(_NAMES, granted, _KNOWLEDGE_GRANTS) == []
+
+    # The same granted symbols in any other request-path file are refused.
+    for other in (
+        "apps/analyzer/src/aoe2stats_analyzer/staleness.py",
+        "apps/analyzer/src/aoe2stats_analyzer/run.py",
+        "apps/api/src/aoe2stats_api/routers/analysis.py",
+    ):
+        assert new_package_imports_outside_grant(other, granted, _KNOWLEDGE_GRANTS), other
+
+    # A second knowledge import in `names.py` is refused, by the name of what it binds.
+    for extra, bound in (
+        (
+            "from aoe2stats_knowledge.snapshot import load_resolvable_snapshots\n",
+            "aoe2stats_knowledge.snapshot.load_resolvable_snapshots",
+        ),
+        ("from aoe2stats_knowledge import effects\n", "aoe2stats_knowledge.effects"),
+        ("from aoe2stats_knowledge.query import cost\n", "aoe2stats_knowledge.query.cost"),
+        ("from aoe2stats_knowledge.query import cost as c\n", "aoe2stats_knowledge.query.cost"),
+        # A whole module is not granted: it would reach every attribute, `query.cost` included.
+        ("from aoe2stats_knowledge import query\n", "aoe2stats_knowledge.query"),
+        ("from aoe2stats_knowledge import gaps\n", "aoe2stats_knowledge.gaps"),
+        (
+            "from aoe2stats_knowledge.gaps import compute_gaps\n",
+            "aoe2stats_knowledge.gaps.compute_gaps",
+        ),
+        ("from aoe2stats_knowledge.snapshot import *\n", "aoe2stats_knowledge.snapshot.*"),
+        ("from aoe2stats_core.truth import tiers\n", "aoe2stats_core.truth.tiers"),
+        ("import aoe2stats_knowledge.snapshot\n", "aoe2stats_knowledge.snapshot"),
+        ("import aoe2stats_knowledge\n", "aoe2stats_knowledge"),
+        ("__import__('aoe2stats_knowledge.effects')\n", "aoe2stats_knowledge.effects"),
+        (
+            "def f():\n    from aoe2stats_core.truth.identity import AnalysisIdentity\n",
+            "aoe2stats_core.truth.identity.AnalysisIdentity",
+        ),
+    ):
+        found = new_package_imports_outside_grant(_NAMES, granted + extra, _KNOWLEDGE_GRANTS)
+        assert bound in found, (extra, found)
+
+
+def test_a_file_with_no_grant_may_import_no_knowledge_or_truth_symbol() -> None:
+    """The rule is unchanged for every other request-path file."""
+    for source in (
+        "import aoe2stats_knowledge\n",
+        "from aoe2stats_knowledge import query\n",
+        "from aoe2stats_core.truth.identity import AnalysisIdentity\n",
+        "def f():\n    from aoe2stats_knowledge.snapshot import snapshot_for\n",
+    ):
+        assert new_package_imports_outside_grant("apps/api/src/x.py", source, _KNOWLEDGE_GRANTS)
+    assert (
+        new_package_imports_outside_grant(
+            "apps/api/src/x.py", "from aoe2stats_core.replay import analysis\n", _KNOWLEDGE_GRANTS
+        )
+        == []
+    )
+
+
 def test_analysis_key_literals_flags_a_private_layout_but_not_prose() -> None:
     assert analysis_key_literals('def key(g, d):\n    return f"analyses/{g}/{d}.json"\n') == [
         "analyses/"
@@ -736,3 +952,34 @@ def test_vocabulary_definitions_flag_a_restated_003_behaviour() -> None:
     assert vocabulary_definitions("class RateLimiter: ...\n") == ["RateLimiter"]
     assert vocabulary_definitions("class Retention: ...\n") == ["Retention"]
     assert vocabulary_definitions("def lookup(): ...\n") == []
+
+
+def test_a_query_function_names_py_was_not_granted_fails_check_2_while_its_own_ones_pass() -> None:
+    """T709b, the plant: `query.cost` called from `names.py` is the shape the module-wide grant let
+    through. Imported by name it is refused, and the three `query` symbols `names.py` really uses
+    still pass."""
+    granted_use = (
+        "from aoe2stats_knowledge.query import UNRESOLVED_SOURCE, EntityRef\n"
+        "from aoe2stats_knowledge.query import name as query_name\n"
+    )
+    assert new_package_imports_outside_grant(_NAMES, granted_use, _KNOWLEDGE_GRANTS) == []
+    for extra in (
+        "from aoe2stats_knowledge.query import cost\n",
+        "from aoe2stats_knowledge import query\nx = query.cost\n",
+    ):
+        assert new_package_imports_outside_grant(_NAMES, granted_use + extra, _KNOWLEDGE_GRANTS)
+
+
+def test_the_analysis_path_does_not_load_the_request_path_for_the_names_method() -> None:
+    """T709b: `extract.py` and `names.py` share the names method through `methods.py`, which
+    imports nothing of ours. `extract.py` does not import `names.py` (the analysis path loads no
+    request-path code for two constants) and `methods.py` adds no knowledge, truth or request-path
+    import."""
+    extract = (_ANALYZER_SRC / "extract.py").read_text(encoding="utf-8")
+    methods = (_ANALYZER_SRC / "methods.py").read_text(encoding="utf-8")
+    names = (_ANALYZER_SRC / "names.py").read_text(encoding="utf-8")
+
+    assert "aoe2stats_analyzer.names" not in imports_of(extract, ("aoe2stats_analyzer",))
+    assert "aoe2stats_analyzer.methods" in imports_of(extract, ("aoe2stats_analyzer",))
+    assert "aoe2stats_analyzer.methods" in imports_of(names, ("aoe2stats_analyzer",))
+    assert not [m for m in _imported_modules(ast.parse(methods)) if m.startswith("aoe2stats")]
