@@ -99,25 +99,32 @@ _SNAPSHOT_DATA: Final[tuple[str, ...]] = ("names.snapshot.describes_build", "nam
 _KINDS: Final[tuple[str, ...]] = ("technology", "unit", "building")
 
 
-#: A word-wrap hyphen: a hyphen followed by a line break or whitespace and then a lower-case letter
-#: continues one word (`Circum-<br>\nnavigation`, `Counter- weights`), so the break is dropped with
-#: it. A compound's hyphen (`Double-Bit<br>\nAxe`, `Man-at-Arms`) is followed by a capital or by
-#: nothing, and stays.
-_BROKEN_WORD: Final[re.Pattern[str]] = re.compile(r"-(?:\s*(?i:<br\s*/?>)\s*|\s+)(?=[a-z])")
+#: A hyphen directly after a letter and followed by a break (a `<br>`, whitespace, or a run of
+#: both) and then another character. The next character decides it (`_unwrap`): a lower-case letter
+#: continues one word (`Circum-<br>\nnavigation`, `Counter- weights`), so the hyphen and the break
+#: go; anything else is a compound's hyphen (`Man-at-<br>\nArms`) and keeps the hyphen, dropping the
+#: break with no space. A hyphen that does not follow a letter (`Foo - bar`) is never matched.
+_WRAPPED_HYPHEN: Final[re.Pattern[str]] = re.compile(r"(?<=[^\W\d_])-(?:\s|(?i:<br\s*/?>))+")
 #: Any other line break is a space between two words.
 _LINE_BREAK: Final[re.Pattern[str]] = re.compile(r"<br\s*/?>", re.IGNORECASE)
 _WHITESPACE: Final[re.Pattern[str]] = re.compile(r"\s+")
 
 
+def _unwrap(match: re.Match[str]) -> str:
+    following = match.string[match.end() : match.end() + 1]
+    return "" if following.islower() else "-"
+
+
 def clean_label(vendored: str) -> str | None:
-    """The label a reader would write for a vendored name: word-wrap hyphens joined, other line
-    breaks a space, whitespace collapsed and trimmed. `None` when nothing is left, so that the
-    caller leaves the id unresolved; emptiness is decided after the collapse, so markup alone, with
-    or without a stray hyphen, is empty."""
-    label = _BROKEN_WORD.sub("", vendored)
+    """The label a reader would write for a vendored name (the rule `register.toml` states for
+    `names.*`). A hyphen directly after a letter and followed by a break then a lower-case letter
+    joins the word; followed by a break then any other character it stays, with the break dropped
+    and no space; a hyphen not directly after a letter is left alone. Every other break becomes a
+    space, whitespace collapses and the label is trimmed. `None` when no letter or digit is left
+    (markup alone, or around a lone hyphen), so that the caller leaves the id unresolved."""
+    label = _WRAPPED_HYPHEN.sub(_unwrap, vendored)
     label = _LINE_BREAK.sub(" ", label)
     label = _WHITESPACE.sub(" ", label).strip()
-    # A label with no letter or digit is no name: markup around a lone hyphen (`-<br>`) leaves `-`.
     return label if any(character.isalnum() for character in label) else None
 
 
