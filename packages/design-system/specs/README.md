@@ -3846,7 +3846,7 @@ changing that tooling needs its row updated, and it does not belong in a spec wr
 1. **The route suites never render a route's error, transient or unrendered empty branches — found by the review of #163
    (2026-10-17, B1).** `DataExportPanel`'s `failed` state and its "Try again" button (`size="lg"` since T561),
    `ArchivalControl` while its write is in flight and after a resume (`justResumed`), the match page's analysis
-   section in its `queued`, `running`, `failed` and `unavailable` states, the no-linked-account `EmptyState` on `/dashboard`, `/matches` and `/matches/$gameId`, and `/search`'s empty-results branches meet none of the four suites; the two held loading states
+   section in its `queued`, `running`, `failed` and `unavailable` states, the no-linked-account state on `/dashboard`, `/matches` and `/matches/$gameId`, and `/search`'s empty-results branches meet none of the four suites; the two held loading states
    (`ProfileSummary`'s `Skeleton`, the erase button's `Spinner`) run in the reduced-motion suite only. The at-rest
    scenarios render only the empty match and favourites lists. Production-readiness item 13 is partly met overall until this row is deleted.
    **Owner: T744. Fix by 2026-10-31.**

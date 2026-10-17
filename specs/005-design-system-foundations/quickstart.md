@@ -1265,7 +1265,7 @@ fix and passes after; a page with that button never focused is its control), exc
 until T744's row of `packages/design-system/specs/README.md`'s "Verification-coverage gap register" is deleted. What
 the four suites do not reach is stated rather than hidden: the error and transient branches meet none of them (filed as
 T744: `DataExportPanel`'s `failed` state and its "Try again" button, `ArchivalControl` while its write is in flight
-and after a resume, the match page's analysis section in its `queued`, `running`, `failed` and `unavailable` states, the no-linked-account `EmptyState` on `/dashboard`, `/matches` and `/matches/$gameId`, `/search`'s empty-results branches), and the two
+and after a resume, the match page's analysis section in its `queued`, `running`, `failed` and `unavailable` states, the no-linked-account state on `/dashboard`, `/matches` and `/matches/$gameId`, `/search`'s empty-results branches), and the two
 loading states (`ProfileSummary`'s `Skeleton`, the erase button's `Spinner`) run in the reduced-motion suite only
 (also T744). Of the empty branches, the at-rest route scenarios render only the empty match and favourites lists, and
 a refused non-success state ("Try requesting analysis") is in the inventory. The tooltip scenarios
