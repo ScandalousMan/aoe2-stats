@@ -14,7 +14,10 @@
 // 3. every `<Menu>` and `<Dialog>` an application route can open has a scenario — a new consumer
 //    fails here until someone adds one;
 // 4. scenario labels are unique (they are Playwright test titles);
-// 5. every surface scenario knows how to open its surface.
+// 5. every surface scenario knows how to open its surface;
+// 6. (T681) every route that can render a `Tooltip` has a tooltip scenario: the source is read for
+//    `<Tooltip`, `<CountryFlag` and `<ProfileSummary` — the chain that puts one on a route — and a
+//    new usage fails until a scenario and a table entry exist.
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { expect, test } from '@playwright/test'
@@ -39,6 +42,8 @@ import {
   SUITE_SCENARIOS,
   type SuiteScenario,
   SURFACE_SCENARIOS,
+  type TooltipScenario,
+  TOOLTIP_SCENARIOS,
   unpopulatedLists,
 } from './suite-scenarios'
 
@@ -517,8 +522,8 @@ interface SurfaceUsage {
 // Every JSX usage of `<Menu` / `<Dialog` outside stories and tests, with the scenario that opens
 // it. A route-reachable surface not listed here fails `finds exactly the covered surfaces` below
 // until a scenario exists for it — "one scenario per `Dialog` and `Menu`" kept true by the build,
-// not by remembering. `Tooltip` is deliberately not here: it is not an openable surface this
-// suite opens (T681).
+// not by remembering. `Tooltip` is not here: it has no `surface` to walk, and its own table
+// (`COVERED_TOOLTIP_HOSTS`, T681) follows below.
 const COVERED_SURFACES: readonly CoveredSurface[] = [
   {
     source: 'packages/design-system/src/composites/SiteHeader/index.tsx',
@@ -662,5 +667,180 @@ test.describe('openable surfaces', () => {
       Menu: 1,
       Dialog: 1,
     })
+  })
+})
+
+// --- Every route that can render a Tooltip has a tooltip scenario (T681) --------------------------
+
+interface CoveredTooltipHost {
+  source: string
+  /** `Tooltip` itself, or a component on the chain that renders one: `CountryFlag` renders the
+   * `Tooltip`, `ProfileSummary` renders the `CountryFlag`, and each container renders a
+   * `ProfileSummary`. */
+  tag: 'Tooltip' | 'CountryFlag' | 'ProfileSummary'
+  count: number
+  /** The `ROUTE_SCENARIOS` labels this usage can put a tooltip on. */
+  routes: readonly string[]
+}
+
+const FLAG_ROUTES = [
+  '/dashboard',
+  '/matches',
+  '/players/$profileId',
+  '/players/$profileId/matches',
+] as const
+
+// Every JSX usage of `<Tooltip`, `<CountryFlag` and `<ProfileSummary` outside stories and tests. The
+// only direct `Tooltip` consumer is `CountryFlag`, whose only consumer is `ProfileSummary`; the four
+// containers below are the routes that render one (`MatchDetailContainer` renders none: its
+// participants are a table and cards, not a `ProfileSummary`). Task T681's text said tooltips also
+// appear "in the populated lists"; the source says they do not — no list row renders a flag.
+const COVERED_TOOLTIP_HOSTS: readonly CoveredTooltipHost[] = [
+  {
+    source: 'packages/design-system/src/composites/CountryFlag/index.tsx',
+    tag: 'Tooltip',
+    count: 1,
+    routes: FLAG_ROUTES,
+  },
+  {
+    source: 'packages/design-system/src/screens/ProfileSummary/index.tsx',
+    tag: 'CountryFlag',
+    count: 1,
+    routes: FLAG_ROUTES,
+  },
+  {
+    source: 'apps/web/src/features/profile/DashboardContainer.tsx',
+    tag: 'ProfileSummary',
+    count: 1,
+    routes: ['/dashboard'],
+  },
+  {
+    source: 'apps/web/src/features/matches/MatchHistoryContainer.tsx',
+    tag: 'ProfileSummary',
+    count: 1,
+    routes: ['/matches'],
+  },
+  {
+    source: 'apps/web/src/features/players/PlayerProfileContainer.tsx',
+    tag: 'ProfileSummary',
+    count: 1,
+    routes: ['/players/$profileId'],
+  },
+  {
+    source: 'apps/web/src/features/players/PlayerMatchHistoryContainer.tsx',
+    tag: 'ProfileSummary',
+    count: 1,
+    routes: ['/players/$profileId/matches'],
+  },
+]
+
+const TOOLTIP_CHAIN_TAGS = ['Tooltip', 'CountryFlag', 'ProfileSummary'] as const
+
+function countTooltipChainUsages(
+  source: string,
+): Record<(typeof TOOLTIP_CHAIN_TAGS)[number], number> {
+  const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+  const count = (tag: string) => (code.match(new RegExp(`<${tag}(?![A-Za-z])`, 'g')) ?? []).length
+  return {
+    Tooltip: count('Tooltip'),
+    CountryFlag: count('CountryFlag'),
+    ProfileSummary: count('ProfileSummary'),
+  }
+}
+
+function findTooltipChainUsages(): SurfaceUsage[] {
+  const found: SurfaceUsage[] = []
+  for (const directory of ['packages/design-system/src', 'apps/web/src']) {
+    for (const file of sourceFiles(path.join(rootDir, directory))) {
+      const usages = countTooltipChainUsages(readFileSync(file, 'utf8'))
+      const relative = path.relative(rootDir, file).split(path.sep).join('/')
+      // `Tooltip` is the primitive itself; it renders no other tooltip.
+      if (/primitives\/Tooltip\//.test(relative)) continue
+      for (const tag of TOOLTIP_CHAIN_TAGS) {
+        if (usages[tag] > 0) found.push({ source: relative, tag, count: usages[tag] })
+      }
+    }
+  }
+  return found
+}
+
+/** Every route a covered usage claims that no tooltip scenario opens a tooltip on, and every
+ * tooltip scenario no covered usage claims. */
+function tooltipScenarioProblems(
+  hosts: readonly CoveredTooltipHost[],
+  scenarios: readonly TooltipScenario[],
+): string[] {
+  const claimed = new Set(hosts.flatMap((host) => host.routes))
+  const opened = new Set(scenarios.map((scenario) => scenario.route))
+  return [
+    ...[...claimed]
+      .filter((route) => !opened.has(route))
+      .map((route) => `${route}: renders a Tooltip and no tooltip scenario opens it`),
+    ...[...opened]
+      .filter((route) => !claimed.has(route))
+      .map((route) => `${route}: a tooltip scenario no covered usage claims`),
+  ]
+}
+
+test.describe('tooltips', () => {
+  test('finds exactly the covered tooltip usages', () => {
+    expect(
+      surfaceLines(findTooltipChainUsages()),
+      'a <Tooltip>, <CountryFlag> or <ProfileSummary> usage appeared or disappeared: add or retire ' +
+        'its tooltip scenario in tests/visual/fixtures/suite-scenarios.ts (TOOLTIP_ROUTES) and ' +
+        'update COVERED_TOOLTIP_HOSTS here',
+    ).toEqual(surfaceLines(COVERED_TOOLTIP_HOSTS))
+  })
+
+  test('a planted new Tooltip consumer, or a retired one, makes the comparison differ', () => {
+    const covered = surfaceLines(COVERED_TOOLTIP_HOSTS)
+    const planted: SurfaceUsage = {
+      source: 'packages/design-system/src/composites/MatchRow/index.tsx',
+      tag: 'Tooltip',
+      count: 1,
+    }
+    expect(surfaceLines([...COVERED_TOOLTIP_HOSTS, planted])).not.toEqual(covered)
+    expect(surfaceLines(COVERED_TOOLTIP_HOSTS.slice(1))).not.toEqual(covered)
+  })
+
+  test('every route a covered usage claims has a tooltip scenario, and none is unclaimed', () => {
+    expect(tooltipScenarioProblems(COVERED_TOOLTIP_HOSTS, TOOLTIP_SCENARIOS)).toEqual([])
+  })
+
+  test('a route whose tooltip scenario is removed is caught by name', () => {
+    const without = TOOLTIP_SCENARIOS.filter((scenario) => scenario.route !== '/matches')
+    expect(without.length).toBe(TOOLTIP_SCENARIOS.length - 1)
+    expect(tooltipScenarioProblems(COVERED_TOOLTIP_HOSTS, without)).toEqual([
+      '/matches: renders a Tooltip and no tooltip scenario opens it',
+    ])
+  })
+
+  test('a tooltip scenario no covered usage claims is caught by name', () => {
+    const lonely = COVERED_TOOLTIP_HOSTS.filter(
+      (host) => !host.routes.includes('/matches') || host.routes.length > 1,
+    ).map((host) => ({ ...host, routes: host.routes.filter((route) => route !== '/matches') }))
+    expect(tooltipScenarioProblems(lonely, TOOLTIP_SCENARIOS)).toEqual([
+      '/matches: a tooltip scenario no covered usage claims',
+    ])
+  })
+
+  test('the usage counter ignores comments and counts a planted usage', () => {
+    expect(countTooltipChainUsages('/* <Tooltip> */ // <CountryFlag>\nconst x = 1')).toEqual({
+      Tooltip: 0,
+      CountryFlag: 0,
+      ProfileSummary: 0,
+    })
+    expect(
+      countTooltipChainUsages('return <><Tooltip a="b" /><CountryFlag /><ProfileSummaryRow /></>'),
+    ).toEqual({ Tooltip: 1, CountryFlag: 1, ProfileSummary: 0 })
+  })
+
+  test('every tooltip scenario opens its own tooltip, and a planted one that does not is caught', () => {
+    const withoutPrepare = (scenarios: readonly TooltipScenario[]) =>
+      scenarios.filter((scenario) => !scenario.prepare).map((scenario) => scenario.label)
+    expect(withoutPrepare(TOOLTIP_SCENARIOS)).toEqual([])
+    expect(withoutPrepare([{ ...TOOLTIP_SCENARIOS[0], prepare: undefined }])).toEqual([
+      TOOLTIP_SCENARIOS[0].label,
+    ])
   })
 })

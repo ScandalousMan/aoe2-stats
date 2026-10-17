@@ -3837,27 +3837,19 @@ both themes — see quickstart.md's own walk for the verdict, its scope, and the
 That run backs item 13 only for what those scenarios render at rest; what they did not render
 was owned by T676, whose own row is deleted too (2026-10-03; see the closing paragraphs below), as is the
 comparator row (T675, 2026-10-02). The adversarial reviews of #107 then filed what T676 does not reach,
-below under its owning tasks (T681, T682). The register stays because it is where a gap in this
+below under its owning tasks (T681, T682); T681's row is deleted too (2026-10-17, see the closing paragraphs below). The register stays because it is where a gap in this
 package's own verification harness — never in a component or a token — is filed when it is found, for the
 reason the four registers above already are: the subject is this package's own tooling, so a future task
 changing that tooling needs its row updated, and it does not belong in a spec written once.
 
-1. **T676's route suites open every `Dialog` and `Menu` and no `Tooltip` — found by the adversarial
-   review of #107 (2026-10-03, M2).** `CountryFlag`'s `Tooltip`, rendered in the populated lists and on
-   `ProfileSummary`'s name line, only ever meets the four suites closed. Its surface carries
-   `motion-reduce:duration-0` beside `isOpen ? 'duration-120' : 'duration-0'`, and a closed tooltip is
-   `duration-0` with or without the preference, so a regression that drops the `motion-reduce:` utility
-   passes every route suite; its Escape-dismiss contract (`packages/design-system/specs/tooltip.md` §8) is
-   never walked at route level either. Production-readiness item 13 is partly met overall until the
-   T681 and T682 rows are deleted. **Owner: T681. Fix by 2026-10-16.**
-2. **T676's route suites never render two success-branch controls — found by the second adversarial
+1. **T676's route suites never render two success-branch controls — found by the second adversarial
    review of #107 (2026-10-03, M1).** Every fixture in `tests/visual/fixtures/app-routes-harness.ts`
    sets `archival_objected: false`, so `ArchivalControl`'s `objected` state (its "Resume archival"
    button and callout) on `/dashboard` and `/privacy` meets none of the four suites, and
    `DataExportPanel`'s `ready` state, the download link a user reaches after requesting an export on
    `/privacy`, is never rendered. Neither is a list, so the per-route list inventory in
    `tests/visual/fixtures/suite-scenarios.ts` has no entry for either. Production-readiness item 13 is
-   partly met overall until this row and the T681 row are deleted. **Owner: T682. Fix by 2026-10-16.**
+   partly met overall until this row is deleted. **Owner: T682. Fix by 2026-10-16.**
 
 T674 (2026-09-28) runs all four of item 13's sub-suites in CI against every route scenario at rest,
 in both themes, and the sizing row this task's own filing opened (formerly in the Verification-coverage gap
@@ -3900,7 +3892,7 @@ fixture player carries an `avatar_hash`, and every suite fails if a page request
 reach `avatars.steamstatic.com`; it adds one scenario per `Dialog` and `Menu`, opened by keyboard — the theme
 `Menu` on every route, `ProfileSummary`'s switcher and Manage `Menu`s, the unlink `Dialog` and the
 account-erasure `Dialog` — and `tests/visual/fixtures/suite-scenarios.test.ts` fails when a `<Menu>` or
-`<Dialog>` usage appears in the source with no scenario (no `Tooltip` is opened: T681). An open surface is walked by its own keyboard
+`<Dialog>` usage appears in the source with no scenario. An open surface is walked by its own keyboard
 contract (`tests/visual/fixtures/open-surface.ts`: a `Dialog` traps Tab and Shift+Tab, a `Menu` has one tab
 stop and wraps its arrow keys) and its stops feed the focus-ring and touch-footprint assertions; the touch
 suite adds a sweep of every element with a pointer cursor or an interactive role that a Tab walk cannot reach
@@ -3911,3 +3903,18 @@ reduced-motion suite only. The suites run in
 `.github/workflows/pr.yml`'s `visual` job (named there) and in `.github/workflows/nightly.yml`'s
 `visual-full` job (every `tests/visual` spec), both themes, and needed no workflow edit to keep doing so. The
 row is deleted rather than kept as a second copy of the fact; the reviews of #107 then filed the T681 and T682 rows above.
+
+T681 (2026-10-17) closed the first of those rows the same way: the keyboard and reduced-motion suites now also open the
+`Tooltip` every route that renders one carries, by Tab to its trigger (`:focus-visible` opens it), on `/dashboard`,
+`/matches`, `/players/$profileId` and `/players/$profileId/matches` (`TOOLTIP_SCENARIOS` in
+`tests/visual/fixtures/suite-scenarios.ts`), in both themes. The only `Tooltip` an application route renders is
+`CountryFlag`'s, and the only component that renders a `CountryFlag` is `ProfileSummary`; no list row renders a flag, so
+the populated lists open none, which this row's text had claimed. The reduced-motion suite asserts the open surface's
+transition is present without the preference and, with it switched on live, absent on the same element
+(`assertTooltipMotionContract` in `tests/visual/fixtures/tooltip-open.ts`); the keyboard suite asserts Escape dismisses
+the surface and focus stays on the trigger (`packages/design-system/specs/tooltip.md` §8). Both assertions are shared with
+`tests/visual/fixtures/tooltip-open.test.ts`, whose planted pages (a surface lacking the `motion-reduce:` utility, one that
+never transitions, one that is closed, an ignored Escape, an Escape that loses focus) each fail the assertion naming the
+broken clause. `tests/visual/fixtures/suite-scenarios.test.ts` fails when a `<Tooltip>`, `<CountryFlag>` or
+`<ProfileSummary>` usage appears in the source that no tooltip scenario covers. The row is deleted rather than kept as a
+second copy of the fact.

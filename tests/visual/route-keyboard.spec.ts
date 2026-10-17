@@ -20,7 +20,8 @@ import {
   walkTabOrder,
 } from './fixtures/keyboard-walk'
 import { assertSurfaceKeyboard, walkOpenSurface } from './fixtures/open-surface'
-import { enterScenario, SUITE_SCENARIOS } from './fixtures/suite-scenarios'
+import { enterScenario, SUITE_SCENARIOS, TOOLTIP_SCENARIOS } from './fixtures/suite-scenarios'
+import { assertTooltipKeyboard, walkOpenTooltip } from './fixtures/tooltip-open'
 
 const harness = createAppServerHarness('4175')
 
@@ -84,6 +85,26 @@ test.describe('keyboard operation, every route, both themes', () => {
             // own.
             assertFullTabCoverage(result, context)
           }
+
+          external.assertNone(context)
+        })
+      }
+    }
+
+    // T681: the `Tooltip` is no `Menu` or `Dialog`, so the loop above never opens it. Each route
+    // that renders one is entered, the tooltip opened by Tab to its trigger (`:focus-visible` opens
+    // it, `enterScenario` runs the scenario's `prepare`), and its keyboard contract
+    // (`packages/design-system/specs/tooltip.md` §8) walked: Escape dismisses it, focus stays on the
+    // trigger.
+    for (const scenario of TOOLTIP_SCENARIOS) {
+      for (const theme of ['light', 'dark'] as const) {
+        test(`${scenario.label} — Escape dismisses the tooltip and focus stays on its trigger (${theme})`, async ({
+          page,
+        }) => {
+          const external = await enterScenario(page, scenario, harness.baseUrl, theme)
+          const context = `${scenario.label} (${theme})`
+
+          assertTooltipKeyboard(await walkOpenTooltip(page), context)
 
           external.assertNone(context)
         })

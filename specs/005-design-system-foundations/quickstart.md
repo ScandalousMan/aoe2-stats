@@ -1200,6 +1200,31 @@ suite only, so the keyboard, focus-visibility and touch-footprint suites do not 
 is partly met overall until the T681 and T682 rows are deleted** — local run only, macOS Chromium,
 441 tests. The full-page baselines in `tests/visual/app-routes.spec.ts` are CI-authoritative and unchanged by this task.
 
+**Widened, 2026-10-17 (T681).** T681's own row of `packages/design-system/specs/README.md`'s
+"Verification-coverage gap register" is deleted, and the sentence above that no `Tooltip` is opened is
+superseded. `TOOLTIP_SCENARIOS` in `tests/visual/fixtures/suite-scenarios.ts` enters `/dashboard`,
+`/matches`, `/players/$profileId` and `/players/$profileId/matches` and opens `CountryFlag`'s
+`Tooltip` by Tab to its trigger (`:focus-visible` opens it), in both themes. Those four are every
+route that renders one: the only `Tooltip` an application route renders is `CountryFlag`'s, the only
+component that renders a `CountryFlag` is `ProfileSummary`, and no list row renders a flag, so the
+populated lists open none (T681's task text had said they did). The reduced-motion suite asserts the
+open surface's transition is present without the preference and, with the preference switched on
+live, absent on the same element, then runs its whole-page sweep with the tooltip still open; the
+keyboard suite asserts Escape dismisses the surface and focus stays on the trigger
+(`packages/design-system/specs/tooltip.md` §8). Both assertions live in
+`tests/visual/fixtures/tooltip-open.ts` and are shared with `tests/visual/fixtures/tooltip-open.test.ts`,
+whose planted pages (a surface lacking the `motion-reduce:` utility, one that never transitions, one
+that is closed, an ignored Escape, an Escape that loses focus, a trigger whose focus opens nothing)
+each fail naming the broken clause. `tests/visual/fixtures/suite-scenarios.test.ts` fails when a
+`<Tooltip>`, `<CountryFlag>` or `<ProfileSummary>` usage appears in the source that no tooltip
+scenario covers. Dropping `motion-reduce:duration-0` from the component, and disabling its Escape
+handling, were each shown to fail the route suites locally before this note was written. The tooltip
+scenarios run in the keyboard and reduced-motion suites only, the two T681 names: the focus-visibility
+and touch-footprint suites already measure the flag trigger at rest on those routes. **Item 13 stays
+partly met** until T682's row of the same register is deleted: the `objected` `ArchivalControl` and
+`DataExportPanel`'s `ready` link are still not rendered, and T682 states the final verdict. The run
+that shows T681's part: RUN-PENDING.
+
 ### Item 15's general-reviewer half — outstanding, no pull request covers this head
 
 The `visual-reviewer` half is T595/T596/T600/T671's own, by their own words ("Production-readiness

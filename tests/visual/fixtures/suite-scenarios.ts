@@ -44,6 +44,7 @@ import { installSteamAvatarStub } from './avatar-stub'
 import { type ExternalRequestWatch, watchExternalRequests } from './external-requests'
 import { holdRequests, type LoopKind } from './loading-state'
 import { openMenuByKeyboard, tabTo, type SurfaceKind } from './open-surface'
+import { openTooltipByKeyboard } from './tooltip-open'
 
 export interface SuiteScenario extends RouteScenario {
   /** Runs after navigation settles: submits the search, opens the surface — by keyboard. */
@@ -811,6 +812,40 @@ export const SUITE_SCENARIOS: readonly SuiteScenario[] = [
   ...POPULATED_SCENARIOS,
   ...SURFACE_SCENARIOS,
 ]
+
+// --- Tooltips (T681) -----------------------------------------------------------------------------
+
+/** A route scenario that leaves a `Tooltip` open, opened by Tab to its trigger. Kept out of
+ * `SUITE_SCENARIOS` on purpose: a tooltip is not a `Menu` or a `Dialog` (no `surface`, no items to
+ * walk), and only the reduced-motion and keyboard suites have a contract for it. */
+export interface TooltipScenario extends SuiteScenario {
+  /** The `ROUTE_SCENARIOS` label this scenario opens a tooltip on, matched exactly. */
+  route: string
+}
+
+// The only `Tooltip` an application route renders is `CountryFlag`'s, and the only component that
+// renders a `CountryFlag` is `ProfileSummary` — so these are the routes whose container renders a
+// `ProfileSummary` for a profile with a country. `suite-scenarios.test.ts` reads the source for
+// `<Tooltip`, `<CountryFlag` and `<ProfileSummary` and fails when a usage appears that no entry
+// here covers. The at-rest `ROUTE_SCENARIOS` stubs already carry a country (`FR`, `DE`), so the
+// flag and its tooltip render without a populated list.
+export const TOOLTIP_ROUTES: readonly string[] = [
+  '/dashboard',
+  '/matches',
+  '/players/$profileId',
+  '/players/$profileId/matches',
+]
+
+export const TOOLTIP_SCENARIOS: readonly TooltipScenario[] = TOOLTIP_ROUTES.map((route) => {
+  const base = ROUTE_SCENARIOS.find((scenario) => scenario.label === route)
+  if (!base) throw new Error(`TOOLTIP_ROUTES names '${route}', which ROUTE_SCENARIOS does not have`)
+  return {
+    ...base,
+    route,
+    label: `${route} — country tooltip open`,
+    prepare: openTooltipByKeyboard,
+  }
+})
 
 // --- Loading states ------------------------------------------------------------------------------
 
