@@ -33,11 +33,13 @@ export interface CaptureStateBadgeProps {
   /** ISO 8601, or `null`. Consulted only while `captureStatus` is `pending`/`downloading` and
    * `archivalObjected` is not set: with it, the deadline is never read (§7). */
   captureDeadlineAt?: string | null
-  /** `GET /api/me`'s `archival_objected` (§4, T724). `MatchDetailPanel` passes it for every match:
-   * the detail route joins a capture row only for the caller's linked profiles, so any other
-   * match has a `null` `captureStatus` and renders nothing. `MatchList` withholds it for
+  /** `GET /api/me`'s `archival_objected` (§4, T724, T729). `MatchDetailPanel` passes it for every
+   * match: the detail route joins a capture row only for the caller's linked profiles, so any
+   * other match has a `null` `captureStatus` and renders nothing. `MatchList` withholds it for
    * `subject="other"`. With it a `pending`/`downloading` row reads "Not archived" as `withdrawn`
-   * does, with "Archival is off for your account." in `detail` and no countdown or interval. */
+   * does, with "Archival is off for your account." in `detail` and no countdown or interval; an
+   * `expired`/`failed` row stays "Lost" and drops the upload sentence, as no upload is offered
+   * under it. Every other status ignores it. */
   archivalObjected?: boolean
   /** `compact` inside `MatchRow`, `detail` inside `MatchDetailPanel` (match-history.md). Renamed
    * from `context` (FR-032, T557): every other component whose rendering depends on where it is
@@ -73,16 +75,20 @@ const TONE_BY_STATUS: Partial<Record<CaptureStatus, { label: string; variant: Ba
   withdrawn: { label: 'Not archived', variant: 'neutral' },
 }
 
+// `expired` and `failed` read a reason and then a recourse (§3). The recourse is dropped for an
+// objecting owner (T729): no upload is offered under it, so the sentence would promise one.
+const EXPIRED_FIRST_SENTENCE = 'The replay existed, but we did not capture it in time.'
+const FAILED_FIRST_SENTENCE = 'We could not capture this replay after repeated attempts.'
+const UPLOAD_RECOURSE = 'If you still have the file, you can upload it.'
+
 // The three "Lost" statuses and "Needs review" carry the *reason* as SecondaryLine, because they
 // send the user to different places (§3). `stored` has none: "Archived" needs no further sentence.
 // These four read the same in both variants.
 const REASON: Partial<Record<CaptureStatus, string>> = {
   unavailable:
     'The game never recorded this match. Your own saved games folder is probably empty too.',
-  expired:
-    'The replay existed, but we did not capture it in time. If you still have the file, you can upload it.',
-  failed:
-    'We could not capture this replay after repeated attempts. If you still have the file, you can upload it.',
+  expired: `${EXPIRED_FIRST_SENTENCE} ${UPLOAD_RECOURSE}`,
+  failed: `${FAILED_FIRST_SENTENCE} ${UPLOAD_RECOURSE}`,
   quarantined:
     'We have a copy, but it failed validation. It is kept for review — there is nothing further for you to do.',
 }
@@ -94,6 +100,12 @@ const REASON: Partial<Record<CaptureStatus, string>> = {
 const DETAIL_ONLY_REASON: Partial<Record<CaptureStatus, string>> = {
   withdrawn:
     'Automatic capture ended for this match while archival was not running for this profile.',
+}
+
+// T729 (§3): what an objecting owner's `expired`/`failed` row reads — the first sentence alone.
+const REASON_WITHOUT_RECOURSE: Partial<Record<CaptureStatus, string>> = {
+  expired: EXPIRED_FIRST_SENTENCE,
+  failed: FAILED_FIRST_SENTENCE,
 }
 
 // T724 (§3): the one fact the session holds for an objecting owner's catchable row. It claims
@@ -122,12 +134,15 @@ function secondaryLineFor(
   deadlineAt: string | null,
   now: number,
   variant: CaptureStateBadgeVariant,
+  archivalObjected: boolean,
 ): string | undefined {
   if (CATCHABLE.has(status)) {
     // "Never a countdown built from a missing value" (§6) — should not happen per data-model.md,
     // but a missing deadline renders the pill with no SecondaryLine rather than trusted blindly.
     return deadlineAt ? describeCaptureCountdown(deadlineAt, now, variant) : undefined
   }
+  // T729 (§3): the objecting owner is offered no upload, so `expired`/`failed` drop that sentence.
+  if (archivalObjected && status in REASON_WITHOUT_RECOURSE) return REASON_WITHOUT_RECOURSE[status]
   return REASON[status] ?? (variant === 'detail' ? DETAIL_ONLY_REASON[status] : undefined)
 }
 
@@ -173,7 +188,13 @@ export function CaptureStateBadge({
     ? variant === 'detail'
       ? ARCHIVAL_OFF_SENTENCE
       : undefined
-    : secondaryLineFor(captureStatus as CaptureStatus, captureDeadlineAt, now, variant)
+    : secondaryLineFor(
+        captureStatus as CaptureStatus,
+        captureDeadlineAt,
+        now,
+        variant,
+        archivalObjected,
+      )
 
   // `detail` always stacks, `space-1` between pill and SecondaryLine (§4, §9). `compact` stacks
   // either because the caller told it to (`stacked` — a box it knows is bounded, like MatchRow's

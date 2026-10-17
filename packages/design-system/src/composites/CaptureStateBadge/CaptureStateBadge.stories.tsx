@@ -240,3 +240,14 @@ export const NotArchivedObjectedDetail: Story = {
     variant: 'detail',
   },
 }
+
+// T729 (§3): an objecting owner's `expired` row stays "Lost" and reads the first sentence only —
+// no upload is offered under it. Appended after the stories above so no cited line moves.
+export const LostExpiredObjected: Story = {
+  name: 'Lost — expired, archival objected, detail (no upload sentence)',
+  args: {
+    captureStatus: 'expired',
+    archivalObjected: true,
+    variant: 'detail',
+  },
+}

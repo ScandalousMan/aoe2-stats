@@ -2411,7 +2411,7 @@ carries what T673's dry run read.
       row that names no key, with the download's hash, is validated and recorded `automatic`; with a
       different hash, the row names no key, its attempt stands, and the object is unchanged.
       **Contrast:** a key that holds nothing is written and recorded as today
-- [ ] T729 Decide what an `expired` or `failed` capture reads for an objecting owner (filed
+- [x] T729 Decide what an `expired` or `failed` capture reads for an objecting owner (filed
       2026-10-13 from T723). `CaptureStateBadge`'s `SecondaryLine` for both statuses ends "If you
       still have the file, you can upload it."
       (`packages/design-system/specs/capture-state-badge.md` §3). Since T723 an objecting caller is

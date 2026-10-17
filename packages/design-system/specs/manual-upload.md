@@ -30,9 +30,9 @@ there is no shared form-field primitive, and a file input is not the input eithe
   - **`409 already_archived`** — an archive already exists for this `game_id` (FR-032); `stored` is
     terminal and never overwritten (`data-model.md`). T723's two other `409` codes map to `failed`: §4.4.
 - [`capture-state-badge.md`](./capture-state-badge.md) §3 owns the **reason** a match is lost and the
-  one-line recourse ("If you still have the file, you can upload it." for `expired`/`failed`; "very
-  unlikely to help" for `unavailable`). This component renders the **action**, not the reason, and must
-  not restate or contradict that line — see §2.
+  one-line recourse ("If you still have the file, you can upload it." for `expired`/`failed`,
+  dropped for an objecting caller (T729); "very unlikely to help" for `unavailable`). This component
+  renders the **action**, not the reason, and must not restate or contradict that line — see §2.
 
 **Tier**: composite (`src/composites/`).
 **Surface class**: neither `dense` nor `prose` — a form section inside `MatchDetailPanel`'s own
