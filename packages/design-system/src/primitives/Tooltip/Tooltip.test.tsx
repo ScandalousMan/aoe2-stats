@@ -94,6 +94,10 @@ describe('Tooltip', () => {
     await user.click(trigger)
     // The click pins it open (§4 active) — unpin, then a plain mouse focus must show nothing.
     await user.click(trigger)
+    // The clicks left the pointer on the trigger, and hover is an independent open source (§4
+    // "OR together") whose 200ms timer is already running: leave, so focus is the only source left.
+    // Asserting with the pointer still there raced that timer and failed under load (T734).
+    await user.unhover(trigger)
     await waitFor(() => expect(screen.queryByRole('tooltip')).not.toBeInTheDocument())
     expect(trigger).toHaveFocus()
   })
@@ -153,6 +157,9 @@ describe('Tooltip', () => {
     expect(screen.getByRole('tooltip')).toBeInTheDocument()
 
     await user.click(trigger)
+    // The press moved the pointer back onto the trigger, restarting the hover timer — leave, so
+    // only the pin could still hold it open (same race as the mouse-focus test above, T734).
+    await user.unhover(trigger)
     await waitFor(() => expect(screen.queryByRole('tooltip')).not.toBeInTheDocument())
   })
 

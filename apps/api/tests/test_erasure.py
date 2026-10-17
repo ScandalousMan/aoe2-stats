@@ -70,6 +70,7 @@ from aoe2stats_storage.models import (
     User,
 )
 from aoe2stats_storage.models import Session as UserSession
+from aoe2stats_storage.objects import replay_object_key, retained_recording_object_key
 
 pytestmark = [pytest.mark.usefixtures("environment")]
 
@@ -89,6 +90,7 @@ _SHARED_MATCH_GAME_ID = 810_200_001
 _ANALYSIS_GAME_ID = 810_200_002
 _RETAINED_GAME_ID = 810_200_003
 _BYSTANDER_MATCH_GAME_ID = 810_200_004
+_ORPHAN_GAME_ID = 810_200_010  # four consecutive ids
 
 
 class _RecordingObjectStore:
@@ -366,6 +368,79 @@ async def test_confirmed_erasure_deletes_captures_and_verifies_the_blob_by_listi
     db_session.expire_all()  # `capture` is already in this session's identity map — see above
     capture_after = await db_session.get(ReplayCapture, capture_id)
     assert capture_after is None, "the replay_captures row must be gone, not merely its blob"
+
+
+async def test_confirmed_erasure_deletes_objects_under_the_users_pairs_that_no_row_names(
+    client: TestClient, db_session: AsyncSession
+) -> None:
+    """T730: an upload whose row write failed leaves an object under the pair's key that no
+    `object_key` names. Erasure removes it whether the pair has a `replay_captures` row naming no
+    key (a), a row and no `match_players` row (b), or only a `match_players` row (c); an object
+    under another person's pair, under a game the user did not play, and a retained recording
+    stay. Verified by listing the bucket."""
+    user = await _seed_linked_user(
+        db_session, profile_id=_OWNER_PROFILE_ID, steam_id64="76561197960280020"
+    )
+    db_session.add(AoeProfile(profile_id=_OTHER_USERS_PROFILE_ID, alias="Opponent", country="DE"))
+    games = {
+        "row_and_player": _ORPHAN_GAME_ID,
+        "row_only": _ORPHAN_GAME_ID + 1,
+        "player_only": _ORPHAN_GAME_ID + 2,
+        "not_played": _ORPHAN_GAME_ID + 3,
+    }
+    completed_at = datetime.now(UTC) - timedelta(days=40)
+    for game_id in games.values():
+        db_session.add(
+            Match(
+                game_id=game_id,
+                leaderboard_id=3,
+                completed_at=completed_at,
+                source="relic",
+                raw_payload={},
+            )
+        )
+    await db_session.flush()
+    for game_id in (games["row_and_player"], games["player_only"]):
+        db_session.add(
+            MatchPlayer(game_id=game_id, profile_id=_OWNER_PROFILE_ID, team_id=1, result="win")
+        )
+    db_session.add(
+        MatchPlayer(
+            game_id=games["not_played"], profile_id=_OTHER_USERS_PROFILE_ID, team_id=1, result="win"
+        )
+    )
+    for game_id in (games["row_and_player"], games["row_only"]):
+        db_session.add(
+            ReplayCapture(
+                game_id=game_id,
+                profile_id=_OWNER_PROFILE_ID,
+                status=CaptureStatus.FAILED,
+                capture_deadline_at=completed_at + timedelta(days=21),
+                source=CaptureSource.AUTOMATIC,
+            )
+        )
+    await db_session.commit()
+    await _sign_in(client, db_session, user)
+    store = _install_recording_object_store(client)
+
+    orphans = [
+        replay_object_key(games["row_and_player"], _OWNER_PROFILE_ID),
+        replay_object_key(games["row_only"], _OWNER_PROFILE_ID),
+        replay_object_key(games["player_only"], _OWNER_PROFILE_ID),
+    ]
+    kept = [
+        replay_object_key(games["not_played"], _OTHER_USERS_PROFILE_ID),
+        replay_object_key(games["not_played"], _OWNER_PROFILE_ID),
+        retained_recording_object_key(games["row_and_player"], _OWNER_PROFILE_ID),
+    ]
+    for key in [*orphans, *kept]:
+        await store.put(key, b"FAKE-REPLAY-BYTES")
+
+    token = _get_confirmation_token(client)
+    response = client.post(_ERASE_PATH, json={"confirmation_token": token})
+    assert response.status_code == 200, f"Got {response.status_code}: {response.text}"
+
+    assert sorted(await store.list_keys()) == sorted(kept)
 
 
 async def test_confirmed_erasure_deletes_replay_access_log_rows_for_the_erased_users_captures_only(

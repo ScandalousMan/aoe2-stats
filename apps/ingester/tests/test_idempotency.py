@@ -21,8 +21,8 @@ marker is expected to be removed the moment T055 makes this pass for real.
   injection, exactly like every other component in this codebase (`ObjectStore`, the provider
   base classes, `raise_alert`'s `AlertSink`): `session_factory` (the same
   `async_sessionmaker[AsyncSession]` `packages/storage/src/aoe2stats_storage/repositories/base.py`
-  builds), a `ReplayProvider` (contracts/providers.md), an object store exposing `put` (the async
-  subset of `aoe2stats_storage.objects.ObjectStore`), a `ReplayValidator`
+  builds), a `ReplayProvider` (contracts/providers.md), an object store exposing `put_if_absent`
+  (the async subset of `aoe2stats_storage.objects.ObjectStore`), a `ReplayValidator`
   (`aoe2stats_core.replay.validation`), an `AlertSink` (`aoe2stats_core.alerting`), and the two
   tuning knobs this scenario's timing depends on (`capture_budget_days`,
   `replay_publication_grace_hours` — `.env.example`'s `CAPTURE_BUDGET_DAYS` /
@@ -99,8 +99,16 @@ class _FakeObjectStore:
     def __init__(self) -> None:
         self.put_calls: list[tuple[str, bytes]] = []
 
-    async def put(self, key: str, body: bytes, *, content_type: str = "application/zip") -> None:
+    async def put_if_absent(
+        self,
+        key: str,
+        body: bytes,
+        *,
+        content_type: str = "application/zip",
+        metadata: Mapping[str, str] | None = None,
+    ) -> bool:
         self.put_calls.append((key, body))
+        return True
 
 
 class _FakeReplayEngine:
