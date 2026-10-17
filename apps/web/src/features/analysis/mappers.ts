@@ -7,12 +7,14 @@ import type {
   TrainingEventData,
 } from 'design-system'
 import type { ApiMatchParticipant } from '../matches/api'
+import { readKnowledgeNames } from './api'
 import type {
   ApiAnalysisBuildEvent,
   ApiAnalysisDocument,
   ApiAnalysisDocumentParticipant,
   ApiAnalysisResearchEvent,
   ApiAnalysisTrainingEvent,
+  ApiKnowledgeNames,
 } from './api'
 
 // `ApiAnalysisDocument` (`api.ts`) to `AnalysisTimeline`'s own props (packages/design-system) —
@@ -20,52 +22,68 @@ import type {
 // `features/matches/mappers.ts` documents for `ApiMatchDetail`.
 
 /**
- * FR-043a: nothing in this repository names a technology, unit or building id yet — no lookup
- * exists on either side of the wire (`civilizations.py`'s own table has no counterpart for any of
- * these three kinds). Every one of them, including the three age-up technology ids
- * (`analysis-timeline.md` §3.1's own "if the lookup ever returns nothing... `UnresolvedIdentifier`
- * treatment applies"), therefore renders unresolved until such a table ships — this function
- * invents no name client-side to fill the gap.
+ * FR-043a, T709: the page never invents a name. A name is shown only when the response carries one
+ * for that id (`GET /api/matches/{game_id}/analysis` serves them beside the stored document,
+ * resolved from the knowledge snapshot the document's own identity names); an id the snapshot does
+ * not name, a document whose identity names no snapshot, and a response with no names at all
+ * render unresolved, as every id did before names were served. This function substitutes nothing
+ * and tries no other kind's table for an id.
  */
 const UNRESOLVED_NAME = null
 
-function toAgeUps(ageUpCommands: Record<string, number>): AgeUpEventData[] {
+function nameOf(table: Record<string, string> | undefined, id: number): string | null {
+  return table?.[String(id)] ?? UNRESOLVED_NAME
+}
+
+function toAgeUps(
+  ageUpCommands: Record<string, number>,
+  names: ApiKnowledgeNames | null,
+): AgeUpEventData[] {
   // §3.1: "Rows are ordered chronologically, oldest first" — sorted explicitly by `timeMs` rather
   // than relying on the host engine's own object-key iteration order for integer-like keys.
   return Object.entries(ageUpCommands)
     .map(([technologyId, timeMs]) => ({
       id: `age-${technologyId}`,
       technologyId: Number(technologyId),
-      ageName: UNRESOLVED_NAME,
+      ageName: nameOf(names?.technology, Number(technologyId)),
       timeMs,
     }))
     .sort((a, b) => a.timeMs - b.timeMs)
 }
 
-function toBuilds(builds: readonly ApiAnalysisBuildEvent[]): BuildEventData[] {
+function toBuilds(
+  builds: readonly ApiAnalysisBuildEvent[],
+  names: ApiKnowledgeNames | null,
+): BuildEventData[] {
   return builds.map((event, index) => ({
     id: `build-${index}`,
     buildingId: event.building_id,
-    buildingName: UNRESOLVED_NAME,
+    buildingName: nameOf(names?.building, event.building_id),
     timeMs: event.world_time_ms,
   }))
 }
 
-function toTrainings(trainings: readonly ApiAnalysisTrainingEvent[]): TrainingEventData[] {
+function toTrainings(
+  trainings: readonly ApiAnalysisTrainingEvent[],
+  names: ApiKnowledgeNames | null,
+): TrainingEventData[] {
   return trainings.map((event, index) => ({
     id: `training-${index}`,
     unitId: event.unit_id,
-    unitName: UNRESOLVED_NAME,
+    unitName: nameOf(names?.unit, event.unit_id),
     amount: event.amount,
     timeMs: event.world_time_ms,
   }))
 }
 
-function toResearches(researches: readonly ApiAnalysisResearchEvent[]): ResearchEventData[] {
+function toResearches(
+  researches: readonly ApiAnalysisResearchEvent[],
+  names: ApiKnowledgeNames | null,
+): ResearchEventData[] {
   return researches.map((event, index) => ({
     id: `research-${index}`,
     technologyId: event.technology_id,
-    technologyName: UNRESOLVED_NAME,
+    technologyName: nameOf(names?.technology, event.technology_id),
     timeMs: event.world_time_ms,
   }))
 }
@@ -82,6 +100,7 @@ function toResearches(researches: readonly ApiAnalysisResearchEvent[]): Research
 export function toAnalysisParticipantData(
   participant: ApiAnalysisDocumentParticipant,
   matchParticipant: ApiMatchParticipant | undefined,
+  names: ApiKnowledgeNames | null = null,
 ): AnalysisParticipantData {
   return {
     id: String(participant.profile_id),
@@ -91,10 +110,10 @@ export function toAnalysisParticipantData(
     apm: participant.actions_per_minute,
     actions: participant.actions,
     villagersOrdered: participant.villagers_ordered,
-    ageUps: toAgeUps(participant.age_up_commands),
-    builds: toBuilds(participant.builds),
-    trainings: toTrainings(participant.trainings),
-    researches: toResearches(participant.researches),
+    ageUps: toAgeUps(participant.age_up_commands, names),
+    builds: toBuilds(participant.builds, names),
+    trainings: toTrainings(participant.trainings, names),
+    researches: toResearches(participant.researches, names),
     resignedAtMs: participant.resigned_at_ms,
   }
 }
@@ -112,6 +131,7 @@ export function toAnalysisTeamGroups(
   document: ApiAnalysisDocument,
   matchParticipants: readonly ApiMatchParticipant[],
 ): AnalysisTeamGroupData[] {
+  const names = readKnowledgeNames(document.knowledge_names)
   const byProfileId = new Map(
     matchParticipants.map((participant) => [participant.profile_id, participant] as const),
   )
@@ -129,7 +149,7 @@ export function toAnalysisTeamGroups(
   return order.map((teamId) => ({
     id: `team-${teamId}`,
     participants: (byTeam.get(teamId) ?? []).map((participant) =>
-      toAnalysisParticipantData(participant, byProfileId.get(participant.profile_id)),
+      toAnalysisParticipantData(participant, byProfileId.get(participant.profile_id), names),
     ),
   }))
 }

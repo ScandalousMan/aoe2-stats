@@ -2537,7 +2537,7 @@ carries what T673's dry run read.
       unresolved-identifier style against the contrast table, and record that no baseline can
       move: Storybook's preview wraps every story in the primary ink, so the stories never showed
       the defect (#126's visual job: 478 passed, none moved); the unit test is the guard (T710)
-- [ ] T709 Show names on the analysis page. Found closing T707 (2026-10-08): no stage maps an id to
+- [x] T709 Show names on the analysis page. Found closing T707 (2026-10-08): no stage maps an id to
       a name for any build — the stored document carries ids only, and
       `apps/web/src/features/analysis/mappers.ts` renders every technology, unit and building
       unresolved under 003's FR-043a ("until such a table ships"). The knowledge snapshots are that

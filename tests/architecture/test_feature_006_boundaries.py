@@ -126,7 +126,8 @@ _REQUEST_PATH_CODE: tuple[Path, ...] = (
 
 # T666g: the API's `stale` flag is the analyzer's own verdict, so the one function both ask
 # (`aoe2stats_analyzer.staleness.is_stale`) is imported by exactly one request-path file, and no
-# other `aoe2stats_analyzer` module is imported by anything under `apps/api/src`. The decision is
+# other `aoe2stats_analyzer` module is imported by anything under `apps/api/src` - except the one
+# T709 added, below. The decision is
 # 2026-10-04 (T666g): the button and the recompute must not be able to disagree, which two copies of
 # the condition could not guarantee.
 #
@@ -140,8 +141,21 @@ _REQUEST_PATH_CODE: tuple[Path, ...] = (
 # and no capture-budget name is touched. The import is lazy, inside the function that needs it, so
 # importing the app loads none of it. Adding any other analyzer import to the API - `run`,
 # `extract`, `reproduce` - is request-path work and fails the check below.
+#
+# T709 (2026-10-17) grants one more module to one more file: `aoe2stats_analyzer.names`, imported
+# lazily by `routers/analysis.py` to serve the display names of a stored document's ids beside it.
+# Why this stays inside FR-049: it is a lookup, not analysis. It parses the document the route has
+# already read, matches the snapshot the document's own identity names among the packaged ones
+# (`functools.cache`d, from package data) and reads names out of that snapshot's `rules.json`.
+# Nothing is fetched, no recording is read, no engine is loaded, and the capture budget is not
+# touched. The API still imports no knowledge package itself: that import lives in `names.py`,
+# behind the same seam `staleness.py` uses, and `names.py` is outside `_REQUEST_PATH_CODE` for the
+# reason `extract.py` is. The alternative - resolving names when the analysis runs and storing them
+# in the document - would change the stored bytes and the identity digest (FR-042), which T709
+# forbids.
 _ALLOWED_API_ANALYZER_IMPORTS: Mapping[str, frozenset[str]] = {
     "apps/api/src/aoe2stats_api/routers/matches.py": frozenset({"aoe2stats_analyzer.staleness"}),
+    "apps/api/src/aoe2stats_api/routers/analysis.py": frozenset({"aoe2stats_analyzer.names"}),
 }
 _API_SRC = _REPO_ROOT / "apps" / "api" / "src"
 
@@ -462,13 +476,14 @@ def _api_analyzer_violations(
     return violations
 
 
-def test_the_api_imports_exactly_one_analyzer_module_from_exactly_one_file() -> None:
-    """T666g, FR-049: `apps/api/src` reaches the analyzer only through `staleness`, and only from
-    the match router (`_ALLOWED_API_ANALYZER_IMPORTS`). Anything else is request-path analysis
-    work."""
+def test_the_api_imports_only_the_granted_analyzer_modules_from_the_granted_files() -> None:
+    """T666g, T709, FR-049: `apps/api/src` reaches the analyzer only through `staleness` (from the
+    match router) and `names` (from the analysis router) - `_ALLOWED_API_ANALYZER_IMPORTS`.
+    Anything else is request-path analysis work."""
     violations = _api_analyzer_violations(_ALLOWED_API_ANALYZER_IMPORTS)
     assert not violations, (
-        f"the API may import only the staleness verdict from the analyzer (FR-049): {violations}"
+        "the API may import only the staleness verdict and the names lookup from the analyzer "
+        f"(FR-049): {violations}"
     )
 
 
@@ -712,6 +727,42 @@ def test_the_allowlist_grants_the_staleness_import_to_the_match_router_only() ->
     # And the knowledge and truth packages stay refused on the request path as before.
     assert imports_of("from aoe2stats_knowledge.snapshot import snapshot_for\n", _NEW_PACKAGES)
     assert imports_of("from aoe2stats_core.truth.identity import AnalysisIdentity\n", _NEW_PACKAGES)
+
+
+def test_the_names_grant_is_for_the_analysis_router_only_and_grants_nothing_else() -> None:
+    """Contrast cases for T709: each grant is to its own file. The names lookup is refused in the
+    match router and in any other file, the staleness verdict is refused in the analysis router,
+    and a sibling module of `names` is refused even in the file that holds the grant."""
+    analysis = "apps/api/src/aoe2stats_api/routers/analysis.py"
+    matches = "apps/api/src/aoe2stats_api/routers/matches.py"
+    other = "apps/api/src/aoe2stats_api/routers/players.py"
+    allowed = _ALLOWED_API_ANALYZER_IMPORTS
+    names = "def f():\n    from aoe2stats_analyzer.names import with_names\n"
+    staleness = "def f():\n    from aoe2stats_analyzer.staleness import is_stale\n"
+
+    assert analyzer_imports_outside_allowlist(analysis, names, allowed) == []
+    assert analyzer_imports_outside_allowlist(matches, names, allowed) != []
+    assert analyzer_imports_outside_allowlist(other, names, allowed) != []
+    assert analyzer_imports_outside_allowlist(analysis, staleness, allowed) != []
+    for source in (
+        "from aoe2stats_analyzer.extract import build_document\n",
+        "from aoe2stats_analyzer.names_other import x\n",
+    ):
+        assert analyzer_imports_outside_allowlist(analysis, source, allowed), source
+
+
+def test_the_names_module_is_off_the_request_path_set_and_reaches_no_capture_code() -> None:
+    """`names.py` imports the knowledge package, as `extract.py` does, which the request-path set
+    forbids - so it must stay out of that set, and must reach neither the capture budget's homes
+    nor 003's storage repositories."""
+    path = _ANALYZER_SRC / "names.py"
+    source = path.read_text(encoding="utf-8")
+
+    assert path not in _REQUEST_PATH_CODE
+    assert imports_of(source, _NEW_PACKAGES) != []
+    assert imports_of(source, _CAPTURE_BUDGET_PACKAGES) == []
+    assert imports_of(source, ("aoe2stats_storage",)) == []
+    assert capture_budget_mentions(source) == []
 
 
 def test_analysis_key_literals_flags_a_private_layout_but_not_prose() -> None:

@@ -40,6 +40,8 @@ answer two different questions from the same table and share no response shape t
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Request, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -51,6 +53,8 @@ from aoe2stats_storage.models import MatchAnalysis, MatchAnalysisState
 from aoe2stats_storage.models import Session as SessionRow
 
 router = APIRouter(tags=["analysis"])
+
+logger = logging.getLogger("aoe2stats_api")
 
 
 # --- Session resolution, the same discipline every other router in this feature establishes
@@ -123,4 +127,30 @@ async def get_match_analysis(
         raise _analysis_not_found()
 
     document = await object_store.get(row.result_key)
-    return Response(content=document, media_type="application/json")
+    return Response(content=_with_names(document, game_id=game_id), media_type="application/json")
+
+
+def _with_names(document: bytes, *, game_id: int) -> bytes:
+    """T709: the stored document with the display names of its ids served beside it.
+
+    The stored bytes are never changed and nothing is written back: `aoe2stats_analyzer.names`
+    appends one block after them, resolved from the knowledge snapshot the document's own identity
+    names (FR-027), and returns the stored bytes as they were when that identity names none. The
+    import is inside the function, so importing the app loads none of it (FR-049; the same seam
+    `routers/matches.py` uses for the staleness verdict).
+
+    **Never raises.** Names are decoration: a deployment fault or a defect in resolving them is
+    logged with its traceback, under a line that says which, and the stored document is served as
+    it is, so the page shows identifiers as it did before names existed.
+    """
+    try:
+        from aoe2stats_analyzer.names import FAULT_ERRORS, with_names
+
+        try:
+            return with_names(document)
+        except FAULT_ERRORS:
+            logger.exception("names not served for game_id=%s: a snapshot cannot be read", game_id)
+            return document
+    except Exception:
+        logger.exception("names not served for game_id=%s: unexpected naming error", game_id)
+        return document

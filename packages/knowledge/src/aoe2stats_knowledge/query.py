@@ -117,8 +117,9 @@ _PACKAGE: Final[str] = "aoe2stats_knowledge"
 _TIME_FIELDS: Final[tuple[str, ...]] = ("training_time", "construction_time", "research_time")
 
 #: `name()`'s `.source` when an identifier degrades to the bare id (003 FR-043a) — there is no
-#: stored source to report, because nothing was found.
-_UNRESOLVED_SOURCE: Final[str] = "unresolved"
+#: stored source to report, because nothing was found. Public (T709): a caller that shows names
+#: reads an answer carrying it as "not named", rather than keeping its own copy of the string.
+UNRESOLVED_SOURCE: Final[str] = "unresolved"
 
 
 @dataclass(frozen=True, slots=True)
@@ -479,7 +480,7 @@ def name(entity: EntityRef) -> Answer[str] | KnowledgeGap:
         return Answer(
             value=entity.id,
             snapshot_identity=resolved.identity,
-            source=_UNRESOLVED_SOURCE,
+            source=UNRESOLVED_SOURCE,
             effects=(),
         )
     return Answer(

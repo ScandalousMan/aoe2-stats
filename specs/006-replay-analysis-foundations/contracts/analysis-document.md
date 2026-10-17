@@ -127,3 +127,31 @@ existing fields, accepts any numeric `schema_version`, and ignores keys it does 
 requires `extracted_at` at its current path, which is why that field is duplicated and not moved.
 The only change there is a test pinning that a version 2 fixture parses. No component changes.
 Displaying a tier or a gap is a later feature's decision and needs a design-system spec first.
+
+## Names are served beside the document (T709)
+
+The stored document carries identifiers only, and stays that way: its bytes are what the identity
+digest and the object key vouch for (FR-042), so no name is ever written into it. The names are
+served by `GET /api/matches/{game_id}/analysis` as one more top-level key, `knowledge_names`,
+appended after the stored object, whose bytes are unchanged and are a prefix of the body up to the
+closing brace. A reader that ignores unknown keys, as the web reader does, is unaffected.
+
+```json
+"knowledge_names": {
+  "snapshot": { "describes_build": 0, "digest": "…" },
+  "technology": { "101": "Feudal Age" },
+  "unit": { "83": "Villager" },
+  "building": { "70": "House" }
+}
+```
+
+- **The snapshot is the one the document's own identity names**, matched on `source`,
+  `source_version`, `describes_build` and `digest` among the packaged snapshots, a demoted one
+  included. Never the snapshot promoted for the build now, never the nearest build's (FR-027,
+  FR-038). `snapshot` records which one answered.
+- **An id the snapshot does not name is absent from its kind's record**, and the page shows the
+  identifier (003 FR-043a). Nothing is substituted.
+- **No block at all** when the identity names no snapshot (`absent`), names one that is not
+  installed or is installed under another digest, or when the document has no `identity` (version
+  1). The body is then the stored bytes exactly.
+- **It never fails the read.** A fault resolving names is logged and the stored bytes are served.
