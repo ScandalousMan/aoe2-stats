@@ -746,6 +746,16 @@ async def test_repeated_refusals_keep_one_pending_row_with_the_latest_outcome(
     token = _get_confirmation_token(client)
     first = client.post(_ERASE_PATH, json={"confirmation_token": token})
     assert first.status_code == 503, f"Got {first.status_code}: {first.text}"
+    first_requested_at = (
+        await db_session.execute(
+            select(DataRequest.requested_at).where(
+                DataRequest.kind == DataRequestKind.ERASURE,
+                DataRequest.subject_user_id == user_id,
+                DataRequest.completed_at.is_(None),
+            )
+        )
+    ).scalar_one()
+    db_session.expire_all()
     monkeypatch.setattr(privacy, "_ERASURE_WAVE_BUDGET", 1)
     second = client.post(_ERASE_PATH, json={"confirmation_token": token})
     assert second.status_code == 503, f"Got {second.status_code}: {second.text}"
@@ -767,6 +777,40 @@ async def test_repeated_refusals_keep_one_pending_row_with_the_latest_outcome(
     )
     assert len(pending) == 1, f"expected one pending row, got {len(pending)}"
     assert pending[0].outcome == "refused: 5 keys need 3 waves, budget 1"
+    # The 30-day deadline runs from `requested_at` (docs/privacy/processing-register.md), so a
+    # retry must never move it.
+    assert pending[0].requested_at == first_requested_at, "a retry moved requested_at"
+
+
+async def test_erasure_after_a_refusal_completes_the_earlier_pending_row(
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Refused once (row left uncompleted), budget raised, erased: no uncompleted erasure row may
+    survive for the subject to lose its `subject_user_id` and stay open forever."""
+    monkeypatch.setattr(privacy, "_ERASURE_WAVE_BUDGET", 2)
+    await _seed_account_for_wave_budget(client, db_session, monkeypatch, steam="76561197960280033")
+    token = _get_confirmation_token(client)
+    refused = client.post(_ERASE_PATH, json={"confirmation_token": token})
+    assert refused.status_code == 503, f"Got {refused.status_code}: {refused.text}"
+
+    monkeypatch.setattr(privacy, "_ERASURE_WAVE_BUDGET", 3)
+    erased = client.post(_ERASE_PATH, json={"confirmation_token": token})
+    assert erased.status_code == 200, f"Got {erased.status_code}: {erased.text}"
+
+    db_session.expire_all()
+    rows = (
+        (
+            await db_session.execute(
+                select(DataRequest).where(DataRequest.kind == DataRequestKind.ERASURE)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(rows) == 2, f"expected the resolved refusal and the erasure, got {len(rows)}"
+    assert all(row.completed_at is not None for row in rows), "an erasure row stayed uncompleted"
+    assert sorted(row.outcome or "" for row in rows)[0] == "account erased"
+    assert any((row.outcome or "").startswith("resolved by the erasure of ") for row in rows)
 
 
 async def test_erasure_exactly_at_the_wave_budget_is_erased_as_before(

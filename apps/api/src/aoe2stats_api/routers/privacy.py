@@ -712,7 +712,8 @@ async def _refuse_erasure_too_large(
 ) -> APIError:
     """Records the refusal as a pending `data_requests` row of kind `erasure`
     (`completed_at` NULL) on an independent session, and returns the error to raise. One pending
-    row per account: a retry updates the existing uncompleted row's `outcome` and `requested_at`
+    row per account: a retry updates the existing uncompleted row's `outcome` and never its
+    `requested_at`, from which the 30-day deadline runs (`docs/privacy/processing-register.md`),
     instead of inserting another. No alert: severity 1 is reserved (constitution I) and a new
     alert kind needs a migration."""
     outcome = f"refused: {keys} keys need {waves} waves, budget {_ERASURE_WAVE_BUDGET}"
@@ -740,7 +741,6 @@ async def _refuse_erasure_too_large(
             )
         else:
             pending.outcome = outcome
-            pending.requested_at = datetime.now(UTC)
         await audit_session.commit()
     return APIError(
         status_code=503,
@@ -904,8 +904,28 @@ async def erase_account(
             delete(ReplayCapture).where(ReplayCapture.profile_id.in_(profile_ids))
         )
 
-    data_request.completed_at = datetime.now(UTC)
+    completed_at = datetime.now(UTC)
+    data_request.completed_at = completed_at
     data_request.outcome = "account erased"
+    # Earlier refusals (`_refuse_erasure_too_large`) of this same account are resolved by this
+    # erasure: left uncompleted they would stay open forever once `SET NULL` takes their subject.
+    # Last, after every table in the global lock order (`matches`, `aoe_profiles`, `match_players`,
+    # `replay_captures`) has been locked and written, and just before the user delete: no writer
+    # takes a `data_requests` lock while waiting on those, bar `_refuse_erasure_too_large`, which
+    # for this user only runs after the `replay_captures` lock above, so it waits there instead.
+    await db_session.execute(
+        update(DataRequest)
+        .where(
+            DataRequest.kind == DataRequestKind.ERASURE,
+            DataRequest.subject_user_id == user_id,
+            DataRequest.completed_at.is_(None),
+            DataRequest.id != data_request.id,
+        )
+        .values(
+            completed_at=completed_at,
+            outcome=f"resolved by the erasure of {completed_at.isoformat()}",
+        )
+    )
 
     await db_session.execute(delete(User).where(User.id == user_id))
 

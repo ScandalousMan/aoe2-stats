@@ -173,9 +173,9 @@ the denial-of-service surface an unthrottled anonymous write would otherwise ope
 of this file) — there is no second role or admin console to name at this stage of the project, and
 inventing one here would describe a process that does not exist. Resolution is due within 30 days
 of `requested_at`, the same period GDPR Article 12(3) gives a controller to act on a data-subject
-rights request generally: this row is the one deferred request in the feature (export and erasure
-both act synchronously, inside their own `POST`), so it is the one that needs a delay stated at
-all.
+rights request generally: this row is the one deferred request that needs a delay stated (export
+and erasure act inside their own `POST`; a refused erasure, `erasure_too_large`, is recorded and
+left uncompleted, and a retry updates that row's outcome, never its `requested_at`).
 
 **The mechanism, named rather than left implied.** `resolve_third_party_objection`
 (`apps/api/src/aoe2stats_api/routers/privacy.py`) is the instrument: a plain function, not a
