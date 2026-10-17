@@ -40,7 +40,7 @@ describe('Table', () => {
       />,
     )
     const caption = screen.getByText('Recent matches')
-    expect(caption.className).toMatch(/sr-only/)
+    expect(caption).toHaveClass('sr-only')
     expect(screen.getByRole('region', { name: 'Recent matches' })).toBeInTheDocument()
   })
 
@@ -62,17 +62,17 @@ describe('Table', () => {
   it('right-aligns a numeric column, header included, and renders its cells through type-numeric', () => {
     render(<Table caption="Recent matches" columns={columns} rows={rows} getRowKey={(r) => r.id} />)
     const columnHeaders = screen.getAllByRole('columnheader')
-    expect(columnHeaders[1].className).toMatch(/text-right/)
+    expect(columnHeaders[1]).toHaveClass('text-right')
     const cells = screen.getAllByRole('cell')
-    expect(cells[0].className).toMatch(/type-numeric/)
-    expect(cells[0].className).toMatch(/text-right/)
+    expect(cells[0]).toHaveClass('type-numeric')
+    expect(cells[0]).toHaveClass('text-right')
   })
 
   it('does not right-align or number-format a text column', () => {
     render(<Table caption="Recent matches" columns={columns} rows={rows} getRowKey={(r) => r.id} />)
     const rowHeaders = screen.getAllByRole('rowheader')
-    expect(rowHeaders[0].className).not.toMatch(/text-right/)
-    expect(rowHeaders[0].className).not.toMatch(/type-numeric/)
+    expect(rowHeaders[0]).not.toHaveClass('text-right')
+    expect(rowHeaders[0]).not.toHaveClass('type-numeric')
   })
 
   it('renders no row link and no hover treatment when getRowHref is absent', () => {
@@ -80,7 +80,7 @@ describe('Table', () => {
     expect(screen.queryByRole('link')).not.toBeInTheDocument()
     const rowHeaders = screen.getAllByRole('rowheader')
     const tr = rowHeaders[0].closest('tr')
-    expect(tr?.className).not.toMatch(/hover:bg-surface-sunken/)
+    expect(tr).not.toHaveClass('hover:bg-surface-sunken')
   })
 
   it('wraps the identity cell in a real, whole-row link when getRowHref returns one, and highlights only that row', () => {
@@ -97,10 +97,10 @@ describe('Table', () => {
     expect(links).toHaveLength(1)
     expect(links[0]).toHaveAttribute('href', '/matches/a')
     const linkedRow = links[0].closest('tr')
-    expect(linkedRow?.className).toMatch(/hover:bg-surface-sunken/)
+    expect(linkedRow).toHaveClass('hover:bg-surface-sunken')
     const rowHeaders = screen.getAllByRole('rowheader')
     const unlinkedRow = rowHeaders[1].closest('tr')
-    expect(unlinkedRow?.className).not.toMatch(/hover:bg-surface-sunken/)
+    expect(unlinkedRow).not.toHaveClass('hover:bg-surface-sunken')
   })
 
   // T560 (FR-038): a linked row is the same row-link category `MatchRow`, `PlayerResultRow` and
@@ -117,10 +117,10 @@ describe('Table', () => {
       />,
     )
     const linkedRow = screen.getAllByRole('link')[0].closest('tr')
-    expect(linkedRow?.className).toMatch(/\btransition-colors\b/)
-    expect(linkedRow?.className).toMatch(/\bduration-120\b/)
-    expect(linkedRow?.className).toMatch(/\bmotion-reduce:duration-0\b/)
-    expect(linkedRow?.className).toMatch(/\bactive:bg-surface-sunken\b/)
+    expect(linkedRow).toHaveClass('transition-colors')
+    expect(linkedRow).toHaveClass('duration-120')
+    expect(linkedRow).toHaveClass('motion-reduce:duration-0')
+    expect(linkedRow).toHaveClass('active:bg-surface-sunken')
   })
 
   // T591 (FR-037, structural-tier.md §10 "active"): the row's own `border-l-*` press mark never
@@ -138,9 +138,9 @@ describe('Table', () => {
       />,
     )
     const link = screen.getAllByRole('link')[0]
-    expect(link.className).toMatch(/\bactive:after:ring-2\b/)
-    expect(link.className).toMatch(/\bactive:after:ring-inset\b/)
-    expect(link.className).toMatch(/\bactive:after:ring-border-strong\b/)
+    expect(link).toHaveClass('active:after:ring-2')
+    expect(link).toHaveClass('active:after:ring-inset')
+    expect(link).toHaveClass('active:after:ring-border-strong')
   })
 
   // §16.1 (structural-tier.md, decided 2026-09-28): the fill step the sweep measured at zero gains
@@ -157,9 +157,9 @@ describe('Table', () => {
       />,
     )
     const link = screen.getAllByRole('link')[0]
-    expect(link.className).toMatch(/\bhover:underline\b/)
-    expect(link.className).toMatch(/\bhover:decoration-2\b/)
-    expect(link.className).toMatch(/\bhover:underline-offset-2\b/)
+    expect(link).toHaveClass('hover:underline')
+    expect(link).toHaveClass('hover:decoration-2')
+    expect(link).toHaveClass('hover:underline-offset-2')
   })
 
   it('intercepts a plain left click on the row link into onNavigate', () => {
@@ -282,7 +282,7 @@ describe('Table', () => {
     const { rerender } = render(
       <Table caption="Recent matches" columns={columns} rows={rows} getRowKey={(r) => r.id} />,
     )
-    expect(screen.getAllByRole('rowheader')[0].className).toMatch(/text-sm/)
+    expect(screen.getAllByRole('rowheader')[0]).toHaveClass('text-sm')
 
     rerender(
       <Table
@@ -293,6 +293,6 @@ describe('Table', () => {
         getRowKey={(r) => r.id}
       />,
     )
-    expect(screen.getAllByRole('rowheader')[0].className).toMatch(/text-md/)
+    expect(screen.getAllByRole('rowheader')[0]).toHaveClass('text-md')
   })
 })

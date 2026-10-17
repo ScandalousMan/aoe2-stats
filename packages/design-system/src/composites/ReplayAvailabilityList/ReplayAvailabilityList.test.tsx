@@ -107,7 +107,7 @@ describe('ReplayAvailabilityList', () => {
         />,
       )
       const badge = screen.getByText('Obtainable')
-      expect(badge.className).toContain('text-info')
+      expect(badge).toHaveClass('text-info')
       expect(badge.closest('span[aria-describedby]')).toBeNull()
       expect(screen.queryByText(/left$/)).not.toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Download' })).toBeInTheDocument()

@@ -25,7 +25,9 @@ describe('FavouriteToggle', () => {
 
     it('never fills with accent — the marked state is carried by label, aria-pressed and glyph only', () => {
       render(<FavouriteToggle favourited={false} authenticated />)
-      expect(screen.getByRole('button').className).not.toMatch(/bg-accent/)
+      expect(
+        Array.from(screen.getByRole('button').classList).filter((c) => /(^|:)bg-accent/.test(c)),
+      ).toEqual([])
     })
   })
 
@@ -50,7 +52,9 @@ describe('FavouriteToggle', () => {
 
     it('never fills with accent in the marked state either', () => {
       render(<FavouriteToggle favourited authenticated />)
-      expect(screen.getByRole('button').className).not.toMatch(/bg-accent/)
+      expect(
+        Array.from(screen.getByRole('button').classList).filter((c) => /(^|:)bg-accent/.test(c)),
+      ).toEqual([])
     })
   })
 

@@ -22,8 +22,8 @@ describe('ErrorState', () => {
       screen.getByRole('heading', { name: 'We could not load this match history' }),
     ).toBeInTheDocument()
     const explanation = screen.getByText('Something went wrong on our side. Try again.')
-    expect(explanation.className).toMatch(/text-text-primary/)
-    expect(explanation.className).not.toMatch(/text-danger/)
+    expect(explanation).toHaveClass('text-text-primary')
+    expect(Array.from(explanation.classList).filter((c) => /(^|:)text-danger/.test(c))).toEqual([])
   })
 
   it('the heading carries the danger colour, never the explanation', () => {
@@ -35,8 +35,8 @@ describe('ErrorState', () => {
       />,
     )
     expect(
-      screen.getByRole('heading', { name: 'We could not load this match history' }).className,
-    ).toMatch(/text-danger/)
+      screen.getByRole('heading', { name: 'We could not load this match history' }),
+    ).toHaveClass('text-danger')
   })
 
   it('renders the recovery action as a real, non-disabled control', () => {

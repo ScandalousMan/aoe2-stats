@@ -43,7 +43,7 @@ describe('Section', () => {
     )
     const heading = screen.getByRole('heading', { level: 2, name: 'Recent matches' })
     expect(heading).toBeInTheDocument()
-    expect(heading.className).toMatch(/sr-only/)
+    expect(heading).toHaveClass('sr-only')
   })
 
   it('renders an optional description under the heading', () => {

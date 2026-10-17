@@ -236,10 +236,10 @@ describe('PrivacyNotice — the objection call to action', () => {
   it('underlines its label on hover and shifts the underline on press, matching Button secondary (FR-037, 2026-09-28)', () => {
     render(<PrivacyNotice lastUpdated="2026-08-30" hrefs={hrefs} />)
     const link = screen.getByRole('link', { name: 'Object to what is held about me' })
-    expect(link.className).toMatch(/\bhover:underline\b/)
-    expect(link.className).toMatch(/\bhover:decoration-2\b/)
-    expect(link.className).toMatch(/\bhover:underline-offset-2\b/)
-    expect(link.className).toMatch(/\bactive:underline-offset-4\b/)
+    expect(link).toHaveClass('hover:underline')
+    expect(link).toHaveClass('hover:decoration-2')
+    expect(link).toHaveClass('hover:underline-offset-2')
+    expect(link).toHaveClass('active:underline-offset-4')
   })
 })
 
@@ -264,9 +264,9 @@ describe('PrivacyNotice — contents navigation', () => {
     const links = within(nav).getAllByRole('link')
     expect(links).toHaveLength(9)
     for (const link of links) {
-      expect(link.className).toMatch(/\bactive:ring-2\b/)
-      expect(link.className).toMatch(/\bactive:ring-border-strong\b/)
-      expect(link.className).not.toMatch(/\bactive:outline/)
+      expect(link).toHaveClass('active:ring-2')
+      expect(link).toHaveClass('active:ring-border-strong')
+      expect(Array.from(link.classList).filter((c) => /(^|:)active:outline/.test(c))).toEqual([])
     }
   })
 
@@ -280,9 +280,9 @@ describe('PrivacyNotice — contents navigation', () => {
     const links = within(nav).getAllByRole('link')
     expect(links).toHaveLength(9)
     for (const link of links) {
-      expect(link.className).toMatch(/\bdecoration-1\b/)
-      expect(link.className).toMatch(/\bhover:decoration-2\b/)
-      expect(link.className).toMatch(/\bactive:decoration-2\b/)
+      expect(link).toHaveClass('decoration-1')
+      expect(link).toHaveClass('hover:decoration-2')
+      expect(link).toHaveClass('active:decoration-2')
     }
   })
 
@@ -312,10 +312,10 @@ describe('PrivacyNotice — section heading focus visibility', () => {
     render(<PrivacyNotice lastUpdated="2026-08-30" hrefs={hrefs} />)
     const heading = screen.getByRole('heading', { name: 'How to reach us' })
     expect(heading).toHaveAttribute('tabindex', '-1')
-    expect(heading.className).toMatch(/\boutline-none\b/)
-    expect(heading.className).toMatch(/\bfocus-visible:outline-ring\b/)
-    expect(heading.className).toMatch(/\bfocus-visible:outline-offset-ring\b/)
-    expect(heading.className).toMatch(/\bfocus-visible:outline-focus-ring\b/)
+    expect(heading).toHaveClass('outline-none')
+    expect(heading).toHaveClass('focus-visible:outline-ring')
+    expect(heading).toHaveClass('focus-visible:outline-offset-ring')
+    expect(heading).toHaveClass('focus-visible:outline-focus-ring')
   })
 })
 
@@ -358,8 +358,8 @@ describe('PrivacyNotice — the processing register link', () => {
       />,
     )
     const link = screen.getByRole('link', { name: 'Read the public processing register' })
-    expect(link.className).toMatch(/\bdecoration-1\b/)
-    expect(link.className).toMatch(/\bhover:decoration-2\b/)
-    expect(link.className).toMatch(/\bactive:decoration-2\b/)
+    expect(link).toHaveClass('decoration-1')
+    expect(link).toHaveClass('hover:decoration-2')
+    expect(link).toHaveClass('active:decoration-2')
   })
 })

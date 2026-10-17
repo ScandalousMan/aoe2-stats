@@ -44,7 +44,7 @@ describe('ArchivalControl — identity statement (FR-006, unchanged by the amend
   it('the identity statements are text-primary, never text-secondary or text-disabled', () => {
     render(<ArchivalControl />)
     for (const item of screen.getAllByRole('listitem')) {
-      expect(item.className).toMatch(/text-text-primary/)
+      expect(item).toHaveClass('text-text-primary')
     }
   })
 

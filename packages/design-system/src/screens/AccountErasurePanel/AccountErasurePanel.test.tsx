@@ -169,9 +169,9 @@ describe('ErasedScreen — the terminal state', () => {
   it('thickens the underline on hover and on press, matching every other inline link', () => {
     render(<ErasedScreen homeHref="/privacy-notice" />)
     const link = screen.getByRole('link')
-    expect(link.className).toMatch(/\bdecoration-1\b/)
-    expect(link.className).toMatch(/\bhover:decoration-2\b/)
-    expect(link.className).toMatch(/\bactive:decoration-2\b/)
+    expect(link).toHaveClass('decoration-1')
+    expect(link).toHaveClass('hover:decoration-2')
+    expect(link).toHaveClass('active:decoration-2')
   })
 })
 

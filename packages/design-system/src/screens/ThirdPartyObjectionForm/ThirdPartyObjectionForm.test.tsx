@@ -68,9 +68,9 @@ describe('ThirdPartyObjectionForm — load-bearing wording', () => {
   it('thickens the underline on hover and on press, matching every other inline link', () => {
     render(<ThirdPartyObjectionForm onSubmit={vi.fn()} privacyNoticeHref="/privacy-notice" />)
     const link = screen.getByRole('link', { name: 'privacy notice' })
-    expect(link.className).toMatch(/\bdecoration-1\b/)
-    expect(link.className).toMatch(/\bhover:decoration-2\b/)
-    expect(link.className).toMatch(/\bactive:decoration-2\b/)
+    expect(link).toHaveClass('decoration-1')
+    expect(link).toHaveClass('hover:decoration-2')
+    expect(link).toHaveClass('active:decoration-2')
   })
 
   // §16.2 (structural-tier.md, decided 2026-09-28): the profile-id input carried no hover class of
@@ -79,12 +79,12 @@ describe('ThirdPartyObjectionForm — load-bearing wording', () => {
   it('thickens the profile-id input boundary inward on hover, scoped to the enabled control (FR-037, 2026-09-28)', () => {
     render(<ThirdPartyObjectionForm onSubmit={vi.fn()} privacyNoticeHref="/privacy-notice" />)
     const input = screen.getByLabelText('Your Age of Empires II profile id')
-    expect(input.className).toMatch(/\benabled:hover:ring-1\b/)
-    expect(input.className).toMatch(/\benabled:hover:ring-inset\b/)
-    expect(input.className).toMatch(/\benabled:hover:ring-border-strong\b/)
+    expect(input).toHaveClass('enabled:hover:ring-1')
+    expect(input).toHaveClass('enabled:hover:ring-inset')
+    expect(input).toHaveClass('enabled:hover:ring-border-strong')
     // Contrast for the danger branch below: while valid, the hover ring is never the danger ink.
-    expect(input.className).not.toMatch(/\bborder-danger\b/)
-    expect(input.className).not.toMatch(/\benabled:hover:ring-danger\b/)
+    expect(input).not.toHaveClass('border-danger')
+    expect(input).not.toHaveClass('enabled:hover:ring-danger')
   })
 
   // §16.2 (structural-tier.md, decided 2026-09-28) names this input beside T675's nine: once the
@@ -97,12 +97,12 @@ describe('ThirdPartyObjectionForm — load-bearing wording', () => {
 
     const input = screen.getByLabelText('Your Age of Empires II profile id')
     expect(input).toHaveAttribute('aria-invalid', 'true')
-    expect(input.className).toMatch(/\bborder-danger\b/)
-    expect(input.className).toMatch(/\benabled:hover:ring-1\b/)
-    expect(input.className).toMatch(/\benabled:hover:ring-inset\b/)
-    expect(input.className).toMatch(/\benabled:hover:ring-danger\b/)
-    expect(input.className).not.toMatch(/\bborder-border-strong\b/)
-    expect(input.className).not.toMatch(/\benabled:hover:ring-border-strong\b/)
+    expect(input).toHaveClass('border-danger')
+    expect(input).toHaveClass('enabled:hover:ring-1')
+    expect(input).toHaveClass('enabled:hover:ring-inset')
+    expect(input).toHaveClass('enabled:hover:ring-danger')
+    expect(input).not.toHaveClass('border-border-strong')
+    expect(input).not.toHaveClass('enabled:hover:ring-border-strong')
   })
 
   it('the recorded frame says "recorded" and that nothing has changed yet, with no email promise', async () => {

@@ -320,7 +320,7 @@ describe('MatchDetailPanel — ParticipantsTable responsive tiers (match-history
     const lists = screen.getAllByRole('list')
     expect(lists).toHaveLength(2)
     for (const list of lists) {
-      expect(list.className).toContain('grid-cols-2')
+      expect(list).toHaveClass('grid-cols-2')
     }
     restore()
   })
@@ -414,11 +414,11 @@ describe('MatchDetailPanel — spacing scale (match-history.md §7)', () => {
   it("keeps the header-to-DownloadAction run at space-4, distinct from DownloadAction's own space-6 to ParticipantsTable", () => {
     const { container } = render(<MatchDetailPanel match={match} />)
     const headerGroup = container.querySelector('header')?.parentElement
-    expect(headerGroup?.className).toMatch(/\bgap-4\b/)
-    expect(headerGroup?.className).not.toMatch(/\bgap-6\b/)
+    expect(headerGroup).toHaveClass('gap-4')
+    expect(headerGroup).not.toHaveClass('gap-6')
 
     const outer = headerGroup?.parentElement
-    expect(outer?.className).toMatch(/\bgap-6\b/)
+    expect(outer).toHaveClass('gap-6')
   })
 
   it('renders ParticipantsTable row padding-block at space-3 (py-3), not space-2', () => {
@@ -439,8 +439,8 @@ describe('MatchDetailPanel — spacing scale (match-history.md §7)', () => {
     }
     const { container } = render(<MatchDetailPanel match={match} />)
     const cell = container.querySelector('td')
-    expect(cell?.className).toMatch(/\bpy-3\b/)
-    expect(cell?.className).not.toMatch(/\bpy-2\b/)
+    expect(cell).toHaveClass('py-3')
+    expect(cell).not.toHaveClass('py-2')
     window.matchMedia = original
   })
 })
@@ -512,15 +512,15 @@ describe('MatchDetailPanel — 003, §11: any match, any age', () => {
     const unresolved = screen.getByText('Civilisation ID 999')
     // `type-identifier` (research D7) carries the mono family and `text-secondary` by contract in
     // one utility, so both are checked through the one class.
-    expect(unresolved.className).toMatch(/\btype-identifier\b/)
+    expect(unresolved).toHaveClass('type-identifier')
 
     // `CivilisationIcon` (T431, composed rather than re-implemented) inherits `currentColor`
     // instead of setting it on the name's own bare `<span>` (civilisation-icon.md §5) — the class
     // that carries the resolved-name colour therefore lives one level up, on the mark+name pair's
     // own wrapper (`ParticipantCivilisation`'s call site).
     const resolved = screen.getByText('Britons')
-    expect(resolved.className).not.toMatch(/\btype-identifier\b/)
-    expect(resolved.parentElement?.className).toContain('text-text-primary')
+    expect(resolved).not.toHaveClass('type-identifier')
+    expect(resolved.parentElement).toHaveClass('text-text-primary')
     restore()
   })
 
@@ -535,7 +535,7 @@ describe('MatchDetailPanel — 003, §11: any match, any age', () => {
     const unresolvedMap = screen.getByText(/Map — unresolved/)
     // T531: `type-identifier` (research D7) carries the mono family and `text-secondary` by
     // contract in one utility.
-    expect(unresolvedMap.className).toMatch(/\btype-identifier\b/)
+    expect(unresolvedMap).toHaveClass('type-identifier')
     expect(screen.queryByText('Arabia')).not.toBeInTheDocument()
   })
 
@@ -743,8 +743,8 @@ describe('MatchDetailPanel — §12.5: imagery, colour and rating (004, US1, T43
     const markers = screen.getAllByText('Result unknown')
     expect(markers).toHaveLength(2)
     for (const marker of markers) {
-      expect(marker.className).not.toContain('text-danger')
-      expect(marker.className).not.toContain('text-success')
+      expect(Array.from(marker.classList).filter((c) => /(^|:)text-danger/.test(c))).toEqual([])
+      expect(Array.from(marker.classList).filter((c) => /(^|:)text-success/.test(c))).toEqual([])
       expect(marker).toHaveClass('text-text-secondary')
     }
     expect(screen.queryByText('Won')).not.toBeInTheDocument()

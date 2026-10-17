@@ -2619,7 +2619,7 @@ carries what T673's dry run read.
       snapshot", "no page shows a name"); both are cut and the digest recomputed, the same claim is
       dated in `snapshot.toml` and both test docstrings, and the contract says a snapshot finds its
       pack by `source_version` rather than that every lookup does
-- [ ] T710 Make the visual tests able to see a missing text token. Found closing T708
+- [x] T710 Make the visual tests able to see a missing text token. Found closing T708
       (2026-10-08): `packages/design-system/.storybook/preview.tsx` wraps every story in
       `text-text-primary`, so a component whose text carries no token of its own renders correctly
       in every story and baseline, and wrong wherever the application does not supply that ink —
@@ -2655,8 +2655,11 @@ carries what T673's dry run read.
       and `match-history.md` §8 still put those names at `text-secondary` in a 375 meta line, and
       are amended to agree, each keeping its line count. `specs/README.md`'s citations of
       `Section` and `CivilisationIcon` story lines are repointed. A unit test fails if the
-      preview's decorator markup carries a text colour again
-- [ ] T743 Refuse a class the design-system stylesheet does not define (filed 2026-10-17 from
+      preview's decorator markup carries a text colour again. **Baselines**: none moved. #161's
+      visual job passed and its merge carries no baseline image: the ink each defect gained is a
+      short span, which stays under `maxDiffPixelRatio` (the limits above); T743 refuses the
+      undefined class behind four of them
+- [x] T743 Refuse a class the design-system stylesheet does not define (filed 2026-10-17 from
       T710). `text-secondary` was the ink of an unknown or neutral fact in four places, three in
       `packages/design-system/src/composites/MatchRow/index.tsx` and one in
       `packages/design-system/src/composites/MatchDetailPanel/index.tsx`. Tailwind emits nothing for
@@ -2668,7 +2671,21 @@ carries what T673's dry run read.
       the package's tests with whole-class ones. Plant, red before: `text-secondary` in a
       component. Contrast: `text-text-secondary` and a variant-prefixed class such as
       `group-hover/row-link:underline` pass. `scripts/checks/built-css.mjs` already reads the built
-      stylesheet
+      stylesheet.
+      **Decided 2026-10-17 by Claude:** `scripts/checks/defined-classes.mjs` asks Tailwind's design
+      system, compiled from `packages/design-system/tokens/tailwind.css` (the stylesheet the build
+      compiles), rather than searching the built file: it needs no build and no selector escaping,
+      and whether the build scans a file at all stays `built-css.mjs`'s question. A token of a
+      string literal in component source is a hit when it parses as a utility that emits nothing,
+      when an unknown variant precedes a utility that compiles or names a value, or when it starts
+      with a prefix of the stylesheet's own `@utility` families (`type-`, `icon-`) and parses as
+      nothing. Skipped: a bare functional root (`to`, `text`), an equality operand or `case` label,
+      and a member of a closed set of string literals none of which compiles (`Tooltip`'s
+      placement). An unknown root such as `txt-secondary`, and a bare root whose default the theme
+      removed, pass. 336 class assertions
+      in 36 test files are whole-class (`toHaveClass`); a single-class negative no longer forbids
+      the class under a variant, as its substring did. A negative that forbade a family, and
+      `Link`'s two whose test says "never", are a check over class tokens
 - [x] T706a Close #127's review (`reviewer` REJECT 2026-10-08 on T706). **Lease shorter than the
       run**: the claim's lease is the run budget (240 s) while the function may run 300 s, so a
       live run reads expired for its last minute and T706's page now re-claims it: a second fetch,

@@ -73,10 +73,10 @@ describe('SearchBox', () => {
   it('thickens the boundary inward on hover, scoped to the enabled input (FR-037, 2026-09-28)', () => {
     render(<Harness state={{ status: 'idle' }} onSearch={() => {}} />)
     const input = screen.getByLabelText('Search a player')
-    expect(input.className).toMatch(/\benabled:hover:border-border-strong\b/)
-    expect(input.className).toMatch(/\benabled:hover:ring-1\b/)
-    expect(input.className).toMatch(/\benabled:hover:ring-inset\b/)
-    expect(input.className).toMatch(/\benabled:hover:ring-border-strong\b/)
+    expect(input).toHaveClass('enabled:hover:border-border-strong')
+    expect(input).toHaveClass('enabled:hover:ring-1')
+    expect(input).toHaveClass('enabled:hover:ring-inset')
+    expect(input).toHaveClass('enabled:hover:ring-border-strong')
   })
 
   it('idle: shows a plain-text prompt, inside neither a status nor an alert region', () => {
