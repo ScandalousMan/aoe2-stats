@@ -806,7 +806,7 @@ Computed from other published data.
 
 - status: published
 - source: the display name the named knowledge snapshot gives a technology id
-- method: the snapshot's own name for each technology id the document researched or age-upped, keyed by the stringified id, with the source's line-break markup removed by one rule: a hyphen directly after a letter, followed by a break (a line-break tag or whitespace) and then a lower-case letter, joins the word, so the hyphen and the break go; the same hyphen followed by a break and then any other character keeps the hyphen and drops the break with no space; a hyphen not directly after a letter is left alone; every other break becomes one space, whitespace collapses and the label is trimmed; a label with no letter or digit left is not served; an id the snapshot does not name, or whose label is not served, is left out, never replaced
+- method: the snapshot's own name for each technology id the document researched or age-upped, keyed by the stringified id, with the source's line-break markup removed by one rule: a hyphen directly after a letter, followed by a run of line-break tags and whitespace and then a lower-case letter (any Unicode lower-case letter), joins the word, so the hyphen and the whole run go; the same hyphen followed by such a run and then any other character keeps the hyphen and drops the run with no space; a hyphen not directly after a letter is left alone; every other break becomes one space, whitespace collapses and the label is trimmed; a label with no letter or digit left is not served; an id the snapshot does not name, or whose label is not served, is left out, never replaced
 - document path: `knowledge_names.technology.*`
 - requires knowledge: `name`
 - depends on: `participant.researches.technology_id`, `participant.age_up_commands`
@@ -817,7 +817,7 @@ Computed from other published data.
 
 - status: published
 - source: the display name the named knowledge snapshot gives a unit id
-- method: the snapshot's own name for each unit id the document trained, keyed by the stringified id, with the source's line-break markup removed by one rule: a hyphen directly after a letter, followed by a break (a line-break tag or whitespace) and then a lower-case letter, joins the word, so the hyphen and the break go; the same hyphen followed by a break and then any other character keeps the hyphen and drops the break with no space; a hyphen not directly after a letter is left alone; every other break becomes one space, whitespace collapses and the label is trimmed; a label with no letter or digit left is not served; an id the snapshot does not name, or whose label is not served, is left out, never replaced
+- method: the snapshot's own name for each unit id the document trained, keyed by the stringified id, with the source's line-break markup removed by one rule: a hyphen directly after a letter, followed by a run of line-break tags and whitespace and then a lower-case letter (any Unicode lower-case letter), joins the word, so the hyphen and the whole run go; the same hyphen followed by such a run and then any other character keeps the hyphen and drops the run with no space; a hyphen not directly after a letter is left alone; every other break becomes one space, whitespace collapses and the label is trimmed; a label with no letter or digit left is not served; an id the snapshot does not name, or whose label is not served, is left out, never replaced
 - document path: `knowledge_names.unit.*`
 - requires knowledge: `name`
 - depends on: `participant.trainings.unit_id`
@@ -828,7 +828,7 @@ Computed from other published data.
 
 - status: published
 - source: the display name the named knowledge snapshot gives a building id
-- method: the snapshot's own name for each building id the document built, keyed by the stringified id, with the source's line-break markup removed by one rule: a hyphen directly after a letter, followed by a break (a line-break tag or whitespace) and then a lower-case letter, joins the word, so the hyphen and the break go; the same hyphen followed by a break and then any other character keeps the hyphen and drops the break with no space; a hyphen not directly after a letter is left alone; every other break becomes one space, whitespace collapses and the label is trimmed; a label with no letter or digit left is not served; an id the snapshot does not name, or whose label is not served, is left out, never replaced
+- method: the snapshot's own name for each building id the document built, keyed by the stringified id, with the source's line-break markup removed by one rule: a hyphen directly after a letter, followed by a run of line-break tags and whitespace and then a lower-case letter (any Unicode lower-case letter), joins the word, so the hyphen and the whole run go; the same hyphen followed by such a run and then any other character keeps the hyphen and drops the run with no space; a hyphen not directly after a letter is left alone; every other break becomes one space, whitespace collapses and the label is trimmed; a label with no letter or digit left is not served; an id the snapshot does not name, or whose label is not served, is left out, never replaced
 - document path: `knowledge_names.building.*`
 - requires knowledge: `name`
 - depends on: `participant.builds.building_id`

@@ -2601,12 +2601,13 @@ carries what T673's dry run read.
       `"Counter- weights"`; over 300 per snapshot), and `apps/analyzer/src/aoe2stats_analyzer/names.py`
       served them as stored, so the page printed `<br>` literally. Clean the label where the block
       is built, never in the frozen snapshot data; `query.name` keeps returning the vendored value.
-      **The rule**: a hyphen directly after a letter, followed by a break (a line-break tag or
-      whitespace) and then a lower-case letter, joins the word (`Circum-<br>\nnavigation` is
-      `Circumnavigation`); the same hyphen followed by a break and then any other character keeps
-      the hyphen and drops the break with no space (`Man-at-<br>\nArms` is `Man-at-Arms`); a hyphen
-      not directly after a letter is left alone (`Foo - bar` stays); every other break becomes one
-      space, whitespace collapses, the label is trimmed; a label with no letter or digit left is
+      **The rule**: a hyphen directly after a letter, followed by a run of line-break tags and
+      whitespace and then a lower-case letter (any Unicode lower-case letter), joins the word, the
+      hyphen and the whole run going (`Circum-<br>\nnavigation` is `Circumnavigation`); the same
+      hyphen followed by such a run and then any other character keeps the hyphen and drops the run
+      with no space (`Man-at-<br>\nArms` is `Man-at-Arms`); a hyphen not directly after a letter is
+      left alone (`Foo - bar` stays); every other break becomes one space, whitespace collapses,
+      the label is trimmed; a label with no letter or digit left is
       not served, as an unresolved id is not. The served value changes, so the names method is
       `knowledge-snapshot.name@2` (not yet released when the rule was made precise, so it stays),
       and the rule is stated in the `method` text of `names.technology`, `names.unit` and
@@ -2616,11 +2617,14 @@ carries what T673's dry run read.
       every snapshot finds no `<`, no hyphen-after-a-letter-then-space, no stray whitespace and no
       empty label; markup-only names (`<br>`, ` <br/> `, `-<br>`) are not served; `clean_label`
       cases on the deciding clause (`Man-at-<br>\nArms`, `Anti-<br>\nCavalry`, `Foo - bar`,
-      doubled breaks) fail if the lower-case lookahead or the after-a-letter condition is
-      removed. **Guards**: the set of names across every snapshot the join applies to equals
-      exactly `{"Circum-<br>\nnavigation", "Counter- weights"}`, and its message says a new entry
-      needs a person to confirm it is a word-wrap and not a compound (`Anti-<br>\ncavalry`); a name
-      that cleans to nothing is absent from the block, its kind's datum is absent from the block's
+      doubled breaks, and the Unicode cases `Anti-<br>\nécole` and `Anti- Élite`) fail if the
+      lower-case lookahead or the after-a-letter condition is removed. **Guards**: the set of names
+      across every snapshot the join applies to equals
+      exactly `{"Circum-<br>\nnavigation", "Counter- weights"}`, decided by the code's own
+      `_unwrap` and not by a second pattern (a planted `Anti-<br>\nécole` fails it), and its
+      message says a new entry needs a person to confirm it is a word-wrap and not a compound
+      (`Anti-<br>\ncavalry`); a name that cleans to nothing is absent from the block, its kind's
+      datum is absent from the block's
       `provenance`, and the served-shape rules 1 to 4 find no violation. **Contrast**: compound
       hyphens stay (`Double-Bit Axe`, `Two-Handed Swordsman`, `Man-at-Arms`), the same id with a
       normal name is served with its datum, and the snapshot itself still returns the vendored name

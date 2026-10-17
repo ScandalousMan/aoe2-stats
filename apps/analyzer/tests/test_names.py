@@ -30,7 +30,13 @@ from tests.snapshot_refresh import (
 from aoe2stats_analyzer import names as names_module
 from aoe2stats_analyzer.canonical import canonical_bytes
 from aoe2stats_analyzer.extract import _method_for, build_document
-from aoe2stats_analyzer.names import NAMES_KEY, clean_label, with_names
+from aoe2stats_analyzer.names import (
+    _WRAPPED_HYPHEN,
+    NAMES_KEY,
+    _unwrap,
+    clean_label,
+    with_names,
+)
 from aoe2stats_core.truth.register import REGISTER
 from aoe2stats_core.truth.validate import DocumentInvalid, present_data, validate
 from aoe2stats_knowledge import snapshot as snapshot_module
@@ -639,6 +645,9 @@ def test_a_label_with_nothing_but_markup_is_left_out(markup: str) -> None:
         ("Foo -<br>\nbar", "Foo - bar"),
         ("Foo<br><br>\nbar", "Foo bar"),
         ("Circum-<br><br>\nnavigation", "Circumnavigation"),
+        # Lower case is Unicode's, not ASCII's: this documents the join rule.
+        ("Anti-<br>\nécole", "Antiécole"),
+        ("Anti- Élite", "Anti-Élite"),
     ],
 )
 def test_clean_label_joins_word_wrap_hyphens_and_keeps_compounds(vendored: str, label: str) -> None:
@@ -649,11 +658,16 @@ def test_clean_label_joins_word_wrap_hyphens_and_keeps_compounds(vendored: str, 
 #: confirmed it is a word split across lines and not a compound whose second half starts in lower
 #: case.
 _CONFIRMED_WORD_WRAPS = {"Circum-<br>\nnavigation", "Counter- weights"}
-_JOIN_SITE = re.compile(r"(?<=[^\W\d_])-(?:\s|(?i:<br\s*/?>))+[a-z]")
+
+
+def _joins_a_word(name: str) -> bool:
+    """Whether `clean_label` joins two halves of `name`: the module's own decision (`_unwrap`
+    answering with no hyphen at one of the sites `_WRAPPED_HYPHEN` finds), not a second reading."""
+    return any(_unwrap(site) == "" for site in _WRAPPED_HYPHEN.finditer(name))
 
 
 def test_the_names_a_hyphen_join_applies_to_are_exactly_the_confirmed_word_wraps() -> None:
-    joined = {name for _, _, _, name in _every_vendored_name() if _JOIN_SITE.search(name)}
+    joined = {name for _, _, _, name in _every_vendored_name() if _joins_a_word(name)}
 
     assert joined == _CONFIRMED_WORD_WRAPS, (
         "a name the hyphen join applies to is not one a person has confirmed: a new entry needs "
@@ -663,6 +677,22 @@ def test_the_names_a_hyphen_join_applies_to_are_exactly_the_confirmed_word_wraps
         f"Unconfirmed: {sorted(joined - _CONFIRMED_WORD_WRAPS)}; "
         f"gone: {sorted(_CONFIRMED_WORD_WRAPS - joined)}"
     )
+
+
+def test_the_word_wrap_guard_sees_a_join_the_code_makes_on_a_non_ascii_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The guard reads the code's own decision, so a name the code would join (`Anti-<br>\\nécole`
+    is served as `Antiécole`) that no person has confirmed fails it, ASCII or not."""
+    real = _every_vendored_name
+    monkeypatch.setitem(
+        globals(),
+        "_every_vendored_name",
+        lambda: [*real(), ("planted", "unit", "0", "Anti-<br>\nécole")],
+    )
+
+    with pytest.raises(AssertionError, match=r"Unconfirmed: .*Anti-<br>"):
+        test_the_names_a_hyphen_join_applies_to_are_exactly_the_confirmed_word_wraps()
 
 
 # --- a name that cleans to nothing is left out of the block, and its datum with it ---------------
