@@ -2619,7 +2619,7 @@ carries what T673's dry run read.
       snapshot", "no page shows a name"); both are cut and the digest recomputed, the same claim is
       dated in `snapshot.toml` and both test docstrings, and the contract says a snapshot finds its
       pack by `source_version` rather than that every lookup does
-- [ ] T710 Make the visual tests able to see a missing text token. Found closing T708
+- [x] T710 Make the visual tests able to see a missing text token. Found closing T708
       (2026-10-08): `packages/design-system/.storybook/preview.tsx` wraps every story in
       `text-text-primary`, so a component whose text carries no token of its own renders correctly
       in every story and baseline, and wrong wherever the application does not supply that ink —
@@ -2655,7 +2655,10 @@ carries what T673's dry run read.
       and `match-history.md` §8 still put those names at `text-secondary` in a 375 meta line, and
       are amended to agree, each keeping its line count. `specs/README.md`'s citations of
       `Section` and `CivilisationIcon` story lines are repointed. A unit test fails if the
-      preview's decorator markup carries a text colour again
+      preview's decorator markup carries a text colour again. **Baselines**: none moved. #161's
+      visual job passed and its merge carries no baseline image: the ink each defect gained is a
+      short span, which stays under `maxDiffPixelRatio` (the limits above); T743 refuses the
+      undefined class behind four of them
 - [ ] T743 Refuse a class the design-system stylesheet does not define (filed 2026-10-17 from
       T710). `text-secondary` was the ink of an unknown or neutral fact in four places, three in
       `packages/design-system/src/composites/MatchRow/index.tsx` and one in
