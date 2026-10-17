@@ -293,8 +293,9 @@ jobs:
       # surrounded it, and each unit test's substring `toContain('text-secondary')` was satisfied by
       # the correct class too. This asks Tailwind's own design system, loaded from the stylesheet
       # the build compiles, whether every class string in component source is defined. Needs no
-      # build, same as token-scale.mjs above; its fixture-only `node --test` suite runs
-      # immediately after, for the same reason.
+      # build, same as token-scale.mjs above; its `node --test` suite (fixtures for the
+      # shape rules, plus one run over the real package's component source) runs immediately
+      # after, for the same reason.
       - run: node scripts/checks/defined-classes.mjs
       - run: node --test scripts/checks/defined-classes.test.mjs
       # T541: FR-029's dependency rule — a primitive MUST NOT depend on a domain composite or a

@@ -97,7 +97,7 @@ describe('PlayerAvatar', () => {
     const { container: smContainer } = render(<PlayerAvatar avatarHash={HASH} size="sm" />)
     const smFrame = smContainer.firstElementChild as HTMLElement
     expect(smFrame.style.width).toBe('var(--ds-icon-lg)')
-    expect(Array.from(smFrame.classList).filter((c) => /(^|:)w-\d/.test(c))).toEqual([])
+    expect(Array.from(smFrame.classList).filter((c) => /(^|[:-])w-\d/.test(c))).toEqual([])
 
     const { container: mdContainer } = render(<PlayerAvatar avatarHash={HASH} size="md" />)
     const mdFrame = mdContainer.firstElementChild as HTMLElement

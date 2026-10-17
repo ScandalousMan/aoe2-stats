@@ -119,7 +119,7 @@ describe('CountryFlag', () => {
     )
     const smImg = smContainer.querySelector('img') as HTMLImageElement
     expect(smImg.style.height).toBe('var(--ds-icon-sm)')
-    expect(Array.from(smImg.classList).filter((c) => /(^|:)w-\d/.test(c))).toEqual([])
+    expect(Array.from(smImg.classList).filter((c) => /(^|[:-])w-\d/.test(c))).toEqual([])
 
     const { container: mdContainer } = render(
       <CountryFlag flagUrl={FRANCE_URL} countryName="France" size="md" />,

@@ -141,7 +141,7 @@ describe('Panel', () => {
     const { container } = render(<Panel density="dense">content</Panel>)
     const panel = container.firstElementChild
     expect(panel).toHaveClass('rounded-panel')
-    expect(Array.from(panel?.classList ?? []).filter((c) => /(^|:)shadow-/.test(c))).toEqual([])
+    expect(Array.from(panel?.classList ?? []).filter((c) => /(^|[:-])shadow-/.test(c))).toEqual([])
   })
 
   // Regression guard for the `landmark-unique` violation axe found in

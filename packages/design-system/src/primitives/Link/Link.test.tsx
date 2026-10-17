@@ -87,8 +87,11 @@ describe('Link', () => {
   it('inline variant never carries the standalone ring', () => {
     render(<Link href="/players/1807091">View profile</Link>)
     const link = screen.getByRole('link')
-    expect(link).not.toHaveClass('active:ring-2')
-    expect(link).not.toHaveClass('active:ring-border-strong')
+    // Under any variant prefix, as the substring assertions these replace forbade.
+    expect(Array.from(link.classList).filter((c) => /(^|:)active:ring-2/.test(c))).toEqual([])
+    expect(
+      Array.from(link.classList).filter((c) => /(^|:)active:ring-border-strong/.test(c)),
+    ).toEqual([])
   })
 
   // T674: the touch-footprint route sweep exempts an `inline` link inside running prose from the
