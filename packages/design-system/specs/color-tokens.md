@@ -326,7 +326,7 @@ added and none removed.
 
 FR-001a and SC-001a require every token to carry a record. **It cannot go inside the `light` / `dark`
 blocks.** `build-tokens.mjs`'s `readJson` strips `$`-prefixed keys **at the top level only**
-(`build-tokens.mjs` lines 40–45), and `colorVars` then iterates `color[theme]` directly (line 92) — so
+(`build-tokens.mjs` lines 42–45), and `colorVars` then iterates `color[theme]` directly (line 92) — so
 a `$comment` key inside a theme block would be emitted as a real CSS custom property. Two safe
 routes, and the second is the one to take:
 
@@ -438,7 +438,7 @@ numbers.
 **The gap.** `focus-ring` on `accent` measures 1.38:1 light and 1.21:1 dark, both under WCAG 1.4.11's
 3:1 non-text floor. `Button`'s `primary` variant and `DataExportPanel`'s download link both fill with
 `accent` and ring with `focus-ring`. `tests/visual/focus-ring.spec.ts` measures the ring against the
-focused element's **own** background (its `backgroundColor` walk, lines 339–359), so `accent` is the
+focused element's **own** background (its `backgroundColor` walk, lines 314–327), so `accent` is the
 surface as far as the gate is concerned, and four cases carry `test.fail()` waiting on this task.
 
 **I could not fix it by choosing a better value, and this is provable rather than a matter of taste.**
