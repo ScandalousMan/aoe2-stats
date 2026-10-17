@@ -70,7 +70,7 @@ describe('MapThumbnail', () => {
     const unresolved = screen.getByText('Map — unresolved')
     // T531: `type-identifier` (research D7) carries the mono family and `text-secondary` by
     // contract in one utility.
-    expect(unresolved.className).toContain('type-identifier')
+    expect(unresolved).toHaveClass('type-identifier')
   })
 
   it('never guesses a thumbnail from a leaderboard or a neighbouring match when mapName is null', () => {

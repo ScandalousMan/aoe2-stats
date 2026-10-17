@@ -15,8 +15,8 @@ describe('Callout', () => {
       </Callout>,
     )
     const body = screen.getByText(/This body must stay primary-coloured/)
-    expect(body.className).toMatch(/text-text-primary/)
-    expect(body.className).not.toMatch(/text-warning/)
+    expect(body).toHaveClass('text-text-primary')
+    expect(Array.from(body.classList).filter((c) => /(^|:)text-warning/.test(c))).toEqual([])
   })
 
   it('uses role="alert" for danger and role="status" for the other tones', () => {
@@ -48,7 +48,7 @@ describe('Callout', () => {
   // heading already carries.
   it('the heading suppresses its outline rather than painting the browser default', () => {
     render(<Callout tone="danger" heading="Failed" />)
-    expect(screen.getByRole('heading', { name: 'Failed' }).className).toMatch(/\boutline-none\b/)
+    expect(screen.getByRole('heading', { name: 'Failed' })).toHaveClass('outline-none')
   })
 
   it('renders actions in an action row when supplied', () => {

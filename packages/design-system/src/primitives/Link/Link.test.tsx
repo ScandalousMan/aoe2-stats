@@ -13,43 +13,43 @@ describe('Link', () => {
   it('is permanently underlined at rest, in the link ink, greyscale-identifiable', () => {
     render(<Link href="/players/1807091">View profile</Link>)
     const link = screen.getByRole('link')
-    expect(link.className).toMatch(/\bunderline\b/)
-    expect(link.className).toMatch(/\bdecoration-1\b/)
-    expect(link.className).toMatch(/\btext-link\b/)
+    expect(link).toHaveClass('underline')
+    expect(link).toHaveClass('decoration-1')
+    expect(link).toHaveClass('text-link')
   })
 
   it('thickens the underline and changes ink on hover — two signals, not one (FR-037)', () => {
     render(<Link href="/players/1807091">View profile</Link>)
     const link = screen.getByRole('link')
-    expect(link.className).toMatch(/hover:text-link-hover/)
-    expect(link.className).toMatch(/hover:decoration-2/)
+    expect(link).toHaveClass('hover:text-link-hover')
+    expect(link).toHaveClass('hover:decoration-2')
   })
 
   it('applies the same hover paint on :active, reaching a keyboard Enter with no pointer hover', () => {
     render(<Link href="/players/1807091">View profile</Link>)
     const link = screen.getByRole('link')
-    expect(link.className).toMatch(/active:text-link-hover/)
-    expect(link.className).toMatch(/active:decoration-2/)
+    expect(link).toHaveClass('active:text-link-hover')
+    expect(link).toHaveClass('active:decoration-2')
   })
 
   it('carries the visited role, unable to be observed in a real render but present in the class list', () => {
     render(<Link href="/players/1807091">View profile</Link>)
-    expect(screen.getByRole('link').className).toMatch(/visited:text-link-visited/)
+    expect(screen.getByRole('link')).toHaveClass('visited:text-link-visited')
   })
 
   it('shows the standard focus ring around the whole link box', () => {
     render(<Link href="/players/1807091">View profile</Link>)
     const link = screen.getByRole('link')
-    expect(link.className).toMatch(/focus-visible:outline-ring/)
-    expect(link.className).toMatch(/focus-visible:outline-offset-ring/)
-    expect(link.className).toMatch(/focus-visible:outline-focus-ring/)
+    expect(link).toHaveClass('focus-visible:outline-ring')
+    expect(link).toHaveClass('focus-visible:outline-offset-ring')
+    expect(link).toHaveClass('focus-visible:outline-focus-ring')
   })
 
   it('inline variant carries no fill on active and no explicit typography classes', () => {
     render(<Link href="/players/1807091">View profile</Link>)
     const link = screen.getByRole('link')
-    expect(link.className).not.toMatch(/active:bg-surface-sunken/)
-    expect(link.className).not.toMatch(/\btype-body\b/)
+    expect(link).not.toHaveClass('active:bg-surface-sunken')
+    expect(link).not.toHaveClass('type-body')
   })
 
   it('standalone variant is type-body at text-md, reaches a 44px hit area via space-3 padding, and paints a fill on press', () => {
@@ -59,10 +59,10 @@ describe('Link', () => {
       </Link>,
     )
     const link = screen.getByRole('link')
-    expect(link.className).toMatch(/\btype-body\b/)
-    expect(link.className).toMatch(/\btext-md\b/)
-    expect(link.className).toMatch(/\bpy-3\b/)
-    expect(link.className).toMatch(/active:bg-surface-sunken/)
+    expect(link).toHaveClass('type-body')
+    expect(link).toHaveClass('text-md')
+    expect(link).toHaveClass('py-3')
+    expect(link).toHaveClass('active:bg-surface-sunken')
   })
 
   // Sixth-pass review remediation (M1), row 2 of `specs/README.md`'s contrast-signal gap
@@ -77,9 +77,9 @@ describe('Link', () => {
       </Link>,
     )
     const link = screen.getByRole('link')
-    expect(link.className).toMatch(/\bactive:ring-2\b/)
-    expect(link.className).toMatch(/\bactive:ring-border-strong\b/)
-    expect(link.className).not.toMatch(/\bactive:outline/)
+    expect(link).toHaveClass('active:ring-2')
+    expect(link).toHaveClass('active:ring-border-strong')
+    expect(Array.from(link.classList).filter((c) => /(^|:)active:outline/.test(c))).toEqual([])
   })
 
   // `inline` keeps its own non-colour signal (the underline-offset drop, asserted above) and must
@@ -87,8 +87,8 @@ describe('Link', () => {
   it('inline variant never carries the standalone ring', () => {
     render(<Link href="/players/1807091">View profile</Link>)
     const link = screen.getByRole('link')
-    expect(link.className).not.toMatch(/active:ring-2/)
-    expect(link.className).not.toMatch(/active:ring-border-strong/)
+    expect(link).not.toHaveClass('active:ring-2')
+    expect(link).not.toHaveClass('active:ring-border-strong')
   })
 
   // T674: the touch-footprint route sweep exempts an `inline` link inside running prose from the
@@ -172,12 +172,12 @@ describe('Link', () => {
           Steam
         </Link>,
       )
-      expect(screen.getByRole('link').className).toMatch(/inline-flex/)
+      expect(screen.getByRole('link')).toHaveClass('inline-flex')
     })
 
     it('does not add the inline wrapper class to a plain (non-external) inline link', () => {
       render(<Link href="/players/1807091">View profile</Link>)
-      expect(screen.getByRole('link').className).not.toMatch(/inline-flex/)
+      expect(screen.getByRole('link')).not.toHaveClass('inline-flex')
     })
   })
 })

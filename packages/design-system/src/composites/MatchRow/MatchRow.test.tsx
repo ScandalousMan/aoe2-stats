@@ -107,8 +107,8 @@ describe('MatchRow', () => {
   it('paints the same fill on active as on hover, matching the row-link category', () => {
     render(<MatchRow match={match} />)
     const link = screen.getByRole('link')
-    expect(link.className).toMatch(/\bhover:bg-surface-sunken\b/)
-    expect(link.className).toMatch(/\bactive:bg-surface-sunken\b/)
+    expect(link).toHaveClass('hover:bg-surface-sunken')
+    expect(link).toHaveClass('active:bg-surface-sunken')
   })
 
   // T591 (FR-037): the fill and the inline-start rule alone were still indistinguishable from
@@ -117,9 +117,9 @@ describe('MatchRow', () => {
   it('adds a full inset boundary ring to the active state', () => {
     render(<MatchRow match={match} />)
     const link = screen.getByRole('link')
-    expect(link.className).toMatch(/\bactive:ring-2\b/)
-    expect(link.className).toMatch(/\bactive:ring-inset\b/)
-    expect(link.className).toMatch(/\bactive:ring-border-strong\b/)
+    expect(link).toHaveClass('active:ring-2')
+    expect(link).toHaveClass('active:ring-inset')
+    expect(link).toHaveClass('active:ring-border-strong')
   })
 
   // §5a (structural-tier.md §16.1's category, decided 2026-09-28): the fill alone measured zero
@@ -128,12 +128,12 @@ describe('MatchRow', () => {
   it('carries the named group on the card and the group-hover underline on the outcome word alone (FR-037, 2026-09-28)', () => {
     render(<MatchRow match={match} />)
     const link = screen.getByRole('link')
-    expect(link.className).toMatch(/\bgroup\/row-link\b/)
-    expect(link.className).not.toMatch(/\bhover:underline\b/)
+    expect(link).toHaveClass('group/row-link')
+    expect(link).not.toHaveClass('hover:underline')
     const outcome = screen.getByText('Win')
-    expect(outcome.className).toMatch(/\bgroup-hover\/row-link:underline\b/)
-    expect(outcome.className).toMatch(/\bgroup-hover\/row-link:decoration-2\b/)
-    expect(outcome.className).toMatch(/\bgroup-hover\/row-link:underline-offset-2\b/)
+    expect(outcome).toHaveClass('group-hover/row-link:underline')
+    expect(outcome).toHaveClass('group-hover/row-link:decoration-2')
+    expect(outcome).toHaveClass('group-hover/row-link:underline-offset-2')
   })
 
   it('shows "Win"/"Loss" as text, never colour alone', () => {
@@ -156,8 +156,8 @@ describe('MatchRow', () => {
   it('does not colour the unknown outcome success or danger', () => {
     render(<MatchRow match={{ ...match, outcome: 'unknown' }} />)
     const label = screen.getByText('Unknown')
-    expect(label.className).not.toContain('text-success')
-    expect(label.className).not.toContain('text-danger')
+    expect(Array.from(label.classList).filter((c) => /(^|:)text-success/.test(c))).toEqual([])
+    expect(Array.from(label.classList).filter((c) => /(^|:)text-danger/.test(c))).toEqual([])
     expect(label).toHaveClass('text-text-secondary')
   })
 
@@ -278,8 +278,16 @@ describe('MatchRow', () => {
       render(<MatchRow match={{ ...match, rating: 922, ratingChange: { value: 0 } }} />)
       const figure = screen.getByText(fullText('922 (0)'))
       expect(figure.querySelector('span')).toHaveClass('text-text-secondary')
-      expect(figure.querySelector('span')?.className).not.toContain('text-success')
-      expect(figure.querySelector('span')?.className).not.toContain('text-danger')
+      expect(
+        Array.from(figure.querySelector('span')?.classList ?? []).filter((c) =>
+          /(^|:)text-success/.test(c),
+        ),
+      ).toEqual([])
+      expect(
+        Array.from(figure.querySelector('span')?.classList ?? []).filter((c) =>
+          /(^|:)text-danger/.test(c),
+        ),
+      ).toEqual([])
     })
 
     it('renders the rating alone, no parenthesis, when rating_diff is not known', () => {
@@ -387,8 +395,8 @@ describe('MatchRow', () => {
       const markers = screen.getAllByText('Result unknown')
       expect(markers).toHaveLength(2)
       for (const marker of markers) {
-        expect(marker.className).not.toContain('text-danger')
-        expect(marker.className).not.toContain('text-success')
+        expect(Array.from(marker.classList).filter((c) => /(^|:)text-danger/.test(c))).toEqual([])
+        expect(Array.from(marker.classList).filter((c) => /(^|:)text-success/.test(c))).toEqual([])
         expect(marker).toHaveClass('text-text-secondary')
       }
     })
@@ -584,8 +592,8 @@ describe('MatchList', () => {
     const restore = mockMatchMediaAt(1280)
     const { container } = render(<MatchList matches={[match]} />)
     const headerCell = container.querySelector('th')
-    expect(headerCell?.className).toMatch(/\bpx-4\b/)
-    expect(headerCell?.className).not.toMatch(/\bpr-5\b/)
+    expect(headerCell).toHaveClass('px-4')
+    expect(headerCell).not.toHaveClass('pr-5')
     restore()
   })
 

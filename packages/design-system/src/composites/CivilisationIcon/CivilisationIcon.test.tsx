@@ -68,7 +68,7 @@ describe('CivilisationIcon', () => {
     )
     const mdImg = mdContainer.querySelector('img') as HTMLImageElement
     expect(mdImg.style.width).toBe('var(--ds-icon-md)')
-    expect(mdImg.className).not.toMatch(/\bw-\d/)
+    expect(Array.from(mdImg.classList).filter((c) => /(^|:)w-\d/.test(c))).toEqual([])
 
     const { container: lgContainer } = render(
       <CivilisationIcon iconUrl={BRITONS_URL} name="Britons" size="lg" />,

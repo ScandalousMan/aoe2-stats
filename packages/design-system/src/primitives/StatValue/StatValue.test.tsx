@@ -19,8 +19,8 @@ describe('StatValue', () => {
     render(<StatValue label="Rank" status="empty" secondaryLine="Not ranked yet" />)
     expect(screen.queryByText('—')).not.toBeInTheDocument()
     const reason = screen.getByText('Not ranked yet')
-    expect(reason.className).toMatch(/text-text-secondary/)
-    expect(reason.className).not.toMatch(/text-text-primary/)
+    expect(reason).toHaveClass('text-text-secondary')
+    expect(reason).not.toHaveClass('text-text-primary')
     // The caller's own `secondaryLine` is reused as the value slot's words rather than repeated a
     // second time beneath it.
     expect(screen.getAllByText('Not ranked yet')).toHaveLength(1)
@@ -48,9 +48,9 @@ describe('StatValue', () => {
   it('never renders a digit for a genuinely-zero delta or value, and a real zero still renders as data', () => {
     render(<StatValue label="Streak" value="0" delta={{ value: 0 }} />)
     const value = screen.getByText('0')
-    expect(value.className).toMatch(/text-text-primary/)
+    expect(value).toHaveClass('text-text-primary')
     const delta = screen.getByText('+0')
-    expect(delta.className).toMatch(/text-success/)
+    expect(delta).toHaveClass('text-success')
   })
 
   it('announces its own loading state as a busy region by default, correct for standalone use', () => {
@@ -74,20 +74,20 @@ describe('StatValue', () => {
       />,
     )
     const value = screen.getByText('1842')
-    expect(value.className).toMatch(/text-text-primary/)
+    expect(value).toHaveClass('text-text-primary')
     expect(screen.getByText('Measured 2 hours ago — refresh failed')).toBeInTheDocument()
   })
 
   it('renders an explicit sign character on the delta, never colour alone', () => {
     render(<StatValue label="1v1 Random Map" value="1842" delta={{ value: 12 }} />)
     const delta = screen.getByText('+12')
-    expect(delta.className).toMatch(/text-success/)
+    expect(delta).toHaveClass('text-success')
   })
 
   it('renders a negative delta with a minus sign and the danger colour', () => {
     render(<StatValue label="1v1 Random Map" value="1802" delta={{ value: -8 }} />)
     const delta = screen.getByText('−8')
-    expect(delta.className).toMatch(/text-danger/)
+    expect(delta).toHaveClass('text-danger')
   })
 
   it('associates the label and the value with <dt>/<dd>', () => {

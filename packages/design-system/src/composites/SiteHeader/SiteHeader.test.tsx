@@ -160,8 +160,8 @@ describe('SiteHeader — hover and focus class contract (§5, §11)', () => {
   it('every item carries the documented focus-visible ring', () => {
     render(<SiteHeader items={items} currentPath="/dashboard" />)
     for (const item of items) {
-      expect(screen.getByRole('link', { name: item.label }).className).toMatch(
-        /focus-visible:outline-focus-ring/,
+      expect(screen.getByRole('link', { name: item.label })).toHaveClass(
+        'focus-visible:outline-focus-ring',
       )
     }
   })
@@ -169,9 +169,9 @@ describe('SiteHeader — hover and focus class contract (§5, §11)', () => {
   it('every item carries the hover fill and hover label colour', () => {
     render(<SiteHeader items={items} currentPath="/dashboard" />)
     for (const item of items) {
-      const className = screen.getByRole('link', { name: item.label }).className
-      expect(className).toMatch(/hover:bg-surface-sunken/)
-      expect(className).toMatch(/hover:text-text-primary/)
+      const link = screen.getByRole('link', { name: item.label })
+      expect(link).toHaveClass('hover:bg-surface-sunken')
+      expect(link).toHaveClass('hover:text-text-primary')
     }
   })
 
@@ -181,11 +181,11 @@ describe('SiteHeader — hover and focus class contract (§5, §11)', () => {
   it('every item underlines its label on hover and shifts the underline on press (FR-037, 2026-09-28)', () => {
     render(<SiteHeader items={items} currentPath="/dashboard" />)
     for (const item of items) {
-      const className = screen.getByRole('link', { name: item.label }).className
-      expect(className).toMatch(/\bhover:underline\b/)
-      expect(className).toMatch(/\bhover:decoration-2\b/)
-      expect(className).toMatch(/\bhover:underline-offset-2\b/)
-      expect(className).toMatch(/\bactive:underline-offset-4\b/)
+      const link = screen.getByRole('link', { name: item.label })
+      expect(link).toHaveClass('hover:underline')
+      expect(link).toHaveClass('hover:decoration-2')
+      expect(link).toHaveClass('hover:underline-offset-2')
+      expect(link).toHaveClass('active:underline-offset-4')
     }
   })
 
@@ -195,32 +195,32 @@ describe('SiteHeader — hover and focus class contract (§5, §11)', () => {
   it('every item carries an active fill distinct from its hover fill, plus the documented boundary', () => {
     render(<SiteHeader items={items} currentPath="/dashboard" />)
     for (const item of items) {
-      const className = screen.getByRole('link', { name: item.label }).className
-      expect(className).toMatch(/active:bg-background/)
-      expect(className).not.toMatch(/active:bg-surface-sunken/)
-      expect(className).toMatch(/active:border-border-strong/)
+      const link = screen.getByRole('link', { name: item.label })
+      expect(link).toHaveClass('active:bg-background')
+      expect(link).not.toHaveClass('active:bg-surface-sunken')
+      expect(link).toHaveClass('active:border-border-strong')
     }
   })
 
   it('SkipLink and Brand also carry the documented focus-visible ring', () => {
     render(<SiteHeader items={[]} />)
-    expect(screen.getByRole('link', { name: 'Skip to content' }).className).toMatch(
-      /focus-visible:outline-focus-ring/,
+    expect(screen.getByRole('link', { name: 'Skip to content' })).toHaveClass(
+      'focus-visible:outline-focus-ring',
     )
-    expect(screen.getByRole('link', { name: 'aoe2-stats' }).className).toMatch(
-      /focus-visible:outline-focus-ring/,
+    expect(screen.getByRole('link', { name: 'aoe2-stats' })).toHaveClass(
+      'focus-visible:outline-focus-ring',
     )
   })
 
   it('the current item is semibold and text-primary; a resting item is medium and text-secondary', () => {
     render(<SiteHeader items={items} currentPath="/dashboard" />)
     const current = screen.getByRole('link', { name: 'Dashboard' })
-    expect(current.className).toMatch(/font-semibold/)
-    expect(current.className).toMatch(/text-text-primary/)
+    expect(current).toHaveClass('font-semibold')
+    expect(current).toHaveClass('text-text-primary')
 
     const rest = screen.getByRole('link', { name: 'Matches' })
-    expect(rest.className).toMatch(/font-medium/)
-    expect(rest.className).toMatch(/text-text-secondary/)
+    expect(rest).toHaveClass('font-medium')
+    expect(rest).toHaveClass('text-text-secondary')
   })
 
   it('marking an item current changes no other item’s class contract', () => {
@@ -241,13 +241,13 @@ describe('SiteHeader — hover and focus class contract (§5, §11)', () => {
   it('SkipLink and Brand each carry real padding-block clearing the 44px touch floor', () => {
     render(<SiteHeader items={[]} />)
     const skipLink = screen.getByRole('link', { name: 'Skip to content' })
-    expect(skipLink.className).toMatch(/\bfocus:py-3\b/)
-    expect(skipLink.className).not.toMatch(/\bfocus:py-2\b/)
+    expect(skipLink).toHaveClass('focus:py-3')
+    expect(skipLink).not.toHaveClass('focus:py-2')
 
     const brand = screen.getByRole('link', { name: 'aoe2-stats' })
-    expect(brand.className).toMatch(/\binline-flex\b/)
-    expect(brand.className).toMatch(/\bitems-center\b/)
-    expect(brand.className).toMatch(/\bpy-3\b/)
+    expect(brand).toHaveClass('inline-flex')
+    expect(brand).toHaveClass('items-center')
+    expect(brand).toHaveClass('py-3')
   })
 })
 

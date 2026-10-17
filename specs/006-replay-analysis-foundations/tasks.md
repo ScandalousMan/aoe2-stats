@@ -2659,7 +2659,7 @@ carries what T673's dry run read.
       visual job passed and its merge carries no baseline image: the ink each defect gained is a
       short span, which stays under `maxDiffPixelRatio` (the limits above); T743 refuses the
       undefined class behind four of them
-- [ ] T743 Refuse a class the design-system stylesheet does not define (filed 2026-10-17 from
+- [x] T743 Refuse a class the design-system stylesheet does not define (filed 2026-10-17 from
       T710). `text-secondary` was the ink of an unknown or neutral fact in four places, three in
       `packages/design-system/src/composites/MatchRow/index.tsx` and one in
       `packages/design-system/src/composites/MatchDetailPanel/index.tsx`. Tailwind emits nothing for
@@ -2671,7 +2671,15 @@ carries what T673's dry run read.
       the package's tests with whole-class ones. Plant, red before: `text-secondary` in a
       component. Contrast: `text-text-secondary` and a variant-prefixed class such as
       `group-hover/row-link:underline` pass. `scripts/checks/built-css.mjs` already reads the built
-      stylesheet
+      stylesheet.
+      **Decided 2026-10-17 by Claude:** `scripts/checks/defined-classes.mjs` asks Tailwind's design
+      system, compiled from `packages/design-system/tokens/tailwind.css` (the stylesheet the build
+      compiles), rather than searching the built file: it needs no build and no selector escaping,
+      and whether the build scans a file at all stays `built-css.mjs`'s question. Every string
+      literal in component source is checked, except a bare functional root (`to`, `text`) and a
+      member of a closed set of string literals (`Tooltip`'s placement); a bare root whose default
+      the theme removed is skipped with them. 336 class assertions in 36 test files are whole-class
+      (`toHaveClass`), or a variant-anchored family check where the substring forbade a family
 - [x] T706a Close #127's review (`reviewer` REJECT 2026-10-08 on T706). **Lease shorter than the
       run**: the claim's lease is the run budget (240 s) while the function may run 300 s, so a
       live run reads expired for its last minute and T706's page now re-claims it: a second fetch,

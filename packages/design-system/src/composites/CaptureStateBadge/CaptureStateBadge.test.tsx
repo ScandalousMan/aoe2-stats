@@ -74,8 +74,8 @@ describe('CaptureStateBadge', () => {
     it('detail: reads "Not archived" in the neutral paint, with the sentence and never the raw word', () => {
       const { container } = render(<CaptureStateBadge captureStatus="withdrawn" variant="detail" />)
       const pill = screen.getByText('Not archived')
-      expect(pill.className).toContain('bg-surface-sunken')
-      expect(pill.className).not.toContain('text-danger')
+      expect(pill).toHaveClass('bg-surface-sunken')
+      expect(Array.from(pill.classList).filter((c) => /(^|:)text-danger/.test(c))).toEqual([])
       expect(screen.getByText(WITHDRAWN_SENTENCE)).toBeInTheDocument()
       expect(container).not.toHaveTextContent(/withdrawn/i)
     })
@@ -93,7 +93,7 @@ describe('CaptureStateBadge', () => {
         <CaptureStateBadge captureStatus="withdrawn" variant="compact" />,
       )
       const pill = screen.getByText('Not archived')
-      expect(pill.className).toContain('bg-surface-sunken')
+      expect(pill).toHaveClass('bg-surface-sunken')
       expect(container).toHaveTextContent(/^Not archived$/)
       expect(container.querySelector('[aria-describedby]')).toBeNull()
       expect(screen.queryByText(/archival was not running/i)).not.toBeInTheDocument()
@@ -113,7 +113,7 @@ describe('CaptureStateBadge', () => {
           <CaptureStateBadge captureStatus="something_new" variant={variant} />,
         )
         const pill = screen.getByText('something_new')
-        expect(pill.className).toContain('bg-surface-sunken')
+        expect(pill).toHaveClass('bg-surface-sunken')
         expect(container).toHaveTextContent(/^something_new$/)
         expect(container.querySelector('[aria-describedby]')).toBeNull()
         expect(screen.queryByText('Not archived')).not.toBeInTheDocument()
@@ -124,7 +124,7 @@ describe('CaptureStateBadge', () => {
       'expired still reads "Lost" in danger with its reason (%s)',
       (variant) => {
         render(<CaptureStateBadge captureStatus="expired" variant={variant} />)
-        expect(screen.getByText('Lost').className).toContain('text-danger')
+        expect(screen.getByText('Lost')).toHaveClass('text-danger')
         expect(screen.getByText(/did not capture it in time/)).toBeInTheDocument()
         expect(screen.queryByText('Not archived')).not.toBeInTheDocument()
       },
@@ -139,7 +139,7 @@ describe('CaptureStateBadge', () => {
   it('renders a neutral badge with the raw value for an unrecognised status (error), never a guessed tone', () => {
     render(<CaptureStateBadge captureStatus="a_future_status" />)
     const badge = screen.getByText('a_future_status')
-    expect(badge.className).toContain('bg-surface-sunken')
+    expect(badge).toHaveClass('bg-surface-sunken')
   })
 
   it('renders a Skeleton in place of the badge while loading, regardless of captureStatus', () => {
@@ -203,21 +203,21 @@ describe('CaptureStateBadge', () => {
     it('stacks the pill and SecondaryLine in compact variant when `stacked` is set', () => {
       render(<CaptureStateBadge captureStatus="expired" variant="compact" stacked />)
       const wrapper = screen.getByText('Lost').closest('div')
-      expect(wrapper?.className).toContain('flex-col')
-      expect(wrapper?.className).not.toContain('sm:flex-row')
+      expect(wrapper).toHaveClass('flex-col')
+      expect(wrapper).not.toHaveClass('sm:flex-row')
     })
 
     it('leaves compact variant free to respond to the window when `stacked` is not set', () => {
       render(<CaptureStateBadge captureStatus="expired" variant="compact" />)
       const wrapper = screen.getByText('Lost').closest('div')
-      expect(wrapper?.className).toContain('sm:flex-row')
+      expect(wrapper).toHaveClass('sm:flex-row')
     })
 
     it('has no effect on detail variant, which already always stacks', () => {
       render(<CaptureStateBadge captureStatus="expired" variant="detail" stacked={false} />)
       const wrapper = screen.getByText('Lost').closest('div')
-      expect(wrapper?.className).toContain('flex-col')
-      expect(wrapper?.className).not.toContain('sm:flex-row')
+      expect(wrapper).toHaveClass('flex-col')
+      expect(wrapper).not.toHaveClass('sm:flex-row')
     })
   })
 
@@ -247,8 +247,8 @@ describe('CaptureStateBadge', () => {
             />,
           )
           const pill = screen.getByText('Not archived')
-          expect(pill.className).toContain('bg-surface-sunken')
-          expect(pill.className).not.toContain('text-warning')
+          expect(pill).toHaveClass('bg-surface-sunken')
+          expect(Array.from(pill.classList).filter((c) => /(^|:)text-warning/.test(c))).toEqual([])
           expect(container).toHaveTextContent(/^Not archived$/)
           expect(container.querySelector('[aria-describedby]')).toBeNull()
           expect(container).not.toHaveTextContent(NO_PROMISE)
@@ -385,7 +385,7 @@ describe('CaptureStateBadge', () => {
             <CaptureStateBadge captureStatus={status} variant={variant} archivalObjected />,
           )
           const pill = screen.getByText('Lost')
-          expect(pill.className).toContain('text-danger')
+          expect(pill).toHaveClass('text-danger')
           expect(screen.getByText(FIRST_SENTENCE[status])).toBeInTheDocument()
           const wrapper = pill.closest('span[aria-describedby]')
           const describedBy = wrapper?.getAttribute('aria-describedby')
@@ -406,7 +406,7 @@ describe('CaptureStateBadge', () => {
           ['the prop omitted', {}],
         ])('with %s it still reads both sentences', (_name, props) => {
           render(<CaptureStateBadge captureStatus={status} variant={variant} {...props} />)
-          expect(screen.getByText('Lost').className).toContain('text-danger')
+          expect(screen.getByText('Lost')).toHaveClass('text-danger')
           const wrapper = screen.getByText('Lost').closest('span[aria-describedby]')
           const describedBy = wrapper?.getAttribute('aria-describedby')
           expect(document.getElementById(describedBy as string)?.textContent).toBe(

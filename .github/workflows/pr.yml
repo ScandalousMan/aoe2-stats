@@ -287,6 +287,16 @@ jobs:
       # the same pull request rather than only once it stops catching something real.
       - run: node scripts/checks/token-scale.mjs
       - run: node --test scripts/checks/token-scale.test.mjs
+      # T743: token-scale.mjs refuses raw values and never asks whether a class exists, so
+      # `text-secondary` (the colour role's utility is `text-text-secondary`) shipped as the ink of
+      # an unknown fact in four places: Tailwind emitted nothing for it, the text took whatever ink
+      # surrounded it, and each unit test's substring `toContain('text-secondary')` was satisfied by
+      # the correct class too. This asks Tailwind's own design system, loaded from the stylesheet
+      # the build compiles, whether every class string in component source is defined. Needs no
+      # build, same as token-scale.mjs above; its fixture-only `node --test` suite runs
+      # immediately after, for the same reason.
+      - run: node scripts/checks/defined-classes.mjs
+      - run: node --test scripts/checks/defined-classes.test.mjs
       # T541: FR-029's dependency rule — a primitive MUST NOT depend on a domain composite or a
       # screen, and no component MUST depend on the application — read straight off the
       # filesystem T540 made it decidable from, rather than a manifest that would be a second

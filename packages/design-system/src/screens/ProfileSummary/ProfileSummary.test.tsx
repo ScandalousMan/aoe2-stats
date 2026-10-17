@@ -868,15 +868,15 @@ describe('ProfileSummary — touch floor (T561, FR-018/FR-019)', () => {
         entries={entries}
       />,
     )
-    expect(screen.getByRole('button', { name: 'Make primary' }).className).toMatch(/\bh-12\b/)
-    expect(screen.getByRole('button', { name: 'Back to primary' }).className).toMatch(/\bh-12\b/)
+    expect(screen.getByRole('button', { name: 'Make primary' })).toHaveClass('h-12')
+    expect(screen.getByRole('button', { name: 'Back to primary' })).toHaveClass('h-12')
   })
 
   it('the never-loaded-error "Try again" renders at size lg, not the md default', () => {
     render(
       <ProfileSummary authenticated viewedProfile={viewedProfile} entries={[]} status="error" />,
     )
-    expect(screen.getByRole('button', { name: 'Try again' }).className).toMatch(/\bh-12\b/)
+    expect(screen.getByRole('button', { name: 'Try again' })).toHaveClass('h-12')
   })
 
   it('the stale-refresh "Try again" renders at size lg, not the md default', () => {
@@ -889,11 +889,11 @@ describe('ProfileSummary — touch floor (T561, FR-018/FR-019)', () => {
         status="stale"
       />,
     )
-    expect(screen.getByRole('button', { name: 'Try again' }).className).toMatch(/\bh-12\b/)
+    expect(screen.getByRole('button', { name: 'Try again' })).toHaveClass('h-12')
   })
 
   it('the not-found "Back to search" link renders at size lg, not the md default', () => {
     render(<ProfileSummary subject="other" authenticated entries={[]} status="not-found" />)
-    expect(screen.getByRole('link', { name: 'Back to search' }).className).toMatch(/\bh-12\b/)
+    expect(screen.getByRole('link', { name: 'Back to search' })).toHaveClass('h-12')
   })
 })

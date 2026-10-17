@@ -35,7 +35,7 @@ describe('Dialog', () => {
   it('the heading suppresses its outline rather than painting the browser default', () => {
     renderDialog()
     const heading = screen.getByRole('heading', { name: 'Turn off replay archival?' })
-    expect(heading.className).toMatch(/\boutline-none\b/)
+    expect(heading).toHaveClass('outline-none')
   })
 
   it('renders the body content between the heading and the actions', () => {
@@ -45,10 +45,12 @@ describe('Dialog', () => {
 
   it('renders a destructive primary action and a secondary action by default', () => {
     renderDialog()
-    expect(screen.getByRole('button', { name: 'Turn it off' }).className).toMatch(/\btext-danger\b/)
-    expect(screen.getByRole('button', { name: 'Keep it on' }).className).not.toMatch(
-      /\btext-danger\b/,
-    )
+    expect(screen.getByRole('button', { name: 'Turn it off' })).toHaveClass('text-danger')
+    expect(
+      Array.from(screen.getByRole('button', { name: 'Keep it on' }).classList).filter((c) =>
+        /(^|:)text-danger/.test(c),
+      ),
+    ).toEqual([])
   })
 
   it('Escape calls the secondary action and never the primary one', async () => {
