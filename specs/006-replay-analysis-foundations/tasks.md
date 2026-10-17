@@ -2675,11 +2675,15 @@ carries what T673's dry run read.
       **Decided 2026-10-17 by Claude:** `scripts/checks/defined-classes.mjs` asks Tailwind's design
       system, compiled from `packages/design-system/tokens/tailwind.css` (the stylesheet the build
       compiles), rather than searching the built file: it needs no build and no selector escaping,
-      and whether the build scans a file at all stays `built-css.mjs`'s question. Every string
-      literal in component source is checked, except a bare functional root (`to`, `text`) and a
-      member of a closed set of string literals (`Tooltip`'s placement); a bare root whose default
-      the theme removed is skipped with them. 336 class assertions in 36 test files are whole-class
-      (`toHaveClass`), or a variant-anchored family check where the substring forbade a family
+      and whether the build scans a file at all stays `built-css.mjs`'s question. A token of a
+      string literal in component source is a hit when it parses as a utility that emits nothing,
+      when an unknown variant precedes a utility that parses, or when it starts with a prefix of the
+      stylesheet's own `@utility` families (`type-`, `icon-`) and parses as nothing. Skipped: a bare
+      functional root (`to`, `text`), an equality operand or `case` label, and a member of a closed
+      set of string literals none of which compiles (`Tooltip`'s placement). An unknown root such as
+      `txt-secondary`, and a bare root whose default the theme removed, pass. 336 class assertions
+      in 36 test files are whole-class (`toHaveClass`), or a family check over class tokens where
+      the substring forbade a family
 - [x] T706a Close #127's review (`reviewer` REJECT 2026-10-08 on T706). **Lease shorter than the
       run**: the claim's lease is the run budget (240 s) while the function may run 300 s, so a
       live run reads expired for its last minute and T706's page now re-claims it: a second fetch,
