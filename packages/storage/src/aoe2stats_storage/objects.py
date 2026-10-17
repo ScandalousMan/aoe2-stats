@@ -39,9 +39,13 @@ DEFAULT_SIGNED_URL_EXPIRES_IN_SECONDS = 300
 _PRECONDITION_FAILED = "PreconditionFailed"
 _PRECONDITION_FAILED_STATUS = 412
 
-#: What `put_if_absent` reads as "a concurrent conditional write to this key is still in flight":
-#: HTTP 409, `ConditionalRequestConflict`. Neither "exists" nor "written": that writer may fail.
-_CONFLICT = "ConditionalRequestConflict"
+#: What `put_if_absent` reads as "a concurrent write to this key is still in flight": HTTP 409 with
+#: `ConditionalRequestConflict` (R2, S3) or `OperationAborted` (S3's other spelling of it). Neither
+#: "exists" nor "written": that writer may fail. A 409 with any other code (`InvalidBucketState`,
+#: ...) is a fault, not a race, and is not in this set. A 409 whose body carries no code at all is
+#: read as a race, as the 412 handling falls back on status; botocore then reports the status text
+#: as the code (`"409"`), so that is "no code" too.
+_CONFLICT_CODES = frozenset({"ConditionalRequestConflict", "OperationAborted"})
 _CONFLICT_STATUS = 409
 
 #: The error codes a `GetObject` carries when the key is not there. Read by **code**, never by the
@@ -67,7 +71,8 @@ class ObjectNotFound(Exception):
 
 class ObjectWriteConflict(Exception):
     """A conditional write to `key` was refused because another write to the same key is still in
-    flight (HTTP 409, `ConditionalRequestConflict`; `__cause__` is the store's own error).
+    flight (HTTP 409, `ConditionalRequestConflict` or `OperationAborted`, or a 409 with no code;
+    `__cause__` is the store's own error).
 
     Not "the key exists": the other writer may yet fail, so reading it as held could record an
     object that never lands. Not "written" either. A caller decides what a collision means for it
@@ -241,11 +246,14 @@ class ObjectStore:
         `get_with_metadata`. The capture drain marks its own objects with it; the manual upload
         passes none.
 
-        Only the store's `PreconditionFailed` (HTTP 412) means "already there". HTTP 409
-        (`ConditionalRequestConflict`, a concurrent write to the same key still in flight) raises
-        `ObjectWriteConflict`: that writer may yet fail, so reading it as "exists" could publish a
-        row naming an object that never lands, and the caller retries later, by which time the key
-        either exists or does not. Every other error propagates as the `ClientError` it is.
+        Only the store's `PreconditionFailed` (HTTP 412) means "already there". A 409 whose code is
+        `ConditionalRequestConflict` or `OperationAborted`, or which carries no code at all (a
+        concurrent write to the same key still in flight), raises `ObjectWriteConflict`: that
+        writer may yet fail, so reading it as "exists" could publish a row naming an object that
+        never lands, and the caller retries later, by which time the key either exists or does not.
+        Every other error propagates as the `ClientError` it is, a 409 with another code
+        (`InvalidBucketState`, say) included: that is a persistent fault, not a race, and mapping it
+        to a conflict would hand every claim back unattempted, forever and silently.
 
         A store that does not implement conditional writes and ignores the header would overwrite
         silently; both stores this project targets honour it, and that is the assumption.
@@ -266,7 +274,9 @@ class ObjectStore:
             status = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
             if code == _PRECONDITION_FAILED or status == _PRECONDITION_FAILED_STATUS:
                 return False
-            if code == _CONFLICT or status == _CONFLICT_STATUS:
+            if code in _CONFLICT_CODES or (
+                status == _CONFLICT_STATUS and code in (None, "", str(_CONFLICT_STATUS))
+            ):
                 raise ObjectWriteConflict(key) from exc
             raise
         return True

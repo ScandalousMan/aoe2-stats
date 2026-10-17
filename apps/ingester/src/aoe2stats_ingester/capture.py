@@ -1745,8 +1745,8 @@ class CaptureDrain:
     ) -> bool:
         """Name the object on the row, if the row names none yet, whatever its status (T728). The
         object is already under the key, so a row withdrawn or handed back meanwhile still ends up
-        naming it (erasure deletes only what a row names, and an unnamed object blocks every later
-        upload); what is refused is naming an object over one the row already names. Returns
+        naming it: the replay is recorded, and erasure, which deletes only what a row names, reaches
+        it; what is refused is naming an object over one the row already names. Returns
         whether a row was written."""
         async with self._session_factory() as session:
             outcome = await session.execute(

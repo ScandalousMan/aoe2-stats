@@ -2459,6 +2459,17 @@ carries what T673's dry run read.
       write failed, a retry of the same bytes ends `stored`; erasure removes an object no row's
       `object_key` names, under one of the user's pairs that has a row and under one that has none.
       **Contrast:** a retry with different bytes is refused `replay_held` and nothing is written
+- [ ] T740 Decide what a drain's late write does to a row a concurrent drain ended (filed
+      2026-10-17 from #148's second review, N1). Since T728 the blob metadata commit names the
+      drain's object on a row that names none whatever its status, and the `stored` mark matches
+      only a `downloading` row. When a drain's claim goes stale while it is still running, a second
+      drain can reclaim the row and end it `expired`, `failed` or `unavailable`; the first drain's
+      write and commit then land, and the row keeps that status while naming a replay that was
+      never validated. No claim selects it, the upload route answers `replay_held`, and the
+      `expired` case has already raised its severity-1 alert. Not reachable on Phase 1 hosting,
+      where the claim's stale age equals the function's maximum duration; reachable on a host
+      without that bound. To decide first: whether the drain's `stored` mark also matches those
+      three statuses when the row names the drain's own key, keeping `withdrawn` excluded
 
 - [x] T706 Unstick an analysis whose lease expired (filed 2026-10-08; decided by the user the same
       day). Match 511523321's row stayed `running` from the 2026-10-05 crash until a manual

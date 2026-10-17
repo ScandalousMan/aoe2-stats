@@ -293,6 +293,35 @@ async def test_put_if_absent_raises_the_typed_conflict_for_a_409(
     assert isinstance(raised.value.__cause__, ClientError)
 
 
+async def test_put_if_absent_propagates_a_409_that_is_not_a_write_conflict(
+    config: ObjectStoreConfig,
+) -> None:
+    """A persistent 409 such as `InvalidBucketState` is a deployment fault, not a racing writer:
+    mapped to `ObjectWriteConflict` it would hand every claim back unattempted, forever and
+    silently, where it used to abort the run loudly."""
+    store = _store_over_a_real_client(config, _WireRecorder(status=409, code="InvalidBucketState"))
+
+    with pytest.raises(ClientError) as raised:
+        await store.put_if_absent("replays/1/2.zip", b"{}", content_type="application/zip")
+
+    assert not isinstance(raised.value, objects.ObjectWriteConflict)
+    assert raised.value.response["Error"]["Code"] == "InvalidBucketState"
+
+
+@pytest.mark.parametrize("code", ["ConditionalRequestConflict", "OperationAborted", ""])
+async def test_put_if_absent_maps_a_write_conflict_409_to_the_typed_conflict(
+    config: ObjectStoreConfig, code: str
+) -> None:
+    """Both codes a store uses for a concurrent write, and a 409 whose body carries no code at all
+    (the status alone, as the 412 handling also falls back on)."""
+    store = _store_over_a_real_client(config, _WireRecorder(status=409, code=code))
+
+    with pytest.raises(objects.ObjectWriteConflict) as raised:
+        await store.put_if_absent("replays/1/2.zip", b"{}", content_type="application/zip")
+
+    assert raised.value.key == "replays/1/2.zip"
+
+
 async def test_put_if_absent_sends_user_metadata_as_amz_meta_headers(
     config: ObjectStoreConfig,
 ) -> None:
