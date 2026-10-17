@@ -2427,7 +2427,7 @@ carries what T673's dry run read.
       `packages/design-system/specs/manual-upload.md`, keeping that file's line count too (its lines
       are cited). **Tests, each red before:** an objecting owner's `expired` and `failed` rows show
       no upload sentence. **Contrast:** a caller who does not object still reads it
-- [ ] T730 Decide what an upload does when its row write fails after its object write (filed
+- [x] T730 Decide what an upload does when its row write fails after its object write (filed
       2026-10-14 from #143's review). Since T723 `upload_replay` writes the object with
       `put_if_absent` and then the row: if the row write or the request's commit fails after the
       object is written, the object stays under the key and no row names it, and every retry of the

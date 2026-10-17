@@ -110,11 +110,16 @@ one non-negotiable ordering — participation, objection, validation, held objec
   `replay_object_key` (the same key scheme an automatic capture already uses for this pair —
   `replay_object_key`'s own docstring: "shared by capture ... and manual upload ... both resolve to
   the same key") runs first and answers whether it wrote; `False` means the key already holds an
-  object, and that is the same `409` `replay_held`, with no row created or changed — this is the
-  case of an object under the key that no row names. `CapturesRepository.record_manual_upload` —
-  the one write that follows, described in full in that repository's own module docstring — runs
-  only once the blob is durable. The automatic capture's own write uses `put` and is not touched by
-  this route's checks.
+  object that no row names (the refusals above ran first). That is what a previous attempt leaves
+  when its row write or commit failed after its object write (T730), so the route reads the held
+  object: when its SHA-256 equals the upload's, the object *is* this file and the route goes on to
+  the row write exactly as for a fresh upload; otherwise it is `409` `replay_held`, with no row
+  created or changed. Nothing is ever deleted or overwritten on either path - the object is an
+  original replay (constitution IV), so there is no compensating delete; an object an upload
+  orphaned and nobody retried is removed by the owner's account erasure (`routers/privacy.py`).
+  `CapturesRepository.record_manual_upload` — the one write that follows, described in full in that
+  repository's own module docstring — runs only once the blob is durable. The automatic
+  capture's own write uses `put` and is not touched by this route's checks.
 
 **`GET /api/matches/{game_id}/replay/{profile_id}` (T337, 003) — a different route from the one
 above.** 001's route above is the caller's own dashboard download, reached by `game_id` alone; this
@@ -731,6 +736,11 @@ async def upload_replay(
     validation, then the already-archived and held refusals, then the blob-first-row-second write
     (a conditional `put_if_absent`) — in that order, exactly as the module docstring describes.
 
+    **T730.** When `put_if_absent` finds the key held, the object was written by an earlier
+    attempt whose row write failed (no row names it). The route reads it: the same SHA-256 means
+    the retry completes the upload (the row is written, nothing is put); a different one is
+    `replay_held`, as for any object this upload did not write. No path deletes or overwrites.
+
     **T102.** A successful upload changes the `capture_status` `routers/matches.py`'s list and
     detail routes both cache — `cache.invalidate_prefix` below drops every cached page for this
     profile's match list and every cached variant of this match's detail, so the caller sees their
@@ -769,16 +779,20 @@ async def upload_replay(
         raise _replay_held_error()
 
     key = replay_object_key(game_id, profile_id)
-    # T723: a conditional write; an object already under the key is refused, nothing recorded.
+    zip_sha256 = hashlib.sha256(content).hexdigest()
+    # T723: a conditional write; an object already under the key is never replaced. T730: it is
+    # accepted only when it is this very file - an earlier attempt's object, whose row write failed.
     if not await object_store.put_if_absent(key, content, content_type=REPLAY_CONTENT_TYPE):
-        raise _replay_held_error()
+        held = await object_store.get(key)
+        if hashlib.sha256(held).hexdigest() != zip_sha256:
+            raise _replay_held_error()
 
     capture = await CapturesRepository(db_session).record_manual_upload(
         game_id=game_id,
         profile_id=profile_id,
         object_key=key,
         zip_bytes=len(content),
-        zip_sha256=hashlib.sha256(content).hexdigest(),
+        zip_sha256=zip_sha256,
         inner_filename=result.inner_filename,
         inner_bytes=result.inner_bytes,
         validated_by=f"{result.engine_name}@{result.engine_version}",
