@@ -2423,7 +2423,7 @@ carries what T673's dry run read.
       whatever its status, so a row withdrawn or reverted after the drain's write still names the
       drain's object and erasure reaches it. A 409 from the store (a concurrent conditional write
       in flight) hands the row back without counting an attempt instead of aborting the run
-- [ ] T729 Decide what an `expired` or `failed` capture reads for an objecting owner (filed
+- [x] T729 Decide what an `expired` or `failed` capture reads for an objecting owner (filed
       2026-10-13 from T723). `CaptureStateBadge`'s `SecondaryLine` for both statuses ends "If you
       still have the file, you can upload it."
       (`packages/design-system/specs/capture-state-badge.md` §3). Since T723 an objecting caller is
