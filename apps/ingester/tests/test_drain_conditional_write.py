@@ -819,8 +819,9 @@ async def test_a_row_naming_another_key_than_the_drains_is_not_marked(
     monkeypatch: pytest.MonkeyPatch,
     ended: CaptureStatus,
 ) -> None:
-    """A row another writer named differently, then ended, is never marked by a drain whose own
-    key is not the one it names."""
+    """Exercises the defensive guard on the key equality, not an ordering guarantee: no writer
+    produces a row naming another key (`replay_object_key` is one key per pair), but a row ended
+    while naming one is never marked by a drain whose own key is not the one it names."""
     capture_id = await _seed(session_factory)
     store = _HookedObjectStore()
     snapshot: dict[str, Any] = {}
@@ -839,6 +840,36 @@ async def test_a_row_naming_another_key_than_the_drains_is_not_marked(
 
     assert snapshot["status"] == ended
     assert snapshot["object_key"] == other_key
+    assert await _row(session_factory, capture_id) == snapshot
+    assert report["stored_total"] == 0
+
+
+async def test_a_quarantined_row_naming_the_drains_key_is_not_rewritten_by_the_mark(
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A resumer quarantined the row while this drain was validating the same bytes: `quarantined`
+    is T673's re-validation state, not one of the statuses another drain ends a row with, so this
+    drain's successful validation leaves the row byte-for-byte as it is and counts nothing."""
+    capture_id = await _seed(session_factory)
+    store = _HookedObjectStore()
+    snapshot: dict[str, Any] = {}
+
+    async def barrier(
+        validator: Any, zip_bytes: bytes, *, timeout_seconds: float
+    ) -> tuple[ReplayValidationResult | None, str | None]:
+        assert (await _row(session_factory, capture_id))["object_key"] == _KEY
+        await _end_row(session_factory, capture_id, CaptureStatus.QUARANTINED)
+        snapshot.update(await _row(session_factory, capture_id))
+        return validator.validate(zip_bytes), None
+
+    monkeypatch.setattr(capture_module, "_validate_with_barrier", barrier)
+
+    report = await _run(_drain(session_factory, _Provider(_blob()), store))
+
+    assert snapshot["status"] == CaptureStatus.QUARANTINED
+    assert snapshot["object_key"] == _KEY
     assert await _row(session_factory, capture_id) == snapshot
     assert report["stored_total"] == 0
 
