@@ -9,7 +9,7 @@ description: 'Task list for shrinking what each production deployment stores —
 **Prerequisites**: [plan.md](./plan.md), [spec.md](./spec.md), [research.md](./research.md),
 [data-model.md](./data-model.md), [contracts/](./contracts/), [quickstart.md](./quickstart.md)
 
-**Tests**: Included and mandatory. FR-003, FR-009 and FR-014 each require an automated check, and
+**Tests**: Included and mandatory. FR-003 and FR-009 each require an automated check, and
 every other change here is a deployment setting whose failure mode is a production fault, so each
 one lands with the test that would have caught it. Python tests follow the green-tree gate: a test
 task lands its test marked `xfail(strict=True)` — never a skip — and the implementing task deletes
@@ -176,8 +176,9 @@ route behaves as before.
       kept set is exactly the tracked files under `api/`, and copy them into an empty directory.
       (3) From that directory, run the environment's interpreter in isolated mode (`-I`), which
       drops the working directory from the import path, so put the copy's root on the path
-      explicitly, as the runtime does: import `api.index`, `api.analyze` and `api.cron.ingest`; load every packaged
-      knowledge snapshot through `aoe2stats_knowledge`'s own loader; and probe the two long-running routes unauthenticated through each entrypoint's
+      explicitly, as the runtime does: import `api.index`, `api.analyze` and `api.cron.ingest`;
+      load every packaged knowledge snapshot through `aoe2stats_knowledge`'s own loader; and probe
+      the two long-running routes unauthenticated through each entrypoint's
       own ASGI app, asserting `/api/cron/ingest` answers `401` with `unauthorized` and `/api/analyze`
       answers its `401` session refusal — both before any database connection, with configuration
       supplied the way the existing entrypoint tests supply it. Then run

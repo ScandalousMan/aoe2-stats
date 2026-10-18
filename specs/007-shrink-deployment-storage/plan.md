@@ -25,8 +25,8 @@ layout stays at three (Story 5 was dropped; see the Constitution Check).
    imports `pip`, but the engine dependency record reads it at runtime (spec Assumptions, R5).
 4. **`.claude/` out of a CLI upload** (Story 4): one `.vercelignore` line (R9).
 
-The local estimate predicts a per-deployment storage ratio of 0.63 after to before (research §0).
-SC-002 holds when the measured ratio is within 20% of it. The measured values live in
+The local estimate predicts a per-deployment storage ratio after to before; research §0 holds the
+prediction and its band. SC-002 holds when the measured ratio is within 20% of it. The measured values live in
 `docs/adr/0002-hosting.md` only.
 
 ## Technical Context
