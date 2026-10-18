@@ -21,9 +21,16 @@ and the row is handed back as a failed attempt (`_handle_provider_unavailable`: 
 (`ObjectWriteConflict`) hands the claim back unattempted. The metadata commit names the object on
 the row whatever the row's status, and only while it names none (`_commit_blob_metadata`), so an
 object this drain wrote is never left unnamed by a row withdrawn meanwhile, and one object is never
-named over another. Every other row write the drain makes after its claim matches the row only while
-it is still `downloading`, so a row an upload has marked `stored` is never rewritten; the claim, the
-withdrawal sweep and `revalidate_quarantined` (guarded on `quarantined`) are not such writes.
+named over another. The other row writes the drain makes after its claim match the row only while
+it is still `downloading`, so a row an upload has marked `stored` is never rewritten. The one
+exception is the `stored` mark (T740, `_mark_stored_by_drain`): it also matches a row another drain
+ended `expired`, `failed` or `unavailable` while this one was past its claim, but only when the row
+names the very key this drain wrote or adopted. The object is already under that key and named
+(above), and the bytes are validated before the mark, so `stored` with `validated_by` set is the
+true record where the ended status would leave a row naming a replay while reading as lost.
+`withdrawn` (a refusal made on purpose), `stored`, `quarantined` and `pending` are never matched,
+and a row naming another key is not marked. The claim, the withdrawal sweep and
+`revalidate_quarantined` (guarded on `quarantined`) are not such writes.
 Validation runs after that commit, never before it, and the status only ever flips to `stored` or
 `quarantined` once validation has run (or, for a resumed reclaim, once its outcome has been decided
 not to be re-attempted — see below). A process that dies between the upload and the commit leaves
@@ -379,6 +386,16 @@ _NOT_CONCLUDED = "not_found"
 #: `_held_object_or_reason` to tell that object from any other: the manual upload passes no
 #: metadata, so an object carrying this is the automatic capture's earlier write.
 _DRAIN_OBJECT_METADATA: Mapping[str, str] = {"source": "automatic"}
+
+#: The statuses another drain can end a row with while this one is past its claim, and that this
+#: drain's own `stored` mark still matches when the row names the key the drain wrote or adopted
+#: (T740). `withdrawn` is a refusal made on purpose and is not here; neither are `stored`,
+#: `quarantined` and `pending`.
+_ENDED_BY_ANOTHER_DRAIN = (
+    CaptureStatus.EXPIRED,
+    CaptureStatus.FAILED,
+    CaptureStatus.UNAVAILABLE,
+)
 
 #: `ingest_runs`' own counter vocabulary (data-model.md) that this stage's report can ever move —
 #: the rest of that row's counters belong to discovery and reconciliation, not to the drain.
@@ -1230,7 +1247,7 @@ class CaptureDrain:
             self._require_validator(), content, timeout_seconds=self._validation_timeout_seconds
         )
         if result is not None:
-            return await self._mark_stored_by_drain(capture_id, result)
+            return await self._mark_stored_by_drain(capture_id, result, object_key=key)
 
         reason = error or "validation failed for an unspecified reason"
         return await self._quarantine(capture_id, reason, game_id=game_id, profile_id=profile_id)
@@ -1271,12 +1288,21 @@ class CaptureDrain:
         )
 
     async def _mark_stored_by_drain(
-        self, capture_id: uuid.UUID, result: ReplayValidationResult
+        self, capture_id: uuid.UUID, result: ReplayValidationResult, *, object_key: str
     ) -> str:
-        """The drain's own `stored` write: matches the row only while it is still `downloading`
-        (T728). When it matches nothing, the row is not this drain's any more and nothing counts."""
+        """The drain's own `stored` write (T728, T740): matches the row while its status is
+        `downloading`, or `expired`, `failed` or `unavailable` (a row another drain ended while
+        this one was past its claim), and only while the row names `object_key`, the key this drain
+        wrote or adopted, so a row another writer named differently is never marked. The bytes are
+        validated and the object is named before this runs, so `stored` with `validated_by` set is
+        the true record of such a row. `withdrawn` (a refusal made on purpose), `stored`,
+        `quarantined` and `pending` stay unmatched. When it matches nothing, the row is not this
+        drain's any more and nothing counts."""
         written = await self._mark_stored(
-            capture_id, result, only_if_status=CaptureStatus.DOWNLOADING
+            capture_id,
+            result,
+            only_if_status=CaptureStatus.DOWNLOADING,
+            also_if_ended_naming=object_key,
         )
         return "stored_total" if written else _NOT_CONCLUDED
 
@@ -1325,7 +1351,7 @@ class CaptureDrain:
             self._require_validator(), content, timeout_seconds=self._validation_timeout_seconds
         )
         if result is not None:
-            return await self._mark_stored_by_drain(capture_id, result)
+            return await self._mark_stored_by_drain(capture_id, result, object_key=object_key)
 
         reason = error or "validation failed for an unspecified reason"
         return await self._quarantine(capture_id, reason, game_id=game_id, profile_id=profile_id)
@@ -1763,12 +1789,16 @@ class CaptureDrain:
         result: ReplayValidationResult | None,
         *,
         only_if_status: CaptureStatus,
+        also_if_ended_naming: str | None = None,
         only_if_archiving: bool = False,
     ) -> bool:
         """Mark `stored`, only while the row's status is `only_if_status`: `downloading` for the
         drain's own write, `quarantined` for T673's re-validation, so a row another process has
         moved is never overwritten. Required, with no id-only default (T728): the default is how a
-        row an upload had marked `stored` came to be rewritten. `only_if_archiving` adds
+        row an upload had marked `stored` came to be rewritten. `also_if_ended_naming` (T740, the
+        drain's only) widens the match to a row whose status is `expired`, `failed` or
+        `unavailable` and whose `object_key` equals it; `withdrawn`, `stored`, `quarantined` and
+        `pending` are never added. `only_if_archiving` adds
         `_owner_is_archiving` to the same `WHERE`, so a user who objected or unlinked after the
         page was selected is not written. Returns whether a row was written."""
         values: dict[str, Any] = {
@@ -1781,9 +1811,18 @@ class CaptureDrain:
             values["inner_filename"] = result.inner_filename
             values["inner_bytes"] = result.inner_bytes
             values["validated_by"] = f"{result.engine_name}@{result.engine_version}"
+        status_matches: ColumnElement[bool] = ReplayCapture.status == only_if_status
+        if also_if_ended_naming is not None:
+            status_matches = or_(
+                status_matches,
+                and_(
+                    ReplayCapture.status.in_(_ENDED_BY_ANOTHER_DRAIN),
+                    ReplayCapture.object_key == also_if_ended_naming,
+                ),
+            )
         statement = (
             update(ReplayCapture)
-            .where(ReplayCapture.id == capture_id, ReplayCapture.status == only_if_status)
+            .where(ReplayCapture.id == capture_id, status_matches)
             .values(**values)
         )
         if only_if_archiving:

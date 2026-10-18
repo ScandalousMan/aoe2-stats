@@ -2473,7 +2473,7 @@ carries what T673's dry run read.
       write failed, a retry of the same bytes ends `stored`; erasure removes an object no row's
       `object_key` names, under one of the user's pairs that has a row and under one that has none.
       **Contrast:** a retry with different bytes is refused `replay_held` and nothing is written
-- [ ] T740 Decide what a drain's late write does to a row a concurrent drain ended (filed
+- [x] T740 Decide what a drain's late write does to a row a concurrent drain ended (filed
       2026-10-17 from #148's second review, N1). Since T728 the blob metadata commit names the
       drain's object on a row that names none whatever its status, and the `stored` mark matches
       only a `downloading` row. When a drain's claim goes stale while it is still running, a second
@@ -2483,7 +2483,26 @@ carries what T673's dry run read.
       `expired` case has already raised its severity-1 alert. Not reachable on Phase 1 hosting,
       where the claim's stale age equals the function's maximum duration; reachable on a host
       without that bound. To decide first: whether the drain's `stored` mark also matches those
-      three statuses when the row names the drain's own key, keeping `withdrawn` excluded
+      three statuses when the row names the drain's own key, keeping `withdrawn` excluded. **Decided (2026-10-18, by
+      Claude, the user having asked for T740 to be implemented).** **Yes: the drain's `stored` mark
+      also matches `expired`, `failed` and `unavailable` when the row names the drain's own key;
+      `withdrawn` stays excluded and `quarantined` is not added.** The drain's write has already
+      put the object under the key and named it (T728), and it validates the bytes before it marks;
+      a row that ends `stored` with `validated_by` set is the true record, and the alternative
+      leaves a row that names an original replay while reading as lost, which no claim selects and
+      the upload route refuses as `replay_held`. `_mark_stored_by_drain` matches the row while it is
+      `downloading`, as before, or while it is `expired`, `failed` or `unavailable` and `object_key`
+      equals the key the drain wrote or adopted, so a row another writer named is never marked.
+      `withdrawn` is a refusal made on purpose (`withdraw_refused_near_deadline`), not an outcome of
+      an attempt, so a late write never reverses it; it still names the object, as T728 requires.
+      `stored` already ends the row and `quarantined` is T673's re-validation, so neither is added,
+      and T673's `_mark_stored` call is unchanged. The `expired_capture` alert the other drain
+      raised is not retracted: it records what that run observed, and its operator acknowledges it
+      as before. **Tests, each red before:** for each of `expired`, `failed` and `unavailable`, a
+      row another drain ended while this drain was past its claim, then this drain's blob metadata
+      commit and `stored` mark, ends `stored` with `validated_by` set and the drain's object named.
+      **Contrast:** a `withdrawn` row stays `withdrawn` and names the object; a row naming another
+      key than the drain's is not marked; a `stored` row is not rewritten
 - [x] T741 Close what #155's review and #148's review (N4) left on T730 (filed 2026-10-17; #155
       merged at its first commit). **Erasure:** the keys no row names are deleted before the keys
       rows name, both passes concurrently under one bound, so a kill or a delete error during the
