@@ -86,6 +86,7 @@ import {
   PRIMITIVE_NAMES,
 } from './state-coverage.mjs'
 import { deriveVocabulary } from './spec-completeness.mjs'
+import { listStoryFilesOnDisk } from '../visual/story-files.mjs'
 import { REWRITE_COMMAND } from '../visual/state-coverage-runtime-model.mjs'
 import { REVIEW_WIDTHS } from '../visual/review-widths.mjs'
 import { BUILD_STORYBOOK_COMMAND } from '../visual/missing-index.mjs'
@@ -3224,29 +3225,33 @@ test('checkHandoffTally: fails when the Total line disagrees with the table row 
   assert.match(result.failures[0].reason, /disagrees with the table's own row sum, 1/)
 })
 
-test('findDeferralHitsInStories: finds the vocabulary in a story file and attributes it to its own component', () => {
+test('findDeferralHitsInStories: finds the vocabulary in a story file and keys the hit by its package-relative path', () => {
   withFixtureTree((dir) => {
-    const storyFile = path.join(dir, 'src', 'primitives', 'Widget', 'Widget.stories.tsx')
-    mkdirSync(path.dirname(storyFile), { recursive: true })
+    const rel = 'src/primitives/Widget/Widget.stories.tsx'
+    mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true })
     writeFileSync(
-      storyFile,
+      path.join(dir, rel),
       '// hover — none; owned by `Button` and by nothing else.\nexport const X = {}\n',
     )
-    const allSrcFiles = [storyFile.split(path.sep).join('/')]
-    const hits = findDeferralHitsInStories(allSrcFiles)
+    const hits = findDeferralHitsInStories([rel], dir)
     assert.equal(hits.length, 1)
-    assert.equal(hits[0].component, 'Widget')
+    assert.equal(hits[0].file, rel)
+    assert.equal('component' in hits[0], false)
     assert.equal(hits[0].line, 1)
   })
 })
 
-test('findDeferralHitsInStories: a non-story .tsx file is never scanned', () => {
+test('checkDeferralVocabularyCoverage: a non-story .tsx file is never scanned', () => {
   withFixtureTree((dir) => {
     const indexFile = path.join(dir, 'src', 'primitives', 'Widget', 'index.tsx')
     mkdirSync(path.dirname(indexFile), { recursive: true })
     writeFileSync(indexFile, '// owned by `Button`\n')
-    const allSrcFiles = [indexFile.split(path.sep).join('/')]
-    assert.deepEqual(findDeferralHitsInStories(allSrcFiles), [])
+    const result = checkDeferralVocabularyCoverage(
+      '**8c-bis. Story comments.**\n\n**8d. The no-owner list**\n',
+      { baseDir: dir },
+    )
+    assert.equal(result.hitCount, 0)
+    assert.deepEqual(result.scannedFiles, [])
   })
 })
 
@@ -3262,6 +3267,8 @@ test('checkDeferralVocabularyCoverage: a real hit whose component has no table r
     const storyFile = path.join(dir, 'src', 'primitives', 'Stray', 'Stray.stories.tsx')
     mkdirSync(path.dirname(storyFile), { recursive: true })
     writeFileSync(storyFile, '// hover — none; owned by `Button` and by nothing else.\n')
+    // The row's own component has a story file (a citation naming none is a failure of its own).
+    plantStoryFile(dir, 'src/primitives/Known/Known.stories.tsx', 'export const A = {}\n')
     const readme =
       '**8c-bis. Story comments.**\n\n' +
       '| Component | Quotes |\n' +
@@ -3270,7 +3277,7 @@ test('checkDeferralVocabularyCoverage: a real hit whose component has no table r
       'No exclusions here.\n\n' +
       '**8d. The no-owner list**\n'
     const result = checkDeferralVocabularyCoverage(readme, {
-      allSrcFiles: [storyFile.split(path.sep).join('/')],
+      baseDir: dir,
     })
     assert.equal(result.failures.length, 1)
     assert.match(result.failures[0].reason, /Stray\.stories\.tsx:1 carries deferral vocabulary/)
@@ -3290,7 +3297,7 @@ test('checkDeferralVocabularyCoverage: the same hit passes once its own line is 
       'No exclusions here.\n\n' +
       '**8d. The no-owner list**\n'
     const result = checkDeferralVocabularyCoverage(readme, {
-      allSrcFiles: [storyFile.split(path.sep).join('/')],
+      baseDir: dir,
     })
     assert.deepEqual(result.failures, [])
   })
@@ -3315,7 +3322,7 @@ test('checkDeferralVocabularyCoverage: two hits in one prose block are both excu
       'No exclusions here.\n\n' +
       '**8d. The no-owner list**\n'
     const result = checkDeferralVocabularyCoverage(readme, {
-      allSrcFiles: [storyFile.split(path.sep).join('/')],
+      baseDir: dir,
     })
     // Both lines sit in the same prose block as the cited `:1`, so both are excused.
     assert.deepEqual(result.failures, [])
@@ -3342,7 +3349,7 @@ test("checkDeferralVocabularyCoverage: a hit in a *second, separate* prose block
       'No exclusions here.\n\n' +
       '**8d. The no-owner list**\n'
     const result = checkDeferralVocabularyCoverage(readme, {
-      allSrcFiles: [storyFile.split(path.sep).join('/')],
+      baseDir: dir,
     })
     // Pre-fix, `Known` having *any* table row excused every hit anywhere in its own file — this is
     // exactly the shape `reviewer`'s fourth REJECT found: a new, false deferral in an
@@ -3378,7 +3385,7 @@ test('checkDeferralVocabularyCoverage: a hit far from its own citation, but stil
       'No exclusions here.\n\n' +
       '**8d. The no-owner list**\n'
     const result = checkDeferralVocabularyCoverage(readme, {
-      allSrcFiles: [storyFile.split(path.sep).join('/')],
+      baseDir: dir,
     })
     assert.equal(result.failures.length, 1)
     assert.match(result.failures[0].reason, /Known\.stories\.tsx:22 carries deferral vocabulary/)
@@ -3402,10 +3409,186 @@ test('contrast: a hit close to its own citation, in the same block, still passes
       'No exclusions here.\n\n' +
       '**8d. The no-owner list**\n'
     const result = checkDeferralVocabularyCoverage(readme, {
-      allSrcFiles: [storyFile.split(path.sep).join('/')],
+      baseDir: dir,
     })
     assert.deepEqual(result.failures, [])
   })
+})
+
+// --- T683: the deferral-vocabulary sweep covers every story file the Storybook globs index, and a
+// hit is attributed to its file, never to a component name. Each plant below is a package tree in a
+// temp dir (`baseDir`), so none touches a real story file. -----------------------------------------
+
+const DEFERRAL_LINE = '// hover — none; owned by `Button` and by nothing else.\n'
+
+function deferralReadme({ rows = '', exclusions = 'No exclusions here.' } = {}) {
+  return (
+    '**8c-bis. Story comments.**\n\n' +
+    '| Component | Quotes |\n' +
+    '| --- | --- |\n' +
+    rows +
+    '\n' +
+    exclusions +
+    '\n\n' +
+    '**8d. The no-owner list**\n'
+  )
+}
+
+function plantStoryFile(dir, rel, text = DEFERRAL_LINE) {
+  const full = path.join(dir, rel)
+  mkdirSync(path.dirname(full), { recursive: true })
+  writeFileSync(full, text)
+  return rel
+}
+
+for (const rel of [
+  'src/primitives/Widget/Widget.stories.ts',
+  '.storybook/foundations/Planted.stories.tsx',
+  'src/composites/Loose.stories.tsx',
+  'src/lib/Helper.stories.tsx',
+  '.storybook/fixtures/Planted.stories.tsx',
+]) {
+  test(`T683 plant: an uncited deferral phrase in ${rel} is reported, naming its path`, () => {
+    withFixtureTree((dir) => {
+      plantStoryFile(dir, rel)
+      const result = checkDeferralVocabularyCoverage(deferralReadme(), { baseDir: dir })
+      assert.equal(result.failures.length, 1)
+      assert.ok(
+        result.failures[0].reason.startsWith(`${rel}:1 carries deferral vocabulary`),
+        result.failures[0].reason,
+      )
+    })
+  })
+}
+
+test('T683 contrast: a phrase in <tier>/<C>/<C>.stories.tsx is found, and excused by a bare citation of its own file, before and after', () => {
+  withFixtureTree((dir) => {
+    plantStoryFile(dir, 'src/primitives/Known/Known.stories.tsx')
+    const uncited = checkDeferralVocabularyCoverage(deferralReadme(), { baseDir: dir })
+    assert.equal(uncited.hitCount, 1)
+    assert.equal(uncited.failures.length, 1)
+    const row = '| `Known` | `:1` "owned by `Button` and by nothing else." — filed. |\n'
+    const byRow = checkDeferralVocabularyCoverage(deferralReadme({ rows: row }), { baseDir: dir })
+    assert.equal(byRow.hitCount, 1)
+    assert.deepEqual(byRow.failures, [])
+    const byProse = checkDeferralVocabularyCoverage(
+      deferralReadme({
+        exclusions: '`Known.stories.tsx:1` ("owned by `Button` and by nothing else.") is filed.',
+      }),
+      { baseDir: dir },
+    )
+    assert.deepEqual(byProse.failures, [])
+  })
+})
+
+test('T683 sibling: a bare Foo.stories.tsx citation does not excuse a phrase at the same line of Foo/Extra.stories.tsx', () => {
+  withFixtureTree((dir) => {
+    plantStoryFile(dir, 'src/composites/Foo/Foo.stories.tsx')
+    plantStoryFile(dir, 'src/composites/Foo/Extra.stories.tsx')
+    const row = '| `Foo` | `:1` "owned by `Button` and by nothing else." — filed. |\n'
+    const result = checkDeferralVocabularyCoverage(deferralReadme({ rows: row }), { baseDir: dir })
+    assert.equal(result.hitCount, 2)
+    assert.equal(result.failures.length, 1)
+    assert.ok(
+      result.failures[0].reason.startsWith('src/composites/Foo/Extra.stories.tsx:1 carries'),
+      result.failures[0].reason,
+    )
+  })
+})
+
+test('T683: a bare story citation that resolves to no file, or to more than one, fails naming the citation', () => {
+  withFixtureTree((dir) => {
+    plantStoryFile(dir, 'src/primitives/Known/Known.stories.tsx')
+    // Resolves to nothing: no Ghost component at all.
+    const ghost = checkDeferralVocabularyCoverage(
+      deferralReadme({ exclusions: '`Ghost.stories.tsx:1` ("owned by `Button`") is filed.' }),
+      { baseDir: dir },
+    )
+    assert.ok(
+      ghost.failures.some((f) => f.reason.includes('Ghost.stories.tsx:1')),
+      JSON.stringify(ghost.failures),
+    )
+    // Resolves to nothing: the citation names `.ts`, only `.tsx` exists.
+    const wrongExtension = checkDeferralVocabularyCoverage(
+      deferralReadme({ exclusions: '`Known.stories.ts:1` ("owned by `Button`") is filed.' }),
+      { baseDir: dir },
+    )
+    assert.ok(wrongExtension.failures.some((f) => f.reason.includes('Known.stories.ts:1')))
+    // Resolves to two: the same component name in two tiers.
+    plantStoryFile(dir, 'src/composites/Known/Known.stories.tsx', 'export const A = {}\n')
+    const twice = checkDeferralVocabularyCoverage(
+      deferralReadme({ exclusions: '`Known.stories.tsx:1` ("owned by `Button`") is filed.' }),
+      { baseDir: dir },
+    )
+    assert.ok(
+      twice.failures.some((f) => f.reason.includes('Known.stories.tsx:1')),
+      JSON.stringify(twice.failures),
+    )
+    // Contrast: a table row for a component with one story file is no failure.
+    const clean = checkDeferralVocabularyCoverage(deferralReadme(), { baseDir: dir })
+    assert.equal(clean.failures.length, 1) // the phrase in primitives/Known, still uncited
+  })
+})
+
+test("T683: a repository-rooted path citation excuses its own file's hit, and not another file's hit at the same line", () => {
+  withFixtureTree((dir) => {
+    plantStoryFile(dir, '.storybook/foundations/Planted.stories.tsx')
+    plantStoryFile(dir, '.storybook/fixtures/Planted.stories.tsx')
+    const cite =
+      '`packages/design-system/.storybook/foundations/Planted.stories.tsx:1` ("owned by `Button` and by nothing else.") is filed.'
+    const result = checkDeferralVocabularyCoverage(deferralReadme({ exclusions: cite }), {
+      baseDir: dir,
+    })
+    assert.equal(result.hitCount, 2)
+    assert.equal(result.failures.length, 1)
+    assert.ok(
+      result.failures[0].reason.startsWith('.storybook/fixtures/Planted.stories.tsx:1 carries'),
+      result.failures[0].reason,
+    )
+  })
+})
+
+test('T683: a path citation naming no story file the globs index fails naming the citation', () => {
+  withFixtureTree((dir) => {
+    plantStoryFile(dir, '.storybook/foundations/Planted.stories.tsx', 'export const A = {}\n')
+    for (const location of [
+      'packages/design-system/.storybook/foundations/Missing.stories.tsx',
+      // Not repository-rooted: never guessed at.
+      'foundations/Planted.stories.tsx',
+    ]) {
+      const result = checkDeferralVocabularyCoverage(
+        deferralReadme({ exclusions: `\`${location}:1\` ("owned by \`Button\`") is filed.` }),
+        { baseDir: dir },
+      )
+      assert.ok(
+        result.failures.some((f) => f.reason.includes(`${location}:1`)),
+        JSON.stringify(result.failures),
+      )
+    }
+  })
+})
+
+test('T683: resolveCitationLocation resolves a repository-rooted .storybook path to that one file', () => {
+  const resolved = resolveCitationLocation(
+    {
+      location: 'packages/design-system/.storybook/foundations/Elevation.stories.tsx',
+      tableContext: null,
+    },
+    { specsDir: '/nonexistent', allSrcFiles: [] },
+  )
+  assert.equal(
+    resolved,
+    path.join(REPO_SRC_DIR, '..', '.storybook', 'foundations', 'Elevation.stories.tsx'),
+  )
+})
+
+test('T683 real tree: the sweep reads exactly the files listStoryFilesOnDisk lists, and finds nothing unaccounted', () => {
+  const readmeText = readFileSync(path.join(REPO_SRC_DIR, '..', 'specs', 'README.md'), 'utf8')
+  const result = checkDeferralVocabularyCoverage(readmeText)
+  assert.deepEqual(result.scannedFiles, listStoryFilesOnDisk())
+  assert.ok(result.scannedFiles.some((f) => f.startsWith('.storybook/foundations/')))
+  assert.ok(result.scannedFiles.some((f) => f.startsWith('.storybook/fixtures/')))
+  assert.deepEqual(result.failures, [])
 })
 
 test('countRecord1Cells/countRecord3Cells: classify none, the one play-driven unresolved, and covered', () => {

@@ -35,7 +35,6 @@
 //   - `extractVisualCaptureClip` reads `parameters.visualCaptureClip` the same way
 //     `extractVisualForceState` reads `parameters.visualForceState` — state-coverage.mjs never
 //     reads this parameter at all (grep confirms zero occurrences), so there is nothing to reuse.
-import { readdirSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { createRequire } from 'node:module'
@@ -49,6 +48,7 @@ import {
 } from '../checks/state-coverage.mjs'
 import { REVIEW_WIDTHS } from './review-widths.mjs'
 import { fixtureStoryFiles, importFile, listStories } from './story-index.mjs'
+import { STORY_WALK_ROOTS, STORY_FILE_EXTENSIONS, listStoryFilesOnDisk } from './story-files.mjs'
 
 export const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 export const dsDir = path.join(rootDir, 'packages', 'design-system')
@@ -806,44 +806,10 @@ export function buildStateSignalWork({ index, readSource, diskFiles = null, base
   }
 }
 
-// The directories `.storybook/main.ts`'s `stories` globs start from, relative to the package
-// (`../src/**/*.stories.@(ts|tsx)`, `./foundations/**/*.stories.@(ts|tsx)` and, T693,
-// `./fixtures/**/*.stories.@(ts|tsx)`), and the file
-// extensions those globs match. A second copy of both, so `state-signal-model.test.mjs` reads the
-// real `stories` array and fails when it and these lists stop agreeing.
-export const STORY_WALK_ROOTS = ['src', '.storybook/foundations', '.storybook/fixtures']
-export const STORY_FILE_EXTENSIONS = ['ts', 'tsx']
-
-// The `*.stories.<extension>` files under `STORY_WALK_ROOTS`, as paths relative to the package. The
-// one filesystem-touching function in this module, kept next to the pure ones it feeds
-// (`findUnindexedStoryFiles`) and called by `run.mjs`. Below a root it skips `node_modules` and
-// dot-entries, as a `**` glob with picomatch's default `dot: false` does; a root that is itself a
-// dot-directory (`.storybook/foundations`) is walked, being named explicitly. A root that does not
-// exist is an empty listing; any other read error propagates. `readdir` is injectable for tests.
-export function listStoryFilesOnDisk(
-  baseDir = dsDir,
-  { extensions = STORY_FILE_EXTENSIONS, readdir = readdirSync } = {},
-) {
-  const suffixes = extensions.map((extension) => `.stories.${extension}`)
-  const files = []
-  const walk = (relDir, isRoot) => {
-    let entries
-    try {
-      entries = readdir(path.join(baseDir, relDir), { withFileTypes: true })
-    } catch (err) {
-      if (isRoot && err.code === 'ENOENT') return
-      throw err
-    }
-    for (const entry of entries) {
-      if (entry.name === 'node_modules' || entry.name.startsWith('.')) continue
-      const rel = path.posix.join(relDir, entry.name)
-      if (entry.isDirectory()) walk(rel, false)
-      else if (suffixes.some((suffix) => entry.name.endsWith(suffix))) files.push(rel)
-    }
-  }
-  for (const root of STORY_WALK_ROOTS) walk(root, true)
-  return files.sort()
-}
+// `STORY_WALK_ROOTS`, `STORY_FILE_EXTENSIONS` and `listStoryFilesOnDisk` (T679) live in
+// `story-files.mjs` since T683, so `state-coverage.mjs` can share them without importing this file;
+// re-exported here for `run.mjs`.
+export { STORY_WALK_ROOTS, STORY_FILE_EXTENSIONS, listStoryFilesOnDisk }
 
 // A parsed `index.json` the sweep can work from: an object with at least one story. The sweep's
 // work list is built from this alone, so an unparseable text, a shape without entries, or an index

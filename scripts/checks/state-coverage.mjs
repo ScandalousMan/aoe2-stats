@@ -66,6 +66,7 @@ import { BUILD_STORYBOOK_COMMAND } from '../visual/missing-index.mjs'
 import { instanceKey } from '../visual/instance-identity.mjs'
 import { REVIEW_WIDTHS } from '../visual/review-widths.mjs'
 import { FIXTURE_TAG } from '../visual/story-index.mjs'
+import { listStoryFilesOnDisk } from '../visual/story-files.mjs'
 import {
   MANIFEST_PATH,
   REWRITE_COMMAND,
@@ -4848,6 +4849,13 @@ export function resolveCitationLocation(
   }
   // A story-file table context (8c-bis) is always a bare `<Component>.stories.tsx` — resolved the
   // same suffix-unique way as an explicit one in prose.
+  // T683: a repository-rooted path (`packages/design-system/.storybook/foundations/X.stories.tsx`)
+  // names exactly that file. Needed for story files outside `allSrcFiles`' three tier directories
+  // (foundations, fixtures, `src/lib/`), which no suffix match below can reach.
+  if (name.startsWith('packages/')) {
+    const rooted = path.join(rootDir, name)
+    if (existsSync(rooted) && statSync(rooted).isFile()) return rooted
+  }
   const direct = path.join(srcDir, name)
   if (existsSync(direct) && statSync(direct).isFile()) return direct
   const base = name.split('/').slice(-2).join('/') // "Component/index.tsx" style suffix
@@ -5293,14 +5301,14 @@ function splitIntoProseBlocks(text) {
   return blocks
 }
 
-export function findDeferralHitsInStories(allSrcFiles) {
+// T683: `storyFiles` are paths relative to the package (`listStoryFilesOnDisk`'s own shape), read
+// under `baseDir`. Every hit is keyed by its file's package-relative path and never by a component
+// name: a story file outside `<tier>/<Component>/` (foundations, fixtures, `src/lib/`, directly
+// under a tier) has no component, and two story files in one component directory are two files.
+export function findDeferralHitsInStories(storyFiles, baseDir = dsDir) {
   const hits = []
-  for (const file of allSrcFiles) {
-    if (!file.endsWith('.stories.tsx')) continue
-    const segMatch = file.match(/\/src\/(primitives|composites|screens)\/([A-Za-z0-9]+)\//)
-    if (!segMatch) continue
-    const component = segMatch[2]
-    const text = readFileSync(file, 'utf8')
+  for (const file of storyFiles) {
+    const text = readFileSync(path.join(baseDir, file), 'utf8')
     for (const block of splitIntoProseBlocks(text)) {
       // Joined with real `\n`s first, then flattened to spaces for the regex — `parseCitations`'
       // own idiom (`:2559` above) — so a match's character offset still recovers its own physical
@@ -5313,7 +5321,6 @@ export function findDeferralHitsInStories(allSrcFiles) {
         const lineOffset = joined.slice(0, m.index).split('\n').length - 1
         const physicalLine = block.startLine + lineOffset
         hits.push({
-          component,
           file,
           line: physicalLine,
           blockStart: block.startLine,
@@ -5326,10 +5333,61 @@ export function findDeferralHitsInStories(allSrcFiles) {
   return hits
 }
 
-export function checkDeferralVocabularyCoverage(
-  readmeText,
-  { allSrcFiles: injectedSrcFiles } = {},
-) {
+// The one package-relative story file a citation in 8c-bis names, or a failure reason; `null` when
+// the citation is not about a story file at all (a `.md` spec, an `index.tsx`, a bare `:line`
+// outside a table). T683: attribution is by file, and only these two shapes are read —
+//   - a bare `X.stories.tsx` / `X.stories.ts` (written in prose, or the `X` / `X.stories.tsx` first
+//     cell of an 8c-bis table row a location-less `:line` sits in) names
+//     `src/<tier>/X/X.stories.<same extension>`: exactly one such file, or a failure. It never names
+//     a sibling in that directory (`X/Extra.stories.tsx`);
+//   - a location with a `/` must be repository-rooted, `packages/design-system/<path>`, and names
+//     exactly that file if the Storybook globs index it, or a failure. A partial path
+//     (`foundations/Elevation.stories.tsx`) is not guessed at.
+// A citation that resolves to nothing, or to more than one file, is a failure, never an excuse.
+const STORY_FILE_NAME_RE = /\.stories\.(ts|tsx)$/
+const DESIGN_SYSTEM_PREFIX = 'packages/design-system/'
+export function resolveStoryCitation(citation, storyFiles) {
+  let name = citation.location
+  if (!name) {
+    if (!citation.tableContext || citation.tableContext.kind !== 'stories') return null
+    name = citation.tableContext.name
+    // A row's first cell is a bare component name (`AnalysisTimeline`), which names its `.tsx` story.
+    if (!STORY_FILE_NAME_RE.test(name)) name = `${name}.stories.tsx`
+  }
+  if (!STORY_FILE_NAME_RE.test(name)) return null
+  const cited = `${name}:${citation.lineSpec}`
+  if (!name.includes('/')) {
+    const stem = name.replace(STORY_FILE_NAME_RE, '')
+    const matches = storyFiles.filter((file) => {
+      const [root, tier, directory, base, ...rest] = file.split('/')
+      return (
+        root === 'src' &&
+        TIER_SEGMENTS.includes(tier) &&
+        directory === stem &&
+        base === name &&
+        rest.length === 0
+      )
+    })
+    if (matches.length === 1) return { file: matches[0] }
+    return {
+      failure:
+        `citation \`${cited}\` names ${matches.length === 0 ? 'no story file' : 'more than one story file'}: ` +
+        `a bare story-file name is read as \`src/<tier>/${stem}/${name}\` and must match exactly one` +
+        (matches.length ? ` (${matches.join(', ')})` : ''),
+    }
+  }
+  if (name.startsWith(DESIGN_SYSTEM_PREFIX)) {
+    const relative = name.slice(DESIGN_SYSTEM_PREFIX.length)
+    if (storyFiles.includes(relative)) return { file: relative }
+  }
+  return {
+    failure:
+      `citation \`${cited}\` names no story file the Storybook globs index: a story file with a ` +
+      'path is cited by its repository-rooted path, `packages/design-system/<path>`, never a partial one',
+  }
+}
+
+export function checkDeferralVocabularyCoverage(readmeText, { baseDir = dsDir } = {}) {
   const start = readmeText.indexOf('**8c-bis.')
   const end = readmeText.indexOf('**8d.')
   if (start === -1 || end === -1 || end < start) {
@@ -5357,28 +5415,28 @@ export function checkDeferralVocabularyCoverage(
   // hit itself — close enough that the citation is plausibly accounting for *this* clause, not
   // merely present somewhere in the same multi-paragraph comment.
   const DEFERRAL_CITATION_WINDOW = 15
-  const citedLinesByComponent = new Map()
-  const addCitedLines = (component, lineSpec) => {
+  const storyFiles = listStoryFilesOnDisk(baseDir)
+  const failures = []
+  // Cited lines per story file, keyed by the file's package-relative path (T683): a citation is
+  // credited to the one file `resolveStoryCitation` resolves it to, or fails the run.
+  const citedLinesByFile = new Map()
+  const addCitedLines = (file, lineSpec) => {
     const ranges = parseLineSpec(lineSpec) ?? []
-    const lines = citedLinesByComponent.get(component) ?? new Set()
+    const lines = citedLinesByFile.get(file) ?? new Set()
     for (const [startLine, endLine] of ranges) {
       for (let l = startLine; l <= endLine; l++) lines.add(l)
     }
-    citedLinesByComponent.set(component, lines)
+    citedLinesByFile.set(file, lines)
   }
   for (const c of citations) {
-    if (c.location === null && c.tableContext && c.tableContext.kind === 'stories') {
-      addCitedLines(c.tableContext.name.replace(/\.stories\.tsx$/, ''), c.lineSpec)
-    } else if (c.location && c.location.endsWith('.stories.tsx')) {
-      addCitedLines(path.basename(c.location, '.stories.tsx'), c.lineSpec)
-    }
+    const resolved = resolveStoryCitation(c, storyFiles)
+    if (resolved === null) continue
+    if (resolved.failure) failures.push({ reason: resolved.failure })
+    else addCitedLines(resolved.file, c.lineSpec)
   }
-  const allSrcFiles =
-    injectedSrcFiles ?? walkAllTsxFiles(srcDir).map((f) => f.split(path.sep).join('/'))
-  const hits = findDeferralHitsInStories(allSrcFiles)
-  const failures = []
+  const hits = findDeferralHitsInStories(storyFiles, baseDir)
   for (const hit of hits) {
-    const citedLines = citedLinesByComponent.get(hit.component)
+    const citedLines = citedLinesByFile.get(hit.file)
     const quoteCited =
       citedLines &&
       Array.from(citedLines).some(
@@ -5390,7 +5448,7 @@ export function checkDeferralVocabularyCoverage(
     if (quoteCited) continue
     failures.push({
       reason:
-        `${hit.component}.stories.tsx:${hit.line} carries deferral vocabulary ` +
+        `${hit.file}:${hit.line} carries deferral vocabulary ` +
         `(${JSON.stringify(hit.text.slice(0, 80))}) but is neither within a cited line's own ` +
         "prose block in 8c-bis's own table nor named in its own exclusion paragraph",
     })
@@ -5403,7 +5461,7 @@ export function checkDeferralVocabularyCoverage(
   // the exclusion paragraph below the table (`Badge`, `SiteHeader`'s `expansion` hit, `Menu`'s
   // `selection` hit and others) and were never meant to be part of this count.
   const tableRowCount = (sectionText.match(/^\|\s*`[A-Z][A-Za-z0-9]*`\s*\|/gm) ?? []).length
-  return { failures, hitCount: hits.length, tableRowCount }
+  return { failures, hitCount: hits.length, tableRowCount, scannedFiles: storyFiles }
 }
 
 // --- Cell-count tallies (item 4 of the row-8 sweep's own remediation) --------------------------
@@ -6506,7 +6564,7 @@ function runCitationCheck() {
   log(`${result.parsedCount} row-8 citations parsed and verified against their own file:line.`)
   log("8c's own per-file Handoffs counts and total agree with its own quoted citations.")
   log(
-    `${vocab.hitCount} deferral-vocabulary hits across every *.stories.tsx; every one is either a ` +
+    `${vocab.hitCount} deferral-vocabulary hits across every story file the Storybook globs index; every one is either a ` +
       "row in 8c-bis's own table (currently " +
       `${vocab.tableRowCount} rows, one per component) or named in its own exclusion paragraph.`,
   )
