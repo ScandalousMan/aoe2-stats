@@ -2894,7 +2894,7 @@ excuse every hit in it, e.g. `AccountErasurePanel.stories.tsx` 101-135 — **wit
 `DEFERRAL_CITATION_WINDOW` lines of a cited line inside the same block now, corrected from this
 paragraph's own prior claim of "genuinely quote level" — an uncited deferral planted within that
 same window of a cited line inside the same block is still excused, exactly as the code comment at
-`state-coverage.mjs:3525-3539` already stated and this paragraph did not — heading corrected to
+`checkDeferralVocabularyCoverage`'s own comment already stated and this paragraph did not — heading corrected to
 match its own body in the row 8 sweep's own item 6, having until then still read "genuinely quote
 level, not block level," the exact framing this paragraph itself retracts**), and never merely to
 whether its component has a row at all (the fourth REJECT's own second

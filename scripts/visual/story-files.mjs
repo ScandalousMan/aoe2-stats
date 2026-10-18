@@ -3,6 +3,13 @@
 // (`state-signal-model.mjs`, T679) and the deferral-vocabulary sweep in
 // `scripts/checks/state-coverage.mjs` (T683).
 //
+// A third walker exists on purpose and is not merged into this one: `state-coverage.mjs`'s
+// `walkStoryFiles` reads `src` plus `.storybook/foundations` and not `.storybook/fixtures`, for the
+// manifest join and the import rule of T694. That pass deliberately excludes the fixtures
+// directory, which the runtime pass owns; a listing that included it would put fixture stories into
+// a join they are not part of. Its set therefore differs from this one by design, and only the two
+// consumers named above are bound to agree with each other.
+//
 // A module of its own, not an export of `state-signal-model.mjs`, because that file loads
 // `storybook/internal/csf` with a top-level `await` and imports `state-coverage.mjs` back: pulling
 // it into `state-coverage.mjs` would make a plain check load Storybook's internals and turn the

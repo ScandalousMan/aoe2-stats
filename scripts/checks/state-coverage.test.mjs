@@ -1125,6 +1125,38 @@ test('T680: a matching group inside the helper keeps the credit there, the call 
   assert.equal(outerEl.hover, null)
 })
 
+// A call site that reaches the group only through a JSX attribute is not "rendered inside the
+// group's children": a handler's JSX is rendered later by something else, and a component prop's JSX
+// may be portalled out of the group's subtree. Both are refused, so neither credits anything.
+const ATTRIBUTE_CALL_SITE_CASES = {
+  'a call site inside an event-handler attribute': `<a href="/match/1" className="group/row-link" onClick={() => toast(<OutcomeLabel />)}>text</a>`,
+  'a call site inside a component prop (a portal)': `<a href="/match/1" className="group/row-link"><Tooltip content={<OutcomeLabel />}>text</Tooltip></a>`,
+  "a call site inside the marker's own attribute": `<a href="/match/1" className="group/row-link" aria-label={<OutcomeLabel />}>text</a>`,
+}
+for (const [label, widgetBody] of Object.entries(ATTRIBUTE_CALL_SITE_CASES)) {
+  test(`T680 contrast: ${label} credits nothing`, () => {
+    assert.deepEqual(hoverOfAnchors(helperFixture(FN_HELPER, widgetBody)), [null])
+  })
+}
+
+test('T680: a call site in a direct child position, or inside a map callback in the anchor children, is still credited', () => {
+  assert.deepEqual(hoverOfAnchors(helperFixture(FN_HELPER, GROUPED_CALL)), [HELPER_TOKEN])
+  const mapped = `<a href="/match/1" className="group/row-link">{items.map((item) => <OutcomeLabel key={item} />)}</a>`
+  assert.deepEqual(hoverOfAnchors(helperFixture(FN_HELPER, mapped)), [HELPER_TOKEN])
+})
+
+test('T680: a call site in an attribute does not block the same helper’s other, child-position call site', () => {
+  const body = `<a href="/match/1" className="group/row-link" onClick={() => toast(<OutcomeLabel />)}><OutcomeLabel /></a>`
+  assert.deepEqual(hoverOfAnchors(helperFixture(FN_HELPER, body)), [HELPER_TOKEN])
+})
+
+// `export const Alias = OutcomeLabel` is not an export of the helper: it binds a different name, and
+// the credit is proved from this file's own call sites alone, which an alias elsewhere cannot change.
+test('T680: an alias export of the helper does not refuse it, and its local call site is still credited', () => {
+  const source = helperFixture(FN_HELPER, GROUPED_CALL, `export const Alias = OutcomeLabel`)
+  assert.deepEqual(hoverOfAnchors(source), [HELPER_TOKEN])
+})
+
 test("T680: MatchRow's row link now carries the three group-hover/row-link utilities its OutcomeLabel helper holds", () => {
   const file = path.join(REPO_SRC_DIR, 'composites', 'MatchRow', 'index.tsx')
   const sourceFile = parse(readFileSync(file, 'utf8'), file)
@@ -2803,11 +2835,11 @@ test('resolveCitationLocation: an ambiguous suffix (two files with the same tail
 
 // --- `reviewer`'s fourth REJECT on PR #80, item A3: `checkCitations` was never called by any test
 // — only its own pieces (`parseCitations`, `resolveCitationLocation`, `matchQuoteAgainstText`) were.
-// `checkCitations` itself reads the live tree for resolution (`specsDir`/`srcDir` are module-level
-// constants, not injectable — the same reason `checkDeferralVocabularyCoverage`'s own live-tree
-// call is the one made injectable instead), so these end-to-end tests point at real, stable files
-// under this package's own `specs/` and `src/`, reading their content fresh rather than hard-coding
-// it, so the test cannot drift from what it asserts against. ------------------------------------
+// `checkCitations` reads the live package by default (`baseDir` defaults to the real one, and the
+// check has to see the live source on every real run), so these end-to-end tests point at real,
+// stable files under this package's own `specs/` and `src/`, reading their content fresh rather
+// than hard-coding it, so the test cannot drift from what it asserts against. The one-resolver tests
+// further down pass a temp package as `baseDir` instead. ---------------------------------------
 
 test('checkCitations: a citation whose quote text is not present at its own cited location fails (mis-cited quote), end to end', () => {
   const readmeText =
@@ -3257,8 +3289,8 @@ test('checkDeferralVocabularyCoverage: a non-story .tsx file is never scanned', 
 
 // --- `reviewer`'s fourth REJECT on PR #80, item A3: no test proved any of the three row-8 gates
 // actually fails on bad input — this one was named "…fails" but only ever exercised
-// `parseCitations` by hand, never called `checkDeferralVocabularyCoverage` itself. `allSrcFiles` is
-// injectable for exactly this reason: the check has to see the live source on every real run (the
+// `parseCitations` by hand, never called `checkDeferralVocabularyCoverage` itself. `baseDir` is
+// injectable for exactly this reason: the check has to see the live package on every real run (the
 // same reason `state-coverage.mjs`'s own consistency mode never takes a fixture tree either), but a
 // test proving the *gate* fails needs a fixture it controls, not the live tree. -------------------
 
@@ -3582,13 +3614,189 @@ test('T683: resolveCitationLocation resolves a repository-rooted .storybook path
   )
 })
 
-test('T683 real tree: the sweep reads exactly the files listStoryFilesOnDisk lists, and finds nothing unaccounted', () => {
+test('T683 real tree: the sweep reads foundations and fixtures story files, and finds nothing unaccounted', () => {
   const readmeText = readFileSync(path.join(REPO_SRC_DIR, '..', 'specs', 'README.md'), 'utf8')
   const result = checkDeferralVocabularyCoverage(readmeText)
-  assert.deepEqual(result.scannedFiles, listStoryFilesOnDisk())
-  assert.ok(result.scannedFiles.some((f) => f.startsWith('.storybook/foundations/')))
-  assert.ok(result.scannedFiles.some((f) => f.startsWith('.storybook/fixtures/')))
+  assert.ok(
+    result.scannedFiles.some((f) => f.startsWith('.storybook/foundations/')),
+    'no .storybook/foundations/ story file was scanned',
+  )
+  assert.ok(
+    result.scannedFiles.some((f) => f.startsWith('.storybook/fixtures/')),
+    'no .storybook/fixtures/ story file was scanned',
+  )
   assert.deepEqual(result.failures, [])
+})
+
+// --- One resolver for row-8 story-file citations ---------------------------------------------------
+// `checkCitations` verifies a quote against the file `resolveStoryCitation` resolves, the same call
+// the 8c-bis excuse rule makes, so the file whose text a quote is checked against is, by
+// construction, the file that citation excuses. Each plant is a package tree in a temp dir (`baseDir`).
+
+const FALSE_DEFERRAL = '// hover — none; owned by `Button` and by nothing else.'
+const citedReadme = (rowsOrProse) => {
+  const { rows = '', exclusions = 'No exclusions here.' } = rowsOrProse
+  return '**8c. Record 2 — every handoff.**\n\n' + deferralReadme({ rows, exclusions })
+}
+
+test('one resolver: a bare .ts story citation of src/<tier>/X/X.stories.ts verifies in the citation checker and excuses its hit', () => {
+  withFixtureTree((dir) => {
+    plantStoryFile(
+      dir,
+      'src/primitives/Badge/Badge.stories.ts',
+      `export const A = {}\n${FALSE_DEFERRAL}\n`,
+    )
+    const readmeText = citedReadme({
+      exclusions: '`Badge.stories.ts:2` ("owned by `Button` and by nothing else.") is filed.',
+    })
+    const citations = checkCitations({ readmeText, baseDir: dir })
+    assert.deepEqual(citations.failures, [])
+    assert.equal(citations.parsedCount, 1)
+    const excuse = checkDeferralVocabularyCoverage(readmeText, { baseDir: dir })
+    assert.equal(excuse.hitCount, 1)
+    assert.deepEqual(excuse.failures, [])
+  })
+})
+
+test('one resolver: a decoy src/X.stories.tsx holding the quote does not stand in for the tier file the citation excuses', () => {
+  withFixtureTree((dir) => {
+    plantStoryFile(dir, 'src/SignInScreen.stories.tsx', `export const A = {}\n${FALSE_DEFERRAL}\n`)
+    plantStoryFile(
+      dir,
+      'src/screens/SignInScreen/SignInScreen.stories.tsx',
+      'export const A = {}\n// hover — none; owned by `Button` alone, planted false deferral.\n',
+    )
+    const readmeText = citedReadme({
+      exclusions:
+        '`SignInScreen.stories.tsx:2` ("owned by `Button` and by nothing else.") is filed.',
+    })
+    const citations = checkCitations({ readmeText, baseDir: dir })
+    assert.equal(citations.failures.length, 1, JSON.stringify(citations.failures))
+    assert.match(
+      citations.failures[0].reason,
+      /quote not found at .*SignInScreen\/SignInScreen\.stories\.tsx:2/,
+    )
+  })
+})
+
+test('one resolver: a decoy src/X.stories.tsx does not stand in for the tier file of a table row either', () => {
+  withFixtureTree((dir) => {
+    plantStoryFile(dir, 'src/SignInScreen.stories.tsx', `export const A = {}\n${FALSE_DEFERRAL}\n`)
+    plantStoryFile(
+      dir,
+      'src/screens/SignInScreen/SignInScreen.stories.tsx',
+      'export const A = {}\n// hover — none; owned by `Button` alone, planted false deferral.\n',
+    )
+    const rows = '| `SignInScreen` | `:2` "owned by `Button` and by nothing else." — filed. |\n'
+    const citations = checkCitations({ readmeText: citedReadme({ rows }), baseDir: dir })
+    assert.equal(citations.failures.length, 1, JSON.stringify(citations.failures))
+    assert.match(
+      citations.failures[0].reason,
+      /quote not found at .*SignInScreen\/SignInScreen\.stories\.tsx:2/,
+    )
+  })
+})
+
+test('one resolver, contrast: an ordinary tier X.stories.tsx citation, in prose or as a table row, verifies', () => {
+  withFixtureTree((dir) => {
+    plantStoryFile(
+      dir,
+      'src/primitives/Known/Known.stories.tsx',
+      `export const A = {}\n${FALSE_DEFERRAL}\n`,
+    )
+    const prose = citedReadme({
+      exclusions: '`Known.stories.tsx:2` ("owned by `Button` and by nothing else.") is filed.',
+    })
+    assert.deepEqual(checkCitations({ readmeText: prose, baseDir: dir }).failures, [])
+    const rows = '| `Known` | `:2` "owned by `Button` and by nothing else." — filed. |\n'
+    const table = checkCitations({ readmeText: citedReadme({ rows }), baseDir: dir })
+    assert.deepEqual(table.failures, [])
+    assert.equal(table.parsedCount, 1)
+  })
+})
+
+test('one resolver: a repository-rooted .storybook/foundations path citation verifies against that file', () => {
+  withFixtureTree((dir) => {
+    plantStoryFile(
+      dir,
+      '.storybook/foundations/Planted.stories.tsx',
+      `export const A = {}\n${FALSE_DEFERRAL}\n`,
+    )
+    const cite = (quote) =>
+      citedReadme({
+        exclusions: `\`packages/design-system/.storybook/foundations/Planted.stories.tsx:2\` ("${quote}") is filed.`,
+      })
+    assert.deepEqual(
+      checkCitations({ readmeText: cite('owned by `Button` and by nothing else.'), baseDir: dir })
+        .failures,
+      [],
+    )
+    const wrong = checkCitations({
+      readmeText: cite('text that is not on that line'),
+      baseDir: dir,
+    })
+    assert.equal(wrong.failures.length, 1)
+    assert.match(wrong.failures[0].reason, /quote not found/)
+  })
+})
+
+test('one resolver: a story citation that names no file, or two, is a citation failure carrying the resolver’s own reason', () => {
+  withFixtureTree((dir) => {
+    plantStoryFile(dir, 'src/primitives/Known/Known.stories.tsx', 'export const A = {}\n')
+    plantStoryFile(dir, 'src/composites/Known/Known.stories.tsx', 'export const A = {}\n')
+    for (const location of [
+      'Ghost.stories.tsx',
+      'Known.stories.tsx',
+      'foundations/Planted.stories.tsx',
+    ]) {
+      const readmeText = citedReadme({
+        exclusions: `\`${location}:1\` ("export const A") is filed.`,
+      })
+      const result = checkCitations({ readmeText, baseDir: dir })
+      assert.equal(result.failures.length, 1, `${location}: ${JSON.stringify(result.failures)}`)
+      assert.match(result.failures[0].reason, /citation `.*:1` names /, location)
+    }
+  })
+})
+
+test('one resolver: an inline-code claim next to a story-file location is resolved the same way', () => {
+  withFixtureTree((dir) => {
+    plantStoryFile(dir, 'src/SignInScreen.stories.tsx', 'export const A = {}\nconst decoy = 1\n')
+    plantStoryFile(
+      dir,
+      'src/screens/SignInScreen/SignInScreen.stories.tsx',
+      'export const A = {}\nconst real = 2\n',
+    )
+    const claim = (code) =>
+      citedReadme({ exclusions: `\`SignInScreen.stories.tsx:2\` declares \`${code}\`.` })
+    const decoy = checkCitations({ readmeText: claim('const decoy = 1'), baseDir: dir })
+    assert.equal(decoy.inlineClaimFailureCount, 1, JSON.stringify(decoy))
+    const real = checkCitations({ readmeText: claim('const real = 2'), baseDir: dir })
+    assert.equal(real.inlineClaimVerifiedCount, 1, JSON.stringify(real))
+    assert.deepEqual(real.failures, [])
+  })
+})
+
+test('one resolver, contrast: a non-story citation (a .md spec, an index.tsx) still goes through resolveCitationLocation', () => {
+  withFixtureTree((dir) => {
+    mkdirSync(path.join(dir, 'specs'), { recursive: true })
+    writeFileSync(path.join(dir, 'specs', 'thing.md'), 'one\nthe quoted sentence\n')
+    const indexFile = path.join(dir, 'src', 'primitives', 'Known', 'index.tsx')
+    mkdirSync(path.dirname(indexFile), { recursive: true })
+    writeFileSync(indexFile, 'export const A = {}\nexport const B = {}\n')
+    const readmeText = citedReadme({
+      exclusions:
+        '`thing.md:2` ("the quoted sentence") and `Known/index.tsx:2` ("export const B") are filed.',
+    })
+    assert.deepEqual(checkCitations({ readmeText, baseDir: dir }).failures, [])
+  })
+})
+
+test('one resolver, real tree: every row-8 citation still verifies, and none resolves outside the listing', () => {
+  const readmeText = readFileSync(path.join(REPO_SRC_DIR, '..', 'specs', 'README.md'), 'utf8')
+  const result = checkCitations({ readmeText })
+  assert.deepEqual(result.failures, [])
+  assert.ok(result.parsedCount > 100, `only ${result.parsedCount} citations parsed`)
 })
 
 test('countRecord1Cells/countRecord3Cells: classify none, the one play-driven unresolved, and covered', () => {
