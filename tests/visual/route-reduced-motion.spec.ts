@@ -24,7 +24,9 @@ import {
   holdLoadingRequest,
   LOADING_SCENARIOS,
   SUITE_SCENARIOS,
+  TOOLTIP_SCENARIOS,
 } from './fixtures/suite-scenarios'
+import { assertTooltipMotionContract } from './fixtures/tooltip-open'
 
 const harness = createAppServerHarness('4178')
 
@@ -74,6 +76,27 @@ test.describe('reduced motion, every route, both themes', () => {
           const context = `${scenario.label} (${theme})`
 
           await assertReducedMotion(page, context)
+          external.assertNone(context)
+        })
+      }
+    }
+
+    // T681: the `Tooltip` surface is `duration-0` while closed with or without the preference, so
+    // the sweep above cannot see a dropped `motion-reduce:` utility on it. Each route that renders a
+    // tooltip has it opened by Tab (no preference yet), its transition asserted present, the
+    // preference switched on live, and the same surface asserted at no perceptible duration; the
+    // whole-page sweep then runs with the tooltip still open.
+    for (const scenario of TOOLTIP_SCENARIOS) {
+      for (const theme of ['light', 'dark'] as const) {
+        test(`${scenario.label} — the tooltip surface transitions, then stops under reduce (${theme})`, async ({
+          page,
+        }) => {
+          const external = await enterScenario(page, scenario, harness.baseUrl, theme)
+          const context = `${scenario.label} (${theme})`
+
+          await assertTooltipMotionContract(page, context)
+          await assertReducedMotion(page, context)
+
           external.assertNone(context)
         })
       }

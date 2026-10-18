@@ -1563,7 +1563,7 @@ quickstart run, and the lint. `/speckit-implement` stops here when T670 exits 0.
       hypothesis. **Recorded 2026-10-17** in [quickstart.md](./quickstart.md), "Run record (T669,
       2026-10-17)": three steps did not match and are corrected in place; the post-deploy read of
       one published analysis needs a signed-in session and was not run
-- [ ] T670 Run `uv run scripts/checks/spec_lint.py --feature specs/006-replay-analysis-foundations`
+- [x] T670 Run `uv run scripts/checks/spec_lint.py --feature specs/006-replay-analysis-foundations`
       and confirm it exits 0 — every requirement named by a task, every task reference defined,
       every path under a declared root. Then run the whole suite by exit code, not by reading the
       summary line

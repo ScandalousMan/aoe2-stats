@@ -219,6 +219,51 @@ test.describe('keyboard-walk guards, planted pages', () => {
     expect(() => assertFullTabCoverage(result, 'prior-focus')).not.toThrow()
   })
 
+  // T682 (review of #163, M1): a focused button that becomes `disabled` (what `Button`'s `loading`
+  // state does, and what `/privacy`'s "Export my data" does once the export finishes) drops focus to
+  // `body`, but Chromium keeps the sequential-focus starting point on the now-disabled button. The
+  // reset used to return early whenever focus was on `body`, so the walk began mid-page and skipped
+  // every stop before that button.
+  test('a walk begun after the focused button was disabled still starts at the top', async ({
+    page,
+  }) => {
+    await page.setContent(`
+      <button id="a">A</button>
+      <button id="b">B</button>
+      <button id="c">C</button>
+      <button id="d">D</button>
+    `)
+    await page.focus('#b')
+    await page.evaluate(() => {
+      ;(document.getElementById('b') as HTMLButtonElement).disabled = true
+    })
+    // The planted condition itself: focus is on `body`, not on the disabled button.
+    expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true)
+
+    const result = await walkTabOrder(page)
+
+    expect(result.candidateCount).toBe(3)
+    expect(result.steps.map((step) => step.kbdId)).toEqual(['0', '1', '2']) // a, c, d
+    expect(() => assertFullTabCoverage(result, 'focus-dropped-to-body')).not.toThrow()
+  })
+
+  test('the same page with the button disabled but never focused walks fully (control for the case above)', async ({
+    page,
+  }) => {
+    await page.setContent(`
+      <button id="a">A</button>
+      <button id="b" disabled>B</button>
+      <button id="c">C</button>
+      <button id="d">D</button>
+    `)
+
+    const result = await walkTabOrder(page)
+
+    expect(result.candidateCount).toBe(3)
+    expect(result.steps.map((step) => step.kbdId)).toEqual(['0', '1', '2'])
+    expect(() => assertFullTabCoverage(result, 'never-focused')).not.toThrow()
+  })
+
   test('positive tabindex out of DOM order fails the DOM-order guard', async ({ page }) => {
     // This codebase itself never declares a positive `tabindex` (verified by grepping
     // `apps/web/src` and `packages/design-system/src` — every declared `tabindex` there is `"-1"`
