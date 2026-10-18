@@ -49,6 +49,10 @@ jobs:
               - 'scripts/**'
               - 'pyproject.toml'
               - 'uv.lock'
+              # 007 T807: `scripts/checks/tests/test_vercel_bundle.py` and the bundle dry run in
+              # `tests/architecture/test_deployment_install.py` both read `vercel.json`, so an edit
+              # that changes only its `excludeFiles` must be able to trigger the job that verifies it.
+              - 'vercel.json'
               # T652h: `pinned_source_commit.py` reads both of these to hold the aoe2techtree
               # pinned commit and its derived measurements consistent across `docs/` and
               # `packages/knowledge/`. Without these two lines, the same class of gap T634's

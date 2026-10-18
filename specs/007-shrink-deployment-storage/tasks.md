@@ -135,7 +135,7 @@ file it reads — is worst. Proven offline before any production deploy.
 **Story goal (US1)**: each function holds its entrypoint and its installed dependencies, and every
 route behaves as before.
 
-- [ ] T807 [US1] **Tests first.** Create `scripts/checks/tests/test_vercel_bundle.py`, reading the
+- [x] T807 [US1] **Tests first.** Create `scripts/checks/tests/test_vercel_bundle.py`, reading the
       real `vercel.json` and `git ls-files`. Assert: exactly three `functions` entries,
       `api/index.py` at the short limit it has today and `api/analyze.py` and
       `api/cron/ingest.py` at the long one, so a later merge of the parser's function with the
