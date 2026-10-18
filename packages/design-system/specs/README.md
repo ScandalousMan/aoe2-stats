@@ -3918,19 +3918,21 @@ keyboard, against a stubbed export API (the link is asserted present and never f
 screen, and `suite-scenarios.test.ts` fails by name when a scenario or its inventory entry is removed. The row is deleted
 rather than kept as a second copy of the fact. The review of #163 then filed T744's row, deleted below.
 
-T744 (2026-10-18) closed the last row the same way: all four suites now also render a route's error, transient and
-unrendered empty branches, in both themes, as `BRANCH_SCENARIOS` in `tests/visual/fixtures/suite-scenarios.ts`, each
-reached through the route's own stubs (and by keyboard where the branch needs an action): `DataExportPanel`'s `failed`
-state and its "Try again" button on `/privacy`; `ArchivalControl` with its write held in flight, and after a resume
-(`justResumed`), on `/dashboard` and `/privacy`; the match page's analysis section in `queued`, `running`, `failed` and
-`unavailable`; the no-linked-account state on `/dashboard`, `/matches` and `/matches/$gameId`; and `/search`'s two
-empty-results branches. Each declares what it puts on screen, and `enterScenario` asserts that in a browser after the
-scenario's `prepare` (`assertBranchScenario`), so a stub that falls through to the success response, or to a sibling
-branch, fails naming the mark that is missing; `suite-scenarios.test.ts` plants that for every scenario and fails by name
-when a scenario or its entry in `ROUTE_REQUIRED_BRANCHES` is removed. The two held loading states, `ProfileSummary`'s
-`Skeleton` and the erase button's `Spinner`, are branch scenarios too, so the keyboard, focus-visibility and
-touch-footprint suites now run them held as well as the reduced-motion suite (whose positive control for the two loops is
-unchanged). The inventory lists the branches T744 named, not every branch a route can render: `ArchivalControl`'s
-`writeFailed` and `unavailable` callouts, the analysis section's `refused` retry and refused takeover, and the `error`
-states of the other routes are not in it. The row is deleted rather than kept as a second copy of the fact; the register
-holds no row.
+T744 (2026-10-18) closed the last row the same way, over every route and not only the instances its text named:
+the four suites now also render the error, transient (in flight or held) and empty branches of the ten routes that
+have one (`/privacy-notice` is static text), in both themes, as `BRANCH_SCENARIOS` in `tests/visual/fixtures/suite-scenarios.ts`, each reached through the route's
+own stubs and by keyboard where the branch needs an action. `ROUTE_REQUIRED_BRANCHES` in that file is the enumeration,
+taken from the containers and the screens and composites they render, and the comment above it names every branch no
+route stub reaches or that has nothing for a suite to judge, with the reason. Each scenario declares the marks its
+branch puts on screen and `enterScenario` asserts them in a browser after `prepare` (`assertBranchScenario`).
+`suite-scenarios.test.ts` fails by name when a scenario or its entry in the inventory is removed or added alone, and
+plants, for every scenario, the route's success page, the sibling branch of the same section and, for a held request,
+the request answered at once: each fails inside `enterScenario` naming the missing mark. The two held loading states,
+`ProfileSummary`'s `Skeleton` and the erase button's `Spinner`, are branch scenarios too, so the keyboard,
+focus-visibility and touch-footprint suites run them held as well as the reduced-motion suite. One thing the new
+scenarios found is a defect, not a harness gap, so it is not filed in this register: `Dialog`'s Tab trap includes a
+disabled button, so while a dialog's request is in flight and its secondary action is disabled (`/dashboard (unlink in
+flight)`, `/privacy (erasure in flight)`), Tab leaves the dialog. The keyboard suite runs those two as expected
+failures (`SuiteScenario.knownDefects`), which fail the day the page stops failing. T750 owns the `Dialog` fix, and
+quickstart.md's production-readiness item 13 stays partly met until one lands. The row is
+deleted rather than kept as a second copy of the fact; the register holds no row.

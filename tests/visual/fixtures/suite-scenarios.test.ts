@@ -43,6 +43,7 @@ import {
   PLAYER_PROFILE_RESPONSE,
   PROFILES_RESPONSE,
   ROUTE_SCENARIOS,
+  type RouteScenario,
   SAMPLE_GAME_ID,
   SIGNED_IN_ME,
   stubMe,
@@ -384,6 +385,23 @@ test.describe('suite scenarios', () => {
     }
   })
 
+  // A defect a scenario is known to show runs as an expected failure (`test.fail`), which is
+  // silent about a scenario that gains or loses the marker. Pin which ones carry it, so a marker
+  // added to quiet a red walk, or left behind after the defect is fixed, is a visible change.
+  test('exactly the two in-flight dialogs carry a known keyboard defect', () => {
+    const marked = SUITE_SCENARIOS.filter((scenario) => scenario.knownDefects !== undefined)
+    expect(marked.map((scenario) => scenario.label)).toEqual([
+      '/dashboard (unlink in flight)',
+      '/privacy (erasure in flight)',
+    ])
+    for (const scenario of marked) {
+      expect(Object.keys(scenario.knownDefects ?? {})).toEqual(['keyboard'])
+      expect(scenario.surface, `${scenario.label}: a keyboard defect is a surface walk`).toBe(
+        'dialog',
+      )
+    }
+  })
+
   test('the no-linked-account fixture links nothing', () => {
     expect(NO_LINKED_ME.authenticated).toBe(true)
     expect(NO_LINKED_ME.profiles).toEqual([])
@@ -721,171 +739,157 @@ test.describe('populated scenarios render their success branch', () => {
 })
 
 // --- Each branch scenario renders the branch it names, in a browser (T744) -------------------------
+//
+// Every scenario is entered at 1280px and at 375px (the touch suite measures at the second), and
+// then planted against what it must not be taken for, each judged inside `enterScenario`, which is
+// what the four route suites call:
+//
+// - the route's *success* page (`SUCCESS_SCENARIO_FOR`): the stub the branch replaced, with the
+//   scenario's hold and `prepare` dropped, so a branch whose stubs fell through to the success
+//   response fails;
+// - its *sibling* (`family`): another branch of the same route and section run in its place, so two
+//   branches of one section cannot render the same thing without this file saying so;
+// - for a held request, the same scenario with the request *answered at once*, so a loading or
+//   in-flight state that never held fails (the transient is waited out before it is judged, because
+//   a request answered at once is busy for a few milliseconds and judging inside that window would
+//   pass for the wrong reason).
+//
+// Each failure is the one `assertBranchScenario` throws, naming the missing mark, and only that.
 
-/** One planted absence per branch scenario: the real scenario with one stub pointed at something
- * that is not the branch — the success response, or a sibling branch of the same section — so the
- * rest of the page is exactly what ships. `mark` is the declared mark `enterScenario` must fail on. */
-interface PlantedBranch {
-  label: string
-  mark: string
-  /** Registered after the scenario's own stub, so it answers first (Playwright matches the last). */
-  plant: (page: Page) => Promise<void>
-  /** Drops the scenario's held request, so the state it feeds is answered at once. */
-  dropHold?: boolean
-  /** Runs after the scenario's own `prepare`, so a transient state the plant lets pass has ended
-   * before the marks are judged: an in-flight button that is answered at once is busy for a few
-   * milliseconds, and judging inside that window would pass for the wrong reason. */
-  settle?: (page: Page) => Promise<void>
+// The page a route shows when none of its branches is in play: what a branch scenario is planted
+// against. `/matches/$gameId` at rest is not it (its stub lacks an `analysis` key, which renders the
+// analysis error branch), so the populated page stands in.
+const SUCCESS_SCENARIO_FOR: Readonly<Record<string, string>> = {
+  '/sign-in': '/sign-in',
+  '/dashboard': '/dashboard (two linked profiles)',
+  '/search': '/search',
+  '/favourites': '/favourites (populated)',
+  '/matches': '/matches (populated)',
+  '/matches/$gameId': '/matches/$gameId (populated)',
+  '/players/$profileId': '/players/$profileId (favourited)',
+  '/players/$profileId/matches': '/players/$profileId/matches (populated)',
+  '/privacy': '/privacy',
+  '/object': '/object',
 }
 
-const NOT_BUSY = async (page: Page) => {
-  await page.locator('main button[aria-busy="true"]').waitFor({ state: 'detached' })
+function successFor(route: string): RouteScenario {
+  const label = SUCCESS_SCENARIO_FOR[route]
+  const found = [...ROUTE_SCENARIOS, ...POPULATED_SCENARIOS].find(
+    (scenario) => scenario.label === label,
+  )
+  if (!found) throw new Error(`no success scenario '${label}' for route '${route}'`)
+  return found
 }
 
-function analysisPlant(state: 'queued' | 'running' | 'failed' | 'unavailable' | 'published') {
-  return async (page: Page) => {
-    await page.route(`**/api/matches/${SAMPLE_GAME_ID}`, (route) =>
-      fulfillJson(route, {
-        ...POPULATED_FIXTURES.matchDetail,
-        analysis: { ...POPULATED_FIXTURES.analysisSummaries.published, state },
-      }),
-    )
-    await page.route('**/api/analyze', (route) =>
-      fulfillJson(route, { ...POPULATED_FIXTURES.analysisSummaries.published, state }),
-    )
-  }
+interface Case {
+  title: string
+  run: (page: Page, baseUrl: string) => Promise<void>
 }
 
-function searchPlant(body: { results: unknown[]; degraded: boolean; reason: string | null }) {
-  return async (page: Page) => {
-    await page.route('**/api/players/search*', (route) => fulfillJson(route, body))
-  }
-}
+const PLANT_TIMEOUT_MS = 1_000
 
-const NO_LINKED_PLANT = async (page: Page) => {
-  await stubMe(page, SIGNED_IN_ME)
-  await page.route('**/api/profiles', (route) => fulfillJson(route, PROFILES_RESPONSE))
-}
-
-const ARCHIVAL_NOT_HELD = async (page: Page) => {
-  await page.route('**/api/privacy/archival-objection', (route) =>
-    fulfillJson(route, { archival_objected: true, archival_objected_at: '2026-10-13T08:00:00Z' }),
+function rejectionFor(base: BranchScenario): RegExp {
+  const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return new RegExp(
+    `${escape(base.label)}: .* rendered (fewer|more) than \\d+ item\\(s\\) — the route is not showing its '${escape(base.branch)}' branch`,
   )
 }
 
-const PLANTED_BRANCHES: readonly PlantedBranch[] = [
-  {
-    label: '/privacy (export failed)',
-    mark: 'export failure callout',
-    // The export request succeeds, so the panel reaches `ready` instead of `failed`.
-    plant: async (page) => {
-      await page.route('**/api/privacy/export', (route) =>
-        fulfillJson(route, { id: 'planted', status: 'queued' }),
-      )
-      await page.route('**/api/privacy/export/planted', (route) =>
-        fulfillJson(route, { id: 'planted', status: 'completed', download_url: '/planted' }),
-      )
-    },
-  },
-  {
-    label: '/dashboard (archival write in flight)',
-    mark: 'busy archival button',
-    dropHold: true,
-    settle: NOT_BUSY,
-    plant: ARCHIVAL_NOT_HELD,
-  },
-  {
-    label: '/privacy (archival write in flight)',
-    mark: 'busy archival button',
-    dropHold: true,
-    settle: NOT_BUSY,
-    plant: ARCHIVAL_NOT_HELD,
-  },
-  ...(['/dashboard', '/privacy'] as const).map((route): PlantedBranch => ({
-    label: `${route} (archival just resumed)`,
-    mark: 'resumed acknowledgement',
-    // The write is refused, so the control shows its failure callout and never `justResumed`.
-    plant: async (page) => {
-      await page.route('**/api/privacy/archival-objection', (handler) =>
-        handler.fulfill({
-          status: 500,
-          contentType: 'application/json',
-          body: JSON.stringify({ error: { code: 'write_failed', message: 'No.' } }),
-        }),
-      )
-    },
-  })),
-  // Each analysis state is planted with a sibling: the other progress state for the pair that is
-  // one region worded two ways, the other failure callout for the pair that is one callout worded
-  // two ways. A section that renders the wrong one of a pair is still a section.
-  {
-    label: '/matches/$gameId (analysis queued)',
-    mark: 'analysis progress \\(queued\\)',
-    plant: analysisPlant('running'),
-  },
-  {
-    label: '/matches/$gameId (analysis running)',
-    mark: 'analysis progress \\(running\\)',
-    plant: analysisPlant('queued'),
-  },
-  {
-    label: '/matches/$gameId (analysis failed)',
-    mark: 'analysis failure callout',
-    plant: analysisPlant('unavailable'),
-  },
-  {
-    label: '/matches/$gameId (analysis unavailable)',
-    mark: 'analysis unavailable callout',
-    plant: analysisPlant('failed'),
-  },
-  ...(['/dashboard', '/matches', '/matches/$gameId'] as const).map((route): PlantedBranch => ({
-    label: `${route} (no linked account)`,
-    mark: 'no-linked-account notice',
-    plant: NO_LINKED_PLANT,
-  })),
-  {
-    label: '/search (no results)',
-    mark: 'no-results callout',
-    // Results come back, so the page lists players instead of saying none matched.
-    plant: searchPlant({ ...POPULATED_FIXTURES.search }),
-  },
-  {
-    label: '/search (no results, degraded)',
-    mark: 'degraded callout',
-    // Not degraded, nothing found: the sibling empty branch, not this one.
-    plant: searchPlant({ results: [], degraded: false, reason: null }),
-  },
-  {
-    label: '/dashboard (profile summary loading)',
-    mark: 'skeleton',
-    dropHold: true,
-    plant: async (page) => {
-      await page.route('**/api/profiles', (route) => fulfillJson(route, PROFILES_RESPONSE))
-    },
-  },
-  {
-    label: '/privacy (erase button minting)',
-    mark: 'busy erase button',
-    dropHold: true,
-    // The token is minted at once, so the confirmation dialog opens instead.
-    settle: async (page) => {
-      await page.getByRole('dialog').waitFor({ state: 'visible' })
-    },
-    plant: async (page) => {
-      await page.route('**/api/privacy/erase', (route) =>
-        fulfillJson(route, { confirmation_token: 'planted' }),
-      )
-    },
-  },
-]
-
-function escapeRegExp(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+async function expectRejected(
+  page: Page,
+  base: BranchScenario,
+  planted: BranchScenario,
+  url: string,
+) {
+  await expect(
+    enterScenario(page, planted, url, 'light', { judgeTimeoutMs: PLANT_TIMEOUT_MS }),
+  ).rejects.toThrow(rejectionFor(base))
 }
 
-test.describe('branch scenarios render the branch they name', () => {
-  test.describe.configure({ mode: 'serial' })
+function plantedCases(): Case[] {
+  const cases: Case[] = []
+  for (const base of BRANCH_SCENARIOS) {
+    const success = successFor(base.route)
+    cases.push({
+      title: `planted: ${base.label} pointed at the route's success page fails on its marks`,
+      run: (page, url) =>
+        expectRejected(
+          page,
+          base,
+          {
+            ...base,
+            path: success.path,
+            landedPath: success.landedPath,
+            stub: success.stub,
+            prepare: undefined,
+            hold: undefined,
+            surface: undefined,
+          },
+          url,
+        ),
+    })
 
+    const siblings = BRANCH_SCENARIOS.filter(
+      (other) =>
+        base.family !== undefined && other.route === base.route && other.family === base.family,
+    )
+    if (siblings.length > 1) {
+      const sibling = siblings[(siblings.indexOf(base) + 1) % siblings.length]
+      cases.push({
+        title: `planted: ${base.label} run as its sibling '${sibling.branch}' fails on its marks`,
+        run: (page, url) =>
+          expectRejected(
+            page,
+            base,
+            {
+              ...base,
+              path: sibling.path,
+              landedPath: sibling.landedPath,
+              stub: sibling.stub,
+              prepare: sibling.prepare,
+              hold: sibling.hold,
+              surface: sibling.surface,
+            },
+            url,
+          ),
+      })
+    }
+
+    const held = base.hold
+    if (held) {
+      cases.push({
+        title: `planted: ${base.label} with its request answered at once fails on its marks`,
+        run: (page, url) =>
+          expectRejected(
+            page,
+            base,
+            {
+              ...base,
+              hold: undefined,
+              stub: async (target) => {
+                await base.stub(target)
+                await target.route(held.urlGlob, (route) =>
+                  held.method !== undefined && route.request().method() !== held.method
+                    ? route.fallback()
+                    : fulfillJson(route, held.resolvesWith ?? held.body),
+                )
+              },
+              prepare: async (target) => {
+                await base.prepare?.(target)
+                await target.waitForTimeout(600)
+              },
+            },
+            url,
+          ),
+      })
+    }
+  }
+  return cases
+}
+
+const BRANCH_SHARDS = 4
+
+test.describe('branch scenarios render the branch they name', () => {
   if (!hasBuild && process.env.CI) {
     test('apps/web/dist must be built before this suite runs in CI', () => {
       throw new Error(
@@ -900,69 +904,48 @@ test.describe('branch scenarios render the branch they name', () => {
       'apps/web/dist has not been built — run `pnpm --filter web build` first.',
     )
 
-    const branchHarness = createAppServerHarness('4182')
-
-    test.beforeAll(async () => {
-      await branchHarness.start()
-    })
-
-    test.afterAll(() => {
-      branchHarness.stop()
-    })
-
     // `enterScenario` itself judges a branch scenario once its `prepare` has run.
-    for (const scenario of BRANCH_SCENARIOS) {
-      test(`${scenario.label} — every declared mark is on screen`, async ({ page }) => {
-        const external = await enterScenario(page, scenario, branchHarness.baseUrl, 'light')
-        external.assertNone(scenario.label)
-      })
-
-      // The touch suite measures at 375px, where a layout can swap; the marks must hold there too.
-      test(`${scenario.label} — the same marks are on screen at 375px`, async ({ page }) => {
-        await page.setViewportSize({ width: 375, height: 800 })
-        await enterScenario(page, scenario, branchHarness.baseUrl, 'light')
-      })
-    }
-
-    test('every branch scenario has a planted absence, and every plant names a mark it declares', () => {
-      const planted = new Set(PLANTED_BRANCHES.map((entry) => entry.label))
-      expect(
-        BRANCH_SCENARIOS.map((scenario) => scenario.label).filter((label) => !planted.has(label)),
-        'branch scenario(s) with no planted absence',
-      ).toEqual([])
-      for (const entry of PLANTED_BRANCHES) {
-        const base = BRANCH_SCENARIOS.find((scenario) => scenario.label === entry.label)
-        expect(base, `${entry.label}: no such branch scenario`).toBeDefined()
-        expect(
-          base?.shows.some((mark) => new RegExp(`^${entry.mark}$`).test(mark.name)),
-          `${entry.label}: it declares no mark named '${entry.mark}'`,
-        ).toBe(true)
-      }
-    })
-
-    for (const entry of PLANTED_BRANCHES) {
-      test(`planted: ${entry.label} pointed away from its branch fails on its ${entry.mark.replace(/\\/g, '')}`, async ({
-        page,
-      }) => {
-        const base = BRANCH_SCENARIOS.find((scenario) => scenario.label === entry.label)
-        if (!base) throw new Error(`${entry.label} is gone`)
-        const planted: BranchScenario = {
-          ...base,
-          hold: entry.dropHold ? undefined : base.hold,
-          prepare: async (target) => {
-            await base.prepare?.(target)
-            await entry.settle?.(target)
+    const cases: Case[] = [
+      ...BRANCH_SCENARIOS.flatMap((scenario): Case[] => [
+        {
+          title: `${scenario.label} — every declared mark is on screen`,
+          run: async (page, url) => {
+            const external = await enterScenario(page, scenario, url, 'light')
+            external.assertNone(scenario.label)
           },
-          stub: async (target) => {
-            await base.stub(target)
-            await entry.plant(target)
+        },
+        {
+          title: `${scenario.label} — the same marks are on screen at 375px`,
+          run: async (page, url) => {
+            await page.setViewportSize({ width: 375, height: 800 })
+            await enterScenario(page, scenario, url, 'light')
           },
-        }
-        await expect(enterScenario(page, planted, branchHarness.baseUrl, 'light')).rejects.toThrow(
-          new RegExp(
-            `${escapeRegExp(base.label)}: ${entry.mark} \\(.*\\) rendered fewer than \\d+ item\\(s\\) — the route is not showing its '${escapeRegExp(base.branch)}' branch`,
-          ),
-        )
+        },
+      ]),
+      ...plantedCases(),
+    ]
+
+    // Several hundred browser cases: dealt over serial groups, each with its own server, so the
+    // runner's workers share them (a serial group runs in one worker, in order).
+    for (let shard = 0; shard < BRANCH_SHARDS; shard += 1) {
+      test.describe(`shard ${shard + 1} of ${BRANCH_SHARDS}`, () => {
+        test.describe.configure({ mode: 'serial' })
+        const shardHarness = createAppServerHarness(String(4185 + shard))
+
+        test.beforeAll(async () => {
+          await shardHarness.start()
+        })
+
+        test.afterAll(() => {
+          shardHarness.stop()
+        })
+
+        cases.forEach((entry, index) => {
+          if (index % BRANCH_SHARDS !== shard) return
+          test(entry.title, async ({ page }) => {
+            await entry.run(page, shardHarness.baseUrl)
+          })
+        })
       })
     }
   }

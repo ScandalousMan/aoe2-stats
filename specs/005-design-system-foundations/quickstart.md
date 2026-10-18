@@ -1278,39 +1278,52 @@ route-reduced-motion 94 and the 190 under `tests/visual/fixtures/`, the same cou
 
 **Closed, 2026-10-18 (T744).** T744's own row of `packages/design-system/specs/README.md`'s "Verification-coverage gap
 register" is deleted, which empties the register, and the sentences above that item 13 stays partly met until it is
-deleted, and that the two loading states run in the reduced-motion suite only, are superseded. `BRANCH_SCENARIOS` in
-`tests/visual/fixtures/suite-scenarios.ts` holds seventeen scenarios, so all four suites run each of them in both
-themes: `/privacy (export failed)` (the export request answers 500, the panel renders its `failed` callout and "Try
-again"); `/dashboard` and `/privacy` `(archival write in flight)` (a held `POST /api/privacy/archival-objection`, reached
-by Tab to "Object to archival" and Enter, the button `aria-busy` with "Saving your choice…") and `(archival just
-resumed)` (an objected account that presses "Resume archival" against a `/api/me` that reads `archival_objected: false`
-once the write has landed); `/matches/$gameId` `(analysis queued)`, `(analysis running)`, `(analysis failed)` and
-`(analysis unavailable)`; `(no linked account)` on `/dashboard`, `/matches` and `/matches/$gameId`; `/search (no
-results)` and `/search (no results, degraded)`, each reached by typing a query and Enter against a stubbed answer with
-no results; and the two held loading states. Each scenario declares the marks its branch puts on screen, and
-`enterScenario` asserts them in a browser after the scenario's `prepare` (`assertBranchScenario`, which unlike the
-populated judge expects error callouts and `aria-busy` regions). `tests/visual/fixtures/suite-scenarios.test.ts` plants
-the absence for every scenario: the same scenario with one stub pointed at the success response, or at the sibling
-branch (queued for running and back, failed for unavailable and back, a non-degraded empty answer for the degraded one),
-or with its held request answered at once, fails inside `enterScenario` naming the missing mark, for example `/privacy
-(archival write in flight): busy archival button (main button[aria-busy="true"]:has-text("Saving your choice"))
-rendered fewer than 1 item(s) — the route is not showing its 'archival write in flight' branch`. A held in-flight
-state is also planted after waiting out its transient window, because the first version of that plant passed for the
-wrong reason: a request answered at once leaves the button busy for a few milliseconds, which the judge sampled. The
-per-route inventory (`ROUTE_REQUIRED_BRANCHES`) fails by name when a scenario is removed, and every scenario is in
-`SUITE_SCENARIOS`. The decision on the two held loading states is to run them through all four suites rather than record
-a reason per suite: they are branch scenarios, `enterScenario` installs their held request, and `route-reduced-motion.spec.ts`
-keeps its positive control for the loops on the same scenarios. The keyboard walk then covers a page with a `Skeleton` on
-it and a busy erase button that keeps focus (T745), the focus-visibility suite rings that busy button, and the touch suite
-measures its footprint at 375px; none of the four suites failed on any new scenario, so no component was changed. What
-the inventory does not reach is stated rather than hidden: `ArchivalControl`'s `writeFailed` and `unavailable` callouts,
-the analysis section's `refused` retry and its refused takeover, and the `error` states of the other routes. **Item 13
-is Met** for every route's success branch, at rest and populated, with every `Dialog`, `Menu` and the country `Tooltip`
-open, and for the branches T744 named, in both themes, on the head carrying T744 — local run only, macOS Chromium:
-route-keyboard 124, route-focus-visibility 114, route-touch-footprint 114, route-reduced-motion 126 and the 277 under
-`tests/visual/fixtures/`, 755 tests, none skipped. No scenario was added to `tests/visual/app-routes.spec.ts`, so no
-full-page baseline changed or was captured. The CI run that backs the verdict is the `visual` job of the pull request
-carrying T744, not yet recorded here.
+deleted, and that the two loading states run in the reduced-motion suite only, are superseded. T744's text names
+instances; its title says "each route's", and the work follows the title. `ROUTE_REQUIRED_BRANCHES` in
+`tests/visual/fixtures/suite-scenarios.ts` enumerates, from the containers in `apps/web/src/features/` and the screens
+and composites they render, every error, transient (in flight or held) and empty branch of the ten routes that have one
+(`/privacy-notice` is static text) that a route's own stubs can reach, and `BRANCH_SCENARIOS` holds one scenario for each, 117 in all, so the four suites run each
+of them in both themes. They include the instances named: `DataExportPanel`'s `failed` state, `ArchivalControl` in
+flight and after a resume, the match page's analysis section in `queued`, `running`, `failed` and `unavailable`, the
+no-linked-account state on three routes, `/search`'s two empty answers and the two held loading states; and the rest:
+the sign-in outcomes and the Steam redirect in flight, the other search answers, the favourites list's loading, failed
+and removal states, `ProfileSummary`'s `error`, `stale`, `empty`, unranked and `not-found` statuses and the player
+routes' loading, the match list's loading and failure, the capture badge's statuses, the profile switcher's, sign-out's
+and unlink's writes, the favourite toggle's, the match page's loading, failure and not-found, its analysis document's
+loading and failure and the refused takeover, the replay-download refusals and the download in flight, the upload
+control's states, the export's `requesting` and `preparing`, the erasure dialog's states and the erased screen, the
+objection form's states and the unresolved map, civilisation, player and outcome fields. Each scenario declares the
+marks its branch puts on screen and `enterScenario` asserts them in a browser after the scenario's `prepare`
+(`assertBranchScenario`, which, unlike the populated judge, expects error callouts and `aria-busy` regions).
+`tests/visual/fixtures/suite-scenarios.test.ts` fails by name when a scenario or its inventory entry is added or removed
+alone, and plants three absences, each failing inside `enterScenario` naming the missing mark: for every scenario the
+route's success page in its place; for every scenario in a family of branches that could be mistaken for one another
+(the sign-in outcomes, the analysis states, the search answers, the capture statuses, the upload states, the erasure
+states), the next branch of that family run in its place; and for every held request, the same scenario with the
+request answered at once, after the transient has been waited out. Four things the planted cases and the first runs
+showed: a `useQuery` shows its failure only after three retries (seven seconds), which the scenarios run the page's clock
+past instead of waiting for; a held *document* navigation (a download, the Steam redirect) freezes every evaluation in
+the page, so those navigations are cancelled instead and the transient timer is paused; the first runs of three
+planted cases passed for the wrong reason (a request answered at once is busy for a few milliseconds; the export's
+`requesting` and `preparing` render the same busy button; a loading profile and a failed one both show the header's
+skeleton), and each mark set was strengthened until the case failed on the mark it names; and `/matches` has no
+make-primary scenario because its Manage menu is rendered for the `board` variant only. The branches no route stub
+reaches, or that have nothing for a suite to judge, are listed with their reasons in the comment above
+`ROUTE_REQUIRED_BRANCHES`, which this paragraph does not restate. The decision on the two held loading states is to run
+them through all four suites rather than record a reason per suite, and nothing failed on them. **Item 13 is partly
+met.** It is Met for every route's success branch, at rest and populated, with every `Dialog`, `Menu` and the country
+`Tooltip` open, and for every branch enumerated above, in both themes, except one result: the keyboard suite finds that
+`Dialog`'s Tab trap includes a disabled button
+(`packages/design-system/src/primitives/Dialog/index.tsx`, the `focusable` selector), so while a dialog's request is in
+flight and its secondary action is disabled, Tab leaves the dialog for the page behind the backdrop. It shows on
+`/dashboard (unlink in flight)` and `/privacy (erasure in flight)`, which the keyboard suite runs as expected failures
+(`SuiteScenario.knownDefects`, `test.fail`, so they fail on the day the page stops failing); the other three suites pass
+both. It is a component defect, not a harness gap, so it is not a row of the register; T750 owns the fix, and item 13
+is Met only when one does and the marker is removed. Local run only, macOS Chromium: route-keyboard 324 tests,
+route-focus-visibility 314, route-touch-footprint 314, route-reduced-motion 326 and the 809 under
+`tests/visual/fixtures/`. No scenario was added to `tests/visual/app-routes.spec.ts`, so no full-page baseline changed or
+was captured. The CI run that backs the verdict is the `visual` job of the pull request carrying T744, not yet recorded
+here.
 
 ### Item 15's general-reviewer half — outstanding, no pull request covers this head
 

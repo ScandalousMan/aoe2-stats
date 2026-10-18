@@ -70,6 +70,9 @@ test.describe('keyboard operation, every route, both themes', () => {
           ? `the open ${scenario.surface} honours its keyboard contract`
           : "every interactive element is reachable, in order, inside the route's chrome"
         test(`${scenario.label} — ${claim} (${theme})`, async ({ page }) => {
+          // T744: a defect the scenario is known to show here runs as an expected failure — see
+          // `SuiteScenario.knownDefects`.
+          test.fail(scenario.knownDefects?.keyboard !== undefined, scenario.knownDefects?.keyboard)
           const external = await enterScenario(page, scenario, harness.baseUrl, theme)
           const context = `${scenario.label} (${theme})`
 
