@@ -330,8 +330,11 @@ function, plus the time-limit behaviour of an ordinary API request.
 
 - **FR-016**: Every change MUST stay within the deployment files — `vercel.json`, `.vercelignore`,
   the root `pyproject.toml` and its dependency configuration, `uv.lock`, any script the skip rule
-  needs and its test, and the entrypoints under `api/` for FR-012 — and MUST NOT modify
-  application code under `apps/` or `packages/`.
+  needs and its test, and the entrypoints under `api/` for FR-012 — and MUST NOT change any
+  executable line of application code under `apps/` or `packages/`. Tests, checks and comments that
+  name a moved or deleted entrypoint MUST follow it, so that no test goes red and no comment names
+  a file that no longer exists. *(Amended 2026-10-18 by `/speckit-plan`: as first written, this
+  forbade those edits too, which the deleted cron entrypoint makes impossible.)*
 - **FR-017**: `docs/adr/0002-hosting.md` MUST record, with dates: storage per function and per
   production deployment before and after, the number of deployments skipped once the rule is live,
   and, as the next step if storage climbs again, replacing the current S3 client with a lighter one
