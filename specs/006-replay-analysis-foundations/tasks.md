@@ -2761,6 +2761,38 @@ carries what T673's dry run read.
       baseline moving. The exhausted copy says "several times", which a configured maximum of 1
       makes false: say it was interrupted and is not retried, with no count, keeping
       `packages/design-system/specs/analysis-timeline.md`'s line count
+- [ ] T746 Model civilisations for build 185872 in a second knowledge snapshot (filed 2026-10-18
+      from T665). `packages/knowledge/snapshots/aoe2techtree-185872/` models none, on purpose (its
+      `effects.toml` header): `civilisations_modelled` is empty and there is no `[[civilisation_id]]`
+      table, so every civilisation-qualified query on a current-build recording is a gap. Measured
+      in production on 2026-10-18: match 512927942's published analysis carries 1980 gaps, every
+      one `civilisation-not-modelled`, over raw civilisation ids 2, 4, 5, 10, 49 and 51. Ordered
+      army cost, resources spent, ordered production time and modelled age-up arrival are blocked
+      for every participant. **To decide first, because the contract forbids both obvious routes**:
+      FR-025 forbids editing the promoted snapshot, and `_promoted_snapshot_for` in
+      `packages/knowledge/src/aoe2stats_knowledge/snapshot.py` raises `SnapshotError` when two
+      promoted snapshots describe one build, so neither an in-place edit nor a second promoted
+      snapshot can ship today. Recommended: the new snapshot names the digest it supersedes,
+      resolution by build skips a superseded snapshot, and a superseded snapshot stays loadable by
+      identity, so `reproduce` on an analysis published under it still returns that analysis's
+      bytes (SC-005). Amend `specs/006-replay-analysis-foundations/contracts/knowledge-base.md`
+      ("Promotion", "Resolution by build") by hand in the same change. **Scope**: the two
+      civilisations the committed build 185872 recording seats (raw ids 23 and 37,
+      `tests/fixtures/replays/AgeIIDE_Replay_511523321.canonical.json`), plus every civilisation
+      `aoe2techtree-180059` models. Each is transcribed again from the
+      `packages/knowledge/packs/aoe2techtree-3bb43b1/` pack's English strings and checked against
+      build 185872's published notes, never copied from
+      `packages/knowledge/snapshots/aoe2techtree-180059/effects.toml`. The raw-id table is taken
+      again for this build from the source `docs/data-sources.md` §6 assesses, not carried from
+      180059, because this build adds civilisations. An id that source does not name, or a bonus the
+      notes change in a way the pack strings do not show, stops the task with a report; it is never
+      guessed. Raw ids 5, 10, 49 and 51 are out of scope, and the aggregate gap report stays their
+      backlog ([research.md](./research.md) **D5**). **Tests, each red first**:
+      `test_each_committed_recording_reports_zero_blocking_gaps` in
+      `packages/knowledge/tests/test_coverage.py`, parametrized over the third committed recording,
+      `xfail(strict=True)` until the snapshot is promoted; build 185872 resolves to the new
+      snapshot; an analysis identity naming the superseded snapshot still reproduces byte for byte;
+      and `packages/knowledge/tests/test_knowledge_snapshot_185872.py`'s names still resolve
 
 ---
 
