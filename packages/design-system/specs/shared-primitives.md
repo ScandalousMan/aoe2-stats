@@ -114,10 +114,10 @@ inside the edge. `product-designer`'s decision draws the signal inside the fill 
 decoration-colour utility; it follows `currentColor`. The label underlines on hover
 (`decoration-2`, `underline-offset-2`) and drops to `underline-offset-4` on press — thickness for
 hover, position for press, the same two axes `Link`'s own non-colour signal already uses
-(`structural-tier.md` §9). `disabled:no-underline` keeps a disabled or loading button from ever
-showing the rule. Every `accent`-filled control added later follows this, and its press state is
-captured as its own component-scoped story so the signal is larger than the visual suite's
-comparator tolerance (README's gap register, row 6/H3 closure).
+(`structural-tier.md` §9). A disabled button never shows the rule (`disabled:no-underline`), nor
+does a loading one (its class branch carries no hover class). Every `accent`-filled control added
+later follows this, and its press state is captured as its own component-scoped story so the signal
+is larger than the visual suite's comparator tolerance (README's gap register, row 6/H3 closure).
 
 **`secondary`, `ghost` and `destructive` hover is not colour alone either — decided 2026-09-28
 (T675).** Until this decision those three hovered by fill alone (`surface` or transparent →
@@ -203,18 +203,18 @@ extended to 44px by padding rather than by a transparent overlay.
   `disabled` attribute set, no underline at hover (`disabled:no-underline`). A disabled button must
   be accompanied by visible text saying why, in `text-secondary`; a button that is grey with no
   explanation is a dead end.
-- **loading** — `aria-busy="true"`, `disabled`, label replaced by an action-specific present
-  participle supplied by the caller ("Taking you to Steam…"), spinner in the leading slot. Width
-  does not change: reserve the icon slot at rest. A caller that gives no loading label gets the
-  original label plus the spinner, never a bare spinner.
+- **loading** — `aria-busy="true"` and `aria-disabled="true"`, never the `disabled` attribute, even
+  if the caller also passes `disabled`, on `<a>` too. It keeps focus; `Button` itself swallows every
+  activation (click, Enter, Space, form submit) whatever the caller passes. Paints `disabled`'s
+  fill, label and boundary, no hover or press signal; focused, the outward `focus-ring`, `primary`
+  included. Label: the caller's present participle ("Taking you to Steam…"), or the original.
 - **error** — the button has no error state of its own. The failure renders in a `Callout` beside or
   above it and the button returns to `default` and to being pressable. A button that stays disabled
   after a failure is the most common way a retry becomes unreachable.
 - **empty** — not applicable: a button with no label is invalid. An icon-only button carries
   `aria-label` and is forbidden on the primary path of every screen in this feature.
 - **selection** — not applicable. A `Button` is an action, not a set member; a control that marks
-  one of several choices as current is `Menu`'s `selection` variant (below), never a row of buttons
-  standing in for it.
+  one of several choices as current is `Menu`'s `selection` variant (below), never a row of buttons.
 - **expansion** — not applicable to `Button` itself. A button that opens a popover (`Menu`'s
   trigger) or a modal (`Dialog`'s opener) carries `aria-expanded`/`aria-haspopup`, but that attribute
   is part of the _trigger contract_ those components define, not a state `Button` owns on its own
@@ -611,7 +611,7 @@ slot, exactly two actions — rather than generalised further than either consum
 - **error** — the caller renders a `Callout` in the body slot; the dialog itself has no error state.
 - **empty / hover / active / disabled** — none; a dialog with no actions is a malformed
   call site, and hover, active and disabled all belong to the `Button`s inside it — each one's own
-  `disabled` prop, as `loading` above already uses to disable one action without the other — not to
+  `disabled` prop, as `loading` above already applies to one action without the other — not to
   the dialog itself, which has no resting/pressed/disabled distinction independent of its actions.
   The `Hover` and `Active` stories force those states on `primaryAction`'s own button (`destructive`
   unless the caller sets a variant), so what they depict is `Button` `destructive`'s hover and press

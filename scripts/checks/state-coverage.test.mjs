@@ -5183,7 +5183,7 @@ const refusalOf = (computed, componentKey, exportName) =>
 
 // ---- The verdict, on its own: every plant's recorded answer and every reason --------------------
 
-const recordOneKeys = new Set([`${STAMP_ROOT}primitives/Button/index.tsx:213`])
+const recordOneKeys = new Set([`${STAMP_ROOT}primitives/Button/index.tsx:252`])
 const forceWidths = (force) => atEveryWidth({ mounts: [], force })
 
 test('resolveRuntimeForce: a force the browser found no element for is refused with that reason, naming every width', () => {
@@ -5211,7 +5211,7 @@ test('resolveRuntimeForce: two matches are refused as strict-mode ambiguity, wit
 test('resolveRuntimeForce: a force the light and dark themes locate differently is refused, naming the themes, even when the answer the record carries would credit', () => {
   const credited = {
     count: 1,
-    stamp: `${STAMP_ROOT}primitives/Button/index.tsx:213`,
+    stamp: `${STAMP_ROOT}primitives/Button/index.tsx:252`,
     placedBy: null,
   }
   const verdict = resolveRuntimeForce(
@@ -5238,7 +5238,7 @@ test('T713 (d) resolveRuntimeForce: the refusal of a force the themes answer dif
     {
       widths: forceWidths({
         count: 1,
-        stamp: `${STAMP_ROOT}primitives/Button/index.tsx:213`,
+        stamp: `${STAMP_ROOT}primitives/Button/index.tsx:252`,
         placedBy: null,
         differsByTheme: true,
       }),
@@ -5273,15 +5273,15 @@ test('resolveRuntimeForce: a stamp that differs across widths is refused, naming
   const verdict = resolveRuntimeForce(
     {
       widths: {
-        375: stampAt(`${STAMP_ROOT}primitives/Button/index.tsx:213`),
-        768: stampAt(`${STAMP_ROOT}primitives/Button/index.tsx:195`),
-        1280: stampAt(`${STAMP_ROOT}primitives/Button/index.tsx:213`),
+        375: stampAt(`${STAMP_ROOT}primitives/Button/index.tsx:252`),
+        768: stampAt(`${STAMP_ROOT}primitives/Button/index.tsx:234`),
+        1280: stampAt(`${STAMP_ROOT}primitives/Button/index.tsx:252`),
       },
     },
     { recordOneKeys },
   )
   assert.match(verdict.refusal, /^the located element's stamp differs across widths/)
-  assert.match(verdict.refusal, /index\.tsx:195 at 768px/)
+  assert.match(verdict.refusal, /index\.tsx:234 at 768px/)
 })
 
 test('resolveRuntimeForce: a placing instance that differs across widths is refused', () => {
@@ -5290,7 +5290,7 @@ test('resolveRuntimeForce: a placing instance that differs across widths is refu
     mounts: [],
     force: {
       count: 1,
-      stamp: `${STAMP_ROOT}primitives/Button/index.tsx:213`,
+      stamp: `${STAMP_ROOT}primitives/Button/index.tsx:252`,
       placedBy: placedInstance('Button', variant, 'md'),
     },
   })
@@ -5335,7 +5335,7 @@ test('resolveRuntimeForce: an entry recording no force at a width is refused and
 })
 
 test('resolveRuntimeForce: the axis the runtime renders — a spread that wins over a literal credits the variant the browser reports, record 1 and record 3 both', () => {
-  const stamp = `${STAMP_ROOT}primitives/Button/index.tsx:213`
+  const stamp = `${STAMP_ROOT}primitives/Button/index.tsx:252`
   const verdict = resolveRuntimeForce(
     {
       widths: forceWidths({
@@ -5488,7 +5488,7 @@ test('T693 plants: a force with no match, two matches, a raw element or an unsta
     ButtonHrefViaSpreadConstant: /^no element matched the force at 375px/,
     NthPastTheLast: /^no element matched the force at 375px/,
     ArgsDisabledSpread:
-      /^the located element's stamp .*Button\/index\.tsx:213 is in its placing Button's disabledAt/,
+      /^the located element's stamp .*Button\/index\.tsx:252 is in its placing Button's disabledAt/,
     DisabledControlInField: /is in its placing Field's disabledAt/,
     StampOutsideThePrimitive:
       /^the located element's stamp .*Callout\/index\.tsx:59 is in no record-1 element and no tracked primitive placed it$/,
@@ -5522,11 +5522,11 @@ test('T693 plants (record 3, primitive axis cells): the axis the runtime renders
   ])
   assert.deepEqual(credited('BareButton'), [
     'Button|secondary|md|hover',
-    `record1|${BUTTON_FILE}:213|hover`,
+    `record1|${BUTTON_FILE}:252|hover`,
   ])
   assert.deepEqual(credited('HrefAndDisabled'), [
     'Button|secondary|md|hover',
-    `record1|${BUTTON_FILE}:195|hover`,
+    `record1|${BUTTON_FILE}:234|hover`,
   ])
   assert.deepEqual(credited('ClonedControl'), ['Field|md|focusVisible'])
   assert.deepEqual(credited('MenuSpreadWithVariant'), [
@@ -5552,7 +5552,7 @@ test('T693 plants (Disabled column): a story whose args say disabled but whose r
   const { computed } = plantedRun()
   assert.deepEqual(creditsOf(computed, 'ZzPlants:ArgsDisabledIgnored'), [
     'Button|destructive|md|hover',
-    `record1|${BUTTON_FILE}:213|hover`,
+    `record1|${BUTTON_FILE}:252|hover`,
   ])
   // A hover forced on a disabled Button paints disabled, not hover: the Disabled column is credited
   // from the mount, the forced state is refused (T694 review, B3).
@@ -5561,7 +5561,7 @@ test('T693 plants (Disabled column): a story whose args say disabled but whose r
   ])
   assert.match(
     refusalOf(computed, 'primitives/Button', 'ArgsDisabledSpread').refusal,
-    /^the located element's stamp .*Button\/index\.tsx:213 is in its placing Button's disabledAt/,
+    /^the located element's stamp .*Button\/index\.tsx:252 is in its placing Button's disabledAt/,
   )
   assert.deepEqual(creditsOf(computed, 'ZzPlants:DisabledControlInField'), ['Field|md|disabled'])
   assert.match(
@@ -5603,7 +5603,7 @@ test('T693 plants, contrast (record 3, primitive axis cells): a name selecting o
   const { computed } = plantedRun()
   assert.deepEqual(creditsOf(computed, 'ZzPlants:NameSelectsOneOfTwo'), [
     'Button|ghost|lg|hover',
-    `record1|${BUTTON_FILE}:213|hover`,
+    `record1|${BUTTON_FILE}:252|hover`,
   ])
 })
 
@@ -5645,7 +5645,7 @@ const LIB = 'src/lib/ZzLibPage.stories.tsx'
 const COMPONENT_TS = 'src/primitives/Button/ZzExtraButton.stories.ts'
 
 test('T683 outcome (1): a forced story under foundations, a tier root, src/lib or a *.stories.ts in a component directory is credited or reported with a reason, never dropped', () => {
-  const buttonStamp = `${BUTTON_FILE}:213`
+  const buttonStamp = `${BUTTON_FILE}:252`
   const forcesButton = (name) => `
 import { Button } from './index'
 const meta = { component: Button }
@@ -5701,7 +5701,7 @@ export const ${name} = { parameters: { visualForceState: { state: 'hover', role:
   ])
   assert.deepEqual(creditsOf(computed, 'ZzExtraButton:ZzExtraButtonHover'), [
     'Button|ghost|lg|hover',
-    `record1|${BUTTON_FILE}:213|hover`,
+    `record1|${BUTTON_FILE}:252|hover`,
   ])
   assert.equal(refusalOf(computed, 'src/primitives', 'ZzTierRootHover'), undefined)
   assert.equal(refusalOf(computed, 'primitives/Button', 'ZzExtraButtonHover'), undefined)
@@ -6659,6 +6659,90 @@ for (const state of ['hover', 'focus-visible', 'active']) {
     )
   })
 }
+
+// T745: a `Button` in `loading` is `aria-disabled` and keeps its tab stop, so `focus()` reaches it and a
+// forced focus-visible paints the ring on it. The refusal's premise ("focus() does nothing on a disabled
+// element") holds for a native `:disabled` target only. The runtime writes `ariaDisabledOnly: true` on the
+// force record when the located element itself is `aria-disabled` and not `:disabled`; `disabledAt` is
+// stamps and cannot tell the two apart (the loading and the natively disabled Button share one stamp).
+const loadingForce = (extra = {}) => ({
+  count: 1,
+  stamp: MINI_BUTTON_STAMP,
+  placedBy: disabledMount,
+  ...extra,
+})
+const forcedOn = (state, force) =>
+  miniRun(
+    `export const ZzLoadingForce = { parameters: { visualForceState: { state: '${state}', role: 'button' } } }\n`,
+    { 'zz-loading-force': miniEntry('ZzLoadingForce', miniRecord([disabledMount], force)) },
+  )
+
+test('T745: a forced focus-visible on an aria-disabled (not natively disabled) Button is credited at record 1 and record 3', () => {
+  const computed = forcedOn('focus-visible', loadingForce({ ariaDisabledOnly: true }))
+  assert.equal(refusalOf(computed, 'primitives/Button', 'ZzLoadingForce'), undefined)
+  assert.deepEqual(creditsOf(computed, 'ZzLoadingForce'), [
+    'Button|secondary|md|disabled',
+    'Button|secondary|md|focusVisible',
+    `record1|${MINI_BUTTON_STAMP}|focusVisible`,
+  ])
+})
+
+test('T745 contrast: the same force on a natively disabled Button (no ariaDisabledOnly) is still refused, its Disabled credit kept', () => {
+  const computed = forcedOn('focus-visible', loadingForce())
+  assert.match(
+    refusalOf(computed, 'primitives/Button', 'ZzLoadingForce').refusal,
+    /is in its placing Button's disabledAt/,
+  )
+  assert.deepEqual(creditsOf(computed, 'ZzLoadingForce'), ['Button|secondary|md|disabled'])
+})
+
+for (const state of ['hover', 'active']) {
+  test(`T745 contrast: a forced ${state} on an aria-disabled Button stays refused (it paints no ${state} signal), only focus-visible is exempt`, () => {
+    const computed = forcedOn(state, loadingForce({ ariaDisabledOnly: true }))
+    assert.match(
+      refusalOf(computed, 'primitives/Button', 'ZzLoadingForce').refusal,
+      /is in its placing Button's disabledAt/,
+    )
+    assert.deepEqual(creditsOf(computed, 'ZzLoadingForce'), ['Button|secondary|md|disabled'])
+  })
+}
+
+test('T745: the exemption needs the element to be aria-disabled-only at every captured width, and the flag is true or absent', () => {
+  const at = (extra) => ({ ...FRAME, mounts: [], force: loadingForce(extra) })
+  const mixed = resolveRuntimeForce(
+    {
+      widths: {
+        375: at({ ariaDisabledOnly: true }),
+        768: at({}),
+        1280: at({ ariaDisabledOnly: true }),
+      },
+    },
+    { recordOneKeys: new Set([MINI_BUTTON_STAMP]), state: 'focus-visible' },
+  )
+  assert.ok(mixed.refusal, 'refused when one width reports it natively disabled')
+  const all = resolveRuntimeForce(
+    { widths: forceWidths(loadingForce({ ariaDisabledOnly: true })) },
+    { recordOneKeys: new Set([MINI_BUTTON_STAMP]), state: 'focus-visible' },
+  )
+  assert.equal(all.refusal, undefined)
+  assert.equal(all.stamp, MINI_BUTTON_STAMP)
+  for (const bad of [false, 'true', 1]) {
+    assert.match(
+      entryShapeProblem(
+        { widths: forceWidths(loadingForce({ ariaDisabledOnly: bad })) },
+        { forced: true },
+      ),
+      /ariaDisabledOnly that is not `true`/,
+    )
+  }
+  assert.equal(
+    entryShapeProblem(
+      { widths: forceWidths(loadingForce({ ariaDisabledOnly: true })) },
+      { forced: true },
+    ),
+    null,
+  )
+})
 
 test('B3 contrast: a forced hover on an enabled Button next to a disabled sibling credits the enabled one', () => {
   const enabled = placedInstance('Button', 'ghost', 'md', [])
@@ -8234,7 +8318,7 @@ for (const [name, stamp] of BAD_STAMPS) {
 
 test('T698 contrast: null stamps with null placing instances, and well-formed stamps, stay legal', () => {
   assert.equal(entryShapeProblem(forceAtWidths({}), { forced: true }), null)
-  for (const stamp of [MINI_BUTTON_STAMP, `${BUTTON_FILE}:213`, 'a/b-c.tsx:7']) {
+  for (const stamp of [MINI_BUTTON_STAMP, `${BUTTON_FILE}:252`, 'a/b-c.tsx:7']) {
     assert.equal(
       entryShapeProblem(forceAtWidths({ 768: pairForce(stamp, PAIR_GHOST) }), { forced: true }),
       null,
@@ -8700,7 +8784,7 @@ for (const [name, stamp] of MALFORMED_STAMPS) {
 test('T702 (L2) contrast: a repository-relative path, a dotted directory and a deep line are stamps', () => {
   for (const stamp of [
     MINI_BUTTON_STAMP,
-    `${BUTTON_FILE}:213`,
+    `${BUTTON_FILE}:252`,
     'packages/design-system/.storybook/x.tsx:10',
     'a/b-c.tsx:7',
   ]) {

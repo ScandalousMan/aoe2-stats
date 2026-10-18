@@ -15,7 +15,7 @@ import {
   probeSettledStory,
 } from './state-coverage-runtime'
 import { stubStoryPage } from './fixtures/story-page-stub'
-import type { Instance, TrackedRegistry, WidthRecord } from './state-coverage-runtime'
+import type { ForceRecord, Instance, TrackedRegistry, WidthRecord } from './state-coverage-runtime'
 
 function Button() {}
 function Field() {}
@@ -768,4 +768,54 @@ test('T712 (6) the per-theme record carries the forced element’s own disabled 
   }
   const none = probeWith({ mounts: () => [], files: () => [], element: noElement }, null)
   expect(await none.probed()).not.toHaveProperty('force')
+})
+
+// T745: a `Button` in `loading` is `aria-disabled` and not `:disabled`; it keeps its tab stop, so the
+// force record says so (`ariaDisabledOnly`) and the manifest's reader lets a focus-visible force
+// through on it. Native `:disabled`, alone or beside `aria-disabled`, never carries the flag.
+test('T745 the force record carries ariaDisabledOnly only for aria-disabled without a native :disabled', async () => {
+  const cases: [{ native: boolean; aria: boolean }, Record<string, unknown>][] = [
+    [
+      { native: false, aria: true },
+      { disabled: true, ariaDisabledOnly: true },
+    ],
+    [{ native: true, aria: true }, { disabled: true }],
+    [{ native: true, aria: false }, { disabled: true }],
+    [{ native: false, aria: false }, { disabled: false }],
+  ]
+  for (const [answer, expected] of cases) {
+    const { probed } = probeWith({
+      mounts: () => [],
+      files: () => [],
+      element: () => ({ stamp: ROW_BUTTON, placedBy: null }),
+      disabled: () => answer,
+    })
+    expect((await probed()).force).toEqual({
+      count: 1,
+      stamp: ROW_BUTTON,
+      placedBy: null,
+      ...expected,
+    })
+  }
+})
+
+test('T745 combineThemeRecords: aria-disabled-only in one theme and native :disabled in the other is a force the themes answer differently', () => {
+  const raw = { count: 1, stamp: ROW_BUTTON, placedBy: null }
+  const themed = (force: ForceRecord): WidthRecord => ({
+    clip: false,
+    fullPage: false,
+    mounts: [],
+    files: [],
+    force,
+  })
+  const agree = combineThemeRecords(
+    themed({ ...raw, disabled: true, ariaDisabledOnly: true }),
+    themed({ ...raw, disabled: true, ariaDisabledOnly: true }),
+  )
+  expect(agree.force).toEqual({ ...raw, ariaDisabledOnly: true })
+  const differ = combineThemeRecords(
+    themed({ ...raw, disabled: true, ariaDisabledOnly: true }),
+    themed({ ...raw, disabled: true }),
+  )
+  expect(differ.force).toMatchObject({ differsByTheme: true })
 })

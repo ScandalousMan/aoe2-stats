@@ -140,7 +140,9 @@ describe('UploadControl — uploading', () => {
     await chooseFile()
     fireEvent.submit(screen.getByRole('button', { name: 'Upload and archive' }).closest('form')!)
 
-    expect(screen.getByRole('button', { name: 'Uploading…' })).toBeDisabled()
+    const busy = screen.getByRole('button', { name: 'Uploading…' })
+    expect(busy).not.toBeDisabled()
+    expect(busy).toHaveAttribute('aria-disabled', 'true')
     // The form element itself carries `aria-busy`, per §9.
     expect(document.querySelector('form')).toHaveAttribute('aria-busy', 'true')
   })

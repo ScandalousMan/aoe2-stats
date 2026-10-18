@@ -181,7 +181,9 @@ describe('ArchivalControl — write failed', () => {
 describe('ArchivalControl — submitting and unavailable', () => {
   it('while submitting, the switch disables and shows its loading label', () => {
     render(<ArchivalControl state="archiving" submitting onObject={() => {}} />)
-    expect(screen.getByRole('button', { name: 'Saving your choice…' })).toBeDisabled()
+    const busy = screen.getByRole('button', { name: 'Saving your choice…' })
+    expect(busy).not.toBeDisabled()
+    expect(busy).toHaveAttribute('aria-disabled', 'true')
   })
 
   it('while unavailable, the switch disables and an info callout explains nothing has changed', () => {

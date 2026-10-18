@@ -22,7 +22,7 @@ export interface ArchivalControlProps {
   /** True while `/api/me` has not resolved yet. Only `StatusRegion` skeletons; the identity and
    * basis statements are static copy, available at first paint. */
   loading?: boolean
-  /** True while the switch write is in flight; the one visible button disables. */
+  /** True while the switch write is in flight; the one visible button is in `loading` (focus kept). */
   submitting?: boolean
   /** The write failed: renders the danger callout and never shows the attempted action as if it
    * had taken effect. `state` stays exactly what it was before the attempt. */

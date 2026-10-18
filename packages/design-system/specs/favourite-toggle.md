@@ -106,7 +106,7 @@ it does not add a second hover. In the bounded/disabled case there is no hover.
 beside it is forbidden (`Button`, DS-3).
 
 **loading** — while a `PUT` or `DELETE` is in flight: `Button`'s own loading state (`aria-busy`,
-`disabled` for the duration, width unchanged by reserving the glyph slot), with a caller-supplied
+`aria-disabled` for the duration, never `disabled`, width unchanged by reserving the glyph slot), with a caller-supplied
 present-participle label — **"Adding…"** for `PUT`, **"Removing…"** for `DELETE`. The label and glyph
 flip to the new state only on the `200`, never optimistically before it, so a failed request never
 leaves the control asserting a favourited state the server did not record.

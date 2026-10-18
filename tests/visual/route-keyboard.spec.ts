@@ -12,7 +12,7 @@
 // removed), not through containment. `assertStopsInsideChrome`, asserted separately below, checks
 // the containment `tests/visual/focus-ring.spec.ts` assumes implicitly: every stop stays inside the
 // route's one `main` landmark or its `header`/`footer` chrome.
-import { test } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 import { createAppServerHarness, hasBuild } from './fixtures/app-routes-harness'
 import {
   assertFullTabCoverage,
@@ -89,6 +89,36 @@ test.describe('keyboard operation, every route, both themes', () => {
           external.assertNone(context)
         })
       }
+    }
+
+    // T745: nothing above judges where focus lands once an action has run. A keyboard user who
+    // presses "Export my data" on /privacy stays on that button for the whole wait and after it:
+    // a `Button` in `loading` is `aria-disabled`, never natively `disabled`, because a focused
+    // element that becomes `:disabled` drops focus to `body` (measured in Chromium on this very
+    // route). `enterScenario` ends with the panel `ready` (its `prepare` Tabs to the button, presses
+    // Enter and waits for the download link) and does not move focus afterwards, so the assertion
+    // reads it before any walk resets the starting point. The exact button is asserted, not merely
+    // "not body": a focus move elsewhere would contradict the decision just as much.
+    const exportReady = SUITE_SCENARIOS.find(
+      (scenario) => scenario.label === '/privacy (export ready)',
+    )
+    if (!exportReady) throw new Error("SUITE_SCENARIOS has no '/privacy (export ready)' scenario")
+    for (const theme of ['light', 'dark'] as const) {
+      test(`/privacy (export ready) — focus is still on "Export my data" once the export reads ready, never on the document body (${theme})`, async ({
+        page,
+      }) => {
+        const external = await enterScenario(page, exportReady, harness.baseUrl, theme)
+        const context = `/privacy (export ready) (${theme})`
+
+        const bodyHoldsFocus = await page.evaluate(() => document.activeElement === document.body)
+        expect(bodyHoldsFocus, `${context}: focus fell to document.body`).toBe(false)
+        await expect(
+          page.getByRole('button', { name: 'Export my data' }),
+          `${context}: focus left the button that started the export`,
+        ).toBeFocused()
+
+        external.assertNone(context)
+      })
     }
 
     // T681: the `Tooltip` is no `Menu` or `Dialog`, so the loop above never opens it. Each route

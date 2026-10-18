@@ -377,3 +377,22 @@ export const GhostActiveLg: Story = {
     visualCaptureClip: GHOST_LG_CLIP,
   },
 }
+
+// T745 (`shared-primitives.md` §Button "loading"): a loading button keeps focus — `aria-busy` and
+// `aria-disabled`, never the native `disabled` attribute — so a keyboard user who pressed it is still
+// on it while the wait runs. Focused, it takes the outward `focus-ring` whatever its variant (the
+// inward `accent-contrast` ring is only defined against an accent fill, and a loading `primary` has
+// none). The forced state is a real `:focus-visible`, which only lands because the element is not
+// natively disabled. Appended after every other export so no cited line moves.
+const LOADING_CLIP = {
+  parts: [{ role: 'button' as const, name: 'Taking you to Steam…' }],
+  pad: '2',
+}
+
+export const LoadingFocusVisible: Story = {
+  args: { variant: 'primary', size: 'lg', loading: true, loadingLabel: 'Taking you to Steam…' },
+  parameters: {
+    visualForceState: { state: 'focus-visible', role: 'button' },
+    visualCaptureClip: LOADING_CLIP,
+  },
+}
