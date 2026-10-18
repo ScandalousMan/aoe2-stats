@@ -159,6 +159,29 @@ would close the gap is a lawful source that states them. The one register entry 
 field, `reconstruction.prerequisite_order_check`, is `blocked` on that source, so by D7 the gap is
 informational: counted in the aggregate report, never substituted.
 
+**Amended 2026-10-18, at the repository owner's arbitration (spec Clarifications, Session
+2026-10-18).** "Do not vendor a second dataset" stays a ruling about vendoring a dataset to
+cross-validate the primary. It had come to be read as a ban on using a referenced source for a value
+the primary does not state, and that reading kept two gate identifiers gapped while
+`aoc-reference-data`, which this repository already transcribes from, named them. The rule is now
+FR-022c: a value the pack does not state is taken from a referenced source that states it, when no
+other referenced source contradicts it. Four consequences, each a change to what this record said:
+
+- `aoc-reference-data` is read for its `objects` table as well as its civilisations, by a person
+  or an agent working for the owner, each transcription recorded (FR-031, amended); its licence
+  ruling is unchanged. Read 2026-10-18, its
+  `civilizations` entries carry an inner `id` that agrees with every Relic identifier
+  `apps/api/src/aoe2stats_api/civilizations.py` holds, so the claims in `docs/data-sources.md` §1
+  and §6 that it never corroborates that table are corrected there (T760), not here.
+- halfon's "the task that first needs it" is not reached by buildings 490 and 673: a referenced
+  source already names them (FR-022d), and halfon would read the same file the pack does.
+- The running game, read by a person, is a source: FR-030's strong form, for the current build. A
+  person reads a tooltip; nothing is extracted from the game's files.
+- The Fandom wiki stays "one human, one number": a person may read it to settle one value, an agent
+  may not, because its terms forbid automated access.
+
+The game's own data file stays rejected, for all three of its reasons.
+
 ## D4 — No source can answer "what did this cost on build N"; a snapshot is carried forward with evidence
 
 **Decision.** A snapshot names the build it **describes**, separately from the source revision it
@@ -215,6 +238,18 @@ _Amended 2026-09-28, at the repository owner's arbitration of the fourth review 
 version also put age-gated, state-conditional and team bonuses out of the model. That turned rules
 any application applies — a Persians Villager takes 25 s ÷ 1.10 in the Feudal Age — into withheld
 values, and asked FR-022a to admit them as blockers.
+
+_Amended 2026-10-18, at the repository owner's arbitration (spec Clarifications, Session
+2026-10-18)._ Coverage still grows by whole civilisations, and the conservative rule still holds
+for any civilisation not yet modelled, but "the aggregate gap report is the backlog" is no longer an
+end state: every civilisation the tool supports is modelled on every build a snapshot describes
+(FR-022a), and Phase 8 of [tasks.md](./tasks.md) is the backlog. A bonus whose amount the pack does
+not state is no longer refused for that alone: FR-022c sends it to the referenced sources and then
+to a person reading the game, and only an amount none of them states stays refused, enumerated under
+FR-022b. A bonus conditioned on match state the recording does not carry is a rule with a condition
+the caller supplies (FR-022e), as an age or a researched technology already is. A class name in a
+bonus ("Infantry", "Gunpowder Units") is still never a selector: its members are resolved from what
+the pack states and listed, and a member the pack does not settle goes to a person, not to a guess.
 
 ## D6 — The register is TOML inside the package that enforces it
 
