@@ -2840,7 +2840,7 @@ carries what T673's dry run read.
       bonuses are refused, not guessed: the pack strings name no wood amount for Detinets and no
       building list for "Fortifications". Build 185872 analyses published under the first snapshot
       read as stale and are recomputed under the second
-- [ ] T747 Decide what a drain's late `quarantined` mark does to a row a concurrent drain ended
+- [x] T747 Decide what a drain's late `quarantined` mark does to a row a concurrent drain ended
       (filed 2026-10-18 from #174's review, B1). T740 widened the drain's `stored` mark only. When a
       drain's claim goes stale while it is still running, a second drain can end the row `expired`,
       `failed` or `unavailable`; the first drain's metadata commit then names its object on the row
@@ -2853,7 +2853,24 @@ carries what T673's dry run read.
       for the reason T740 gives. To decide first: whether the drain's `quarantined` mark also
       matches those three statuses when the row names the drain's key, keeping `withdrawn` excluded,
       and whether it then raises `validation_failed` over an `expired` row whose `expired_capture`
-      alert is already raised
+      alert is already raised. **Decided (2026-10-18, by Claude, the user having asked for T747 to
+      be implemented).** **Yes to both: the drain's `quarantined` mark also matches `expired`,
+      `failed` and `unavailable` when the row names the drain's key, and it then raises
+      `validation_failed` as any quarantine does.** `withdrawn`, `stored`, `quarantined` and
+      `pending` stay unmatched. This is T740's widening applied to the drain's other terminal mark:
+      `_quarantine` takes the key `_process_one` wrote or adopted, or the key `_resume_reclaim`
+      read from the row, and `_mark_quarantined` gains the same `also_if_ended_naming` match as
+      `_mark_stored`. T673's re-validation call leaves it unset. The row ends `quarantined` with
+      the drain's reason, the status T673's re-validation selects from, where the ended status
+      left it naming an unvalidated object that nothing selects. Nothing the other drain recorded is
+      retracted: over an `expired` row its `expired_capture` alert stays beside the new
+      `validation_failed` alert. **Tests, each red before:** for each of `expired`, `failed` and
+      `unavailable`, a row another drain ended while this drain was past its claim ends
+      `quarantined` with the drain's reason and one `validation_failed` alert, through
+      `_process_one` (an engine error, the wall-clock cap) and `_resume_reclaim` (an engine error,
+      a missing object, a checksum mismatch); over `expired`, both alerts are present.
+      **Contrast:** a `withdrawn` row, a row naming another key, a `stored` row and an
+      already-`quarantined` row are not rewritten and raise no alert
 
 ---
 

@@ -16,6 +16,7 @@ which is how a test lets an upload land between the drain's claim and its write.
 from __future__ import annotations
 
 import hashlib
+import time
 import uuid
 from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime, timedelta
@@ -27,7 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from tests.links import link_profile
 
 import aoe2stats_ingester.capture as capture_module
-from aoe2stats_core.replay.validation import ReplayValidationResult
+from aoe2stats_core.replay.validation import EngineParseError, ReplayValidationResult
 from aoe2stats_ingester.budget import Budget
 from aoe2stats_ingester.capture import CaptureDrain
 from aoe2stats_providers.base import (
@@ -40,6 +41,7 @@ from aoe2stats_storage.models import (
     Alert as AlertModel,
 )
 from aoe2stats_storage.models import (
+    AlertKind,
     AoeProfile,
     CaptureSource,
     CaptureStatus,
@@ -157,6 +159,17 @@ class _Validator:
             engine_name="fake-engine",
             engine_version="0.0.0",
         )
+
+
+class _RejectingValidator:
+    def validate(self, zip_bytes: bytes) -> ReplayValidationResult:
+        raise EngineParseError("the engine rejected the replay")
+
+
+class _HangingValidator:
+    def validate(self, zip_bytes: bytes) -> ReplayValidationResult:
+        time.sleep(1.0)
+        raise AssertionError("must never return: the wall-clock cap must win the race")
 
 
 def _blob(content: bytes = _DOWNLOADED) -> ReplayBlob:
@@ -899,6 +912,391 @@ async def test_a_stored_row_naming_the_drains_own_key_is_not_rewritten_by_the_ma
     assert snapshot["object_key"] == _KEY
     assert await _row(session_factory, capture_id) == snapshot
     assert report["stored_total"] == 0
+
+
+# --- The same, for the `quarantined` mark after a failed validation (T747) ---------------------
+#
+# The drain's other late write. Its metadata commit has named its object (T728); validation fails
+# (an engine error, the wall-clock cap, or on a resumed reclaim a missing object or a checksum
+# mismatch); a second drain ended the row meanwhile. Both places reach `_quarantine`:
+# `_process_one` (key it wrote) and `_resume_reclaim` (key read from the row).
+
+_ENDED = [CaptureStatus.EXPIRED, CaptureStatus.FAILED, CaptureStatus.UNAVAILABLE]
+_ENDED_IDS = ["expired", "failed", "unavailable"]
+_ENGINE_REASON = "EngineParseError: nope"
+
+#: (path, failure): where the failure arises and what it is. The two integrity failures exist only
+#: on the resumed reclaim.
+_FAILURES = [
+    ("process", "engine"),
+    ("reclaim", "engine"),
+    ("reclaim", "missing"),
+    ("reclaim", "mismatch"),
+]
+_FAILURE_IDS = ["process-engine", "reclaim-engine", "reclaim-missing", "reclaim-mismatch"]
+
+
+_End = Callable[
+    [async_sessionmaker[AsyncSession], uuid.UUID, "_HookedObjectStore"], Awaitable[None]
+]
+
+
+class _LateFailure:
+    """What `_late_failure` observed: the report, the store, and the row right after `end` ran."""
+
+    def __init__(
+        self,
+        capture_id: uuid.UUID,
+        report: Any,
+        store: _HookedObjectStore,
+        snapshot: dict[str, Any],
+    ) -> None:
+        self.capture_id = capture_id
+        self.report = report
+        self.store = store
+        self.snapshot = snapshot
+
+
+async def _late_failure(
+    session_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    path: str,
+    failure: str,
+    end: _End,
+) -> _LateFailure:
+    """Run one drain over a row whose validation fails, with `end` run (and the row snapshotted)
+    at the last moment before the failure is decided: inside the barrier for an engine failure,
+    inside the read-back for a missing or mismatching object."""
+    capture_id = await _seed(session_factory)
+    snapshot: dict[str, Any] = {}
+    if path == "reclaim":
+        objects = (
+            {}
+            if failure == "missing"
+            else {_KEY: _UPLOADED if failure == "mismatch" else _DOWNLOADED}
+        )
+        store = _HookedObjectStore(objects)
+        async with session_factory() as session:
+            await session.execute(
+                update(ReplayCapture)
+                .where(ReplayCapture.id == capture_id)
+                .values(
+                    status=CaptureStatus.DOWNLOADING,
+                    claimed_at=datetime.now(UTC) - timedelta(hours=1),
+                    object_key=_KEY,
+                    zip_bytes=len(_DOWNLOADED),
+                    zip_sha256=_sha(_DOWNLOADED),
+                )
+            )
+            await session.commit()
+    else:
+        store = _HookedObjectStore()
+
+    async def ended() -> None:
+        await end(session_factory, capture_id, store)
+        snapshot.update(await _row(session_factory, capture_id))
+
+    if failure == "engine":
+
+        async def barrier(
+            validator: Any, zip_bytes: bytes, *, timeout_seconds: float
+        ) -> tuple[ReplayValidationResult | None, str | None]:
+            await ended()
+            return None, _ENGINE_REASON
+
+        monkeypatch.setattr(capture_module, "_validate_with_barrier", barrier)
+    else:
+        original = CaptureDrain._read_back_verified
+
+        async def read_back(self: CaptureDrain, *args: Any, **kwargs: Any) -> Any:
+            await ended()
+            return await original(self, *args, **kwargs)
+
+        monkeypatch.setattr(CaptureDrain, "_read_back_verified", read_back)
+
+    provider = _Provider(_blob())
+    report = await _run(_drain(session_factory, provider, store))
+    assert provider.calls == (0 if path == "reclaim" else 1)
+    return _LateFailure(capture_id, report, store, snapshot)
+
+
+def _ending(status: CaptureStatus, **extra: Any) -> _End:
+    async def end(
+        factory: async_sessionmaker[AsyncSession], capture_id: uuid.UUID, store: _HookedObjectStore
+    ) -> None:
+        await _end_row(factory, capture_id, status, **extra)
+
+    return end
+
+
+def _expected_reason(failure: str, last_error: str) -> None:
+    if failure == "engine":
+        assert last_error == _ENGINE_REASON
+    elif failure == "missing":
+        assert last_error.startswith(capture_module._READ_BACK_REASON_PREFIX)
+    else:
+        assert last_error.startswith(capture_module._CHECKSUM_REASON_PREFIX)
+
+
+@pytest.mark.parametrize("ended", _ENDED, ids=_ENDED_IDS)
+@pytest.mark.parametrize(("path", "failure"), _FAILURES, ids=_FAILURE_IDS)
+async def test_a_failed_validation_over_a_row_another_drain_ended_quarantines_it_and_alerts(
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+    ended: CaptureStatus,
+    path: str,
+    failure: str,
+) -> None:
+    """The row ends `quarantined` naming the drain's object with the drain's reason, counts
+    `quarantined_total`, and raises the severity-2 `validation_failed` alert."""
+    outcome = await _late_failure(
+        session_factory, monkeypatch, path=path, failure=failure, end=_ending(ended)
+    )
+
+    assert outcome.snapshot["status"] == ended  # the other drain really ended it first
+    row = await _row(session_factory, outcome.capture_id)
+    assert row["status"] == CaptureStatus.QUARANTINED
+    _expected_reason(failure, row["last_error"])
+    assert row["object_key"] == _KEY
+    assert row["zip_sha256"] == _sha(_DOWNLOADED)
+    assert row["validated_by"] is None
+    assert outcome.report["quarantined_total"] == 1
+    assert outcome.report["stored_total"] == 0
+    alerts = await _alerts(session_factory)
+    assert [(a.kind, a.severity) for a in alerts] == [("validation_failed", 2)]
+    assert alerts[0].detail is not None
+    assert alerts[0].detail["capture_id"] == str(outcome.capture_id)
+    assert alerts[0].detail["reason"] == row["last_error"]
+
+
+@pytest.mark.parametrize(("path", "failure"), _FAILURES, ids=_FAILURE_IDS)
+async def test_an_expired_row_quarantined_late_keeps_its_expired_capture_alert(
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+    path: str,
+    failure: str,
+) -> None:
+    """The other drain's severity-1 `expired_capture` alert stays until acknowledged; the
+    `validation_failed` alert is raised beside it."""
+
+    async def end(
+        factory: async_sessionmaker[AsyncSession], capture_id: uuid.UUID, store: _HookedObjectStore
+    ) -> None:
+        await _end_row(factory, capture_id, CaptureStatus.EXPIRED)
+        async with factory() as session:
+            session.add(
+                AlertModel(
+                    kind=AlertKind.EXPIRED_CAPTURE,
+                    severity=1,
+                    detail={"capture_id": str(capture_id)},
+                )
+            )
+            await session.commit()
+
+    outcome = await _late_failure(session_factory, monkeypatch, path=path, failure=failure, end=end)
+
+    assert (await _row(session_factory, outcome.capture_id))["status"] == CaptureStatus.QUARANTINED
+    alerts = await _alerts(session_factory)
+    assert sorted((a.kind, a.severity) for a in alerts) == [
+        ("expired_capture", 1),
+        ("validation_failed", 2),
+    ]
+    assert all(a.acknowledged_at is None for a in alerts)
+    assert outcome.report["quarantined_total"] == 1
+
+
+@pytest.mark.parametrize("ended", _ENDED, ids=_ENDED_IDS)
+async def test_the_wall_clock_cap_over_a_row_another_drain_ended_quarantines_it_and_alerts(
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+    ended: CaptureStatus,
+) -> None:
+    """The real barrier, not a patched one: the engine hangs past the cap while the row is ended
+    between the object write and the metadata commit."""
+    capture_id = await _seed(session_factory)
+    store = _HookedObjectStore()
+
+    async def another_drain_ends_the_row() -> None:
+        await _end_row(session_factory, capture_id, ended)
+
+    store.after_write = another_drain_ends_the_row
+    drain = CaptureDrain(
+        session_factory=session_factory,
+        replay_provider=_Provider(_blob()),
+        object_store=store,
+        validator=_HangingValidator(),
+        capture_budget_days=_CAPTURE_BUDGET_DAYS,
+        replay_publication_grace_hours=_GRACE_HOURS,
+        validation_timeout_seconds=0.05,
+    )
+
+    report = await _run(drain)
+
+    row = await _row(session_factory, capture_id)
+    assert row["status"] == CaptureStatus.QUARANTINED
+    assert row["last_error"].startswith(capture_module._CAP_REASON_PREFIX)
+    assert row["object_key"] == _KEY
+    assert report["quarantined_total"] == 1
+    assert [(a.kind, a.severity) for a in await _alerts(session_factory)] == [
+        ("validation_failed", 2)
+    ]
+
+
+async def test_a_real_engine_error_over_a_row_another_drain_ended_quarantines_it(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """The real barrier folding a real `EngineParseError`, with the row ended before the commit."""
+    capture_id = await _seed(session_factory)
+    store = _HookedObjectStore()
+
+    async def another_drain_ends_the_row() -> None:
+        await _end_row(session_factory, capture_id, CaptureStatus.FAILED)
+
+    store.after_write = another_drain_ends_the_row
+    drain = CaptureDrain(
+        session_factory=session_factory,
+        replay_provider=_Provider(_blob()),
+        object_store=store,
+        validator=_RejectingValidator(),
+        capture_budget_days=_CAPTURE_BUDGET_DAYS,
+        replay_publication_grace_hours=_GRACE_HOURS,
+    )
+
+    report = await _run(drain)
+
+    row = await _row(session_factory, capture_id)
+    assert row["status"] == CaptureStatus.QUARANTINED
+    assert row["last_error"] == "EngineParseError: the engine rejected the replay"
+    assert report["quarantined_total"] == 1
+    assert [a.kind for a in await _alerts(session_factory)] == ["validation_failed"]
+
+
+# Contrast: every one of these stays exactly as it was before T747.
+
+
+@pytest.mark.parametrize(("path", "failure"), _FAILURES, ids=_FAILURE_IDS)
+async def test_a_failed_validation_over_a_withdrawn_row_leaves_it_withdrawn_and_silent(
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+    path: str,
+    failure: str,
+) -> None:
+    """`withdrawn` is a refusal made on purpose; a late failure never reverses it."""
+    outcome = await _late_failure(
+        session_factory,
+        monkeypatch,
+        path=path,
+        failure=failure,
+        end=_ending(CaptureStatus.WITHDRAWN),
+    )
+
+    assert outcome.snapshot["status"] == CaptureStatus.WITHDRAWN
+    assert outcome.snapshot["object_key"] == _KEY
+    assert await _row(session_factory, outcome.capture_id) == outcome.snapshot
+    assert outcome.report["quarantined_total"] == 0
+    assert await _alerts(session_factory) == []
+
+
+@pytest.mark.parametrize("ended", _ENDED, ids=_ENDED_IDS)
+@pytest.mark.parametrize(("path", "failure"), _FAILURES, ids=_FAILURE_IDS)
+async def test_a_failed_validation_over_a_row_naming_another_key_marks_nothing(
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+    ended: CaptureStatus,
+    path: str,
+    failure: str,
+) -> None:
+    """The defensive guard on the key equality, as for the `stored` mark."""
+    other_key = "replays/someone-elses-object.zip"
+    outcome = await _late_failure(
+        session_factory,
+        monkeypatch,
+        path=path,
+        failure=failure,
+        end=_ending(ended, object_key=other_key),
+    )
+
+    assert outcome.snapshot["status"] == ended
+    assert outcome.snapshot["object_key"] == other_key
+    assert await _row(session_factory, outcome.capture_id) == outcome.snapshot
+    assert outcome.report["quarantined_total"] == 0
+    assert await _alerts(session_factory) == []
+
+
+@pytest.mark.parametrize("path", ["process", "reclaim"])
+async def test_a_failed_validation_over_a_stored_row_does_not_rewrite_it(
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+    path: str,
+) -> None:
+    async def end(
+        factory: async_sessionmaker[AsyncSession], capture_id: uuid.UUID, store: _HookedObjectStore
+    ) -> None:
+        await _land_upload(factory, capture_id, store, _DOWNLOADED)
+
+    outcome = await _late_failure(
+        session_factory, monkeypatch, path=path, failure="engine", end=end
+    )
+
+    assert outcome.snapshot["status"] == CaptureStatus.STORED
+    assert outcome.snapshot["object_key"] == _KEY
+    assert await _row(session_factory, outcome.capture_id) == outcome.snapshot
+    assert outcome.report["quarantined_total"] == 0
+    assert await _alerts(session_factory) == []
+
+
+@pytest.mark.parametrize("path", ["process", "reclaim"])
+async def test_a_failed_validation_over_an_already_quarantined_row_is_not_rewritten_or_repeated(
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+    path: str,
+) -> None:
+    """Another drain's quarantine, with its own reason, stands: no overwrite, no second alert."""
+    outcome = await _late_failure(
+        session_factory,
+        monkeypatch,
+        path=path,
+        failure="engine",
+        end=_ending(CaptureStatus.QUARANTINED),
+    )
+
+    assert outcome.snapshot["status"] == CaptureStatus.QUARANTINED
+    assert outcome.snapshot["last_error"] == "ended by another drain"
+    assert await _row(session_factory, outcome.capture_id) == outcome.snapshot
+    assert outcome.report["quarantined_total"] == 0
+    assert await _alerts(session_factory) == []
+
+
+@pytest.mark.parametrize(("path", "failure"), _FAILURES, ids=_FAILURE_IDS)
+async def test_a_failed_validation_over_a_downloading_row_quarantines_it_as_before(
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+    path: str,
+    failure: str,
+) -> None:
+    async def end(
+        factory: async_sessionmaker[AsyncSession], capture_id: uuid.UUID, store: _HookedObjectStore
+    ) -> None:
+        return None
+
+    outcome = await _late_failure(session_factory, monkeypatch, path=path, failure=failure, end=end)
+
+    assert outcome.snapshot["status"] == CaptureStatus.DOWNLOADING
+    row = await _row(session_factory, outcome.capture_id)
+    assert row["status"] == CaptureStatus.QUARANTINED
+    _expected_reason(failure, row["last_error"])
+    assert outcome.report["quarantined_total"] == 1
+    assert [(a.kind, a.severity) for a in await _alerts(session_factory)] == [
+        ("validation_failed", 2)
+    ]
 
 
 # --- The drain recognises its own object --------------------------------------------------------
