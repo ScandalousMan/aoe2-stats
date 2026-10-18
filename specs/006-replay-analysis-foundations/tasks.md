@@ -119,7 +119,9 @@ neither carries a post-game statistics block; no document names a parser path th
       unmeasured**: §2 also asked for unranked and custom recordings, calls them ideal rather than
       required, and this feature has neither. Say so rather than letting "settled" read wider than
       the evidence
-- [ ] T605 [US1] **Only if T601 returned unrecoverable.** Take the narrow honest branch instead of
+- [x] T605 [US1] **Not taken: T601 recovered the recording**, so T602 and T604 took the settled
+      branch. Kept for the trail; nothing here was done.
+      **Only if T601 returned unrecoverable.** Take the narrow honest branch instead of
       T604's: §2 records two measurements, names the one reproducible from a committed fixture,
       states that the second cannot be re-run and why, and stays marked corroborated rather than
       settled. **FR-045** is then satisfied in that narrower form and the spec's
@@ -1345,13 +1347,14 @@ after everything underneath it moves.
       what stops a later edit quietly breaking that, and it is why the extraction time is duplicated
       rather than moved. No component changes; displaying a tier or a gap needs a design-system spec
       first and is a later feature's decision
-- [ ] T665 [US6] Verify the phase end to end against quickstart Phase 5, including the post-deploy
+- [x] T665 [US6] Verify the phase end to end against quickstart Phase 5, including the post-deploy
       checks: the health endpoint answers **200** — read the status, not the revision field, which
       is the build's own compiled constant and is no evidence about the database — and one analysis
       requested by hand shows a populated dependency record, an identity digest and a gap list that
       is empty or explains itself. Also confirm against the live object store that a second
       conditional put to an existing analysis key is refused (T666d relies on the store honouring
-      if-none-match; it is tested only against a stub)
+      if-none-match; it is tested only against a stub). **Verified 2026-10-18** by the user against
+      production; the evidence is quickstart.md's run record, "After deploy" rows
 - [x] T666 [P] [US3] Add the boundary guard test asserting this feature added no scheduled job, no
       request-path work and no code path that consumes the capture budget (**FR-049**), and that
       nothing here re-specifies 003's request, fetch, parse-once, retention, recompute, isolation,
@@ -1621,11 +1624,15 @@ carries what T673's dry run read.
       be claimed again. **Docs:** `docs/risks.md` says only what is measured: new captures and
       analyses read build 185872, the quarantined backlog waits on T673 and is not counted; it
       does not restate the sample count kept in this phase's purpose
-- [ ] T674 Find the published analyses whose point of view was taken from the wrong player
+- [x] T674 Find the published analyses whose point of view was taken from the wrong player
       (T672a): every `match_analyses` row whose `point_of_view_profile_id` has no
       `retained_recordings` row for its match. Such a row cannot be recomputed, and its
       perspective is wrong. Count them first and report; correcting them is a separate decision.
-      Reads production, so the user runs it or grants the read
+      Reads production, so the user runs it or grants the read. **Counted 2026-10-18** by the user
+      against production: one row matches, in state `unavailable`, and no `published` row does.
+      An `unavailable` analysis never obtained its recording (003's data model), so nothing was
+      published from it: the predicate matches it by its state, not by a wrong perspective. No
+      published analysis needs correcting, and the correction decision does not arise
 - [x] T672b Close #124's second review (`reviewer` REJECT 2026-10-06 on T672a; code findings
       closed, prose overclaims left). Cut to what was measured: `docs/risks.md`'s entry names the
       one recording measured as build 185872 and states capture quarantine as what the code
