@@ -1276,6 +1276,42 @@ measure the flag trigger at rest. The run that shows T681's and T682's parts tog
 skipped, the 22 of `tests/visual/app-routes.spec.ts`, route-keyboard 90, route-focus-visibility 82, route-touch-footprint 82,
 route-reduced-motion 94 and the 190 under `tests/visual/fixtures/`, the same counts a local macOS Chromium run reported.
 
+**Closed, 2026-10-18 (T744).** T744's own row of `packages/design-system/specs/README.md`'s "Verification-coverage gap
+register" is deleted, which empties the register, and the sentences above that item 13 stays partly met until it is
+deleted, and that the two loading states run in the reduced-motion suite only, are superseded. `BRANCH_SCENARIOS` in
+`tests/visual/fixtures/suite-scenarios.ts` holds seventeen scenarios, so all four suites run each of them in both
+themes: `/privacy (export failed)` (the export request answers 500, the panel renders its `failed` callout and "Try
+again"); `/dashboard` and `/privacy` `(archival write in flight)` (a held `POST /api/privacy/archival-objection`, reached
+by Tab to "Object to archival" and Enter, the button `aria-busy` with "Saving your choice…") and `(archival just
+resumed)` (an objected account that presses "Resume archival" against a `/api/me` that reads `archival_objected: false`
+once the write has landed); `/matches/$gameId` `(analysis queued)`, `(analysis running)`, `(analysis failed)` and
+`(analysis unavailable)`; `(no linked account)` on `/dashboard`, `/matches` and `/matches/$gameId`; `/search (no
+results)` and `/search (no results, degraded)`, each reached by typing a query and Enter against a stubbed answer with
+no results; and the two held loading states. Each scenario declares the marks its branch puts on screen, and
+`enterScenario` asserts them in a browser after the scenario's `prepare` (`assertBranchScenario`, which unlike the
+populated judge expects error callouts and `aria-busy` regions). `tests/visual/fixtures/suite-scenarios.test.ts` plants
+the absence for every scenario: the same scenario with one stub pointed at the success response, or at the sibling
+branch (queued for running and back, failed for unavailable and back, a non-degraded empty answer for the degraded one),
+or with its held request answered at once, fails inside `enterScenario` naming the missing mark, for example `/privacy
+(archival write in flight): busy archival button (main button[aria-busy="true"]:has-text("Saving your choice"))
+rendered fewer than 1 item(s) — the route is not showing its 'archival write in flight' branch`. A held in-flight
+state is also planted after waiting out its transient window, because the first version of that plant passed for the
+wrong reason: a request answered at once leaves the button busy for a few milliseconds, which the judge sampled. The
+per-route inventory (`ROUTE_REQUIRED_BRANCHES`) fails by name when a scenario is removed, and every scenario is in
+`SUITE_SCENARIOS`. The decision on the two held loading states is to run them through all four suites rather than record
+a reason per suite: they are branch scenarios, `enterScenario` installs their held request, and `route-reduced-motion.spec.ts`
+keeps its positive control for the loops on the same scenarios. The keyboard walk then covers a page with a `Skeleton` on
+it and a busy erase button that keeps focus (T745), the focus-visibility suite rings that busy button, and the touch suite
+measures its footprint at 375px; none of the four suites failed on any new scenario, so no component was changed. What
+the inventory does not reach is stated rather than hidden: `ArchivalControl`'s `writeFailed` and `unavailable` callouts,
+the analysis section's `refused` retry and its refused takeover, and the `error` states of the other routes. **Item 13
+is Met** for every route's success branch, at rest and populated, with every `Dialog`, `Menu` and the country `Tooltip`
+open, and for the branches T744 named, in both themes, on the head carrying T744 — local run only, macOS Chromium:
+route-keyboard 124, route-focus-visibility 114, route-touch-footprint 114, route-reduced-motion 126 and the 277 under
+`tests/visual/fixtures/`, 755 tests, none skipped. No scenario was added to `tests/visual/app-routes.spec.ts`, so no
+full-page baseline changed or was captured. The CI run that backs the verdict is the `visual` job of the pull request
+carrying T744, not yet recorded here.
+
 ### Item 15's general-reviewer half — outstanding, no pull request covers this head
 
 The `visual-reviewer` half is T595/T596/T600/T671's own, by their own words ("Production-readiness

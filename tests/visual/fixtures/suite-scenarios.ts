@@ -14,6 +14,15 @@
 //    the shared header on every route, `ProfileSummary`'s profile-switcher and Manage `Menu`s, the
 //    unlink `Dialog` and the account-erasure `Dialog`.
 //
+// 3. BRANCH_SCENARIOS (T744) — a route's error, transient and unrendered-empty branches, each
+//    reached through the route's own stubs: `DataExportPanel`'s `failed` state, `ArchivalControl`
+//    with its write in flight and after a resume, the match page's analysis section in `queued`,
+//    `running`, `failed` and `unavailable`, the no-linked-account state, `/search`'s two
+//    empty-results branches, and the two held loading states. A branch is not a list or a control
+//    group, so it has its own inventory (`ROUTE_REQUIRED_BRANCHES`) and its own in-browser judge
+//    (`assertBranchScenario`): what the branch puts on screen is declared per scenario, and an error
+//    callout or a loading region is expected there, not a failure.
+//
 // `SUITE_SCENARIOS` is the union all four suites iterate. A scenario with a `surface` is walked by
 // that surface's own keyboard contract (`./open-surface`) instead of a Tab walk over the page.
 //
@@ -44,13 +53,24 @@ import {
 } from './app-routes-harness'
 import { installSteamAvatarStub } from './avatar-stub'
 import { type ExternalRequestWatch, watchExternalRequests } from './external-requests'
-import { holdRequests, type LoopKind } from './loading-state'
+import { holdRequests, LOOP_SELECTOR, type LoopKind } from './loading-state'
 import { openMenuByKeyboard, tabTo, type SurfaceKind } from './open-surface'
 import { openTooltipByKeyboard } from './tooltip-open'
+
+/** A request held open for as long as the page is open, so the state it feeds stays on screen for the
+ * whole of a suite's walk or sweep (`holdRequests`, `./loading-state`). Answered with `body` when
+ * the page closes, or earlier through the `release` `enterScenario` returns. */
+export interface HeldRequest {
+  urlGlob: string
+  body: unknown
+}
 
 export interface SuiteScenario extends RouteScenario {
   /** Runs after navigation settles: submits the search, opens the surface — by keyboard. */
   prepare?: (page: Page) => Promise<void>
+  /** Installed by `enterScenario` right after `stub`, before navigation. A request this matches
+   * stays pending, so the loading or in-flight state it feeds is what every suite measures. */
+  hold?: HeldRequest
   /** Set when `prepare` leaves a `Menu` or `Dialog` open: the suites then walk that surface. */
   surface?: SurfaceKind
 }
@@ -304,7 +324,11 @@ const MATCH_DETAIL_POPULATED = {
 type AnalysisSummaryState =
   'absent' | 'queued' | 'running' | 'published' | 'failed' | 'unavailable' | 'refused'
 
-function analysisSummary(state: AnalysisSummaryState, stale = false) {
+function analysisSummary(
+  state: AnalysisSummaryState,
+  stale = false,
+  errorClass: string | null = null,
+) {
   return {
     state,
     parser_version: state === 'absent' ? null : '1.0.0',
@@ -312,8 +336,8 @@ function analysisSummary(state: AnalysisSummaryState, stale = false) {
     point_of_view_profile_id: state === 'absent' ? null : VIEWER_ID,
     result_path: `/api/matches/${SAMPLE_GAME_ID}/analysis`,
     reason: state === 'refused' ? 'analysis_cap_reached' : null,
-    // Required by `assertAnalysisSummary`; no scenario here is `failed`, so it is always null.
-    error_class: null,
+    // Required by `assertAnalysisSummary`; only the `failed` scenario (T744) names a class.
+    error_class: errorClass,
   }
 }
 
@@ -901,11 +925,7 @@ export const SURFACE_SCENARIOS: readonly SuiteScenario[] = [
   },
 ]
 
-export const SUITE_SCENARIOS: readonly SuiteScenario[] = [
-  ...ROUTE_SCENARIOS,
-  ...POPULATED_SCENARIOS,
-  ...SURFACE_SCENARIOS,
-]
+// `SUITE_SCENARIOS` is assembled below, after `BRANCH_SCENARIOS` (T744), which it includes.
 
 // --- Tooltips (T681) -----------------------------------------------------------------------------
 
@@ -953,41 +973,446 @@ export const TOOLTIP_SCENARIOS: readonly TooltipScenario[] = TOOLTIP_ROUTES.map(
   }
 })
 
-// --- Loading states ------------------------------------------------------------------------------
+// --- Error, transient and unrendered-empty branches (T744) --------------------------------------
+//
+// T676 and T682 render every route's success branch. What a route shows when a request fails, is
+// still in flight, or has nothing to list met none of the four suites (the review of #163 found
+// it). Each scenario here reaches one such branch through the route's own stubs and the route's own
+// controls, by keyboard where the branch needs an action, and declares what that branch puts on
+// screen in `shows`: `enterScenario` asserts it in a browser, after `prepare`, so a stub that falls
+// through to the success response fails by naming the mark that is missing. A branch legitimately
+// carries an error callout (`role="alert"`) or a loading region (`aria-busy`), which is why this is
+// not `assertPopulatedScenario`.
 
-export interface LoadingScenario extends SuiteScenario {
-  /** The request held open for as long as the test needs the loading state on screen. */
-  hold: { urlGlob: string; body: unknown }
-  /** Which looping component that loading state renders. */
+/** A scenario that renders one non-success branch of a route. `label` is always
+ * `${route} (${branch})`, built by `branchScenario()` below, so `route` is the one thing a guard
+ * compares, as for `PopulatedScenario`. */
+export interface BranchScenario extends SuiteScenario {
+  /** The `ROUTE_SCENARIOS` label this scenario renders a branch of, matched exactly. */
+  route: string
+  /** The branch's name in `ROUTE_REQUIRED_BRANCHES`. */
+  branch: string
+  /** What the branch puts on screen, asserted in the browser by `assertBranchScenario` once
+   * `prepare` has run. */
+  shows: readonly ListExpectation[]
+}
+
+/** A branch that holds a request open, and the looping component that held state renders (the
+ * reduced-motion suite's positive control for the loops, `route-reduced-motion.spec.ts`). */
+export interface LoadingScenario extends BranchScenario {
+  hold: HeldRequest
   loop: LoopKind
 }
 
-export const LOADING_SCENARIOS: readonly LoadingScenario[] = [
+function isBranchScenario(scenario: SuiteScenario): scenario is BranchScenario {
+  return 'shows' in scenario
+}
+
+function branchScenario<T extends Omit<BranchScenario, 'label' | 'route' | 'branch'>>(
+  route: string,
+  branch: string,
+  rest: T,
+): T & Pick<BranchScenario, 'label' | 'route' | 'branch'> {
+  return { ...rest, route, branch, label: `${route} (${branch})` }
+}
+
+/** `GET /api/me` for a signed-in user whose account has no linked Steam profile: the session
+ * carries an empty `profiles` list, as `GET /api/profiles` below does. */
+export const NO_LINKED_ME = { ...SIGNED_IN_ME, profiles: [] }
+const NO_PROFILES_RESPONSE = { profiles: [] }
+
+const SPINNER_IN_MAIN: ListExpectation = {
+  name: 'spinner',
+  selector: `main ${LOOP_SELECTOR.spinner}`,
+  min: 1,
+}
+
+/** The marks of the no-linked-account branch, which the three routes share: the empty state or
+ * callout names the condition, and offers the one way out. */
+const NO_LINKED_ACCOUNT: readonly ListExpectation[] = [
   {
-    // `ProfileSummary`'s `loading` status renders `Skeleton` placeholders, the `pulse` loop.
-    label: '/dashboard — profile summary loading',
+    name: 'no-linked-account notice',
+    selector: 'main :text("No Steam account is linked yet")',
+    min: 1,
+  },
+  { name: 'link button', selector: 'main button:has-text("Link a Steam account")', min: 1 },
+]
+
+/** `ArchivalControl`'s write held in flight: the switch's one visible button is `loading`
+ * (`aria-busy`, label "Saving your choice…", a `Spinner`), reached by Tab to "Object to archival"
+ * and Enter. */
+const ARCHIVAL_IN_FLIGHT: Pick<BranchScenario, 'hold' | 'prepare' | 'shows'> = {
+  hold: {
+    urlGlob: '**/api/privacy/archival-objection',
+    body: { archival_objected: true, archival_objected_at: '2026-10-13T08:00:00Z' },
+  },
+  prepare: async (page) => {
+    await tabTo(page, page.getByRole('button', { name: 'Object to archival' }))
+    await page.keyboard.press('Enter')
+    // Waits for the flow but never fails on the wait itself: `enterScenario` judges `shows` right
+    // after this, and "busy archival button rendered fewer than 1 item(s)" is the failure worth having.
+    await page
+      .locator('main button[aria-busy="true"]')
+      .waitFor({ state: 'visible', timeout: 5_000 })
+      .catch(() => undefined)
+  },
+  shows: [
+    {
+      name: 'busy archival button',
+      selector: 'main button[aria-busy="true"]:has-text("Saving your choice")',
+      min: 1,
+    },
+    SPINNER_IN_MAIN,
+  ],
+}
+
+/** An objected account that resumes: `/api/me` reads `objected` until the write lands, then
+ * `archival_objected: false`, so the control goes `objected` -> `archiving` with `justResumed`. */
+async function stubResumable(page: Page): Promise<void> {
+  let resumed = false
+  await page.route('**/api/me', (route) =>
+    fulfillJson(route, resumed ? { ...OBJECTED_ME, archival_objected: false } : OBJECTED_ME),
+  )
+  await page.route('**/api/privacy/archival-objection', (route) => {
+    resumed = true
+    return fulfillJson(route, { archival_objected: false, archival_objected_at: null })
+  })
+}
+
+const ARCHIVAL_JUST_RESUMED: Pick<BranchScenario, 'prepare' | 'shows'> = {
+  prepare: async (page) => {
+    await tabTo(page, page.getByRole('button', { name: 'Resume archival' }))
+    await page.keyboard.press('Enter')
+    // Same as above: judged by name in `shows`, not by the wait.
+    await page
+      .locator('main :text("Archival resumed.")')
+      .waitFor({ state: 'visible', timeout: 5_000 })
+      .catch(() => undefined)
+  },
+  shows: [
+    { name: 'resumed acknowledgement', selector: 'main :text("Archival resumed.")', min: 1 },
+    { name: 'object button', selector: 'main button:has-text("Object to archival")', min: 1 },
+  ],
+}
+
+/** The match page with its analysis section in `state`. `POST /api/analyze` is stubbed because a
+ * `queued` analysis makes the container ask for it on mount (`takeOver`); an unstubbed request
+ * would be refused and the page would render the refusal callout, a different branch. */
+async function stubAnalysisIn(
+  page: Page,
+  state: AnalysisSummaryState,
+  errorClass: string | null = null,
+): Promise<void> {
+  await stubMatchDetailAnalysis(page, analysisSummary(state, false, errorClass))
+  await page.route('**/api/analyze', (route) => fulfillJson(route, analysisSummary(state)))
+}
+
+function matchPage(
+  branch: string,
+  state: AnalysisSummaryState,
+  shows: readonly ListExpectation[],
+  errorClass: string | null = null,
+) {
+  return branchScenario('/matches/$gameId', branch, {
+    path: `/matches/${SAMPLE_GAME_ID}`,
+    shows,
+    stub: (page: Page) => stubAnalysisIn(page, state, errorClass),
+  })
+}
+
+/** `/search` with a query submitted against a stubbed answer that has no results. */
+function emptySearch(branch: string, degraded: boolean, shows: readonly ListExpectation[]) {
+  return branchScenario('/search', branch, {
+    path: '/search',
+    shows,
+    stub: async (page: Page) => {
+      await stubMe(page, SIGNED_IN_ME)
+      await page.route('**/api/players/search*', (route) =>
+        fulfillJson(route, {
+          results: [],
+          degraded,
+          reason: degraded ? 'provider_unavailable' : null,
+        }),
+      )
+    },
+    prepare: async (page: Page) => {
+      await tabTo(page, page.locator('main input').first())
+      await page.keyboard.type('Fixture')
+      const answered = page.waitForResponse('**/api/players/search*')
+      await page.keyboard.press('Enter')
+      await answered
+    },
+  })
+}
+
+const ERROR_AND_EMPTY_BRANCHES: readonly BranchScenario[] = [
+  // `DataExportPanel`'s `failed` state: the export request is refused, and the panel offers "Try
+  // again" (`size="lg"` since T561, for its 375px footprint).
+  branchScenario('/privacy', 'export failed', {
+    path: '/privacy',
+    shows: [
+      {
+        name: 'export failure callout',
+        selector: 'main :text("We could not build your export")',
+        min: 1,
+      },
+      { name: 'Try again button', selector: 'main button:has-text("Try again")', min: 1 },
+    ],
+    stub: async (page: Page) => {
+      await stubMe(page, SIGNED_IN_ME)
+      await page.route('**/api/privacy/export', (route) =>
+        route.fulfill({
+          status: 500,
+          contentType: 'application/json',
+          body: JSON.stringify({ error: { code: 'export_failed', message: 'Export failed.' } }),
+        }),
+      )
+    },
+    prepare: async (page: Page) => {
+      await tabTo(page, page.getByRole('button', { name: 'Export my data' }))
+      await page.keyboard.press('Enter')
+      await page
+        .locator('main button:has-text("Try again")')
+        .waitFor({ state: 'visible', timeout: 5_000 })
+        .catch(() => undefined)
+    },
+  }),
+  // `ArchivalControl` while its write is in flight, on the two routes that render it.
+  branchScenario('/dashboard', 'archival write in flight', {
+    ...DASHBOARD_PATHS,
+    ...ARCHIVAL_IN_FLIGHT,
+    stub: async (page: Page) => {
+      await stubMe(page, SIGNED_IN_ME)
+      await stubPopulatedProfiles(page, PROFILES_RESPONSE)
+    },
+  }),
+  branchScenario('/privacy', 'archival write in flight', {
+    path: '/privacy',
+    ...ARCHIVAL_IN_FLIGHT,
+    stub: async (page: Page) => {
+      await stubMe(page, SIGNED_IN_ME)
+    },
+  }),
+  // `ArchivalControl` after a resume (`justResumed`).
+  branchScenario('/dashboard', 'archival just resumed', {
+    ...DASHBOARD_PATHS,
+    ...ARCHIVAL_JUST_RESUMED,
+    stub: async (page: Page) => {
+      await stubResumable(page)
+      await stubPopulatedProfiles(page, PROFILES_RESPONSE)
+    },
+  }),
+  branchScenario('/privacy', 'archival just resumed', {
+    path: '/privacy',
+    ...ARCHIVAL_JUST_RESUMED,
+    stub: stubResumable,
+  }),
+  // The match page's analysis section, in the four states that render neither a list nor a control.
+  matchPage('analysis queued', 'queued', [
+    {
+      name: 'analysis progress (queued)',
+      selector: 'main [aria-busy="true"]:has-text("Waiting to start")',
+      min: 1,
+    },
+    { name: 'analysis skeletons', selector: `main ${LOOP_SELECTOR.skeleton}`, min: 2 },
+  ]),
+  matchPage('analysis running', 'running', [
+    {
+      name: 'analysis progress (running)',
+      selector: 'main [aria-busy="true"]:has-text("Analysing this match")',
+      min: 1,
+    },
+    { name: 'analysis skeletons', selector: `main ${LOOP_SELECTOR.skeleton}`, min: 2 },
+  ]),
+  matchPage(
+    'analysis failed',
+    'failed',
+    [
+      {
+        name: 'analysis failure callout',
+        selector: 'main [role="alert"]:has-text("This match could not be analysed")',
+        min: 1,
+      },
+      { name: 'analysis error class', selector: 'main :text("Error: ParseError")', min: 1 },
+    ],
+    'ParseError',
+  ),
+  matchPage('analysis unavailable', 'unavailable', [
+    {
+      name: 'analysis unavailable callout',
+      selector: 'main [role="alert"]:has-text("Analysis is not available for this match")',
+      min: 1,
+    },
+  ]),
+  // The account has no linked profile.
+  branchScenario('/dashboard', 'no linked account', {
+    ...DASHBOARD_PATHS,
+    shows: NO_LINKED_ACCOUNT,
+    stub: async (page: Page) => {
+      await stubMe(page, NO_LINKED_ME)
+      await stubPopulatedProfiles(page, NO_PROFILES_RESPONSE)
+    },
+  }),
+  branchScenario('/matches', 'no linked account', {
+    path: '/matches',
+    shows: NO_LINKED_ACCOUNT,
+    stub: async (page: Page) => {
+      await stubMe(page, NO_LINKED_ME)
+      await stubPopulatedProfiles(page, NO_PROFILES_RESPONSE)
+      await page.route('**/api/matches?*', (route) =>
+        fulfillJson(route, { matches: [], next_cursor: null }),
+      )
+    },
+  }),
+  branchScenario('/matches/$gameId', 'no linked account', {
+    path: `/matches/${SAMPLE_GAME_ID}`,
+    shows: NO_LINKED_ACCOUNT,
+    stub: async (page: Page) => {
+      await stubMatchDetailAnalysis(page, analysisSummary('published'))
+      // Registered after the shared stub, so these two win (Playwright matches the last).
+      await stubMe(page, NO_LINKED_ME)
+      await stubPopulatedProfiles(page, NO_PROFILES_RESPONSE)
+    },
+  }),
+  // `/search`'s two empty-results branches: nothing found, and nothing found while the source is
+  // degraded.
+  emptySearch('no results', false, [
+    { name: 'no-results callout', selector: 'main :text("No player matches")', min: 1 },
+    { name: 'spelling hint', selector: 'main :text("Check the spelling")', min: 1 },
+  ]),
+  emptySearch('no results, degraded', true, [
+    {
+      name: 'degraded callout',
+      selector: 'main :text("Player search is temporarily degraded.")',
+      min: 1,
+    },
+    {
+      name: 'no local match line',
+      selector: 'main :text("No locally known player matches")',
+      min: 1,
+    },
+  ]),
+]
+
+// The per-route branch inventory, by `ROUTE_SCENARIOS` label: the one `unmetBranches` checks, and
+// nothing more. A branch no entry here names is a gap this inventory cannot see on its own: it
+// lists the branches T744 named, not every branch a route can render (`ArchivalControl`'s
+// `writeFailed` and `unavailable` callouts, the match page's `refused` retry, the analysis
+// takeover refusal and the `error` states are not in it).
+export const ROUTE_REQUIRED_BRANCHES: Readonly<Record<string, readonly string[]>> = {
+  '/dashboard': [
+    'archival write in flight',
+    'archival just resumed',
+    'no linked account',
+    'profile summary loading',
+  ],
+  '/privacy': [
+    'export failed',
+    'archival write in flight',
+    'archival just resumed',
+    'erase button minting',
+  ],
+  '/search': ['no results', 'no results, degraded'],
+  '/matches': ['no linked account'],
+  '/matches/$gameId': [
+    'no linked account',
+    'analysis queued',
+    'analysis running',
+    'analysis failed',
+    'analysis unavailable',
+  ],
+}
+
+/** Every `route: branch` pair no branch scenario of that route declares. `route` is compared
+ * exactly, as in `unpopulatedLists`. */
+export function unmetBranches(
+  scenarios: readonly BranchScenario[],
+  required: Readonly<Record<string, readonly string[]>> = ROUTE_REQUIRED_BRANCHES,
+): string[] {
+  return Object.entries(required).flatMap(([route, branches]) =>
+    branches
+      .filter(
+        (branch) =>
+          !scenarios.some((scenario) => scenario.route === route && scenario.branch === branch),
+      )
+      .map((branch) => `${route}: ${branch}`),
+  )
+}
+
+/** Asserts, in the browser, that a branch scenario is showing the branch it names: every declared
+ * mark has its items. Unlike `assertPopulatedScenario` it never expects the page free of error
+ * callouts or loading regions. */
+export async function assertBranchScenario(
+  page: Page,
+  scenario: BranchScenario,
+  context: string,
+): Promise<void> {
+  for (const mark of scenario.shows) {
+    const selector = await selectorFor(page, mark)
+    await expect
+      .poll(() => page.locator(selector).count(), {
+        message:
+          `${context}: ${mark.name} (${selector}) rendered fewer than ${mark.min} item(s) — the ` +
+          `route is not showing its '${scenario.branch}' branch`,
+      })
+      .toBeGreaterThanOrEqual(mark.min)
+  }
+}
+
+// --- The two held loading states -----------------------------------------------------------------
+//
+// Until T744 these ran in the reduced-motion suite only. They are branch scenarios now, so all four
+// suites measure them held on screen: the keyboard walk over a page with a `Skeleton` or a busy
+// `Button` on it, the focus ring on that `Button`, its 44x44 footprint at 375px, and the loops
+// under the preference. `route-reduced-motion.spec.ts` keeps its positive control, which needs
+// `loop` to find the looping element by structure.
+
+export const LOADING_SCENARIOS: readonly LoadingScenario[] = [
+  branchScenario('/dashboard', 'profile summary loading', {
+    // `ProfileSummary`'s `loading` status renders `Skeleton` placeholders, the `pulse` loop, after
+    // `useDelayedVisible`'s 200ms: `shows` waits for the structure, never for an animation.
     ...DASHBOARD_PATHS,
     loop: 'skeleton',
     hold: { urlGlob: '**/api/profiles', body: PROFILES_RESPONSE },
-    stub: async (page) => {
+    shows: [{ name: 'skeleton', selector: `main ${LOOP_SELECTOR.skeleton}`, min: 1 }],
+    stub: async (page: Page) => {
       await stubMe(page, SIGNED_IN_ME)
     },
-  },
-  {
+  }),
+  branchScenario('/privacy', 'erase button minting', {
     // `Button`'s `loading` renders `Spinner`, the `spin` loop: the erase button while its
     // confirmation token is minted.
-    label: '/privacy — erase button minting',
     path: '/privacy',
     loop: 'spinner',
     hold: { urlGlob: '**/api/privacy/erase', body: { confirmation_token: 'visual-suite-token' } },
-    stub: async (page) => {
+    shows: [
+      {
+        name: 'busy erase button',
+        selector: 'main button[aria-busy="true"]:has-text("Erase my account")',
+        min: 1,
+      },
+      SPINNER_IN_MAIN,
+    ],
+    stub: async (page: Page) => {
       await stubMe(page, SIGNED_IN_ME)
     },
-    prepare: async (page) => {
+    prepare: async (page: Page) => {
       await tabTo(page, page.getByRole('button', { name: 'Erase my account' }))
       await page.keyboard.press('Enter')
     },
-  },
+  }),
+]
+
+export const BRANCH_SCENARIOS: readonly BranchScenario[] = [
+  ...ERROR_AND_EMPTY_BRANCHES,
+  ...LOADING_SCENARIOS,
+]
+
+export const SUITE_SCENARIOS: readonly SuiteScenario[] = [
+  ...ROUTE_SCENARIOS,
+  ...POPULATED_SCENARIOS,
+  ...SURFACE_SCENARIOS,
+  ...BRANCH_SCENARIOS,
 ]
 
 // --- Entering a scenario -------------------------------------------------------------------------
@@ -995,29 +1420,39 @@ export const LOADING_SCENARIOS: readonly LoadingScenario[] = [
 export interface EnterOptions {
   /** Applied before navigation, so the preference is in effect for the very first render. */
   reducedMotion?: boolean
-  /** Request holders to install after `scenario.stub`, before navigation (loading scenarios). */
-  beforeNavigate?: (page: Page) => Promise<void>
+}
+
+/** What `enterScenario` hands back: the external-request watch for the caller to assert at the end
+ * of its test, and the release of the scenario's held request (a no-op when it holds none). */
+export interface EnteredScenario extends ExternalRequestWatch {
+  /** Answers the scenario's `hold` now. Left alone, it is answered when the page closes, so only a
+   * test that needs the page to move on afterwards calls it. */
+  release: () => Promise<void>
 }
 
 /** The setup every suite repeated inline, in one place: avatar stub and external-request watch,
- * reduced-motion preference, theme seed, API stubs, navigation, theme-painted and font checks, then
- * the scenario's own `prepare` (search submitted, surface opened). A populated scenario is judged
- * by `assertPopulatedScenario` here — before `prepare`, or after it when `listsNeedPrepare` — so no
- * suite measures a page whose lists are still on their way. Returns the external-request watch for
- * the caller to assert at the end of its test. */
+ * reduced-motion preference, theme seed, API stubs, the scenario's held request, navigation,
+ * theme-painted and font checks, then the scenario's own `prepare` (search submitted, surface
+ * opened). A populated scenario is judged by `assertPopulatedScenario` here — before `prepare`, or
+ * after it when `listsNeedPrepare` — and a branch scenario by `assertBranchScenario` after it, so no
+ * suite measures a page whose lists are still on their way or that is not on the branch it names. */
 export async function enterScenario(
   page: Page,
   scenario: SuiteScenario,
   baseUrl: string,
   theme: ThemeOverride,
   options: EnterOptions = {},
-): Promise<ExternalRequestWatch> {
+): Promise<EnteredScenario> {
   const external = watchExternalRequests(page, baseUrl)
   await installSteamAvatarStub(page)
   if (options.reducedMotion) await page.emulateMedia({ reducedMotion: 'reduce' })
   await seedThemeOverride(page, theme)
   await scenario.stub(page)
-  await options.beforeNavigate?.(page)
+  const held = scenario.hold
+    ? await holdRequests(page, scenario.hold.urlGlob, scenario.hold.body)
+    : undefined
+  // A request still held when the test ends is answered as the page closes, never left dangling.
+  page.once('close', () => void held?.release())
 
   await gotoScenario(page, scenario, baseUrl)
   await page.getByRole('main').waitFor({ state: 'visible' })
@@ -1031,9 +1466,6 @@ export async function enterScenario(
   }
   await scenario.prepare?.(page)
   if (judged?.listsNeedPrepare) await assertPopulatedScenario(page, judged, judged.label)
-  return external
-}
-
-export async function holdLoadingRequest(page: Page, scenario: LoadingScenario) {
-  return holdRequests(page, scenario.hold.urlGlob, scenario.hold.body)
+  if (isBranchScenario(scenario)) await assertBranchScenario(page, scenario, scenario.label)
+  return { ...external, release: async () => held?.release() }
 }

@@ -27,9 +27,15 @@
 //    container through another component rather than importing it, through a default import or a
 //    lazy `import()`, or from a nested route directory (the derivation reads braced named imports
 //    in the flat `apps/web/src/routes/` directory only).
+// 7. (T744) every error, transient and unrendered-empty branch the task named has a branch
+//    scenario of *that route* (`ROUTE_REQUIRED_BRANCHES`, exact match), every one is in
+//    `SUITE_SCENARIOS` so all four suites run it, and in a browser each renders the branch it
+//    names — with, for every one, the planted absence: the same scenario with one stub pointed at
+//    the success response (or at a sibling branch) fails inside `enterScenario`, naming the mark
+//    that is missing.
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
-import { expect, test } from '@playwright/test'
+import { expect, type Page, test } from '@playwright/test'
 import {
   createAppServerHarness,
   hasBuild,
@@ -42,19 +48,25 @@ import {
   stubMe,
 } from './app-routes-harness'
 import {
+  type BranchScenario,
+  BRANCH_SCENARIOS,
   enterScenario,
   findAvatarHashes,
+  LOADING_SCENARIOS,
+  NO_LINKED_ME,
   EXPORT_DOWNLOAD_PATH,
   OBJECTED_ME,
   POPULATED_FIXTURES,
   POPULATED_SCENARIOS,
   type PopulatedScenario,
+  ROUTE_REQUIRED_BRANCHES,
   ROUTE_REQUIRED_LISTS,
   SUITE_SCENARIOS,
   type SuiteScenario,
   SURFACE_SCENARIOS,
   type TooltipScenario,
   TOOLTIP_SCENARIOS,
+  unmetBranches,
   unpopulatedLists,
 } from './suite-scenarios'
 
@@ -300,6 +312,87 @@ test.describe('suite scenarios', () => {
         first,
       ]),
     ).toEqual(['no prepare', 'no surface'])
+  })
+
+  // --- T744: the branch inventory ---------------------------------------------------------------
+
+  function withoutBranch(label: string): BranchScenario[] {
+    const kept = BRANCH_SCENARIOS.filter((scenario) => scenario.label !== label)
+    expect(kept.length, `no branch scenario is labelled '${label}'`).toBe(
+      BRANCH_SCENARIOS.length - 1,
+    )
+    return kept
+  }
+
+  test('every route that renders a named branch has a scenario for each of its branches', () => {
+    const missing = unmetBranches(BRANCH_SCENARIOS)
+    expect(
+      missing,
+      `branch(es) no scenario of their own route declares: ${missing.join(', ')}`,
+    ).toEqual([])
+  })
+
+  test('every branch scenario names a real route and a branch its route requires', () => {
+    for (const scenario of BRANCH_SCENARIOS) {
+      expect(
+        ROUTE_SCENARIOS.map((route) => route.label),
+        `${scenario.label}: route '${scenario.route}' is not a ROUTE_SCENARIOS label`,
+      ).toContain(scenario.route)
+      expect(scenario.label).toBe(`${scenario.route} (${scenario.branch})`)
+      expect(
+        ROUTE_REQUIRED_BRANCHES[scenario.route] ?? [],
+        `${scenario.label}: ROUTE_REQUIRED_BRANCHES does not list this branch`,
+      ).toContain(scenario.branch)
+      expect(scenario.shows.length, `${scenario.label} declares nothing it shows`).toBeGreaterThan(
+        0,
+      )
+    }
+    expect(
+      Object.keys(ROUTE_REQUIRED_BRANCHES).filter(
+        (route) => !ROUTE_SCENARIOS.some((scenario) => scenario.label === route),
+      ),
+      'inventory entries naming a route ROUTE_SCENARIOS does not have',
+    ).toEqual([])
+  })
+
+  // The planted absence cases for the inventory, one per scenario: each removal fails by naming the
+  // route and the branch that is lost, and only that one — a sibling of the same route, or the same
+  // branch on another route, never stands in.
+  for (const scenario of BRANCH_SCENARIOS) {
+    test(`removing ${scenario.label} is caught by name`, () => {
+      expect(unmetBranches(withoutBranch(scenario.label))).toEqual([
+        `${scenario.route}: ${scenario.branch}`,
+      ])
+    })
+  }
+
+  test('every branch scenario is in SUITE_SCENARIOS, so all four route suites run it', () => {
+    const labels = new Set(SUITE_SCENARIOS.map((scenario) => scenario.label))
+    expect(
+      BRANCH_SCENARIOS.filter((scenario) => !labels.has(scenario.label)).map((s) => s.label),
+    ).toEqual([])
+  })
+
+  test('the two held loading states are branch scenarios, so all four suites measure them held', () => {
+    expect(LOADING_SCENARIOS.map((scenario) => scenario.label)).toEqual([
+      '/dashboard (profile summary loading)',
+      '/privacy (erase button minting)',
+    ])
+    for (const scenario of LOADING_SCENARIOS) {
+      expect(BRANCH_SCENARIOS).toContain(scenario)
+      expect(scenario.hold.urlGlob).not.toBe('')
+    }
+  })
+
+  test('the no-linked-account fixture links nothing', () => {
+    expect(NO_LINKED_ME.authenticated).toBe(true)
+    expect(NO_LINKED_ME.profiles).toEqual([])
+  })
+
+  test('branch labels are unique, and a planted duplicate is caught', () => {
+    expect(duplicateLabels(BRANCH_SCENARIOS)).toEqual([])
+    const [first] = BRANCH_SCENARIOS
+    expect(duplicateLabels([...BRANCH_SCENARIOS, first])).toEqual([first.label])
   })
 })
 
@@ -624,6 +717,254 @@ test.describe('populated scenarios render their success branch', () => {
         /\(two linked profiles\): rating rows/,
       )
     })
+  }
+})
+
+// --- Each branch scenario renders the branch it names, in a browser (T744) -------------------------
+
+/** One planted absence per branch scenario: the real scenario with one stub pointed at something
+ * that is not the branch — the success response, or a sibling branch of the same section — so the
+ * rest of the page is exactly what ships. `mark` is the declared mark `enterScenario` must fail on. */
+interface PlantedBranch {
+  label: string
+  mark: string
+  /** Registered after the scenario's own stub, so it answers first (Playwright matches the last). */
+  plant: (page: Page) => Promise<void>
+  /** Drops the scenario's held request, so the state it feeds is answered at once. */
+  dropHold?: boolean
+  /** Runs after the scenario's own `prepare`, so a transient state the plant lets pass has ended
+   * before the marks are judged: an in-flight button that is answered at once is busy for a few
+   * milliseconds, and judging inside that window would pass for the wrong reason. */
+  settle?: (page: Page) => Promise<void>
+}
+
+const NOT_BUSY = async (page: Page) => {
+  await page.locator('main button[aria-busy="true"]').waitFor({ state: 'detached' })
+}
+
+function analysisPlant(state: 'queued' | 'running' | 'failed' | 'unavailable' | 'published') {
+  return async (page: Page) => {
+    await page.route(`**/api/matches/${SAMPLE_GAME_ID}`, (route) =>
+      fulfillJson(route, {
+        ...POPULATED_FIXTURES.matchDetail,
+        analysis: { ...POPULATED_FIXTURES.analysisSummaries.published, state },
+      }),
+    )
+    await page.route('**/api/analyze', (route) =>
+      fulfillJson(route, { ...POPULATED_FIXTURES.analysisSummaries.published, state }),
+    )
+  }
+}
+
+function searchPlant(body: { results: unknown[]; degraded: boolean; reason: string | null }) {
+  return async (page: Page) => {
+    await page.route('**/api/players/search*', (route) => fulfillJson(route, body))
+  }
+}
+
+const NO_LINKED_PLANT = async (page: Page) => {
+  await stubMe(page, SIGNED_IN_ME)
+  await page.route('**/api/profiles', (route) => fulfillJson(route, PROFILES_RESPONSE))
+}
+
+const ARCHIVAL_NOT_HELD = async (page: Page) => {
+  await page.route('**/api/privacy/archival-objection', (route) =>
+    fulfillJson(route, { archival_objected: true, archival_objected_at: '2026-10-13T08:00:00Z' }),
+  )
+}
+
+const PLANTED_BRANCHES: readonly PlantedBranch[] = [
+  {
+    label: '/privacy (export failed)',
+    mark: 'export failure callout',
+    // The export request succeeds, so the panel reaches `ready` instead of `failed`.
+    plant: async (page) => {
+      await page.route('**/api/privacy/export', (route) =>
+        fulfillJson(route, { id: 'planted', status: 'queued' }),
+      )
+      await page.route('**/api/privacy/export/planted', (route) =>
+        fulfillJson(route, { id: 'planted', status: 'completed', download_url: '/planted' }),
+      )
+    },
+  },
+  {
+    label: '/dashboard (archival write in flight)',
+    mark: 'busy archival button',
+    dropHold: true,
+    settle: NOT_BUSY,
+    plant: ARCHIVAL_NOT_HELD,
+  },
+  {
+    label: '/privacy (archival write in flight)',
+    mark: 'busy archival button',
+    dropHold: true,
+    settle: NOT_BUSY,
+    plant: ARCHIVAL_NOT_HELD,
+  },
+  ...(['/dashboard', '/privacy'] as const).map((route): PlantedBranch => ({
+    label: `${route} (archival just resumed)`,
+    mark: 'resumed acknowledgement',
+    // The write is refused, so the control shows its failure callout and never `justResumed`.
+    plant: async (page) => {
+      await page.route('**/api/privacy/archival-objection', (handler) =>
+        handler.fulfill({
+          status: 500,
+          contentType: 'application/json',
+          body: JSON.stringify({ error: { code: 'write_failed', message: 'No.' } }),
+        }),
+      )
+    },
+  })),
+  // Each analysis state is planted with a sibling: the other progress state for the pair that is
+  // one region worded two ways, the other failure callout for the pair that is one callout worded
+  // two ways. A section that renders the wrong one of a pair is still a section.
+  {
+    label: '/matches/$gameId (analysis queued)',
+    mark: 'analysis progress \\(queued\\)',
+    plant: analysisPlant('running'),
+  },
+  {
+    label: '/matches/$gameId (analysis running)',
+    mark: 'analysis progress \\(running\\)',
+    plant: analysisPlant('queued'),
+  },
+  {
+    label: '/matches/$gameId (analysis failed)',
+    mark: 'analysis failure callout',
+    plant: analysisPlant('unavailable'),
+  },
+  {
+    label: '/matches/$gameId (analysis unavailable)',
+    mark: 'analysis unavailable callout',
+    plant: analysisPlant('failed'),
+  },
+  ...(['/dashboard', '/matches', '/matches/$gameId'] as const).map((route): PlantedBranch => ({
+    label: `${route} (no linked account)`,
+    mark: 'no-linked-account notice',
+    plant: NO_LINKED_PLANT,
+  })),
+  {
+    label: '/search (no results)',
+    mark: 'no-results callout',
+    // Results come back, so the page lists players instead of saying none matched.
+    plant: searchPlant({ ...POPULATED_FIXTURES.search }),
+  },
+  {
+    label: '/search (no results, degraded)',
+    mark: 'degraded callout',
+    // Not degraded, nothing found: the sibling empty branch, not this one.
+    plant: searchPlant({ results: [], degraded: false, reason: null }),
+  },
+  {
+    label: '/dashboard (profile summary loading)',
+    mark: 'skeleton',
+    dropHold: true,
+    plant: async (page) => {
+      await page.route('**/api/profiles', (route) => fulfillJson(route, PROFILES_RESPONSE))
+    },
+  },
+  {
+    label: '/privacy (erase button minting)',
+    mark: 'busy erase button',
+    dropHold: true,
+    // The token is minted at once, so the confirmation dialog opens instead.
+    settle: async (page) => {
+      await page.getByRole('dialog').waitFor({ state: 'visible' })
+    },
+    plant: async (page) => {
+      await page.route('**/api/privacy/erase', (route) =>
+        fulfillJson(route, { confirmation_token: 'planted' }),
+      )
+    },
+  },
+]
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+test.describe('branch scenarios render the branch they name', () => {
+  test.describe.configure({ mode: 'serial' })
+
+  if (!hasBuild && process.env.CI) {
+    test('apps/web/dist must be built before this suite runs in CI', () => {
+      throw new Error(
+        'apps/web/dist has not been built. `.github/workflows/pr.yml` always runs ' +
+          '`pnpm --filter web build` before this suite — a missing build here means that step ' +
+          'failed or was skipped, not that this suite has nothing to test.',
+      )
+    })
+  } else {
+    test.skip(
+      () => !hasBuild,
+      'apps/web/dist has not been built — run `pnpm --filter web build` first.',
+    )
+
+    const branchHarness = createAppServerHarness('4182')
+
+    test.beforeAll(async () => {
+      await branchHarness.start()
+    })
+
+    test.afterAll(() => {
+      branchHarness.stop()
+    })
+
+    // `enterScenario` itself judges a branch scenario once its `prepare` has run.
+    for (const scenario of BRANCH_SCENARIOS) {
+      test(`${scenario.label} — every declared mark is on screen`, async ({ page }) => {
+        const external = await enterScenario(page, scenario, branchHarness.baseUrl, 'light')
+        external.assertNone(scenario.label)
+      })
+
+      // The touch suite measures at 375px, where a layout can swap; the marks must hold there too.
+      test(`${scenario.label} — the same marks are on screen at 375px`, async ({ page }) => {
+        await page.setViewportSize({ width: 375, height: 800 })
+        await enterScenario(page, scenario, branchHarness.baseUrl, 'light')
+      })
+    }
+
+    test('every branch scenario has a planted absence, and every plant names a mark it declares', () => {
+      const planted = new Set(PLANTED_BRANCHES.map((entry) => entry.label))
+      expect(
+        BRANCH_SCENARIOS.map((scenario) => scenario.label).filter((label) => !planted.has(label)),
+        'branch scenario(s) with no planted absence',
+      ).toEqual([])
+      for (const entry of PLANTED_BRANCHES) {
+        const base = BRANCH_SCENARIOS.find((scenario) => scenario.label === entry.label)
+        expect(base, `${entry.label}: no such branch scenario`).toBeDefined()
+        expect(
+          base?.shows.some((mark) => new RegExp(`^${entry.mark}$`).test(mark.name)),
+          `${entry.label}: it declares no mark named '${entry.mark}'`,
+        ).toBe(true)
+      }
+    })
+
+    for (const entry of PLANTED_BRANCHES) {
+      test(`planted: ${entry.label} pointed away from its branch fails on its ${entry.mark.replace(/\\/g, '')}`, async ({
+        page,
+      }) => {
+        const base = BRANCH_SCENARIOS.find((scenario) => scenario.label === entry.label)
+        if (!base) throw new Error(`${entry.label} is gone`)
+        const planted: BranchScenario = {
+          ...base,
+          hold: entry.dropHold ? undefined : base.hold,
+          prepare: async (target) => {
+            await base.prepare?.(target)
+            await entry.settle?.(target)
+          },
+          stub: async (target) => {
+            await base.stub(target)
+            await entry.plant(target)
+          },
+        }
+        await expect(enterScenario(page, planted, branchHarness.baseUrl, 'light')).rejects.toThrow(
+          new RegExp(
+            `${escapeRegExp(base.label)}: ${entry.mark} \\(.*\\) rendered fewer than \\d+ item\\(s\\) — the route is not showing its '${escapeRegExp(base.branch)}' branch`,
+          ),
+        )
+      })
+    }
   }
 })
 

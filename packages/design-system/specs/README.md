@@ -3839,18 +3839,11 @@ That run backs item 13 only for what those scenarios render at rest; what they d
 was owned by T676, whose own row is deleted too (2026-10-03; see the closing paragraphs below), as is the
 comparator row (T675, 2026-10-02). The adversarial reviews of #107 then filed what T676 does not reach,
 under its owning tasks (T681, T682); both rows are deleted too (2026-10-17, see the closing paragraphs below). The review of
-#163 then filed the one row below. It stays because it is where a gap in this
+#163 then filed one row, T744's, deleted too (2026-10-18, see the closing paragraphs below): **no row remains.** The register
+stays because it is where a gap in this
 package's own verification harness — never in a component or a token — is filed when it is found, for the
 reason the four registers above already are: the subject is this package's own tooling, so a future task
 changing that tooling needs its row updated, and it does not belong in a spec written once.
-
-1. **The route suites never render a route's error, transient or unrendered empty branches — found by the review of #163
-   (2026-10-17, B1).** `DataExportPanel`'s `failed` state and its "Try again" button (`size="lg"` since T561),
-   `ArchivalControl` while its write is in flight and after a resume (`justResumed`), the match page's analysis
-   section in its `queued`, `running`, `failed` and `unavailable` states, the no-linked-account state on `/dashboard`, `/matches` and `/matches/$gameId`, and `/search`'s empty-results branches meet none of the four suites; the two held loading states
-   (`ProfileSummary`'s `Skeleton`, the erase button's `Spinner`) run in the reduced-motion suite only. The at-rest
-   scenarios render only the empty match and favourites lists. Production-readiness item 13 is partly met overall until this row is deleted.
-   **Owner: T744. Fix by 2026-10-31.**
 
 T674 (2026-09-28) runs all four of item 13's sub-suites in CI against every route scenario at rest,
 in both themes, and the sizing row this task's own filing opened (formerly in the Verification-coverage gap
@@ -3895,7 +3888,7 @@ surface is walked by its own keyboard contract (`tests/visual/fixtures/open-surf
 focus-ring and touch-footprint assertions; the touch suite adds a sweep of every pointer-only target
 (`tests/visual/fixtures/pointer-targets.ts`); and the reduced-motion suite holds a loading state open and asserts the
 `Skeleton` and `Spinner` loops run without the preference and stop under it (`tests/visual/fixtures/loading-state.ts`);
-those two loading states run through the reduced-motion suite only. The suites run in `.github/workflows/pr.yml`'s
+those two loading states ran through the reduced-motion suite only until T744 (below). The suites run in `.github/workflows/pr.yml`'s
 `visual` job and in `.github/workflows/nightly.yml`'s `visual-full` job, both themes, with no workflow edit. The
 row is deleted rather than kept as a second copy of the fact; the reviews of #107 then filed the T681 and T682 rows, since deleted (below).
 
@@ -3923,4 +3916,21 @@ and a non-null `archival_objected_at`. `DataExportPanel`'s `ready` link is reach
 keyboard, against a stubbed export API (the link is asserted present and never followed). Each is declared in
 `ROUTE_REQUIRED_LISTS`, so `enterScenario` asserts in the browser that the button, the dated callout or the link is on
 screen, and `suite-scenarios.test.ts` fails by name when a scenario or its inventory entry is removed. The row is deleted
-rather than kept as a second copy of the fact. Item 13 is partly met overall, not Met, until the T744 row above is deleted.
+rather than kept as a second copy of the fact. The review of #163 then filed T744's row, deleted below.
+
+T744 (2026-10-18) closed the last row the same way: all four suites now also render a route's error, transient and
+unrendered empty branches, in both themes, as `BRANCH_SCENARIOS` in `tests/visual/fixtures/suite-scenarios.ts`, each
+reached through the route's own stubs (and by keyboard where the branch needs an action): `DataExportPanel`'s `failed`
+state and its "Try again" button on `/privacy`; `ArchivalControl` with its write held in flight, and after a resume
+(`justResumed`), on `/dashboard` and `/privacy`; the match page's analysis section in `queued`, `running`, `failed` and
+`unavailable`; the no-linked-account state on `/dashboard`, `/matches` and `/matches/$gameId`; and `/search`'s two
+empty-results branches. Each declares what it puts on screen, and `enterScenario` asserts that in a browser after the
+scenario's `prepare` (`assertBranchScenario`), so a stub that falls through to the success response, or to a sibling
+branch, fails naming the mark that is missing; `suite-scenarios.test.ts` plants that for every scenario and fails by name
+when a scenario or its entry in `ROUTE_REQUIRED_BRANCHES` is removed. The two held loading states, `ProfileSummary`'s
+`Skeleton` and the erase button's `Spinner`, are branch scenarios too, so the keyboard, focus-visibility and
+touch-footprint suites now run them held as well as the reduced-motion suite (whose positive control for the two loops is
+unchanged). The inventory lists the branches T744 named, not every branch a route can render: `ArchivalControl`'s
+`writeFailed` and `unavailable` callouts, the analysis section's `refused` retry and refused takeover, and the `error`
+states of the other routes are not in it. The row is deleted rather than kept as a second copy of the fact; the register
+holds no row.

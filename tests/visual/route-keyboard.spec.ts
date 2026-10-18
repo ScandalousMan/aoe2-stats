@@ -61,6 +61,9 @@ test.describe('keyboard operation, every route, both themes', () => {
     // keyboard contract (`fixtures/open-surface.ts`) instead — Tab cycling inside a `Dialog`,
     // roving-tabindex arrows through a `Menu` — because a Tab walk over the page behind an open
     // modal measures the wrong thing.
+    // T744: `SUITE_SCENARIOS` also holds `BRANCH_SCENARIOS` (`fixtures/suite-scenarios.ts`) — each route's
+    // error, transient and unrendered-empty branches, and the two held loading states — so this loop runs
+    // them too, and `enterScenario` has asserted the branch is on screen before anything below measures it.
     for (const scenario of SUITE_SCENARIOS) {
       for (const theme of ['light', 'dark'] as const) {
         const claim = scenario.surface
