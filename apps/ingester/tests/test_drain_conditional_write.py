@@ -850,8 +850,8 @@ async def test_a_quarantined_row_naming_the_drains_key_is_not_rewritten_by_the_m
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A resumer quarantined the row while this drain was validating the same bytes: `quarantined`
-    is T673's re-validation state, not one of the statuses another drain ends a row with, so this
-    drain's successful validation leaves the row byte-for-byte as it is and counts nothing."""
+    is not one of the statuses the drain's `stored` mark widens to (`_ENDED_BY_ANOTHER_DRAIN`), so
+    this drain's successful validation leaves the row byte-for-byte as it is and counts nothing."""
     capture_id = await _seed(session_factory)
     store = _HookedObjectStore()
     snapshot: dict[str, Any] = {}

@@ -2494,27 +2494,28 @@ carries what T673's dry run read.
       matches the row while it is `downloading`, as before, or while it is `expired`, `failed` or
       `unavailable` and `object_key` equals the key the drain wrote, adopted or, on a resumed
       reclaim, read from the row. That the bytes validated are the bytes the row names follows from
-      ordering, not from that equality: the mark runs only after the drain's own metadata commit
-      named its object, which nothing clears, and a resumed reclaim re-hashes the object against the
-      row's `zip_sha256` before it validates. The key is one per pair (`replay_object_key`), the
-      same for the drain and an upload, so the equality cannot tell which writer named it; it is a
-      guard against a row naming any other key, which no writer produces. `withdrawn` is a refusal
-      made on purpose (`withdraw_refused_near_deadline`), not an outcome of an attempt, so a late
-      write never reverses it; it still names the object, as T728 requires. `stored` already ends
-      the row and `quarantined` is T673's re-validation, so neither is added, and T673's
-      `_mark_stored` call is unchanged. Nothing the other drain recorded is retracted: its
-      `expired_capture` alert stays until acknowledged, and its run keeps its `expired_total`,
-      `failed_total` or `unavailable_total` while this drain's run counts `stored_total`, so
-      `scripts/checks/capture_audit.py` fails over that run's window for a capture that is `stored`.
-      That is the safe direction, a loss over-reported rather than hidden. **Not decided here:** the
-      drain's other late write, its `quarantined` mark after a failed validation, still matches only
-      `downloading` and leaves such a row naming an unvalidated object (T747). **Tests, each red
-      before:** for each of `expired`, `failed` and `unavailable`, a row another drain ended while
-      this drain was past its claim, then this drain's blob metadata commit and `stored` mark, ends
-      `stored` with `validated_by` set and the drain's object named. **Contrast:** a `withdrawn` row
-      stays `withdrawn` and names the object; a row naming another key than the drain's is not
-      marked, the defensive guard above; a `stored` row is not rewritten; a `quarantined` row naming
-      the drain's key is not rewritten and counts no `stored_total`
+      ordering, not from that equality: in `_process_one` the mark runs only after the drain's own
+      metadata commit named its object, which nothing clears, and a resumed reclaim re-hashes the
+      object against the row's `zip_sha256` before it validates. The key is one per pair
+      (`replay_object_key`), the same for the drain and an upload, so the equality cannot tell which
+      writer named it; it is a guard against a row naming any other key, which no writer produces.
+      `withdrawn` is a refusal made on purpose (`withdraw_refused_near_deadline`), not an outcome of
+      an attempt, so a late write never reverses it; it still names the object, as T728 requires.
+      `stored` already ends the row and `quarantined` is T673's re-validation, so neither is added,
+      and T673's `_mark_stored` call is unchanged. Nothing the other drain recorded is retracted:
+      its run keeps its `expired_total`, `failed_total` or `unavailable_total` while this drain's
+      run counts `stored_total`, and in the `expired` case its `expired_capture` alert stays until
+      acknowledged and `scripts/checks/capture_audit.py` fails over that run's window for a capture
+      that is `stored`. That is the safe direction, a loss over-reported rather than hidden. **Not
+      decided here:** the drain's other late write, its `quarantined` mark after a failed
+      validation, still matches only `downloading` and leaves such a row naming an unvalidated
+      object (T747). **Tests, each red before:** for each of `expired`, `failed` and `unavailable`,
+      a row another drain ended while this drain was past its claim, then this drain's blob metadata
+      commit and `stored` mark, ends `stored` with `validated_by` set and the drain's object named.
+      **Contrast:** a `withdrawn` row stays `withdrawn` and names the object; a row naming another
+      key than the drain's is not marked, the defensive guard above; a `stored` row is not
+      rewritten; a `quarantined` row naming the drain's key is not rewritten and counts no
+      `stored_total`
 - [x] T741 Close what #155's review and #148's review (N4) left on T730 (filed 2026-10-17; #155
       merged at its first commit). **Erasure:** the keys no row names are deleted before the keys
       rows name, both passes concurrently under one bound, so a kill or a delete error during the

@@ -382,10 +382,8 @@ _RETRY_BACKOFF_BASE_SECONDS = 60.0
 
 #: What `_process_one` answers when nothing was concluded this cycle, and so no key of `report`
 #: moves: a 404 reverted to `pending`, a failed attempt handed back, a claim handed back
-#: unattempted, or a write that matched no row: the `quarantined` mark and the other post-claim
-#: writes found the row no longer `downloading` (T728), and the `stored` mark found it neither
-#: `downloading` nor ended by another drain naming the drain's key (T740). The value is shared with
-#: the 404 revert's answer on purpose: the report has no key for any of them.
+#: unattempted, or a post-claim write that matched no row. The value is shared with the 404
+#: revert's answer on purpose: the report has no key for any of them.
 _NOT_CONCLUDED = "not_found"
 
 #: The user metadata the drain writes with its own object (T728), read back by
@@ -480,12 +478,9 @@ def _owner_is_archiving() -> ColumnElement[bool]:
 
 
 def _still_downloading(capture_id: uuid.UUID) -> ColumnElement[bool]:
-    """The row `capture_id`, only while its status is still `downloading` (T728). Every write the
-    drain makes after its claim carries it except the `stored` mark (`_mark_stored_by_drain`, T740,
-    which also matches a row another drain ended), so a row an upload has since marked `stored` (or
-    any other writer has moved) is never rewritten by them; the `quarantined` mark is one of them
-    (T747). Not used by `revalidate_quarantined`, whose writes are guarded on `quarantined`, nor
-    by the claim, which is what makes a row `downloading`."""
+    """The row `capture_id`, only while its status is still `downloading` (T728), so a write that
+    carries it never rewrites a row an upload or another drain has since moved, including one an
+    upload has marked `stored`."""
     return and_(ReplayCapture.id == capture_id, ReplayCapture.status == CaptureStatus.DOWNLOADING)
 
 
