@@ -82,6 +82,21 @@ Constitution principle XII exists because of this ADR. In particular:
   `.env*` files (except `.env.example`, which `config-preflight.mjs` reads) out of a CLI upload,
   since the CLI does not apply `.gitignore`. Deployment storage had reached ~86.9 GB of 10 GB on 2026-10-04.
 
+## Function bundles and build skips
+
+Before value, for the production deployment serving traffic when feature 007 began. A function's
+size is read from Deployment → Resources → Functions; the project's figure is read from Usage →
+Deployment Storage → Functions Storage → Projects. The maintainer fills the cells from the
+dashboard, and the PR for feature 007 does not merge while any of them is empty. T812 writes the
+rest of this section.
+
+| Measure                               | Size | Date read | Deployment id |
+| ------------------------------------- | ---- | --------- | ------------- |
+| Function `api/index.py`               |      |           |               |
+| Function `api/analyze.py`             |      |           |               |
+| Function `api/cron/ingest.py`         |      |           |               |
+| Project: Functions Storage → Projects |      |           |               |
+
 ## The single-page fallback is a host requirement, not a Vercel setting
 
 Every route the client-side router owns must resolve to `index.html` on a direct request — a
