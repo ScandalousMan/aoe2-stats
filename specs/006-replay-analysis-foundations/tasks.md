@@ -2854,6 +2854,22 @@ carries what T673's dry run read.
       matches those three statuses when the row names the drain's key, keeping `withdrawn` excluded,
       and whether it then raises `validation_failed` over an `expired` row whose `expired_capture`
       alert is already raised
+- [x] T749 Recapture the baselines T710's ink fix left under the comparator's tolerance (filed
+      2026-10-18 from #172's baseline regeneration). T710 gave `MatchRow`'s unknown outcome, unknown
+      team result and zero rating change and `MatchDetailPanel`'s unknown result
+      `text-text-secondary` in place of `text-secondary`, which generates no CSS, and recorded that
+      no baseline moved: the ink each gained stays under `maxDiffPixelRatio`. The committed
+      baselines of those stories therefore still show the inherited `text-primary` ink, and a
+      regression back to it passes the comparator. Measured 2026-10-18 by
+      `scripts/checks/baseline-regeneration-diff.mjs` in `baselines.yml` run 39114001064: 36
+      captures moved by 511 to 4,160 pixels, every width and theme of
+      `composite-matchrow--null-result`, `composite-matchrow--unknown-outcome`,
+      `composite-matchrow--list-all-outcomes-unknown`, `composite-matchrow--eight-player-match`,
+      `composite-matchdetailpanel--null-result` and `composite-matchdetailpanel--mixed-result`.
+      **Done** when those 36 baselines are recaptured on CI and the regeneration commit keeps no
+      other capture that this cause does not explain. **Done 2026-10-18**: `baselines.yml` run
+      39119237720 moved exactly those 36 beyond noise; its other 119 rewrites, all at or under
+      100px, are reverted
 
 ---
 
