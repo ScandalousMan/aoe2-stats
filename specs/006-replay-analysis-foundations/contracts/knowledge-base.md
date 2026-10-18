@@ -10,7 +10,7 @@ packages/knowledge/
 ├── packs/<name>/              one vendored pack per pinned revision: source files at one commit
 │                              + MANIFEST.json + LICENCE.md
 └── snapshots/<label>/         one directory per snapshot, written once — under a size budget
-    ├── snapshot.toml          identity, validation record, civilisations modelled
+    ├── snapshot.toml          identity, validation record, civilisations modelled, `supersedes`
     ├── rules.json             normalised entities — the queryable body
     ├── effects.toml           hand-transcribed civilisation effects
     └── disagreements.toml     source disagreements (FR-028)
@@ -20,8 +20,8 @@ Both trees are package data, read through `importlib.resources`. Nothing reads a
 nothing opens a socket (FR-026, SC-006).
 
 **The directory name is a label, never an identity and never parsed.** Identity is the four fields in
-`snapshot.toml` (FR-024), and resolution is exact-match on `describes_build` among promoted snapshots
-and nothing else — so no code reads the directory name and a rename breaks nothing. The earlier
+`snapshot.toml` (FR-024), and resolution is exact-match on `describes_build` among the promoted snapshots no
+other snapshot supersedes (below) and nothing else — so no code reads the directory name and a rename breaks nothing. The earlier
 wording here said `<identity>/`, which was never what the directories carry and which no reader could
 have acted on: two promoted snapshots of this pack share a digest by construction and differ only in
 `describes_build`, so a name built from the identity would be four fields long and still not be what
@@ -75,14 +75,33 @@ source revision's build and `describes_build`, and for each: the notes consulted
 read, the date, and the reading — _no field this pack carries changed_, or the fields that did. A
 build with no entry in that list makes the snapshot unpromotable.
 
+**Supersession (T746)** is how a promoted snapshot is corrected or extended when it may not be
+edited (FR-025). The newer snapshot of the **same build** carries `supersedes`, in its `[snapshot]`
+table: the digest of the one it replaces. The loader refuses, with `SnapshotError`, a `supersedes`
+that is not a digest, that names no installed snapshot, that names one of another build or one that
+is not promoted, that matches more than one installed snapshot of the build, or that sits in a
+snapshot which is itself not promoted (an unpromoted snapshot never resolves, so it could not
+replace a promoted one); a snapshot named by two others (the build would keep two current
+snapshots); and a cycle, including a snapshot naming itself (every member would be superseded and
+the build would read as `no-snapshot-for-build` while promoted snapshots exist). A chain is allowed:
+each link is superseded by the next and the last is current. The superseded snapshot is not
+demoted, edited or deleted: it stays promoted, digest-verified on every load and found by its full
+identity, so an analysis published under it is reproduced from it (SC-005, FR-043). It names the
+build by `describes_build` as it always did, which is why `supersedes` names a digest and the
+loader checks the build matches.
+
 ## Resolution by build (FR-027)
 
 ```python
 def snapshot_for(build: int) -> Snapshot | KnowledgeGap
 ```
 
-Exact match on `describes_build` among promoted snapshots, or a gap with cause
-`no-snapshot-for-build`. There is no nearest, no latest, no fallback parameter.
+Exact match on `describes_build` among the promoted snapshots that no other snapshot supersedes, or
+a gap with cause `no-snapshot-for-build`. There is no nearest, no latest, no fallback parameter. A
+superseded snapshot is skipped here and nowhere else: it is still the snapshot its own identity
+names. Two such current snapshots for one build raise `SnapshotError` rather than resolve to either;
+that is what `supersedes` exists to prevent, and `verify_installed_snapshots` checks it once for
+every build, ahead of any request.
 
 ## The query surface
 

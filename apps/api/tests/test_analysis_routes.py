@@ -407,10 +407,11 @@ def _named_document(*, game_id: int, build: int, participant_ids: tuple[int, ...
     """A version-2-shaped document whose identity names the promoted snapshot for `build`, carrying
     Feudal Age and Castle Age (age-ups), a House (building 70) and building 490, which neither
     promoted snapshot carries."""
-    from aoe2stats_knowledge.snapshot import load_all_snapshots
+    from aoe2stats_knowledge.snapshot import load_current_snapshots
 
+    # The current snapshot of the build: promoted and not superseded (T746: build 185872 has two).
     (snapshot,) = (
-        s for s in load_all_snapshots() if s.promoted and s.identity.describes_build == build
+        s for s in load_current_snapshots() if s.promoted and s.identity.describes_build == build
     )
     document = json.loads(
         _published_document(

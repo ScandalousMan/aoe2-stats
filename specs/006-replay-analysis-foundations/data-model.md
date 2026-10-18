@@ -122,9 +122,10 @@ One immutable body of rules (FR-022 to FR-028, FR-034). Surface in
 | `digest`                 | Over the snapshot's canonical content. Verified on load; a mismatch refuses to load.                               |
 | `validation`             | What was checked, against what, by whom, when (FR-030). Includes any carry-forward attestation, build by build.    |
 | `civilisations_modelled` | The civilisations whose effects are modelled. All others refuse qualified queries (research D5).                   |
+| `supersedes`             | Optional. The digest of the same build's snapshot this one replaces; resolution skips that one (T746).             |
 
 Identity is the first four fields together (FR-024). A snapshot directory is written once and never
-edited (FR-025); a correction is a new snapshot.
+edited (FR-025); a correction is a new snapshot that names the digest it supersedes.
 
 **Civilisation effect** — one hand-transcribed bonus.
 

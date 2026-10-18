@@ -560,8 +560,8 @@ against keeping one measurement in two homes.
   `LICENCE.md` under `packages/knowledge/packs/`. The first, `b9d494df6921d4080df69b22f9dbb7a4d1dcd9f0`
   (2026-06-21, pack `aoe2techtree`), is the one `aoe2techtree-180059` is derived from. The second,
   `3bb43b1439eef88dfe7fe892d7f7dc41ac9dd76f` (pack `aoe2techtree-3bb43b1`; authored 2026-09-11,
-  committed 2026-09-22, assessed 2026-10-08), is the one `aoe2techtree-185872` is derived from; it is
-  vendored beside the first because a snapshot must stay re-derivable from its own source revision.
+  committed 2026-09-22, assessed 2026-10-08), is the one `aoe2techtree-185872` and `aoe2techtree-185872-civilisations` are
+  derived from; it is vendored beside the first because a snapshot must stay re-derivable from its own source revision.
   The source carries no explicit build tag; the game build a commit implements is read from that
   commit's own message, a derived reading, not a field (research.md D3, D4). The first pinned
   commit's own newest "Implement DE Update" commit is `daf5fa18de` (2026-06-03), implementing build
@@ -586,7 +586,12 @@ against keeping one measurement in two homes.
   185872 snapshot models no civilisation at all: names resolve through the knowledge query
   (`query.name`), and no baseline query answers, because every other query takes a civilisation and
   refuses an unmodelled one. Since 2026-10-17 (T709) those names are served beside the stored
-  analysis document, from the snapshot its identity names, at the moment it is read.
+  analysis document, from the snapshot its identity names, at the moment it is read. Since
+  2026-10-18 (T746) a second build 185872 snapshot, which supersedes the first, models eight
+  civilisations: Franks, Teutons, Persians, Saracens, Malians, Tatars, Slavs and Sicilians,
+  transcribed from the second pack's strings and checked against the build's release notes. The
+  first stays installed so that the analyses published under it still reproduce; resolution by
+  build answers the second.
 - **Known limitations**: no civilisation-specific bonus data as structured values, no build/version
   field of its own, no combat attributes (attack, armour, hit points, range) — halfon carries those
   (below). Three builds (178524, 179158, 180059) unimplemented by the first pinned commit as of this
@@ -598,8 +603,10 @@ against keeping one measurement in two homes.
   2026-09-20 (`packages/knowledge/packs/aoe2techtree/LICENCE.md`,
   `packages/knowledge/snapshots/aoe2techtree-180059/snapshot.toml`); the second pack vendored and
   the build 185872 snapshot promoted 2026-10-08
-  (`packages/knowledge/snapshots/aoe2techtree-185872/snapshot.toml`). Licence: MIT, **copy
-  in** — `docs/asset-packs.md` "Knowledge packs".
+  (`packages/knowledge/snapshots/aoe2techtree-185872/snapshot.toml`) and superseded by a
+  second one 2026-10-18
+  (`packages/knowledge/snapshots/aoe2techtree-185872-civilisations/snapshot.toml`). Licence: MIT,
+  **copy in** — `docs/asset-packs.md` "Knowledge packs".
 
 ### halfon
 
@@ -637,7 +644,10 @@ against keeping one measurement in two homes.
   civilisation id spaces exist"). Read 2026-09-27: 9 Saracens, 26 Malians, 46 Achaemenids. It is the
   source of ids 9 and 26 in the replay-space table
   (`packages/knowledge/snapshots/aoe2techtree-180059/effects.toml`, `[[civilisation_id]]`), so it
-  cannot also corroborate them. It does **not** corroborate `apps/api/src/aoe2stats_api/civilizations.py`
+  cannot also corroborate them. Read again 2026-10-18 (T746) for the build 185872 snapshot's table
+  of eight ids (2 Franks, 4 Teutons, 8 Persians, 9 Saracens, 23 Slavs, 26 Malians, 33 Tatars,
+  37 Sicilians, in `packages/knowledge/snapshots/aoe2techtree-185872-civilisations/effects.toml`),
+  where each entry records what else corroborates it. It does **not** corroborate `apps/api/src/aoe2stats_api/civilizations.py`
   (Relic's space): reading it as doing so was T070i's error, corrected 2026-09-27 (T652n) — see §1
   above, "Ids 45-60 (T070i)", for what actually established that table's ids 45-60.
 - **Update mechanism**: read by a human, by hand, against a checkout of the repository. Never
