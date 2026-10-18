@@ -137,9 +137,9 @@ from aoe2stats_core.replay.events import (
 #: to bypass `snapshot_for`'s own resolution for a real query.
 _PACKAGE = "aoe2stats_knowledge"
 
-#: Both committed recordings report this build (`match-started.build`, verified directly against
-#: both golden streams below), which `aoe2techtree-180059` describes with all six
-#: modelled civilisations (T645).
+#: The first two committed recordings report this build (`match-started.build`, verified directly
+#: against both golden streams below), which `aoe2techtree-180059` describes with all six
+#: modelled civilisations (T645). The third reports build 185872 (T746).
 _BUILD = 180059
 
 _PROMOTED_DIRECTORY = "aoe2techtree-180059"
@@ -155,6 +155,7 @@ _FIXTURES_ROOT = Path(__file__).resolve().parents[3] / "tests" / "fixtures" / "r
 _GOLDEN_CANONICAL_STREAMS = (
     _FIXTURES_ROOT / "AgeIIDE_Replay_500546441.canonical.json",
     _FIXTURES_ROOT / "AgeIIDE_Replay_504695319.canonical.json",
+    _FIXTURES_ROOT / "AgeIIDE_Replay_511523321.canonical.json",
 )
 
 
@@ -353,11 +354,83 @@ _RECORDING_2_ENUMERATED_BLOCKING_GAPS: frozenset[tuple[str, str, str, str, str]]
 )
 
 
+#: **T746: recording 3 (match 511523321, build 185872, Slavs versus Sicilians) keeps three
+#: blockers**, measured against `aoe2techtree-185872-civilisations` (the 450 gaps and 225 blocking
+#: ones it had against the first build 185872 snapshot, which models no civilisation, are gone). One
+#: is the same hole recording 2 has: building 490 is absent from the vendored pack, here for the
+#: Sicilians. The other two are bonuses the pack's own string cannot size or scope, each refused in
+#: `effects.toml` with its reason and each the condition under which a second reading closes it:
+#: Slavs' Detinets (the string never states the wood amount that replaces 40% of a Castle's
+#: stone, so the Castle's cost for the Slavs is not knowledge the snapshot has) and Sicilians'
+#: "Fortifications built +50% faster" (the string never lists which buildings that names, so the
+#: Donjon's construction time for the Sicilians is not knowledge it has). Neither is answered at
+#: the baseline.
+_BUILDING_490_ABSENT_FOR_THE_SICILIANS = _RecordingBlocker(
+    name="Building 490 is absent from the vendored aoe2techtree pack entirely, for the Sicilians",
+    why_the_vendored_source_cannot_close_it=(
+        "the same hole recording 2 enumerates: an age-upgraded visual variant the pack's tech-tree "
+        "UI source never enumerates a second id for; research.md D3 explicitly rejects vendoring a "
+        "second source to close it."
+    ),
+    what_would_close_it=(
+        "a second vendored source naming the building, which research.md D3 rejects for this "
+        "feature."
+    ),
+    gap_tuples=(
+        ("building", "490", "cost", "Sicilians", "entity-absent"),
+        ("building", "490", "produced_at", "Sicilians", "entity-absent"),
+        ("building", "490", "production_time", "Sicilians", "entity-absent"),
+    ),
+)
+
+_SLAVS_DETINETS_AMOUNT_IS_NOT_STATED = _RecordingBlocker(
+    name="Slavs' Detinets: the wood amount replacing 40% of a Castle's stone is not stated",
+    why_the_vendored_source_cannot_close_it=(
+        "the pack's string says only 'Replaces 40% of Castle and Watch Tower-line stone cost with "
+        "additional wood cost'; the build 185872 release notes do not mention Detinets; reading it "
+        "as a one-for-one swap would be a guess, and a bonus is never half-applied (research.md "
+        "D5)."
+    ),
+    what_would_close_it=(
+        "a second reading that states the amount (the publisher's notes or the game's own text), "
+        "recorded in effects.toml as a modelled, researched-conditional cost effect."
+    ),
+    gap_tuples=(("building", "82", "cost", "Slavs", "effect-not-modelled"),),
+)
+
+_SICILIANS_FORTIFICATIONS_ARE_NOT_LISTED = _RecordingBlocker(
+    name="Sicilians' 'Fortifications built +50% faster': the buildings it names are not listed",
+    why_the_vendored_source_cannot_close_it=(
+        "the pack's strings use 'Fortifications' as a class and never list its members; "
+        "effects.toml refuses the construction time of every building the pack's usage points at "
+        "rather than answer the Donjon's at the baseline, and the release notes do not define the "
+        "word."
+    ),
+    what_would_close_it=(
+        "a second reading that lists the buildings (the publisher's notes or the game's own text), "
+        "recorded in effects.toml as a modelled construction-time effect over them."
+    ),
+    gap_tuples=(("building", "1665", "production_time", "Sicilians", "effect-not-modelled"),),
+)
+
+_RECORDING_3_BLOCKERS: tuple[_RecordingBlocker, ...] = (
+    _BUILDING_490_ABSENT_FOR_THE_SICILIANS,
+    _SLAVS_DETINETS_AMOUNT_IS_NOT_STATED,
+    _SICILIANS_FORTIFICATIONS_ARE_NOT_LISTED,
+)
+
+#: The flattened union of recording 3's blockers: 5 tuples.
+_RECORDING_3_ENUMERATED_BLOCKING_GAPS: frozenset[tuple[str, str, str, str, str]] = frozenset(
+    gap_tuple for blocker in _RECORDING_3_BLOCKERS for gap_tuple in blocker.gap_tuples
+)
+
+
 @pytest.mark.parametrize(
     ("golden_path", "expected_blocking"),
     [
         (_GOLDEN_CANONICAL_STREAMS[0], _RECORDING_1_ENUMERATED_BLOCKING_GAPS),
         (_GOLDEN_CANONICAL_STREAMS[1], _RECORDING_2_ENUMERATED_BLOCKING_GAPS),
+        (_GOLDEN_CANONICAL_STREAMS[2], _RECORDING_3_ENUMERATED_BLOCKING_GAPS),
     ],
     ids=[path.stem for path in _GOLDEN_CANONICAL_STREAMS],
 )
@@ -414,6 +487,13 @@ def test_each_committed_recording_reports_zero_blocking_gaps(
     The one blocker that remains — buildings 490 and 673, absent from the vendored pack entirely —
     is untouched by T652u: it was never a civilisation bonus, so re-modelling what a bonus is
     conditional on has nothing to close there.
+
+    **Recording 3 (T746)** is the build 185872 recording, Slavs versus Sicilians, and resolves
+    against `aoe2techtree-185872-civilisations`, the second snapshot of that build, which supersedes
+    the first (that one models no civilisation, so every civilisation-qualified query on this
+    recording was a gap: 450 gaps, 225 of them blocking, before the second existed). It keeps the
+    three blockers `_RECORDING_3_BLOCKERS` enumerates, two of them refused bonuses and not holes in
+    the source, and is asserted by set equality exactly as recording 2 is.
     """
     from aoe2stats_knowledge import coverage, gaps
 

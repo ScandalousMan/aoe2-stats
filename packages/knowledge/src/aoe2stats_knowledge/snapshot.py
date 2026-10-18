@@ -54,6 +54,19 @@ edit adding a `strategy=`/`allow_nearest=` parameter fails loudly rather than si
 the substitution FR-027 forbids. A build with no promoted snapshot returns `NoSnapshotForBuild`
 rather than `None` or a raised exception — a gap is data, not a control-flow signal.
 
+**Supersession (T746, FR-025, SC-005)**: a promoted snapshot is never edited, so correcting or
+extending one - modelling the civilisations of a build whose first snapshot models none - ships as a
+second snapshot of the same build whose `[snapshot].supersedes` names the first's digest.
+Resolution by build skips a superseded snapshot (`load_current_snapshots`); the superseded one stays
+promoted, loadable and digest-verified, found by `load_all_snapshots` by its full identity, so an
+analysis published under it still reproduces its own bytes. `supersedes` is validated where every
+snapshot is loaded together (`load_all_snapshots`, through `_superseded_directories`): it must name
+exactly one installed, promoted snapshot of the same `describes_build`, the superseding snapshot
+must itself be promoted, no snapshot may be superseded twice, and a chain may not close on itself -
+a cycle would leave a build with promoted snapshots and none resolvable, which would read as a
+`no-snapshot-for-build` gap. What stays checked at resolution, unchanged, is that two *current*
+promoted snapshots may not describe one build (`SnapshotError`).
+
 **Reproduction (FR-043, T658)**: `pinned_snapshot(snapshot)` is the one way a demoted snapshot is
 answerable by build, and only for the duration of a block the caller opens on purpose — it names the
 snapshot, it never searches for one. `load_all_snapshots` is how a caller finds the snapshot an
@@ -75,7 +88,7 @@ import contextvars
 import functools
 import hashlib
 import tomllib
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from importlib import resources
 from typing import Any, Final
@@ -176,6 +189,11 @@ class ValidationRecord:
                 )
 
 
+def _is_digest_shape(value: str) -> bool:
+    """The shape of every digest this module records: `sha256:` and 64 characters after it."""
+    return value.startswith("sha256:") and len(value) == len("sha256:") + 64
+
+
 @dataclass(frozen=True, slots=True)
 class SnapshotIdentity:
     """FR-024's four-field identity: a knowledge source, that source's own version, the game
@@ -196,7 +214,7 @@ class SnapshotIdentity:
                 raise SnapshotError(f"{field_name} must be a non-blank string, got {value!r}")
         if not isinstance(self.describes_build, int) or isinstance(self.describes_build, bool):
             raise SnapshotError(f"describes_build must be an int, got {self.describes_build!r}")
-        if not self.digest.startswith("sha256:") or len(self.digest) != len("sha256:") + 64:
+        if not _is_digest_shape(self.digest):
             raise SnapshotError(
                 f"digest must be a 'sha256:'-prefixed 64-character hex digest, got {self.digest!r}"
             )
@@ -210,13 +228,16 @@ class Snapshot:
     is its FR-024 identity, `promoted` is FR-034's flag (never true without `validation` set — see
     `parse_promotion`), and `validation` is the FR-030 record `promoted` depends on, or `None` for
     a snapshot that has not been validated at all. T640 extends this dataclass with the normalised
-    rules body it carries.
+    rules body it carries. `supersedes` (T746) is the digest of the snapshot of the same build this
+    one replaces for resolution by build, or `None`; it is checked against the other installed
+    snapshots by `_superseded_directories`, not here, because one snapshot cannot see the rest.
     """
 
     directory: str
     identity: SnapshotIdentity
     promoted: bool = False
     validation: ValidationRecord | None = None
+    supersedes: str | None = None
 
 
 def compute_digest(rules_json: bytes, effects_toml: bytes) -> str:
@@ -297,6 +318,27 @@ def parse_identity(snapshot_toml_text: str) -> SnapshotIdentity:
         describes_build=_require_int(table, "describes_build"),
         digest=_require_str(table, "digest"),
     )
+
+
+def parse_supersedes(snapshot_toml_text: str) -> str | None:
+    """`snapshot.toml`'s optional `[snapshot].supersedes` (T746): the digest of the snapshot this
+    one replaces for resolution by build, or `None` when the key is absent.
+
+    A present value must be a `sha256:`-prefixed 64-character digest - the same shape
+    `SnapshotIdentity` requires of its own - or `SnapshotError`. Whether it names an installed
+    snapshot of the same build is not knowable from one file; `_superseded_directories` checks it
+    where every snapshot is loaded together.
+    """
+    table = _require_table(_load_toml(snapshot_toml_text), "snapshot")
+    value = table.get("supersedes")
+    if value is None:
+        return None
+    if not isinstance(value, str) or not _is_digest_shape(value):
+        raise SnapshotError(
+            "snapshot.toml: [snapshot].supersedes must be a 'sha256:'-prefixed 64-character hex "
+            f"digest naming the snapshot it replaces, got {value!r}"
+        )
+    return value
 
 
 def _parse_validation_record(table: Mapping[str, Any]) -> ValidationRecord:
@@ -522,8 +564,80 @@ def load_snapshot(directory: str) -> Snapshot:
         )
     promoted, validation = parse_promotion(identity_text)
     return Snapshot(
-        directory=directory, identity=identity, promoted=promoted, validation=validation
+        directory=directory,
+        identity=identity,
+        promoted=promoted,
+        validation=validation,
+        supersedes=parse_supersedes(identity_text),
     )
+
+
+def _superseded_directories(snapshots: Sequence[Snapshot]) -> frozenset[str]:
+    """The directories of every snapshot another snapshot supersedes, after checking that every
+    `supersedes` can be honoured (T746; see the module docstring, "Supersession").
+
+    Refused with `SnapshotError`, each naming the snapshot at fault: a superseding snapshot that is
+    not promoted (it never resolves, so it would hide a promoted one and leave the build with none);
+    a `supersedes` naming no installed snapshot, naming one of another build, naming one that is not
+    promoted, or naming a digest that more than one installed snapshot of the build carries; a
+    snapshot superseded by two (two live snapshots for the build, which resolution would otherwise
+    only discover on first use); and a cycle, including a snapshot superseding itself.
+    """
+    target_of: dict[str, str] = {}
+    superseded_by: dict[str, str] = {}
+    for snapshot in snapshots:
+        if snapshot.supersedes is None:
+            continue
+        name = f"{snapshot.directory!r}"
+        if not snapshot.promoted:
+            raise SnapshotError(
+                f"{name} supersedes {snapshot.supersedes} but is not promoted: an unpromoted "
+                "snapshot never resolves, so it cannot replace a promoted one"
+            )
+        build = snapshot.identity.describes_build
+        same_digest = [s for s in snapshots if s.identity.digest == snapshot.supersedes]
+        targets = [s for s in same_digest if s.identity.describes_build == build]
+        if not targets:
+            if same_digest:
+                raise SnapshotError(
+                    f"{name} supersedes {snapshot.supersedes}, which describes build "
+                    f"{same_digest[0].identity.describes_build}, not build {build}: a snapshot "
+                    "may only supersede one of the same build"
+                )
+            raise SnapshotError(
+                f"{name} supersedes {snapshot.supersedes}, which no installed snapshot carries"
+            )
+        if len(targets) > 1:
+            raise SnapshotError(
+                f"{name} supersedes {snapshot.supersedes}, which more than one installed snapshot "
+                f"of build {build} carries: {[t.directory for t in targets]}"
+            )
+        (target,) = targets
+        if not target.promoted:
+            raise SnapshotError(
+                f"{name} supersedes {target.directory!r}, which is not promoted: only a promoted "
+                "snapshot can be superseded"
+            )
+        if target.directory in superseded_by:
+            raise SnapshotError(
+                f"{target.directory!r} is superseded more than once, by "
+                f"{superseded_by[target.directory]!r} and {snapshot.directory!r}: a build would "
+                "keep two current snapshots"
+            )
+        superseded_by[target.directory] = snapshot.directory
+        target_of[snapshot.directory] = target.directory
+    for start in target_of:
+        seen = [start]
+        current = start
+        while current in target_of:
+            current = target_of[current]
+            if current in seen:
+                raise SnapshotError(
+                    "snapshots supersede each other in a cycle: "
+                    + " -> ".join(repr(d) for d in [*seen, current])
+                )
+            seen.append(current)
+    return frozenset(superseded_by)
 
 
 @functools.cache
@@ -533,7 +647,11 @@ def load_all_snapshots() -> tuple[Snapshot, ...]:
     Used by the immutability test that walks every committed snapshot directory — a snapshot that
     fails to load (a bad digest, a malformed identity, an unpromotable promotion flag) raises
     rather than being silently skipped. Includes unpromoted snapshots: they are valid, loadable
-    data, just not resolvable by build (`load_resolvable_snapshots` is the filtered set).
+    data, just not resolvable by build (`load_resolvable_snapshots` is the filtered set), and
+    includes superseded ones (T746), which stay the way to find the snapshot an identity names.
+    **A `supersedes` that cannot be honoured raises here** (`_superseded_directories`), so no
+    consumer of the installed set - the resolver, the immutability walk, a reproduction - ever sees
+    an inconsistent one.
 
     **Cached (T652b)**, the same way `query._rules`/`query._civilisations_modelled`/`effects.
     _effects` already are: the packaged `snapshots/` tree is immutable once committed (FR-025), so
@@ -545,17 +663,22 @@ def load_all_snapshots() -> tuple[Snapshot, ...]:
     a real production caller never does, so the cache lives for the whole process there, exactly
     like the other three.
     """
-    return tuple(load_snapshot(name) for name in list_snapshot_directories())
+    snapshots = tuple(load_snapshot(name) for name in list_snapshot_directories())
+    _superseded_directories(snapshots)
+    return snapshots
 
 
 @functools.cache
 def load_resolvable_snapshots() -> tuple[Snapshot, ...]:
     """Every packaged snapshot that is **promoted** — the set FR-034's "only a promoted snapshot
-    is resolvable by build" describes, and the set `snapshot_for(build)` resolves against.
+    is resolvable by build" describes; `snapshot_for(build)` resolves among the subset
+    `load_current_snapshots` returns.
 
     An unpromoted snapshot loads without error through `load_all_snapshots` (it is not corrupt,
     merely not yet validated) but never appears here: promotion, not mere presence on disk, is
-    what makes a snapshot answerable.
+    what makes a snapshot answerable. **A superseded snapshot is still promoted and still appears
+    here** (T746): this is the promoted set, which the immutability and re-derivation walks need;
+    `load_current_snapshots` is the set resolution by build reads.
 
     **Cached (T652b)** — see `load_all_snapshots`'s own docstring for why, and for the
     test-isolation fixture this relies on.
@@ -563,10 +686,24 @@ def load_resolvable_snapshots() -> tuple[Snapshot, ...]:
     return tuple(snapshot for snapshot in load_all_snapshots() if snapshot.promoted)
 
 
+def load_current_snapshots() -> tuple[Snapshot, ...]:
+    """Every promoted snapshot **no other snapshot supersedes** (T746) - the set `snapshot_for`
+    resolves against, so a superseded snapshot is never what a build resolves to.
+
+    Not cached of its own: both inputs are (`load_all_snapshots`, `load_resolvable_snapshots`), so
+    it costs a set difference, and a cache of its own would be one more thing the test-isolation
+    fixture has to know to clear (`packages/knowledge/tests/conftest.py`).
+    """
+    superseded = _superseded_directories(load_all_snapshots())
+    return tuple(
+        snapshot for snapshot in load_resolvable_snapshots() if snapshot.directory not in superseded
+    )
+
+
 @functools.cache
 def _promoted_snapshot_for(build: int) -> Snapshot | KnowledgeGap:
     """FR-027's build resolution: an exact match on `describes_build` among
-    `load_resolvable_snapshots()`, or a gap.
+    `load_current_snapshots()` (the promoted snapshots none supersedes), or a gap.
 
     Exactly one parameter, no more: there is no nearest, no latest and no fallback parameter,
     because an argument that exists will eventually be passed
@@ -576,11 +713,15 @@ def _promoted_snapshot_for(build: int) -> Snapshot | KnowledgeGap:
     and never the unpromoted snapshot that happens to share the same `describes_build` — promotion
     still gates resolvability (contracts/knowledge-base.md, "Promotion").
 
-    More than one promoted snapshot claiming the same `describes_build` is not a gap and not
-    silently resolved by picking one: it is a data-integrity violation this module has no business
-    papering over, so it raises `SnapshotError` instead. Nothing upstream of promotion (T639) or
-    carry-forward (T642) currently prevents two promoted snapshots from describing the same build,
-    so this is checked here, at the one place both would be read together.
+    A snapshot another snapshot supersedes (T746) is skipped: it is still promoted, but it is no
+    longer what the build resolves to.
+
+    More than one **current** promoted snapshot claiming the same `describes_build` is not a gap
+    and not silently resolved by picking one: it is a data-integrity violation this module has no
+    business papering over, so it raises `SnapshotError` instead. Nothing upstream of promotion
+    (T639) or carry-forward (T642) prevents two promoted snapshots from describing the same build,
+    and a `supersedes` is the only way to say one replaces the other, so this is checked here, at
+    the one place both would be read together.
 
     **Cached (T652b)**, per `build` — see `load_all_snapshots`'s own docstring for why, and for the
     test-isolation fixture this relies on. This is the function `coverage.py`'s per-(entity, field)
@@ -590,7 +731,7 @@ def _promoted_snapshot_for(build: int) -> Snapshot | KnowledgeGap:
     """
     matches = tuple(
         snapshot
-        for snapshot in load_resolvable_snapshots()
+        for snapshot in load_current_snapshots()
         if snapshot.identity.describes_build == build
     )
     if not matches:
@@ -608,11 +749,11 @@ def verify_installed_snapshots() -> None:
     (T666h) - everything that is a fact about the deployment rather than about one recording.
 
     Three conditions, none of which needs a recording: every packaged snapshot loads and passes its
-    digest check (`load_all_snapshots` raises on the first that does not, `SnapshotDigestMismatch`
-    or another `SnapshotError`); and no two promoted snapshots describe one build, which is the
-    condition `snapshot_for` raises on - read here through `_promoted_snapshot_for` itself, once
-    per build the promoted snapshots describe, so the check and the resolver cannot disagree about
-    what counts as a duplicate.
+    digest check, and every `supersedes` can be honoured (`load_all_snapshots` raises on the first
+    that does not, `SnapshotDigestMismatch` or another `SnapshotError`); and no two current promoted
+    snapshots describe one build, which is the condition `snapshot_for` raises on - read here
+    through `_promoted_snapshot_for` itself, once per build the promoted snapshots describe, so the
+    check and the resolver cannot disagree about what counts as a duplicate.
 
     **It is cheap after the first call and says nothing it did not find.** Both resolvers are
     `functools.cache`d, so a healthy deployment pays one tree read for the process's life and
@@ -621,7 +762,7 @@ def verify_installed_snapshots() -> None:
     promoted snapshot is a gap, not a fault, and passes. Returns nothing; raises `SnapshotError`
     (or an `OSError` for a packaged file that cannot be read).
     """
-    builds = {snapshot.identity.describes_build for snapshot in load_resolvable_snapshots()}
+    builds = {snapshot.identity.describes_build for snapshot in load_current_snapshots()}
     for build in sorted(builds):
         _promoted_snapshot_for(build)
 

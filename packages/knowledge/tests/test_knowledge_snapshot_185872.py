@@ -49,17 +49,83 @@ def test_the_names_of_the_ids_a_recording_carries_resolve_for_the_build(
     assert answer.snapshot_identity.describes_build == _BUILD
 
 
-def test_the_build_models_no_civilisation_so_a_cost_is_a_gap_not_a_baseline() -> None:
-    """research.md D5: the 180059 civilisation effects are not carried across a major update no one
-    has read the notes of, so a civilisation-qualified cost refuses (FR-023) - for a civilisation
-    the 180059 snapshot does model, too."""
-    entity = query.EntityRef(kind="building", id="70", build=_BUILD)
+#: The first build 185872 snapshot's digest (`aoe2techtree-185872/snapshot.toml`), which the second
+#: names as the one it supersedes (T746). A promoted snapshot is never edited (FR-025), so modelling
+#: civilisations for the build could not be done in it.
+_SUPERSEDED_DIGEST = "sha256:1c77d7cb5034b48dcb15641370512854a222d5f7d40baaa6129fb1b1c56fca5a"
 
-    result = query.cost(entity, civilisation="Franks")
+#: The raw civilisation ids the committed build 185872 recording seats (Slavs, Sicilians) and the
+#: six `aoe2techtree-180059` models (Franks, Teutons, Persians, Saracens, Malians, Tatars).
+_MODELLED_RAW_IDS = {
+    2: "Franks",
+    4: "Teutons",
+    8: "Persians",
+    9: "Saracens",
+    23: "Slavs",
+    26: "Malians",
+    33: "Tatars",
+    37: "Sicilians",
+}
+
+
+def _first_snapshot() -> snapshot.Snapshot:
+    (first,) = (s for s in snapshot.load_all_snapshots() if s.identity.digest == _SUPERSEDED_DIGEST)
+    return first
+
+
+def test_the_build_resolves_to_the_snapshot_that_supersedes_the_first() -> None:
+    resolved = snapshot.snapshot_for(_BUILD)
+
+    assert isinstance(resolved, snapshot.Snapshot)
+    assert resolved.promoted
+    assert resolved.supersedes == _SUPERSEDED_DIGEST
+    assert resolved.identity.digest != _SUPERSEDED_DIGEST
+    assert resolved.identity.describes_build == _BUILD
+    assert resolved.identity.source_version == _SOURCE_COMMIT
+    assert resolved.directory != _first_snapshot().directory
+
+
+def test_the_first_snapshot_stays_loadable_by_identity_and_models_no_civilisation() -> None:
+    """SC-005: the analysis published under it must still reproduce, so it is never deleted and
+    never edited. Pinned, it answers as it always did: every civilisation is a gap."""
+    first = _first_snapshot()
+    assert first.promoted
+    assert first.supersedes is None
+
+    with snapshot.pinned_snapshot(first):
+        result = query.cost(
+            query.EntityRef(kind="building", id="70", build=_BUILD), civilisation="Franks"
+        )
 
     assert isinstance(result, gaps.KnowledgeGap)
     assert result.cause == "civilisation-not-modelled"
     assert result.build == _BUILD
+
+
+def test_the_current_snapshot_models_the_scoped_civilisations_and_only_those() -> None:
+    """Raw ids 23 and 37 (the recording's seats) and the six 180059 models; 5, 10, 49 and 51 stay
+    the aggregate gap report's backlog (research.md D5)."""
+    from aoe2stats_knowledge import effects
+
+    current = snapshot.snapshot_for(_BUILD)
+    assert isinstance(current, snapshot.Snapshot)
+
+    assert dict(effects.civilisation_id_names(current.directory)) == _MODELLED_RAW_IDS
+    for out_of_scope in (5, 10, 49, 51):
+        assert out_of_scope not in effects.civilisation_id_names(current.directory)
+
+
+def test_a_modelled_civilisation_answers_and_an_unmodelled_one_still_refuses() -> None:
+    entity = query.EntityRef(kind="building", id="84", build=_BUILD)
+
+    modelled = query.cost(entity, civilisation="Saracens")
+    unmodelled = query.cost(entity, civilisation="Britons")
+
+    assert not isinstance(modelled, gaps.KnowledgeGap), f"gap: {modelled!r}"
+    assert modelled.value == {"wood": 75}
+    assert isinstance(unmodelled, gaps.KnowledgeGap)
+    assert unmodelled.cause == "civilisation-not-modelled"
+    assert unmodelled.build == _BUILD
 
 
 def test_the_older_snapshot_is_untouched_by_the_new_one() -> None:

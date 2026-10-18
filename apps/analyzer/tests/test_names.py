@@ -43,7 +43,11 @@ from aoe2stats_knowledge import snapshot as snapshot_module
 from aoe2stats_knowledge.gaps import KnowledgeGap
 from aoe2stats_knowledge.query import EntityRef
 from aoe2stats_knowledge.query import name as query_name
-from aoe2stats_knowledge.snapshot import load_all_snapshots, load_resolvable_snapshots
+from aoe2stats_knowledge.snapshot import (
+    load_all_snapshots,
+    load_current_snapshots,
+    load_resolvable_snapshots,
+)
 from aoe2stats_replay_engine.aoe2rec import Aoe2RecExtractor
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -60,8 +64,9 @@ _ID_OUTSIDE_THE_SNAPSHOT = 490
 
 
 def _knowledge_identity(build: int) -> dict[str, Any]:
+    # The current snapshot of the build: promoted and not superseded (T746, build 185872 has two).
     (snapshot,) = (
-        s for s in load_all_snapshots() if s.promoted and s.identity.describes_build == build
+        s for s in load_current_snapshots() if s.promoted and s.identity.describes_build == build
     )
     identity = snapshot.identity
     return {

@@ -1,0 +1,77 @@
+# The second knowledge snapshot for game build 185872 (T746, 2026-10-18): it models civilisations,
+# which the first (`aoe2techtree-185872`) models none of on purpose. A promoted snapshot is never
+# edited (FR-025), so this one names the digest it supersedes: resolution by build now answers this
+# snapshot, and the first stays installed, promoted and loadable by its full identity so that the
+# analyses published under it still reproduce their own bytes (SC-005). Analyses of build 185872
+# recordings published before this one name the first snapshot's digest, so their stored identity no
+# longer equals the current one and they are recomputed under this snapshot on the analyzer's next
+# pass, as the contract's staleness rule says.
+#
+# Same source, same pack revision (`packages/knowledge/packs/aoe2techtree-3bb43b1/`), same
+# `rules.json` byte for byte; `effects.toml` is new, so the digest is new. `disagreements.toml` is
+# the first's, unchanged: the normaliser's own writer output, nothing recorded.
+#
+# `civilisations_modelled` lists the eight civilisations the task scoped: raw ids 23 and 37 (the two
+# the committed build 185872 recording seats) and the six the build 180059 snapshot models. Raw ids
+# 5, 10, 49 and 51 stay unmodelled and are the aggregate gap report's backlog.
+[snapshot]
+source = "aoe2techtree"
+source_version = "3bb43b1439eef88dfe7fe892d7f7dc41ac9dd76f"
+describes_build = 185872
+digest = "sha256:becd35a158dafb72c304aeb07bae66347b4442f62d209d8cedb23d0c1f34f004"
+promoted = true
+supersedes = "sha256:1c77d7cb5034b48dcb15641370512854a222d5f7d40baaa6129fb1b1c56fca5a"
+civilisations_modelled = ["Franks", "Teutons", "Persians", "Saracens", "Malians", "Tatars", "Slavs", "Sicilians"]
+
+# FR-030's validation record. The `rules.json` half is the first snapshot's direct import and is
+# validated there (and no more than there); this record is for what is new, `effects.toml`.
+[validation]
+method = "second-reading-checked-against-release-notes"
+checked_against = """\
+the vendored pack's own English strings, \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json (the help_string_id text of each of \
+the eight civilisations), read twice: once to transcribe each bonus, once to resolve each selector \
+against rules.json and to check every bullet is accounted for; and the publisher's release notes \
+for build 185872, \
+https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/ \
+(datePublished 2026-09-22T10:16:33-07:00, dateModified 2026-09-23T08:59:03-07:00), fetched and \
+read on 2026-10-18. The raw-id table was read from SiegeEngineers aoc-reference-data, \
+data/datasets/100.json, on 2026-10-18 and corroborated against the three committed recordings and \
+the pack's per-civilisation trees, entry by entry in effects.toml\
+"""
+performed_by = "the T746 implementer (an AI agent working for the repository owner), by direct reading; no person has reviewed it yet"
+performed_at = "2026-10-18"
+not_checked = """\
+No value was compared with the game or with any second source: the bonuses, the baseline costs, \
+times and ages in rules.json and the strings they are read from all come from the one vendored \
+pack (research.md D3: no second source is lawful to vendor), so this is a second reading of one \
+source and not independent validation. The release notes can only show a change the publisher \
+chose to write down; a bonus change they omit cannot be detected from them. Read in full: the \
+Gameplay and Balance Changes sections. The rest of the page (stability, campaigns, random maps, \
+AI, pathfinding, modding, scenario editor) was searched for the eight civilisations' names and for \
+cost, time, bonus and discount wording, not read line by line. The notes name Franks (Bearded Axe \
+removed, Ordonnance Companies added, Throwing Axeman range), Teutons (armour bonus reworded, Elite \
+Teutonic Knight armour), Saracens (loses Treadmill Crane) and Sicilians (access changes, a Donjon \
+shortcut fix) among these eight; Persians, Malians, Tatars and Slavs are not named anywhere on the \
+page. Changes to which technologies and units a civilisation can reach are not bonuses and are not \
+modelled, here as in the first snapshot: available_to answers true for any entity that resolves. \
+Four bonuses stay refused on a field this knowledge base carries (effects.toml header): Persians' \
+Kamandaran and Slavs' Detinets because the pack never states the wood amount, Sicilians' \
+Fortifications speed because the pack never lists the buildings the word names (the list in \
+effects.toml is a reading of the pack's usage, not a statement of it), and the availability half \
+of Sicilians' Donjon bullet because the effect model cannot say an entity is unavailable. Raw ids \
+2 and 9 rest on the dataset alone plus a consistency check that cannot tell the civilisation from \
+most others, and id 23 mainly on it; the dataset's repository head commit was recorded, not the \
+commit that last changed the file. Raw ids 5, 10, 49 and 51 were not transcribed. The \
+transcription was not blind: the implementer had read a summary of the build 180059 snapshot's \
+rows (civilisation, text, field, operation, operand, selector sizes) before writing, to learn the \
+file's shape, and compared the two afterwards; every selector here was resolved again from \
+rules.json and the pack, and the differences from the 180059 rows (wider selectors, the Barracks \
+Units units, the two changed bonuses) are deliberate.\
+"""
+
+[validation.release_notes]
+url = "https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/"
+published = "2026-09-22T10:16:33-07:00"
+modified = "2026-09-23T08:59:03-07:00"
+read_on = "2026-10-18"

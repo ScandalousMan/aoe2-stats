@@ -2768,7 +2768,7 @@ carries what T673's dry run read.
       baseline moving. The exhausted copy says "several times", which a configured maximum of 1
       makes false: say it was interrupted and is not retried, with no count, keeping
       `packages/design-system/specs/analysis-timeline.md`'s line count
-- [ ] T746 Model civilisations for build 185872 in a second knowledge snapshot (filed 2026-10-18
+- [x] T746 Model civilisations for build 185872 in a second knowledge snapshot (filed 2026-10-18
       from T665). `packages/knowledge/snapshots/aoe2techtree-185872/` models none, on purpose (its
       `effects.toml` header): `civilisations_modelled` is empty and there is no `[[civilisation_id]]`
       table, so every civilisation-qualified query on a current-build recording is a gap. Measured
@@ -2799,7 +2799,15 @@ carries what T673's dry run read.
       `packages/knowledge/tests/test_coverage.py`, parametrized over the third committed recording,
       `xfail(strict=True)` until the snapshot is promoted; build 185872 resolves to the new
       snapshot; an analysis identity naming the superseded snapshot still reproduces byte for byte;
-      and `packages/knowledge/tests/test_knowledge_snapshot_185872.py`'s names still resolve
+      and `packages/knowledge/tests/test_knowledge_snapshot_185872.py`'s names still resolve.
+      **Done 2026-10-18**: `packages/knowledge/snapshots/aoe2techtree-185872-civilisations/`
+      supersedes the first by digest (`[snapshot].supersedes`) and models eight civilisations (raw
+      ids 2, 4, 8, 9, 23, 26, 33, 37); the first is unchanged and reproduces by identity. The third
+      recording keeps 5 blocking gaps, asserted by set equality as the second's are: building 490's
+      three (the known hole), Slavs' Castle cost and Sicilians' Donjon production time. Those two
+      bonuses are refused, not guessed: the pack strings name no wood amount for Detinets and no
+      building list for "Fortifications". Build 185872 analyses published under the first snapshot
+      read as stale and are recomputed under the second
 
 ---
 

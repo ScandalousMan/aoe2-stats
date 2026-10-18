@@ -1,0 +1,1606 @@
+# Civilisation effects for build 185872, second snapshot (T746, 2026-10-18).
+#
+# This snapshot supersedes `aoe2techtree-185872` (`snapshot.toml`, `supersedes`), whose
+# `effects.toml` models no civilisation on purpose: a promoted snapshot is never edited (FR-025), so
+# modelling civilisations for the build could only ship as a second snapshot of it. Its `rules.json`
+# is the first's, byte for byte (the same pack revision, the same normaliser); only this file and
+# the identity differ.
+#
+# **Scope.** Raw civilisation ids 23 and 37, the two the committed build 185872 recording
+# (`tests/fixtures/replays/AgeIIDE_Replay_511523321.zip`) seats, and every civilisation the build
+# 180059 snapshot models: eight civilisations. Raw ids 5, 10, 49 and 51, which production's analysis
+# of match 512927942 also seats, are out of scope and stay the aggregate gap report's backlog
+# (research.md D5): they are not named here and resolve to `unknown-civilisation-<id>`.
+#
+# **Transcribed again, not carried over.** Every row below was written from the English strings of
+# the pack this snapshot is derived from, `packages/knowledge/packs/aoe2techtree-3bb43b1/
+# strings.en.json`, and checked against the build 185872 release notes (`snapshot.toml`'s
+# `[validation]` says what was read and what was not). The build 180059 snapshot's `effects.toml` was
+# opened to learn the file's row shape and compared with this one afterwards; no row, operand or
+# selector was taken from it, each was derived from the strings and `rules.json`, so the transcription
+# is not blind to it. Where the two differ the difference is deliberate: selectors here name every
+# entity the pack lists as produced at the bullet's building instead of the owner's tree, and
+# Barracks Units has the units and not the building. Two bonuses changed between the two packs
+# and both changes are in the release notes: Franks lose Bearded Axe and gain Ordonnance Companies,
+# and the Teutons' armour bonus is now "Infantry and Mounted Units" instead of "Barracks and Stable
+# Units". The other six civilisations' strings are identical in both packs.
+#
+# **The raw-id table** (`[[civilisation_id]]`, foot of the file) was taken again from the source
+# `docs/data-sources.md` section 6 assesses, SiegeEngineers aoc-reference-data, not from the build
+# 180059 snapshot; each entry records what was read and what corroborates it.
+#
+# **Classification, as in the contract** (contracts/knowledge-base.md, "Civilisation
+# qualification"). A bonus that adjusts a field this knowledge base carries (cost, production time,
+# age requirement, produced-at, availability) is `modelled = "yes"`, with a `condition` when it holds
+# only in an age, once a technology is researched or on the owner's team. A bonus whose amount the
+# pack's string never states, or that the effect model cannot express, is `modelled = "no"` with a
+# reason: the field it touches stays gapped and is never answered at the baseline. A bonus on a
+# field this knowledge base does not carry (hit points, attack, armour, line of sight, range, speed,
+# gather rate...) touches no value it answers; where its target is an enumerable entity it is a
+# `modelled = "no"` row saying so, and where its target is only a class of unit the pack does not
+# enumerate it cannot be a row (`selector` is never empty and never a class name) and is listed
+# below instead.
+#
+# **Selectors.** Each names every entity the pack lists as produced at the building the bullet
+# names, or the units the bullet names, resolved from `rules.json` and recorded in the row's own
+# `validated_by`. A selector is not narrowed to a civilisation's tree: which entities a civilisation
+# can reach is `available_to`'s question, and a team effect reaches civilisations the owner's tree
+# says nothing about.
+#
+# **Bullets with no row (a class the pack does not enumerate, on a field not carried):**
+#   Franks: "Foragers work +15% faster"; "Mounted Units +20% HP starting in Feudal Age".
+#   Teutons: "Infantry and Mounted Units +1/+2 melee armor in Castle/Imperial Age"; "Ironclad (Siege
+#     Weapons +4 melee armor)"; "Team Bonus: Units more resistant to conversion".
+#   Persians: "Start with +50 wood and +50 food".
+#   Saracens: "Camel Units +25% HP"; "Team Bonus: Foot Archers and Skirmishers +2 attack vs. buildings".
+#   Malians: "Farimba (Cavalry +5 attack)".
+#   Tatars: "Livestock animals last +50% longer"; "Units deal +25% damage when fighting from higher
+#     elevation"; "Team Bonus: Mounted Archers +2 line of sight".
+#   Slavs: "Farmers work +15% faster"; "Druzhina (Infantry deals trample damage)"; "Team Bonus:
+#     Military buildings (except Castles) provide +5 population space".
+#   Sicilians: "Start with +100 stone"; "Farm upgrades provide +125% additional food"; "Soldiers
+#     receive -40% bonus damage".
+# **A bullet whose entity is real but whose baseline already answers it:** Persians' "Can build
+# Caravanserai in Imperial Age": the Caravanserai (building 1754) has age_requirement 4 in
+# `rules.json`, the Persians' tree agrees, and an entity that resolves is available at the baseline.
+#
+# **Four bonuses stay refused on a field this knowledge base carries**, each with its reason in the
+# row, and are the open backlog of this snapshot: Persians' Kamandaran and Slavs' Detinets (the pack
+# never states the wood amount that replaces the gold or stone), Sicilians' "Fortifications built
+# +50% faster" (the pack never lists which buildings that names) and the availability half of
+# Sicilians' "Can build Donjon in Dark Age, replaces Watch Tower-line" (the effect model cannot say
+# an entity is unavailable). Each makes a query for that civilisation and entity a gap with cause
+# `effect-not-modelled`; none is answered at the baseline.
+#
+# **Free technologies.** A technology a bonus makes free is granted on reaching its age and is never
+# researched, so each such bullet has two rows, cost and production time, both set to zero.
+
+# ---------------------------------------------------------------------- Franks
+
+[[effect]]
+civilisation = "Franks"
+source_key = "120151"
+source_text = "Mill technologies free"
+modelled = "yes"
+field = "cost"
+operation = "set"
+operand = { food = 0, wood = 0 }
+selector = [
+  { kind = "technology", id = "12" },
+  { kind = "technology", id = "13" },
+  { kind = "technology", id = "14" },
+  { kind = "technology", id = "1012" },
+  { kind = "technology", id = "1013" },
+  { kind = "technology", id = "1014" },
+]
+validated_by = """\
+Weak form (FR-030): a second reading of the same vendored source, not an independent one \
+(research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
+own data file is barred by the publisher's usage rules). First reading: \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120151. Second \
+reading (T746, 2026-10-18, by the T746 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
+(https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), whose \
+Franks entry removes Bearded Axe, adds Ordonnance Companies (Mounted Crossbowmen cost -40% gold; \
+400 food 250 gold, 40 seconds), raises Throwing Axeman range and names no other change to a Franks \
+bonus; the pack's string carries both the removal and the addition. Selector and operand: resolved \
+'Mill technologies' to every technology rules.json lists as produced_at building 68 (Mill): Crop \
+Rotation 12, Heavy Plow 13, Horse Collar 14 and Domestication 1014, Pastoralism 1013, Transhumance \
+1012. The pack's trees offer the last three to Khitans alone, so no Franks query reaches them; \
+they stay in the selector because which technologies a civilisation can reach is available_to's \
+question, never a selector's to pre-filter. Their costs carry food and wood only, so the operand's \
+two keys cover every resource of every selected technology.\
+"""
+
+[[effect]]
+civilisation = "Franks"
+source_key = "120151"
+source_text = "Mill technologies free"
+modelled = "yes"
+field = "production_time"
+operation = "set"
+operand = 0
+selector = [
+  { kind = "technology", id = "12" },
+  { kind = "technology", id = "13" },
+  { kind = "technology", id = "14" },
+  { kind = "technology", id = "1012" },
+  { kind = "technology", id = "1013" },
+  { kind = "technology", id = "1014" },
+]
+validated_by = """\
+Weak form (FR-030): a second reading of the same vendored source, not an independent one \
+(research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
+own data file is barred by the publisher's usage rules). First reading: \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120151. Second \
+reading (T746, 2026-10-18, by the T746 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
+(https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), whose \
+Franks entry removes Bearded Axe, adds Ordonnance Companies (Mounted Crossbowmen cost -40% gold; \
+400 food 250 gold, 40 seconds), raises Throwing Axeman range and names no other change to a Franks \
+bonus; the pack's string carries both the removal and the addition. Selector and operand: the \
+second half of one bullet: a technology the bonus makes free is granted on reaching its age and is \
+never researched, so its research time is 0 as well as its cost (the first row above has the \
+selector's resolution).\
+"""
+
+[[effect]]
+civilisation = "Franks"
+source_key = "120151"
+source_text = "Castles cost -15/25% in Castle/Imperial Age"
+modelled = "yes"
+field = "cost"
+operation = "multiply"
+condition = "age"
+operand = { "3" = { stone = 0.85, wood = 0.85 }, "4" = { stone = 0.75, wood = 0.75 } }
+selector = [
+  { kind = "building", id = "82" },
+]
+validated_by = """\
+Weak form (FR-030): a second reading of the same vendored source, not an independent one \
+(research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
+own data file is barred by the publisher's usage rules). First reading: \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120151. Second \
+reading (T746, 2026-10-18, by the T746 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
+(https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), whose \
+Franks entry removes Bearded Axe, adds Ordonnance Companies (Mounted Crossbowmen cost -40% gold; \
+400 food 250 gold, 40 seconds), raises Throwing Axeman range and names no other change to a Franks \
+bonus; the pack's string carries both the removal and the addition. Selector and operand: resolved \
+'Castles' to building 82 (rules.json cost: 650 stone, wood 0). The operand is an age table keyed \
+by the pack's age numbering (3 Castle, 4 Imperial): a factor of 0.85 and 0.75 on every resource \
+the Castle carries; no entry for ages 1 and 2 means the plain baseline there.\
+"""
+
+[[effect]]
+civilisation = "Franks"
+source_key = "120151"
+source_text = "Ordonnance Companies (Mounted Crossbowmen cost -40% gold)"
+modelled = "yes"
+field = "cost"
+operation = "multiply"
+condition = "researched"
+condition_technology = "1496"
+operand = { gold = 0.6 }
+selector = [
+  { kind = "unit", id = "2700" },
+  { kind = "unit", id = "2701" },
+]
+validated_by = """\
+Weak form (FR-030): a second reading of the same vendored source, not an independent one \
+(research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
+own data file is barred by the publisher's usage rules). First reading: \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120151. Second \
+reading (T746, 2026-10-18, by the T746 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
+(https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), whose \
+Franks entry removes Bearded Axe, adds Ordonnance Companies (Mounted Crossbowmen cost -40% gold; \
+400 food 250 gold, 40 seconds), raises Throwing Axeman range and names no other change to a Franks \
+bonus; the pack's string carries both the removal and the addition. Selector and operand: resolved \
+the unique technology to technology 1496 (Ordonnance Companies; rules.json: 400 food 250 gold, 40 \
+seconds, produced at the Castle - the figures the release notes give for it) and 'Mounted \
+Crossbowmen' to units 2700 (Mounted Crossbowman) and 2701 (H. Mounted Crossbowman). A factor of \
+0.6 on gold only; conditional on 1496 having been researched. The notes add this technology and \
+remove Bearded Axe; the pack's string carries both changes.\
+"""
+
+[[effect]]
+civilisation = "Franks"
+source_key = "120151"
+source_text = "Chivalry (Stables work +40% faster)"
+modelled = "yes"
+field = "production_time"
+operation = "faster"
+condition = "researched"
+condition_technology = "493"
+operand = 0.4
+selector = [
+  { kind = "technology", id = "2" },
+  { kind = "technology", id = "39" },
+  { kind = "technology", id = "209" },
+  { kind = "technology", id = "236" },
+  { kind = "technology", id = "254" },
+  { kind = "technology", id = "265" },
+  { kind = "technology", id = "428" },
+  { kind = "technology", id = "435" },
+  { kind = "technology", id = "521" },
+  { kind = "technology", id = "526" },
+  { kind = "technology", id = "631" },
+  { kind = "technology", id = "715" },
+  { kind = "technology", id = "786" },
+  { kind = "technology", id = "843" },
+  { kind = "technology", id = "1033" },
+  { kind = "unit", id = "38" },
+  { kind = "unit", id = "207" },
+  { kind = "unit", id = "283" },
+  { kind = "unit", id = "329" },
+  { kind = "unit", id = "330" },
+  { kind = "unit", id = "441" },
+  { kind = "unit", id = "448" },
+  { kind = "unit", id = "546" },
+  { kind = "unit", id = "569" },
+  { kind = "unit", id = "886" },
+  { kind = "unit", id = "887" },
+  { kind = "unit", id = "1132" },
+  { kind = "unit", id = "1134" },
+  { kind = "unit", id = "1370" },
+  { kind = "unit", id = "1372" },
+  { kind = "unit", id = "1707" },
+  { kind = "unit", id = "1751" },
+  { kind = "unit", id = "1753" },
+  { kind = "unit", id = "1755" },
+  { kind = "unit", id = "1813" },
+  { kind = "unit", id = "1944" },
+  { kind = "unit", id = "1946" },
+]
+validated_by = """\
+Weak form (FR-030): a second reading of the same vendored source, not an independent one \
+(research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
+own data file is barred by the publisher's usage rules). First reading: \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120151. Second \
+reading (T746, 2026-10-18, by the T746 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
+(https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), whose \
+Franks entry removes Bearded Axe, adds Ordonnance Companies (Mounted Crossbowmen cost -40% gold; \
+400 food 250 gold, 40 seconds), raises Throwing Axeman range and names no other change to a Franks \
+bonus; the pack's string carries both the removal and the addition. Selector and operand: resolved \
+'Stables' to every unit and technology rules.json lists as produced_at building 101 (Stable); \
+conditional on technology 493 (Chivalry) having been researched. 'Works +40% faster' divides the \
+baseline time by 1.40.\
+"""
+
+[[effect]]
+civilisation = "Franks"
+source_key = "120151"
+source_text = "Team Bonus: Knight-line +2 line of sight"
+modelled = "no"
+field = "line_of_sight"
+reason = """\
+line of sight is a field this knowledge base does not carry, so the bonus touches no value it \
+answers; recorded so the bullet is accounted for, not silently dropped\
+"""
+selector = [
+  { kind = "unit", id = "38" },
+  { kind = "unit", id = "283" },
+  { kind = "unit", id = "569" },
+]
+validated_by = """\
+Weak form (FR-030): a second reading of the same vendored source, not an independent one \
+(research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
+own data file is barred by the publisher's usage rules). First reading: \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120151. Second \
+reading (T746, 2026-10-18, by the T746 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
+(https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), whose \
+Franks entry removes Bearded Axe, adds Ordonnance Companies (Mounted Crossbowmen cost -40% gold; \
+400 food 250 gold, 40 seconds), raises Throwing Axeman range and names no other change to a Franks \
+bonus; the pack's string carries both the removal and the addition. Selector and operand: resolved \
+'Knight-line' to units 38 (Knight), 283 (Cavalier) and 569 (Paladin).\
+"""
+
+# ---------------------------------------------------------------------- Teutons
+
+[[effect]]
+civilisation = "Teutons"
+source_key = "120153"
+source_text = "Farms cost -40%"
+modelled = "yes"
+field = "cost"
+operation = "multiply"
+operand = { wood = 0.6 }
+selector = [
+  { kind = "building", id = "50" },
+]
+validated_by = """\
+Weak form (FR-030): a second reading of the same vendored source, not an independent one \
+(research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
+own data file is barred by the publisher's usage rules). First reading: \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120153. Second \
+reading (T746, 2026-10-18, by the T746 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
+(https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), whose \
+Teutons entry rewords the armour bonus to Infantry and Mounted Units +1/+2 melee armor in \
+Castle/Imperial Age (the pack's string carries the new wording), lowers Elite Teutonic Knight \
+melee armor from 10 to 8 and names no other change to a Teutons bonus. Selector and operand: \
+resolved 'Farms' to building 50 (Farm; rules.json cost: 60 wood), a factor of 0.6 on wood, the \
+only resource a Farm costs.\
+"""
+
+[[effect]]
+civilisation = "Teutons"
+source_key = "120153"
+source_text = "Town Centers +10 garrison capacity; Towers +5 garrison capacity"
+modelled = "no"
+field = "garrison_capacity"
+reason = """\
+garrison capacity is a field this knowledge base does not carry, so the bonus touches no value it \
+answers; recorded so the bullet is accounted for\
+"""
+selector = [
+  { kind = "building", id = "71" },
+  { kind = "building", id = "109" },
+  { kind = "building", id = "621" },
+  { kind = "building", id = "79" },
+  { kind = "building", id = "234" },
+  { kind = "building", id = "235" },
+  { kind = "building", id = "236" },
+]
+validated_by = """\
+Weak form (FR-030): a second reading of the same vendored source, not an independent one \
+(research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
+own data file is barred by the publisher's usage rules). First reading: \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120153. Second \
+reading (T746, 2026-10-18, by the T746 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
+(https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), whose \
+Teutons entry rewords the armour bonus to Infantry and Mounted Units +1/+2 melee armor in \
+Castle/Imperial Age (the pack's string carries the new wording), lowers Elite Teutonic Knight \
+melee armor from 10 to 8 and names no other change to a Teutons bonus. Selector and operand: \
+resolved 'Town Centers' to the three buildings the pack's data gives the Town Center's language \
+name (71, 109, 621) and 'Towers' to Watch Tower 79, Guard Tower 234, Keep 235 and Bombard Tower \
+236.\
+"""
+
+[[effect]]
+civilisation = "Teutons"
+source_key = "120153"
+source_text = "Monks +100% healing range"
+modelled = "no"
+field = "healing_range"
+reason = """\
+healing range is a field this knowledge base does not carry; recorded so the bullet is accounted \
+for\
+"""
+selector = [
+  { kind = "unit", id = "125" },
+]
+validated_by = """\
+Weak form (FR-030): a second reading of the same vendored source, not an independent one \
+(research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
+own data file is barred by the publisher's usage rules). First reading: \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120153. Second \
+reading (T746, 2026-10-18, by the T746 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
+(https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), whose \
+Teutons entry rewords the armour bonus to Infantry and Mounted Units +1/+2 melee armor in \
+Castle/Imperial Age (the pack's string carries the new wording), lowers Elite Teutonic Knight \
+melee armor from 10 to 8 and names no other change to a Teutons bonus. Selector and operand: \
+resolved 'Monks' to unit 125 (Monk).\
+"""
+
+[[effect]]
+civilisation = "Teutons"
+source_key = "120153"
+source_text = "Murder Holes, Herbal Medicine free"
+modelled = "yes"
+field = "cost"
+operation = "set"
+operand = { food = 0, gold = 0, stone = 0 }
+selector = [
+  { kind = "technology", id = "322" },
+  { kind = "technology", id = "441" },
+]
+validated_by = """\
+Weak form (FR-030): a second reading of the same vendored source, not an independent one \
+(research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
+own data file is barred by the publisher's usage rules). First reading: \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120153. Second \
+reading (T746, 2026-10-18, by the T746 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
+(https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), whose \
+Teutons entry rewords the armour bonus to Infantry and Mounted Units +1/+2 melee armor in \
+Castle/Imperial Age (the pack's string carries the new wording), lowers Elite Teutonic Knight \
+melee armor from 10 to 8 and names no other change to a Teutons bonus. Selector and operand: \
+resolved the two names to technologies 322 (Murder Holes; rules.json cost 200 food 100 stone, \
+produced at the University) and 441 (Herbal Medicine; 200 gold, produced at the Monastery); the \
+operand's three keys cover every resource either carries.\
+"""
+
+[[effect]]
+civilisation = "Teutons"
+source_key = "120153"
+source_text = "Murder Holes, Herbal Medicine free"
+modelled = "yes"
+field = "production_time"
+operation = "set"
+operand = 0
+selector = [
+  { kind = "technology", id = "322" },
+  { kind = "technology", id = "441" },
+]
+validated_by = """\
+Weak form (FR-030): a second reading of the same vendored source, not an independent one \
+(research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
+own data file is barred by the publisher's usage rules). First reading: \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120153. Second \
+reading (T746, 2026-10-18, by the T746 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
+(https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), whose \
+Teutons entry rewords the armour bonus to Infantry and Mounted Units +1/+2 melee armor in \
+Castle/Imperial Age (the pack's string carries the new wording), lowers Elite Teutonic Knight \
+melee armor from 10 to 8 and names no other change to a Teutons bonus. Selector and operand: the \
+second half of one bullet: a technology the bonus makes free is never researched, so its research \
+time is 0 as well as its cost.\
+"""
+
+[[effect]]
+civilisation = "Teutons"
+source_key = "120153"
+source_text = "Crenellations (Castles +3 range, garrisoned Infantry fires arrows)"
+modelled = "no"
+field = "range"
+reason = """\
+range is a field this knowledge base does not carry; recorded so the bullet is accounted for\
+"""
+selector = [
+  { kind = "building", id = "82" },
+]
+validated_by = """\
+Weak form (FR-030): a second reading of the same vendored source, not an independent one \
+(research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
+own data file is barred by the publisher's usage rules). First reading: \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120153. Second \
+reading (T746, 2026-10-18, by the T746 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
+(https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), whose \
+Teutons entry rewords the armour bonus to Infantry and Mounted Units +1/+2 melee armor in \
+Castle/Imperial Age (the pack's string carries the new wording), lowers Elite Teutonic Knight \
+melee armor from 10 to 8 and names no other change to a Teutons bonus. Selector and operand: \
+resolved 'Castles' to building 82.\
+"""
+
+# ---------------------------------------------------------------------- Persians
+
+[[effect]]
+civilisation = "Persians"
+source_key = "120157"
+source_text = "Town Centers and Docks +100% HP and work +5/10/15/20% faster in Dark/Feudal/Castle/Imperial Age"
+modelled = "yes"
+field = "production_time"
+operation = "faster"
+condition = "age"
+operand = { "1" = 0.05, "2" = 0.1, "3" = 0.15, "4" = 0.2 }
+selector = [
+  { kind = "technology", id = "8" },
+  { kind = "technology", id = "22" },
+  { kind = "technology", id = "101" },
+  { kind = "technology", id = "102" },
+  { kind = "technology", id = "103" },
+  { kind = "technology", id = "213" },
+  { kind = "technology", id = "249" },
+  { kind = "technology", id = "280" },
+  { kind = "unit", id = "83" },
+  { kind = "technology", id = "34" },
+  { kind = "technology", id = "35" },
+  { kind = "technology", id = "65" },
+  { kind = "technology", id = "244" },
+  { kind = "technology", id = "372" },
+  { kind = "technology", id = "376" },
+  { kind = "technology", id = "448" },
+  { kind = "technology", id = "597" },
+  { kind = "technology", id = "905" },
+  { kind = "technology", id = "906" },
+  { kind = "unit", id = "13" },
+  { kind = "unit", id = "17" },
+  { kind = "unit", id = "21" },
+  { kind = "unit", id = "250" },
+  { kind = "unit", id = "420" },
+  { kind = "unit", id = "442" },
+  { kind = "unit", id = "527" },
+  { kind = "unit", id = "528" },
+  { kind = "unit", id = "529" },
+  { kind = "unit", id = "532" },
+  { kind = "unit", id = "533" },
+  { kind = "unit", id = "539" },
+  { kind = "unit", id = "545" },
+  { kind = "unit", id = "691" },
+  { kind = "unit", id = "831" },
+  { kind = "unit", id = "832" },
+  { kind = "unit", id = "1004" },
+  { kind = "unit", id = "1006" },
+  { kind = "unit", id = "1103" },
+  { kind = "unit", id = "1104" },
+  { kind = "unit", id = "1302" },
+  { kind = "unit", id = "1750" },
+  { kind = "unit", id = "1795" },
+  { kind = "unit", id = "1948" },
+  { kind = "unit", id = "2626" },
+  { kind = "unit", id = "2627" },
+  { kind = "unit", id = "2628" },
+  { kind = "unit", id = "2633" },
+]
+validated_by = """\
+Weak form (FR-030): a second reading of the same vendored source, not an independent one \
+(research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
+own data file is barred by the publisher's usage rules). First reading: \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120157. Second \
+reading (T746, 2026-10-18, by the T746 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
+(https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), which \
+does not name the Persians anywhere on the page. Selector and operand: resolved 'Town Centers and \
+Docks' to every unit and technology rules.json lists as produced_at building 109 (Town Center) or \
+45 (Dock), 47 entities. The operand is an age table, 1 Dark to 4 Imperial: 'works X% faster' \
+divides the baseline time by 1 + X. The +100% HP half of the bullet touches a field this knowledge \
+base does not carry and is not modelled.\
+"""
+
+[[effect]]
+civilisation = "Persians"
+source_key = "120157"
+source_text = "Parthian Tactics available in Castle Age"
+modelled = "yes"
+field = "age_requirement"
+operation = "set"
+operand = 3
+selector = [
+  { kind = "technology", id = "436" },
+]
+validated_by = """\
+Weak form (FR-030): a second reading of the same vendored source, not an independent one \
+(research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
+own data file is barred by the publisher's usage rules). First reading: \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120157. Second \
+reading (T746, 2026-10-18, by the T746 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
+(https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), which \
+does not name the Persians anywhere on the page. Selector and operand: resolved to technology 436 \
+(Parthian Tactics), whose baseline age_requirement in rules.json is 4 (Imperial); the bonus makes \
+it 3 (Castle).\
+"""
+
+[[effect]]
+civilisation = "Persians"
+source_key = "120157"
+source_text = "Kamandaran (Archer-line gold cost replaced by additional wood cost)"
+modelled = "no"
+field = "cost"
+condition = "researched"
+condition_technology = "488"
+reason = """\
+the bonus is conditional on Kamandaran having been researched and replaces the Archer-line's gold \
+cost with an additional wood cost, but the pack's string never states the wood amount, so the \
+adjusted cost is not knowledge this snapshot has; the field stays gapped\
+"""
+selector = [
+  { kind = "unit", id = "4" },
+  { kind = "unit", id = "24" },
+  { kind = "unit", id = "492" },
+]
+validated_by = """\
+Weak form (FR-030): a second reading of the same vendored source, not an independent one \
+(research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
+own data file is barred by the publisher's usage rules). First reading: \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120157. Second \
+reading (T746, 2026-10-18, by the T746 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
+(https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), which \
+does not name the Persians anywhere on the page. Selector and operand: resolved the unique \
+technology to technology 488 and 'Archer-line' to units 4 (Archer), 24 (Crossbowman) and 492 \
+(Arbalester).\
+"""
+
+[[effect]]
+civilisation = "Persians"
+source_key = "120157"
+source_text = "Citadels (Castles +4 attack, +3 vs. Rams, +3 vs. Infantry and receive -25% bonus damage)"
+modelled = "no"
+field = "attack"
+reason = """\
+attack is a field this knowledge base does not carry; recorded so the bullet is accounted for\
+"""
+selector = [
+  { kind = "building", id = "82" },
+]
+validated_by = """\
+Weak form (FR-030): a second reading of the same vendored source, not an independent one \
+(research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
+own data file is barred by the publisher's usage rules). First reading: \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120157. Second \
+reading (T746, 2026-10-18, by the T746 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
+(https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), which \
+does not name the Persians anywhere on the page. Selector and operand: resolved 'Castles' to \
+building 82.\
+"""
+
+[[effect]]
+civilisation = "Persians"
+source_key = "120157"
+source_text = "Team Bonus: Knight-line +2 attack vs. Ranged Soldiers"
+modelled = "no"
+field = "attack"
+reason = """\
+attack is a field this knowledge base does not carry; recorded so the bullet is accounted for\
+"""
+selector = [
+  { kind = "unit", id = "38" },
+  { kind = "unit", id = "283" },
+  { kind = "unit", id = "569" },
+]
+validated_by = """\
+Weak form (FR-030): a second reading of the same vendored source, not an independent one \
+(research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
+own data file is barred by the publisher's usage rules). First reading: \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120157. Second \
+reading (T746, 2026-10-18, by the T746 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
+(https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), which \
+does not name the Persians anywhere on the page. Selector and operand: resolved 'Knight-line' to \
+units 38, 283 and 569.\
+"""
+
+# ---------------------------------------------------------------------- Saracens
+
+[[effect]]
+civilisation = "Saracens"
+source_key = "120158"
+source_text = "Market trading fee only 5%; Markets cost -100 wood"
+modelled = "yes"
+field = "cost"
+operation = "add"
+operand = { wood = -100 }
+selector = [
+  { kind = "building", id = "84" },
+]
+validated_by = """\
+Weak form (FR-030): a second reading of the same vendored source, not an independent one \
+(research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
+own data file is barred by the publisher's usage rules). First reading: \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120158. Second \
+reading (T746, 2026-10-18, by the T746 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
+(https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), whose \
+Saracens entry says only that they lose access to Treadmill Crane, a technology-tree change and \
+not a bonus. Selector and operand: resolved 'Markets' to building 84 (Market; rules.json cost: 175 \
+wood), an absolute -100 wood, leaving 75. The trading-fee half of the bullet touches no field this \
+knowledge base carries and is not modelled.\
+"""
+
+[[effect]]
+civilisation = "Saracens"
+source_key = "120158"
+source_text = "Galley-line attacks +25% faster"
+modelled = "no"
+field = "attack_rate"
+reason = """\
+attack rate is a field this knowledge base does not carry; recorded so the bullet is accounted for\
+"""
+selector = [
+  { kind = "unit", id = "539" },
+  { kind = "unit", id = "21" },
+  { kind = "unit", id = "442" },
+]
+validated_by = """\
+Weak form (FR-030): a second reading of the same vendored source, not an independent one \
+(research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
+own data file is barred by the publisher's usage rules). First reading: \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120158. Second \
+reading (T746, 2026-10-18, by the T746 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
+(https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), whose \
+Saracens entry says only that they lose access to Treadmill Crane, a technology-tree change and \
+not a bonus. Selector and operand: resolved 'Galley-line' to units 539 (Galley), 21 (War Galley) \
+and 442 (Galleon).\
+"""
+
+[[effect]]
+civilisation = "Saracens"
+source_key = "120158"
+source_text = "Transport Ships +100% HP, +20 carry capacity"
+modelled = "no"
+field = "hp"
+reason = """\
+hit points and carry capacity are fields this knowledge base does not carry; recorded so the \
+bullet is accounted for\
+"""
+selector = [
+  { kind = "unit", id = "545" },
+]
+validated_by = """\
+Weak form (FR-030): a second reading of the same vendored source, not an independent one \
+(research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
+own data file is barred by the publisher's usage rules). First reading: \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120158. Second \
+reading (T746, 2026-10-18, by the T746 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
+(https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), whose \
+Saracens entry says only that they lose access to Treadmill Crane, a technology-tree change and \
+not a bonus. Selector and operand: resolved 'Transport Ships' to unit 545.\
+"""
+
+[[effect]]
+civilisation = "Saracens"
+source_key = "120158"
+source_text = "Bimaristan (Monks passively heal multiple nearby units)"
+modelled = "no"
+field = "heal_behavior"
+reason = """\
+how a unit heals is not a field this knowledge base carries; recorded so the bullet is accounted \
+for\
+"""
+selector = [
+  { kind = "unit", id = "125" },
+]
+validated_by = """\
+Weak form (FR-030): a second reading of the same vendored source, not an independent one \
+(research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
+own data file is barred by the publisher's usage rules). First reading: \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120158. Second \
+reading (T746, 2026-10-18, by the T746 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
+(https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), whose \
+Saracens entry says only that they lose access to Treadmill Crane, a technology-tree change and \
+not a bonus. Selector and operand: resolved 'Monks' to unit 125.\
+"""
+
+[[effect]]
+civilisation = "Saracens"
+source_key = "120158"
+source_text = "Counterweights (Trebuchets and Mangonel-line +15% attack)"
+modelled = "no"
+field = "attack"
+reason = """\
+attack is a field this knowledge base does not carry; recorded so the bullet is accounted for\
+"""
+selector = [
+  { kind = "unit", id = "331" },
+  { kind = "unit", id = "280" },
+  { kind = "unit", id = "550" },
+  { kind = "unit", id = "588" },
+]
+validated_by = """\
+Weak form (FR-030): a second reading of the same vendored source, not an independent one \
+(research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
+own data file is barred by the publisher's usage rules). First reading: \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120158. Second \
+reading (T746, 2026-10-18, by the T746 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
+(https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), whose \
+Saracens entry says only that they lose access to Treadmill Crane, a technology-tree change and \
+not a bonus. Selector and operand: resolved 'Trebuchets' to unit 331 and 'Mangonel-line' to units \
+280 (Mangonel), 550 (Onager) and 588 (Siege Onager).\
+"""
+
+# ---------------------------------------------------------------------- Malians
+
+[[effect]]
+civilisation = "Malians"
+source_key = "120175"
+source_text = "Buildings cost -15% wood"
+modelled = "yes"
+field = "cost"
+operation = "multiply"
+operand = { wood = 0.85 }
+selector = [
+  { kind = "building", id = "12" },
+  { kind = "building", id = "45" },
+  { kind = "building", id = "49" },
+  { kind = "building", id = "50" },
+  { kind = "building", id = "68" },
+  { kind = "building", id = "70" },
+  { kind = "building", id = "71" },
+  { kind = "building", id = "72" },
+  { kind = "building", id = "79" },
+  { kind = "building", id = "82" },
+  { kind = "building", id = "84" },
+  { kind = "building", id = "87" },
+  { kind = "building", id = "101" },
+  { kind = "building", id = "103" },
+  { kind = "building", id = "104" },
+  { kind = "building", id = "109" },
+  { kind = "building", id = "199" },
+  { kind = "building", id = "209" },
+  { kind = "building", id = "234" },
+  { kind = "building", id = "235" },
+  { kind = "building", id = "236" },
+  { kind = "building", id = "276" },
+  { kind = "building", id = "562" },
+  { kind = "building", id = "584" },
+  { kind = "building", id = "598" },
+  { kind = "building", id = "621" },
+  { kind = "building", id = "792" },
+  { kind = "building", id = "1189" },
+  { kind = "building", id = "1665" },
+  { kind = "building", id = "1734" },
+  { kind = "building", id = "1754" },
+  { kind = "building", id = "1806" },
+  { kind = "building", id = "1808" },
+  { kind = "building", id = "1889" },
+  { kind = "building", id = "2556" },
+]
+validated_by = """\
+Weak form (FR-030): a second reading of the same vendored source, not an independent one \
+(research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
+own data file is barred by the publisher's usage rules). First reading: \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120175. Second \
+reading (T746, 2026-10-18, by the T746 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
+(https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), which \
+does not name the Malians anywhere on the page. Selector and operand: resolved 'Buildings' to \
+every building rules.json lists with a wood component in its cost (35 of its 40 buildings); a \
+factor of 0.85 on wood only. A building whose cost has no wood is not a match, and a building the \
+Malians cannot build is not a query anyone makes.\
+"""
+
+[[effect]]
+civilisation = "Malians"
+source_key = "120175"
+source_text = "Villagers drop off +10% more gold"
+modelled = "no"
+field = "gold_dropoff_bonus"
+reason = """\
+drop-off yield is a field this knowledge base does not carry; recorded so the bullet is accounted \
+for\
+"""
+selector = [
+  { kind = "unit", id = "83" },
+]
+validated_by = """\
+Weak form (FR-030): a second reading of the same vendored source, not an independent one \
+(research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
+own data file is barred by the publisher's usage rules). First reading: \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120175. Second \
+reading (T746, 2026-10-18, by the T746 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
+(https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), which \
+does not name the Malians anywhere on the page. Selector and operand: resolved 'Villagers' to unit \
+83.\
+"""
+
+[[effect]]
+civilisation = "Malians"
+source_key = "120175"
+source_text = "Barracks Units +1/+2/+3 pierce armor in Feudal/Castle/Imperial Age"
+modelled = "no"
+field = "pierce_armor"
+reason = """\
+armor is a field this knowledge base does not carry; recorded so the bullet is accounted for\
+"""
+selector = [
+  { kind = "unit", id = "74" },
+  { kind = "unit", id = "75" },
+  { kind = "unit", id = "77" },
+  { kind = "unit", id = "93" },
+  { kind = "unit", id = "358" },
+  { kind = "unit", id = "359" },
+  { kind = "unit", id = "473" },
+  { kind = "unit", id = "567" },
+  { kind = "unit", id = "751" },
+  { kind = "unit", id = "752" },
+  { kind = "unit", id = "753" },
+  { kind = "unit", id = "759" },
+  { kind = "unit", id = "761" },
+  { kind = "unit", id = "882" },
+  { kind = "unit", id = "1699" },
+  { kind = "unit", id = "1793" },
+  { kind = "unit", id = "1901" },
+  { kind = "unit", id = "1903" },
+  { kind = "unit", id = "1974" },
+  { kind = "unit", id = "2550" },
+  { kind = "unit", id = "2552" },
+  { kind = "unit", id = "2554" },
+  { kind = "unit", id = "2582" },
+  { kind = "unit", id = "2584" },
+  { kind = "unit", id = "2586" },
+  { kind = "unit", id = "2587" },
+  { kind = "unit", id = "2588" },
+  { kind = "unit", id = "2703" },
+  { kind = "unit", id = "2704" },
+]
+validated_by = """\
+Weak form (FR-030): a second reading of the same vendored source, not an independent one \
+(research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
+own data file is barred by the publisher's usage rules). First reading: \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120175. Second \
+reading (T746, 2026-10-18, by the T746 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
+(https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), which \
+does not name the Malians anywhere on the page. Selector and operand: resolved 'Barracks Units' to \
+every unit rules.json lists as produced_at building 12 (Barracks), 29 units.\
+"""
+
+[[effect]]
+civilisation = "Malians"
+source_key = "120175"
+source_text = "Tigui (Town Centers fire arrows without garrison)"
+modelled = "no"
+field = "fires_arrows_ungarrisoned"
+reason = """\
+how a building attacks is not a field this knowledge base carries; recorded so the bullet is \
+accounted for\
+"""
+selector = [
+  { kind = "building", id = "71" },
+  { kind = "building", id = "109" },
+  { kind = "building", id = "621" },
+]
+validated_by = """\
+Weak form (FR-030): a second reading of the same vendored source, not an independent one \
+(research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
+own data file is barred by the publisher's usage rules). First reading: \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120175. Second \
+reading (T746, 2026-10-18, by the T746 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
+(https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), which \
+does not name the Malians anywhere on the page. Selector and operand: resolved 'Town Centers' to \
+buildings 71, 109 and 621.\
+"""
+
+[[effect]]
+civilisation = "Malians"
+source_key = "120175"
+source_text = "Team Bonus: Universities work +80% faster"
+modelled = "yes"
+field = "production_time"
+operation = "faster"
+condition = "team"
+operand = 0.8
+selector = [
+  { kind = "technology", id = "47" },
+  { kind = "technology", id = "50" },
+  { kind = "technology", id = "51" },
+  { kind = "technology", id = "54" },
+  { kind = "technology", id = "63" },
+  { kind = "technology", id = "64" },
+  { kind = "technology", id = "93" },
+  { kind = "technology", id = "140" },
+  { kind = "technology", id = "194" },
+  { kind = "technology", id = "322" },
+  { kind = "technology", id = "373" },
+  { kind = "technology", id = "374" },
+  { kind = "technology", id = "375" },
+  { kind = "technology", id = "377" },
+  { kind = "technology", id = "380" },
+  { kind = "technology", id = "608" },
+  { kind = "technology", id = "907" },
+  { kind = "technology", id = "908" },
+  { kind = "technology", id = "909" },
+  { kind = "technology", id = "910" },
+]
+validated_by = """\
+Weak form (FR-030): a second reading of the same vendored source, not an independent one \
+(research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
+own data file is barred by the publisher's usage rules). First reading: \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120175. Second \
+reading (T746, 2026-10-18, by the T746 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
+(https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), which \
+does not name the Malians anywhere on the page. Selector and operand: resolved 'Universities' to \
+every technology rules.json lists as produced_at building 209 (University), 20 entities, with no \
+filter by any civilisation's tree: a team effect reaches every ally, and which of them an ally can \
+research is available_to's question. 'Works +80% faster' divides the baseline time by 1.80.\
+"""
+
+# ---------------------------------------------------------------------- Tatars
+
+[[effect]]
+civilisation = "Tatars"
+source_key = "120182"
+source_text = "New Town Centers spawn 2 Sheep starting in Castle Age"
+modelled = "no"
+field = "sheep_spawn"
+reason = """\
+no Sheep entity exists in rules.json and spawning is not a field this knowledge base carries; \
+recorded against the Town Center so the bullet is accounted for\
+"""
+selector = [
+  { kind = "building", id = "71" },
+  { kind = "building", id = "109" },
+  { kind = "building", id = "621" },
+]
+validated_by = """\
+Weak form (FR-030): a second reading of the same vendored source, not an independent one \
+(research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
+own data file is barred by the publisher's usage rules). First reading: \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120182. Second \
+reading (T746, 2026-10-18, by the T746 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
+(https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), which \
+does not name the Tatars anywhere on the page. Selector and operand: resolved 'Town Centers' to \
+buildings 71, 109 and 621.\
+"""
+
+[[effect]]
+civilisation = "Tatars"
+source_key = "120182"
+source_text = "Thumb Ring, Parthian Tactics free"
+modelled = "yes"
+field = "cost"
+operation = "set"
+operand = { food = 0, gold = 0, wood = 0 }
+selector = [
+  { kind = "technology", id = "437" },
+  { kind = "technology", id = "436" },
+]
+validated_by = """\
+Weak form (FR-030): a second reading of the same vendored source, not an independent one \
+(research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
+own data file is barred by the publisher's usage rules). First reading: \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120182. Second \
+reading (T746, 2026-10-18, by the T746 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
+(https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), which \
+does not name the Tatars anywhere on the page. Selector and operand: resolved the two names to \
+technologies 437 (Thumb Ring; rules.json cost 300 food 250 wood) and 436 (Parthian Tactics; 200 \
+food 250 gold); the operand's three keys cover every resource either carries.\
+"""
+
+[[effect]]
+civilisation = "Tatars"
+source_key = "120182"
+source_text = "Thumb Ring, Parthian Tactics free"
+modelled = "yes"
+field = "production_time"
+operation = "set"
+operand = 0
+selector = [
+  { kind = "technology", id = "437" },
+  { kind = "technology", id = "436" },
+]
+validated_by = """\
+Weak form (FR-030): a second reading of the same vendored source, not an independent one \
+(research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
+own data file is barred by the publisher's usage rules). First reading: \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120182. Second \
+reading (T746, 2026-10-18, by the T746 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
+(https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), which \
+does not name the Tatars anywhere on the page. Selector and operand: the second half of one \
+bullet: a technology the bonus makes free is never researched, so its research time is 0 as well \
+as its cost.\
+"""
+
+[[effect]]
+civilisation = "Tatars"
+source_key = "120182"
+source_text = "Silk Armor (Scout Cavalry-line, Steppe Lancers and Cavalry Archers +1 melee/+1 pierce armor)"
+modelled = "no"
+field = "melee_armor"
+reason = """\
+armor is a field this knowledge base does not carry; recorded so the bullet is accounted for\
+"""
+selector = [
+  { kind = "unit", id = "448" },
+  { kind = "unit", id = "546" },
+  { kind = "unit", id = "441" },
+  { kind = "unit", id = "1370" },
+  { kind = "unit", id = "1372" },
+  { kind = "unit", id = "39" },
+  { kind = "unit", id = "474" },
+]
+validated_by = """\
+Weak form (FR-030): a second reading of the same vendored source, not an independent one \
+(research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
+own data file is barred by the publisher's usage rules). First reading: \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120182. Second \
+reading (T746, 2026-10-18, by the T746 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
+(https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), which \
+does not name the Tatars anywhere on the page. Selector and operand: resolved 'Scout Cavalry-line' \
+to units 448, 546 and 441, 'Steppe Lancers' to 1370 and 1372 and 'Cavalry Archers' to 39 and 474.\
+"""
+
+[[effect]]
+civilisation = "Tatars"
+source_key = "120182"
+source_text = "Timurid Siegecraft (Trebuchets +2 range)"
+modelled = "no"
+field = "range"
+reason = """\
+range is a field this knowledge base does not carry; recorded so the bullet is accounted for\
+"""
+selector = [
+  { kind = "unit", id = "331" },
+]
+validated_by = """\
+Weak form (FR-030): a second reading of the same vendored source, not an independent one \
+(research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
+own data file is barred by the publisher's usage rules). First reading: \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120182. Second \
+reading (T746, 2026-10-18, by the T746 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
+(https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), which \
+does not name the Tatars anywhere on the page. Selector and operand: resolved 'Trebuchets' to unit \
+331.\
+"""
+
+# ---------------------------------------------------------------------- Slavs
+
+[[effect]]
+civilisation = "Slavs"
+source_key = "120172"
+source_text = "Arson, Gambesons free"
+modelled = "yes"
+field = "cost"
+operation = "set"
+operand = { food = 0, gold = 0 }
+selector = [
+  { kind = "technology", id = "602" },
+  { kind = "technology", id = "875" },
+]
+validated_by = """\
+Weak form (FR-030): a second reading of the same vendored source, not an independent one \
+(research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
+own data file is barred by the publisher's usage rules). First reading: \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120172. Second \
+reading (T746, 2026-10-18, by the T746 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
+(https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), which \
+does not name the Slavs anywhere on the page. Selector and operand: resolved the two names to \
+technologies 602 (Arson; rules.json cost 75 food 25 gold) and 875 (Gambesons; 50 food 100 gold), \
+both produced at the Barracks; the operand's two keys cover every resource either carries.\
+"""
+
+[[effect]]
+civilisation = "Slavs"
+source_key = "120172"
+source_text = "Arson, Gambesons free"
+modelled = "yes"
+field = "production_time"
+operation = "set"
+operand = 0
+selector = [
+  { kind = "technology", id = "602" },
+  { kind = "technology", id = "875" },
+]
+validated_by = """\
+Weak form (FR-030): a second reading of the same vendored source, not an independent one \
+(research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
+own data file is barred by the publisher's usage rules). First reading: \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120172. Second \
+reading (T746, 2026-10-18, by the T746 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
+(https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), which \
+does not name the Slavs anywhere on the page. Selector and operand: the second half of one bullet: \
+a technology the bonus makes free is never researched, so its research time is 0 as well as its \
+cost.\
+"""
+
+[[effect]]
+civilisation = "Slavs"
+source_key = "120172"
+source_text = "Siege Workshop Units cost -15%"
+modelled = "yes"
+field = "cost"
+operation = "multiply"
+operand = { food = 0.85, gold = 0.85, stone = 0.85, wood = 0.85 }
+selector = [
+  { kind = "unit", id = "36" },
+  { kind = "unit", id = "279" },
+  { kind = "unit", id = "280" },
+  { kind = "unit", id = "422" },
+  { kind = "unit", id = "542" },
+  { kind = "unit", id = "548" },
+  { kind = "unit", id = "550" },
+  { kind = "unit", id = "588" },
+  { kind = "unit", id = "1105" },
+  { kind = "unit", id = "1258" },
+  { kind = "unit", id = "1263" },
+  { kind = "unit", id = "1709" },
+  { kind = "unit", id = "1744" },
+  { kind = "unit", id = "1746" },
+  { kind = "unit", id = "1904" },
+  { kind = "unit", id = "1907" },
+  { kind = "unit", id = "1923" },
+  { kind = "unit", id = "1942" },
+  { kind = "unit", id = "1962" },
+]
+validated_by = """\
+Weak form (FR-030): a second reading of the same vendored source, not an independent one \
+(research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
+own data file is barred by the publisher's usage rules). First reading: \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120172. Second \
+reading (T746, 2026-10-18, by the T746 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
+(https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), which \
+does not name the Slavs anywhere on the page. Selector and operand: resolved 'Siege Workshop \
+Units' to every unit rules.json lists as produced_at building 49 (Siege Workshop), 19 units, not \
+the upgrade technologies the same building produces; a factor of 0.85 on every resource, a \
+resource a unit does not carry being left untouched.\
+"""
+
+[[effect]]
+civilisation = "Slavs"
+source_key = "120172"
+source_text = "Monks move +20% faster"
+modelled = "no"
+field = "speed"
+reason = """\
+movement speed is a field this knowledge base does not carry; recorded so the bullet is accounted \
+for\
+"""
+selector = [
+  { kind = "unit", id = "125" },
+]
+validated_by = """\
+Weak form (FR-030): a second reading of the same vendored source, not an independent one \
+(research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
+own data file is barred by the publisher's usage rules). First reading: \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120172. Second \
+reading (T746, 2026-10-18, by the T746 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
+(https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), which \
+does not name the Slavs anywhere on the page. Selector and operand: resolved 'Monks' to unit 125.\
+"""
+
+[[effect]]
+civilisation = "Slavs"
+source_key = "120172"
+source_text = "Detinets (Replaces 40% of Castle and Watch Tower-line stone cost with additional wood cost)"
+modelled = "no"
+field = "cost"
+condition = "researched"
+condition_technology = "455"
+reason = """\
+the bonus is conditional on Detinets having been researched and moves 40% of a stone cost to an \
+additional wood cost, but the pack's string never states the wood amount, so the adjusted cost is \
+not knowledge this snapshot has; the field stays gapped\
+"""
+selector = [
+  { kind = "building", id = "82" },
+  { kind = "building", id = "79" },
+  { kind = "building", id = "234" },
+  { kind = "building", id = "235" },
+]
+validated_by = """\
+Weak form (FR-030): a second reading of the same vendored source, not an independent one \
+(research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
+own data file is barred by the publisher's usage rules). First reading: \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120172. Second \
+reading (T746, 2026-10-18, by the T746 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
+(https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), which \
+does not name the Slavs anywhere on the page. Selector and operand: resolved the unique technology \
+to technology 455 and 'Castle and Watch Tower-line' to buildings 82 (Castle), 79 (Watch Tower), \
+234 (Guard Tower) and 235 (Keep).\
+"""
+
+# ---------------------------------------------------------------------- Sicilians
+
+[[effect]]
+civilisation = "Sicilians"
+source_key = "120186"
+source_text = "Can build Donjon in Dark Age, replaces Watch Tower-line"
+modelled = "no"
+field = "available_to"
+reason = """\
+the bonus replaces the Watch Tower-line with the Donjon for this civilisation, and the effect \
+model cannot say that an entity is not available (the pack's own Sicilians tree still lists the \
+three towers, so tree and bullet disagree); the availability of the line stays gapped. The Dark \
+Age half needs no effect: rules.json already gives the Donjon (building 1665) age_requirement 1, \
+which SICILIANS.json agrees with\
+"""
+selector = [
+  { kind = "building", id = "79" },
+  { kind = "building", id = "234" },
+  { kind = "building", id = "235" },
+]
+validated_by = """\
+Weak form (FR-030): a second reading of the same vendored source, not an independent one \
+(research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
+own data file is barred by the publisher's usage rules). First reading: \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120186. Second \
+reading (T746, 2026-10-18, by the T746 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
+(https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), whose \
+Sicilians entry names only access changes (Heavy Mounted Crossbowmen and Cranequins gained, \
+Cavalry Archers lost) and names no change to a Sicilians bonus. Selector and operand: resolved \
+'Watch Tower-line' to buildings 79 (Watch Tower), 234 (Guard Tower) and 235 (Keep).\
+"""
+
+[[effect]]
+civilisation = "Sicilians"
+source_key = "120186"
+source_text = "Fortifications built +50% faster; Town Centers built +100% faster"
+modelled = "yes"
+field = "production_time"
+operation = "faster"
+operand = 1.0
+selector = [
+  { kind = "building", id = "71" },
+  { kind = "building", id = "109" },
+  { kind = "building", id = "621" },
+]
+validated_by = """\
+Weak form (FR-030): a second reading of the same vendored source, not an independent one \
+(research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
+own data file is barred by the publisher's usage rules). First reading: \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120186. Second \
+reading (T746, 2026-10-18, by the T746 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
+(https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), whose \
+Sicilians entry names only access changes (Heavy Mounted Crossbowmen and Cranequins gained, \
+Cavalry Archers lost) and names no change to a Sicilians bonus. Selector and operand: resolved \
+'Town Centers' to the three buildings the pack's data gives the Town Center's language name (71, \
+109, 621); 'built +100% faster' divides the construction time by 2. The Fortifications half is the \
+next row.\
+"""
+
+[[effect]]
+civilisation = "Sicilians"
+source_key = "120186"
+source_text = "Fortifications built +50% faster; Town Centers built +100% faster"
+modelled = "no"
+field = "production_time"
+reason = """\
+the bonus speeds the construction of Fortifications, and the pack never lists which buildings that \
+word names; the buildings here are the ones the pack's own strings use it for (ranged \
+Fortifications in Chemistry and Murder Holes, the Donjon and the Krepost as unique \
+fortifications), so a query for any of them is refused rather than answered at the baseline; the \
+field stays gapped\
+"""
+selector = [
+  { kind = "building", id = "82" },
+  { kind = "building", id = "79" },
+  { kind = "building", id = "234" },
+  { kind = "building", id = "235" },
+  { kind = "building", id = "236" },
+  { kind = "building", id = "1665" },
+  { kind = "building", id = "1251" },
+]
+validated_by = """\
+Weak form (FR-030): a second reading of the same vendored source, not an independent one \
+(research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
+own data file is barred by the publisher's usage rules). First reading: \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120186. Second \
+reading (T746, 2026-10-18, by the T746 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
+(https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), whose \
+Sicilians entry names only access changes (Heavy Mounted Crossbowmen and Cranequins gained, \
+Cavalry Archers lost) and names no change to a Sicilians bonus. Selector and operand: listed \
+Castle 82, the towers 79, 234, 235 and 236, Donjon 1665 and Krepost 1251. Walls and gates are not \
+listed: the pack's Great Wall and Redemption strings name Walls and Gates by their own names and \
+never as Fortifications. That is a reading of the pack's usage, not a statement of it, so a wall \
+or gate left out here would be answered at the baseline.\
+"""
+
+[[effect]]
+civilisation = "Sicilians"
+source_key = "120186"
+source_text = "First Crusade (Up to 5 Town Centers spawn 5 Serjeants each; units more resistant to conversion)"
+modelled = "no"
+field = "serjeant_spawn"
+reason = """\
+spawning and conversion resistance are not fields this knowledge base carries; recorded so the \
+bullet is accounted for\
+"""
+selector = [
+  { kind = "building", id = "71" },
+  { kind = "building", id = "109" },
+  { kind = "building", id = "621" },
+]
+validated_by = """\
+Weak form (FR-030): a second reading of the same vendored source, not an independent one \
+(research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
+own data file is barred by the publisher's usage rules). First reading: \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120186. Second \
+reading (T746, 2026-10-18, by the T746 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
+(https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), whose \
+Sicilians entry names only access changes (Heavy Mounted Crossbowmen and Cranequins gained, \
+Cavalry Archers lost) and names no change to a Sicilians bonus. Selector and operand: resolved \
+'Town Centers' to buildings 71, 109 and 621.\
+"""
+
+[[effect]]
+civilisation = "Sicilians"
+source_key = "120186"
+source_text = "Hauberk (Knight-line +1 melee/+2 pierce armor)"
+modelled = "no"
+field = "melee_armor"
+reason = """\
+armor is a field this knowledge base does not carry; recorded so the bullet is accounted for\
+"""
+selector = [
+  { kind = "unit", id = "38" },
+  { kind = "unit", id = "283" },
+  { kind = "unit", id = "569" },
+]
+validated_by = """\
+Weak form (FR-030): a second reading of the same vendored source, not an independent one \
+(research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
+own data file is barred by the publisher's usage rules). First reading: \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120186. Second \
+reading (T746, 2026-10-18, by the T746 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
+(https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), whose \
+Sicilians entry names only access changes (Heavy Mounted Crossbowmen and Cranequins gained, \
+Cavalry Archers lost) and names no change to a Sicilians bonus. Selector and operand: resolved \
+'Knight-line' to units 38, 283 and 569.\
+"""
+
+[[effect]]
+civilisation = "Sicilians"
+source_key = "120186"
+source_text = "Team Bonus: Transport Ships +5 line of sight and cost -50%"
+modelled = "yes"
+field = "cost"
+operation = "multiply"
+condition = "team"
+operand = { wood = 0.5 }
+selector = [
+  { kind = "unit", id = "545" },
+]
+validated_by = """\
+Weak form (FR-030): a second reading of the same vendored source, not an independent one \
+(research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
+own data file is barred by the publisher's usage rules). First reading: \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120186. Second \
+reading (T746, 2026-10-18, by the T746 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
+(https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), whose \
+Sicilians entry names only access changes (Heavy Mounted Crossbowmen and Cranequins gained, \
+Cavalry Archers lost) and names no change to a Sicilians bonus. Selector and operand: resolved \
+'Transport Ships' to unit 545 (rules.json cost: 125 wood), a factor of 0.5 on wood. A team effect: \
+the owner is Sicilians and it reaches every civilisation on the owner's team. The +5 line of sight \
+half is the next row.\
+"""
+
+[[effect]]
+civilisation = "Sicilians"
+source_key = "120186"
+source_text = "Team Bonus: Transport Ships +5 line of sight and cost -50%"
+modelled = "no"
+field = "line_of_sight"
+reason = """\
+line of sight is a field this knowledge base does not carry; recorded so the bullet is accounted \
+for\
+"""
+selector = [
+  { kind = "unit", id = "545" },
+]
+validated_by = """\
+Weak form (FR-030): a second reading of the same vendored source, not an independent one \
+(research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
+own data file is barred by the publisher's usage rules). First reading: \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120186. Second \
+reading (T746, 2026-10-18, by the T746 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
+(https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), whose \
+Sicilians entry names only access changes (Heavy Mounted Crossbowmen and Cranequins gained, \
+Cavalry Archers lost) and names no change to a Sicilians bonus. Selector and operand: resolved \
+'Transport Ships' to unit 545.\
+"""
+
+# ------------------------------------------------------------------ raw civilisation ids
+#
+# `raw_id -> civilisation`, the replay's own civilisation integer (release order, 1-based; not
+# Relic's id space, docs/data-sources.md section 1). Read on 2026-10-18 from SiegeEngineers
+# aoc-reference-data, `data/datasets/100.json`, key `civilizations`, by the T746 implementer; the
+# repository's head commit when read was 88e30db2fc267cca96b896f7432b0c89644c878f (2026-10-11).
+# That source has no licence, so the pairs are hand-transcribed facts and the file is not
+# vendored (FR-031). Only the eight modelled civilisations are listed.
+
+[[civilisation_id]]
+raw_id = 2
+civilisation = "Franks"
+validated_by = """\
+Weak form (FR-030), a licence-barred source hand-transcribed with its provenance, per FR-031 \
+(docs/data-sources.md section 6: SiegeEngineers aoc-reference-data, no licence, \
+read-and-transcribe-only). Read on 2026-10-18 by the T746 implementer in data/datasets/100.json of \
+that repository, key civilizations, which is keyed by the replay's own civilisation id: id 2 is \
+Franks (the repository's head commit when read was 88e30db2fc267cca96b896f7432b0c89644c878f). \
+Corroboration: none beyond consistency, which cannot tell Franks from most civilisations: \
+participant 1 of AgeIIDE_Replay_504695319.zip (a build 180059 recording) researches 28 \
+technologies and the Franks tree of the vendored pack offers 26 of them; the other two are Bearded \
+Axe (83), which build 185872 removed from the game, and Pikeman (197), an upgrade this check \
+cannot resolve to a tree node. The id agrees with the table the build 180059 snapshot carries, \
+compared and not copied, and that table came from the same source.\
+"""
+
+[[civilisation_id]]
+raw_id = 4
+civilisation = "Teutons"
+validated_by = """\
+Weak form (FR-030), a licence-barred source hand-transcribed with its provenance, per FR-031 \
+(docs/data-sources.md section 6: SiegeEngineers aoc-reference-data, no licence, \
+read-and-transcribe-only). Read on 2026-10-18 by the T746 implementer in data/datasets/100.json of \
+that repository, key civilizations, which is keyed by the replay's own civilisation id: id 4 is \
+Teutons (the repository's head commit when read was 88e30db2fc267cca96b896f7432b0c89644c878f). \
+Corroboration: participant 3 of AgeIIDE_Replay_504695319.zip researches Ironclad (489), which \
+exactly one of the vendored pack's 56 trees offers, the Teutons'.\
+"""
+
+[[civilisation_id]]
+raw_id = 8
+civilisation = "Persians"
+validated_by = """\
+Weak form (FR-030), a licence-barred source hand-transcribed with its provenance, per FR-031 \
+(docs/data-sources.md section 6: SiegeEngineers aoc-reference-data, no licence, \
+read-and-transcribe-only). Read on 2026-10-18 by the T746 implementer in data/datasets/100.json of \
+that repository, key civilizations, which is keyed by the replay's own civilisation id: id 8 is \
+Persians (the repository's head commit when read was 88e30db2fc267cca96b896f7432b0c89644c878f). \
+Corroboration: participant 2 of AgeIIDE_Replay_504695319.zip researches Kamandaran (488), which \
+exactly one of the vendored pack's 56 trees offers, the Persians'.\
+"""
+
+[[civilisation_id]]
+raw_id = 9
+civilisation = "Saracens"
+validated_by = """\
+Weak form (FR-030), a licence-barred source hand-transcribed with its provenance, per FR-031 \
+(docs/data-sources.md section 6: SiegeEngineers aoc-reference-data, no licence, \
+read-and-transcribe-only). Read on 2026-10-18 by the T746 implementer in data/datasets/100.json of \
+that repository, key civilizations, which is keyed by the replay's own civilisation id: id 9 is \
+Saracens (the repository's head commit when read was 88e30db2fc267cca96b896f7432b0c89644c878f). \
+Corroboration: none beyond consistency, which cannot tell Saracens from most civilisations: \
+participant 1 of AgeIIDE_Replay_500546441.zip researches 20 technologies and the Saracens tree of \
+the vendored pack offers all of them. The id agrees with the table the build 180059 snapshot \
+carries, compared and not copied, and that table came from the same source.\
+"""
+
+[[civilisation_id]]
+raw_id = 23
+civilisation = "Slavs"
+validated_by = """\
+Weak form (FR-030), a licence-barred source hand-transcribed with its provenance, per FR-031 \
+(docs/data-sources.md section 6: SiegeEngineers aoc-reference-data, no licence, \
+read-and-transcribe-only). Read on 2026-10-18 by the T746 implementer in data/datasets/100.json of \
+that repository, key civilizations, which is keyed by the replay's own civilisation id: id 23 is \
+Slavs (the repository's head commit when read was 88e30db2fc267cca96b896f7432b0c89644c878f). \
+Corroboration: participant 1 of AgeIIDE_Replay_511523321.zip trains the Boyar (unit 876), which \
+exactly one of the vendored pack's 56 trees offers, the Slavs', and researches 13 technologies \
+that the Slavs tree offers. A unit is weaker evidence than a technology (the build 180059 \
+snapshot's record found a unit misattributed in one recording), so this id rests mainly on the \
+dataset.\
+"""
+
+[[civilisation_id]]
+raw_id = 26
+civilisation = "Malians"
+validated_by = """\
+Weak form (FR-030), a licence-barred source hand-transcribed with its provenance, per FR-031 \
+(docs/data-sources.md section 6: SiegeEngineers aoc-reference-data, no licence, \
+read-and-transcribe-only). Read on 2026-10-18 by the T746 implementer in data/datasets/100.json of \
+that repository, key civilizations, which is keyed by the replay's own civilisation id: id 26 is \
+Malians (the repository's head commit when read was 88e30db2fc267cca96b896f7432b0c89644c878f). \
+Corroboration: participant 2 of AgeIIDE_Replay_500546441.zip researches Farimba (577), which \
+exactly one of the vendored pack's 56 trees offers, the Malians'.\
+"""
+
+[[civilisation_id]]
+raw_id = 33
+civilisation = "Tatars"
+validated_by = """\
+Weak form (FR-030), a licence-barred source hand-transcribed with its provenance, per FR-031 \
+(docs/data-sources.md section 6: SiegeEngineers aoc-reference-data, no licence, \
+read-and-transcribe-only). Read on 2026-10-18 by the T746 implementer in data/datasets/100.json of \
+that repository, key civilizations, which is keyed by the replay's own civilisation id: id 33 is \
+Tatars (the repository's head commit when read was 88e30db2fc267cca96b896f7432b0c89644c878f). \
+Corroboration: participant 4 of AgeIIDE_Replay_504695319.zip researches Silk Armor (687), which \
+exactly one of the vendored pack's 56 trees offers, the Tatars'.\
+"""
+
+[[civilisation_id]]
+raw_id = 37
+civilisation = "Sicilians"
+validated_by = """\
+Weak form (FR-030), a licence-barred source hand-transcribed with its provenance, per FR-031 \
+(docs/data-sources.md section 6: SiegeEngineers aoc-reference-data, no licence, \
+read-and-transcribe-only). Read on 2026-10-18 by the T746 implementer in data/datasets/100.json of \
+that repository, key civilizations, which is keyed by the replay's own civilisation id: id 37 is \
+Sicilians (the repository's head commit when read was 88e30db2fc267cca96b896f7432b0c89644c878f). \
+Corroboration: participant 2 of AgeIIDE_Replay_511523321.zip places the Donjon (building 1665) 11 \
+times and trains the Serjeant (unit 1658) 30 times, and the Donjon is in exactly one of the \
+vendored pack's 56 trees, the Sicilians'.\
+"""
