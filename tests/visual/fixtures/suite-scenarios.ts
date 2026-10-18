@@ -56,6 +56,7 @@ import {
 } from './app-routes-harness'
 import { installSteamAvatarStub } from './avatar-stub'
 import { type ExternalRequestWatch, watchExternalRequests } from './external-requests'
+import type { KnownDefect } from './known-defect'
 import { holdRequests, LOOP_SELECTOR, type LoopKind } from './loading-state'
 import { openMenuByKeyboard, tabTo, type SurfaceKind } from './open-surface'
 import { openTooltipByKeyboard } from './tooltip-open'
@@ -82,11 +83,12 @@ export interface SuiteScenario extends RouteScenario {
   hold?: HeldRequest
   /** Set when `prepare` leaves a `Menu` or `Dialog` open: the suites then walk that surface. */
   surface?: SurfaceKind
-  /** A defect this scenario's page is known to show to one suite, by suite, with the reason. The
-   * suite runs the scenario as an expected failure (`test.fail`, which fails the day the page stops
-   * failing), so a red walk is recorded and a fixed one is noticed. `README.md`'s gap register holds
-   * the row that names the defect and its owner. */
-  knownDefects?: { keyboard?: string }
+  /** A defect this scenario's page is known to show to one suite, by suite. The suite asserts the
+   * walk fails with exactly `message` (`expectKnownDefect`, `./known-defect`) and fails when the walk
+   * passes, so the marker records a red walk and cannot outlive its fix. The task that fixes the
+   * defect is named in `specs/005-design-system-foundations/tasks.md` (T750 for the `Dialog` Tab
+   * trap). */
+  knownDefects?: { keyboard?: KnownDefect }
 }
 
 /** One list or control group a populated scenario promises to put on screen: `selector` is
@@ -1368,14 +1370,46 @@ async function failWith(
   )
 }
 
+/** Every `/api/` response a page has received since `enterScenario` began watching it, in order.
+ * What a scenario waits on instead of a pause: the failures its retries are waiting for, the
+ * answer a plant gave a held request. */
+export interface ApiResponse {
+  url: string
+  method: string
+  status: number
+}
+const apiResponseLogs = new WeakMap<Page, ApiResponse[]>()
+
+export function apiResponses(page: Page): readonly ApiResponse[] {
+  return apiResponseLogs.get(page) ?? []
+}
+
+function watchApiResponses(page: Page): void {
+  const log: ApiResponse[] = []
+  apiResponseLogs.set(page, log)
+  page.on('response', (response) => {
+    const url = response.url()
+    if (url.includes('/api/')) {
+      log.push({ url, method: response.request().method(), status: response.status() })
+    }
+  })
+}
+
+const failedApiResponses = (page: Page) =>
+  apiResponses(page).filter((response) => response.status >= 400).length
+
 /** A `useQuery` retries a failed request three times, a second, two and four apart, before it
  * reports `isError`. The route clock runs in real time, so waiting that out costs seven seconds a
- * scenario; running the page's clock forward does it in the time the four requests take. The pause
- * between the steps lets each answer arrive, which is what schedules the next retry. */
+ * scenario; running the page's clock forward does it in the time the four requests take. Each step
+ * waits for the retry's failed answer to arrive, which is what schedules the next retry, rather than
+ * for a pause that a loaded machine can outlast. The first attempt's failure is the one the page
+ * already has (or is about to have); a scenario with a single failing request is what this counts
+ * on, and a second failing query would only let a step end early. */
 async function exhaustQueryRetries(page: Page): Promise<void> {
-  for (let attempt = 0; attempt < 4; attempt += 1) {
+  await expect.poll(() => failedApiResponses(page)).toBeGreaterThanOrEqual(1)
+  for (let retry = 1; retry <= 3; retry += 1) {
     await page.clock.runFor(5_000)
-    await page.waitForTimeout(120)
+    await expect.poll(() => failedApiResponses(page)).toBeGreaterThanOrEqual(1 + retry)
   }
 }
 
@@ -1509,9 +1543,15 @@ const SIGN_IN_BRANCHES: readonly BranchScenario[] = [
 
 // --- /search ------------------------------------------------------------------------------------
 
-async function submitSearch(page: Page, query = 'Fixture', awaitAnswer = true): Promise<void> {
+async function submitSearch(
+  page: Page,
+  query = 'Fixture',
+  awaitAnswer = true,
+  pause = false,
+): Promise<void> {
   await tabTo(page, page.locator('main input').first())
   await page.keyboard.type(query)
+  if (pause) await pauseClock(page)
   const answered = awaitAnswer ? page.waitForResponse('**/api/players/search*') : undefined
   await page.keyboard.press('Enter')
   await answered
@@ -1521,9 +1561,9 @@ function searchBranch(
   branch: string,
   answer: (page: Page) => Promise<void>,
   shows: readonly ListExpectation[],
-  extra: Partial<Pick<BranchScenario, 'hold'>> & { awaitAnswer?: boolean } = {},
+  extra: Partial<Pick<BranchScenario, 'hold'>> & { awaitAnswer?: boolean; pause?: boolean } = {},
 ) {
-  const { awaitAnswer = true, ...rest } = extra
+  const { awaitAnswer = true, pause = false, ...rest } = extra
   return branchScenario('/search', branch, {
     path: '/search',
     family: 'search answer',
@@ -1533,7 +1573,7 @@ function searchBranch(
       await stubMe(page, SIGNED_IN_ME)
       await answer(page)
     },
-    prepare: (page: Page) => submitSearch(page, 'Fixture', awaitAnswer),
+    prepare: (page: Page) => submitSearch(page, 'Fixture', awaitAnswer, pause),
   })
 }
 
@@ -1566,6 +1606,9 @@ const SEARCH_BRANCHES: readonly BranchScenario[] = [
       await failWith(page, '**/api/players/search*', 429, 'rate_limited', { retry_after: 30 })
     },
     [text('rate-limit callout', "You're searching too quickly")],
+    // The countdown ticks on the page's clock, which is paused before the search so the thirty
+    // seconds it starts from are still thirty when a suite has finished walking the page.
+    { pause: true },
   ),
   searchBranch(
     'rate limit elapsed',
@@ -1644,6 +1687,36 @@ const FAVOURITES_BRANCHES: readonly BranchScenario[] = [
 
 // --- ArchivalControl's write failing (T744) ---------------------------------------------------
 
+const OBJECTED_CALLOUT = text('objected callout', 'Archival is off.')
+
+/** The objected state's "Resume archival" held in flight: the primary `Button` in `loading`, the
+ * objected callout still on screen (`ArchivalControl`'s `StatusRegion`). */
+const ARCHIVAL_RESUME_IN_FLIGHT: Pick<BranchScenario, 'hold' | 'prepare' | 'shows'> = {
+  hold: {
+    urlGlob: '**/api/privacy/archival-objection',
+    body: { archival_objected: false, archival_objected_at: null },
+  },
+  prepare: async (page) => {
+    await activate(page, page.getByRole('button', { name: 'Resume archival' }))
+    await waitQuietly(page.locator('main button[aria-busy="true"]'))
+  },
+  shows: [OBJECTED_CALLOUT, busy('busy resume button', 'Saving your choice'), SPINNER_IN_MAIN],
+}
+
+/** The objected state's write refused: the objected callout and its button stay, and `FailureRegion`
+ * says the choice was not recorded. */
+const ARCHIVAL_RESUME_FAILED: Pick<BranchScenario, 'prepare' | 'shows'> = {
+  prepare: async (page) => {
+    await activate(page, page.getByRole('button', { name: 'Resume archival' }))
+    await waitQuietly(page.locator('main :text("We could not save that choice")'))
+  },
+  shows: [
+    OBJECTED_CALLOUT,
+    text('archival failure callout', 'We could not save that choice'),
+    control('Resume archival button', 'Resume archival'),
+  ],
+}
+
 const ARCHIVAL_WRITE_FAILED: Pick<BranchScenario, 'prepare' | 'shows'> = {
   prepare: async (page) => {
     await activate(page, page.getByRole('button', { name: 'Object to archival' }))
@@ -1673,6 +1746,9 @@ interface SummaryRoute {
   ok: unknown
   noRatings: unknown
   unranked: unknown
+  /** The alias the loaded profile shows. Set for the routes that also list matches: a held profile
+   * and a held match list are both "loading", and only the alias on screen tells them apart. */
+  identity?: string
 }
 
 const SUMMARY_ROUTES: readonly SummaryRoute[] = [
@@ -1692,6 +1768,7 @@ const SUMMARY_ROUTES: readonly SummaryRoute[] = [
       await stubMe(page, SIGNED_IN_ME)
       await page.route('**/api/matches?*', (route) => fulfillJson(route, EMPTY_MATCHES))
     },
+    identity: 'VisualSuitePlayer',
     glob: '**/api/profiles',
     ok: PROFILES_RESPONSE,
     noRatings: PROFILES_NO_RATINGS,
@@ -1718,6 +1795,7 @@ const SUMMARY_ROUTES: readonly SummaryRoute[] = [
         fulfillJson(route, EMPTY_MATCHES),
       )
     },
+    identity: 'ThirdPartyPlayer',
     glob: `**/api/players/${THIRD_PARTY_PROFILE_ID}`,
     ok: PLAYER_PROFILE_RESPONSE,
     noRatings: PLAYER_NO_RATINGS,
@@ -1809,6 +1887,9 @@ function summaryBranchesFor(source: SummaryRoute): BranchScenario[] {
           SKELETON,
           mark('busy rating board', 'main [aria-busy="true"]'),
           absent('no ratings failure', 'main :text("We could not load your ratings")'),
+          ...(source.identity
+            ? [absent('no profile identity', `main :text("${source.identity}")`)]
+            : []),
         ],
         { hold: { urlGlob: source.glob, body: source.ok } },
       ),
@@ -1851,6 +1932,7 @@ const OWN_MATCHES = {
     await stubPopulatedProfiles(page, PROFILES_RESPONSE)
   },
   glob: '**/api/matches?*',
+  identity: 'VisualSuitePlayer',
 }
 const PLAYER_MATCHES = {
   route: '/players/$profileId/matches',
@@ -1860,6 +1942,7 @@ const PLAYER_MATCHES = {
     await stubPlayerProfile(page, THIRD_PARTY_PROFILE_ID)
   },
   glob: `**/api/players/${THIRD_PARTY_PROFILE_ID}/matches*`,
+  identity: 'ThirdPartyPlayer',
 }
 
 function listBranch(
@@ -1889,7 +1972,11 @@ const MATCH_LIST_BRANCHES: readonly BranchScenario[] = [OWN_MATCHES, PLAYER_MATC
       source,
       'match list loading',
       async () => {},
-      [mark('busy match list', 'main [aria-busy="true"]'), SKELETON],
+      [
+        mark('busy match list', 'main [aria-busy="true"]'),
+        SKELETON,
+        text('profile identity', source.identity),
+      ],
       { hold: { urlGlob: source.glob, body: EMPTY_MATCHES } },
     ),
     listBranch(
@@ -2020,10 +2107,14 @@ const MAKE_PRIMARY_BRANCHES: readonly BranchScenario[] = [['/dashboard', DASHBOA
 // first and last element its selector finds, and the selector includes a `disabled` button. While a
 // dialog's request is in flight its secondary action is natively `disabled` and is the last element
 // in the DOM, so Tab from the loading primary action is never wrapped and the browser walks focus
-// out to the page behind the backdrop. Found by this file's scenarios, not fixed by them.
-const DIALOG_TRAP_LEAK =
-  'Dialog traps Tab on elements that include a disabled button, so with its secondary action ' +
-  'disabled mid-request focus leaves the dialog'
+// out to the page behind the backdrop. Found by this file's scenarios, fixed by T750
+// (`specs/005-design-system-foundations/tasks.md`), not by them.
+const DIALOG_TRAP_LEAK: KnownDefect = {
+  reason:
+    'Dialog traps Tab on elements that include a disabled button, so with its secondary action ' +
+    'disabled mid-request focus leaves the dialog (T750)',
+  message: /focus left the dialog during its walk/,
+}
 
 const UNLINK_PREVIEW_URL = `**/api/profiles/${VIEWER_ID}`
 const UNLINK_CONFIRM_URL = `**/api/profiles/${VIEWER_ID}?confirm=true`
@@ -2106,8 +2197,14 @@ const DASHBOARD_ACTION_BRANCHES: readonly BranchScenario[] = [
       await failWith(page, UNLINK_PREVIEW_URL)
     },
     prepare: async (page) => {
+      const failed = page.waitForResponse(
+        (response) =>
+          response.url().endsWith(`/api/profiles/${VIEWER_ID}`) && response.status() >= 400,
+      )
       await chooseUnlink(page)
-      await page.waitForTimeout(300)
+      await failed
+      // The menu closes on the choice; the failure is shown inside it when it is opened again.
+      await expect(page.locator('[role="menu"]')).toHaveCount(0)
       await openMenuByKeyboard(page, manageTrigger(page)).catch(() => undefined)
     },
     shows: [text('unlink check failure', 'We could not check what unlinking would do')],
@@ -2153,6 +2250,21 @@ const DASHBOARD_ACTION_BRANCHES: readonly BranchScenario[] = [
     },
     ...ARCHIVAL_WRITE_FAILED,
   }),
+  dashboardBranch('archival resume in flight', 'archival write', {
+    ...ARCHIVAL_RESUME_IN_FLIGHT,
+    stub: async (page) => {
+      await stubMe(page, OBJECTED_ME)
+      await stubPopulatedProfiles(page, PROFILES_RESPONSE)
+    },
+  }),
+  dashboardBranch('archival resume failed', 'archival write', {
+    ...ARCHIVAL_RESUME_FAILED,
+    stub: async (page) => {
+      await stubMe(page, OBJECTED_ME)
+      await stubPopulatedProfiles(page, PROFILES_RESPONSE)
+      await failWith(page, '**/api/privacy/archival-objection')
+    },
+  }),
 ]
 
 // --- /privacy ------------------------------------------------------------------------------------
@@ -2185,8 +2297,15 @@ function privacyBranch(
   return branchScenario('/privacy', branch, { path: '/privacy', family, ...rest })
 }
 
-const ERASE_DIALOG_FAILED = (copy: string) => [
+/** A dialog callout, and whether the acknowledgement was ticked when it appeared: a failed first
+ * mint opens the dialog unticked, a refused or failed erase leaves it ticked, and that is what tells
+ * the two "We could not erase your account." dialogs apart. */
+const ERASE_DIALOG_FAILED = (copy: string, acknowledged: boolean) => [
   mark('erase failure callout', `[role="dialog"] :text("${copy}")`),
+  mark(
+    acknowledged ? 'ticked acknowledgement' : 'unticked acknowledgement',
+    `[role="dialog"] input[type="checkbox"]${acknowledged ? ':checked' : ':not(:checked)'}`,
+  ),
 ]
 
 const PRIVACY_BRANCHES: readonly BranchScenario[] = [
@@ -2233,6 +2352,19 @@ const PRIVACY_BRANCHES: readonly BranchScenario[] = [
     },
     ...ARCHIVAL_WRITE_FAILED,
   }),
+  privacyBranch('archival resume in flight', 'archival write', {
+    ...ARCHIVAL_RESUME_IN_FLIGHT,
+    stub: async (page) => {
+      await stubMe(page, OBJECTED_ME)
+    },
+  }),
+  privacyBranch('archival resume failed', 'archival write', {
+    ...ARCHIVAL_RESUME_FAILED,
+    stub: async (page) => {
+      await stubMe(page, OBJECTED_ME)
+      await failWith(page, '**/api/privacy/archival-objection')
+    },
+  }),
   privacyBranch('erasure confirmation minting failed', 'erasure', {
     surface: 'dialog',
     stub: async (page) => {
@@ -2243,7 +2375,7 @@ const PRIVACY_BRANCHES: readonly BranchScenario[] = [
       await activate(page, page.getByRole('button', { name: 'Erase my account' }))
       await waitQuietly(page.locator('[role="dialog"] :text("We could not erase your account.")'))
     },
-    shows: ERASE_DIALOG_FAILED('We could not erase your account.'),
+    shows: ERASE_DIALOG_FAILED('We could not erase your account.', false),
   }),
   privacyBranch('erasure in flight', 'erasure', {
     surface: 'dialog',
@@ -2280,7 +2412,63 @@ const PRIVACY_BRANCHES: readonly BranchScenario[] = [
       await waitQuietly(page.locator('[role="dialog"] :text("Your confirmation expired.")'))
       await focusDialogHeading(page)
     },
-    shows: ERASE_DIALOG_FAILED('Your confirmation expired.'),
+    shows: ERASE_DIALOG_FAILED('Your confirmation expired.', true),
+  }),
+  // Pressing the confirm button again after a 403 mints a fresh token inside the open dialog
+  // (`handleConfirm`: `minting` with `dialogHasOpened`): the confirm button is natively disabled for
+  // the wait, and was the focused element. A failed re-mint ends in the `failed` dialog with the
+  // acknowledgement still ticked, which a failed erase also ends in, so it is not a scenario of its
+  // own. T751 files the focus drop; this `prepare` moves focus back to the dialog heading after the
+  // press (`focusDialogHeading`), so the keyboard result here does not judge where the press left
+  // focus, and T751 owns removing that step.
+  privacyBranch('erasure re-mint in flight', 'erasure', {
+    surface: 'dialog',
+    stub: async (page) => {
+      await stubMe(page, SIGNED_IN_ME)
+      let mints = 0
+      let release: () => void = () => {}
+      const gate = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      // Answered as the page closes, never left dangling.
+      page.once('close', () => release())
+      await page.route('**/api/privacy/erase', async (route) => {
+        if (route.request().method() === 'POST') {
+          await route.fulfill({
+            status: 403,
+            contentType: 'application/json',
+            body: JSON.stringify(apiError('confirmation_token_invalid')),
+          })
+          return
+        }
+        mints += 1
+        if (mints === 1) {
+          await fulfillJson(route, { confirmation_token: 'visual-suite-token' })
+          return
+        }
+        await gate
+        await fulfillJson(route, { confirmation_token: 'visual-suite-token-2' }).catch(
+          () => undefined,
+        )
+      })
+    },
+    prepare: async (page) => {
+      await confirmErasure(page)
+      await waitQuietly(page.locator('[role="dialog"] :text("Your confirmation expired.")'))
+      await activate(page, page.getByRole('button', { name: 'Erase my account permanently' }))
+      await waitQuietly(
+        page.locator('[role="dialog"] button:disabled:has-text("Erase my account permanently")'),
+      )
+      await focusDialogHeading(page)
+    },
+    shows: [
+      mark('ticked acknowledgement', '[role="dialog"] input[type="checkbox"]:checked'),
+      mark(
+        'disabled confirm button',
+        '[role="dialog"] button:disabled:has-text("Erase my account permanently")',
+      ),
+      absent('no expiry callout', '[role="dialog"] :text("Your confirmation expired.")'),
+    ],
   }),
   privacyBranch('erasure failed', 'erasure', {
     surface: 'dialog',
@@ -2302,7 +2490,7 @@ const PRIVACY_BRANCHES: readonly BranchScenario[] = [
       await waitQuietly(page.locator('[role="dialog"] :text("We could not erase your account.")'))
       await focusDialogHeading(page)
     },
-    shows: ERASE_DIALOG_FAILED('We could not erase your account.'),
+    shows: ERASE_DIALOG_FAILED('We could not erase your account.', true),
   }),
   privacyBranch('account erased', 'erasure', {
     stub: async (page) => {
@@ -2339,6 +2527,7 @@ function objectBranch(
   branch: string,
   answer: (page: Page) => Promise<void>,
   value: string,
+  settle: string,
   shows: readonly ListExpectation[],
   hold?: HeldRequest,
 ) {
@@ -2353,20 +2542,27 @@ function objectBranch(
     },
     prepare: async (page: Page) => {
       await submitObjection(page, value)
-      await page.waitForTimeout(300)
+      await waitQuietly(page.locator(settle))
     },
   })
 }
 
 const OBJECT_BRANCHES: readonly BranchScenario[] = [
-  objectBranch('invalid profile id', async () => {}, 'not-a-number', [
-    text('field error', 'Enter your numeric profile id'),
-    mark('invalid input', 'main input[aria-invalid="true"]'),
-  ]),
+  objectBranch(
+    'invalid profile id',
+    async () => {},
+    'not-a-number',
+    'main input[aria-invalid="true"]',
+    [
+      text('field error', 'Enter your numeric profile id'),
+      mark('invalid input', 'main input[aria-invalid="true"]'),
+    ],
+  ),
   objectBranch(
     'objection submitting',
     async () => {},
     '4242',
+    'main button[aria-busy="true"]',
     [busy('busy submit button', 'Recording your objection'), SPINNER_IN_MAIN],
     { urlGlob: OBJECTION_URL, body: { id: 'visual-suite-objection', status: 'recorded' } },
   ),
@@ -2375,17 +2571,23 @@ const OBJECT_BRANCHES: readonly BranchScenario[] = [
     (page) =>
       respondJson(page, OBJECTION_URL, { id: 'visual-suite-objection', status: 'recorded' }),
     '4242',
+    'main :text("Your objection has been recorded.")',
     [text('recorded callout', 'Your objection has been recorded.')],
   ),
   objectBranch(
     'objection rate limited',
     (page) => failWith(page, OBJECTION_URL, 429, 'rate_limited'),
     '4242',
+    'main :text("Too many objections right now.")',
     [text('rate-limited callout', 'Too many objections right now.')],
   ),
-  objectBranch('objection failed', (page) => failWith(page, OBJECTION_URL), '4242', [
-    text('objection failure callout', 'We could not record your objection.'),
-  ]),
+  objectBranch(
+    'objection failed',
+    (page) => failWith(page, OBJECTION_URL),
+    '4242',
+    'main :text("We could not record your objection.")',
+    [text('objection failure callout', 'We could not record your objection.')],
+  ),
 ]
 
 // --- /players/$profileId: the favourite toggle ----------------------------------------------------
@@ -2394,7 +2596,9 @@ const FAVOURITE_ADD_URL = `**/api/favourites/${THIRD_PARTY_PROFILE_ID}`
 
 function toggleBranch(
   branch: string,
+  action: 'add' | 'remove',
   answer: (page: Page) => Promise<void>,
+  settle: string,
   shows: readonly ListExpectation[],
   hold?: HeldRequest,
 ) {
@@ -2405,32 +2609,69 @@ function toggleBranch(
     shows,
     stub: async (page: Page) => {
       await stubMe(page, SIGNED_IN_ME)
-      await page.route('**/api/favourites', (route) => fulfillJson(route, { favourites: [] }))
+      // Removing needs a profile that is already a favourite; adding, one that is not.
+      await respondJson(
+        page,
+        '**/api/favourites',
+        action === 'remove' ? FAVOURITES_POPULATED : { favourites: [] },
+      )
       await stubPlayerProfile(page, THIRD_PARTY_PROFILE_ID)
       await answer(page)
     },
     prepare: async (page: Page) => {
-      await activate(page, page.getByRole('button', { name: 'Add to favourites' }))
-      await page.waitForTimeout(300)
+      const name = action === 'add' ? 'Add to favourites' : 'Remove from favourites'
+      await activate(page, page.getByRole('button', { name }))
+      await waitQuietly(page.locator(settle))
     },
   })
 }
 
+const MUTATED = { profile_id: THIRD_PARTY_PROFILE_ID, favourited: true }
+
 const FAVOURITE_TOGGLE_BRANCHES: readonly BranchScenario[] = [
   toggleBranch(
     'favourite add in flight',
+    'add',
     async () => {},
+    'main button[aria-busy="true"]',
     [busy('busy toggle', 'Adding'), SPINNER_IN_MAIN],
-    { urlGlob: FAVOURITE_ADD_URL, body: { profile_id: THIRD_PARTY_PROFILE_ID, favourited: true } },
+    { urlGlob: FAVOURITE_ADD_URL, body: MUTATED },
   ),
   toggleBranch(
     'favourites limit reached',
+    'add',
     (page) => failWith(page, FAVOURITE_ADD_URL, 409, 'favourites_limit_reached'),
+    'main :text("You have reached your favourites limit")',
     [text('limit callout', 'You have reached your favourites limit')],
   ),
-  toggleBranch('favourite request failed', (page) => failWith(page, FAVOURITE_ADD_URL), [
-    text('favourite failure callout', 'We could not update your favourites'),
-  ]),
+  toggleBranch(
+    'favourite add failed',
+    'add',
+    (page) => failWith(page, FAVOURITE_ADD_URL),
+    'main :text("We could not update your favourites")',
+    [
+      text('favourite add failure callout', 'We could not update your favourites'),
+      control('Add to favourites button', 'Add to favourites'),
+    ],
+  ),
+  toggleBranch(
+    'favourite remove in flight',
+    'remove',
+    async () => {},
+    'main button[aria-busy="true"]',
+    [busy('busy toggle', 'Removing'), SPINNER_IN_MAIN],
+    { urlGlob: FAVOURITE_ADD_URL, body: MUTATED },
+  ),
+  toggleBranch(
+    'favourite remove failed',
+    'remove',
+    (page) => failWith(page, FAVOURITE_ADD_URL),
+    'main :text("We could not update your favourites")',
+    [
+      text('favourite remove failure callout', 'We could not update your favourites'),
+      control('Remove from favourites button', 'Remove from favourites'),
+    ],
+  ),
 ]
 
 // --- /matches/$gameId ---------------------------------------------------------------------------
@@ -2498,17 +2739,6 @@ const MATCH_PAGE_BRANCHES: readonly BranchScenario[] = [
       mark('Back to the match list link', 'main a:has-text("Back to the match list")'),
     ],
   }),
-  detailBranch('match id invalid', undefined, {
-    path: '/matches/not-a-game',
-    stub: async (page) => {
-      await stubMe(page, SIGNED_IN_ME)
-      await stubPopulatedProfiles(page, PROFILES_RESPONSE)
-    },
-    shows: [
-      text('match not-found callout', 'This match could not be found.'),
-      mark('Back to the match list link', 'main a:has-text("Back to the match list")'),
-    ],
-  }),
 ]
 
 const ANALYSIS_SECTION_BRANCHES: readonly BranchScenario[] = [
@@ -2542,12 +2772,6 @@ const ANALYSIS_SECTION_BRANCHES: readonly BranchScenario[] = [
     shows: [
       text('takeover refusal callout', 'Fixture failure.'),
       control('Try again button', 'Try again'),
-    ],
-  }),
-  detailBranch('analysis summary unreadable', undefined, {
-    stub: (page) => stubDetailBody(page, { ...detailBody(), analysis: undefined }),
-    shows: [
-      text('analysis failure callout', "We could not load this match's analysis. Try again."),
     ],
   }),
 ]
@@ -2681,36 +2905,54 @@ const REPLAY_DOWNLOAD_BRANCHES: readonly BranchScenario[] = [
 // `handlePointOfViewDownload`): there is no completion signal to wait on. Two things keep that state
 // on screen. The navigation is cancelled (`aborted` leaves the page where it is, whereas a held
 // document request makes the page stop answering evaluations), and the page's clock is paused before
-// the click, so the timer is registered on a clock that never reaches it.
-async function holdDownloadState(page: Page): Promise<void> {
+// the click, so the timer is registered on a clock that never reaches it. The same pause keeps a
+// countdown or a label that a timer would change (`rate limited`, `upload in flight`) where the
+// scenario put it.
+async function pauseClock(page: Page): Promise<void> {
   const now = await page.evaluate(() => Date.now())
   await page.clock.pauseAt(now + 60_000)
 }
 
-function downloadBranch(branch: string, button: string, navigation: string) {
+const ROW_BUSY_BUTTON =
+  'main section:has(> h3:text-is("Recorded games")) button[aria-busy="true"]:has-text("Preparing your download")'
+
+function downloadBranch(
+  branch: string,
+  button: string,
+  navigation: string,
+  shows: readonly ListExpectation[],
+) {
   return detailBranch(branch, undefined, {
     stub: async (page) => {
       await stubMatchDetailAnalysis(page, analysisSummary('published'))
       await page.route(navigation, (route) => route.abort('aborted'))
     },
     prepare: async (page) => {
-      await holdDownloadState(page)
+      await pauseClock(page)
       await activate(page, page.getByRole('button', { name: button, exact: true }).first())
     },
-    shows: [busy('busy download button', 'Preparing your download'), SPINNER_IN_MAIN],
+    shows,
   })
 }
 
+// The two controls share a label and a spinner, so which one is busy is what tells the scenarios
+// apart: the recorded-games list's row, or the button in the match header above it.
 const DOWNLOAD_BRANCHES: readonly BranchScenario[] = [
   downloadBranch(
     'match download in flight',
     'Download replay',
     `**/api/replays/${SAMPLE_GAME_ID}/download*`,
+    [
+      busy('busy download button', 'Preparing your download'),
+      SPINNER_IN_MAIN,
+      absent('no busy row download', ROW_BUSY_BUTTON),
+    ],
   ),
   downloadBranch(
     'replay download in flight',
     'Download',
     `**/api/matches/${SAMPLE_GAME_ID}/replays/*`,
+    [mark('busy row download button', ROW_BUSY_BUTTON), SPINNER_IN_MAIN],
   ),
 ]
 
@@ -2739,9 +2981,12 @@ function uploadBranch(
     submit?: boolean
     settle?: string
     afterSubmit?: (page: Page) => Promise<void>
+    /** Pauses the page's clock before the file is chosen, so the label that turns from "Uploading…"
+     * to "Checking the file…" after 1.2 seconds only turns when the scenario runs the clock. */
+    pause?: boolean
   } = {},
 ) {
-  const { hold, submit = true, settle, afterSubmit } = options
+  const { hold, submit = true, settle, afterSubmit, pause = false } = options
   return detailBranch(branch, 'upload', {
     hold,
     stub: async (page) => {
@@ -2752,6 +2997,7 @@ function uploadBranch(
       await answer(page)
     },
     prepare: async (page) => {
+      if (pause) await pauseClock(page)
       if (submit) await submitUpload(page)
       else await chooseUploadFile(page)
       if (settle) await waitQuietly(page.locator(settle))
@@ -2783,6 +3029,7 @@ const UPLOAD_BRANCHES: readonly BranchScenario[] = [
     {
       hold: { urlGlob: UPLOAD_URL, body: { status: 'stored', source: 'manual' }, method: 'POST' },
       settle: 'main form[aria-busy="true"]',
+      pause: true,
     },
   ),
   uploadBranch(
@@ -2796,7 +3043,8 @@ const UPLOAD_BRANCHES: readonly BranchScenario[] = [
     {
       hold: { urlGlob: UPLOAD_URL, body: { status: 'stored', source: 'manual' }, method: 'POST' },
       // The label turns from "Uploading…" to "Checking the file…" after 1.2 seconds
-      // (`VALIDATING_LABEL_DELAY_MS`): the page's clock is run past it.
+      // (`VALIDATING_LABEL_DELAY_MS`): the page's clock, paused above, is run past it.
+      pause: true,
       afterSubmit: async (page) => {
         await page.clock.runFor(1_300)
       },
@@ -2954,9 +3202,18 @@ const ENUMERATED_BRANCHES: readonly BranchScenario[] = [
 //   line: the route's `beforeLoad` redirects before the container renders, with the session cached;
 // - `/matches`' make-primary: the Manage menu that triggers it is `board` only (`ProfileSummary`
 //   `!compact`), and `/matches` renders the `compact` variant;
-// - a second path to a state already covered: the export's poll failure and its ten-second ceiling
-//   end in `failed`, the optimistic "running" after "Request analysis" renders the `running` state,
-//   an unknown `?error=` code and `provider_unavailable` render the `unreachable` outcome;
+// - a second path to a state already covered, which renders what the covered scenario's marks
+//   declare (a unit check fails when one scenario's positive marks are all another's, so these
+//   cannot be added as twins): the export's poll failure and its ten-second ceiling end in `failed`;
+//   a failed re-mint of the erasure token ends in the `failed` dialog with the acknowledgement still
+//   ticked, which is the render of a failed erase (`erasure failed`); an unreadable analysis summary
+//   (the match response lacks the `analysis` key) renders the same `AnalysisTimeline error` callout
+//   as a failed analysis document (`AnalysisContainer`, the `summaryShapeError` and
+//   `documentQuery.isError` branches), the two differing only in which request failed; an invalid
+//   game id in the URL renders the not-found panel without a request; an unknown `?error=` code and
+//   `provider_unavailable` render the `unreachable` outcome; the optimistic "running" after "Request
+//   analysis" renders the `running` state, and that request's own failure is swallowed
+//   (`handleRequestAnalysis`), so the page shows what the next poll reads;
 // - a pointer-gesture or hover state (`UploadControl`'s drag-over, every hover and active style):
 //   judged per component by the stories (`scripts/checks/state-coverage.mjs`), not by data.
 export const ROUTE_REQUIRED_BRANCHES: Readonly<Record<string, readonly string[]>> = {
@@ -2979,6 +3236,8 @@ export const ROUTE_REQUIRED_BRANCHES: Readonly<Record<string, readonly string[]>
     'archival write in flight',
     'archival just resumed',
     'archival write failed',
+    'archival resume in flight',
+    'archival resume failed',
     'make primary in flight',
     'make primary failed',
     'sign-out in flight',
@@ -3016,7 +3275,6 @@ export const ROUTE_REQUIRED_BRANCHES: Readonly<Record<string, readonly string[]>
     'match loading',
     'match load failed',
     'match not found',
-    'match id invalid',
     'analysis queued',
     'analysis running',
     'analysis failed',
@@ -3024,7 +3282,6 @@ export const ROUTE_REQUIRED_BRANCHES: Readonly<Record<string, readonly string[]>
     'analysis document loading',
     'analysis document failed',
     'analysis takeover refused',
-    'analysis summary unreadable',
     'capture pending',
     'capture failed',
     'capture unavailable',
@@ -3057,7 +3314,9 @@ export const ROUTE_REQUIRED_BRANCHES: Readonly<Record<string, readonly string[]>
     'player not found',
     'favourite add in flight',
     'favourites limit reached',
-    'favourite request failed',
+    'favourite add failed',
+    'favourite remove in flight',
+    'favourite remove failed',
   ],
   '/players/$profileId/matches': [
     'profile loading',
@@ -3077,10 +3336,13 @@ export const ROUTE_REQUIRED_BRANCHES: Readonly<Record<string, readonly string[]>
     'archival write in flight',
     'archival just resumed',
     'archival write failed',
+    'archival resume in flight',
+    'archival resume failed',
     'erase button minting',
     'erasure confirmation minting failed',
     'erasure in flight',
     'erasure confirmation expired',
+    'erasure re-mint in flight',
     'erasure failed',
     'account erased',
   ],
@@ -3209,6 +3471,9 @@ export interface EnterOptions {
    * `expect` timeout). The planted-absence tests shorten it: a failure is the expected result
    * there, and waiting out the default for each of them adds minutes. */
   judgeTimeoutMs?: number
+  /** Runs after `prepare` and before the marks are judged. The planted-absence tests wait here for a
+   * positive sign that the page they put in the scenario's place has rendered. */
+  beforeJudge?: (page: Page) => Promise<void>
 }
 
 /** What `enterScenario` hands back: the external-request watch for the caller to assert at the end
@@ -3233,6 +3498,7 @@ export async function enterScenario(
   options: EnterOptions = {},
 ): Promise<EnteredScenario> {
   const external = watchExternalRequests(page, baseUrl)
+  watchApiResponses(page)
   await installSteamAvatarStub(page)
   if (options.reducedMotion) await page.emulateMedia({ reducedMotion: 'reduce' })
   await seedThemeOverride(page, theme)
@@ -3255,6 +3521,7 @@ export async function enterScenario(
   }
   await scenario.prepare?.(page)
   if (judged?.listsNeedPrepare) await assertPopulatedScenario(page, judged, judged.label)
+  await options.beforeJudge?.(page)
   if (isBranchScenario(scenario)) {
     await assertBranchScenario(page, scenario, scenario.label, options.judgeTimeoutMs)
   }

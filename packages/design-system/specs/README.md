@@ -3920,19 +3920,27 @@ rather than kept as a second copy of the fact. The review of #163 then filed T74
 
 T744 (2026-10-18) closed the last row the same way, over every route and not only the instances its text named:
 the four suites now also render the error, transient (in flight or held) and empty branches of the ten routes that
-have one (`/privacy-notice` is static text), in both themes, as `BRANCH_SCENARIOS` in `tests/visual/fixtures/suite-scenarios.ts`, each reached through the route's
-own stubs and by keyboard where the branch needs an action. `ROUTE_REQUIRED_BRANCHES` in that file is the enumeration,
-taken from the containers and the screens and composites they render, and the comment above it names every branch no
-route stub reaches or that has nothing for a suite to judge, with the reason. Each scenario declares the marks its
-branch puts on screen and `enterScenario` asserts them in a browser after `prepare` (`assertBranchScenario`).
-`suite-scenarios.test.ts` fails by name when a scenario or its entry in the inventory is removed or added alone, and
-plants, for every scenario, the route's success page, the sibling branch of the same section and, for a held request,
-the request answered at once: each fails inside `enterScenario` naming the missing mark. The two held loading states,
-`ProfileSummary`'s `Skeleton` and the erase button's `Spinner`, are branch scenarios too, so the keyboard,
-focus-visibility and touch-footprint suites run them held as well as the reduced-motion suite. One thing the new
-scenarios found is a defect, not a harness gap, so it is not filed in this register: `Dialog`'s Tab trap includes a
-disabled button, so while a dialog's request is in flight and its secondary action is disabled (`/dashboard (unlink in
-flight)`, `/privacy (erasure in flight)`), Tab leaves the dialog. The keyboard suite runs those two as expected
-failures (`SuiteScenario.knownDefects`), which fail the day the page stops failing. T750 owns the `Dialog` fix, and
-quickstart.md's production-readiness item 13 stays partly met until one lands. The row is
-deleted rather than kept as a second copy of the fact; the register holds no row.
+have one (`/privacy-notice` is static text), in both themes, as `BRANCH_SCENARIOS` in
+`tests/visual/fixtures/suite-scenarios.ts`, each reached through the route's own stubs and by keyboard where the
+branch needs an action. `ROUTE_REQUIRED_BRANCHES` in that file is the enumeration, taken from the containers and the
+screens and composites they render, covering each write they issue in each direction as well as each read, and the
+comment above it names every branch no route stub reaches or that has nothing for a suite to judge, with the reason.
+Each scenario declares the marks its branch puts on screen and `enterScenario` asserts them in a browser after
+`prepare` (`assertBranchScenario`). `suite-scenarios.test.ts` fails by name when a scenario or its entry in the
+inventory is added or removed alone, when the number of scenarios changes, when one scenario's positive marks are all
+another's on the same route unless an absent mark separates them, and when a scenario opens with a mark that is not
+a positive one. It plants four kinds of absence, each
+failing inside `enterScenario` naming the mark that fails: for every scenario, the route's success page before any
+action; for a scenario in a family of branches that could be mistaken for one another, the next scenario of that
+family in the ring; for a held request, the request answered at once; and for every absent mark, a page where the
+thing is present. Each plant first waits for a sign that the page it substituted has rendered. The two held loading
+states, `ProfileSummary`'s `Skeleton` and the erase button's `Spinner`, are branch scenarios too, so the keyboard,
+focus-visibility and touch-footprint suites run them held as well as the reduced-motion suite. Two things the new
+scenarios found are defects, not harness gaps, so they are not filed in this register. T750: `Dialog`'s Tab trap
+includes a disabled button, so while a dialog's request is in flight and its secondary action is disabled (`/dashboard
+(unlink in flight)`, `/privacy (erasure in flight)`), Tab leaves the dialog; the keyboard suite asserts that those two
+walks fail with that message and no other (`SuiteScenario.knownDefects`), and fails the day they pass. T751: the erasure
+dialog's confirm button is natively `disabled` while it is focused during a re-mint, and `/privacy (erasure re-mint in
+flight)`'s `prepare` moves focus back to the dialog heading after the press, so that scenario's keyboard result does not
+judge where the press left focus. Item 13 stays partly met until T750 and T751 land. The row is deleted rather than
+kept as a second copy of the fact; the register holds no row.
