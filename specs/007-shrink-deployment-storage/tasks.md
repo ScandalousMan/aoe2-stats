@@ -109,7 +109,7 @@ before. **(US4)**: a CLI upload from a working copy carries nothing under `.clau
       `pip` at runtime then fails CI. Run the whole suite, including
       `tests/test_reference_recordings.py`, in the re-synced environment (`uv sync --all-packages
     --dev` removes `pip` from it). Then run quickstart §2's export command and confirm its one line
-- [ ] T803 [P] [US4] Add `.claude/` to `.vercelignore` (**FR-015**, research R9), as its own block
+- [x] T803 [P] [US4] Add `.claude/` to `.vercelignore` (**FR-015**, research R9), as its own block
       with a comment in the file's existing style: local agent worktrees and agent configuration,
       never an input to the build or a function, and a CLI upload from a working copy does not apply
       `.gitignore`. Anchor it at the root (`/.claude/`). Do not touch any other line; the dry-run
