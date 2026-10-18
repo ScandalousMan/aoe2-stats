@@ -1347,13 +1347,14 @@ after everything underneath it moves.
       what stops a later edit quietly breaking that, and it is why the extraction time is duplicated
       rather than moved. No component changes; displaying a tier or a gap needs a design-system spec
       first and is a later feature's decision
-- [ ] T665 [US6] Verify the phase end to end against quickstart Phase 5, including the post-deploy
+- [x] T665 [US6] Verify the phase end to end against quickstart Phase 5, including the post-deploy
       checks: the health endpoint answers **200** — read the status, not the revision field, which
       is the build's own compiled constant and is no evidence about the database — and one analysis
       requested by hand shows a populated dependency record, an identity digest and a gap list that
       is empty or explains itself. Also confirm against the live object store that a second
       conditional put to an existing analysis key is refused (T666d relies on the store honouring
-      if-none-match; it is tested only against a stub)
+      if-none-match; it is tested only against a stub). **Verified 2026-10-18** by the user against
+      production; the evidence is quickstart.md's run record, "After deploy" rows
 - [x] T666 [P] [US3] Add the boundary guard test asserting this feature added no scheduled job, no
       request-path work and no code path that consumes the capture budget (**FR-049**), and that
       nothing here re-specifies 003's request, fetch, parse-once, retention, recompute, isolation,
