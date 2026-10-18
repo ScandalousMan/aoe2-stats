@@ -975,13 +975,23 @@ function appendGroupHoverCredit(found, marker, token) {
 //     literal pass, and the call site's group is not credited for it (the innermost-only rule);
 //   - a reference in any position other than a JSX tag (`render: OutcomeLabel`) credits nothing, and
 //     does not block the helper's other call sites;
-//   - a call site whose path up to the crediting group's JSX node passes through a `JsxAttribute` is
-//     refused (`onClick={() => toast(<OutcomeLabel />)}`, `<Tooltip content={<OutcomeLabel />}>`):
-//     JSX held in an attribute is rendered later, or elsewhere (a portal), not as the group's
-//     children. The refusal covers the group's own attributes as well.
-// Residual this pass still accepts: a call site passed as `children` to a component inside the group
+//   - a call site whose path up to the crediting group's JSX node passes through a `JsxAttribute` or a
+//     `JsxSpreadAttribute` is refused (`onClick={() => toast(<OutcomeLabel />)}`,
+//     `<Tooltip content={<OutcomeLabel />}>`, `<Tooltip {...{ content: <OutcomeLabel /> }}>`): JSX held
+//     in an attribute is rendered later, or elsewhere (a portal), not as the group's children. The
+//     refusal covers the group's own attributes as well;
+//   - a call site that is itself (through any parentheses) an argument of a call whose callee is the
+//     identifier `createPortal` or a property access ending in `.createPortal`
+//     (`{createPortal(<OutcomeLabel />, document.body)}`, `{ReactDOM.createPortal(...)}`) is refused:
+//     it is rendered outside the group's subtree. Call arguments are NOT refused in general: the call
+//     site in `{items.map(() => <OutcomeLabel />)}` stays credited.
+// Residuals this pass still accepts, because refusing them would need to follow code this file does not
+// follow: (1) a call site passed as `children` to a component inside the group
 // (`<Group><Wrapper><OutcomeLabel /></Wrapper></Group>`), which `Wrapper` may portal; no attribute is
-// crossed, and following `Wrapper`'s own source is the transitive resolution this file does not do.
+// crossed, and following `Wrapper`'s own source is the transitive resolution this file does not do;
+// (2) a portal reached through any other function name or wrapper (`const p = createPortal; p(...)`,
+// `portal(<OutcomeLabel />)`, or the call site nested in an element that is itself the argument of
+// `createPortal`: only the call site's own parent call is inspected).
 // The literal pass above (`creditGroupHoverToAncestors`) has the same attribute imprecision, and is
 // deliberately unchanged.
 // Resolved one hop only: if helper A invokes helper B, which holds the mark, and A is invoked inside
@@ -1016,7 +1026,11 @@ function creditHelperGroupHoverToCallSites(
       if (innermostGroupMarker(groupMarkerCandidates, descendant, match.groupName)) continue
       for (const site of callSites.get(helperName)) {
         const marker = innermostGroupMarker(groupMarkerCandidates, site, match.groupName)
-        if (marker && !pathCrossesJsxAttribute(sourceFile, site.node, marker)) {
+        if (
+          marker &&
+          !pathCrossesJsxAttribute(sourceFile, site.node, marker) &&
+          !isCreatePortalArgument(site.node)
+        ) {
           appendGroupHoverCredit(found, marker, match.token)
         }
       }
@@ -1025,15 +1039,32 @@ function creditHelperGroupHoverToCallSites(
 }
 
 // Whether some ancestor of `siteNode`, below the JSX node `marker` stands for (matched by range), is
-// a `JsxAttribute`. The marker contains the site by construction, so the walk reaches it.
+// a `JsxAttribute` or a `JsxSpreadAttribute`. The marker contains the site by construction, so the
+// walk reaches it.
 function pathCrossesJsxAttribute(sourceFile, siteNode, marker) {
   for (let node = siteNode.parent; node; node = node.parent) {
-    if (ts.isJsxAttribute(node)) return true
+    if (ts.isJsxAttribute(node) || ts.isJsxSpreadAttribute(node)) return true
     if (node.getStart(sourceFile) === marker.nodeStart && node.getEnd() === marker.nodeEnd) {
       return false
     }
   }
   return false
+}
+
+// Whether `siteNode`, looking through parentheses only, is a direct argument of a call whose callee is
+// `createPortal` or a property access ending in `createPortal`. Any other call (`items.map(...)`) is
+// not a portal this file can name, and is not refused.
+function isCreatePortalArgument(siteNode) {
+  let child = siteNode
+  let parent = child.parent
+  while (parent && ts.isParenthesizedExpression(parent)) {
+    child = parent
+    parent = parent.parent
+  }
+  if (!parent || !ts.isCallExpression(parent) || !parent.arguments.includes(child)) return false
+  const callee = parent.expression
+  if (ts.isIdentifier(callee)) return callee.text === 'createPortal'
+  return ts.isPropertyAccessExpression(callee) && callee.name.text === 'createPortal'
 }
 
 function nearestFunctionLike(node) {
@@ -4855,9 +4886,13 @@ export function parseLineSpec(lineSpec) {
 
 // Resolves a citation's own `location` (or its table context) to one file under this repository,
 // or `null` when it cannot be resolved to exactly one — ambiguity is a failure, not a guess.
-// `checkCitations` routes only non-story citations here (a `.md` spec, an `index.tsx`): a citation
-// of a story file is resolved by `resolveStoryCitation`, the resolver the 8c-bis excuse rule uses
-// too, so the story-file branches below are no longer reached from the citation checker.
+// `checkCitations` calls this only for a citation `resolveStoryCitation` returns `null` for, i.e. a
+// location that is not a `.stories.ts(x)` name (a `.md` spec, an `index.tsx`), so a story citation
+// never reaches the story branches below from `checkCitations`. Those branches are reached only by
+// direct callers, today the tests `resolveCitationLocation: a bare component name from an 8c-bis table
+// row resolves its own .stories.tsx` (the `kind === 'stories'` table-context branch and the
+// `.stories.tsx` suffix match) and `T683: resolveCitationLocation resolves a repository-rooted
+// .storybook path to that one file` (the `packages/` branch, on a story path).
 export function resolveCitationLocation(
   { location, tableContext },
   { specsDir: specs, allSrcFiles, packageDir = dsDir },
@@ -4881,11 +4916,14 @@ export function resolveCitationLocation(
     const p = path.join(specs, path.basename(name))
     return existsSync(p) ? p : null
   }
-  // A story-file table context (8c-bis) is always a bare `<Component>.stories.tsx` — resolved the
-  // same suffix-unique way as an explicit one in prose.
-  // T683: a repository-rooted path (`packages/design-system/.storybook/foundations/X.stories.tsx`)
-  // names exactly that file. Needed for story files outside `allSrcFiles`' three tier directories
-  // (foundations, fixtures, `src/lib/`), which no suffix match below can reach.
+  // A repository-rooted `packages/...` location names exactly that file. From `checkCitations` this
+  // branch serves a non-story location (`packages/design-system/src/screens/ArchivalControl/index.tsx`);
+  // a story path (`packages/design-system/.storybook/foundations/X.stories.tsx`) reaches it only from
+  // a direct caller (the T683 test above), since `checkCitations` resolves story citations through
+  // `resolveStoryCitation`, which reads the story files outside `allSrcFiles`' three tier directories
+  // (foundations, fixtures, `src/lib/`) from its own listing.
+  // The suffix match below serves `Component/index.tsx`-style locations; a bare `X.stories.tsx` name
+  // matched here is likewise a direct-caller path.
   if (name.startsWith('packages/')) {
     const rooted = path.join(repoRoot, name)
     if (existsSync(rooted) && statSync(rooted).isFile()) return rooted

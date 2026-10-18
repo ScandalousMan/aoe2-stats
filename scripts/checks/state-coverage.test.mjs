@@ -1139,6 +1139,26 @@ for (const [label, widgetBody] of Object.entries(ATTRIBUTE_CALL_SITE_CASES)) {
   })
 }
 
+// Two more shapes the same reasoning refuses: a spread attribute carries JSX as a prop just as a named
+// attribute does, and a `createPortal(...)` argument is rendered outside the group's subtree by name.
+const SPREAD_AND_PORTAL_CALL_SITE_CASES = {
+  'a call site inside a spread attribute': `<a href="/match/1" className="group/row-link"><Tooltip {...{ content: <OutcomeLabel /> }}>text</Tooltip></a>`,
+  'a call site that is an argument of createPortal': `<a href="/match/1" className="group/row-link">{createPortal(<OutcomeLabel />, document.body)}</a>`,
+  'a call site that is an argument of ReactDOM.createPortal': `<a href="/match/1" className="group/row-link">{ReactDOM.createPortal(<OutcomeLabel />, document.body)}</a>`,
+}
+for (const [label, widgetBody] of Object.entries(SPREAD_AND_PORTAL_CALL_SITE_CASES)) {
+  test(`T680 contrast: ${label} credits nothing`, () => {
+    assert.deepEqual(hoverOfAnchors(helperFixture(FN_HELPER, widgetBody)), [null])
+  })
+}
+
+test('T680: a createPortal call site does not block the same helper’s direct-child call site, and a non-portal call argument stays credited', () => {
+  const both = `<a href="/match/1" className="group/row-link">{createPortal(<OutcomeLabel />, document.body)}<OutcomeLabel /></a>`
+  assert.deepEqual(hoverOfAnchors(helperFixture(FN_HELPER, both)), [HELPER_TOKEN])
+  const other = `<a href="/match/1" className="group/row-link">{wrap(<OutcomeLabel />)}</a>`
+  assert.deepEqual(hoverOfAnchors(helperFixture(FN_HELPER, other)), [HELPER_TOKEN])
+})
+
 test('T680: a call site in a direct child position, or inside a map callback in the anchor children, is still credited', () => {
   assert.deepEqual(hoverOfAnchors(helperFixture(FN_HELPER, GROUPED_CALL)), [HELPER_TOKEN])
   const mapped = `<a href="/match/1" className="group/row-link">{items.map((item) => <OutcomeLabel key={item} />)}</a>`
