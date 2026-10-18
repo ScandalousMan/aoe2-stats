@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { Button } from './index'
@@ -38,7 +38,7 @@ describe('Button', () => {
     expect(onClick).toHaveBeenCalledTimes(3)
   })
 
-  it('loading state sets aria-busy, disables the control and shows the caller loading label without a bare spinner', () => {
+  it('loading state sets aria-busy and aria-disabled, never the disabled attribute, and shows the caller loading label without a bare spinner', () => {
     render(
       <Button variant="primary" loading loadingLabel="Taking you to Steam…">
         Continue with Steam
@@ -46,7 +46,8 @@ describe('Button', () => {
     )
     const button = screen.getByRole('button', { name: 'Taking you to Steam…' })
     expect(button).toHaveAttribute('aria-busy', 'true')
-    expect(button).toBeDisabled()
+    expect(button).toHaveAttribute('aria-disabled', 'true')
+    expect(button).not.toBeDisabled()
   })
 
   it('loading with no caller label falls back to the original label plus the spinner, never a bare spinner', () => {
@@ -93,11 +94,20 @@ describe('Button', () => {
 
   it('primary never shows the underline rule while disabled or loading', () => {
     render(
-      <Button variant="primary" loading>
+      <Button variant="primary" disabled>
         Continue with Steam
       </Button>,
     )
     expect(screen.getByRole('button')).toHaveClass('disabled:no-underline')
+    // A loading button is not `:disabled`: it carries no hover or press class at all (T745).
+    cleanup()
+    render(
+      <Button variant="primary" loading>
+        Continue with Steam
+      </Button>,
+    )
+    const loadingClasses = Array.from(screen.getByRole('button').classList)
+    expect(loadingClasses.filter((c) => /^(hover|active):/.test(c))).toEqual([])
   })
 
   // The underline signal moved from `primary`'s own variant string into the shared base on
@@ -111,6 +121,144 @@ describe('Button', () => {
       expect(button).toHaveClass('hover:underline-offset-2')
       expect(button).toHaveClass('active:underline-offset-4')
       expect(button).toHaveClass('disabled:no-underline')
+    })
+  })
+
+  // T745: a loading button keeps focus. The native `disabled` attribute removes a button from the tab
+  // order and, when the focused element becomes disabled, drops focus to `body` (measured in
+  // Chromium on /privacy). `aria-disabled` keeps it focusable; `Button` swallows every activation.
+  describe('loading keeps focus (T745)', () => {
+    it('is Tab-reachable, aria-disabled and never natively disabled, even when the caller also passes disabled', async () => {
+      const user = userEvent.setup()
+      const spy = vi.fn()
+      render(
+        <>
+          <Button>Before</Button>
+          <Button variant="primary" loading disabled loadingLabel="Saving…" onClick={spy}>
+            Save
+          </Button>
+        </>,
+      )
+      await user.tab()
+      await user.tab()
+      const busy = screen.getByRole('button', { name: 'Saving…' })
+      expect(busy).toHaveFocus()
+      expect(busy).not.toBeDisabled()
+      expect(busy).toHaveAttribute('aria-disabled', 'true')
+      expect(busy).toHaveAttribute('aria-busy', 'true')
+      expect(busy).not.toHaveAttribute('disabled')
+    })
+
+    it('swallows click, Enter and Space: the caller onClick is never called', async () => {
+      const user = userEvent.setup()
+      const spy = vi.fn()
+      render(
+        <Button loading loadingLabel="Saving…" onClick={spy}>
+          Save
+        </Button>,
+      )
+      const busy = screen.getByRole('button', { name: 'Saving…' })
+      await user.click(busy)
+      busy.focus()
+      await user.keyboard('{Enter}')
+      await user.keyboard(' ')
+      expect(spy).not.toHaveBeenCalled()
+      expect(busy).toHaveFocus()
+    })
+
+    it('a caller aria-disabled, aria-busy or onClick cannot override the loading attributes', () => {
+      render(
+        <Button loading loadingLabel="Saving…" aria-disabled={false} aria-busy={false}>
+          Save
+        </Button>,
+      )
+      const busy = screen.getByRole('button', { name: 'Saving…' })
+      expect(busy).toHaveAttribute('aria-disabled', 'true')
+      expect(busy).toHaveAttribute('aria-busy', 'true')
+    })
+
+    it('every variant rings outward in focus-ring (primary included) and carries no hover or press class', () => {
+      ;(['primary', 'secondary', 'ghost', 'destructive'] as const).forEach((variant) => {
+        cleanup()
+        render(
+          <Button variant={variant} loading>
+            Save
+          </Button>,
+        )
+        const classes = Array.from(screen.getByRole('button').classList)
+        expect(classes).toContain('focus-visible:outline-focus-ring')
+        expect(classes).not.toContain('focus-visible:outline-accent-contrast')
+        expect(classes).not.toContain('focus-visible:outline-offset-ring-inset')
+        expect(classes.filter((c) => /^(hover|active):/.test(c))).toEqual([])
+        expect(classes).not.toContain('disabled:no-underline')
+        // Paints `disabled`'s tokens bare, since the element is not `:disabled`.
+        expect(classes).toEqual(
+          expect.arrayContaining([
+            'bg-surface-sunken',
+            'text-text-disabled',
+            'border-border',
+            'cursor-default',
+          ]),
+        )
+        expect(classes).not.toContain('bg-accent')
+      })
+    })
+
+    it('a type="submit" loading button does not submit its form on click or on Enter', async () => {
+      const user = userEvent.setup()
+      const submitSpy = vi.fn((event: { preventDefault: () => void }) => event.preventDefault())
+      render(
+        <form onSubmit={submitSpy}>
+          <input aria-label="Name" />
+          <Button type="submit" loading loadingLabel="Saving…">
+            Save
+          </Button>
+        </form>,
+      )
+      await user.click(screen.getByRole('button', { name: 'Saving…' }))
+      expect(submitSpy).not.toHaveBeenCalled()
+      await user.type(screen.getByLabelText('Name'), 'x{Enter}')
+      expect(submitSpy).not.toHaveBeenCalled()
+    })
+
+    it('an <a> loading button is Tab-reachable, keeps its href, is aria-disabled and swallows the click', async () => {
+      const user = userEvent.setup()
+      const spy = vi.fn()
+      render(
+        <Button href="/x" loading onClick={spy}>
+          Go
+        </Button>,
+      )
+      await user.tab()
+      const link = screen.getByRole('link', { name: 'Go' })
+      expect(link).toHaveFocus()
+      expect(link).toHaveAttribute('href', '/x')
+      expect(link).toHaveAttribute('aria-disabled', 'true')
+      expect(link).toHaveAttribute('aria-busy', 'true')
+      expect(fireEvent.click(link)).toBe(false)
+      expect(spy).not.toHaveBeenCalled()
+    })
+
+    it('contrast case: when loading ends it is the same node, no longer aria-disabled, and onClick fires', async () => {
+      const user = userEvent.setup()
+      const spy = vi.fn()
+      const { rerender } = render(
+        <Button loading loadingLabel="Saving…" onClick={spy}>
+          Save
+        </Button>,
+      )
+      const before = screen.getByRole('button')
+      rerender(
+        <Button loading={false} loadingLabel="Saving…" onClick={spy}>
+          Save
+        </Button>,
+      )
+      const after = screen.getByRole('button', { name: 'Save' })
+      expect(after).toBe(before)
+      expect(after).not.toHaveAttribute('aria-disabled')
+      expect(after).not.toHaveAttribute('aria-busy')
+      await user.click(after)
+      expect(spy).toHaveBeenCalledTimes(1)
     })
   })
 })

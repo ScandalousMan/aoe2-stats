@@ -62,7 +62,10 @@ describe('DataExportPanel — the request/poll flow', () => {
     render(<DataExportPanel onRequestExport={onRequestExport} onPollExport={onPollExport} />)
     await user.click(screen.getByRole('button', { name: 'Export my data' }))
 
-    expect(screen.getByRole('button', { name: 'Preparing your export…' })).toBeDisabled()
+    // T745: a loading button keeps focus, so it is `aria-disabled`, never natively disabled.
+    const busy = screen.getByRole('button', { name: 'Preparing your export…' })
+    expect(busy).not.toBeDisabled()
+    expect(busy).toHaveAttribute('aria-disabled', 'true')
     resolveRequest({ id: 'job-2' })
     await waitFor(() => expect(screen.getByText('Your export is ready.')).toBeInTheDocument())
   })

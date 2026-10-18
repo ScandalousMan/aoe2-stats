@@ -3136,6 +3136,10 @@ export function entryShapeProblem(entry, { forced, knownAxisValues } = {}) {
       if (force.differsByTheme !== undefined && force.differsByTheme !== true) {
         return `${at} has a differsByTheme that is not \`true\` (${show(force.differsByTheme)}); the pass writes it only as \`true\``
       }
+      // The forced element is `aria-disabled` and not natively `:disabled` (T745): present only as `true`.
+      if (force.ariaDisabledOnly !== undefined && force.ariaDisabledOnly !== true) {
+        return `${at} has an ariaDisabledOnly that is not \`true\` (${show(force.ariaDisabledOnly)}); the pass writes it only as \`true\``
+      }
       if (force.count !== 1) continue
       const forceStamp = stampProblem(force.stamp, at)
       if (forceStamp) return forceStamp
@@ -3163,7 +3167,7 @@ export function entryShapeProblem(entry, { forced, knownAxisValues } = {}) {
 // instance's `disabledAt` (an element no tracked primitive placed is not refused for being disabled,
 // unless the two themes disagree on it). The refusal names the true reason — never the one a refusal
 // prints for every cause (`credited on no cell`).
-export function resolveRuntimeForce(entry, { recordOneKeys, knownAxisValues }) {
+export function resolveRuntimeForce(entry, { recordOneKeys, knownAxisValues, state }) {
   const malformed = entryShapeProblem(entry, { forced: true, knownAxisValues })
   if (malformed) return { malformed }
   const widths = Object.entries(entry.widths).sort(([a], [b]) => Number(a) - Number(b))
@@ -3211,14 +3215,22 @@ export function resolveRuntimeForce(entry, { recordOneKeys, knownAxisValues }) {
   const stamp = widths[0][1].force.stamp ?? null
   const placedBy = widths[0][1].force.placedBy ?? null
   // A disabled element paints disabled, whatever state the harness forces on it: `hover()` and `press`
-  // reach it as a disabled control, and `focus()` does nothing on one. `disabledAt` is the sorted unique
-  // stamps of the host elements the placing instance's own file placed that the browser reports
-  // `:disabled` or `aria-disabled="true"` (`tests/visual/state-coverage-runtime.ts`) — stamps, not
-  // elements, so a sibling written at the same line shares one. Refused when the located element's
-  // stamp is in the placing instance's `disabledAt` at any width, for hover, focus-visible and press
-  // alike, at record 1 and record 3 both.
+  // reach it as a disabled control, and `focus()` does nothing on a natively `:disabled` one.
+  // `disabledAt` is the sorted unique stamps of the host elements the placing instance's own file
+  // placed that the browser reports `:disabled` or `aria-disabled="true"`
+  // (`tests/visual/state-coverage-runtime.ts`) — stamps, not elements, so a sibling written at the
+  // same line shares one. Refused when the located element's stamp is in the placing instance's
+  // `disabledAt` at any width, for hover, focus-visible and press alike, at record 1 and record 3
+  // both — with one exact exception (T745): a `focus-visible` force whose located element, at every
+  // width, is `aria-disabled` and not natively `:disabled` (`ariaDisabledOnly`, read from that
+  // element itself). `aria-disabled` keeps the tab stop, so `focus()` reaches it and the ring paints;
+  // a `Button` in `loading` is exactly that. Hover and press stay refused on it: it paints no hover or
+  // press signal. The premise "focus() does nothing" holds for a native `:disabled` target only.
+  const focusableWhileDisabled =
+    state === 'focus-visible' && widths.every(([, r]) => r.force.ariaDisabledOnly === true)
   if (
     stamp !== null &&
+    !focusableWhileDisabled &&
     widths.some(([, r]) => (r.force.placedBy?.disabledAt ?? []).includes(stamp))
   ) {
     return {
@@ -3843,7 +3855,7 @@ export function computeStateCoverage({
       if (shapeProblem) {
         verdict = { refusal: `the manifest entry is malformed (${shapeProblem})` }
       } else if (forced) {
-        verdict = resolveRuntimeForce(entry, { recordOneKeys, knownAxisValues })
+        verdict = resolveRuntimeForce(entry, { recordOneKeys, knownAxisValues, state: forced?.state })
       }
       const focus = !forced && playFocusStatic && !shapeProblem ? stableFocus(entry) : null
       const label = storyLabel(filePath, exportName)
@@ -4477,9 +4489,10 @@ export const REGION_LEGEND = [
   "element's `file:line`; a record-3 cell when the tracked primitive instance that placed it is at that",
   "row's variant and size. A force on an element whose stamp is in the placing instance's `disabledAt`",
   '(the host elements it placed that the browser reports `:disabled` or `aria-disabled="true"`) is',
-  'refused, and so is a force the light and the dark render of the story answer differently (a',
-  'different match count, stamp or placing instance, a different disabled state of the forced element',
-  'itself, or a force only one theme carries).',
+  'refused, except a `focus-visible` force on an element that is `aria-disabled` and not natively',
+  '`:disabled` (a `Button` in `loading`: it keeps its tab stop), and so is a force the light and the',
+  'dark render of the story answer differently (a different match count, stamp or placing instance, a',
+  'different disabled state of the forced element itself, or a force only one theme carries).',
   "The Disabled column of every matrix, and a primitive's own stories' Rest column, come from",
   'the primitive instances a story mounts, as rendered, and from nothing else: a `disabled` or `loading`',
   "written at a call site, and a `disabled: true` in a story's `args`, credit no Disabled cell. The",

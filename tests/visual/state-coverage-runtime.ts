@@ -90,6 +90,14 @@ export interface ForceRecord extends ElementRecord {
   // but one no tracked primitive placed (`placedBy` null) has nothing else to compare, so a target
   // disabled in one theme only would be credited from the theme where it is not (T712).
   disabled?: boolean
+  // Present, and `true`, only when the forced element reports `aria-disabled="true"` and is NOT
+  // natively `:disabled` (T745). Written to the manifest: such an element keeps its tab stop, so
+  // `focus()` reaches it and a forced `focus-visible` paints the ring on it, where a native
+  // `:disabled` one never takes focus. `disabledAt` cannot say it (it is stamps, and the loading and
+  // the natively disabled `Button` share one), and the reader (`resolveRuntimeForce`) refuses a force
+  // on a stamp in `disabledAt` except this one case. Hover and press stay refused: an element that
+  // reports disabled paints no hover or press signal.
+  ariaDisabledOnly?: true
 }
 
 // One width's record of one story. `force` is present only for a story that carries a
@@ -507,9 +515,7 @@ export async function probeSettledStory(
         ? {
             count,
             ...((await target.evaluate(inspect, inspectOptions('element'))) as ElementRecord),
-            disabled: await target.evaluate(
-              (el) => el.matches(':disabled') || el.getAttribute('aria-disabled') === 'true',
-            ),
+            ...(await forcedDisabledState(target)),
           }
         : { count, stamp: null, placedBy: null }
   }
@@ -567,6 +573,21 @@ export async function probeSettledStory(
   }
   if (failure !== null) throw failure
   return record
+}
+
+// What the forced element reports about being disabled (T745): `disabled` for either kind, and
+// `ariaDisabledOnly` (only when true) for `aria-disabled="true"` without a native `:disabled`.
+async function forcedDisabledState(
+  target: Locator,
+): Promise<Pick<ForceRecord, 'disabled' | 'ariaDisabledOnly'>> {
+  const { native, aria } = await target.evaluate((el) => ({
+    native: el.matches(':disabled'),
+    aria: el.getAttribute('aria-disabled') === 'true',
+  }))
+  return {
+    disabled: native || aria,
+    ...(aria && !native ? { ariaDisabledOnly: true as const } : {}),
+  }
 }
 
 // The multiset intersection of two themes' mounted instances, in the first theme's order: an instance

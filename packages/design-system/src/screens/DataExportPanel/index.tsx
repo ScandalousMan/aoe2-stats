@@ -121,7 +121,6 @@ export function DataExportPanel({
         <Button
           variant="secondary"
           size="lg"
-          disabled={requestPending}
           loading={requestPending}
           loadingLabel="Preparing your export…"
           onClick={handleRequestExport}
