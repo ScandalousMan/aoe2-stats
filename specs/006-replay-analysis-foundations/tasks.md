@@ -2890,6 +2890,266 @@ carries what T673's dry run read.
 
 ---
 
+## Phase 8: Every civilisation (filed 2026-10-18, owner's arbitration)
+
+**Purpose**: the knowledge base answers every cost, time, producing building, age requirement and
+availability, for every civilisation the tool supports, on every build a promoted snapshot
+describes, with no blocking gap (FR-022a, amended; spec Clarifications, Session 2026-10-18). After
+T746 the current build models eight civilisations and build 180059 six. What closes the rest:
+FR-022c's source rule, an alias table for identifiers the pack does not name (FR-022d), extensions
+to the effect model so that substitutions, unlocks and match-state conditions are rules rather than
+refusals (FR-022e), an availability that reads each civilisation's own tree, and transcription in
+batches of twelve civilisations, each batch a snapshot that supersedes the previous one
+(`specs/006-replay-analysis-foundations/contracts/knowledge-base.md`, "Supersession"), so
+production gains each batch as it is promoted. A value no source an agent may read states goes to
+the owner's sheet, [owner-readings.md](./owner-readings.md), and a later snapshot closes it; it is
+never guessed.
+
+**Numbering**: Phase 8 starts at T760. 005's open branch already uses the ids just above T749, and
+007 numbers its tasks in the eight-hundreds; the gap is there so that neither collides with this
+phase.
+
+**What every Phase 8 implementer must know**:
+
+- **Transcription follows T746**: every new row from the English strings of the pack the snapshot
+  derives from, checked against the release notes of the build it describes, each selector resolved
+  from that snapshot's `rules.json` and recorded in `validated_by`. A row of an earlier snapshot of
+  the **same build and the same pack revision** is carried byte for byte, because it was read from
+  the same strings; a row of another build or pack is read to learn the file's shape, never copied,
+  except under T773's carry rule.
+- **A class name is resolved, never guessed.** "Infantry", "Gunpowder Units", "Warships" and the
+  like are not keys of `rules.json`. Members come from what the pack's strings state, or from where
+  the pack says an entity is produced, and the list and what it was read from go in `validated_by`.
+  A member the pack does not settle goes to the owner's sheet, and its row stays `modelled = "no"`
+  until the answer lands.
+- **An unstated amount follows FR-022c, in order**: the pack's strings (a technology's own help text
+  sometimes sizes what the civilisation text does not); the publisher's notes for any build, which
+  an agent may read; then the owner's sheet. The Fandom wiki is the owner's to read, never an
+  agent's (`docs/data-sources.md` §6).
+- **Done means T765's test passes for the civilisation without its `xfail`**, with every blocking
+  gap it keeps being an open row of the owner's sheet, enumerated under FR-022b.
+- **A batch snapshot's label states the build and how many civilisations it models** —
+  `aoe2techtree-185872-civilisations-20` — so that the chain reads in order without opening
+  `snapshot.toml`.
+
+- [ ] T760 [P] [US2] Record FR-022c's sources in `docs/data-sources.md` §6, the living home of a
+      source's scope. **`aoc-reference-data`**: its "Scope" names civilisations only; widen it to
+      the `objects` table (identifier to display name for units and buildings), read 2026-10-18 in
+      its Definitive Edition dataset (dataset 100), first read for the gate family. Correct "Coverage" ("it carries no
+      Relic ids at all"): each `civilizations` entry carries an inner `id`, and on 2026-10-18 it
+      agreed with every identifier `apps/api/src/aoe2stats_api/civilizations.py` holds, differing
+      only in spelling one name (Maya, Mayans); record that agreement as what was measured, not as a
+      statement of what the field means, which the source does not document. Reconcile §1, "Ids
+      45-60 (T070i)", in the same change: its 2026-09-27 comparison ("46 Achaemenids where the table
+      has 45") read the dataset's keys, which are the replay space, not the inner `id`; say so, and
+      say which of its eleven unmeasured ids the inner `id` now corroborates. The licence ruling is
+      unchanged. **A new subsection, "The running game, read by a person"**, in the section's seven
+      headings: scope (the cost or time a tooltip shows for a stated civilisation), reliability
+      (FR-030's strong form), update mechanism (a person, after each patch), version identifier (the
+      build the game reports), coverage (the current build only), known limitations (one value at a
+      time, no history, read by the owner), ruling (read and transcribe, recording who, when and
+      where in the game). **Fandom**: its ruling gains that an agent may not read it. **halfon**:
+      its "Ruling" gains that buildings 490 and 673 did not make it needed (research D3, amended).
+      Docs only; no test
+- [ ] T761 [US2] Resolve an entity identifier the pack does not name through a transcribed alias
+      (FR-022d). A snapshot may carry `aliases.toml`, one `[[alias]]` per identifier: `kind`, `id`,
+      `target` (an identifier of the same kind that `rules.json` names), `source_name` (the
+      referenced source's name for it, verbatim), `source` and `read_on`. The loader refuses, with
+      `SnapshotError`, an alias whose target `rules.json` does not name, an alias whose own `id`
+      `rules.json` names, and two aliases for one identifier. The digest covers the file when it is
+      present, and a snapshot without one keeps the digest it has, so every installed snapshot still
+      verifies. Every rule query and `name` follow an alias to its target, and `Answer` says that it
+      did. Amend `specs/006-replay-analysis-foundations/contracts/knowledge-base.md` ("On disk",
+      "Identity and immutability", "Entity resolution") and
+      `specs/006-replay-analysis-foundations/data-model.md` §6 by hand in the same change. **Red
+      first** in `packages/knowledge/tests/test_aliases.py`, against an in-memory snapshot: building
+      490 answers building 487's cost through an alias, and each refusal above. No promoted snapshot
+      carries the file yet; T767's is the first. In the same change, correct what
+      `packages/knowledge/tests/test_coverage.py` and `packages/knowledge/tests/test_normalise.py`
+      say about 490 and 673 ("age-upgraded visual variants"; closable only by a second vendored
+      source): a referenced source names both "Gate", and FR-022d closes them without vendoring
+      anything. Their strict expectations stay until T767's snapshot closes them
+- [ ] T762 [US2] Add the condition `controlled` to the effect model (FR-022e). The operand is a
+      table keyed by a count; the count is how many of the entities `condition_entities` names the
+      player controls, supplied by the caller in the query's `context`. A count above the table's
+      highest key takes that key's operand, which is how a stated maximum is written; a count below
+      its lowest key means the effect does not apply. A query that reaches a modelled `controlled`
+      effect without the count raises `ContextRequired`, as `age` does, and the coverage pass treats
+      that as modelled. Its first users are Saxons' Foot Soldiers discount and Cumans' additional
+      Town Center in the Feudal Age; a bonus that does not fit it stops the batch with a report and
+      does not widen it there. Amend `specs/006-replay-analysis-foundations/data-model.md` §6's
+      `condition` row and `specs/006-replay-analysis-foundations/contracts/knowledge-base.md` ("The
+      query surface") by hand in the same change. **Red first** in
+      `packages/knowledge/tests/test_effects.py`: a synthetic effect at counts 0, 1, 4 and 5 against
+      a table keyed 1 to 4; the raise without a count; a parse-time refusal of a `controlled` effect
+      with no `condition_entities`
+- [ ] T763 [US2] Answer `available_to` from the civilisation's own tree, and let an effect change
+      it. Today it answers true for any entity that resolves, for every modelled civilisation
+      (`packages/knowledge/src/aoe2stats_knowledge/query.py`, `_field_present`), although the pack
+      carries each civilisation's tree and the normaliser drops it: `rules.json`'s `civilisations`
+      is a list of names. The normaliser writes each civilisation's units, buildings and technologies
+      from the `Unit`, `Building` and `Tech` lists of the pack's `data.json` `civs`, and
+      `available_to` answers membership. Those lists name an upgraded unit, not the technology that
+      produces it: measured 2026-10-18 on match 511523321, technologies 98, 100 and 222 were ordered
+      and are in neither participant's `Tech` list. An upgrade technology is a member when the unit
+      the pack's `unit_upgrades` table keys it under (its `ID` field) is; an ordered entity that
+      membership still cannot place stops the task with a report. A change to the normaliser's
+      output must not change an installed snapshot's re-derivation: the normaliser gains a version,
+      `snapshot.toml` names the one a snapshot was derived with (absent means the first), and the
+      re-derivation test derives each snapshot under the version it names. An effect may then set
+      `available_to` (operation `set`, operand `true` or `false`, with any condition), so that a
+      substitution, an unlock and a removal are rows: Sicilians' Donjon bullet, refused by T746 for
+      want of exactly this, Folwark for Mill, Pastures for Farms, Harbors for Docks once
+      Thalassocracy is researched. Amend data-model.md §6 (`field`, `operand`) and
+      contracts/knowledge-base.md ("The query surface", "Civilisation qualification"), both under
+      `specs/006-replay-analysis-foundations/`, by hand in the same change. **Red first** in
+      `packages/knowledge/tests/test_query.py` and `packages/knowledge/tests/test_effects.py`: an
+      entity outside a civilisation's tree answers false; an unconditional `false`; a
+      `researched`-conditioned `false` before and after its technology; an `age`-conditioned `true`;
+      a parse-time refusal of a non-boolean operand; every entity a participant of a committed
+      recording ordered answers true for that participant's civilisation (building 490 through T761's
+      alias once a snapshot carries it); and every installed snapshot still re-derives byte for
+      byte
+- [ ] T764 [US2] Let `produced_at` answer every building an entity is produced at, and let an effect
+      add one: Goths' Anarchy (Huskarls at the Barracks), Huns' Marauders (Tarkans at the Stable),
+      Italians' Condottiero at the Barracks, Mapuche Settlements training Spearmen and Skirmishers.
+      The answer becomes an ordered sequence, the pack's building first. **Before changing the
+      type, grep every consumer of `produced_at`** (the coverage pass, the register's
+      `requires_knowledge`, the analysis document) and change each in the same commit. Amend
+      data-model.md §6 and contracts/knowledge-base.md ("The query surface"), both under
+      `specs/006-replay-analysis-foundations/`, by hand in the same change. **Red first** in
+      `packages/knowledge/tests/test_effects.py`: an unconditional addition, a
+      `researched`-conditioned addition before and after, and the pack's building staying first
+- [ ] T765 [US2] Write the whole-pack coverage test (SC-007b) in
+      `packages/knowledge/tests/test_whole_pack_coverage.py`. For each build's current snapshot
+      (resolution by build, so a superseded one is skipped), parametrized by civilisation: every
+      civilisation the snapshot's `rules.json` lists, every entity it names or aliases, every field
+      a register datum requires, through the public query surface with no context, so that a
+      conditional effect counts as modelled exactly as the coverage pass counts it. The blocking gaps
+      for a civilisation must equal, as a set, that civilisation's open rows in
+      [owner-readings.md](./owner-readings.md), held in the test as literal tuples that each batch
+      edits by hand. Each civilisation not yet modelled is `xfail(strict=True)`, listed by name, and
+      the batch that models it deletes its entry. Lands after T761 to T764, green, with every
+      unmodelled civilisation of both builds marked. A civilisation the application's table names and
+      no pack carries (the six Chronicles civilisations) is outside the test until T776 decides, and
+      its docstring says so. If the run takes longer than 30 seconds, cache
+      each snapshot's rules once per session; never sample entities
+- [ ] T766 [P] [US2] Add Saxons, Varangians and Danes to
+      `apps/api/src/aoe2stats_api/civilizations.py`: today their matches show the
+      "Civilisation <id>" fallback. Their Relic identifiers were measured on 2026-09-27 by the
+      Relic and aoe2companion join `docs/data-sources.md` §1 records (61 Saxons, 62 Varangians,
+      63 Danes, recorded there as known-absent and "filed separately", which never happened), and
+      `aoc-reference-data`'s `civilizations` inner `id` corroborates all three (FR-022c, read again
+      by this task; T760 records that field's agreement with the table). Record both in the module
+      docstring beside T070i's, and correct the docstring where it says that source corroborates
+      nothing in this table. **Red first** in `apps/api/tests/`: each of the three resolves to its
+      name
+- [ ] T767 [US2] Model batch A on build 185872 in `aoe2techtree-185872-civilisations-20`, which
+      supersedes `aoe2techtree-185872-civilisations`: Britons, Goths, Japanese, Chinese,
+      Byzantines, Turks, Vikings, Mongols, Celts, Spanish, Aztecs and Mayans, with T746's eight
+      carried. `rules.json` is derived again under T763's normaliser. The snapshot carries the first
+      `aliases.toml` (T761): every identifier `aoc-reference-data`'s `objects` table names exactly as
+      a pack entity, with or without an orientation qualifier in parentheses (each "Gate" to the
+      pack's Gate, each "Palisade Gate" to its Palisade Gate), read again by this task. A differently
+      named one (Fortified Gate, Sea Gate, City Gate, Paifang Gate, Trowulan Gate) is not aliased by
+      name; if a committed recording carries one, it goes to the owner's sheet. Its `[[civilisation_id]]`
+      table names every civilisation of the pack, from `aoc-reference-data`'s `civilizations` keys,
+      each entry with what corroborates it, as T746's do. T746's four refused rows are taken again
+      under FR-022c and the extended model: Sicilians' Donjon availability becomes a row (T763); the
+      Detinets wood, Kamandaran and the Sicilians' "Fortifications" list are searched in the
+      publisher's notes for every build since each bonus appeared, and each one still unstated
+      stays an open row of [owner-readings.md](./owner-readings.md). **Tests, each red first**: T765
+      passes for the twenty civilisations without their `xfail`; build 185872 resolves to the new
+      snapshot and the superseded one reproduces by identity (SC-005); the third committed
+      recording's strict blocker set in `packages/knowledge/tests/test_coverage.py` loses building
+      490's three tuples, by set equality; its Detinets and "Fortifications" blockers (building 82's
+      cost, building 1665's production time) stay unless the publisher's notes settle them. The
+      Donjon's availability is informational and was never on that set
+- [ ] T768 [US2] Model batch B on build 185872 in `aoe2techtree-185872-civilisations-32`, which
+      supersedes T767's snapshot: Huns, Koreans, Italians, Hindustanis, Incas, Magyars, Portuguese,
+      Ethiopians, Berbers, Khmer, Malay and Burmese. Magyars' Corvinian Army and Malay's Forced
+      Levy replace a gold cost with "additional" food the strings do not size: FR-022c's order, then
+      the owner's sheet. Khmer's bonus removes building prerequisites, a field the knowledge base
+      does not carry (research D3); it is listed in the file's header as a bullet with no row, never
+      written as a row. **Tests**: as T767's, for thirty-two civilisations
+- [ ] T769 [US2] Model batch C on build 185872 in `aoe2techtree-185872-civilisations-44`, which
+      supersedes T768's snapshot: Vietnamese, Bulgarians, Cumans, Lithuanians, Burgundians, Poles,
+      Bohemians, Dravidians, Bengalis, Gurjaras, Romans and Armenians. Bohemians' Hussite Reforms
+      replace a gold cost with a food cost the strings do not size, for the Monk and each Monastery
+      technology: FR-022c's order, then the owner's sheet, one row per entity. "Available one age
+      earlier" is an `age_requirement` row, never a reading of the tree's display links (research
+      D3). **Tests**: as T767's, for forty-four civilisations
+- [ ] T770 [US2] Model batch D on build 185872 in `aoe2techtree-185872-civilisations-56`, which
+      supersedes T769's snapshot: Georgians, Shu, Wu, Wei, Jurchens, Khitans, Muisca, Mapuche, Tupi,
+      Saxons, Varangians and Danes. Saxons' Foot Soldiers discount is a `controlled` row (T762).
+      Then write the validation sample in [owner-readings.md](./owner-readings.md), "Validation
+      sample": one value per civilisation of the pack, each the effect that changes the most
+      entities, stated as the civilisation, the entity, the age, the technologies researched, and the
+      value this snapshot answers, for the owner to read in the game. **Tests**: as T767's, for every
+      civilisation of the pack; T765 then has no `xfail` left for build 185872
+- [ ] T771 [US2] **Owner task (information).** Read each open row of
+      [owner-readings.md](./owner-readings.md), "Open values", and each row of its "Validation
+      sample", in the running game on the current build (a tooltip in a solo game or the scenario
+      editor) or, for a value the game does not display, the Fandom wiki. Write, per row, the value
+      read, where it was read, the build the game reported, and the date. Rows can be answered as
+      they appear; each batch adds its own
+- [ ] T772 [US2] Close the owner's readings on build 185872 in a snapshot that supersedes the last
+      batch's: each open row becomes a modelled row whose `validated_by` cites the reading, and
+      each validation-sample reading that differs from what the snapshot answered is recorded as a
+      disagreement (FR-028), stored as the game's value (FR-022c), and its row corrected.
+      The snapshot's `[validation]` names the strong form for each sampled row and the second
+      reading for every other row. Promote once every row for build 185872 is answered or reported
+      unreadable by the owner; a row reported unreadable becomes an FR-022b entry, held in T765 and
+      in `packages/knowledge/tests/test_coverage.py` with where the owner looked. A reading that
+      arrives after promotion waits for the next snapshot. **Tests**: T765's tuples for build 185872
+      equal the FR-022b entries, by set equality, and are empty when there are none; the same holds
+      for the third committed recording's blocker set
+- [ ] T773 [US2] Model build 180059 in a snapshot that supersedes `aoe2techtree-180059`, every
+      civilisation of that build's pack, `rules.json` derived again under T763's normaliser. **The
+      carry rule**: a row of T770's snapshot is carried to build 180059 only where the
+      bullet's string is byte-identical under the same key in both packs, every selector resolves to
+      the same identifiers in build 180059's `rules.json`, and build 185872's release notes name no
+      change to that bonus or to an entity it selects; each carried row's `validated_by` says so and
+      names the source snapshot's digest. Every other row is transcribed from build 180059's pack
+      strings. The aliases and the civilisation table are read again for this pack. Depends on T770,
+      not on the owner's readings: T774 carries those back.
+      **Tests**: T765 passes for build 180059 without `xfail`; the second committed recording's
+      blocker set loses buildings 490 and 673 by set equality; build 180059 resolves to the new
+      snapshot and the superseded one reproduces by identity
+- [ ] T774 [US2] Close build 180059's open rows in a snapshot that supersedes T773's. Each
+      reading T772 closed is carried back only under T773's three conditions, under research D4's
+      discipline in reverse; a value it cannot reach stays an open row for build 180059, answered or
+      reported unreadable as T772's are. Depends on T772 and T773. **Tests**: T765's tuples for
+      build 180059 and the second committed recording's blocker set equal their FR-022b entries, by
+      set equality, and are empty when there are none
+- [ ] T775 [US2] **Owner task (verification).** After each promotion is deployed, read the
+      aggregate gap report for that build: the `knowledge_gap_rate.py` step of `nightly.yml`'s
+      `capture-audit` job, or
+      `uv run scripts/checks/knowledge_gap_rate.py --window-days 1` against production. Record in
+      [owner-readings.md](./owner-readings.md), "Production", the date and the count of blocking
+      gaps per build. Once T772 and T774 are deployed, the count for
+      builds 180059 and 185872 equals the FR-022b
+      entries those builds keep, zero when there are none, for every analysis recomputed since
+- [ ] T776 [US2] **Owner task (arbitration).** Decide whether the six Chronicles civilisations
+      `apps/api/src/aoe2stats_api/civilizations.py` names are in scope. No vendored pack carries
+      their trees, so including them means choosing a source for every entity they can build, under
+      FR-022c. The decision is recorded in [spec.md](./spec.md), Clarifications, Session
+      2026-10-18, and the tasks it needs are filed here
+- [ ] T777 [P] Renumber the reconstruction from feature 007 to feature 008 everywhere it is named:
+      007 is now the deployment-storage feature (`specs/007-shrink-deployment-storage/`, open as PR
+      #176). `git grep -n -i 'feature 007'` lists the sites, among them
+      `packages/core/src/aoe2stats_core/truth/register.toml`, whose readable view is regenerated
+      with `uv run python -m aoe2stats_core.truth.register`, [spec.md](./spec.md),
+      [plan.md](./plan.md), [research.md](./research.md),
+      `specs/006-replay-analysis-foundations/contracts/register.md`, `docs/risks.md`,
+      `docs/adr/0001-replay-parser.md` and `.claude/skills/replay-parsing/SKILL.md`. A Clarifications
+      answer stays as it was spoken, followed by a bracketed note. **Test**: the register's view test
+      passes, and `git grep -i 'feature 007'` names no reconstruction outside a dated note
+- [ ] T778 Close Phase 8: update `docs/data-sources.md` §6, aoe2techtree's "Coverage", and
+      `docs/risks.md`'s hand-transcription row to the coverage that now holds; run
+      `uv run scripts/checks/spec_lint.py --feature specs/006-replay-analysis-foundations` and
+      confirm it exits 0; then run the whole suite by exit code
+
 ## Dependencies and execution order
 
 ### Phase dependencies
@@ -2903,6 +3163,10 @@ carries what T673's dry run read.
   the canonical stream (coverage).
 - **Phase 5** depends on all four.
 - **Phase 6** depends on phase 5.
+- **Phase 8** depends on phase 7's T746 (the superseding snapshot and its chain). Inside it: T761
+  to T764 before T765; T765 before T767; the batches T767 to T770 in order, because each
+  supersedes the last; T772 after T771's answers for build 185872; T773 after T770; T774 after
+  T772 and T773. T760, T766 and T777 depend on nothing in the phase.
 
 ### Within phases
 
