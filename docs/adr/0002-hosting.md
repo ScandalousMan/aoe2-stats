@@ -84,18 +84,22 @@ Constitution principle XII exists because of this ADR. In particular:
 
 ## Function bundles and build skips
 
-Before value, for the production deployment serving traffic when feature 007 began. A function's
+Before value, for the production deployment serving traffic before any of feature 007 merged. A function's
 size is read from Deployment → Resources → Functions; the project's figure is read from Usage →
 Deployment Storage → Functions Storage → Projects. The maintainer fills the cells from the
 dashboard, and the PR for feature 007 does not merge while any of them is empty. T812 writes the
 rest of this section.
 
-| Measure                               | Size | Date read | Deployment id |
-| ------------------------------------- | ---- | --------- | ------------- |
-| Function `api/index.py`               |      |           |               |
-| Function `api/analyze.py`             |      |           |               |
-| Function `api/cron/ingest.py`         |      |           |               |
-| Project: Functions Storage → Projects |      |           |               |
+| Measure                                     | Size    | Date read  | Deployment id                       |
+| ------------------------------------------- | ------- | ---------- | ----------------------------------- |
+| Function `api/index.py`                     | 68.3 MB | 2026-10-18 | `dpl_7cVtADCsXGsHs6iY7SwGJUYmVb7P` |
+| Function `api/analyze.py`                   | 68.3 MB | 2026-10-18 | `dpl_7cVtADCsXGsHs6iY7SwGJUYmVb7P` |
+| Function `api/cron/ingest.py`               | 68.3 MB | 2026-10-18 | `dpl_7cVtADCsXGsHs6iY7SwGJUYmVb7P` |
+| Project: Functions Storage → Projects       |         |            |                                     |
+| Account: Functions Storage → Total size     | 7.33 GB | 2026-10-18 | —                                   |
+
+The deployment is the production build of `63827989`. The account total covers every project on the
+account, against the plan's 10 GB allowance; the project row is `aoe2-stats`'s share of it.
 
 `pip` stays installed in production (decided 2026-10-18, feature 007's Story 3 dropped). The replay
 parser declares it and never imports it, but `read_engine_dependencies` in `packages/replay-engine/src/aoe2stats_replay_engine/dependencies.py` records the
