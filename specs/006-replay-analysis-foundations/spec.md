@@ -159,6 +159,42 @@ the **inferred** tier under an honest name, as an engagement signal, carrying an
   FR-022a admits as a limit of the one lawful source, until a source that states them exists
   (research.md D3). Found by `/speckit-analyze` against PR #104.
 
+### Session 2026-10-18
+
+Arbitrated by the repository owner once T746 had left eight civilisations modelled on the current
+build and six on build 180059, of the vendored pack's whole set (`docs/data-sources.md` §6 holds
+the counts). Each answer supersedes the earlier one it names; the earlier answers stay above as the
+record of what was decided then.
+
+- Q: How much of the game must the knowledge base cover? → A: Every civilisation the tool supports,
+  on every build a promoted snapshot describes, with no blocking gap on a cost, a time, a producing
+  building, an age requirement or an availability. Supersedes the 2026-09-19 answer ("whatever the
+  committed reference recordings need"). The committed recordings stay regression fixtures; they
+  stop being the scope.
+- Q: The vendored pack does not state a value and another source does. Is it used? → A: Yes, when
+  that source is one `docs/data-sources.md` §6 already references and no other referenced source
+  contradicts it: vendored where its licence permits, transcribed by hand with its provenance
+  otherwise (FR-031). Where referenced sources contradict each other, the disagreement is recorded
+  (FR-028) and the value stored is the one the running game shows a person. The game's own data
+  file stays barred (research D3).
+- Q: A bonus depends on match state the recording does not carry, such as Saxons' Foot Soldiers
+  discount per Town Center or Castle controlled. Is it a gap? → A: No. It is a rule like any
+  conditional bonus, and the knowledge base answers it for whatever state the caller supplies.
+  Deciding that state is the reconstruction's work (feature 008): an exact value where the
+  recording proves the state, otherwise an interval whose two bounds the recording proves. Never
+  an estimate where a proof is available, and never a gap.
+- Q: Two committed recordings place buildings 490 and 673, which the pack does not name. Is that a
+  limit of the one lawful source? → A: No. `aoc-reference-data`, already referenced, names both
+  "Gate"; the pack prices one Gate. An identifier a referenced source names resolves to the pack's
+  entity through a transcribed alias (FR-022d), and the source's whole gate family is transcribed,
+  not only the two identifiers a fixture happened to carry.
+- Q: Which civilisations does "every civilisation the tool supports" mean? → A: Every civilisation
+  in the vendored pack of each build a snapshot describes, and every civilisation the application's
+  own table names (`apps/api/src/aoe2stats_api/civilizations.py`). The two differ: the pack's three
+  newest civilisations are missing from that table (T766 adds them, from `aoc-reference-data`),
+  and the table's six Chronicles civilisations appear in no pack; whether those six are in scope is
+  the arbitration T776 asks for.
+
 ## User Scenarios & Testing _(mandatory)_
 
 ### User Story 1 - Know what can and cannot be known (Priority: P1)
@@ -411,18 +447,41 @@ new snapshot, reproduce the analysis from the original identity, and confirm the
 - **FR-022**: The system MUST provide a knowledge base covering, at minimum: units, buildings,
   technologies, their costs, their training, construction and research times, their age requirements
   and prerequisites, civilisations, and the civilisation bonuses that modify any of the above.
-- **FR-022a**: The first knowledge snapshot MUST cover every entity and every civilisation referenced
-  by each committed reference recording, such that analysing those recordings records no gap of
-  blocking severity **except where the blocker is a limit of the one lawful source rather than a
-  hole in this feature's transcription**. Beyond that set, what the source provides MAY be imported
-  without exhaustive validation, provided the validation actually performed is recorded (FR-030) and
-  any absent field surfaces as a gap rather than as a value. Exhaustive coverage of the game is not a
-  completion condition of this feature.
-- **FR-022b**: A blocking gap that FR-022a's exception admits MUST be enumerated — one entry per
+- **FR-022a**: The knowledge base MUST cover, on every build a promoted snapshot describes, every
+  civilisation the tool supports (Clarifications, Session 2026-10-18) and every entity identifier a
+  recording of that build can carry, such that a cost, production-time, produced-at,
+  age-requirement or availability query for any of them records no gap of blocking severity
+  outside FR-022b's enumerated list. Each committed reference recording stays a regression fixture
+  held to the same bar. The validation actually performed is recorded (FR-030). **Amended
+  2026-10-18** at the repository owner's arbitration: the first version required only what the
+  committed recordings referenced and said exhaustive coverage was not a completion condition; for
+  civilisations it now is.
+- **FR-022b**: A blocking gap that FR-022a admits MUST be enumerated — one entry per
   blocker, naming the entity or effect, why the single vendored source cannot close it, and the
   condition that would. An unenumerated blocking gap on a committed recording is a defect in the
   transcription and MUST be closed, not added to the list. The exception is a closed list, not a
   standing licence, and the list lives with the test that asserts it.
+  **Amended 2026-10-18:** an entry is admitted only once every source `docs/data-sources.md` §6
+  references has been read for that value and the owner has been asked to read it from the running
+  game; a value any of them states is transcribed under FR-022c, not enumerated. The list's target
+  is empty.
+- **FR-022c**: A value the vendored pack does not state MUST be taken from a source
+  `docs/data-sources.md` §6 references, when that source states it and no other referenced source
+  contradicts it: vendored where its licence permits, transcribed by hand with its provenance
+  otherwise (FR-031). Where two referenced sources contradict each other, the disagreement is
+  recorded (FR-028) and the value stored is the one the running game shows a person (FR-030's strong
+  form), never the more convenient of the two. The game's own data file is not a referenced source
+  (research D3).
+- **FR-022d**: An entity identifier a recording can carry and the pack does not name MUST resolve
+  to the pack's entity through an alias that a referenced source states, transcribed by hand with
+  its provenance. An alias is never inferred from an identifier's neighbours, from where a
+  recording placed it, or from what it was later used for. An identifier no referenced source names
+  stays a gap.
+- **FR-022e**: A civilisation bonus whose effect depends on match state — an age, a technology
+  researched, the owner's team, the number of named buildings the player controls — MUST be modelled
+  as a rule the caller supplies that state to, and MUST NOT be refused because the recording may not
+  carry the state. The knowledge base never decides which state held; the reconstruction does
+  (feature 008).
 - **FR-023**: Every knowledge answer MUST be qualified by game build and by civilisation where the
   game qualifies it, and MUST NOT return a generic value where a civilisation-specific one exists.
 - **FR-024**: A knowledge snapshot MUST have an identity composed of its source, that source's own
@@ -449,6 +508,10 @@ new snapshot, reproduce the analysis from the original identity, and confirm the
   run twice, and the game's own data file is barred by the publisher's usage rules. A validation
   record that does not distinguish which of the two forms it used is not a record (found by
   `/speckit-analyze` 2026-09-21; the weaker form was in use and was being reported as the stronger).
+  **Amended 2026-10-18:** a person reading the running game (the cost or time a tooltip shows, in a
+  solo game or the scenario editor, for a stated civilisation) is validation against the game, the
+  strong form. It reads the current build only; a value for an earlier build is carried back from it
+  under research D4's discipline, build by build through the publisher's notes, never assumed.
 - **FR-031**: Only a source whose licence permits it MAY be vendored into this repository. A source
   with no licence MUST NOT be vendored, MUST NOT be fetched at build or test time, and MAY only be
   consulted by a human whose transcription is recorded with its provenance (002 research).
@@ -553,6 +616,10 @@ new snapshot, reproduce the analysis from the original identity, and confirm the
 - **SC-007a**: Analysing each committed reference recording against the first knowledge snapshot
   records no gap of blocking severity outside FR-022b's enumerated list, and every entry on that list
   is held by a strict expectation that fails the moment the blocker is closed.
+- **SC-007b**: On each build's current snapshot, the whole-pack coverage pass (every civilisation
+  the tool supports, every entity the snapshot names or aliases, every field a register datum
+  requires) records no blocking gap outside FR-022b's enumerated list, and each civilisation not yet
+  modelled is held by a strict expectation that fails the moment it is.
 - **SC-008**: No value is ever published with a substituted default in place of missing knowledge: the
   count of substitutions is zero, by construction rather than by inspection.
 - **SC-009**: The canonical event stream for a reference recording contains no field specific to the
