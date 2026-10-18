@@ -2916,7 +2916,7 @@ phase.
   from that snapshot's `rules.json` and recorded in `validated_by`. A row of an earlier snapshot of
   the **same build and the same pack revision** is carried byte for byte, because it was read from
   the same strings; a row of another build or pack is read to learn the file's shape, never copied,
-  except under T774's carry rule.
+  except under T773's carry rule.
 - **A class name is resolved, never guessed.** "Infantry", "Gunpowder Units", "Warships" and the
   like are not keys of `rules.json`. Members come from what the pack's strings state, or from where
   the pack says an entity is produced, and the list and what it was read from go in `validated_by`.
@@ -2939,7 +2939,10 @@ phase.
       Relic ids at all"): each `civilizations` entry carries an inner `id`, and on 2026-10-18 it
       agreed with every identifier `apps/api/src/aoe2stats_api/civilizations.py` holds, differing
       only in spelling one name (Maya, Mayans); record that agreement as what was measured, not as a
-      statement of what the field means, which the source does not document. The licence ruling is
+      statement of what the field means, which the source does not document. Reconcile §1, "Ids
+      45-60 (T070i)", in the same change: its 2026-09-27 comparison ("46 Achaemenids where the table
+      has 45") read the dataset's keys, which are the replay space, not the inner `id`; say so, and
+      say which of its eleven unmeasured ids the inner `id` now corroborates. The licence ruling is
       unchanged. **A new subsection, "The running game, read by a person"**, in the section's seven
       headings: scope (the cost or time a tooltip shows for a stated civilisation), reliability
       (FR-030's strong form), update mechanism (a person, after each patch), version identifier (the
@@ -2985,7 +2988,12 @@ phase.
       (`packages/knowledge/src/aoe2stats_knowledge/query.py`, `_field_present`), although the pack
       carries each civilisation's tree and the normaliser drops it: `rules.json`'s `civilisations`
       is a list of names. The normaliser writes each civilisation's units, buildings and technologies
-      from the pack's tree, and `available_to` answers membership. A change to the normaliser's
+      from the `Unit`, `Building` and `Tech` lists of the pack's `data.json` `civs`, and
+      `available_to` answers membership. Those lists name an upgraded unit, not the technology that
+      produces it: measured 2026-10-18 on match 511523321, technologies 98, 100 and 222 were ordered
+      and are in neither participant's `Tech` list. An upgrade technology is a member when the unit
+      the pack's `unit_upgrades` table keys it under (its `ID` field) is; an ordered entity that
+      membership still cannot place stops the task with a report. A change to the normaliser's
       output must not change an installed snapshot's re-derivation: the normaliser gains a version,
       `snapshot.toml` names the one a snapshot was derived with (absent means the first), and the
       re-derivation test derives each snapshot under the version it names. An effect may then set
@@ -2998,8 +3006,10 @@ phase.
       `packages/knowledge/tests/test_query.py` and `packages/knowledge/tests/test_effects.py`: an
       entity outside a civilisation's tree answers false; an unconditional `false`; a
       `researched`-conditioned `false` before and after its technology; an `age`-conditioned `true`;
-      a parse-time refusal of a non-boolean operand; and every installed snapshot still re-derives
-      byte for byte
+      a parse-time refusal of a non-boolean operand; every entity a participant of a committed
+      recording ordered answers true for that participant's civilisation (building 490 through T761's
+      alias once a snapshot carries it); and every installed snapshot still re-derives byte for
+      byte
 - [ ] T764 [US2] Let `produced_at` answer every building an entity is produced at, and let an effect
       add one: Goths' Anarchy (Huskarls at the Barracks), Huns' Marauders (Tarkans at the Stable),
       Italians' Condottiero at the Barracks, Mapuche Settlements training Spearmen and Skirmishers.
@@ -3020,22 +3030,29 @@ phase.
       [owner-readings.md](./owner-readings.md), held in the test as literal tuples that each batch
       edits by hand. Each civilisation not yet modelled is `xfail(strict=True)`, listed by name, and
       the batch that models it deletes its entry. Lands after T761 to T764, green, with every
-      unmodelled civilisation of both builds marked. If the run takes longer than 30 seconds, cache
+      unmodelled civilisation of both builds marked. A civilisation the application's table names and
+      no pack carries (the six Chronicles civilisations) is outside the test until T776 decides, and
+      its docstring says so. If the run takes longer than 30 seconds, cache
       each snapshot's rules once per session; never sample entities
 - [ ] T766 [P] [US2] Add Saxons, Varangians and Danes to
       `apps/api/src/aoe2stats_api/civilizations.py`: today their matches show the
-      "Civilisation <id>" fallback. Their Relic identifiers come from `aoc-reference-data`'s
-      `civilizations` inner `id` (FR-022c, read again by this task): a referenced source, and on
-      2026-10-18 it agreed with every identifier the table already held (T760 records the
-      measurement). Record the reading in the module docstring beside T070i's, with the date and
-      what corroborates it. **Red first** in `apps/api/tests/`: each of the three resolves to its
+      "Civilisation <id>" fallback. Their Relic identifiers were measured on 2026-09-27 by the
+      Relic and aoe2companion join `docs/data-sources.md` §1 records (61 Saxons, 62 Varangians,
+      63 Danes, recorded there as known-absent and "filed separately", which never happened), and
+      `aoc-reference-data`'s `civilizations` inner `id` corroborates all three (FR-022c, read again
+      by this task; T760 records that field's agreement with the table). Record both in the module
+      docstring beside T070i's, and correct the docstring where it says that source corroborates
+      nothing in this table. **Red first** in `apps/api/tests/`: each of the three resolves to its
       name
 - [ ] T767 [US2] Model batch A on build 185872 in `aoe2techtree-185872-civilisations-20`, which
       supersedes `aoe2techtree-185872-civilisations`: Britons, Goths, Japanese, Chinese,
       Byzantines, Turks, Vikings, Mongols, Celts, Spanish, Aztecs and Mayans, with T746's eight
       carried. `rules.json` is derived again under T763's normaliser. The snapshot carries the first
-      `aliases.toml` (T761): the whole gate family of `aoc-reference-data`'s `objects` table, each
-      to the gate the pack prices for its material, read again by this task. Its `[[civilisation_id]]`
+      `aliases.toml` (T761): every identifier `aoc-reference-data`'s `objects` table names exactly as
+      a pack entity, with or without an orientation qualifier in parentheses (each "Gate" to the
+      pack's Gate, each "Palisade Gate" to its Palisade Gate), read again by this task. A differently
+      named one (Fortified Gate, Sea Gate, City Gate, Paifang Gate, Trowulan Gate) is not aliased by
+      name; if a committed recording carries one, it goes to the owner's sheet. Its `[[civilisation_id]]`
       table names every civilisation of the pack, from `aoc-reference-data`'s `civilizations` keys,
       each entry with what corroborates it, as T746's do. T746's four refused rows are taken again
       under FR-022c and the extended model: Sicilians' Donjon availability becomes a row (T763); the
@@ -3045,7 +3062,9 @@ phase.
       passes for the twenty civilisations without their `xfail`; build 185872 resolves to the new
       snapshot and the superseded one reproduces by identity (SC-005); the third committed
       recording's strict blocker set in `packages/knowledge/tests/test_coverage.py` loses building
-      490 and the Donjon, by set equality
+      490's three tuples, by set equality; its Detinets and "Fortifications" blockers (building 82's
+      cost, building 1665's production time) stay unless the publisher's notes settle them. The
+      Donjon's availability is informational and was never on that set
 - [ ] T768 [US2] Model batch B on build 185872 in `aoe2techtree-185872-civilisations-32`, which
       supersedes T767's snapshot: Huns, Koreans, Italians, Hindustanis, Incas, Magyars, Portuguese,
       Ethiopians, Berbers, Khmer, Malay and Burmese. Magyars' Corvinian Army and Malay's Forced
@@ -3077,35 +3096,40 @@ phase.
 - [ ] T772 [US2] Close the owner's readings on build 185872 in a snapshot that supersedes the last
       batch's: each open row becomes a modelled row whose `validated_by` cites the reading, and
       each validation-sample reading that differs from what the snapshot answered is recorded as a
-      disagreement (FR-028), stored as the game's value (FR-022c), and its row corrected. The
-      snapshot's `[validation]` names the strong form for every civilisation the sample covers.
-      Promote only when no open row is left for build 185872; until then, a reading that arrives
-      waits for the next snapshot rather than a partial one. **Tests**: T765's tuples for build
-      185872 become empty and the test asserts emptiness; the third committed recording's blocker
-      set in `packages/knowledge/tests/test_coverage.py` is empty, by set equality
+      disagreement (FR-028), stored as the game's value (FR-022c), and its row corrected.
+      The snapshot's `[validation]` names the strong form for each sampled row and the second
+      reading for every other row. Promote once every row for build 185872 is answered or reported
+      unreadable by the owner; a row reported unreadable becomes an FR-022b entry, held in T765 and
+      in `packages/knowledge/tests/test_coverage.py` with where the owner looked. A reading that
+      arrives after promotion waits for the next snapshot. **Tests**: T765's tuples for build 185872
+      equal the FR-022b entries, by set equality, and are empty when there are none; the same holds
+      for the third committed recording's blocker set
 - [ ] T773 [US2] Model build 180059 in a snapshot that supersedes `aoe2techtree-180059`, every
       civilisation of that build's pack, `rules.json` derived again under T763's normaliser. **The
-      carry rule**: a row of build 185872's last snapshot is carried to build 180059 only where the
+      carry rule**: a row of T770's snapshot is carried to build 180059 only where the
       bullet's string is byte-identical under the same key in both packs, every selector resolves to
       the same identifiers in build 180059's `rules.json`, and build 185872's release notes name no
       change to that bonus or to an entity it selects; each carried row's `validated_by` says so and
       names the source snapshot's digest. Every other row is transcribed from build 180059's pack
-      strings. An owner reading is carried back only under the same three conditions, under research
-      D4's discipline in reverse, and a value it cannot reach stays an open row for build 180059.
-      The aliases and the civilisation table are read again for this pack. Depends on T772.
+      strings. The aliases and the civilisation table are read again for this pack. Depends on T770,
+      not on the owner's readings: T774 carries those back.
       **Tests**: T765 passes for build 180059 without `xfail`; the second committed recording's
       blocker set loses buildings 490 and 673 by set equality; build 180059 resolves to the new
       snapshot and the superseded one reproduces by identity
-- [ ] T774 [US2] Close build 180059's open rows, if T773 left any, in a snapshot that supersedes
-      T773's, as T772 does for build 185872. **Tests**: T765's tuples for build 180059 are empty
-      and the second committed recording's blocker set is empty, both by set equality
+- [ ] T774 [US2] Close build 180059's open rows in a snapshot that supersedes T773's. Each
+      reading T772 closed is carried back only under T773's three conditions, under research D4's
+      discipline in reverse; a value it cannot reach stays an open row for build 180059, answered or
+      reported unreadable as T772's are. Depends on T772 and T773. **Tests**: T765's tuples for
+      build 180059 and the second committed recording's blocker set equal their FR-022b entries, by
+      set equality, and are empty when there are none
 - [ ] T775 [US2] **Owner task (verification).** After each promotion is deployed, read the
       aggregate gap report for that build: the `knowledge_gap_rate.py` step of `nightly.yml`'s
       `capture-audit` job, or
       `uv run scripts/checks/knowledge_gap_rate.py --window-days 1` against production. Record in
       [owner-readings.md](./owner-readings.md), "Production", the date and the count of blocking
-      gaps per build. Once T772 and T774 are deployed, the count for builds 180059 and 185872 is zero
-      for every analysis recomputed since
+      gaps per build. Once T772 and T774 are deployed, the count for
+      builds 180059 and 185872 equals the FR-022b
+      entries those builds keep, zero when there are none, for every analysis recomputed since
 - [ ] T776 [US2] **Owner task (arbitration).** Decide whether the six Chronicles civilisations
       `apps/api/src/aoe2stats_api/civilizations.py` names are in scope. No vendored pack carries
       their trees, so including them means choosing a source for every entity they can build, under
@@ -3141,8 +3165,8 @@ phase.
 - **Phase 6** depends on phase 5.
 - **Phase 8** depends on phase 7's T746 (the superseding snapshot and its chain). Inside it: T761
   to T764 before T765; T765 before T767; the batches T767 to T770 in order, because each
-  supersedes the last; T772 after T771's answers for build 185872; T773 after T772; T774 after
-  T773. T760, T766 and T777 depend on nothing in the phase.
+  supersedes the last; T772 after T771's answers for build 185872; T773 after T770; T774 after
+  T772 and T773. T760, T766 and T777 depend on nothing in the phase.
 
 ### Within phases
 

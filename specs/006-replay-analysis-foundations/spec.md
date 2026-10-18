@@ -186,8 +186,10 @@ record of what was decided then.
 - Q: Two committed recordings place buildings 490 and 673, which the pack does not name. Is that a
   limit of the one lawful source? → A: No. `aoc-reference-data`, already referenced, names both
   "Gate"; the pack prices one Gate. An identifier a referenced source names resolves to the pack's
-  entity through a transcribed alias (FR-022d), and the source's whole gate family is transcribed,
-  not only the two identifiers a fixture happened to carry.
+  entity through a transcribed alias (FR-022d), and every identifier the source names exactly as
+  that entity (with or without an orientation qualifier) is transcribed, not only the two a fixture
+  happened to carry. A differently named gate (Fortified Gate, Sea Gate, City Gate) is not an alias
+  of it by name.
 - Q: Which civilisations does "every civilisation the tool supports" mean? → A: Every civilisation
   in the vendored pack of each build a snapshot describes, and every civilisation the application's
   own table names (`apps/api/src/aoe2stats_api/civilizations.py`). The two differ: the pack's three
@@ -448,8 +450,8 @@ new snapshot, reproduce the analysis from the original identity, and confirm the
   technologies, their costs, their training, construction and research times, their age requirements
   and prerequisites, civilisations, and the civilisation bonuses that modify any of the above.
 - **FR-022a**: The knowledge base MUST cover, on every build a promoted snapshot describes, every
-  civilisation the tool supports (Clarifications, Session 2026-10-18) and every entity identifier a
-  recording of that build can carry, such that a cost, production-time, produced-at,
+  civilisation the tool supports (Clarifications, Session 2026-10-18) and every entity the
+  snapshot names or aliases (FR-022d), such that a cost, production-time, produced-at,
   age-requirement or availability query for any of them records no gap of blocking severity
   outside FR-022b's enumerated list. Each committed reference recording stays a regression fixture
   held to the same bar. The validation actually performed is recorded (FR-030). **Amended
@@ -474,9 +476,9 @@ new snapshot, reproduce the analysis from the original identity, and confirm the
   (research D3).
 - **FR-022d**: An entity identifier a recording can carry and the pack does not name MUST resolve
   to the pack's entity through an alias that a referenced source states, transcribed by hand with
-  its provenance. An alias is never inferred from an identifier's neighbours, from where a
-  recording placed it, or from what it was later used for. An identifier no referenced source names
-  stays a gap.
+  its provenance. An alias is never inferred from an identifier's neighbours, from a name other
+  than the pack entity's own, from where a recording placed it, or from what it was later used for.
+  An identifier no referenced source names that way stays a gap, enumerated under FR-022b.
 - **FR-022e**: A civilisation bonus whose effect depends on match state — an age, a technology
   researched, the owner's team, the number of named buildings the player controls — MUST be modelled
   as a rule the caller supplies that state to, and MUST NOT be refused because the recording may not
@@ -515,6 +517,10 @@ new snapshot, reproduce the analysis from the original identity, and confirm the
 - **FR-031**: Only a source whose licence permits it MAY be vendored into this repository. A source
   with no licence MUST NOT be vendored, MUST NOT be fetched at build or test time, and MAY only be
   consulted by a human whose transcription is recorded with its provenance (002 research).
+  **Amended 2026-10-18** at the repository owner's arbitration: the bar is that no code fetches it,
+  not the build, the tests or the running system. A person, or an agent working for the owner, MAY
+  read it and transcribe a value, recording what was read, where, by whom and when; an agent's
+  transcription says that an agent made it, as T746's validation record does.
 - **FR-032**: Nothing in the running system, its build, or its tests may fetch a knowledge source
   (002 FR-011). Any refresh MUST happen outside the request path and MUST go through
   `packages/providers` (constitution III).

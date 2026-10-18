@@ -7,6 +7,8 @@ Phase 8's batches add rows; T772 and T774 turn each answered row into a modelled
 
 How to read a value: start a solo game or open the scenario editor with the civilisation named,
 reach the age named, research the technologies named, and read the tooltip of the entity named.
+If neither the game nor the Fandom wiki shows the value, write `unreadable` and where you looked:
+the row then becomes an enumerated limit (FR-022b) instead of blocking promotion.
 
 ## Open values
 

@@ -167,11 +167,12 @@ the primary does not state, and that reading kept two gate identifiers gapped wh
 FR-022c: a value the pack does not state is taken from a referenced source that states it, when no
 other referenced source contradicts it. Four consequences, each a change to what this record said:
 
-- `aoc-reference-data` is read for its `objects` table as well as its civilisations, by hand, each
-  transcription recorded (FR-031); its licence ruling is unchanged. Read 2026-10-18, its
+- `aoc-reference-data` is read for its `objects` table as well as its civilisations, by a person
+  or an agent working for the owner, each transcription recorded (FR-031, amended); its licence
+  ruling is unchanged. Read 2026-10-18, its
   `civilizations` entries carry an inner `id` that agrees with every Relic identifier
-  `apps/api/src/aoe2stats_api/civilizations.py` holds, so the claim in `docs/data-sources.md` §6
-  that it carries no Relic identifiers is corrected there (T760), not here.
+  `apps/api/src/aoe2stats_api/civilizations.py` holds, so the claims in `docs/data-sources.md` §1
+  and §6 that it never corroborates that table are corrected there (T760), not here.
 - halfon's "the task that first needs it" is not reached by buildings 490 and 673: a referenced
   source already names them (FR-022d), and halfon would read the same file the pack does.
 - The running game, read by a person, is a source: FR-030's strong form, for the current build. A
