@@ -2951,7 +2951,7 @@ phase.
       where in the game). **Fandom**: its ruling gains that an agent may not read it. **halfon**:
       its "Ruling" gains that buildings 490 and 673 did not make it needed (research D3, amended).
       Docs only; no test
-- [ ] T761 [US2] Resolve an entity identifier the pack does not name through a transcribed alias
+- [x] T761 [US2] Resolve an entity identifier the pack does not name through a transcribed alias
       (FR-022d). A snapshot may carry `aliases.toml`, one `[[alias]]` per identifier: `kind`, `id`,
       `target` (an identifier of the same kind that `rules.json` names), `source_name` (the
       referenced source's name for it, verbatim), `source` and `read_on`. The loader refuses, with

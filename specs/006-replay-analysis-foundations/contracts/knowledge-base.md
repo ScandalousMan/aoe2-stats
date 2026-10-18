@@ -13,6 +13,7 @@ packages/knowledge/
     ├── snapshot.toml          identity, validation record, civilisations modelled, `supersedes`
     ├── rules.json             normalised entities — the queryable body
     ├── effects.toml           hand-transcribed civilisation effects
+    ├── aliases.toml           optional: identifiers the pack does not name (FR-022d)
     └── disagreements.toml     source disagreements (FR-028)
 ```
 
@@ -59,9 +60,13 @@ asserts a pack file's bytes match the checksum recorded at import.
 ## Identity and immutability
 
 Identity is `source`, `source_version`, `describes_build`, `digest` (FR-024). On load the digest is
-recomputed over `rules.json` and `effects.toml`; a mismatch refuses to load. A test walks every
-committed snapshot directory and fails if any file's digest differs from its recorded one — which is
-how FR-025's "never modified" is asserted and not merely asked for.
+recomputed over `rules.json` and `effects.toml`, and over `aliases.toml` when the snapshot has one;
+a mismatch refuses to load. A snapshot with no `aliases.toml` keeps exactly the digest it was
+recorded with, so adding the file to the format re-recorded nothing: the digest of a snapshot that
+has one is a different computation, not a new field. Adding `aliases.toml` to a directory recorded
+without it changes the digest and is refused like any other edit. A test walks every committed
+snapshot directory and fails if any file's digest differs from its recorded one — which is how
+FR-025's "never modified" is asserted and not merely asked for.
 
 ## Promotion (FR-034)
 
@@ -156,12 +161,38 @@ only the query naming the unmodelled civilisation directly.
 `name` is not civilisation-qualified and an unresolvable identifier degrades to the bare identifier
 at the presentation boundary, as 003 FR-043a already requires — it never gaps an analysis.
 
+An identifier the pack does not name but the snapshot aliases (below) is resolved first, so
+`name` answers the target's name and every step above reads the target's record and selects the
+target's effects. A gap raised after that still names the identifier the caller asked for.
+
 ## Entity resolution
 
 A unit identifier may live in the source's unit table or its upgrade table; four technology
 identifiers in the committed fixture do. The normaliser merges both into one keyed space and records
 which table each came from. A test asserts every entity referenced by every committed reference
 recording resolves.
+
+**An identifier the pack does not name resolves through an alias (FR-022d).** A snapshot may carry
+`aliases.toml`, one `[[alias]]` table per identifier, with six keys, all required and all
+non-blank strings: `kind` (`unit`, `building` or `technology`), `id` (the identifier a recording
+carries), `target` (an identifier of the same kind that `rules.json` names), `source_name` (the
+referenced source's name for `id`, verbatim), `source` (which source, and where in it) and
+`read_on` (the date it was read). The file holds nothing but `[[alias]]` tables, and a file with
+none is valid.
+
+The loader refuses, with `SnapshotError`, every other shape rather than accepting it silently: a
+`target` that `rules.json` does not name under the alias's kind (so an alias never chains through
+another); an `id` that `rules.json` already names (so the pack's own entity is never shadowed and a
+named identifier is never reported as aliased); a second alias for one `kind` and `id`; a missing,
+blank or non-string key; a key outside the six; a `kind` outside the three; and any table but
+`alias`.
+
+Resolution reads `rules.json` first and the aliases only for an identifier it does not name. Every
+rule query and `name` then answer from the target's record, and **`Answer.alias`** is the alias
+that was followed (its `kind`, `id`, `target`, `source_name`, `source` and `read_on`), or `None`
+for an identifier `rules.json` names. An identifier with no alias stays `entity-absent`, as before.
+An alias is transcribed from a source `docs/data-sources.md` §6 references, never inferred
+(FR-022d).
 
 ## Gaps
 

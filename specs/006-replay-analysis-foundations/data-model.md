@@ -123,9 +123,25 @@ One immutable body of rules (FR-022 to FR-028, FR-034). Surface in
 | `validation`             | What was checked, against what, by whom, when (FR-030). Includes any carry-forward attestation, build by build.    |
 | `civilisations_modelled` | The civilisations whose effects are modelled. All others refuse qualified queries (research D5).                   |
 | `supersedes`             | Optional. The digest of the same build's snapshot this one replaces; resolution skips that one (T746).             |
+| `aliases`                | Optional file `aliases.toml`, covered by `digest` when present. See **Entity alias** below (T761, FR-022d).        |
 
 Identity is the first four fields together (FR-024). A snapshot directory is written once and never
 edited (FR-025); a correction is a new snapshot that names the digest it supersedes.
+
+**Entity alias** (T761, FR-022d) — one transcribed identifier the pack does not name, in the
+snapshot's optional `aliases.toml` as an `[[alias]]` table. One per `kind` and `id`.
+
+| Field         | Rule                                                                                                    |
+| ------------- | ------------------------------------------------------------------------------------------------------- |
+| `kind`        | `unit`, `building` or `technology`.                                                                     |
+| `id`          | The identifier a recording carries. `rules.json` must not name it under `kind`.                         |
+| `target`      | An identifier of the same `kind` that `rules.json` names. Never another alias.                          |
+| `source_name` | The referenced source's name for `id`, verbatim.                                                        |
+| `source`      | Which referenced source, and where in it.                                                               |
+| `read_on`     | The date it was read.                                                                                   |
+
+Every key is a required, non-blank string, and no other key is allowed; the loader refuses a file
+that breaks any rule above. A query that follows an alias reports it as `Answer.alias`.
 
 **Civilisation effect** — one hand-transcribed bonus.
 
