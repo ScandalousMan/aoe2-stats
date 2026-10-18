@@ -22,9 +22,15 @@ blurring them into one assertion:
   community reference dataset (module docstring, T070i) and are asserted as the plain facts they
   were read to be.
 
-Ids 56, 57 and anything above 60 are covered by neither of the above and never appear in
-`KNOWN_CIVILISATION_NAMES` — see `test_falls_back_for_the_deliberate_gap_and_beyond_sixty` and the
-module docstring.
+- Ids 61-63 (Saxons, Varangians, Danes; T766) are **measured** by the 2026-09-27 Relic and
+  aoe2companion join and corroborated by `aoc-reference-data`'s `civilizations` inner `id`
+  (FR-022c). `test_names_the_three_civilisations_measured_after_sixty` asserts the literal pairs and
+  `test_the_three_newest_ids_never_use_the_fallback` guards the shape (no id in the range 0-63
+  except the deliberate gap renders as the fallback).
+
+Ids 56, 57 and anything above 63 are covered by none of the above and never appear in
+`KNOWN_CIVILISATION_NAMES` — see `test_falls_back_for_the_deliberate_gap_and_beyond_sixty_three`
+and the module docstring.
 """
 
 from __future__ import annotations
@@ -230,13 +236,13 @@ def test_table_matches_the_alphabetical_ordering_rule() -> None:
 
 
 # Ids 45-60 (T070i) rest on no rule the way 0-44 do: they are individually transcribed, in release
-# order, and only 48, 52 and 59 are measured (module docstring's "Ids 45-60" section, which also
-# records why SiegeEngineers/aoc-reference-data's `data/datasets/100.json` does not corroborate
-# them). That source carries no licence, so it is read and
+# order, and only 48, 52 and 59 are measured by the join (module docstring's "Ids 45-60" section,
+# which also records that SiegeEngineers/aoc-reference-data's `data/datasets/100.json` *keys* do not
+# match them while its inner `id` does, T766). That source carries no licence, so it is read and
 # transcribed here, never vendored — this literal dict is the fact this test asserts, not a
 # generalisation the way `_ROSTER_AT_ORIGINAL_SPELLING` above is. Ids 56 and 57 are deliberately
 # absent: no measurement reaches them, and they are covered instead by
-# `test_falls_back_for_the_deliberate_gap_and_beyond_sixty`.
+# `test_falls_back_for_the_deliberate_gap_and_beyond_sixty_three`.
 _TRANSCRIBED_FORTY_FIVE_TO_SIXTY = {
     45: "Achaemenids",
     46: "Athenians",
@@ -276,7 +282,7 @@ def test_names_a_known_civilisation_id() -> None:
 
 def test_names_id_zero() -> None:
     """Id 0 is a real civilisation (Armenians), not an unset/sentinel value — the fallback path
-    (`test_falls_back_for_the_deliberate_gap_and_beyond_sixty`) does not reach it."""
+    (`test_falls_back_for_the_deliberate_gap_and_beyond_sixty_three`) does not reach it."""
     assert civilisation_name(0) == "Armenians"
 
 
@@ -293,19 +299,66 @@ def test_names_a_transcribed_id_in_the_forty_five_to_sixty_range() -> None:
     assert civilisation_name(60) == "Tupi"
 
 
-def test_falls_back_for_the_deliberate_gap_and_beyond_sixty() -> None:
+# Ids 61-63 (T766): measured by the 2026-09-27 Relic and aoe2companion join
+# (`docs/data-sources.md` §1) and corroborated by `aoc-reference-data`'s `civilizations` inner
+# `id`. Asserted as literal facts, like the 45-60 range above, not derived from any rule.
+_MEASURED_SIXTY_ONE_TO_SIXTY_THREE = {
+    61: "Saxons",
+    62: "Varangians",
+    63: "Danes",
+}
+
+# Ids 56 and 57 are the deliberate gap: no source states them.
+_DELIBERATE_GAP = (56, 57)
+_HIGHEST_NAMED_ID = 63
+
+
+def test_names_the_three_civilisations_measured_after_sixty() -> None:
+    """Each of 61, 62 and 63 resolves to its name through the lookup function, not only through
+    the table, and not to the "Civilisation <id>" fallback."""
+    for civ_id, name in _MEASURED_SIXTY_ONE_TO_SIXTY_THREE.items():
+        assert civilisation_name(civ_id) == name
+        assert civilisation_name(civ_id) != f"Civilisation {civ_id}"
+
+
+def test_the_three_newest_ids_never_use_the_fallback() -> None:
+    """The shape, not the instance: every id from 0 to the highest named one resolves to a real
+    name, except the deliberate gap at 56 and 57, which still renders as the fallback. A fourth id
+    added past 63 without a test, or a hole opened anywhere below it, fails here."""
+    for civ_id in range(_HIGHEST_NAMED_ID + 1):
+        resolved = civilisation_name(civ_id)
+        if civ_id in _DELIBERATE_GAP:
+            assert resolved == f"Civilisation {civ_id}"
+        else:
+            assert resolved != f"Civilisation {civ_id}", f"id {civ_id} fell back"
+    assert {civ_id for civ_id in KNOWN_CIVILISATION_NAMES if civ_id > 60} == set(
+        _MEASURED_SIXTY_ONE_TO_SIXTY_THREE
+    )
+
+
+def test_neighbours_of_the_new_ids_resolve_as_before() -> None:
+    """Contrast case: adding 61-63 moves nothing next to them. 60 stays Tupi, the gap at 56/57
+    stays on the fallback, and the first id past the table stays on the fallback."""
+    assert civilisation_name(60) == "Tupi"
+    assert civilisation_name(58) == "Muisca"
+    assert civilisation_name(56) == "Civilisation 56"
+    assert civilisation_name(57) == "Civilisation 57"
+    assert civilisation_name(64) == "Civilisation 64"
+
+
+def test_falls_back_for_the_deliberate_gap_and_beyond_sixty_three() -> None:
     """Three different reasons an id renders as "Civilisation <id>" instead of a guessed name
     (module docstring):
 
     - 56 and 57: deliberately absent, missing from the T070i cross-check source too, not filled in
       by guessing what sits between Puru (55) and Muisca (58).
-    - 61: past the highest transcribed id, exactly the same shape T070c's original mistake was
-      about — no guessing past the last id this repository has evidence for.
+    - 64: past the highest named id, exactly the same shape T070c's original mistake was about —
+      no guessing past the last id this repository has evidence for.
     - a large, arbitrary id: never in range for any civilisation this game has released.
     """
     assert civilisation_name(56) == "Civilisation 56"
     assert civilisation_name(57) == "Civilisation 57"
-    assert civilisation_name(61) == "Civilisation 61"
+    assert civilisation_name(64) == "Civilisation 64"
     assert civilisation_name(999) == "Civilisation 999"
 
 
