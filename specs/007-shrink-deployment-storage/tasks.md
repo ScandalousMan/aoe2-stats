@@ -69,7 +69,7 @@ anything but a positive proof that nothing shipped changed, it is a defect (FR-0
 **Purpose**: the before value can only be read while the current deployment still exists. Nothing in
 this feature merges until it is recorded.
 
-- [ ] T801 **Maintainer.** Record the before value (quickstart §0, research R7) in
+- [x] T801 **Maintainer.** Record the before value (quickstart §0, research R7) in
       `docs/adr/0002-hosting.md`: for the current production deployment, each function's size from
       Deployment → Resources → Functions, and the project's figure from Usage → Deployment Storage →
       Functions Storage → Projects, with the date and the deployment id. Add them under a new

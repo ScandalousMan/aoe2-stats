@@ -95,11 +95,11 @@ rest of this section.
 | Function `api/index.py`                     | 68.3 MB | 2026-10-18 | `dpl_7cVtADCsXGsHs6iY7SwGJUYmVb7P` |
 | Function `api/analyze.py`                   | 68.3 MB | 2026-10-18 | `dpl_7cVtADCsXGsHs6iY7SwGJUYmVb7P` |
 | Function `api/cron/ingest.py`               | 68.3 MB | 2026-10-18 | `dpl_7cVtADCsXGsHs6iY7SwGJUYmVb7P` |
-| Project: Functions Storage → Projects       |         |            |                                     |
-| Account: Functions Storage → Total size     | 7.33 GB | 2026-10-18 | —                                   |
+| Project: Functions Storage → Projects       | 7.33 GB | 2026-10-18 | —                                   |
 
-The deployment is the production build of `63827989`. The account total covers every project on the
-account, against the plan's 10 GB allowance; the project row is `aoe2-stats`'s share of it.
+The deployment is the production build of `63827989`. The project figure is every stored deployment
+of `aoe2-stats` against the plan's 10 GB allowance; no other project on the account stores a
+function, so it is also the account's total.
 
 `pip` stays installed in production (decided 2026-10-18, feature 007's Story 3 dropped). The replay
 parser declares it and never imports it, but `read_engine_dependencies` in `packages/replay-engine/src/aoe2stats_replay_engine/dependencies.py` records the
