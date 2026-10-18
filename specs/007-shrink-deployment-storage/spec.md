@@ -142,26 +142,12 @@ full one.
 
 ---
 
-### User Story 3 - No installer in production (Priority: P3)
+### User Story 3 - No installer in production — dropped
 
-The production functions no longer contain the `pip` installer, and the replay parser still loads
-and parses exactly as before.
-
-**Why this priority**: a small, self-contained saving per function, conditional on a fact that must
-be verified first: that the parser never imports `pip` at runtime.
-
-**Independent Test**: inspect the installed parser package — its Python sources and its native
-module — for any runtime use of `pip`; then run the full test suite and the parser's reference
-recordings in an environment where `pip` is absent.
-
-**Acceptance Scenarios**:
-
-1. **Given** the installed parser package, **When** it is searched for any runtime reference to
-   `pip`, **Then** none is found, or this story is dropped and the reason recorded.
-2. **Given** an environment resolved with this feature's dependency configuration, **When** its
-   installed packages are listed, **Then** `pip` is absent.
-3. **Given** that environment, **When** the full test suite and the reference-recording parses run,
-   **Then** all pass.
+Dropped during `/speckit-implement` on 2026-10-18, as its first acceptance scenario provided
+(Assumptions): the parser never imports `pip`, but this repository's engine dependency record reads
+it at runtime. `pip` stays installed in production. The number is kept so the other stories keep
+theirs.
 
 ---
 
@@ -241,11 +227,6 @@ the other stories keep theirs, and FR-012 now holds the three-function layout in
   preview again (FR-011).
 - **Branch pushes.** Only `main` deploys today (`git.deploymentEnabled`); the skip rule must not
   change that, and must not make any branch deploy.
-- **A future parser release imports `pip`.** The test suite runs without `pip` installed, so a parser
-  upgrade that starts importing it fails CI rather than production.
-- **The `pip` exclusion leaks into development.** The dependency configuration is workspace-wide;
-  removing `pip` must not break any development tool or script that runs through the workspace
-  environment. Scripts run with their own ad-hoc dependencies are unaffected.
 
 ## Requirements _(mandatory)_
 
@@ -311,13 +292,12 @@ the other stories keep theirs, and FR-012 now holds the three-function layout in
   (constitution V). *(Amended 2026-10-18 by `/speckit-analyze`: as clarified, this merged the two
   long-running functions into one; Story 5 is dropped.)*
 
-**Installer (Story 3)**
+**Installer (Story 3) — dropped**
 
-- **FR-013**: `pip` MUST NOT be installed in production, provided the installed parser package is
-  shown never to import it at runtime. The verification MUST inspect the installed package that
-  production receives, not its documentation.
-- **FR-014**: The test suite MUST run in an environment without `pip`, so a future parser release
-  that imports it fails CI.
+- **FR-013**: *Withdrawn 2026-10-18 with Story 3 (Assumptions).* Was: `pip` MUST NOT be installed
+  in production, provided the installed parser package is shown never to import it at runtime.
+- **FR-014**: *Withdrawn 2026-10-18 with FR-013.* Was: the test suite MUST run in an environment
+  without `pip`, so a future parser release that imports it fails CI.
 
 **Upload (Story 4)**
 
@@ -377,10 +357,16 @@ the other stories keep theirs, and FR-012 now holds the three-function layout in
   `vercel.json`; the feature description names them (`excludeFiles`, `ignoreCommand`). The plan
   confirms each against the host's current documentation, including when the exclusion applies
   relative to dependency installation.
-- A dependency override whose marker never matches is the likely way to keep `pip` out of the
-  resolution; the plan confirms it with the resolver in use. A preliminary search of the locally
-  installed parser package found no reference to `pip`; the plan repeats it on the Linux build
-  production installs.
+- **Story 3 is dropped** *(amended 2026-10-18 during `/speckit-implement`)*. The installed parser
+  package never references `pip`: its Linux wheel for the locked version was searched again, Python
+  files and native module strings alike. This repository reads it, though.
+  `read_engine_dependencies` in `packages/replay-engine/src/aoe2stats_replay_engine/dependencies.py` records the installed version of every requirement the
+  parser declares and, by design, refuses one that is not installed; the analyzer's staleness check
+  compares that record against the one stored with each analysis. With `pip` removed, every
+  analysis fails. Making the record skip `pip` would edit a file under `packages/`, which FR-016
+  forbids, and would change the record every published analysis is compared against, so each would
+  read as stale. The saving research §0 sizes does not pay for either. As first written, this
+  assumed a never-matching dependency override would keep `pip` out of production.
 - Deleting old deployments and setting the retention policy are done by hand in the dashboard and
   are out of scope, as is replacing the S3 client (recorded in the ADR as the next step, FR-017).
 - The host's deployment-count quota is unaffected by this feature and is not a goal of it.

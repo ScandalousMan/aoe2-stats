@@ -1,5 +1,5 @@
 ---
-description: 'Task list for shrinking what each production deployment stores — trimmed bundles, a build-skip rule, no pip'
+description: 'Task list for shrinking what each production deployment stores — trimmed bundles, a build-skip rule'
 ---
 
 # Tasks: Shrink what each production deployment stores
@@ -56,7 +56,7 @@ anything but a positive proof that nothing shipped changed, it is a defect (FR-0
 | ----------------------------- | ----- | -------- | ---------------------- |
 | §0 — record the before value  | 1     | —        | T801                   |
 | §1 — offline gates            | 4–5   | all      | T807, T809, T810       |
-| §2 — `pip` is gone            | 2     | US3      | T802                   |
+| §2 — dropped (Story 3)        | 2     | US3      | T802, not taken        |
 | §3 — CLI upload               | 7     | US4      | T815                   |
 | §4 — skip rule in production  | 7     | US2      | T817                   |
 | §5 — the three functions answer | 7   | US1      | T816                   |
@@ -82,41 +82,29 @@ this feature merges until it is recorded.
 
 ---
 
-## Phase 2: No installer, no `.claude/` (plan phase 2 — US3, US4)
+## Phase 2: No `.claude/` (plan phase 2 — US4; US3 dropped)
 
-**Purpose**: two small, independent savings. One commit each.
+**Purpose**: one small, independent saving, one commit. Story 3's was dropped at T802's premise
+check (spec Assumptions).
 
-**Independent test**: quickstart §2, and `.vercelignore` names `.claude/`.
+**Independent test**: `.vercelignore` names `.claude/`.
 
-**Story goal (US3)**: production functions carry no `pip`, and the parser loads and parses as
-before. **(US4)**: a CLI upload from a working copy carries nothing under `.claude/`.
+**Story goal (US4)**: a CLI upload from a working copy carries nothing under `.claude/`.
 
-- [ ] T802 [US3] **First, re-verify the premise, against the locked version** (**FR-013**). Read the
-      `aoe2rec-py` version `uv.lock` pins, download its `manylinux_2_28` CPython 3.13 x86-64 wheel
-      into an empty scratch directory (not the repository), and search every Python file and the
-      native module's strings for `pip`. Research R5 did this for 0.1.24 on 2026-10-18; a different
-      locked version means doing it again, not citing R5. **If any runtime reference is found, stop
-      here**: Story 3 is dropped, and the reason is recorded in the spec's Assumptions and in the
-      ADR section, per US3's first scenario. Otherwise: add
-      `override-dependencies = ["pip ; sys_platform == 'never'"]` under `[tool.uv]` in the root
-      `pyproject.toml`, with a comment above it saying what it does, why the marker never matches,
-      which package declares `pip`, and that the installed wheel was checked and when. Regenerate
-      `uv.lock` with `uv lock` and confirm the lock diff is the one marker on `aoe2rec-py`'s `pip`
-      edge; any other change in the diff is a resolver surprise to report, not to commit. In the
-      same task, add a test to `tests/architecture/test_deployment_install.py` asserting that `pip`
-      is not importable in the environment the suite runs in (`importlib.util.find_spec`), so that
-      **FR-014** is asserted, not true by construction: a parser release that starts requiring
-      `pip` at runtime then fails CI. Run the whole suite, including
-      `tests/test_reference_recordings.py`, in the re-synced environment (`uv sync --all-packages
-    --dev` removes `pip` from it). Then run quickstart §2's export command and confirm its one line
+- [x] T802 [US3] **Not taken: Story 3 dropped**, so **FR-013** and **FR-014** are withdrawn (spec
+      Assumptions, research R5). The premise check ran against the locked `aoe2rec-py` 0.1.24: its wheel never references `pip`, but
+      `read_engine_dependencies` in
+      `packages/replay-engine/src/aoe2stats_replay_engine/dependencies.py`
+      refuses a declared requirement that is not installed, and with the override applied the
+      suite went red on that refusal. Was: a never-matching override for `pip` in the root
+      `pyproject.toml`, the regenerated `uv.lock`, and a test that `pip` is not importable
 - [x] T803 [P] [US4] Add `.claude/` to `.vercelignore` (**FR-015**, research R9), as its own block
       with a comment in the file's existing style: local agent worktrees and agent configuration,
       never an input to the build or a function, and a CLI upload from a working copy does not apply
       `.gitignore`. Anchor it at the root (`/.claude/`). Do not touch any other line; the dry-run
       comparison that proves nothing else dropped is T815
 
-**Checkpoint**: the lock carries the `pip` marker, the suite is green without `pip`, and
-`.vercelignore` excludes `.claude/`.
+**Checkpoint**: `.vercelignore` excludes `.claude/`.
 
 ---
 
@@ -189,8 +177,7 @@ route behaves as before.
       (3) From that directory, run the environment's interpreter in isolated mode (`-I`), which
       drops the working directory from the import path, so put the copy's root on the path
       explicitly, as the runtime does: import `api.index`, `api.analyze` and `api.cron.ingest`; load every packaged
-      knowledge snapshot through `aoe2stats_knowledge`'s own loader; assert `pip` is not
-      importable; and probe the two long-running routes unauthenticated through each entrypoint's
+      knowledge snapshot through `aoe2stats_knowledge`'s own loader; and probe the two long-running routes unauthenticated through each entrypoint's
       own ASGI app, asserting `/api/cron/ingest` answers `401` with `unauthorized` and `/api/analyze`
       answers its `401` session refusal — both before any database connection, with configuration
       supplied the way the existing entrypoint tests supply it. Then run
@@ -287,10 +274,11 @@ that ships still deploys; every doubt deploys.
       commit** — the rule for commits that contain it, the dashboard setting for branches cut
       before it; the known risk of an empty comparison base (research R3); the next step if storage
       climbs again, replacing the current S3 client with a lighter one behind `packages/storage`;
-      and empty, dated rows for the after value and the 30-day skip count. Amend the "Only `main`
+      and empty, dated rows for the after value and the 30-day skip count. Keep the paragraph on why
+      `pip` stays installed (Story 3 dropped). Amend the "Only `main`
       deploys" bullet the same way. Then grep `docs/` and
       `.claude/skills/` for any statement this feature makes false — every push to `main`
-      deploys, a function carries the repository, `pip` is installed in production — and correct
+      deploys, a function carries the repository — and correct
       each. No figure from research §0 is copied here
 - [ ] T813 Verify scope and the whole tree (**FR-016**). `git diff --stat main...HEAD`: every path
       is a deployment file, `scripts/deploy/`, `scripts/checks/tests/test_vercel_bundle.py`,
@@ -347,7 +335,7 @@ the ADR section with its date.
 ## Dependencies & Execution Order
 
 - **T801 first.** Its figure must exist before anything merges; nothing else waits on it.
-- **Phase 2**: T802 and T803 are independent of each other and of everything after them.
+- **Phase 2**: T803 is independent of everything after it. T802 was not taken.
 - **Phase 3**: dropped; nothing to order.
 - **Phase 4**: T807 → T808 → T809.
 - **Phase 5** waits on nothing in Phases 2–4 in principle, but lands after them (plan phase 4) so
@@ -361,15 +349,14 @@ the ADR section with its date.
 
 ### User story dependencies
 
-- **US3, US4**: independent.
+- **US3**: dropped.
+- **US4**: independent.
 - **US5**: dropped.
 - **US1**: independent.
 - **US2**: independent in code; ordered last by the plan.
 
 ## Parallel opportunities
 
-- T802 ∥ T803: different files (`pyproject.toml` and `uv.lock` with a test file, against
-  `.vercelignore`).
 - T812 ∥ T814 ∥ T815: the ADR edit by an agent, two dashboard and CLI reads by the maintainer. The
   maintainer's findings join the ADR after T812.
 - Nothing in Phases 4–5 is parallel: each task builds on the previous one's file or layout.
@@ -377,7 +364,7 @@ the ADR section with its date.
 ## Implementation strategy
 
 **MVP is US1 (Phase 4)**, the largest per-deployment saving; with T801 it ships alone. Phase 2 is
-independent and cheap, so the natural first increment is Phases 1, 2 and 4: before value, `pip`,
+independent and cheap, so the natural first increment is Phases 1, 2 and 4: before value,
 `.claude/`, trimmed bundles — every storage saving per deployment. Phase 5 adds the per-commit
 saving, and could be a second pull request if the first must ship sooner; T801's value would then
 also serve as Phase 5's before figure.

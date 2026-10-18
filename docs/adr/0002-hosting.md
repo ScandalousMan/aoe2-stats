@@ -97,6 +97,13 @@ rest of this section.
 | Function `api/cron/ingest.py`         |      |           |               |
 | Project: Functions Storage → Projects |      |           |               |
 
+`pip` stays installed in production (decided 2026-10-18, feature 007's Story 3 dropped). The replay
+parser declares it and never imports it, but `read_engine_dependencies` in `packages/replay-engine/src/aoe2stats_replay_engine/dependencies.py` records the
+installed version of every requirement the parser declares and refuses one that is not installed,
+and the analyzer's staleness check compares that record with the one stored for each analysis.
+Removing `pip` would fail every analysis, and recording it as skipped would make every published
+analysis read as stale.
+
 ## The single-page fallback is a host requirement, not a Vercel setting
 
 Every route the client-side router owns must resolve to `index.html` on a direct request — a

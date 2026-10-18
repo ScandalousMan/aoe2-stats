@@ -28,13 +28,14 @@ Of the repository files, `packages/knowledge` is 14.7 MB raw (13.1 MB of it `pac
 packs and snapshots also ship inside the knowledge wheel, so they are stored twice per function.
 
 **Prediction for SC-002.** Before: three functions of about 152 MB raw / 52 MB zipped. After: three
-functions holding only their entrypoints and the dependencies minus `pip`, about 90 MB raw / 31 MB
-zipped each. The after-to-before ratio per deployment is **0.59** raw and **0.60** zipped. The
+functions holding only their entrypoints and the dependencies, `pip` included (R5), about 96 MB raw /
+33 MB zipped each. The after-to-before ratio per deployment is **0.63** raw and **0.63** zipped. The
 ratio is the prediction, because it holds whichever of the two the host measures (R7). If the
-built web app turns out not to be in today's bundles (R1), the ratio becomes 0.65 raw and 0.68
-zipped, still inside SC-002's band. SC-002 is met when the measured ratio is in **0.47–0.71**.
-_(Amended 2026-10-18: the first prediction, 0.40 in a band of 0.32–0.48, assumed two functions;
-Story 5 was dropped.)_
+built web app turns out not to be in today's bundles (R1), the ratio becomes 0.70 raw and 0.72
+zipped, still inside SC-002's band. SC-002 is met when the measured ratio is in **0.50–0.76**.
+_(Amended twice on 2026-10-18: the first prediction, 0.40 in a band of 0.32–0.48, assumed two
+functions, and Story 5 was dropped; the second, 0.59 in a band of 0.47–0.71, assumed `pip` removed,
+and Story 3 was dropped.)_
 
 **Deployments that shipped nothing.** Classifying `main`'s 51 first-parent commits since
 2026-10-05 with the never-shipped list of R4 gives **25** that would have been skipped, against 14
@@ -230,6 +231,15 @@ Anything not listed deploys.
 
 ## R5. Removing `pip`
 
+**Withdrawn 2026-10-18 during `/speckit-implement`: Story 3 is dropped**, and the decision below is
+not built. The finding about the wheel holds: re-checked for 0.1.24 against the glibc x86-64 wheel
+`uv.lock` pins, which is tagged `manylinux_2_17`/`manylinux2014`, not the `manylinux_2_28` named
+below. What this section missed is a consumer inside the repository: `read_engine_dependencies` in
+`packages/replay-engine/src/aoe2stats_replay_engine/dependencies.py` records the installed version of every requirement the parser declares and refuses one that
+is not installed, and the analyzer's staleness check compares that record with the stored one. With
+the override applied the suite went red on exactly that refusal (spec Assumptions). Kept as the
+record of what was decided and why it was reversed.
+
 **Findings.**
 
 - `aoe2rec-py` 0.1.24 declares `Requires-Dist: pip>=24.3.1`. Its Linux wheel
@@ -323,12 +333,12 @@ deployment-shaped environment and imports the entrypoints, into a **bundle-shape
    mode:
    - import `api.index`, `api.analyze` and `api.cron.ingest`;
    - load every packaged knowledge snapshot through the package's own loader;
-   - assert `pip` is not importable;
    - probe the two long-running entrypoints' routes unauthenticated, and assert each answers its documented
      refusal without touching a database.
 
 It runs in `pr.yml`'s existing Python job, which already collects `tests/architecture`. This is the
-#120-style dry run turned into a gate that keeps running, instead of a one-off.
+#120-style dry run turned into a gate that keeps running, instead of a one-off. _(Amended
+2026-10-18: a step asserting `pip` is not importable left with Story 3, R5.)_
 
 **What only a real deployment confirms.** The host's own builder version, its bytecode fill, and
 whether the trimmed functions boot in production. These are covered by quickstart §5 and

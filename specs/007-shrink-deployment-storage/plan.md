@@ -21,22 +21,21 @@ layout stays at three (Story 5 was dropped; see the Constitution Check).
    cancels a production build only when every path changed since the last successful deployment is
    on a declared never-shipped list. Any doubt builds. It is covered by recorded-history fixtures
    and a throwaway-repository test (R3, R4).
-3. **No `pip` in production** (Story 3): a uv override with a never-true marker, verified against
-   the Linux wheel the host installs (R5).
+3. ~~**No `pip` in production**~~ (Story 3): **dropped** during implementation. The parser never
+   imports `pip`, but the engine dependency record reads it at runtime (spec Assumptions, R5).
 4. **`.claude/` out of a CLI upload** (Story 4): one `.vercelignore` line (R9).
 
-The local estimate predicts a per-deployment storage ratio of 0.59 after to before (research §0).
+The local estimate predicts a per-deployment storage ratio of 0.63 after to before (research §0).
 SC-002 holds when the measured ratio is within 20% of it. The measured values live in
 `docs/adr/0002-hosting.md` only.
 
 ## Technical Context
 
 **Language/Version**: Python 3.13 (the dry-run test and the bundle guard); Node 20+ (the
-skip rule and its test, same as the other `scripts/checks/*.mjs` modules); JSON (`vercel.json`);
-TOML (root `pyproject.toml`).
+skip rule and its test, same as the other `scripts/checks/*.mjs` modules); JSON (`vercel.json`).
 
 **Primary Dependencies**: no new dependency. The skip rule uses Node's standard library only
-(`node:child_process`, `node:test`), because it runs before any install. uv's `override-dependencies` setting drops `pip`.
+(`node:child_process`, `node:test`), because it runs before any install.
 
 **Storage**: N/A. No table, no migration, no object-store change.
 
@@ -78,7 +77,7 @@ itself, not from a previous feature's table._
 | **II**   | Python Backend                                | **PASS**                      | The functions stay Python. The skip rule is Node because it runs in the build image before any install. It is deployment tooling like `config-preflight.mjs` and holds no business logic.                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | **III**  | All External Data Goes Through a DataProvider | **PASS, by making no call**   | The skip rule reads environment variables and runs one local `git diff`. It never fetches, never deepens the clone, and never calls the host's API (research R3). No provider is touched.                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | **IV**   | Raw Is Sacred, Derived Is Disposable          | **N/A**                       | No recording, no derived artifact, no object-store path changes.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| **V**    | Parsing Runs in an Isolated, Pluggable Engine | **PASS**                      | The parser's only change is losing an installer it never imports, checked against the native module of the wheel production installs (R5). The reference-recording parses run in an environment without `pip`. The parser also keeps a function of its own: Story 5 would have run it in the function that serves the ingestion run, and was dropped (below).                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| **V**    | Parsing Runs in an Isolated, Pluggable Engine | **PASS**                      | The parser does not change. Story 3 would have removed an installer the parser never imports, and was dropped because the engine dependency record reads that installer at runtime (R5). The parser also keeps a function of its own: Story 5 would have run it in the function that serves the ingestion run, and was dropped (below).                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | **VI**   | Tokens First                                  | **N/A**                       | No component, no style.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | **VII**  | Visual Tests Are Mandatory                    | **N/A**                       | No component is created or modified. The static build's output is unchanged (FR-004). Visual baselines stay where they are; a commit touching only them now stores no deployment.                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | **VIII** | No Secrets in the Clear                       | **PASS**                      | No secret, no new environment variable. The cron route and its bearer-secret check are untouched. The skip rule reads only non-secret system variables and logs commit ids and paths, never the environment. `.vercelignore` keeps excluding `.env*`.                                                                                                                                                                                                                                                                                                                                                                                |
@@ -122,8 +121,6 @@ specs/007-shrink-deployment-storage/
 ```text
 vercel.json                       # functions: each of the three entries gains excludeFiles; ignoreCommand
 .vercelignore                     # + .claude/
-pyproject.toml                    # [tool.uv] override-dependencies for pip
-uv.lock                           # regenerated: one marker on aoe2rec-py's pip edge
 scripts/
 ├── deploy/
 │   ├── ignore-build.mjs          # new: the skip rule and its two path lists
@@ -152,11 +149,12 @@ The order follows risk, and each phase is green on its own:
 1. **Measure before.** Read the current production deployment's function sizes and the project's
    Functions Storage, and record them in the ADR with the deployment id. This happens before
    anything merges (R7).
-2. **`pip` and `.claude/`** (Stories 3 and 4). Small and independent; one commit each.
+2. **`.claude/`** (Story 4). Small and independent; one commit. Story 3 (`pip`) was dropped here
+   (R5).
 3. **Trimmed bundles** (Story 1): the `excludeFiles` value, its guard test, and the bundle-shaped
    dry run.
 4. **Skip rule** (Story 2): the module, its tests, `ignoreCommand`, and the `pr.yml` step. This lands
-   last, so the merge that ships Stories 1, 3 and 4 is a full deploy that the smoke workflow and
+   last, so the merge that ships Stories 1 and 4 is a full deploy that the smoke workflow and
    the manual checks can observe. A skip rule merged in the same push would also deploy (it touches
    `vercel.json`), but keeping it last makes the first skip a separate, readable event.
 5. **Measure after and accept.** Quickstart §5–§6, then the ADR section (R10).

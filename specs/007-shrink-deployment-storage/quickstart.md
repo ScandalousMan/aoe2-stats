@@ -44,14 +44,10 @@ uv run scripts/checks/api_entrypoint_deps.py
 
 Expected: exit 0 over all three files under `api/`.
 
-## 2. `pip` is gone
+## 2. `pip` is gone — dropped
 
-```bash
-uv export --frozen --no-dev --no-editable --no-hashes | grep -i '^pip'
-```
-
-Expected: one line, carrying the marker `sys_platform == 'never'` (research R5). Then check that a
-non-editable production sync installs no `pip`; the dry run in §1 already asserts it.
+Story 3 was dropped (spec Assumptions, research R5): `pip` stays installed in production, and there
+is nothing to check. The number is kept so the other sections keep theirs.
 
 ## 3. A CLI upload carries no `.claude/`
 
