@@ -1322,8 +1322,9 @@ both. It is a component defect, not a harness gap, so it is not a row of the reg
 is Met only when one does and the marker is removed. Local run only, macOS Chromium: route-keyboard 324 tests,
 route-focus-visibility 314, route-touch-footprint 314, route-reduced-motion 326 and the 809 under
 `tests/visual/fixtures/`. No scenario was added to `tests/visual/app-routes.spec.ts`, so no full-page baseline changed or
-was captured. The CI run that backs the verdict is the `visual` job of the pull request carrying T744, not yet recorded
-here.
+was captured. The CI run that backs the verdict is run 39140176226, the `visual` job of #178 at
+12a61eae (2026-10-18): its app-route step passed 2109 tests on Linux Chromium, the 2087 above plus the 22 of
+`tests/visual/app-routes.spec.ts`, the two `knownDefects` scenarios among them as expected failures.
 
 ### Item 15's general-reviewer half — outstanding, no pull request covers this head
 
