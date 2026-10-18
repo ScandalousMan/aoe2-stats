@@ -224,11 +224,17 @@ the other stories keep theirs, and FR-012 now holds the three-function layout in
   it must keep passing and must not be read as proof that the skipped commit deployed.
 - **A canceled deployment and the retention slots.** If a canceled deployment occupied one of the
   three retained production slots, skipping would evict real rollback targets instead of protecting
-  them. The plan verifies how the host counts a canceled deployment before relying on Story 2.
+  them. How the host counts a canceled deployment is settled from its documentation before the
+  rule is wired in, and confirmed in production after the first skip.
 - **The daily deployment quota.** A canceled build may still count against the host's daily
   deployment quota. This feature does not claim to save quota; it saves storage.
 - **A manual redeploy.** The maintainer must still be able to force a production deployment of a
-  skipped commit when they deliberately want one.
+  skipped commit when they deliberately want one. *(Settled 2026-10-18 by `/speckit-analyze`.)* A
+  skipped commit changed only never-shipped paths since the last successful deployment, so
+  building it produces the output already live. Forcing it is therefore a redeploy of the latest
+  successful deployment, which always builds: the rule, if the host runs it at all, sees an empty
+  diff (FR-010). Redeploying the canceled deployment itself would compare against the same base
+  and skip again, so it is not the documented way.
 - **A branch that predates the rule.** The host reads the build-skip rule from the pushed commit,
   so a branch cut before this feature merged is still governed by the dashboard's "Only build
   production" setting. Removing that setting from the dashboard would let such a branch build a
@@ -270,8 +276,16 @@ the other stories keep theirs, and FR-012 now holds the three-function layout in
 - **FR-008**: The rule MUST always deploy a change touching any of: `infra/migrations/`, any
   `pyproject.toml`, `uv.lock`, any `package.json`, `pnpm-lock.yaml`, `vercel.json`,
   `.vercelignore`, `.env.example`, `scripts/checks/config-preflight.mjs`, `api/`, application source
-  under `apps/` or `packages/`, the web app, and the skip rule's own definition. A never-shipped
-  entry that would match one of these paths is a defect the test in FR-009 MUST catch.
+  under `apps/` or `packages/`, the web app, and the skip rule's own definition. The test in
+  FR-009 MUST show that a change to any of them deploys, whatever never-shipped path accompanies
+  it. *(Amended 2026-10-18 by `/speckit-analyze`: as first written, any overlap between a
+  never-shipped entry and one of these paths was a defect. But the always-deploy list is checked
+  first, so an overlap cannot skip; and `scripts/**` necessarily covers the rule's own directory
+  and `config-preflight.mjs`. The guarantee is the verdict, so the verdict is what is tested.
+  Application source and the web app are not entries of the always-deploy list: their tests and
+  stories sit inside their source directories, so listing those directories first would deploy
+  every test-only and story-only change. They deploy because no never-shipped pattern matches
+  them, which the test proves with representative source paths.)*
 - **FR-009**: An automated test MUST run the skip decision offline against real commit ranges from
   this repository's history and assert the expected verdict for each, including at least: a
   docs-only commit, a spec-only commit, a test-only commit, a visual-baseline commit, a commit

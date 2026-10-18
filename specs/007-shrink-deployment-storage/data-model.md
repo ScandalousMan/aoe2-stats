@@ -29,14 +29,22 @@ Defined once, in the skip rule's module (research R3); read by the rule and by i
 
 **Validation** (asserted by the test, not by prose):
 
-- No pattern matches any always-deploy path (§3). A pattern that would is a defect (FR-008).
+- A change to any always-deploy path (§3) builds, alone or beside any never-shipped path. Overlap
+  between the two lists is allowed and expected (`scripts/**` covers `scripts/deploy/**`): the
+  always-deploy list is checked first, so the verdict, not the absence of overlap, is the
+  invariant (FR-008, amended).
+- No pattern matches an application source path or a web-app path that is neither a test nor a
+  story. Those deploy through the rule below, not through §3 (FR-008, amended).
 - A path matched by no pattern is shipped. There is no "unknown" class (FR-007).
 
 ## 3. Always-deploy list
 
-The paths FR-008 names. Checked before the never-shipped list, so a change to one of them deploys
-whatever else the push contains. Includes the skip rule's own module and its never-shipped list
-(Edge Cases: the skip rule changes itself).
+The concrete paths FR-008 names. Checked before the never-shipped list, so a change to one of them
+deploys whatever else the push contains. Includes the skip rule's own module and its never-shipped
+list (Edge Cases: the skip rule changes itself). FR-008's "application source" and "the web app"
+are deliberately not entries here: they hold their own tests and stories, and checking their
+directories first would deploy every test-only and story-only change. They deploy because no
+never-shipped pattern matches them (§2).
 
 ## 4. Skip decision
 

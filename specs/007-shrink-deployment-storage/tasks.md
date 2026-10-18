@@ -226,8 +226,10 @@ that ships still deploys; every doubt deploys.
       (constitution III). Glob matching is hand-written for the shapes the two lists use
       (`<dir>/**`, a single-segment `*`, a leading `**/`), because CI runs Node 20 and Node's own
       glob matcher is not stable there. Both lists are constants, each pattern with its one-line
-      reason beside it: always-deploy is FR-008's paths plus `scripts/deploy/**`; never-shipped is
-      research R4's table, and nothing else. The test covers, each as a named case:
+      reason beside it: always-deploy is FR-008's concrete paths plus `scripts/deploy/**`, and
+      **not** `apps/`, `packages/` or any `src/` directory — those hold their tests and stories, and
+      checked first they would deploy every test-only change (FR-008, amended; `data-model.md`
+      §3); never-shipped is research R4's table, and nothing else. The test covers, each as a named case:
       **recorded history** — research R4's ranges, with the changed paths captured once now with
       the same `git diff` flags and committed in the test file beside their commit ids and expected
       verdict, so the test needs no history in CI; the docs-only head over an undeployed code
@@ -240,11 +242,26 @@ that ships still deploys; every doubt deploys.
       that the rename and baseline-only cases are constructed, not recorded, and why (research R4).
       Every `git commit` in the test passes its identity with `-c user.name=… -c user.email=…`:
       CI has no git identity, and a test that relies on one passes locally and fails there. Finally
-      **list integrity**: no never-shipped pattern matches any always-deploy path, checked by
-      generating a representative path for every always-deploy entry. Run the test with
+      **verdict integrity** (FR-008, amended — overlap between the lists is expected, so the test
+      asserts verdicts, not disjointness): for a representative path of every always-deploy
+      entry, a change to it alone and beside `docs/risks.md` builds; and each of
+      `apps/api/src/aoe2stats_api/app.py`, `apps/web/src/main.tsx`,
+      `packages/design-system/tokens/color.json` and
+      `packages/knowledge/src/aoe2stats_knowledge/snapshot.py` builds, while a `*.test.tsx`
+      under `apps/web/src/` and a `*.stories.tsx` under `packages/design-system/src/` each skip. Run the test with
       `git config --global user.useConfigOnly true` set in a throwaway `HOME` to prove the identity
       point locally
-- [ ] T811 [US2] **Wire the rule in.** Add `"ignoreCommand": "node scripts/deploy/ignore-build.mjs"`
+- [ ] T810a [US2] **Before the rule ships, settle how the host counts a canceled deployment**
+      against the retained production deployments (spec Edge Cases: "before relying on Story
+      2"; the research did not settle it). Read the host's current documentation on deployment
+      retention and on canceled deployments; if it does not say, the maintainer reads the
+      project's Deployment Retention settings in the dashboard. Record the answer, its source and
+      the date in `docs/adr/0002-hosting.md`. **If a canceled deployment takes a retained
+      production slot, or the answer cannot be established, T811 does not land in this pull
+      request**: Phase 5 moves to its own pull request, held until the answer is known. T810's
+      module and test may still land, unwired
+- [ ] T811 [US2] **Wire the rule in.** Only after T810a found that a canceled deployment takes
+      no retained production slot. Add `"ignoreCommand": "node scripts/deploy/ignore-build.mjs"`
       to `vercel.json` (research R3). In `.github/workflows/pr.yml`, add
       `node --test scripts/deploy/ignore-build.test.mjs` to the `web` job beside the other
       `node --test` suites, with a one-line comment, and add `scripts/deploy/**` to the `web` paths
@@ -310,13 +327,13 @@ the ADR section with its date.
       must be seen to import and finish a real capture run (constitution I)
 - [ ] T817 [US2] **Maintainer, after T816.** Quickstart §4: a `docs/`-only push to `main` shows
       Canceled with the `skip: nothing shipped …` line, and a `uv.lock` push deploys with
-      `build: uv.lock …` (**SC-004**). **Also check how the host counts the canceled deployment
-      against the three retained production slots** — the spec's edge case requires this before
-      Story 2 is relied on, and the research did not settle it. If a canceled deployment takes a
-      slot, skipping evicts rollback targets instead of protecting them: record it, and remove
-      `ignoreCommand` from `vercel.json` in a follow-up until that is resolved. If the log shows an
+      `build: uv.lock …` (**SC-004**). **Confirm in production what T810a established from the
+      documentation**: after the canceled deployment, the three retained production deployments
+      are the same three as before it. If they are not, skipping evicts rollback targets: record
+      it, and remove `ignoreCommand` from `vercel.json` in a follow-up. If the log shows an
       empty comparison base, record it per research R3's known risk and leave the rule in place.
-      Optionally, quickstart §4 step 3, and record what the host did for a redeploy (**FR-010**)
+      Then quickstart §4 step 3, which is not optional: a redeploy of the latest successful
+      deployment builds, and the ADR records it as the way to force a deployment (**FR-010**)
 - [ ] T818 **Maintainer, after T816.** Quickstart §6: read the after values the way T801 read the
       before ones, record them with the date, the deployment id and the per-deployment ratio to
       T801's (**SC-002**: the band is research §0's). A ratio outside the band is recorded as a
@@ -334,7 +351,8 @@ the ADR section with its date.
 - **Phase 3**: dropped; nothing to order.
 - **Phase 4**: T807 → T808 → T809.
 - **Phase 5** waits on nothing in Phases 2–4 in principle, but lands after them (plan phase 4) so
-  the merge is a full deploy anyway. T810 → T811. T811 edits
+  the merge is a full deploy anyway. T810 → T810a → T811; T810a can hold T811 back (it says
+  when). T811 edits
   `.github/workflows/pr.yml` and `vercel.json`, as T807 and T808 do, so none of the three share a
   parallel batch.
 - **T812** after T808 (it records T808's checks); **T813** last before the pull request is

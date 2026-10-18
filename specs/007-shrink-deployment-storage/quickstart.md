@@ -76,8 +76,9 @@ After the feature has merged and its own full deployment is live:
      providing it (research R3, known risk). Record that in the ADR; the rule stays, safe and inert.
 2. Push a commit to `main` that touches `uv.lock`. Expected: a full deployment, and the log carries
    `build: uv.lock …`.
-3. Optional, costs one deployment: redeploy the latest production deployment from the dashboard.
-   Record in the ADR whether the rule ran and what it printed (`contracts/build-skip-rule.md`,
+3. Costs one deployment, and is how FR-010 is shown: redeploy the latest successful production
+   deployment from the dashboard. Expected: it builds. Record in the ADR whether the rule ran and
+   what it printed, and that this is the way to force a deployment (`contracts/build-skip-rule.md`,
    "Forcing a deploy").
 
 ## 5. The three functions answer

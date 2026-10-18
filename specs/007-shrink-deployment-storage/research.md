@@ -223,7 +223,10 @@ Anything not listed deploys.
   no cross-root rename and no baseline-only commit, so those two shapes are built synthetically.
   This is the one place FR-009's "real commit ranges" is met by a constructed range, and the test
   says so.
-- _A list-integrity assertion_: no never-shipped pattern matches any always-deploy path.
+- _A verdict-integrity assertion_: a change to any always-deploy path builds, alone or beside a
+  never-shipped path, and a non-test, non-story source path of each application package builds.
+  _(Amended 2026-10-18 by `/speckit-analyze`: this first asserted that no never-shipped pattern
+  matches an always-deploy path, which this section's own `scripts/**` entry contradicts.)_
 
 ## R5. Removing `pip`
 
