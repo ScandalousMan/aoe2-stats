@@ -272,8 +272,10 @@ const CONTACT_ROUTE_LINK_CLIP = {
 // tightened here alone, not for the shared constant, because `ContactRouteLinkFocusVisible`'s own
 // outward ring (`outline-2 outline-offset-2`, 4px total beyond the link's own box) needs that wider
 // pad to stay inside the clip; `Hover`'s own signal (the underline thickening inward) does not.
+// T677: `fragment: 'first'` too — at 375 the inline link wraps, its bounding box spans every line,
+// and the underline sits on each of them; the first line alone carries it at a fraction of the area.
 const CONTACT_ROUTE_LINK_HOVER_CLIP = {
-  parts: [{ role: 'link' as const, name: 'this contact route' }],
+  parts: [{ role: 'link' as const, name: 'this contact route', fragment: 'first' as const }],
   pad: '1',
 } as const
 

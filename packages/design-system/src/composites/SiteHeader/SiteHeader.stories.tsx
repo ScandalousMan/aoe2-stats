@@ -170,15 +170,15 @@ const NAV_CLIP = {
   pad: '1',
 } as const
 
-// `Hover`'s own signal (the underline, drawn inside each item's box) needs none of `FocusVisible`'s
-// outward-ring room, so its own copy of the same two-item union tightens `pad` to `'0'` — the
-// smallest step this package's own scale names (`tokens/space.json`) — where `NAV_CLIP`'s `'1'`
-// still read under 1% on one unit.
+// `Hover` clips to the hovered item's whole `<li>` (T677): the "Matches" link plus the reserved
+// channel span (`mt-1 h-0.5`, `index.tsx`) beneath it, so the frame shows what the state asserts,
+// the underline inside the box and nothing in the channel below it. The current item's strip is
+// not in this frame (the "Dashboard" `<li>` is outside it); that count is judged in `SignedIn`'s
+// unclipped frame, same args. `pad: '0'` (smallest step in `tokens/space.json`): the underline
+// needs none of `FocusVisible`'s outward-ring room.
+// `FocusVisible` and `Active` keep `NAV_CLIP` unchanged.
 const NAV_HOVER_CLIP = {
-  parts: [
-    { role: 'link' as const, name: 'Matches' },
-    { role: 'link' as const, name: 'Dashboard' },
-  ],
+  parts: [{ selector: 'li:has(> a[href="/matches"])' }],
   pad: '0',
 } as const
 
@@ -294,12 +294,22 @@ export const SkipLinkFocusVisible: Story = {
 // skip link, always first in DOM order).
 const BRAND_CLIP = { parts: [{ role: 'link' as const, nth: 1 }], pad: '2' }
 
+// `BrandHover`'s signal is `hover:underline` on the wordmark's own text, inside the link's box, so
+// it needs none of `BRAND_CLIP`'s outward-ring room (`BrandFocusVisible` keeps that). T677: the
+// link is `inline-flex py-3` (48px tall), the underline a thin line, so clipping to the text's own
+// line boxes (`textRange`: the link holds only `{WORDMARK}`, a string, no child element) drops
+// the 12px of block padding above and below it.
+const BRAND_HOVER_CLIP = {
+  parts: [{ role: 'link' as const, nth: 1, textRange: true as const }],
+  pad: '1',
+} as const
+
 export const BrandHover: Story = {
   name: 'hover on the Brand wordmark link',
   args: { items, currentPath: '/dashboard' },
   parameters: {
     visualForceState: { state: 'hover', role: 'link', nth: 1 },
-    visualCaptureClip: BRAND_CLIP,
+    visualCaptureClip: BRAND_HOVER_CLIP,
   },
 }
 

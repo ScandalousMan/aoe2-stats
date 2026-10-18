@@ -198,25 +198,19 @@ export const Empty: Story = {
 // `<main>` holds (T675 slice 4d, measured: 0.870%).
 //
 // T675 slice 4d: clipped to the paragraph instead of the landmark — `role: 'main'` above named the
-// wrong *shape* of target, not merely too little pad. `pad` is computed, not guessed, from the
-// tokens between the paragraph and `<main>`'s own edges, the largest across the three review
-// widths (`pad` is one value for all of them): vertically, `<main>`'s own block padding (`py-6`
-// below `md`, `md:py-8` at and above it — `index.tsx`) plus the title's own rendered height
-// (`type-display` at `text-3xl`, `font.json`'s own `lineHeight` for that step, 2rem/32px) plus the
-// `gap-6` between the title block and the children container (`index.tsx`) — `24+32+24=80px` below
-// `md`, `32+32+24=88px` at and above it; horizontally, `<main>`'s own inline padding alone (`px-4`
-// below `md`, `md:px-6` at and above it) — `16px` / `24px`, smaller than the vertical figure at
-// every width, so it never sets the maximum. Add the ring's own 4px outward reach
-// (`outline-2 outline-offset-ring`) to each: `84px` below `md`, `92px` at and above it — confirmed
-// against the real rendered layout (`getBoundingClientRect()` on the paragraph and on `<main>`, at
-// all three review widths), not derived from the token arithmetic alone. `92px` is this story's own
-// maximum; `'20'` (80px, `tokens/space.json`) falls short, `'24'` (96px) is the smallest step that
-// clears it at every width. The resulting frame holds the ring's top edge and both side edges
-// beside the paragraph — clamped to the viewport's own left/right edges at every width, since 96px
-// of pad already reaches past them from the paragraph's own position — and roughly a quarter of
-// `<main>`'s own height, never "most of the landmark": clipped height comes to 200px (375) / 208px
-// (768, 1280) against a landmark 900px (375) / 720px (768, 1280) tall.
-const CONTENT_CLIP = { parts: [{ selector: ':text-is("No matches recorded yet.")' }], pad: '24' }
+// wrong *shape* of target. T677: the ratio is the ring's thickness over the frame's height, and
+// the paragraph needed `pad: '24'` (96px) to reach `<main>`'s top edge, a 216px frame that read
+// 1.20% at 1280. The title row — the `flex-wrap` `div` holding the `<h1>`, one line tall and as
+// wide as the content column — needs less. `pad` is derived from `<main>`'s own edges to that row plus the ring's 4px outward reach
+// (`outline-2 outline-offset-ring`), measured with `getBoundingClientRect()` on the row and on
+// `<main>` at all three review widths: vertically `py-6` (24px) below `md`, `md:py-8` (32px) at
+// and above it, so 28px / 36px; horizontally the row spans the content column, `px-4` / `md:px-6`
+// (16px / 24px) inside `<main>`'s edges, plus 4px of ring reach is 20px / 28px, under the 40px pad,
+// so both side edges are in the frame. 36px is the vertical maximum across the widths (`pad` is
+// one value): `'8'` (32px) would crop the ring's top edge at `md` and above, `'10'` (40px,
+// `tokens/space.json`) is the smallest step that holds it. The frame is 112px tall; its bottom
+// edge cuts into the paragraph's line, which carries no part of the ring.
+const CONTENT_CLIP = { parts: [{ selector: 'main div:has(> h1)' }], pad: '10' }
 
 export const FocusVisible: Story = {
   // A `play()` calling `.focus()` sets DOM focus but not the `:focus-visible` pseudo-class, so this
