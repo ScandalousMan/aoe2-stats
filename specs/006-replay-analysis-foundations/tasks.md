@@ -2854,7 +2854,7 @@ carries what T673's dry run read.
       matches those three statuses when the row names the drain's key, keeping `withdrawn` excluded,
       and whether it then raises `validation_failed` over an `expired` row whose `expired_capture`
       alert is already raised
-- [ ] T749 Recapture the baselines T710's ink fix left under the comparator's tolerance (filed
+- [x] T749 Recapture the baselines T710's ink fix left under the comparator's tolerance (filed
       2026-10-18 from #172's baseline regeneration). T710 gave `MatchRow`'s unknown outcome, unknown
       team result and zero rating change and `MatchDetailPanel`'s unknown result
       `text-text-secondary` in place of `text-secondary`, which generates no CSS, and recorded that
@@ -2867,7 +2867,9 @@ carries what T673's dry run read.
       `composite-matchrow--list-all-outcomes-unknown`, `composite-matchrow--eight-player-match`,
       `composite-matchdetailpanel--null-result` and `composite-matchdetailpanel--mixed-result`.
       **Done** when those 36 baselines are recaptured on CI and the regeneration commit keeps no
-      other capture that this cause does not explain
+      other capture that this cause does not explain. **Done 2026-10-18**: `baselines.yml` run
+      39119237720 moved exactly those 36 beyond noise; its other 119 rewrites, all at or under
+      100px, are reverted
 
 ---
 
