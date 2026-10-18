@@ -2935,7 +2935,7 @@ checker can verify it the same way it verifies 8c's own table.
 **Excluded — grep hits outside this list, named rather than left silent, none of them a
 hover/focus-visible/active deferral (Record 1's own tracked axes):** `PlayerResultRow.stories.tsx:75-76`
 ("Those states belong to `SearchBox`'s own `ResultsRegion`") is a disabled/loading/error/empty
-provenance note; `Badge.stories.tsx:125-126` ("a failure belongs to whatever produced the state it names, never to the badge.") and `PrivacyNotice.stories.tsx:314-315` ("A failure belongs to the route a link leads to, never to the sentence stating the right.") are both about the `error`/
+provenance note; `Badge.stories.tsx:125-126` ("a failure belongs to whatever produced the state it names, never to the badge.") and `PrivacyNotice.stories.tsx:316-317` ("A failure belongs to the route a link leads to, never to the sentence stating the right.") are both about the `error`/
 `disabled` vocabulary entry, not hover/focus-visible/active; `SiteHeader.stories.tsx:230` ("that
 state belongs to `Menu`") is about the `expansion` vocabulary entry (`Menu`'s own disclosure state,
 not `SiteHeader`'s hover/focus/active); `ProfileSummary.stories.tsx:572` ("carries its own mark
@@ -2971,7 +2971,7 @@ and the `ThemeProvider` it owns internally, `:104-105`), not which one paints a 
 _pattern_, not a state handoff. `Menu.stories.tsx:358` ("already owns.") says which _story_ (this
 one's own preceding sentence: which `Selection` above already depicts, `:357-358`) is about the
 `selection`/`expansion` vocabulary entry, not which component paints hover/focus/active.
-`Page.stories.tsx:347` ("the between-sections rhythm `Page` owns") and `Section.stories.tsx:16`
+`Page.stories.tsx:341` ("the between-sections rhythm `Page` owns") and `Section.stories.tsx:16`
 ("owns the space between the components inside it", the component's own Storybook description) and
 `Section.stories.tsx:166` ("`Page` owns that between-sections gap") and `Section.stories.tsx:167`
 ("`Section` owns the between-components gap inside itself") are all about spacing-rhythm ownership

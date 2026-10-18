@@ -363,10 +363,10 @@ does. The fill and label colour keep their existing transition and its reduced-m
 FR-055 has nothing new to reduce.
 
 **Baselines this moves** (regenerated from CI, never locally): `SiteHeader` `Hover`, `Active` and
-`FocusVisible`, which each take a `visualCaptureClip` — to the union of exactly the hovered item and
-the current item, so the criterion in §10 is still judged on one image, without the other three nav
-items diluting it further: a 2px line under one label stayed under the comparator's own 1% floor
-even clipped to the whole `<nav>` (T675 slice 4b, verification finding, not a design change).
+`FocusVisible`, each with a `visualCaptureClip`. `Active` and `FocusVisible` clip to the "Matches"
+and "Dashboard" links' union, pad `'1'` (T675 slice 4b: the whole `<nav>` read under 1%). `Hover`
+clips to the hovered item's `<li>`, its box and its own channel, pad `'0'` (T677), which the
+two-link union diluted. The current-item strip count is judged on unclipped `SignedIn` (same args).
 `Active`'s own press is captured the same way, the harness pressing by a real hover then a
 mouse-down. The `Hover` story's own comment quotes the retired "No underline on hover" and is
 corrected in the same change.
@@ -556,9 +556,9 @@ and that `ThemeControl`'s own expansion state belongs to `Menu`, not to this com
 - [ ] Overlaying `SignedIn` on `NoCurrentItem`: every label sits at the identical position. Marking
       an item current moves nothing (the reserved channel, §4).
 - [ ] `Hover` (Dashboard current, Matches hovered, §5a): "Matches" carries a 2px underline under its
-      glyphs, inside its filled box, and no strip in the channel below it; "Dashboard" alone carries
-      the `accent` strip below its box. Counting strips in the channel still gives 1. The resting
-      captures show no underline under any item label.
+      glyphs, inside its filled box, and its own channel below the box is empty. The frame is that
+      item alone: Dashboard's strip and the count of 1 are judged on `SignedIn` (same args). The
+      resting captures show no underline under any item label.
 - [ ] `Active`: the same "Matches" underline sits visibly lower than in `Hover`, and the box shows
       its inner `border-strong` boundary, which `Hover` does not.
 - [ ] `SignedOut`: the wordmark alone, with **no** `<nav>` region, no empty strip, no gap and no
