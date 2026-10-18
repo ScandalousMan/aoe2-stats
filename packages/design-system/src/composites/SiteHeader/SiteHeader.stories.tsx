@@ -155,13 +155,13 @@ export const ThemeControlSetToDark: Story = {
   args: { items, currentPath: '/dashboard' },
 }
 
-// §5a (decided 2026-09-28): every nav item's `<a>` gains `Button` `ghost`'s own hover and press
-// underline in full, judged together with the current item's own rule (§4) in one frame
-// (`SiteHeader.stories.tsx`'s own §10 acceptance criterion). T675 slice 4b: clipping to the whole
-// `<nav>` still measured under 1% on every unit (a 2px line under one label, diluted by every other
-// item's own box in the union) — narrowed to the union of exactly the two items the criterion
-// needs, the hovered "Matches" and the current "Dashboard", which `visualCaptureClip`'s own `parts`
-// already supports as a multi-part union (`resolveCaptureClip`, `tests/visual/story-render.ts`).
+// `FocusVisible` and `Active` clip here; `Hover` has its own clip below. §5a (decided 2026-09-28):
+// every nav item's `<a>` gains `Button` `ghost`'s own hover and press underline in full. T675 slice
+// 4b: clipping to the whole `<nav>` still measured under 1% on every unit (a 2px line under one
+// label, diluted by every other item's own box in the union) — narrowed to the union of the
+// hovered "Matches" and the current "Dashboard" links, which `visualCaptureClip`'s own `parts`
+// supports as a multi-part union (`resolveCaptureClip`, `tests/visual/story-render.ts`). The
+// current item's strip count is judged on `SignedIn`'s unclipped frame, not in these frames.
 const NAV_CLIP = {
   parts: [
     { role: 'link' as const, name: 'Matches' },
@@ -188,7 +188,7 @@ const NAV_HOVER_CLIP = {
 // `tests/visual/stories.spec.ts` (see that file's own `VisualForceState` comment) — a `play()`
 // could only dispatch a synthetic event, which the CSS pseudo-class ignores. The fill and ink steps
 // alone measured zero surviving pixels (T675's package-wide sweep); the underline is well under 1%
-// of the whole-header frame, so this story clips to the primary nav.
+// of the whole-header frame, so this story clips to the hovered item's `<li>` (`NAV_HOVER_CLIP`).
 export const Hover: Story = {
   args: { items, currentPath: '/dashboard' },
   parameters: {
@@ -200,7 +200,7 @@ export const Hover: Story = {
 // §5 "focus-visible — named explicitly, because this is the state a later reviewer will assume
 // was covered... the one documented ring... drawn outside the item's box, on top of whatever the
 // hover state is." T675's package-wide sweep found this story's own surviving signal at or under 1%
-// of an unclipped frame in at least one unit — the same `NAV_CLIP` `Hover` above takes.
+// of an unclipped frame in at least one unit — so it clips to `NAV_CLIP`.
 export const FocusVisible: Story = {
   args: { items, currentPath: '/dashboard' },
   parameters: {
@@ -211,7 +211,7 @@ export const FocusVisible: Story = {
 
 // §5 "active — fill `surface-sunken` with a 1px `border-strong` boundary drawn inside the box...
 // label `text-primary`." The harness presses by a real hover then a mouse-down, so §5a's underline
-// is in this frame too (at `underline-offset-4`) — the same `NAV_CLIP` as `Hover`/`FocusVisible`.
+// is in this frame too (at `underline-offset-4`) — the same `NAV_CLIP` as `FocusVisible`.
 export const Active: Story = {
   args: { items, currentPath: '/dashboard' },
   parameters: {
@@ -296,9 +296,9 @@ const BRAND_CLIP = { parts: [{ role: 'link' as const, nth: 1 }], pad: '2' }
 
 // `BrandHover`'s signal is `hover:underline` on the wordmark's own text, inside the link's box, so
 // it needs none of `BRAND_CLIP`'s outward-ring room (`BrandFocusVisible` keeps that). T677: the
-// link is `inline-flex py-3` (48px tall), the underline a thin line, so clipping to the text's own
-// line boxes (`textRange`: the link holds only `{WORDMARK}`, a string, no child element) drops
-// the 12px of block padding above and below it.
+// link is `inline-flex py-3` (48px tall where the wordmark is one line; at 768 it wraps to two
+// lines and the Range spans both), the underline a thin line, so clipping to the text's own line
+// boxes (`textRange`: the link holds only `{WORDMARK}`, no child element) drops the block padding.
 const BRAND_HOVER_CLIP = {
   parts: [{ role: 'link' as const, nth: 1, textRange: true as const }],
   pad: '1',

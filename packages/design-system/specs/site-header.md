@@ -364,9 +364,9 @@ FR-055 has nothing new to reduce.
 
 **Baselines this moves** (regenerated from CI, never locally): `SiteHeader` `Hover`, `Active` and
 `FocusVisible`, each with a `visualCaptureClip`. `Active` and `FocusVisible` clip to the "Matches"
-and "Dashboard" links' union, pad `'1'` (T675 slice 4b; the whole `<nav>` was under 1%): both boxes,
-no strip. `Hover` clips to the hovered item's `<li>`, box and empty channel, pad `'0'` (T677): the
-union held no strip, only diluting the signal to 1.05%. Strips are counted on unclipped `SignedIn`.
+and "Dashboard" links' union, pad `'1'` (T675 slice 4b: the whole `<nav>` read under 1%). `Hover`
+clips to the hovered item's `<li>`, its box and its own channel, pad `'0'` (T677), which the
+two-link union diluted. The current-item strip count is judged on unclipped `SignedIn` (same args).
 `Active`'s own press is captured the same way, the harness pressing by a real hover then a
 mouse-down. The `Hover` story's own comment quotes the retired "No underline on hover" and is
 corrected in the same change.
