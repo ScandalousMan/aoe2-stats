@@ -4,7 +4,7 @@ import { Section, Text } from '../../src'
 import { cx } from '../../src/lib/cx'
 import elevation from '../../tokens/elevation.json'
 
-// T563 (FR-040, FR-041, FR-009). `elevation.json` carries its own `$meaning` per level — what it
+// T563 (FR-040, FR-041, FR-009). `elevation.json` holds a `$meaning` for each level — what it
 // means and what may sit at it — read directly below rather than restated, so this page cannot
 // drift from the token source. Full reasoning: specs/README.md, "Elevation".
 
@@ -13,7 +13,7 @@ type ElevationLevel = keyof typeof elevation.$meaning
 // `$meaning`'s own prose is written for a markdown reader (`` `Dialog` ``, meant for
 // specs/README.md); rendered verbatim in JSX that would show the backticks themselves. This
 // renders the same string, splitting only on the backtick pairs the source already carries — no
-// second copy of the text, just the punctuation markdown owns translated to a <code> span.
+// second copy of the text, just the punctuation markdown uses translated to a <code> span.
 function renderMarkdownCode(text: string) {
   return text.split(/(`[^`]+`)/g).map((segment, index) => {
     if (segment.startsWith('`') && segment.endsWith('`')) {

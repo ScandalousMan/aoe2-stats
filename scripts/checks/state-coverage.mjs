@@ -66,6 +66,7 @@ import { BUILD_STORYBOOK_COMMAND } from '../visual/missing-index.mjs'
 import { instanceKey } from '../visual/instance-identity.mjs'
 import { REVIEW_WIDTHS } from '../visual/review-widths.mjs'
 import { FIXTURE_TAG } from '../visual/story-index.mjs'
+import { listStoryFilesOnDisk } from '../visual/story-files.mjs'
 import {
   MANIFEST_PATH,
   REWRITE_COMMAND,
@@ -820,7 +821,7 @@ export function findLocalElements(sourceFile, filePath, constMap) {
       (m) => m.kind === 'group',
     )
     if (ownGroupHoverMatches.length > 0) {
-      groupHoverDescendants.push({ nodeStart, nodeEnd, matches: ownGroupHoverMatches })
+      groupHoverDescendants.push({ node, nodeStart, nodeEnd, matches: ownGroupHoverMatches })
     }
     const pseudo = extractPseudoClasses(parts)
     // T671: a state-conditional `active` class (`findStateConditionalClass`, above) is read from
@@ -888,6 +889,7 @@ export function findLocalElements(sourceFile, filePath, constMap) {
     })
   })
   creditGroupHoverToAncestors(found, groupMarkerCandidates, groupHoverDescendants)
+  creditHelperGroupHoverToCallSites(sourceFile, found, groupMarkerCandidates, groupHoverDescendants)
   return found
 }
 
@@ -908,38 +910,294 @@ export function findLocalElements(sourceFile, filePath, constMap) {
 // in `found` to credit — left uncredited rather than guessed, the same bar every other pass in this
 // file holds; not a real case yet (every `group/<name>` marker found in this repository, 2026-09-30,
 // sits on the row's own `<a>`, already a Record 1 row for its intrinsic tag alone). A descendant
-// reached only through a *separately declared* helper component invoked as a JSX child — `MatchRow`'s
-// `OutcomeLabel`, whose own `<span>` and whose caller's `<a href="...group/row-link">` are two
-// disjoint JSX trees in the file's own source text, never one nested inside the other — is invisible
-// to this containment test and stays uncredited too; a real, known, reported gap, not a silent one
-// (T675 M2 remediation report), and not fixed here — resolving a JSX composition boundary this way
-// would need call-site substitution this file does not otherwise do anywhere, guessed rather than
-// found.
+// reached only through a *separately declared* helper component — `MatchRow`'s `OutcomeLabel`,
+// whose own `<span>` and whose caller's `<a href="...group/row-link">` are two disjoint JSX trees in
+// the file's source text — is invisible to this containment test; `creditHelperGroupHoverToCallSites`
+// below is the second pass that closes that gap (T680), under refusals stated there.
 function creditGroupHoverToAncestors(found, groupMarkerCandidates, groupHoverDescendants) {
   for (const descendant of groupHoverDescendants) {
     for (const match of descendant.matches) {
-      let bestMarker = null
-      for (const marker of groupMarkerCandidates) {
-        if (marker.nodeStart > descendant.nodeStart || marker.nodeEnd < descendant.nodeEnd) continue
-        if (!marker.names.includes(match.groupName)) continue
+      const bestMarker = innermostGroupMarker(groupMarkerCandidates, descendant, match.groupName)
+      if (bestMarker) appendGroupHoverCredit(found, bestMarker, match.token)
+    }
+  }
+}
+
+// The innermost (smallest range) `group`/`group/<name>` marker whose own JSX node contains `range`
+// (`{ nodeStart, nodeEnd }`) with the same name (`null` pairs only with `null`), or `null`. Shared by
+// the literal pass above and the helper pass below, so both apply one containment and one name rule.
+function innermostGroupMarker(groupMarkerCandidates, range, groupName) {
+  let bestMarker = null
+  for (const marker of groupMarkerCandidates) {
+    if (marker.nodeStart > range.nodeStart || marker.nodeEnd < range.nodeEnd) continue
+    if (!marker.names.includes(groupName)) continue
+    if (
+      !bestMarker ||
+      marker.nodeEnd - marker.nodeStart < bestMarker.nodeEnd - bestMarker.nodeStart
+    ) {
+      bestMarker = marker
+    }
+  }
+  return bestMarker
+}
+
+// Appends `token` onto the `hover` of the Record 1 row that is `marker`'s element, if there is one.
+// Only ever the ancestor: the descendant that holds the utility never gains a `hover` of its own.
+function appendGroupHoverCredit(found, marker, token) {
+  const target = found.find(
+    (el) => el.nodeStart === marker.nodeStart && el.nodeEnd === marker.nodeEnd,
+  )
+  if (!target) return
+  const already = (target.hover ?? '').split(' ').filter(Boolean)
+  if (!already.includes(token)) {
+    target.hover = already.length > 0 ? `${target.hover} ${token}` : token
+  }
+}
+
+// T680: the helper pass. `creditGroupHoverToAncestors` sees only literal nesting; a `group-hover`
+// mark held by a helper component declared elsewhere in the file (`MatchRow`'s `OutcomeLabel`) is
+// credited here to the group enclosing each of the helper's *call sites* — `<OutcomeLabel />` as a JSX
+// element — by letting the call site's JSX node stand in for the mark's own element in the same
+// containment, innermost-marker and name test (bare `group-hover` pairs only with bare `group`, a
+// named one only with the same name). Each call site credits independently: one inside a matching
+// group credits that group, one outside any group credits nothing, and neither affects the other.
+//
+// The safe error direction is UNDER-credit — a false credit is worse than a missed one — so a credit
+// must be provable from this file's source alone, and the shapes below are refused:
+//   - the helper must be a top-level, PascalCase function declaration or `const` arrow/function
+//     expression (`findLocalHelperComponents`), not exported by one of the forms that function's
+//     condition 2 lists, bound exactly once (which is how shadowing is refused without a type
+//     checker) and never reassigned;
+//   - the mark's nearest enclosing function must be the helper itself, so a mark inside a callback
+//     or inner component the helper merely contains (rendered by a call this pass cannot trace) is
+//     not credited;
+//   - a mark that already has a matching `group` marker inside the helper's own JSX is left to the
+//     literal pass, and the call site's group is not credited for it (the innermost-only rule);
+//   - a reference in any position other than a JSX tag (`render: OutcomeLabel`) credits nothing, and
+//     does not block the helper's other call sites;
+//   - a call site whose path up to the crediting group's JSX node passes through a `JsxAttribute` or a
+//     `JsxSpreadAttribute` is refused (`onClick={() => toast(<OutcomeLabel />)}`,
+//     `<Tooltip content={<OutcomeLabel />}>`, `<Tooltip {...{ content: <OutcomeLabel /> }}>`): JSX held
+//     in an attribute is rendered later, or elsewhere (a portal), not as the group's children. The
+//     refusal covers the group's own attributes as well;
+//   - a call site that is itself (through any parentheses) an argument of a call whose callee is the
+//     identifier `createPortal` or a property access ending in `.createPortal`
+//     (`{createPortal(<OutcomeLabel />, document.body)}`, `{ReactDOM.createPortal(...)}`) is refused:
+//     it is rendered outside the group's subtree. Call arguments are NOT refused in general: the call
+//     site in `{items.map(() => <OutcomeLabel />)}` stays credited.
+// Residuals this pass still accepts, because refusing them would need to follow code this file does not
+// follow: (1) a call site passed as `children` to a component inside the group
+// (`<Group><Wrapper><OutcomeLabel /></Wrapper></Group>`), which `Wrapper` may portal; no attribute is
+// crossed, and following `Wrapper`'s own source is the transitive resolution this file does not do;
+// (2) a portal reached through any other function name or wrapper (`const p = createPortal; p(...)`,
+// `portal(<OutcomeLabel />)`, or the call site nested in an element that is itself the argument of
+// `createPortal`: only the call site's own parent call is inspected).
+// The literal pass above (`creditGroupHoverToAncestors`) has the same attribute imprecision, and is
+// deliberately unchanged.
+// Resolved one hop only: if helper A invokes helper B, which holds the mark, and A is invoked inside
+// a group, nothing is credited — a known, accepted under-credit; B's only call site is not inside
+// that group's JSX in this file's source, and following A's own call sites would be the transitive
+// resolution this file deliberately does not do. Likewise a `group-hover` element passed as
+// `children` into a helper whose marker wraps `{children}` stays uncredited: the mark is not in the
+// helper's source, and neither is the group in the caller's, so no containment ever holds.
+function creditHelperGroupHoverToCallSites(
+  sourceFile,
+  found,
+  groupMarkerCandidates,
+  groupHoverDescendants,
+) {
+  if (groupHoverDescendants.length === 0) return
+  const helpers = findLocalHelperComponents(sourceFile)
+  if (helpers.size === 0) return
+  const callSites = new Map([...helpers.keys()].map((name) => [name, []]))
+  const collect = (node) => {
+    if (isJsxTag(node)) {
+      const sites = callSites.get(tagNameOf(node))
+      if (sites) sites.push({ node, nodeStart: node.getStart(sourceFile), nodeEnd: node.getEnd() })
+    }
+    ts.forEachChild(node, collect)
+  }
+  collect(sourceFile)
+  for (const descendant of groupHoverDescendants) {
+    const owner = nearestFunctionLike(descendant.node)
+    const helperName = [...helpers].find(([, fn]) => fn === owner)?.[0]
+    if (!helperName) continue
+    for (const match of descendant.matches) {
+      if (innermostGroupMarker(groupMarkerCandidates, descendant, match.groupName)) continue
+      for (const site of callSites.get(helperName)) {
+        const marker = innermostGroupMarker(groupMarkerCandidates, site, match.groupName)
         if (
-          !bestMarker ||
-          marker.nodeEnd - marker.nodeStart < bestMarker.nodeEnd - bestMarker.nodeStart
+          marker &&
+          !pathCrossesJsxAttribute(sourceFile, site.node, marker) &&
+          !isCreatePortalArgument(site.node)
         ) {
-          bestMarker = marker
+          appendGroupHoverCredit(found, marker, match.token)
         }
-      }
-      if (!bestMarker) continue
-      const target = found.find(
-        (el) => el.nodeStart === bestMarker.nodeStart && el.nodeEnd === bestMarker.nodeEnd,
-      )
-      if (!target) continue
-      const already = (target.hover ?? '').split(' ').filter(Boolean)
-      if (!already.includes(match.token)) {
-        target.hover = already.length > 0 ? `${target.hover} ${match.token}` : match.token
       }
     }
   }
+}
+
+// Whether some ancestor of `siteNode`, below the JSX node `marker` stands for (matched by range), is
+// a `JsxAttribute` or a `JsxSpreadAttribute`. The marker contains the site by construction, so the
+// walk reaches it.
+function pathCrossesJsxAttribute(sourceFile, siteNode, marker) {
+  for (let node = siteNode.parent; node; node = node.parent) {
+    if (ts.isJsxAttribute(node) || ts.isJsxSpreadAttribute(node)) return true
+    if (node.getStart(sourceFile) === marker.nodeStart && node.getEnd() === marker.nodeEnd) {
+      return false
+    }
+  }
+  return false
+}
+
+// Whether `siteNode`, looking through parentheses only, is a direct argument of a call whose callee is
+// `createPortal` or a property access ending in `createPortal`. Any other call (`items.map(...)`) is
+// not a portal this file can name, and is not refused.
+function isCreatePortalArgument(siteNode) {
+  let child = siteNode
+  let parent = child.parent
+  while (parent && ts.isParenthesizedExpression(parent)) {
+    child = parent
+    parent = parent.parent
+  }
+  if (!parent || !ts.isCallExpression(parent) || !parent.arguments.includes(child)) return false
+  const callee = parent.expression
+  if (ts.isIdentifier(callee)) return callee.text === 'createPortal'
+  return ts.isPropertyAccessExpression(callee) && callee.name.text === 'createPortal'
+}
+
+function nearestFunctionLike(node) {
+  for (let parent = node.parent; parent; parent = parent.parent) {
+    if (ts.isFunctionLike(parent)) return parent
+  }
+  return null
+}
+
+const HELPER_NAME_RE = /^[A-Z][A-Za-z0-9]*$/
+
+// Every local helper component `creditHelperGroupHoverToCallSites` may resolve, as a map from its
+// name to its function node (the declaration itself, or the arrow/function expression a `const`
+// holds). Conditions, all of which must hold (a failure leaves the name out, never guessed):
+//   1. declared at the top level of the file, as a function declaration or a `const X = <arrow or
+//      function expression>`, with a PascalCase name, and without an `export` modifier (`export
+//      function X`, `export const X = …`, `export default function X` are all refused here);
+//   2. not exported by any of these forms: `export { X }` / `export { X as Y }` (also with a
+//      `from`), and `export default X` / `export = X` whose expression mentions the identifier
+//      anywhere (`export default memo(X)` included; over-refusal on the safe side). An
+//      `export const Alias = X` is *not* refused: it binds a different name. None of the export
+//      refusals protects precision, since a credit is proved from this file's own call sites and no
+//      other file's call site ever credits this file; they keep the pass to helpers private to the
+//      file, the scope T680 was written for;
+//   3. bound exactly once in the whole file: any other binding of the identifier anywhere (a
+//      parameter, a local, an import, a destructured name, a class/type declaration) refuses it;
+//   4. never the target of an assignment (a function declaration can be reassigned).
+export function findLocalHelperComponents(sourceFile) {
+  const candidates = new Map()
+  for (const statement of sourceFile.statements) {
+    if (statement.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)) continue
+    if (ts.isFunctionDeclaration(statement) && statement.name && statement.body) {
+      if (HELPER_NAME_RE.test(statement.name.text)) candidates.set(statement.name.text, statement)
+    } else if (
+      ts.isVariableStatement(statement) &&
+      (statement.declarationList.flags & ts.NodeFlags.Const) !== 0
+    ) {
+      for (const decl of statement.declarationList.declarations) {
+        if (
+          ts.isIdentifier(decl.name) &&
+          HELPER_NAME_RE.test(decl.name.text) &&
+          decl.initializer &&
+          (ts.isArrowFunction(decl.initializer) || ts.isFunctionExpression(decl.initializer))
+        ) {
+          candidates.set(decl.name.text, decl.initializer)
+        }
+      }
+    }
+  }
+  if (candidates.size === 0) return candidates
+  const refused = new Set()
+  const bindings = new Map()
+  const visit = (node) => {
+    if (ts.isExportDeclaration(node) && node.exportClause && ts.isNamedExports(node.exportClause)) {
+      for (const el of node.exportClause.elements) refused.add((el.propertyName ?? el.name).text)
+    } else if (ts.isExportAssignment(node)) {
+      const mention = (inner) => {
+        if (ts.isIdentifier(inner)) refused.add(inner.text)
+        ts.forEachChild(inner, mention)
+      }
+      mention(node.expression)
+    } else if (ts.isIdentifier(node) && candidates.has(node.text)) {
+      if (isBindingIdentifier(node)) bindings.set(node.text, (bindings.get(node.text) ?? 0) + 1)
+      else if (isAssignmentTarget(node)) refused.add(node.text)
+    }
+    ts.forEachChild(node, visit)
+  }
+  visit(sourceFile)
+  for (const name of [...candidates.keys()]) {
+    if (refused.has(name) || bindings.get(name) !== 1) candidates.delete(name)
+  }
+  return candidates
+}
+
+// Whether `id` sits in a position that introduces a binding of its name. A property name, a
+// destructuring `propertyName`, an import's `propertyName` and a JSX tag are references, not bindings.
+function isBindingIdentifier(id) {
+  const parent = id.parent
+  return (
+    (ts.isVariableDeclaration(parent) ||
+      ts.isParameter(parent) ||
+      ts.isBindingElement(parent) ||
+      ts.isFunctionDeclaration(parent) ||
+      ts.isFunctionExpression(parent) ||
+      ts.isClassDeclaration(parent) ||
+      ts.isClassExpression(parent) ||
+      ts.isImportClause(parent) ||
+      ts.isImportSpecifier(parent) ||
+      ts.isNamespaceImport(parent) ||
+      ts.isImportEqualsDeclaration(parent) ||
+      ts.isTypeParameterDeclaration(parent) ||
+      ts.isInterfaceDeclaration(parent) ||
+      ts.isTypeAliasDeclaration(parent) ||
+      ts.isEnumDeclaration(parent) ||
+      ts.isModuleDeclaration(parent)) &&
+    parent.name === id
+  )
+}
+
+// Whether `id` is written to: the left of an assignment (also inside a destructuring target), the
+// operand of `++`/`--`, or a `for (X of/in ...)` head.
+function isAssignmentTarget(id) {
+  let node = id
+  for (
+    let parent = node.parent;
+    parent &&
+    (ts.isParenthesizedExpression(parent) ||
+      ts.isArrayLiteralExpression(parent) ||
+      ts.isObjectLiteralExpression(parent) ||
+      ts.isSpreadElement(parent) ||
+      ts.isSpreadAssignment(parent) ||
+      ts.isShorthandPropertyAssignment(parent) ||
+      ts.isPropertyAssignment(parent));
+    parent = node.parent
+  ) {
+    node = parent
+  }
+  const parent = node.parent
+  if (!parent) return false
+  if (ts.isBinaryExpression(parent)) {
+    return (
+      parent.left === node &&
+      parent.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
+      parent.operatorToken.kind <= ts.SyntaxKind.LastAssignment
+    )
+  }
+  if (ts.isPrefixUnaryExpression(parent) || ts.isPostfixUnaryExpression(parent)) {
+    return (
+      parent.operator === ts.SyntaxKind.PlusPlusToken ||
+      parent.operator === ts.SyntaxKind.MinusMinusToken
+    )
+  }
+  return (ts.isForInStatement(parent) || ts.isForOfStatement(parent)) && parent.initializer === node
 }
 
 // --- Record 3: primitive instances --------------------------------------------------------------
@@ -4628,10 +4886,19 @@ export function parseLineSpec(lineSpec) {
 
 // Resolves a citation's own `location` (or its table context) to one file under this repository,
 // or `null` when it cannot be resolved to exactly one — ambiguity is a failure, not a guess.
+// `checkCitations` calls this only for a citation `resolveStoryCitation` returns `null` for, i.e. a
+// location that is not a `.stories.ts(x)` name (a `.md` spec, an `index.tsx`), so a story citation
+// never reaches the story branches below from `checkCitations`. Those branches are reached only by
+// direct callers, today the tests `resolveCitationLocation: a bare component name from an 8c-bis table
+// row resolves its own .stories.tsx` (the `kind === 'stories'` table-context branch and the
+// `.stories.tsx` suffix match) and `T683: resolveCitationLocation resolves a repository-rooted
+// .storybook path to that one file` (the `packages/` branch, on a story path).
 export function resolveCitationLocation(
   { location, tableContext },
-  { specsDir: specs, allSrcFiles },
+  { specsDir: specs, allSrcFiles, packageDir = dsDir },
 ) {
+  const repoRoot = path.resolve(packageDir, '..', '..')
+  const tierSrcDir = path.join(packageDir, 'src')
   // 8c-bis's own table context is a bare component name (`AnalysisTimeline`, its first cell),
   // never a filename — resolved against that component's own `<Name>.stories.tsx`, the same file
   // an explicit `AnalysisTimeline.stories.tsx:176` in prose would resolve to.
@@ -4640,18 +4907,28 @@ export function resolveCitationLocation(
   if (tableContext && tableContext.kind === 'stories' && !location) {
     return resolveCitationLocation(
       { location: `${name}.stories.tsx`, tableContext: null },
-      { specsDir: specs, allSrcFiles },
+      { specsDir: specs, allSrcFiles, packageDir },
     )
   }
   if (name.endsWith('.md')) {
-    const direct = path.isAbsolute(name) ? name : path.join(rootDir, name)
+    const direct = path.isAbsolute(name) ? name : path.join(repoRoot, name)
     if (existsSync(direct) && statSync(direct).isFile()) return direct
     const p = path.join(specs, path.basename(name))
     return existsSync(p) ? p : null
   }
-  // A story-file table context (8c-bis) is always a bare `<Component>.stories.tsx` — resolved the
-  // same suffix-unique way as an explicit one in prose.
-  const direct = path.join(srcDir, name)
+  // A repository-rooted `packages/...` location names exactly that file. From `checkCitations` this
+  // branch serves a non-story location (`packages/design-system/src/screens/ArchivalControl/index.tsx`);
+  // a story path (`packages/design-system/.storybook/foundations/X.stories.tsx`) reaches it only from
+  // a direct caller (the T683 test above), since `checkCitations` resolves story citations through
+  // `resolveStoryCitation`, which reads the story files outside `allSrcFiles`' three tier directories
+  // (foundations, fixtures, `src/lib/`) from its own listing.
+  // The suffix match below serves `Component/index.tsx`-style locations; a bare `X.stories.tsx` name
+  // matched here is likewise a direct-caller path.
+  if (name.startsWith('packages/')) {
+    const rooted = path.join(repoRoot, name)
+    if (existsSync(rooted) && statSync(rooted).isFile()) return rooted
+  }
+  const direct = path.join(tierSrcDir, name)
   if (existsSync(direct) && statSync(direct).isFile()) return direct
   const base = name.split('/').slice(-2).join('/') // "Component/index.tsx" style suffix
   const suffixMatches = allSrcFiles.filter(
@@ -4795,7 +5072,7 @@ export function matchQuoteAgainstText(quote, fileText, ranges) {
 
 // Parses and verifies every citation in row 8's own 8c/8c-bis/8d/8e prose (`extractCitationScope`)
 // against the live tree.
-export function checkCitations({ readmeText }) {
+export function checkCitations({ readmeText, baseDir = dsDir }) {
   const scopeText = extractCitationScope(readmeText)
   if (scopeText === null) {
     return {
@@ -4805,9 +5082,35 @@ export function checkCitations({ readmeText }) {
       ],
     }
   }
-  const allSrcFiles = walkAllTsxFiles(srcDir).map((f) => f.split(path.sep).join('/'))
+  const allSrcFiles = walkAllTsxFiles(path.join(baseDir, 'src')).map((f) =>
+    f.split(path.sep).join('/'),
+  )
   const citations = parseCitations(scopeText)
   const failures = []
+  // One resolver for every citation of a story file: `resolveStoryCitation`, over the same
+  // `listStoryFilesOnDisk` listing the 8c-bis excuse rule reads, so the file a quote is verified
+  // against is, by construction, the file that citation excuses. Everything else (a `.md` spec, an
+  // `index.tsx`) keeps `resolveCitationLocation`.
+  const storyFiles = listStoryFilesOnDisk(baseDir)
+  const resolveRowCitation = (citation) => {
+    const story = resolveStoryCitation(citation, storyFiles)
+    if (story === null) {
+      const file = resolveCitationLocation(citation, {
+        specsDir: path.join(baseDir, 'specs'),
+        allSrcFiles,
+        packageDir: baseDir,
+      })
+      const name = citation.location ?? citation.tableContext?.name
+      return {
+        file,
+        failure: file
+          ? null
+          : `location ${JSON.stringify(name)} did not resolve to exactly one file`,
+      }
+    }
+    if (story.failure) return { file: null, failure: story.failure }
+    return { file: path.join(baseDir, story.file), failure: null }
+  }
   for (const citation of citations) {
     if (citation.location === null && citation.tableContext === null) {
       failures.push({
@@ -4824,16 +5127,9 @@ export function checkCitations({ readmeText }) {
       })
       continue
     }
-    const resolved = resolveCitationLocation(citation, {
-      specsDir: path.join(dsDir, 'specs'),
-      allSrcFiles,
-    })
+    const { file: resolved, failure: resolveFailure } = resolveRowCitation(citation)
     if (!resolved) {
-      const name = citation.location ?? citation.tableContext?.name
-      failures.push({
-        raw: citation.raw,
-        reason: `location ${JSON.stringify(name)} did not resolve to exactly one file`,
-      })
+      failures.push({ raw: citation.raw, reason: resolveFailure })
       continue
     }
     const maxLine = Math.max(...ranges.map(([, end]) => end))
@@ -4885,22 +5181,30 @@ export function checkCitations({ readmeText }) {
     // with no leading path) below — routed through the same function with that default name rather
     // than skipped.
     const bareLocation = claim.location || 'index.tsx'
-    let resolved = claim.location
-      ? resolveCitationLocation(
-          { location: claim.location, tableContext: null },
-          { specsDir: path.join(dsDir, 'specs'), allSrcFiles },
-        )
-      : null
+    let resolved = null
+    let resolveFailure = null
+    if (claim.location) {
+      ;({ file: resolved, failure: resolveFailure } = resolveRowCitation({
+        location: claim.location,
+        lineSpec: claim.lineSpec,
+        tableContext: null,
+      }))
+    }
     // A bare filename every component shares (`index.tsx`) never resolves uniquely on its own —
     // fall back to the bullet's own named subject component (see `resolveBareLocationFromBullet`).
-    if (!resolved && !bareLocation.includes('/')) {
+    // A story-file location never falls back: its own resolver already refused it, and a bare
+    // `X.stories.tsx` names no bullet subject.
+    if (!resolved && !bareLocation.includes('/') && !STORY_FILE_NAME_RE.test(bareLocation)) {
       resolved = resolveBareLocationFromBullet(scopeText, claim.line, bareLocation, allSrcFiles)
     }
     if (!resolved) {
       inlineClaimUnresolvableCount++
       failures.push({
         raw: claim.raw,
-        reason: `inline-code claim ${JSON.stringify(claim.claim)}: location ${JSON.stringify(claim.location)} did not resolve to exactly one file`,
+        reason:
+          `inline-code claim ${JSON.stringify(claim.claim)}: ` +
+          (resolveFailure ??
+            `location ${JSON.stringify(claim.location)} did not resolve to exactly one file`),
       })
       continue
     }
@@ -5096,18 +5400,18 @@ function splitIntoProseBlocks(text) {
   return blocks
 }
 
-export function findDeferralHitsInStories(allSrcFiles) {
+// T683: `storyFiles` are paths relative to the package (`listStoryFilesOnDisk`'s own shape), read
+// under `baseDir`. Every hit is keyed by its file's package-relative path and never by a component
+// name: a story file outside `<tier>/<Component>/` (foundations, fixtures, `src/lib/`, directly
+// under a tier) has no component, and two story files in one component directory are two files.
+export function findDeferralHitsInStories(storyFiles, baseDir = dsDir) {
   const hits = []
-  for (const file of allSrcFiles) {
-    if (!file.endsWith('.stories.tsx')) continue
-    const segMatch = file.match(/\/src\/(primitives|composites|screens)\/([A-Za-z0-9]+)\//)
-    if (!segMatch) continue
-    const component = segMatch[2]
-    const text = readFileSync(file, 'utf8')
+  for (const file of storyFiles) {
+    const text = readFileSync(path.join(baseDir, file), 'utf8')
     for (const block of splitIntoProseBlocks(text)) {
       // Joined with real `\n`s first, then flattened to spaces for the regex — `parseCitations`'
-      // own idiom (`:2559` above) — so a match's character offset still recovers its own physical
-      // line by counting the newlines the *joined* text carries before it.
+      // own idiom (its `flat` text) — so a match's character offset still recovers its own
+      // physical line by counting the newlines the *joined* text carries before it.
       const joined = block.text.join('\n')
       const flat = joined.replace(/\n/g, ' ')
       DEFERRAL_VOCABULARY_RE.lastIndex = 0
@@ -5116,7 +5420,6 @@ export function findDeferralHitsInStories(allSrcFiles) {
         const lineOffset = joined.slice(0, m.index).split('\n').length - 1
         const physicalLine = block.startLine + lineOffset
         hits.push({
-          component,
           file,
           line: physicalLine,
           blockStart: block.startLine,
@@ -5129,10 +5432,61 @@ export function findDeferralHitsInStories(allSrcFiles) {
   return hits
 }
 
-export function checkDeferralVocabularyCoverage(
-  readmeText,
-  { allSrcFiles: injectedSrcFiles } = {},
-) {
+// The one package-relative story file a citation in 8c-bis names, or a failure reason; `null` when
+// the citation is not about a story file at all (a `.md` spec, an `index.tsx`, a bare `:line`
+// outside a table). T683: attribution is by file, and only these two shapes are read —
+//   - a bare `X.stories.tsx` / `X.stories.ts` (written in prose, or the `X` / `X.stories.tsx` first
+//     cell of an 8c-bis table row a location-less `:line` sits in) names
+//     `src/<tier>/X/X.stories.<same extension>`: exactly one such file, or a failure. It never names
+//     a sibling in that directory (`X/Extra.stories.tsx`);
+//   - a location with a `/` must be repository-rooted, `packages/design-system/<path>`, and names
+//     exactly that file if the Storybook globs index it, or a failure. A partial path
+//     (`foundations/Elevation.stories.tsx`) is not guessed at.
+// A citation that resolves to nothing, or to more than one file, is a failure, never an excuse.
+const STORY_FILE_NAME_RE = /\.stories\.(ts|tsx)$/
+const DESIGN_SYSTEM_PREFIX = 'packages/design-system/'
+export function resolveStoryCitation(citation, storyFiles) {
+  let name = citation.location
+  if (!name) {
+    if (!citation.tableContext || citation.tableContext.kind !== 'stories') return null
+    name = citation.tableContext.name
+    // A row's first cell is a bare component name (`AnalysisTimeline`), which names its `.tsx` story.
+    if (!STORY_FILE_NAME_RE.test(name)) name = `${name}.stories.tsx`
+  }
+  if (!STORY_FILE_NAME_RE.test(name)) return null
+  const cited = `${name}:${citation.lineSpec}`
+  if (!name.includes('/')) {
+    const stem = name.replace(STORY_FILE_NAME_RE, '')
+    const matches = storyFiles.filter((file) => {
+      const [root, tier, directory, base, ...rest] = file.split('/')
+      return (
+        root === 'src' &&
+        TIER_SEGMENTS.includes(tier) &&
+        directory === stem &&
+        base === name &&
+        rest.length === 0
+      )
+    })
+    if (matches.length === 1) return { file: matches[0] }
+    return {
+      failure:
+        `citation \`${cited}\` names ${matches.length === 0 ? 'no story file' : 'more than one story file'}: ` +
+        `a bare story-file name is read as \`src/<tier>/${stem}/${name}\` and must match exactly one` +
+        (matches.length ? ` (${matches.join(', ')})` : ''),
+    }
+  }
+  if (name.startsWith(DESIGN_SYSTEM_PREFIX)) {
+    const relative = name.slice(DESIGN_SYSTEM_PREFIX.length)
+    if (storyFiles.includes(relative)) return { file: relative }
+  }
+  return {
+    failure:
+      `citation \`${cited}\` names no story file the Storybook globs index: a story file with a ` +
+      'path is cited by its repository-rooted path, `packages/design-system/<path>`, never a partial one',
+  }
+}
+
+export function checkDeferralVocabularyCoverage(readmeText, { baseDir = dsDir } = {}) {
   const start = readmeText.indexOf('**8c-bis.')
   const end = readmeText.indexOf('**8d.')
   if (start === -1 || end === -1 || end < start) {
@@ -5140,9 +5494,10 @@ export function checkDeferralVocabularyCoverage(
   }
   const sectionText = readmeText.slice(start, end)
   const citations = parseCitations(sectionText)
-  // Every line either the table's own row for a component, or the exclusion paragraph after it,
-  // cites for that component — table and exclusion citations feed the same per-component line
-  // set, since either one is an equally real accounting of the hit.
+  // Every line either the table's own row for a story file, or the exclusion paragraph after it,
+  // cites in that file — table and exclusion citations feed the same per-file line set
+  // (`citedLinesByFile`, keyed by the one file `resolveStoryCitation` resolves each citation to),
+  // since either one is an equally real accounting of the hit.
   //
   // **Block membership plus a citation window, never block membership alone (T594 M4, REJECT #5 on
   // #80/#79; heading corrected in the row 8 sweep's own item 6 — it used to read "genuinely quote
@@ -5153,35 +5508,35 @@ export function checkDeferralVocabularyCoverage(
   // (`AccountErasurePanel.stories.tsx` 101-135, `DataExportPanel.stories.tsx` 126-157). One
   // citation anywhere in a block that size excused every hit in it, including one a later edit adds
   // far from the citation that was supposed to account for it. A hit is now excused only when one
-  // of that component's own cited lines is *both* in the hit's own block (never crossing a blank
+  // of that file's own cited lines is *both* in the hit's own block (never crossing a blank
   // line — a component's own comment routinely spans several blocks a single table citation cannot
   // each name on its own, `Text`'s own `disabled`-vocabulary block a second, separate block from
   // its table row's own citations) *and* within `DEFERRAL_CITATION_WINDOW` physical lines of the
   // hit itself — close enough that the citation is plausibly accounting for *this* clause, not
   // merely present somewhere in the same multi-paragraph comment.
   const DEFERRAL_CITATION_WINDOW = 15
-  const citedLinesByComponent = new Map()
-  const addCitedLines = (component, lineSpec) => {
+  const storyFiles = listStoryFilesOnDisk(baseDir)
+  const failures = []
+  // Cited lines per story file, keyed by the file's package-relative path (T683): a citation is
+  // credited to the one file `resolveStoryCitation` resolves it to, or fails the run.
+  const citedLinesByFile = new Map()
+  const addCitedLines = (file, lineSpec) => {
     const ranges = parseLineSpec(lineSpec) ?? []
-    const lines = citedLinesByComponent.get(component) ?? new Set()
+    const lines = citedLinesByFile.get(file) ?? new Set()
     for (const [startLine, endLine] of ranges) {
       for (let l = startLine; l <= endLine; l++) lines.add(l)
     }
-    citedLinesByComponent.set(component, lines)
+    citedLinesByFile.set(file, lines)
   }
   for (const c of citations) {
-    if (c.location === null && c.tableContext && c.tableContext.kind === 'stories') {
-      addCitedLines(c.tableContext.name.replace(/\.stories\.tsx$/, ''), c.lineSpec)
-    } else if (c.location && c.location.endsWith('.stories.tsx')) {
-      addCitedLines(path.basename(c.location, '.stories.tsx'), c.lineSpec)
-    }
+    const resolved = resolveStoryCitation(c, storyFiles)
+    if (resolved === null) continue
+    if (resolved.failure) failures.push({ reason: resolved.failure })
+    else addCitedLines(resolved.file, c.lineSpec)
   }
-  const allSrcFiles =
-    injectedSrcFiles ?? walkAllTsxFiles(srcDir).map((f) => f.split(path.sep).join('/'))
-  const hits = findDeferralHitsInStories(allSrcFiles)
-  const failures = []
+  const hits = findDeferralHitsInStories(storyFiles, baseDir)
   for (const hit of hits) {
-    const citedLines = citedLinesByComponent.get(hit.component)
+    const citedLines = citedLinesByFile.get(hit.file)
     const quoteCited =
       citedLines &&
       Array.from(citedLines).some(
@@ -5193,7 +5548,7 @@ export function checkDeferralVocabularyCoverage(
     if (quoteCited) continue
     failures.push({
       reason:
-        `${hit.component}.stories.tsx:${hit.line} carries deferral vocabulary ` +
+        `${hit.file}:${hit.line} carries deferral vocabulary ` +
         `(${JSON.stringify(hit.text.slice(0, 80))}) but is neither within a cited line's own ` +
         "prose block in 8c-bis's own table nor named in its own exclusion paragraph",
     })
@@ -5202,11 +5557,11 @@ export function checkDeferralVocabularyCoverage(
   // carry at least one" with no tripwire of its own — correct the day it was written, silently
   // wrong the next time a row was added or dropped. Printed instead: the 8c-bis table's own row
   // count, one `| \`Component\` | ... |` line per real, judged citation — never the wider set of
-  // every distinct `hit.component` this pass finds, which also includes components named only in
-  // the exclusion paragraph below the table (`Badge`, `SiteHeader`'s `expansion` hit, `Menu`'s
-  // `selection` hit and others) and were never meant to be part of this count.
+  // every file in `hits`, which also includes files cited only in the exclusion paragraph below
+  // the table (`Badge`, `SiteHeader`'s `expansion` hit, `Menu`'s `selection` hit and others) and
+  // were never meant to be part of this count.
   const tableRowCount = (sectionText.match(/^\|\s*`[A-Z][A-Za-z0-9]*`\s*\|/gm) ?? []).length
-  return { failures, hitCount: hits.length, tableRowCount }
+  return { failures, hitCount: hits.length, tableRowCount, scannedFiles: storyFiles }
 }
 
 // --- Cell-count tallies (item 4 of the row-8 sweep's own remediation) --------------------------
@@ -6309,7 +6664,7 @@ function runCitationCheck() {
   log(`${result.parsedCount} row-8 citations parsed and verified against their own file:line.`)
   log("8c's own per-file Handoffs counts and total agree with its own quoted citations.")
   log(
-    `${vocab.hitCount} deferral-vocabulary hits across every *.stories.tsx; every one is either a ` +
+    `${vocab.hitCount} deferral-vocabulary hits across every story file the Storybook globs index; every one is either a ` +
       "row in 8c-bis's own table (currently " +
       `${vocab.tableRowCount} rows, one per component) or named in its own exclusion paragraph.`,
   )

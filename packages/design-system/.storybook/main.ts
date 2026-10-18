@@ -17,8 +17,8 @@ const repoRoot = fileURLToPath(new URL('../../..', import.meta.url))
 // `./fixtures/**` (T693, feature 005) is the second: the plants `tests/visual/state-coverage-
 // runtime.spec.ts` asserts on — stories tagged `state-coverage-fixture`, kept out of the sidebar and
 // of autodocs, never captured or scanned (`scripts/visual/story-index.mjs` is how every reader of
-// the built index skips them). They are not under `src/` on purpose: the checks that walk `src/`
-// (`tier-deps`, `token-scale`, `story-docs`, `state-coverage`) must never reach them.
+// the built index skips them). They are not under `src/` on purpose: the checks that walk it
+// (`tier-deps`, `token-scale`, `story-docs`) skip them; `state-coverage` reads them for wording only.
 const config: StorybookConfig = {
   stories: [
     '../src/**/*.stories.@(ts|tsx)',

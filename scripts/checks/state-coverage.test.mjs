@@ -86,6 +86,7 @@ import {
   PRIMITIVE_NAMES,
 } from './state-coverage.mjs'
 import { deriveVocabulary } from './spec-completeness.mjs'
+import { listStoryFilesOnDisk } from '../visual/story-files.mjs'
 import { REWRITE_COMMAND } from '../visual/state-coverage-runtime-model.mjs'
 import { REVIEW_WIDTHS } from '../visual/review-widths.mjs'
 import { BUILD_STORYBOOK_COMMAND } from '../visual/missing-index.mjs'
@@ -909,6 +910,290 @@ test('contrast: a bare group-hover: is not credited to an ancestor carrying a na
   const anchor = found.find((el) => el.tag === 'a')
   assert.ok(anchor)
   assert.equal(anchor.hover, null)
+})
+
+// --- T680: a `group-hover` mark held by a separately declared helper component ----------------------
+//
+// `MatchRow`'s `OutcomeLabel` carries `group-hover/row-link:underline`; the row's own `<a>` carries
+// `group/row-link`; the helper is invoked as a JSX child of that `<a>`. The two are disjoint JSX
+// trees in the file's source text, so the literal-nesting pass above cannot see the pair. The helper
+// pass credits the mark to the enclosing group at each call site, but only when every step is provable
+// from this one file; every refusal below is an under-credit by design (a false credit is worse than a
+// missed one).
+
+const HELPER_TOKEN = 'group-hover/row-link:underline'
+const helperFixture = (helperDeclaration, widgetBody, extra = '') =>
+  `${helperDeclaration}\n${extra}\nfunction Widget() {\n  return (\n${widgetBody}\n  )\n}\n`
+const FN_HELPER = `function OutcomeLabel() {
+  return <span className="font-sans group-hover/row-link:underline">Won</span>
+}`
+const GROUPED_CALL = `<a href="/match/1" className="group/row-link flex"><OutcomeLabel /></a>`
+const hoverOfAnchors = (source) =>
+  findLocalElements(parse(source), 'fixture.tsx', buildConstStringMap(parse(source)))
+    .filter((el) => el.tag === 'a')
+    .map((el) => el.hover)
+
+test('T680: a function-declaration helper holding group-hover/<name> is credited to the group enclosing its call site', () => {
+  const source = helperFixture(FN_HELPER, GROUPED_CALL)
+  const sourceFile = parse(source)
+  const found = findLocalElements(sourceFile, 'fixture.tsx', buildConstStringMap(sourceFile))
+  assert.equal(found.length, 1, 'the helper-held span must never become a row of its own')
+  assert.equal(found[0].tag, 'a')
+  assert.equal(found[0].hover, HELPER_TOKEN)
+})
+
+test('T680: sibling shape, a const arrow helper with bare group / group-hover, is credited the same way', () => {
+  const source = helperFixture(
+    `const Label = () => <span className="group-hover:underline">Won</span>`,
+    `<a href="/match/1" className="group flex"><Label /></a>`,
+  )
+  assert.deepEqual(hoverOfAnchors(source), ['group-hover:underline'])
+})
+
+test('T680: a const function-expression helper is credited too', () => {
+  const source = helperFixture(
+    `const Label = function () { return <span className="group-hover/row-link:underline">Won</span> }`,
+    GROUPED_CALL.replaceAll('OutcomeLabel', 'Label'),
+  )
+  assert.deepEqual(hoverOfAnchors(source), [HELPER_TOKEN])
+})
+
+test('T680: every group-hover utility the helper holds is credited, and the descendant gains no hover of its own', () => {
+  const source = helperFixture(
+    `function OutcomeLabel() {
+  return <span className="group-hover/row-link:underline group-hover/row-link:decoration-2">Won</span>
+}`,
+    GROUPED_CALL,
+  )
+  assert.deepEqual(hoverOfAnchors(source), [
+    'group-hover/row-link:underline group-hover/row-link:decoration-2',
+  ])
+})
+
+// Contrasts: each is a shape that must credit nothing.
+const HELPER_NO_CREDIT_CASES = {
+  'a helper invoked outside any group': helperFixture(
+    FN_HELPER,
+    `<div><OutcomeLabel /><a href="/match/1" className="group/row-link flex">text</a></div>`,
+  ),
+  'a helper invoked inside a group of a different name': helperFixture(
+    FN_HELPER,
+    `<a href="/match/1" className="group/other-link flex"><OutcomeLabel /></a>`,
+  ),
+  'a named group-hover paired with a bare group': helperFixture(
+    FN_HELPER,
+    `<a href="/match/1" className="group flex"><OutcomeLabel /></a>`,
+  ),
+  'an exported helper (export modifier)': helperFixture(`export ${FN_HELPER}`, GROUPED_CALL),
+  'an exported const helper (export modifier)': helperFixture(
+    `export const OutcomeLabel = () => <span className="group-hover/row-link:underline">Won</span>`,
+    GROUPED_CALL,
+  ),
+  'an exported helper (export list)': helperFixture(
+    FN_HELPER,
+    GROUPED_CALL,
+    `export { OutcomeLabel }`,
+  ),
+  'an exported helper (aliased export list)': helperFixture(
+    FN_HELPER,
+    GROUPED_CALL,
+    `export { OutcomeLabel as Label }`,
+  ),
+  'an exported helper (export default)': helperFixture(
+    FN_HELPER,
+    GROUPED_CALL,
+    `export default OutcomeLabel`,
+  ),
+  'a helper whose name a parameter shadows': helperFixture(
+    FN_HELPER,
+    GROUPED_CALL,
+    `function Other({ OutcomeLabel }) {
+  return <a href="/other" className="group/row-link"><OutcomeLabel /></a>
+}`,
+  ),
+  'a helper whose name a local const shadows': helperFixture(
+    FN_HELPER,
+    GROUPED_CALL,
+    `function Other() {
+  const OutcomeLabel = () => <b>x</b>
+  return <a href="/other" className="group/row-link"><OutcomeLabel /></a>
+}`,
+  ),
+  'a helper whose name an import also binds': `import { OutcomeLabel } from './elsewhere'\n${helperFixture(FN_HELPER, GROUPED_CALL)}`,
+  'a helper that is reassigned': helperFixture(
+    FN_HELPER,
+    GROUPED_CALL,
+    `OutcomeLabel = () => null`,
+  ),
+  'a let-declared helper': helperFixture(
+    `let OutcomeLabel = () => <span className="group-hover/row-link:underline">Won</span>`,
+    GROUPED_CALL,
+  ),
+  'a lower-case helper name': helperFixture(
+    `function outcomeLabel() { return <span className="group-hover/row-link:underline">Won</span> }`,
+    `<a href="/match/1" className="group/row-link flex">{outcomeLabel()}</a>`,
+  ),
+  'a mark inside a callback nested in the helper': helperFixture(
+    `function OutcomeLabel() {
+  return <ul>{[1].map(() => <li className="group-hover/row-link:underline">x</li>)}</ul>
+}`,
+    GROUPED_CALL,
+  ),
+  'a helper reached through a second helper (two hops)': helperFixture(
+    FN_HELPER,
+    `<a href="/match/1" className="group/row-link flex"><Outer /></a>`,
+    `function Outer() {
+  return <div><OutcomeLabel /></div>
+}`,
+  ),
+  'a value-position reference only': helperFixture(
+    FN_HELPER,
+    `<a href="/match/1" className="group/row-link flex">{columns.length}</a>`,
+    `const columns = [{ render: OutcomeLabel }]`,
+  ),
+  'a member-expression tag that is not the helper itself': helperFixture(
+    FN_HELPER,
+    `<a href="/match/1" className="group/row-link flex"><OutcomeLabel.Inner /></a>`,
+  ),
+}
+for (const [label, source] of Object.entries(HELPER_NO_CREDIT_CASES)) {
+  test(`T680 contrast: ${label} credits nothing`, () => {
+    const anchors = hoverOfAnchors(source)
+    assert.ok(anchors.length >= 1, 'the fixture must contain at least one anchor')
+    for (const hover of anchors) assert.equal(hover, null)
+  })
+}
+
+test('T680 contrast: group-hover JSX passed as children into a helper whose marker wraps {children} is not credited', () => {
+  const source = `
+function Card({ children }) {
+  return <a href="/match/1" className="group/row-link flex">{children}</a>
+}
+export function Widget() {
+  return (
+    <Card>
+      <span className="group-hover/row-link:underline">Won</span>
+    </Card>
+  )
+}
+`
+  assert.deepEqual(hoverOfAnchors(source), [null])
+})
+
+test('T680: a reference in value position does not block another call site of the same helper', () => {
+  const source = helperFixture(
+    FN_HELPER,
+    GROUPED_CALL,
+    `const columns = [{ render: OutcomeLabel }]`,
+  )
+  assert.deepEqual(hoverOfAnchors(source), [HELPER_TOKEN])
+})
+
+test('T680: a helper invoked once inside a group and once outside credits only the enclosing anchor', () => {
+  const source = helperFixture(
+    FN_HELPER,
+    `<div>
+      <a href="/match/1" className="group/row-link flex"><OutcomeLabel /></a>
+      <OutcomeLabel />
+      <button type="button" className="px-2">Other</button>
+    </div>`,
+  )
+  const sourceFile = parse(source)
+  const found = findLocalElements(sourceFile, 'fixture.tsx', buildConstStringMap(sourceFile))
+  assert.equal(found.length, 2, 'neither helper-held span nor the bare call site becomes a row')
+  assert.equal(found.find((el) => el.tag === 'a').hover, HELPER_TOKEN)
+  assert.equal(found.find((el) => el.tag === 'button').hover, null)
+})
+
+test('T680: a matching group inside the helper keeps the credit there, the call site group gains nothing (innermost only)', () => {
+  const source = helperFixture(
+    `function Inner() {
+  return (
+    <a href="/inner" className="group/row-link">
+      <span className="group-hover/row-link:underline">Won</span>
+    </a>
+  )
+}`,
+    `<a href="/outer" className="group/row-link"><Inner /></a>`,
+  )
+  const sourceFile = parse(source)
+  const found = findLocalElements(sourceFile, 'fixture.tsx', buildConstStringMap(sourceFile))
+  // The helper is declared before `Widget`, so source order is [inner anchor, outer anchor].
+  const [innerEl, outerEl] = [...found].sort((x, y) => x.nodeStart - y.nodeStart)
+  assert.equal(found.length, 2)
+  assert.equal(innerEl.hover, HELPER_TOKEN)
+  assert.equal(outerEl.hover, null)
+})
+
+// A call site that reaches the group only through a JSX attribute is not "rendered inside the
+// group's children": a handler's JSX is rendered later by something else, and a component prop's JSX
+// may be portalled out of the group's subtree. Both are refused, so neither credits anything.
+const ATTRIBUTE_CALL_SITE_CASES = {
+  'a call site inside an event-handler attribute': `<a href="/match/1" className="group/row-link" onClick={() => toast(<OutcomeLabel />)}>text</a>`,
+  'a call site inside a component prop (a portal)': `<a href="/match/1" className="group/row-link"><Tooltip content={<OutcomeLabel />}>text</Tooltip></a>`,
+  "a call site inside the marker's own attribute": `<a href="/match/1" className="group/row-link" aria-label={<OutcomeLabel />}>text</a>`,
+}
+for (const [label, widgetBody] of Object.entries(ATTRIBUTE_CALL_SITE_CASES)) {
+  test(`T680 contrast: ${label} credits nothing`, () => {
+    assert.deepEqual(hoverOfAnchors(helperFixture(FN_HELPER, widgetBody)), [null])
+  })
+}
+
+// Two more shapes the same reasoning refuses: a spread attribute carries JSX as a prop just as a named
+// attribute does, and a `createPortal(...)` argument is rendered outside the group's subtree by name.
+const SPREAD_AND_PORTAL_CALL_SITE_CASES = {
+  'a call site inside a spread attribute': `<a href="/match/1" className="group/row-link"><Tooltip {...{ content: <OutcomeLabel /> }}>text</Tooltip></a>`,
+  'a call site that is an argument of createPortal': `<a href="/match/1" className="group/row-link">{createPortal(<OutcomeLabel />, document.body)}</a>`,
+  'a call site that is an argument of ReactDOM.createPortal': `<a href="/match/1" className="group/row-link">{ReactDOM.createPortal(<OutcomeLabel />, document.body)}</a>`,
+}
+for (const [label, widgetBody] of Object.entries(SPREAD_AND_PORTAL_CALL_SITE_CASES)) {
+  test(`T680 contrast: ${label} credits nothing`, () => {
+    assert.deepEqual(hoverOfAnchors(helperFixture(FN_HELPER, widgetBody)), [null])
+  })
+}
+
+test('T680: a createPortal call site does not block the same helper’s direct-child call site, and a non-portal call argument stays credited', () => {
+  const both = `<a href="/match/1" className="group/row-link">{createPortal(<OutcomeLabel />, document.body)}<OutcomeLabel /></a>`
+  assert.deepEqual(hoverOfAnchors(helperFixture(FN_HELPER, both)), [HELPER_TOKEN])
+  const other = `<a href="/match/1" className="group/row-link">{wrap(<OutcomeLabel />)}</a>`
+  assert.deepEqual(hoverOfAnchors(helperFixture(FN_HELPER, other)), [HELPER_TOKEN])
+})
+
+test('T680: a call site in a direct child position, or inside a map callback in the anchor children, is still credited', () => {
+  assert.deepEqual(hoverOfAnchors(helperFixture(FN_HELPER, GROUPED_CALL)), [HELPER_TOKEN])
+  const mapped = `<a href="/match/1" className="group/row-link">{items.map((item) => <OutcomeLabel key={item} />)}</a>`
+  assert.deepEqual(hoverOfAnchors(helperFixture(FN_HELPER, mapped)), [HELPER_TOKEN])
+})
+
+test('T680: a call site in an attribute does not block the same helper’s other, child-position call site', () => {
+  const body = `<a href="/match/1" className="group/row-link" onClick={() => toast(<OutcomeLabel />)}><OutcomeLabel /></a>`
+  assert.deepEqual(hoverOfAnchors(helperFixture(FN_HELPER, body)), [HELPER_TOKEN])
+})
+
+// `export const Alias = OutcomeLabel` is not an export of the helper: it binds a different name, and
+// the credit is proved from this file's own call sites alone, which an alias elsewhere cannot change.
+test('T680: an alias export of the helper does not refuse it, and its local call site is still credited', () => {
+  const source = helperFixture(FN_HELPER, GROUPED_CALL, `export const Alias = OutcomeLabel`)
+  assert.deepEqual(hoverOfAnchors(source), [HELPER_TOKEN])
+})
+
+test("T680: MatchRow's row link now carries the three group-hover/row-link utilities its OutcomeLabel helper holds", () => {
+  const file = path.join(REPO_SRC_DIR, 'composites', 'MatchRow', 'index.tsx')
+  const sourceFile = parse(readFileSync(file, 'utf8'), file)
+  const found = findLocalElements(sourceFile, file, buildConstStringMap(sourceFile))
+  const row = found.find((el) => el.tag === 'a')
+  assert.ok(row, 'MatchRow renders a row link')
+  const tokens = row.hover.split(' ')
+  for (const token of [
+    'group-hover/row-link:underline',
+    'group-hover/row-link:decoration-2',
+    'group-hover/row-link:underline-offset-2',
+  ]) {
+    assert.ok(tokens.includes(token), `${token} missing from ${row.hover}`)
+  }
+  assert.ok(tokens.includes('hover:bg-surface-sunken'), 'its own hover fill is kept')
+  // The helper's span is not itself a row, and no second element picked up a hover from this.
+  assert.equal(found.filter((el) => (el.hover ?? '').includes('group-hover')).length, 1)
 })
 
 // --- Orchestrator remediation 2b: a story's own `args` (merged with the meta's default `args`)
@@ -2570,11 +2855,11 @@ test('resolveCitationLocation: an ambiguous suffix (two files with the same tail
 
 // --- `reviewer`'s fourth REJECT on PR #80, item A3: `checkCitations` was never called by any test
 // — only its own pieces (`parseCitations`, `resolveCitationLocation`, `matchQuoteAgainstText`) were.
-// `checkCitations` itself reads the live tree for resolution (`specsDir`/`srcDir` are module-level
-// constants, not injectable — the same reason `checkDeferralVocabularyCoverage`'s own live-tree
-// call is the one made injectable instead), so these end-to-end tests point at real, stable files
-// under this package's own `specs/` and `src/`, reading their content fresh rather than hard-coding
-// it, so the test cannot drift from what it asserts against. ------------------------------------
+// `checkCitations` reads the live package by default (`baseDir` defaults to the real one, and the
+// check has to see the live source on every real run), so these end-to-end tests point at real,
+// stable files under this package's own `specs/` and `src/`, reading their content fresh rather
+// than hard-coding it, so the test cannot drift from what it asserts against. The one-resolver tests
+// further down pass a temp package as `baseDir` instead. ---------------------------------------
 
 test('checkCitations: a citation whose quote text is not present at its own cited location fails (mis-cited quote), end to end', () => {
   const readmeText =
@@ -2992,36 +3277,40 @@ test('checkHandoffTally: fails when the Total line disagrees with the table row 
   assert.match(result.failures[0].reason, /disagrees with the table's own row sum, 1/)
 })
 
-test('findDeferralHitsInStories: finds the vocabulary in a story file and attributes it to its own component', () => {
+test('findDeferralHitsInStories: finds the vocabulary in a story file and keys the hit by its package-relative path', () => {
   withFixtureTree((dir) => {
-    const storyFile = path.join(dir, 'src', 'primitives', 'Widget', 'Widget.stories.tsx')
-    mkdirSync(path.dirname(storyFile), { recursive: true })
+    const rel = 'src/primitives/Widget/Widget.stories.tsx'
+    mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true })
     writeFileSync(
-      storyFile,
+      path.join(dir, rel),
       '// hover — none; owned by `Button` and by nothing else.\nexport const X = {}\n',
     )
-    const allSrcFiles = [storyFile.split(path.sep).join('/')]
-    const hits = findDeferralHitsInStories(allSrcFiles)
+    const hits = findDeferralHitsInStories([rel], dir)
     assert.equal(hits.length, 1)
-    assert.equal(hits[0].component, 'Widget')
+    assert.equal(hits[0].file, rel)
+    assert.equal('component' in hits[0], false)
     assert.equal(hits[0].line, 1)
   })
 })
 
-test('findDeferralHitsInStories: a non-story .tsx file is never scanned', () => {
+test('checkDeferralVocabularyCoverage: a non-story .tsx file is never scanned', () => {
   withFixtureTree((dir) => {
     const indexFile = path.join(dir, 'src', 'primitives', 'Widget', 'index.tsx')
     mkdirSync(path.dirname(indexFile), { recursive: true })
     writeFileSync(indexFile, '// owned by `Button`\n')
-    const allSrcFiles = [indexFile.split(path.sep).join('/')]
-    assert.deepEqual(findDeferralHitsInStories(allSrcFiles), [])
+    const result = checkDeferralVocabularyCoverage(
+      '**8c-bis. Story comments.**\n\n**8d. The no-owner list**\n',
+      { baseDir: dir },
+    )
+    assert.equal(result.hitCount, 0)
+    assert.deepEqual(result.scannedFiles, [])
   })
 })
 
 // --- `reviewer`'s fourth REJECT on PR #80, item A3: no test proved any of the three row-8 gates
 // actually fails on bad input — this one was named "…fails" but only ever exercised
-// `parseCitations` by hand, never called `checkDeferralVocabularyCoverage` itself. `allSrcFiles` is
-// injectable for exactly this reason: the check has to see the live source on every real run (the
+// `parseCitations` by hand, never called `checkDeferralVocabularyCoverage` itself. `baseDir` is
+// injectable for exactly this reason: the check has to see the live package on every real run (the
 // same reason `state-coverage.mjs`'s own consistency mode never takes a fixture tree either), but a
 // test proving the *gate* fails needs a fixture it controls, not the live tree. -------------------
 
@@ -3030,6 +3319,8 @@ test('checkDeferralVocabularyCoverage: a real hit whose component has no table r
     const storyFile = path.join(dir, 'src', 'primitives', 'Stray', 'Stray.stories.tsx')
     mkdirSync(path.dirname(storyFile), { recursive: true })
     writeFileSync(storyFile, '// hover — none; owned by `Button` and by nothing else.\n')
+    // The row's own component has a story file (a citation naming none is a failure of its own).
+    plantStoryFile(dir, 'src/primitives/Known/Known.stories.tsx', 'export const A = {}\n')
     const readme =
       '**8c-bis. Story comments.**\n\n' +
       '| Component | Quotes |\n' +
@@ -3038,7 +3329,7 @@ test('checkDeferralVocabularyCoverage: a real hit whose component has no table r
       'No exclusions here.\n\n' +
       '**8d. The no-owner list**\n'
     const result = checkDeferralVocabularyCoverage(readme, {
-      allSrcFiles: [storyFile.split(path.sep).join('/')],
+      baseDir: dir,
     })
     assert.equal(result.failures.length, 1)
     assert.match(result.failures[0].reason, /Stray\.stories\.tsx:1 carries deferral vocabulary/)
@@ -3058,7 +3349,7 @@ test('checkDeferralVocabularyCoverage: the same hit passes once its own line is 
       'No exclusions here.\n\n' +
       '**8d. The no-owner list**\n'
     const result = checkDeferralVocabularyCoverage(readme, {
-      allSrcFiles: [storyFile.split(path.sep).join('/')],
+      baseDir: dir,
     })
     assert.deepEqual(result.failures, [])
   })
@@ -3083,7 +3374,7 @@ test('checkDeferralVocabularyCoverage: two hits in one prose block are both excu
       'No exclusions here.\n\n' +
       '**8d. The no-owner list**\n'
     const result = checkDeferralVocabularyCoverage(readme, {
-      allSrcFiles: [storyFile.split(path.sep).join('/')],
+      baseDir: dir,
     })
     // Both lines sit in the same prose block as the cited `:1`, so both are excused.
     assert.deepEqual(result.failures, [])
@@ -3110,7 +3401,7 @@ test("checkDeferralVocabularyCoverage: a hit in a *second, separate* prose block
       'No exclusions here.\n\n' +
       '**8d. The no-owner list**\n'
     const result = checkDeferralVocabularyCoverage(readme, {
-      allSrcFiles: [storyFile.split(path.sep).join('/')],
+      baseDir: dir,
     })
     // Pre-fix, `Known` having *any* table row excused every hit anywhere in its own file — this is
     // exactly the shape `reviewer`'s fourth REJECT found: a new, false deferral in an
@@ -3146,7 +3437,7 @@ test('checkDeferralVocabularyCoverage: a hit far from its own citation, but stil
       'No exclusions here.\n\n' +
       '**8d. The no-owner list**\n'
     const result = checkDeferralVocabularyCoverage(readme, {
-      allSrcFiles: [storyFile.split(path.sep).join('/')],
+      baseDir: dir,
     })
     assert.equal(result.failures.length, 1)
     assert.match(result.failures[0].reason, /Known\.stories\.tsx:22 carries deferral vocabulary/)
@@ -3170,10 +3461,362 @@ test('contrast: a hit close to its own citation, in the same block, still passes
       'No exclusions here.\n\n' +
       '**8d. The no-owner list**\n'
     const result = checkDeferralVocabularyCoverage(readme, {
-      allSrcFiles: [storyFile.split(path.sep).join('/')],
+      baseDir: dir,
     })
     assert.deepEqual(result.failures, [])
   })
+})
+
+// --- T683: the deferral-vocabulary sweep covers every story file the Storybook globs index, and a
+// hit is attributed to its file, never to a component name. Each plant below is a package tree in a
+// temp dir (`baseDir`), so none touches a real story file. -----------------------------------------
+
+const DEFERRAL_LINE = '// hover — none; owned by `Button` and by nothing else.\n'
+
+function deferralReadme({ rows = '', exclusions = 'No exclusions here.' } = {}) {
+  return (
+    '**8c-bis. Story comments.**\n\n' +
+    '| Component | Quotes |\n' +
+    '| --- | --- |\n' +
+    rows +
+    '\n' +
+    exclusions +
+    '\n\n' +
+    '**8d. The no-owner list**\n'
+  )
+}
+
+function plantStoryFile(dir, rel, text = DEFERRAL_LINE) {
+  const full = path.join(dir, rel)
+  mkdirSync(path.dirname(full), { recursive: true })
+  writeFileSync(full, text)
+  return rel
+}
+
+for (const rel of [
+  'src/primitives/Widget/Widget.stories.ts',
+  '.storybook/foundations/Planted.stories.tsx',
+  'src/composites/Loose.stories.tsx',
+  'src/lib/Helper.stories.tsx',
+  '.storybook/fixtures/Planted.stories.tsx',
+]) {
+  test(`T683 plant: an uncited deferral phrase in ${rel} is reported, naming its path`, () => {
+    withFixtureTree((dir) => {
+      plantStoryFile(dir, rel)
+      const result = checkDeferralVocabularyCoverage(deferralReadme(), { baseDir: dir })
+      assert.equal(result.failures.length, 1)
+      assert.ok(
+        result.failures[0].reason.startsWith(`${rel}:1 carries deferral vocabulary`),
+        result.failures[0].reason,
+      )
+    })
+  })
+}
+
+test('T683 contrast: a phrase in <tier>/<C>/<C>.stories.tsx is found, and excused by a bare citation of its own file, before and after', () => {
+  withFixtureTree((dir) => {
+    plantStoryFile(dir, 'src/primitives/Known/Known.stories.tsx')
+    const uncited = checkDeferralVocabularyCoverage(deferralReadme(), { baseDir: dir })
+    assert.equal(uncited.hitCount, 1)
+    assert.equal(uncited.failures.length, 1)
+    const row = '| `Known` | `:1` "owned by `Button` and by nothing else." — filed. |\n'
+    const byRow = checkDeferralVocabularyCoverage(deferralReadme({ rows: row }), { baseDir: dir })
+    assert.equal(byRow.hitCount, 1)
+    assert.deepEqual(byRow.failures, [])
+    const byProse = checkDeferralVocabularyCoverage(
+      deferralReadme({
+        exclusions: '`Known.stories.tsx:1` ("owned by `Button` and by nothing else.") is filed.',
+      }),
+      { baseDir: dir },
+    )
+    assert.deepEqual(byProse.failures, [])
+  })
+})
+
+test('T683 sibling: a bare Foo.stories.tsx citation does not excuse a phrase at the same line of Foo/Extra.stories.tsx', () => {
+  withFixtureTree((dir) => {
+    plantStoryFile(dir, 'src/composites/Foo/Foo.stories.tsx')
+    plantStoryFile(dir, 'src/composites/Foo/Extra.stories.tsx')
+    const row = '| `Foo` | `:1` "owned by `Button` and by nothing else." — filed. |\n'
+    const result = checkDeferralVocabularyCoverage(deferralReadme({ rows: row }), { baseDir: dir })
+    assert.equal(result.hitCount, 2)
+    assert.equal(result.failures.length, 1)
+    assert.ok(
+      result.failures[0].reason.startsWith('src/composites/Foo/Extra.stories.tsx:1 carries'),
+      result.failures[0].reason,
+    )
+  })
+})
+
+test('T683: a bare story citation that resolves to no file, or to more than one, fails naming the citation', () => {
+  withFixtureTree((dir) => {
+    plantStoryFile(dir, 'src/primitives/Known/Known.stories.tsx')
+    // Resolves to nothing: no Ghost component at all.
+    const ghost = checkDeferralVocabularyCoverage(
+      deferralReadme({ exclusions: '`Ghost.stories.tsx:1` ("owned by `Button`") is filed.' }),
+      { baseDir: dir },
+    )
+    assert.ok(
+      ghost.failures.some((f) => f.reason.includes('Ghost.stories.tsx:1')),
+      JSON.stringify(ghost.failures),
+    )
+    // Resolves to nothing: the citation names `.ts`, only `.tsx` exists.
+    const wrongExtension = checkDeferralVocabularyCoverage(
+      deferralReadme({ exclusions: '`Known.stories.ts:1` ("owned by `Button`") is filed.' }),
+      { baseDir: dir },
+    )
+    assert.ok(wrongExtension.failures.some((f) => f.reason.includes('Known.stories.ts:1')))
+    // Resolves to two: the same component name in two tiers.
+    plantStoryFile(dir, 'src/composites/Known/Known.stories.tsx', 'export const A = {}\n')
+    const twice = checkDeferralVocabularyCoverage(
+      deferralReadme({ exclusions: '`Known.stories.tsx:1` ("owned by `Button`") is filed.' }),
+      { baseDir: dir },
+    )
+    assert.ok(
+      twice.failures.some((f) => f.reason.includes('Known.stories.tsx:1')),
+      JSON.stringify(twice.failures),
+    )
+    // Contrast: a table row for a component with one story file is no failure.
+    const clean = checkDeferralVocabularyCoverage(deferralReadme(), { baseDir: dir })
+    assert.equal(clean.failures.length, 1) // the phrase in primitives/Known, still uncited
+  })
+})
+
+test("T683: a repository-rooted path citation excuses its own file's hit, and not another file's hit at the same line", () => {
+  withFixtureTree((dir) => {
+    plantStoryFile(dir, '.storybook/foundations/Planted.stories.tsx')
+    plantStoryFile(dir, '.storybook/fixtures/Planted.stories.tsx')
+    const cite =
+      '`packages/design-system/.storybook/foundations/Planted.stories.tsx:1` ("owned by `Button` and by nothing else.") is filed.'
+    const result = checkDeferralVocabularyCoverage(deferralReadme({ exclusions: cite }), {
+      baseDir: dir,
+    })
+    assert.equal(result.hitCount, 2)
+    assert.equal(result.failures.length, 1)
+    assert.ok(
+      result.failures[0].reason.startsWith('.storybook/fixtures/Planted.stories.tsx:1 carries'),
+      result.failures[0].reason,
+    )
+  })
+})
+
+test('T683: a path citation naming no story file the globs index fails naming the citation', () => {
+  withFixtureTree((dir) => {
+    plantStoryFile(dir, '.storybook/foundations/Planted.stories.tsx', 'export const A = {}\n')
+    for (const location of [
+      'packages/design-system/.storybook/foundations/Missing.stories.tsx',
+      // Not repository-rooted: never guessed at.
+      'foundations/Planted.stories.tsx',
+    ]) {
+      const result = checkDeferralVocabularyCoverage(
+        deferralReadme({ exclusions: `\`${location}:1\` ("owned by \`Button\`") is filed.` }),
+        { baseDir: dir },
+      )
+      assert.ok(
+        result.failures.some((f) => f.reason.includes(`${location}:1`)),
+        JSON.stringify(result.failures),
+      )
+    }
+  })
+})
+
+test('T683: resolveCitationLocation resolves a repository-rooted .storybook path to that one file', () => {
+  const resolved = resolveCitationLocation(
+    {
+      location: 'packages/design-system/.storybook/foundations/Elevation.stories.tsx',
+      tableContext: null,
+    },
+    { specsDir: '/nonexistent', allSrcFiles: [] },
+  )
+  assert.equal(
+    resolved,
+    path.join(REPO_SRC_DIR, '..', '.storybook', 'foundations', 'Elevation.stories.tsx'),
+  )
+})
+
+test('T683 real tree: the sweep reads foundations and fixtures story files, and finds nothing unaccounted', () => {
+  const readmeText = readFileSync(path.join(REPO_SRC_DIR, '..', 'specs', 'README.md'), 'utf8')
+  const result = checkDeferralVocabularyCoverage(readmeText)
+  assert.ok(
+    result.scannedFiles.some((f) => f.startsWith('.storybook/foundations/')),
+    'no .storybook/foundations/ story file was scanned',
+  )
+  assert.ok(
+    result.scannedFiles.some((f) => f.startsWith('.storybook/fixtures/')),
+    'no .storybook/fixtures/ story file was scanned',
+  )
+  assert.deepEqual(result.failures, [])
+})
+
+// --- One resolver for row-8 story-file citations ---------------------------------------------------
+// `checkCitations` verifies a quote against the file `resolveStoryCitation` resolves, the same call
+// the 8c-bis excuse rule makes, so the file whose text a quote is checked against is, by
+// construction, the file that citation excuses. Each plant is a package tree in a temp dir (`baseDir`).
+
+const FALSE_DEFERRAL = '// hover — none; owned by `Button` and by nothing else.'
+const citedReadme = (rowsOrProse) => {
+  const { rows = '', exclusions = 'No exclusions here.' } = rowsOrProse
+  return '**8c. Record 2 — every handoff.**\n\n' + deferralReadme({ rows, exclusions })
+}
+
+test('one resolver: a bare .ts story citation of src/<tier>/X/X.stories.ts verifies in the citation checker and excuses its hit', () => {
+  withFixtureTree((dir) => {
+    plantStoryFile(
+      dir,
+      'src/primitives/Badge/Badge.stories.ts',
+      `export const A = {}\n${FALSE_DEFERRAL}\n`,
+    )
+    const readmeText = citedReadme({
+      exclusions: '`Badge.stories.ts:2` ("owned by `Button` and by nothing else.") is filed.',
+    })
+    const citations = checkCitations({ readmeText, baseDir: dir })
+    assert.deepEqual(citations.failures, [])
+    assert.equal(citations.parsedCount, 1)
+    const excuse = checkDeferralVocabularyCoverage(readmeText, { baseDir: dir })
+    assert.equal(excuse.hitCount, 1)
+    assert.deepEqual(excuse.failures, [])
+  })
+})
+
+test('one resolver: a decoy src/X.stories.tsx holding the quote does not stand in for the tier file the citation excuses', () => {
+  withFixtureTree((dir) => {
+    plantStoryFile(dir, 'src/SignInScreen.stories.tsx', `export const A = {}\n${FALSE_DEFERRAL}\n`)
+    plantStoryFile(
+      dir,
+      'src/screens/SignInScreen/SignInScreen.stories.tsx',
+      'export const A = {}\n// hover — none; owned by `Button` alone, planted false deferral.\n',
+    )
+    const readmeText = citedReadme({
+      exclusions:
+        '`SignInScreen.stories.tsx:2` ("owned by `Button` and by nothing else.") is filed.',
+    })
+    const citations = checkCitations({ readmeText, baseDir: dir })
+    assert.equal(citations.failures.length, 1, JSON.stringify(citations.failures))
+    assert.match(
+      citations.failures[0].reason,
+      /quote not found at .*SignInScreen\/SignInScreen\.stories\.tsx:2/,
+    )
+  })
+})
+
+test('one resolver: a decoy src/X.stories.tsx does not stand in for the tier file of a table row either', () => {
+  withFixtureTree((dir) => {
+    plantStoryFile(dir, 'src/SignInScreen.stories.tsx', `export const A = {}\n${FALSE_DEFERRAL}\n`)
+    plantStoryFile(
+      dir,
+      'src/screens/SignInScreen/SignInScreen.stories.tsx',
+      'export const A = {}\n// hover — none; owned by `Button` alone, planted false deferral.\n',
+    )
+    const rows = '| `SignInScreen` | `:2` "owned by `Button` and by nothing else." — filed. |\n'
+    const citations = checkCitations({ readmeText: citedReadme({ rows }), baseDir: dir })
+    assert.equal(citations.failures.length, 1, JSON.stringify(citations.failures))
+    assert.match(
+      citations.failures[0].reason,
+      /quote not found at .*SignInScreen\/SignInScreen\.stories\.tsx:2/,
+    )
+  })
+})
+
+test('one resolver, contrast: an ordinary tier X.stories.tsx citation, in prose or as a table row, verifies', () => {
+  withFixtureTree((dir) => {
+    plantStoryFile(
+      dir,
+      'src/primitives/Known/Known.stories.tsx',
+      `export const A = {}\n${FALSE_DEFERRAL}\n`,
+    )
+    const prose = citedReadme({
+      exclusions: '`Known.stories.tsx:2` ("owned by `Button` and by nothing else.") is filed.',
+    })
+    assert.deepEqual(checkCitations({ readmeText: prose, baseDir: dir }).failures, [])
+    const rows = '| `Known` | `:2` "owned by `Button` and by nothing else." — filed. |\n'
+    const table = checkCitations({ readmeText: citedReadme({ rows }), baseDir: dir })
+    assert.deepEqual(table.failures, [])
+    assert.equal(table.parsedCount, 1)
+  })
+})
+
+test('one resolver: a repository-rooted .storybook/foundations path citation verifies against that file', () => {
+  withFixtureTree((dir) => {
+    plantStoryFile(
+      dir,
+      '.storybook/foundations/Planted.stories.tsx',
+      `export const A = {}\n${FALSE_DEFERRAL}\n`,
+    )
+    const cite = (quote) =>
+      citedReadme({
+        exclusions: `\`packages/design-system/.storybook/foundations/Planted.stories.tsx:2\` ("${quote}") is filed.`,
+      })
+    assert.deepEqual(
+      checkCitations({ readmeText: cite('owned by `Button` and by nothing else.'), baseDir: dir })
+        .failures,
+      [],
+    )
+    const wrong = checkCitations({
+      readmeText: cite('text that is not on that line'),
+      baseDir: dir,
+    })
+    assert.equal(wrong.failures.length, 1)
+    assert.match(wrong.failures[0].reason, /quote not found/)
+  })
+})
+
+test('one resolver: a story citation that names no file, or two, is a citation failure carrying the resolver’s own reason', () => {
+  withFixtureTree((dir) => {
+    plantStoryFile(dir, 'src/primitives/Known/Known.stories.tsx', 'export const A = {}\n')
+    plantStoryFile(dir, 'src/composites/Known/Known.stories.tsx', 'export const A = {}\n')
+    for (const location of [
+      'Ghost.stories.tsx',
+      'Known.stories.tsx',
+      'foundations/Planted.stories.tsx',
+    ]) {
+      const readmeText = citedReadme({
+        exclusions: `\`${location}:1\` ("export const A") is filed.`,
+      })
+      const result = checkCitations({ readmeText, baseDir: dir })
+      assert.equal(result.failures.length, 1, `${location}: ${JSON.stringify(result.failures)}`)
+      assert.match(result.failures[0].reason, /citation `.*:1` names /, location)
+    }
+  })
+})
+
+test('one resolver: an inline-code claim next to a story-file location is resolved the same way', () => {
+  withFixtureTree((dir) => {
+    plantStoryFile(dir, 'src/SignInScreen.stories.tsx', 'export const A = {}\nconst decoy = 1\n')
+    plantStoryFile(
+      dir,
+      'src/screens/SignInScreen/SignInScreen.stories.tsx',
+      'export const A = {}\nconst real = 2\n',
+    )
+    const claim = (code) =>
+      citedReadme({ exclusions: `\`SignInScreen.stories.tsx:2\` declares \`${code}\`.` })
+    const decoy = checkCitations({ readmeText: claim('const decoy = 1'), baseDir: dir })
+    assert.equal(decoy.inlineClaimFailureCount, 1, JSON.stringify(decoy))
+    const real = checkCitations({ readmeText: claim('const real = 2'), baseDir: dir })
+    assert.equal(real.inlineClaimVerifiedCount, 1, JSON.stringify(real))
+    assert.deepEqual(real.failures, [])
+  })
+})
+
+test('one resolver, contrast: a non-story citation (a .md spec, an index.tsx) still goes through resolveCitationLocation', () => {
+  withFixtureTree((dir) => {
+    mkdirSync(path.join(dir, 'specs'), { recursive: true })
+    writeFileSync(path.join(dir, 'specs', 'thing.md'), 'one\nthe quoted sentence\n')
+    const indexFile = path.join(dir, 'src', 'primitives', 'Known', 'index.tsx')
+    mkdirSync(path.dirname(indexFile), { recursive: true })
+    writeFileSync(indexFile, 'export const A = {}\nexport const B = {}\n')
+    const readmeText = citedReadme({
+      exclusions:
+        '`thing.md:2` ("the quoted sentence") and `Known/index.tsx:2` ("export const B") are filed.',
+    })
+    assert.deepEqual(checkCitations({ readmeText, baseDir: dir }).failures, [])
+  })
+})
+
+test('one resolver, real tree: every row-8 citation still verifies, and none resolves outside the listing', () => {
+  const readmeText = readFileSync(path.join(REPO_SRC_DIR, '..', 'specs', 'README.md'), 'utf8')
+  const result = checkCitations({ readmeText })
+  assert.deepEqual(result.failures, [])
+  assert.ok(result.parsedCount > 100, `only ${result.parsedCount} citations parsed`)
 })
 
 test('countRecord1Cells/countRecord3Cells: classify none, the one play-driven unresolved, and covered', () => {

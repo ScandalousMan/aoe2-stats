@@ -18,13 +18,11 @@ import {
   groupIndexByFile,
   reconcileFile,
   findUnindexedStoryFiles,
-  listStoryFilesOnDisk,
   parseSweepIndex,
-  STORY_WALK_ROOTS,
-  STORY_FILE_EXTENSIONS,
   dsDir,
   rootDir,
 } from './state-signal-model.mjs'
+import { listStoryFilesOnDisk, STORY_WALK_ROOTS, STORY_FILE_EXTENSIONS } from './story-files.mjs'
 import { decideMissingIndex, BUILD_STORYBOOK_COMMAND } from './missing-index.mjs'
 
 // A minimal CSF file exercising every shape `planSelfRest` decides between:
