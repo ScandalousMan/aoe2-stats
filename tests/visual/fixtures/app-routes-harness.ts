@@ -19,6 +19,18 @@ const rootDir = path.resolve(__dirname, '..', '..', '..')
 export const distDir = path.join(rootDir, 'apps', 'web', 'dist')
 export const hasBuild = existsSync(path.join(distDir, 'index.html'))
 
+// T748: the one instant every app-route suite runs the built application at. `formatFreshness`
+// (`apps/web/src/features/profile/format.ts`) and `formatPlayedAtRelative` (`.../matches/format.ts`)
+// read `Date.now()`, so a route screenshot said "Updated 45 days ago" the day it was captured and
+// "Updated 50 days ago" five days later (`baselines.yml` run 39114001064). The stories have no
+// shared constant to reuse (T568 made them deterministic by waiting on real DOM state, not by
+// pinning a clock), so this is the first. It is exactly 45 days after the fixtures' `captured_at`
+// (`2026-08-29T09:00:00Z`), the text the checked-in baselines already carry (captured 2026-10-13,
+// #140), and after every other dated fixture, so nothing that is "in the past" today (the
+// `obtainable_until` of `2026-09-20T09:00:00Z` in `./suite-scenarios.ts`) turns into a countdown.
+export const ROUTE_SUITE_NOW_ISO = '2026-10-13T09:00:00Z'
+export const ROUTE_SUITE_NOW_MS = Date.parse(ROUTE_SUITE_NOW_ISO)
+
 export type ThemeOverride = 'light' | 'dark'
 
 export const SIGNED_OUT_ME = { authenticated: false }
@@ -275,6 +287,27 @@ export const ROUTE_SCENARIOS: readonly RouteScenario[] = [
   },
 ]
 
+// T748: `gotoScenario` is the only way any route suite navigates (`./route-clock.test.ts` fails
+// on a `route-*.spec.ts` that calls `page.goto` itself), so installing the clock here reaches
+// every suite without each one remembering it. `clock.install` runs before the page's first
+// script, and it starts the page's clock at `ROUTE_SUITE_NOW_MS` and lets it run from there,
+// rather than `setFixedTime`, which holds `Date.now()` constant for good. Frozen forever is wrong
+// for this app: `AnalysisContainer` clears its optimistic "running" state when
+// `matchQuery.dataUpdatedAt > clickedAtRef.current`, and both are `Date.now()` reads, so under a
+// constant clock a refetch is never later than the click and the state never clears. A clock that
+// starts at the instant keeps every timer, poll and transition running and every timestamp
+// monotonic, while "N days ago" text is unaffected by the seconds a test takes (it rounds to whole
+// days, and 45 days leaves half a day of slack either side). Node-side waits (`waitUntilReachable`,
+// `app-routes.spec.ts`'s deadline loop) are not the page's clock and are untouched. A `WeakSet`
+// makes a second navigation on the same page a no-op rather than a second install.
+const pagesWithRouteClock = new WeakSet<Page>()
+
+export async function freezeRouteClock(page: Page): Promise<void> {
+  if (pagesWithRouteClock.has(page)) return
+  await page.clock.install({ time: ROUTE_SUITE_NOW_MS })
+  pagesWithRouteClock.add(page)
+}
+
 // PR #102 review finding (T674 remediation), then found still incomplete on PR #102 itself
 // (confirmed by running, see `./goto-scenario.test.ts`): a `page.waitForURL('**' + expected)`
 // called right after `page.goto` resolves immediately whenever the current URL already matches the
@@ -297,6 +330,7 @@ export async function gotoScenario(
   baseUrl: string,
 ): Promise<void> {
   const expectedPath = scenario.landedPath ?? scenario.path
+  await freezeRouteClock(page)
   await page.goto(`${baseUrl}${scenario.path}`)
   await page.waitForURL((url) => url.pathname === expectedPath)
   await page.getByRole('main').waitFor({ state: 'visible' })
