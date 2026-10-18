@@ -27,12 +27,14 @@ Python 3.13 into a target directory (the wheels the host's Linux build receives)
 Of the repository files, `packages/knowledge` is 14.7 MB raw (13.1 MB of it `packs/`), and its
 packs and snapshots also ship inside the knowledge wheel, so they are stored twice per function.
 
-**Prediction for SC-002.** Before: three functions of about 152 MB raw / 52 MB zipped. After: two
+**Prediction for SC-002.** Before: three functions of about 152 MB raw / 52 MB zipped. After: three
 functions holding only their entrypoints and the dependencies minus `pip`, about 90 MB raw / 31 MB
-zipped each. The after-to-before ratio per deployment is **0.40** raw and **0.40** zipped. The
+zipped each. The after-to-before ratio per deployment is **0.59** raw and **0.60** zipped. The
 ratio is the prediction, because it holds whichever of the two the host measures (R7). If the
-built web app turns out not to be in today's bundles (R1), the ratio becomes 0.45, still inside
-SC-002's band. SC-002 is met when the measured ratio is in **0.32–0.48**.
+built web app turns out not to be in today's bundles (R1), the ratio becomes 0.65 raw and 0.68
+zipped, still inside SC-002's band. SC-002 is met when the measured ratio is in **0.47–0.71**.
+_(Amended 2026-10-18: the first prediction, 0.40 in a band of 0.32–0.48, assumed two functions;
+Story 5 was dropped.)_
 
 **Deployments that shipped nothing.** Classifying `main`'s 51 first-parent commits since
 2026-10-05 with the never-shipped list of R4 gives **25** that would have been skipped, against 14
@@ -248,6 +250,11 @@ its reach (R1).
 
 ## R6. Two functions: where the merged entrypoint lives
 
+**Withdrawn 2026-10-18 by `/speckit-analyze`: Story 5 is dropped**, and nothing below is built. The
+merged function would run the native parser in-process in the function that serves the ingestion
+run, which constitution V rules out (plan, Constitution Check). Kept as the record of what was
+decided and why it was reversed.
+
 **Decision.** `api/analyze.py` becomes the long-running function and gains the ingestion route.
 The ingestion handler moves into it unchanged: the secret check, then `run_once` with
 `build_ingest_stages`. `api/cron/ingest.py` is deleted. `vercel.json` gains a rewrite from
@@ -294,8 +301,9 @@ Both go into `docs/adr/0002-hosting.md` with the deployment ids (FR-017). The be
 
 **Unknowns this method tolerates.** Whether the host counts raw or compressed bytes is not
 documented, and neither is whether the Resources size is compressed. The prediction is a ratio for
-that reason (§0). Deduplication across functions is also undocumented: if the host deduplicates,
-the function merge saves less than §0 predicts, and the measured ratio falls outside the band. The
+that reason (§0). Deduplication across functions is also undocumented: if the host deduplicates
+identical dependency files across the three functions, both values shrink and the measured ratio
+can fall outside the band. The
 ADR then records that as a finding rather than a miss.
 
 ## R8. The bundle dry run (FR-003)
@@ -310,17 +318,17 @@ deployment-shaped environment and imports the entrypoints, into a **bundle-shape
    value in `vercel.json`, which is `api/**` by construction (R1).
 3. With that directory as the working directory and the environment's interpreter run in isolated
    mode:
-   - import `api.index` and `api.analyze`;
+   - import `api.index`, `api.analyze` and `api.cron.ingest`;
    - load every packaged knowledge snapshot through the package's own loader;
    - assert `pip` is not importable;
-   - probe the merged app's two routes unauthenticated, and assert each answers its documented
+   - probe the two long-running entrypoints' routes unauthenticated, and assert each answers its documented
      refusal without touching a database.
 
 It runs in `pr.yml`'s existing Python job, which already collects `tests/architecture`. This is the
 #120-style dry run turned into a gate that keeps running, instead of a one-off.
 
 **What only a real deployment confirms.** The host's own builder version, its bytecode fill, and
-whether rewrites reach the merged function in production. These are covered by quickstart §5 and
+whether the trimmed functions boot in production. These are covered by quickstart §5 and
 SC-005.
 
 ## R9. `.claude/` in a CLI upload
@@ -333,7 +341,7 @@ maintainer, since it needs the CLI's login.
 ## R10. What the ADR records
 
 `docs/adr/0002-hosting.md` gains one section, "Function bundles and build skips". It holds the
-`excludeFiles` rule and why, the two-function layout and its time limits, the skip rule and its
+`excludeFiles` rule and why, why the layout stays at three functions (R6, withdrawn), the skip rule and its
 fail-safe reading, the before and after storage figures with dates and deployment ids, the count of
 skipped deployments after the first 30 days, and the next step if storage climbs again: replacing
 the current S3 client with a lighter one behind `packages/storage`. The existing "Only `main`

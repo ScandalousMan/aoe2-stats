@@ -10,13 +10,12 @@ One entry per production function in `vercel.json`'s `functions` map.
 
 | Field            | Meaning                                              | Rule                                                                                                                          |
 | ---------------- | ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| entrypoint       | The file under `api/` the host turns into a function | Exactly two after this feature (FR-012): `api/index.py` and the long-running entrypoint (research R6)                         |
-| time limit       | `maxDuration`                                        | `api/index.py` keeps its short limit; the long-running entrypoint keeps the limit the analysis and ingestion paths have today |
+| entrypoint       | The file under `api/` the host turns into a function | Exactly three, unchanged (FR-012): `api/index.py`, `api/analyze.py` and `api/cron/ingest.py`                         |
+| time limit       | `maxDuration`                                        | `api/index.py` keeps its short limit; the two long-running entrypoints keep theirs |
 | excluded content | `excludeFiles`, one glob                             | Names repository content to drop (FR-002); never names `api/`, never names installed dependencies (research R1)               |
 
-**Invariant**: a file under `api/` whose name does not start with `_` is a function. A module that
-only an entrypoint imports therefore starts with `_` (research R6), and
-`scripts/checks/api_entrypoint_deps.py` still scans it, because it scans every file under `api/`.
+**Invariant**: every file under `api/` is one of the three entrypoints, and
+`scripts/checks/api_entrypoint_deps.py` scans every file under `api/`.
 
 ## 2. Never-shipped path list
 

@@ -1,5 +1,5 @@
 ---
-description: 'Task list for shrinking what each production deployment stores — trimmed bundles, a build-skip rule, no pip, two functions'
+description: 'Task list for shrinking what each production deployment stores — trimmed bundles, a build-skip rule, no pip'
 ---
 
 # Tasks: Shrink what each production deployment stores
@@ -16,11 +16,10 @@ task lands its test marked `xfail(strict=True)` — never a skip — and the imp
 the marker. Node's test runner has no strict expected-failure, so the skip rule and its test land in
 one task (T811).
 
-**Organization**: by the six phases [plan.md](./plan.md) fixes, not by story priority. The plan
-orders by risk: the two small independent stories first, then the function merge, so that the
-bundle dry run (US1, P1) is written once against the final two-function layout, and the skip rule
-(US2, P2) last, so its first skip in production is a separate, readable event. Story labels ride on
-each task.
+**Organization**: by the five phases [plan.md](./plan.md) fixes, not by story priority, with the
+dropped Story 5 kept as Phase 3's record. The plan orders by risk: the two small independent
+stories first, then the bundle dry run (US1, P1), and the skip rule (US2, P2) last, so its first
+skip in production is a separate, readable event. Story labels ride on each task.
 
 ## Format: `[ID] [P?] [Story] Description`
 
@@ -38,9 +37,9 @@ collision. T801 is the first hundred no feature has reached.
 
 ## What every implementer must know before starting
 
-**No executable line under `apps/` or `packages/` changes** (FR-016). Comments, docstrings and tests
-that name `api/cron/ingest.py` follow it when it is deleted; nothing else there is edited. If a task
-seems to need an application-code change, the task is wrong — stop and say so.
+**Nothing under `apps/` or `packages/` changes** (FR-016). If a task seems to need an edit there,
+the task is wrong — stop and say so. **The three functions stay** (FR-012): Story 5 was dropped,
+and no task merges, moves or deletes an entrypoint under `api/`.
 
 **Do not restate a measurement.** The planning-time estimate lives in [research.md](./research.md)
 §0; the real before and after figures live in `docs/adr/0002-hosting.md` alone (FR-017). No task,
@@ -56,11 +55,11 @@ anything but a positive proof that nothing shipped changed, it is a defect (FR-0
 | quickstart section            | Phase | Story    | Task(s) that encode it |
 | ----------------------------- | ----- | -------- | ---------------------- |
 | §0 — record the before value  | 1     | —        | T801                   |
-| §1 — offline gates            | 3–5   | all      | T805, T807, T809, T810 |
+| §1 — offline gates            | 4–5   | all      | T807, T809, T810       |
 | §2 — `pip` is gone            | 2     | US3      | T802                   |
 | §3 — CLI upload               | 7     | US4      | T815                   |
 | §4 — skip rule in production  | 7     | US2      | T817                   |
-| §5 — the two functions answer | 7     | US1, US5 | T816                   |
+| §5 — the three functions answer | 7   | US1      | T816                   |
 | §6 — the after value          | 7     | —        | T818, T819             |
 
 ---
@@ -121,76 +120,22 @@ before. **(US4)**: a CLI upload from a working copy carries nothing under `.clau
 
 ---
 
-## Phase 3: Two functions (plan phase 3 — US5)
+## Phase 3: Two functions (US5) — dropped
 
-**Purpose**: the long-running function serves both the analysis endpoint and the ingestion run. It
-lands before Phase 4 so the bundle dry run is written once, against the final layout.
+**Dropped by `/speckit-analyze` on 2026-10-18** (spec Clarifications, plan Constitution Check): a
+merged function would run the replay parser in the function that serves the ingestion run, which
+constitution V rules out. The three ids are kept so no other id moves; nothing here was done.
 
-**Independent test**: `apps/api/tests/test_cron_ingest_entrypoint.py` passes against `api.analyze`;
-`node scripts/checks/spa-routing.mjs` resolves `/api/cron/ingest` to `api/analyze` ahead of the
-catch-all; `uv run scripts/checks/api_entrypoint_deps.py` exits 0.
-
-**Story goal (US5)**: two stored functions per deployment, the same public routes, the same
-authentication, and the ingestion run never under the short limit.
-
-- [ ] T804 [US5] **Tests first.** In `apps/api/tests/test_cron_ingest_entrypoint.py`, change every
-      import of the cron app — `from api.cron.ingest import app` and the
-      `import api.cron.ingest as ingest_module` forms — to `api.analyze`, and every monkeypatch to
-      the names the merged module will carry (the alias for the ingester's `run_once` is
-      settled here, and T805 uses it). Rewrite the module docstring to say the cron route is
-      one of two routes in `api/analyze.py`, reached in production by a rewrite (research R6). Add
-      one case: `/api/analyze` still answers its unauthenticated `POST` refusal from the same app,
-      so the merge is proven not to have dropped the first route. Mark every test in the file that
-      now fails `xfail(strict=True)` with the reason "T805 moves the route". The file is green
-      because each failure is expected; it is separately committable
-- [ ] T805 [US5] **Move the ingestion route into `api/analyze.py`, and delete
-      `api/cron/ingest.py`** (**FR-012**, research R6, [contracts/function-layout.md](./contracts/function-layout.md)). Move the
-      handler, its secret check and its imports without changing their behaviour. One name clashes:
-      both files import a `run_once`. Import the ingester's under an alias (for example
-      `from aoe2stats_ingester.run import run_once as run_ingest_once`), keep the analyzer's under
-      its own name, and confirm `scripts/checks/api_entrypoint_deps.py` still reads the aliased
-      line — its import pattern matches the module, not the bound name. The Starlette app declares
-      both routes at their public paths: `/api/analyze` with `POST`, `/api/cron/ingest` with `GET`
-      and `POST` (invariant 3). Fold the cron file's docstring into the analyze module's: the route
-      is a thin wrapper around `run_once` (constitution XII), the secret check is duplicated in
-      `apps/api/src/aoe2stats_api/routers/cron.py` on purpose, and the route is reached by rewrite. Remove the analyze
-      docstring's sentence that says the module is not a cron endpoint and never becomes one,
-      replacing it with what is now true: the **analysis** route carries no `CRON_SECRET` and is
-      called by a person; the **ingestion** route carries it and is called by the schedule. In
-      `vercel.json`: drop the `api/cron/ingest.py` function entry, and add the rewrite
-      `/api/cron/ingest` → `/api/analyze` **before** `/api/(.*)` (invariant 2). Keep the cron's
-      `path`. Remove T804's `xfail` markers. **The same commit must carry every consumer of the
-      deleted file that a test reads**, or the tree is red: `scripts/checks/spa-routing.mjs` (the
-      `/api/cron/ingest` case now expects `via: 'rewrite'` to `api/analyze`, and a new assertion
-      that this rewrite precedes `/api/(.*)` in the array); `tests/architecture/test_feature_006_boundaries.py`
-      (both baseline sets of `api/` handlers and function entries become
-      `{"api/analyze.py", "api/index.py"}`, with a comment that 007 removed one by merging two, so
-      the 006 guard still means "no new handler"); `tests/architecture/test_import_graph.py` (the
-      platform-entrypoint module set becomes `api.index` and `api.analyze`, comments to match);
-      `tests/architecture/test_deployment_install.py` (its platform module list). Then grep the
-      whole repository for `api/cron/ingest.py`, `api.cron.ingest` and `api/cron` and list what is
-      left: those are T806's. Run the whole suite, `node scripts/checks/spa-routing.mjs` after
-      `pnpm --filter web build`, and `uv run scripts/checks/api_entrypoint_deps.py`
-- [ ] T806 [US5] Repoint every remaining comment and docstring that names `api/cron/ingest.py`
-      (FR-016's permitted edits), from T805's grep. Expected, as of planning:
-      `api/index.py` (its docstring's filesystem-precedence paragraph becomes the rewrite),
-      `apps/api/src/aoe2stats_api/analyze_stages.py`, `apps/api/src/aoe2stats_api/ingest_stages.py`,
-      `apps/api/src/aoe2stats_api/routers/cron.py`, `apps/api/src/aoe2stats_api/routers/privacy.py`
-      (its "are separate functions" parenthesis: still true of `api/index.py` against
-      `api/analyze.py`, and that is the only claim it needs), `apps/api/tests/test_analyze_entrypoint.py`,
-      `apps/api/tests/test_index_entrypoint.py`, `apps/api/tests/test_cron.py`,
-      `apps/ingester/pyproject.toml`, `apps/ingester/src/aoe2stats_ingester/run.py`,
-      `scripts/checks/tests/test_api_entrypoint_deps.py`, the root `pyproject.toml` comment above
-      `[project]`, and `.claude/agents/researcher.md`. **A diff under `apps/` that changes anything
-      but a comment or docstring is out of scope** — check with `git diff` before handing back. The
-      ADR's own mentions are T812's
-
-**Checkpoint**: one long-running function serves both routes; `api/cron/ingest.py` is gone and
-nothing names it.
+- [x] T804 [US5] **Not taken: Story 5 dropped.** Was: repoint the cron entrypoint's tests to
+      `api.analyze`, test-first
+- [x] T805 [US5] **Not taken: Story 5 dropped.** Was: move the ingestion route into
+      `api/analyze.py`, delete `api/cron/ingest.py`, and add a rewrite ahead of the catch-all
+- [x] T806 [US5] **Not taken: Story 5 dropped.** Was: repoint the comments that named the deleted
+      cron entrypoint
 
 ---
 
-## Phase 4: Function bundles carry only `api/` (plan phase 4 — US1) 🎯 MVP
+## Phase 4: Function bundles carry only `api/` (plan phase 3 — US1) 🎯 MVP
 
 **Purpose**: the largest per-deployment saving, and the one whose failure — a function missing a
 file it reads — is worst. Proven offline before any production deploy.
@@ -203,10 +148,10 @@ file it reads — is worst. Proven offline before any production deploy.
 route behaves as before.
 
 - [ ] T807 [US1] **Tests first.** Create `scripts/checks/tests/test_vercel_bundle.py`, reading the
-      real `vercel.json` and `git ls-files`. Assert: exactly two `functions` entries,
-      `api/index.py` at the short limit it has today and `api/analyze.py` at the long one
-      ([contracts/function-layout.md](./contracts/function-layout.md) invariant 1, US5 scenario 2 — the short limit is what cuts an
-      ordinary request off); each entry carries an `excludeFiles` **string**, identical across
+      real `vercel.json` and `git ls-files`. Assert: exactly three `functions` entries,
+      `api/index.py` at the short limit it has today and `api/analyze.py` and
+      `api/cron/ingest.py` at the long one, so a later merge of the parser's function with the
+      ingestion run fails here (**FR-012**, [contracts/function-layout.md](./contracts/function-layout.md) invariant 1); each entry carries an `excludeFiles` **string**, identical across
       entries (research R1); the string is one brace-glob whose alternatives are each an exact root
       file name or `<dir>/**`, nothing nested and no wildcard in a name; `api` is never an
       alternative; every tracked top-level entry is `api`, an alternative, or on the builder's own
@@ -243,10 +188,10 @@ route behaves as before.
       kept set is exactly the tracked files under `api/`, and copy them into an empty directory.
       (3) From that directory, run the environment's interpreter in isolated mode (`-I`), which
       drops the working directory from the import path, so put the copy's root on the path
-      explicitly, as the runtime does: import `api.index` and `api.analyze`; load every packaged
+      explicitly, as the runtime does: import `api.index`, `api.analyze` and `api.cron.ingest`; load every packaged
       knowledge snapshot through `aoe2stats_knowledge`'s own loader; assert `pip` is not
-      importable; and probe the two long-running routes unauthenticated through the ASGI app
-      itself, asserting `/api/cron/ingest` answers `401` with `unauthorized` and `/api/analyze`
+      importable; and probe the two long-running routes unauthenticated through each entrypoint's
+      own ASGI app, asserting `/api/cron/ingest` answers `401` with `unauthorized` and `/api/analyze`
       answers its `401` session refusal — both before any database connection, with configuration
       supplied the way the existing entrypoint tests supply it. Then run
       `uv run scripts/checks/api_entrypoint_deps.py` and quickstart §1 in full. Keep the module
@@ -257,7 +202,7 @@ dependencies imports, loads its data and answers both long routes.
 
 ---
 
-## Phase 5: The build-skip rule (plan phase 5 — US2)
+## Phase 5: The build-skip rule (plan phase 4 — US2)
 
 **Purpose**: a commit that changes nothing shipped stores no deployment, and never evicts a
 rollback target.
@@ -314,27 +259,26 @@ that ships still deploys; every doubt deploys.
 
 ---
 
-## Phase 6: The record (plan phase 6, first half)
+## Phase 6: The record (plan phase 5, first half)
 
 - [ ] T812 [P] Close out `docs/adr/0002-hosting.md`'s "Function bundles and build skips" section
       (research R10, **FR-011**, **FR-012**, **FR-017**): the `excludeFiles` rule and why it lists
-      every top-level entry but `api`, with T808's two checks and their dates; the two-function
-      layout, its limits, and why ordinary requests keep the short one; the skip rule, its
+      every top-level entry but `api`, with T808's two checks and their dates; why the layout
+      stays at three functions — the parser never shares a function with the ingestion run
+      (constitution V, Story 5 dropped); the skip rule, its
       fail-safe reading, the "Only build production" setting it carries, and **which governs which
       commit** — the rule for commits that contain it, the dashboard setting for branches cut
       before it; the known risk of an empty comparison base (research R3); the next step if storage
       climbs again, replacing the current S3 client with a lighter one behind `packages/storage`;
       and empty, dated rows for the after value and the 30-day skip count. Amend the "Only `main`
-      deploys" bullet the same way, and repoint the ingester's two-entrypoint sentence from
-      `api/cron/ingest.py` to the ingestion route in `api/analyze.py`. Then grep `docs/` and
-      `.claude/skills/` for any statement this feature makes false — three functions per
-      deployment, every push to `main` deploys, the cron path resolved by the filesystem — and
-      correct each. No figure from research §0 is copied here
+      deploys" bullet the same way. Then grep `docs/` and
+      `.claude/skills/` for any statement this feature makes false — every push to `main`
+      deploys, a function carries the repository, `pip` is installed in production — and correct
+      each. No figure from research §0 is copied here
 - [ ] T813 Verify scope and the whole tree (**FR-016**). `git diff --stat main...HEAD`: every path
-      is a deployment file, `api/`, `scripts/deploy/`, a check or test that follows a moved
-      entrypoint, `.github/workflows/pr.yml`, `docs/`, `.claude/agents/researcher.md` or this
-      feature's `specs/` directory. `git diff main...HEAD -- apps packages` changes only comments,
-      docstrings and tests. Then run, by exit code: `uv run pytest`, `uv run ruff format --check .`,
+      is a deployment file, `scripts/deploy/`, `scripts/checks/tests/test_vercel_bundle.py`,
+      `tests/architecture/test_deployment_install.py`, `.github/workflows/pr.yml`, `docs/` or this
+      feature's `specs/` directory. `git diff main...HEAD -- api apps packages` is empty. Then run, by exit code: `uv run pytest`, `uv run ruff format --check .`,
       `uv run ruff check .`, `uv run mypy`, `pnpm --filter web build`,
       `node scripts/checks/spa-routing.mjs`, `node --test scripts/deploy/ignore-build.test.mjs`,
       `uv run scripts/checks/api_entrypoint_deps.py`, `node scripts/checks/config-preflight.mjs
@@ -344,7 +288,7 @@ that ships still deploys; every doubt deploys.
 
 ---
 
-## Phase 7: Acceptance (plan phase 6, second half — maintainer)
+## Phase 7: Acceptance (plan phase 5, second half — maintainer)
 
 **Purpose**: what only the host, its CLI login or production can show. Each result is recorded in
 the ADR section with its date.
@@ -357,13 +301,13 @@ the ADR section with its date.
     --format=json` on `main` and on this branch, from a working copy with
       `.claude/worktrees/`, and diff the two lists (**FR-015**, US4's two scenarios). The only
       paths newly ignored are under `.claude/`. Record the result and the date in the ADR
-- [ ] T816 [US1] [US5] **Maintainer, after the merge deploys.** Quickstart §5, all five steps:
+- [ ] T816 [US1] **Maintainer, after the merge deploys.** Quickstart §5, all five steps:
       the smoke workflow, a real analysis request, a manual ingestion trigger with the production
       `CRON_SECRET` (never written to a file), the next scheduled 04:00 UTC run in the host's cron
-      log and in the capture audit, and two functions listed. Read one function's file listing and
+      log and in the capture audit, and three functions listed. Read one function's file listing and
       confirm it holds none of the excluded categories (**SC-001**, US1 scenario 2). Zero
-      regressions is **SC-005**. Record the run ids and dates in the ADR — this is Constitution I's
-      obligation from the plan: the capture run must be seen to finish under the long limit
+      regressions is **SC-005**. Record the run ids and dates in the ADR: the trimmed cron function
+      must be seen to import and finish a real capture run (constitution I)
 - [ ] T817 [US2] **Maintainer, after T816.** Quickstart §4: a `docs/`-only push to `main` shows
       Canceled with the `skip: nothing shipped …` line, and a `uv.lock` push deploys with
       `build: uv.lock …` (**SC-004**). **Also check how the host counts the canceled deployment
@@ -387,23 +331,21 @@ the ADR section with its date.
 
 - **T801 first.** Its figure must exist before anything merges; nothing else waits on it.
 - **Phase 2**: T802 and T803 are independent of each other and of everything after them.
-- **Phase 3**: T804 → T805 → T806, strictly. T805 is the one commit that deletes
-  `api/cron/ingest.py` together with every consumer a test reads; splitting it leaves a red tree.
-- **Phase 4** waits on T805: T807 asserts exactly two function entries, and T809 imports
-  `api.analyze` as the only long-running entrypoint. T807 → T808 → T809.
-- **Phase 5** waits on nothing in Phases 2–4 in principle, but lands after them (plan phase 5) so
+- **Phase 3**: dropped; nothing to order.
+- **Phase 4**: T807 → T808 → T809.
+- **Phase 5** waits on nothing in Phases 2–4 in principle, but lands after them (plan phase 4) so
   the merge is a full deploy anyway. T810 → T811. T811 edits
   `.github/workflows/pr.yml` and `vercel.json`, as T807 and T808 do, so none of the three share a
   parallel batch.
-- **T812** after T808 (it records T808's checks) and T805; **T813** last before the pull request is
+- **T812** after T808 (it records T808's checks); **T813** last before the pull request is
   marked ready.
 - **Phase 7**: T814 and T815 before the merge; T816 → T817, T816 → T818; T819 thirty days on.
 
 ### User story dependencies
 
 - **US3, US4**: independent.
-- **US5**: independent of the others; ordered before US1 by the plan so the dry run is written once.
-- **US1**: depends on US5's final layout.
+- **US5**: dropped.
+- **US1**: independent.
 - **US2**: independent in code; ordered last by the plan.
 
 ## Parallel opportunities
@@ -412,16 +354,15 @@ the ADR section with its date.
   `.vercelignore`).
 - T812 ∥ T814 ∥ T815: the ADR edit by an agent, two dashboard and CLI reads by the maintainer. The
   maintainer's findings join the ADR after T812.
-- Nothing in Phases 3–5 is parallel: each task builds on the previous one's file or layout.
+- Nothing in Phases 4–5 is parallel: each task builds on the previous one's file or layout.
 
 ## Implementation strategy
 
-**MVP is US1 (Phase 4), but it cannot ship alone in this order**: the plan places US5 before it so
-that the dry run is written against two functions, not rewritten after the merge. The smallest
-shippable increment is therefore Phases 1–4: before value, `pip`, `.claude/`, two functions, trimmed
-bundles — every storage saving per deployment. Phase 5 adds the per-commit saving, and could be a
-second pull request if the first must ship sooner; T801's value would then also serve as Phase 5's
-before figure.
+**MVP is US1 (Phase 4)**, the largest per-deployment saving; with T801 it ships alone. Phase 2 is
+independent and cheap, so the natural first increment is Phases 1, 2 and 4: before value, `pip`,
+`.claude/`, trimmed bundles — every storage saving per deployment. Phase 5 adds the per-commit
+saving, and could be a second pull request if the first must ship sooner; T801's value would then
+also serve as Phase 5's before figure.
 
 Commit per task, except where a task says it is one unit with another. `/speckit-implement` runs one
 phase at a time; Phase 7 is the maintainer's, and an agent stops at T813.

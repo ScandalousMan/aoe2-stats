@@ -33,7 +33,8 @@
 
 - **The two markers the description routed to `/speckit-clarify` are resolved** (session
   2026-10-18): FR-011 carries the dashboard's "Only build production" preset into the new rule,
-  FR-012 fixes the layout at two functions.
+  FR-012 fixed the layout at two functions. _(Withdrawn by `/speckit-analyze` on 2026-10-18: FR-012
+  now keeps three, and Story 5 is dropped.)_
 - **Implementation details, judged for this feature's subject.** The feature _is_ deployment
   configuration, so the spec names the repository files it may touch (FR-016) and the paths that
   must always deploy (FR-008): those are constraints from the description, not design choices. The

@@ -56,6 +56,15 @@ upload into the function bundles.
 - Q: What does the Ignored Build Step currently set in the host dashboard do? → A: The host's
   "Only build production" preset: every build whose target environment is not production is
   canceled.
+- Amended by `/speckit-analyze` (2026-10-18): **the first answer is withdrawn, and Story 5 is
+  dropped.** Merging would let one function instance serve both an analysis, which runs the native
+  replay parser in-process, and the ingestion run. Under Fluid compute, which the 300 s limit
+  in `docs/adr/0002-hosting.md` implies, an instance can serve concurrent invocations, so a
+  parser crash or its memory use could end a capture run. Constitution V says a parser crash
+  affects neither the API nor the ingester, and constitution I resolves the trade in favour of
+  capture. Whether the Python runtime actually shares instances concurrently was not verified;
+  the layout does not depend on it. Each production deployment keeps three functions
+  (FR-012).
 
 ## User Scenarios & Testing _(mandatory)_
 
@@ -176,31 +185,11 @@ change.
 
 ---
 
-### User Story 5 - Two functions per deployment instead of three (Priority: P3)
+### User Story 5 - Two functions per deployment instead of three — dropped
 
-Each production deployment stores two functions: the API function serving ordinary requests under
-the short request limit, and one long-running function serving both the analysis endpoint and the
-ingestion run.
-
-**Why this priority**: once Stories 1 and 3 are done, most of what remains per function is the
-shared dependency set, stored once per function — so the function count multiplies everything
-left. Merging the two long-running entrypoints removes one stored copy without giving ordinary
-requests the long-running limit, which would let any anonymous request spend that much of the
-plan's monthly compute allowance (FR-012).
-
-**Independent Test**: the same copy-only import test as Story 1 over the two remaining entrypoints,
-plus a request to the analysis endpoint and a trigger of the ingestion run through the merged
-function, plus the time-limit behaviour of an ordinary API request.
-
-**Acceptance Scenarios**:
-
-1. **Given** the two-function layout, **When** the analysis endpoint is called and the ingestion
-   run is triggered, **Then** each answers as it did before the merge, with the same
-   authentication, and both run under the long-running limit.
-2. **Given** the two-function layout, **When** an ordinary API request exceeds the short request
-   limit, **Then** it is cut off at that limit and not at the long-running limit.
-3. **Given** the scheduled daily trigger of the ingestion run, **When** it fires after the merge,
-   **Then** it reaches the long-running function, never the API function.
+Dropped by `/speckit-analyze` on 2026-10-18 (Clarifications): it would run the replay parser in
+the function that serves the ingestion run, which constitution V rules out. The number is kept so
+the other stories keep theirs, and FR-012 now holds the three-function layout in place.
 
 ---
 
@@ -236,10 +225,6 @@ function, plus the time-limit behaviour of an ordinary API request.
 - **A canceled deployment and the retention slots.** If a canceled deployment occupied one of the
   three retained production slots, skipping would evict real rollback targets instead of protecting
   them. The plan verifies how the host counts a canceled deployment before relying on Story 2.
-- **A long-running route lands on the short function.** Today the ingestion path reaches its own
-  file before the catch-all API rewrite applies. After the merge, both long-running routes must
-  still resolve to the long-running function ahead of that rewrite; a route that fell through to the
-  API function would be cut off at the short limit mid-run. Story 5's scenarios test each route.
 - **The daily deployment quota.** A canceled build may still count against the host's daily
   deployment quota. This feature does not claim to save quota; it saves storage.
 - **A manual redeploy.** The maintainer must still be able to force a production deployment of a
@@ -303,15 +288,14 @@ function, plus the time-limit behaviour of an ordinary API request.
   new rule is still governed by it. `docs/adr/0002-hosting.md` records which of the two governs
   which commit.
 
-**Function layout (Story 5)**
+**Function layout**
 
-- **FR-012**: Each production deployment MUST hold exactly two functions: `api/index.py`, which
-  keeps the short request limit and stays a thin re-export around the application factory, and one
-  long-running function that serves both the analysis endpoint and the ingestion run under the
-  long-running limit. Both routes MUST keep their public paths, methods and authentication, and the
-  scheduled ingestion trigger MUST reach the long-running function. The ingestion handler MUST keep
-  its thin-entrypoint shape around `run_once` (constitution XII). The merge MUST stay under `api/`
-  and in `vercel.json`; the layout and its reason are recorded in `docs/adr/0002-hosting.md`.
+- **FR-012**: Each production deployment MUST keep its three functions — `api/index.py` under the
+  short request limit, `api/analyze.py` and `api/cron/ingest.py` under the long-running limit —
+  with their routes, methods, authentication and limits unchanged. The replay parser, which
+  `api/analyze.py` runs in-process, MUST NOT share a function with the ingestion run
+  (constitution V). *(Amended 2026-10-18 by `/speckit-analyze`: as clarified, this merged the two
+  long-running functions into one; Story 5 is dropped.)*
 
 **Installer (Story 3)**
 
@@ -329,12 +313,11 @@ function, plus the time-limit behaviour of an ordinary API request.
 **Scope and records**
 
 - **FR-016**: Every change MUST stay within the deployment files — `vercel.json`, `.vercelignore`,
-  the root `pyproject.toml` and its dependency configuration, `uv.lock`, any script the skip rule
-  needs and its test, and the entrypoints under `api/` for FR-012 — and MUST NOT change any
-  executable line of application code under `apps/` or `packages/`. Tests, checks and comments that
-  name a moved or deleted entrypoint MUST follow it, so that no test goes red and no comment names
-  a file that no longer exists. *(Amended 2026-10-18 by `/speckit-plan`: as first written, this
-  forbade those edits too, which the deleted cron entrypoint makes impossible.)*
+  the root `pyproject.toml` and its dependency configuration, `uv.lock`, and any script the skip rule
+  needs and its test — and MUST NOT change any file under `apps/` or `packages/`. *(Amended twice
+  on 2026-10-18: `/speckit-plan` relaxed this for the test and comment edits that would follow a
+  deleted cron entrypoint; `/speckit-analyze` dropped Story 5, so nothing is deleted and nothing
+  under `apps/` or `packages/` is edited.)*
 - **FR-017**: `docs/adr/0002-hosting.md` MUST record, with dates: storage per function and per
   production deployment before and after, the number of deployments skipped once the rule is live,
   and, as the next step if storage climbs again, replacing the current S3 client with a lighter one

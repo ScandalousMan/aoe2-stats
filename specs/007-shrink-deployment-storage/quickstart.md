@@ -34,14 +34,15 @@ Expected: every recorded-history fixture and throwaway-repository case passes (r
 node scripts/checks/spa-routing.mjs
 ```
 
-Expected: exit 0, with the cron path resolving to `api/analyze` ahead of `/api/(.*)`
+Expected: exit 0, with `/api/analyze` and `/api/cron/ingest` each resolving by the filesystem to
+its own file ahead of `/api/(.*)`
 (`contracts/function-layout.md`, invariant 2).
 
 ```bash
 uv run scripts/checks/api_entrypoint_deps.py
 ```
 
-Expected: exit 0 over `api/index.py` and `api/analyze.py`.
+Expected: exit 0 over all three files under `api/`.
 
 ## 2. `pip` is gone
 
@@ -79,7 +80,7 @@ After the feature has merged and its own full deployment is live:
    Record in the ADR whether the rule ran and what it printed (`contracts/build-skip-rule.md`,
    "Forcing a deploy").
 
-## 5. The two functions answer
+## 5. The three functions answer
 
 Against the first production deployment that carries the feature:
 
@@ -97,11 +98,11 @@ Against the first production deployment that carries the feature:
 
 4. The next scheduled run at 04:00 UTC appears in the host's cron log with a 200 and in the
    project's capture audit as a normal run.
-5. Deployment → Resources → Functions lists **two** functions.
+5. Deployment → Resources → Functions lists **three** functions, as before.
 
 ## 6. Record the after value
 
 Repeat §0 for the deployment from §5. Record the values, the ratio to §0, and the date in
-`docs/adr/0002-hosting.md`. SC-002 holds when the per-deployment ratio is within 0.32–0.48 (research
-§0). Thirty days later, add the number of canceled deployments and whether any shipped commit was
+`docs/adr/0002-hosting.md`. SC-002 holds when the per-deployment ratio is inside the band research §0
+gives. Thirty days later, add the number of canceled deployments and whether any shipped commit was
 skipped (SC-006).
