@@ -382,8 +382,11 @@ _DEADLINE_BREACH_ALERT_SEVERITY = 1
 #: never fire for one of these, however far past its own `capture_deadline_at` it now sits (FR-025,
 #: T059a's own task text: "neither `stored`, `unavailable` nor `quarantined`").
 #:
-#: T059b adds `EXPIRED` and `FAILED`: both are terminal — nothing in this codebase ever moves a row
-#: out of either — and both sit permanently past their own `capture_deadline_at` by construction (an
+#: T059b adds `EXPIRED` and `FAILED`. The sweep reads every status outside this tuple, which is
+#: `pending` and `downloading`, and the drain's writes into those two match only a `pending` or
+#: `downloading` row, so none of them moves an `expired` or `failed` row back into either. A late
+#: drain's mark (T740, T747) moves such a row to `stored` or `quarantined`, both in this tuple.
+#: Both statuses sit permanently past their own `capture_deadline_at` by construction (an
 #: `expired` capture was already past its deadline by the time `_classify_not_found`, T056, closed
 #: it that way; `failed` only follows exhausting `_MAX_ATTEMPTS`, T057). Leaving them out of this
 #: tuple meant every cycle re-swept the same terminal loss forever and inserted a fresh severity-1
