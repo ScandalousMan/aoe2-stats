@@ -288,8 +288,11 @@ async def test_deadline_breach_is_not_raised_for_a_terminal_expired_or_failed_ca
     session_factory: async_sessionmaker,
     clean_database: None,
 ) -> None:
-    """T059b: `expired` and `failed` are terminal — nothing ever moves a row out of either, and
-    both sit permanently past their own `capture_deadline_at` by construction (an `expired` capture
+    """T059b: the sweep reads only `pending` and `downloading`, and the drain's writes into those
+    two match only a `pending` or `downloading` row, so none of them moves an `expired` or `failed`
+    row back into either (a late drain's mark, T740 and T747, moves it to `stored` or
+    `quarantined`, both excluded too). Both sit permanently past their own `capture_deadline_at` by
+    construction (an `expired` capture
     was already past its deadline by the time `_classify_not_found`, T056, closed it that way; a
     `failed` capture only reaches that status after `_MAX_ATTEMPTS`, T057, which itself only fires
     once `next_attempt_at`'s backoff has run past the deadline in every realistic case). Sweeping
@@ -320,9 +323,9 @@ async def test_deadline_breach_is_not_raised_for_a_terminal_expired_or_failed_ca
 
     alerts = await _deadline_breach_alerts(session_factory)
     assert alerts == [], (
-        "a capture that is `expired` or `failed` is terminal — nothing ever moves it out of that "
-        "state, and it was already alerted once by its own terminal producer, so it must never "
-        "raise `deadline_breach` on top, however many cycles run afterwards"
+        "a capture that is `expired` or `failed` is outside the statuses the sweep reads, and it "
+        "was already alerted once by its own producer, so it must not raise `deadline_breach` on "
+        "top, however many cycles run afterwards"
     )
 
 

@@ -1275,6 +1275,31 @@ async def test_a_failed_validation_over_an_already_quarantined_row_is_not_rewrit
 
 
 @pytest.mark.parametrize(("path", "failure"), _FAILURES, ids=_FAILURE_IDS)
+async def test_a_failed_validation_over_a_row_another_drain_reverted_to_pending_leaves_it_pending(
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+    path: str,
+    failure: str,
+) -> None:
+    """A `pending` row naming the drain's own key is still not matched: it is back in the queue,
+    not ended, so the late failure neither quarantines it nor alerts."""
+    outcome = await _late_failure(
+        session_factory,
+        monkeypatch,
+        path=path,
+        failure=failure,
+        end=_ending(CaptureStatus.PENDING, object_key=_KEY),
+    )
+
+    assert outcome.snapshot["status"] == CaptureStatus.PENDING
+    assert outcome.snapshot["object_key"] == _KEY
+    assert await _row(session_factory, outcome.capture_id) == outcome.snapshot
+    assert outcome.report["quarantined_total"] == 0
+    assert await _alerts(session_factory) == []
+
+
+@pytest.mark.parametrize(("path", "failure"), _FAILURES, ids=_FAILURE_IDS)
 async def test_a_failed_validation_over_a_downloading_row_quarantines_it_as_before(
     session_factory: async_sessionmaker[AsyncSession],
     clean_database: None,

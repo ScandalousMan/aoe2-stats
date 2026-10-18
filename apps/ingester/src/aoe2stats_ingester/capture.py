@@ -23,7 +23,7 @@ the row whatever the row's status, and only while it names none (`_commit_blob_m
 object this drain wrote is never left unnamed by a row withdrawn meanwhile, and one object is never
 named over another. The other row writes the drain makes after its claim match the row only while it
 is still `downloading`, so a row an upload has marked `stored` is never rewritten. The two
-exceptions are the drain's terminal marks, `stored` (T740, `_mark_stored_by_drain`) and
+exceptions are the drain's post-validation marks, `stored` (T740, `_mark_stored_by_drain`) and
 `quarantined` (T747, `_quarantine`): each also matches a row another drain ended `expired`, `failed`
 or `unavailable` while this one was past its claim, when the row names the key this drain wrote,
 adopted or, on a resumed reclaim, read from the row. That the validated bytes are the named bytes
@@ -31,13 +31,13 @@ comes from ordering, not from that equality: in `_process_one` the mark runs onl
 drain's own metadata commit named its object, which nothing clears, and a resumed reclaim re-hashes
 the object against the row's `zip_sha256` before it validates. The equality is a defensive guard
 against a row naming any other key, which no writer produces (`replay_object_key` is one key per
-pair, the same for the drain and an upload). So `stored` with `validated_by` set, or `quarantined`
-with the drain's reason, is the true record where the ended status would leave a row naming a
-replay while reading as lost. A widened `quarantined` mark raises the same severity-2
-`validation_failed` alert as any other, over an `expired` row too: that row's severity-1
-`expired_capture` alert stays beside it. `withdrawn` (a refusal made on purpose), `stored`,
-`quarantined` and `pending` are never matched. The claim, the withdrawal sweep and
-`revalidate_quarantined` (guarded on `quarantined`) are not such writes.
+pair, the same for the drain and an upload). So the row's status then records this drain's
+validation outcome, `stored` with `validated_by` set or `quarantined` with the drain's reason,
+rather than the other drain's ended attempt. A widened `quarantined` mark raises the same severity-2
+`validation_failed` alert as any other, over an `expired` row too: the mark writes `status` and
+`last_error` only, so that row's severity-1 `expired_capture` alert stays beside it. `withdrawn` (a
+refusal made on purpose), `stored`, `quarantined` and `pending` are never matched. The claim, the
+withdrawal sweep and `revalidate_quarantined` (guarded on `quarantined`) are not such writes.
 Validation runs after that commit, never before it, and the status only ever flips to `stored` or
 `quarantined` once validation has run (or, for a resumed reclaim, once its outcome has been decided
 not to be re-attempted — see below). A process that dies between the upload and the commit leaves
@@ -1675,9 +1675,9 @@ class CaptureDrain:
         The mark matches the row while it is `downloading`, or while another drain ended it
         `expired`, `failed` or `unavailable` and it names `object_key`, the key this drain wrote,
         adopted or, on a resumed reclaim, read from the row (T747, as `_mark_stored_by_drain`
-        does for T740). It then overwrites `last_error` with this drain's reason and retracts
-        nothing the other drain recorded: over an `expired` row the severity-1 `expired_capture`
-        alert stays beside the `validation_failed` alert raised here. `withdrawn`, `stored`,
+        does for T740). It writes `status` and `last_error` only; the other drain's alert and its
+        run's counter stay, so over an `expired` row the severity-1 `expired_capture` alert stays
+        beside the `validation_failed` alert raised here. `withdrawn`, `stored`,
         `quarantined` and `pending` stay unmatched.
         """
         written = await self._mark_quarantined(

@@ -2857,20 +2857,20 @@ carries what T673's dry run read.
       be implemented).** **Yes to both: the drain's `quarantined` mark also matches `expired`,
       `failed` and `unavailable` when the row names the drain's key, and it then raises
       `validation_failed` as any quarantine does.** `withdrawn`, `stored`, `quarantined` and
-      `pending` stay unmatched. This is T740's widening applied to the drain's other terminal mark:
-      `_quarantine` takes the key `_process_one` wrote or adopted, or the key `_resume_reclaim`
-      read from the row, and `_mark_quarantined` gains the same `also_if_ended_naming` match as
-      `_mark_stored`. T673's re-validation call leaves it unset. The row ends `quarantined` with
-      the drain's reason, the status T673's re-validation selects from, where the ended status
-      left it naming an unvalidated object that nothing selects. Nothing the other drain recorded is
-      retracted: over an `expired` row its `expired_capture` alert stays beside the new
+      `pending` stay unmatched. This is T740's widening applied to the drain's other
+      post-validation mark: `_quarantine` takes the key `_process_one` wrote or adopted, or the key
+      `_resume_reclaim` read from the row, and `_mark_quarantined` gains the same
+      `also_if_ended_naming` match as `_mark_stored`. T673's re-validation call leaves it unset. The
+      row's status then records this drain's validation outcome rather than the other drain's ended
+      attempt. The write replaces `status` and `last_error` only; the other drain's alert and its
+      run's counter stay, so over an `expired` row its `expired_capture` alert stays beside the new
       `validation_failed` alert. **Tests, each red before:** for each of `expired`, `failed` and
       `unavailable`, a row another drain ended while this drain was past its claim ends
       `quarantined` with the drain's reason and one `validation_failed` alert, through
       `_process_one` (an engine error, the wall-clock cap) and `_resume_reclaim` (an engine error,
       a missing object, a checksum mismatch); over `expired`, both alerts are present.
-      **Contrast:** a `withdrawn` row, a row naming another key, a `stored` row and an
-      already-`quarantined` row are not rewritten and raise no alert
+      **Contrast:** a `withdrawn` row, a `pending` row, a row naming another key, a `stored` row and
+      an already-`quarantined` row are not rewritten and raise no alert
 
 ---
 
