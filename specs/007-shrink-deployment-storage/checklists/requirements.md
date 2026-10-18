@@ -13,7 +13,7 @@
 
 ## Requirement Completeness
 
-- [ ] No [NEEDS CLARIFICATION] markers remain
+- [x] No [NEEDS CLARIFICATION] markers remain
 - [x] Requirements are testable and unambiguous
 - [x] Success criteria are measurable
 - [x] Success criteria are technology-agnostic (no implementation details)
@@ -31,10 +31,9 @@
 
 ## Notes
 
-- **Two markers are left open on purpose** (FR-011, FR-012). The feature description routes both to
-  `/speckit-clarify` rather than to this command: FR-011 is information only the maintainer has (the
-  current Ignored Build Step, copied from the host dashboard), FR-012 is an arbitration between
-  three function layouts. Both must be answered before `/speckit-plan`.
+- **The two markers the description routed to `/speckit-clarify` are resolved** (session
+  2026-10-18): FR-011 carries the dashboard's "Only build production" preset into the new rule,
+  FR-012 fixes the layout at two functions.
 - **Implementation details, judged for this feature's subject.** The feature _is_ deployment
   configuration, so the spec names the repository files it may touch (FR-016) and the paths that
   must always deploy (FR-008): those are constraints from the description, not design choices. The

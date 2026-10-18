@@ -47,6 +47,16 @@ qualitatively, and what this spec builds on:
 deploys, and the upload carries no test artifact and no secret). This feature continues it from the
 upload into the function bundles.
 
+## Clarifications
+
+### Session 2026-10-18
+
+- Q: How many functions should each production deployment hold? → A: Two. `api/index.py` keeps the
+  short request limit; the analysis endpoint and the ingestion run share one long-running function.
+- Q: What does the Ignored Build Step currently set in the host dashboard do? → A: The host's
+  "Only build production" preset: every build whose target environment is not production is
+  canceled.
+
 ## User Scenarios & Testing _(mandatory)_
 
 The actor throughout is the **maintainer** who merges to `main` and owns the production deployment.
@@ -117,6 +127,9 @@ full one.
 5. **Given** a commit that changed shipped code whose production build failed or was canceled,
    followed by a docs-only commit, **When** the host evaluates the docs-only commit, **Then** it
    deploys, because the shipped change is not yet live.
+6. **Given** a build whose target environment is not production, **When** the host evaluates it,
+   **Then** it is canceled whatever it changes, as the dashboard's "Only build production" setting
+   does today.
 
 ---
 
@@ -163,25 +176,31 @@ change.
 
 ---
 
-### User Story 5 - Fewer functions per deployment (Priority: P3, open)
+### User Story 5 - Two functions per deployment instead of three (Priority: P3)
 
-Each production deployment stores fewer than three functions, by serving the analysis endpoint and
-the ingestion run from fewer entrypoints, while ordinary API requests keep a time limit that fits
-them.
+Each production deployment stores two functions: the API function serving ordinary requests under
+the short request limit, and one long-running function serving both the analysis endpoint and the
+ingestion run.
 
 **Why this priority**: once Stories 1 and 3 are done, most of what remains per function is the
 shared dependency set, stored once per function — so the function count multiplies everything
-left. Whether to do it is an arbitration the code cannot settle (FR-012).
+left. Merging the two long-running entrypoints removes one stored copy without giving ordinary
+requests the long-running limit, which would let any anonymous request spend that much of the
+plan's monthly compute allowance (FR-012).
 
-**Independent Test**: the same copy-only import test as Story 1 over the remaining entrypoints,
-plus a request to each route that moved, plus the time-limit behaviour of an ordinary API request.
+**Independent Test**: the same copy-only import test as Story 1 over the two remaining entrypoints,
+plus a request to the analysis endpoint and a trigger of the ingestion run through the merged
+function, plus the time-limit behaviour of an ordinary API request.
 
 **Acceptance Scenarios**:
 
-1. **Given** the chosen layout, **When** each route that moved is called, **Then** it answers as it
-   did before the move.
-2. **Given** the chosen layout, **When** an ordinary API request exceeds the request time limit the
-   layout assigns it, **Then** it is cut off at that limit and not at the long-running limit.
+1. **Given** the two-function layout, **When** the analysis endpoint is called and the ingestion
+   run is triggered, **Then** each answers as it did before the merge, with the same
+   authentication, and both run under the long-running limit.
+2. **Given** the two-function layout, **When** an ordinary API request exceeds the short request
+   limit, **Then** it is cut off at that limit and not at the long-running limit.
+3. **Given** the scheduled daily trigger of the ingestion run, **When** it fires after the merge,
+   **Then** it reaches the long-running function, never the API function.
 
 ---
 
@@ -217,10 +236,18 @@ plus a request to each route that moved, plus the time-limit behaviour of an ord
 - **A canceled deployment and the retention slots.** If a canceled deployment occupied one of the
   three retained production slots, skipping would evict real rollback targets instead of protecting
   them. The plan verifies how the host counts a canceled deployment before relying on Story 2.
+- **A long-running route lands on the short function.** Today the ingestion path reaches its own
+  file before the catch-all API rewrite applies. After the merge, both long-running routes must
+  still resolve to the long-running function ahead of that rewrite; a route that fell through to the
+  API function would be cut off at the short limit mid-run. Story 5's scenarios test each route.
 - **The daily deployment quota.** A canceled build may still count against the host's daily
   deployment quota. This feature does not claim to save quota; it saves storage.
 - **A manual redeploy.** The maintainer must still be able to force a production deployment of a
   skipped commit when they deliberately want one.
+- **A branch that predates the rule.** The host reads the build-skip rule from the pushed commit,
+  so a branch cut before this feature merged is still governed by the dashboard's "Only build
+  production" setting. Removing that setting from the dashboard would let such a branch build a
+  preview again (FR-011).
 - **Branch pushes.** Only `main` deploys today (`git.deploymentEnabled`); the skip rule must not
   change that, and must not make any branch deploy.
 - **A future parser release imports `pip`.** The test suite runs without `pip` installed, so a parser
@@ -263,23 +290,28 @@ plus a request to each route that moved, plus the time-limit behaviour of an ord
 - **FR-009**: An automated test MUST run the skip decision offline against real commit ranges from
   this repository's history and assert the expected verdict for each, including at least: a
   docs-only commit, a spec-only commit, a test-only commit, a visual-baseline commit, a commit
-  touching `uv.lock`, a migration commit, a mixed commit, a rename across the boundary, and a
-  docs-only commit that follows an undeployed code commit.
+  touching `uv.lock`, a migration commit, a mixed commit, a rename across the boundary, a docs-only
+  commit that follows an undeployed code commit, and a non-production build of a commit that would
+  otherwise deploy.
 - **FR-010**: The rule MUST NOT make any branch other than `main` deploy, and MUST NOT prevent a
   deliberate manual production redeploy.
-- **FR-011**: The existing Ignored Build Step in the host's project settings MUST be either carried
-  into the new rule or deliberately dropped with the reason recorded in `docs/adr/0002-hosting.md`.
-  What it currently does: [NEEDS CLARIFICATION: the maintainer copies the current Ignored Build Step
-  command from the host dashboard (project settings, Git); only they can read it.]
+- **FR-011**: The new rule MUST carry the existing Ignored Build Step's behaviour — the host's
+  "Only build production" preset in the project settings — before its path decision: a build whose
+  target environment is not production is canceled whatever it changes, and only a production
+  build goes on to FR-006. When the target environment cannot be read, FR-007 applies and the build
+  proceeds. The dashboard setting MUST stay in place, because a branch whose commits predate the
+  new rule is still governed by it. `docs/adr/0002-hosting.md` records which of the two governs
+  which commit.
 
 **Function layout (Story 5)**
 
-- **FR-012**: The number of production functions MUST be [NEEDS CLARIFICATION: (a) one function
-  serving everything, accepting the long-running time limit for ordinary API requests; (b) two —
-  the API entrypoint keeps its short limit, the analysis endpoint and the ingestion run share one
-  long-running function; (c) three, unchanged, relying on FR-001–FR-015]. Any layout MUST keep
-  `api/index.py` a thin re-export around the application factory, or argue the change in
-  `docs/adr/0002-hosting.md`, and MUST keep the ingester's thin-entrypoint shape (constitution XII).
+- **FR-012**: Each production deployment MUST hold exactly two functions: `api/index.py`, which
+  keeps the short request limit and stays a thin re-export around the application factory, and one
+  long-running function that serves both the analysis endpoint and the ingestion run under the
+  long-running limit. Both routes MUST keep their public paths, methods and authentication, and the
+  scheduled ingestion trigger MUST reach the long-running function. The ingestion handler MUST keep
+  its thin-entrypoint shape around `run_once` (constitution XII). The merge MUST stay under `api/`
+  and in `vercel.json`; the layout and its reason are recorded in `docs/adr/0002-hosting.md`.
 
 **Installer (Story 3)**
 
@@ -298,8 +330,8 @@ plus a request to each route that moved, plus the time-limit behaviour of an ord
 
 - **FR-016**: Every change MUST stay within the deployment files — `vercel.json`, `.vercelignore`,
   the root `pyproject.toml` and its dependency configuration, `uv.lock`, any script the skip rule
-  needs and its test — and MUST NOT modify application code under `apps/` or `packages/`, unless
-  the arbitration in FR-012 requires it and the ADR records why.
+  needs and its test, and the entrypoints under `api/` for FR-012 — and MUST NOT modify
+  application code under `apps/` or `packages/`.
 - **FR-017**: `docs/adr/0002-hosting.md` MUST record, with dates: storage per function and per
   production deployment before and after, the number of deployments skipped once the rule is live,
   and, as the next step if storage climbs again, replacing the current S3 client with a lighter one
