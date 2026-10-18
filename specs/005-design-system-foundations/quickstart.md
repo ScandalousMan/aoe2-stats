@@ -1200,6 +1200,82 @@ suite only, so the keyboard, focus-visibility and touch-footprint suites do not 
 is partly met overall until the T681 and T682 rows are deleted** — local run only, macOS Chromium,
 441 tests. The full-page baselines in `tests/visual/app-routes.spec.ts` are CI-authoritative and unchanged by this task.
 
+**Widened, 2026-10-17 (T681).** T681's own row of `packages/design-system/specs/README.md`'s
+"Verification-coverage gap register" is deleted, and the sentence above that no `Tooltip` is opened is
+superseded. `TOOLTIP_SCENARIOS` in `tests/visual/fixtures/suite-scenarios.ts` enters `/dashboard`,
+`/matches`, `/players/$profileId` and `/players/$profileId/matches` and opens `CountryFlag`'s
+`Tooltip` by Tab to its trigger (`:focus-visible` opens it), in both themes. Those four are every
+route that renders one: the only `Tooltip` an application route renders is `CountryFlag`'s, the only
+component that renders a `CountryFlag` is `ProfileSummary`, and no list row renders a flag, so the
+populated lists open none (T681's task text had said they did). The reduced-motion suite asserts the
+open surface's transition is present without the preference and, with the preference switched on
+live, absent on the same element, then runs its whole-page sweep with the tooltip still open; the
+keyboard suite asserts Escape dismisses the surface and focus stays on the trigger
+(`packages/design-system/specs/tooltip.md` §8). Both assertions live in
+`tests/visual/fixtures/tooltip-open.ts` and are shared with `tests/visual/fixtures/tooltip-open.test.ts`,
+whose planted pages (a surface lacking the `motion-reduce:` utility, one that never transitions, one
+that is closed, an ignored Escape, an Escape that loses focus, a trigger whose focus opens nothing,
+a second tooltip trigger in `main`) each fail naming the broken clause. The guard is per route, not
+per tooltip. `tests/visual/fixtures/suite-scenarios.test.ts` fails when a `<Tooltip>`,
+`<CountryFlag>` or `<ProfileSummary>` usage appears in a file no table entry names, and when a route
+file under `apps/web/src/routes/` imports a container that renders a `ProfileSummary` and its route
+has no tooltip scenario; the scenario itself fails when `main` holds a second tooltip trigger, counted once, as
+rendered when the first trigger attaches. A tooltip that renders only in a populated list (one added to
+`MatchRow`, whose at-rest `/matches` list is empty) fails the source check only until a table entry
+naming `/matches` is added, and the count never sees it: it stays unjudged until a populated
+scenario opens it. A route that reaches a container through another component, rather than
+importing it, is not derived, nor is one that imports it by a default import or a lazy `import()`,
+or from a nested route directory (only braced named imports in the flat routes directory are read). Dropping `motion-reduce:duration-0` from the component, and disabling its Escape
+handling, were each shown to fail the route suites locally before this note was written. The tooltip
+scenarios run in the keyboard and reduced-motion suites only, the two T681 names: the focus-visibility
+and touch-footprint suites already measure the flag trigger at rest on those routes. **Item 13 stays
+partly met** until T682's row of the same register is deleted: the `objected` `ArchivalControl` and
+`DataExportPanel`'s `ready` link are still not rendered, and T682 states the final verdict. The run
+that shows T681's part is PR #163's run [39061381397](https://github.com/ScandalousMan/aoe2-stats/actions/runs/39061381397) at `b2da596e`, which also carries T682: no run on
+T681's own head completed, each being cancelled by the next push.
+
+**Widened, 2026-10-17 (T682).** T682's own row of `packages/design-system/specs/README.md`'s
+"Verification-coverage gap register" is deleted, and the
+sentences above that the `objected` `ArchivalControl` and `DataExportPanel`'s `ready` link are not
+rendered, and that item 13 stays partly met until this row is deleted, are superseded. The register
+is not empty: the review of #163 filed T744's row in that register. `SUITE_SCENARIOS`
+in `tests/visual/fixtures/suite-scenarios.ts` now holds three more populated scenarios, so all four
+suites run each of them in both themes: `/dashboard (archival objected)` and `/privacy (archival
+objected)` stub `/api/me` with `archival_objected: true` and an `archival_objected_at` timestamp, and
+`/privacy (export ready)` drives `DataExportPanel` to `ready` by its own flow, by keyboard (Tab to
+"Export my data", Enter) against a stubbed export API (`POST /api/privacy/export`, then
+`GET /api/privacy/export/{id}` reading `completed` with a same-origin relative `download_url`). Each is
+declared in the per-route list inventory (`ROUTE_REQUIRED_LISTS`), so `enterScenario` asserts in the
+browser that the "Resume archival" button and the dated callout, or the download link, are on screen with
+no error callout or loading region, and `tests/visual/fixtures/suite-scenarios.test.ts` fails by name when
+a scenario or its inventory entry is removed (`/privacy` is no longer listed there as a route without a
+list). Planted pages with `archival_objected` false, with no `archival_objected_at`, and with an export that
+stays queued each fail that assertion naming the missing control; the same two absences, planted by hand in the
+scenarios, were shown to fail the keyboard suite. Two separate facts surfaced while writing them. First, product behaviour: after the export finishes,
+focus is on `body`, because `Button`'s `loading` state sets the native `disabled` attribute
+(`packages/design-system/specs/shared-primitives.md:206`, `packages/design-system/src/primitives/Button/index.tsx:216`)
+and the focused request button drops focus. No route suite judges where focus lands after an action; that is filed as T745.
+Second, a harness fault: the Tab walk's start-of-document reset skipped a page whose focus was already on `body`,
+leaving Chromium's sequential-focus starting point on the disabled button, so the walk visited 4 of 15 stops. That is
+fixed in the harness, not in the scenario: `resetFocusToDocumentStart` in `tests/visual/fixtures/keyboard-walk.ts` now
+always puts the starting point at the top (a planted page where a focused button becomes `disabled` failed it before the
+fix and passes after; a page with that button never focused is its control), except on a page that declares a positive
+`tabindex`, where a sentinel would skip the positive-tabindex stops and the reset only blurs. `tabTo` shares it.
+**Item 13 is partly met.** It is Met for every route's success branch, at rest and populated, with every `Dialog`,
+`Menu` and the country `Tooltip` open, in both themes, on the head carrying T681 and T682; it stays partly met overall
+until T744's row of `packages/design-system/specs/README.md`'s "Verification-coverage gap register" is deleted. What
+the four suites do not reach is stated rather than hidden: the error and transient branches meet none of them (filed as
+T744: `DataExportPanel`'s `failed` state and its "Try again" button, `ArchivalControl` while its write is in flight
+and after a resume, the match page's analysis section in its `queued`, `running`, `failed` and `unavailable` states, the no-linked-account state on `/dashboard`, `/matches` and `/matches/$gameId`, `/search`'s empty-results branches), and the two
+loading states (`ProfileSummary`'s `Skeleton`, the erase button's `Spinner`) run in the reduced-motion suite only
+(also T744). Of the empty branches, the at-rest route scenarios render only the empty match and favourites lists, and
+a refused non-success state ("Try requesting analysis") is in the inventory. The tooltip scenarios
+run in the keyboard and reduced-motion suites only, because the focus-visibility and touch-footprint suites already
+measure the flag trigger at rest. The run that shows T681's and T682's parts together is PR #163's run
+[39061381397](https://github.com/ScandalousMan/aoe2-stats/actions/runs/39061381397) at `b2da596e`, green in every job: its `visual` job's route-level step ran 560 tests with none
+skipped, the 22 of `tests/visual/app-routes.spec.ts`, route-keyboard 90, route-focus-visibility 82, route-touch-footprint 82,
+route-reduced-motion 94 and the 190 under `tests/visual/fixtures/`, the same counts a local macOS Chromium run reported.
+
 ### Item 15's general-reviewer half — outstanding, no pull request covers this head
 
 The `visual-reviewer` half is T595/T596/T600/T671's own, by their own words ("Production-readiness

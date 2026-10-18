@@ -138,19 +138,28 @@ export const FOCUSABLE_SELECTOR =
 export const BACKGROUND_UNRESOLVABLE_DARK_SCHEME = '__no-opaque-surface--dark-color-scheme__'
 
 /** Start from the top of the document, whatever had focus before (T676: a scenario's `prepare`
- * may have typed into a field or opened a menu). `blur()` alone leaves Chromium's sequential
- * focus navigation starting point where the element was, so the first Tab would continue from
- * there and skip every candidate before it. When something *was* focused, focus a throwaway
- * `tabindex="-1"` sentinel inserted as the body's first child and remove it again: the starting
- * point is then the top of the document, where a fresh page load leaves it. A page where nothing
- * was focused is left alone — its starting point is already right, and a sentinel would change
- * how a positive `tabindex` orders (this codebase declares none; `keyboard-walk.test.ts` plants
- * one deliberately). Shared by `walkTabOrder` and `tabTo` (`./open-surface`). */
+ * may have typed into a field or opened a menu) and whatever the page did to it since (T682: a
+ * focused button that became `disabled` drops focus to `body`). `blur()` alone leaves Chromium's
+ * sequential focus navigation starting point where the element was, so the first Tab would continue
+ * from there and skip every candidate before it. Focus a throwaway `tabindex="-1"` sentinel
+ * inserted as the body's first child and remove it again: the starting point is then the top of
+ * the document, where a fresh page load leaves it. This runs even when focus is already on `body`:
+ * `document.activeElement` says nothing about where the starting point is, and an early return
+ * there left it on a disabled button (the walk visited 4 of 15 stops on `/privacy`).
+ *
+ * One exception, measured in Chromium: a page that declares a positive `tabindex` is only blurred.
+ * From the sentinel's position Chromium continues with the elements of tabindex 0, so the positive
+ * ones, which a fresh load visits first, would be skipped. This codebase declares none (the
+ * `keyboard-walk.test.ts` planted page for the DOM-order guard is the one that does), so the
+ * exception costs nothing here. Shared by `walkTabOrder` and `tabTo` (`./open-surface`). */
 export async function resetFocusToDocumentStart(page: Page): Promise<void> {
   await page.evaluate(() => {
     const active = document.activeElement as HTMLElement | null
-    if (active === null || active === document.body) return
-    active.blur()
+    if (active !== null && active !== document.body) active.blur()
+    const declaresPositiveTabindex = Array.from(document.querySelectorAll('[tabindex]')).some(
+      (el) => Number(el.getAttribute('tabindex')) > 0,
+    )
+    if (declaresPositiveTabindex) return
     const sentinel = document.createElement('span')
     sentinel.setAttribute('tabindex', '-1')
     document.body.insertBefore(sentinel, document.body.firstChild)
