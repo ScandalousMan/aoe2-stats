@@ -167,7 +167,9 @@ describe('ThirdPartyObjectionForm — states', () => {
     await user.type(screen.getByLabelText('Your Age of Empires II profile id'), '999')
     await user.click(screen.getByRole('button', { name: 'Record my objection' }))
 
-    expect(screen.getByRole('button', { name: 'Recording your objection…' })).toBeDisabled()
+    const busy = screen.getByRole('button', { name: 'Recording your objection…' })
+    expect(busy).not.toBeDisabled()
+    expect(busy).toHaveAttribute('aria-disabled', 'true')
     expect(screen.getByLabelText('Your Age of Empires II profile id')).toHaveAttribute('readonly')
     resolveSubmit()
     await waitFor(() => expect(screen.getByText(/recorded/i)).toBeInTheDocument())

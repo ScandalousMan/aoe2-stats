@@ -330,8 +330,8 @@ table). `AccountErasurePanel.stories.tsx`'s `ErasedScreenHover`, `ErasedScreenFo
 `ErasedScreenActive` capture those three states clipped to the link, and they are judged against
 this paragraph.
 
-**disabled** — `DataExportPanel`: the `RequestButton` disables while a request is in flight or a job is
-preparing (its loading label says why), so a second export cannot be started over an unfinished one.
+**disabled** — `DataExportPanel`: none — while a request is in flight or a job is preparing, the
+`RequestButton` is in `Button`'s `loading` state: it keeps focus, and a second export cannot start.
 `AccountErasurePanel`: `ConfirmAction` is `disabled` until `Acknowledgement` is checked — the one
 sanctioned disabled control in these two specs, because the action it guards is irreversible and the
 checkbox beside it _is_ the visible reason (satisfying `Button`'s rule that a disabled button carry a

@@ -95,7 +95,8 @@ describe('FavouriteToggle', () => {
       render(<FavouriteToggle favourited={false} authenticated loading />)
       const button = screen.getByRole('button', { name: /Adding…/ })
       expect(button).toHaveAttribute('aria-busy', 'true')
-      expect(button).toBeDisabled()
+      expect(button).not.toBeDisabled()
+      expect(button).toHaveAttribute('aria-disabled', 'true')
     })
 
     it('shows "Removing…" while a DELETE is in flight (favourited still true)', () => {

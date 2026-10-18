@@ -628,6 +628,279 @@ async def test_a_row_reverted_to_pending_by_another_drain_names_the_object_and_r
     assert store.put_if_absent_calls == [(_KEY, _DOWNLOADED)]
 
 
+# --- A row another drain ended while this drain was past its claim (T740) ----------------------
+#
+# The level under test is the `stored` mark after the blob metadata commit, not the claim: the claim
+# went stale, a second drain reclaimed the row and ended it, and the first drain's object write,
+# metadata commit and mark still land.
+
+
+async def _end_row(
+    session_factory: async_sessionmaker[AsyncSession],
+    capture_id: uuid.UUID,
+    status: CaptureStatus,
+    **extra: Any,
+) -> None:
+    """What a second drain leaves when it ends the row: a terminal status and its last error."""
+    async with session_factory() as session:
+        await session.execute(
+            update(ReplayCapture)
+            .where(ReplayCapture.id == capture_id)
+            .values(status=status, claimed_at=None, last_error="ended by another drain", **extra)
+        )
+        await session.commit()
+
+
+@pytest.mark.parametrize(
+    "ended",
+    [CaptureStatus.EXPIRED, CaptureStatus.FAILED, CaptureStatus.UNAVAILABLE],
+    ids=["expired", "failed", "unavailable"],
+)
+async def test_a_row_another_drain_ended_before_the_metadata_commit_ends_stored(
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+    ended: CaptureStatus,
+) -> None:
+    capture_id = await _seed(session_factory)
+    store = _HookedObjectStore()
+
+    async def another_drain_ends_the_row() -> None:
+        await _end_row(session_factory, capture_id, ended)
+
+    store.after_write = another_drain_ends_the_row
+    report = await _run(_drain(session_factory, _Provider(_blob()), store))
+
+    row = await _row(session_factory, capture_id)
+    assert row["status"] == CaptureStatus.STORED
+    assert row["validated_by"] == "fake-engine@0.0.0"
+    assert row["object_key"] == _KEY
+    assert row["zip_sha256"] == _sha(_DOWNLOADED)
+    assert row["last_error"] is None
+    assert row["http_status"] == 200
+    assert report["stored_total"] == 1
+
+
+@pytest.mark.parametrize(
+    "ended",
+    [CaptureStatus.EXPIRED, CaptureStatus.FAILED, CaptureStatus.UNAVAILABLE],
+    ids=["expired", "failed", "unavailable"],
+)
+async def test_a_row_another_drain_ended_during_validation_ends_stored(
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+    ended: CaptureStatus,
+) -> None:
+    """The same, with the row ended between the metadata commit and the mark."""
+    capture_id = await _seed(session_factory)
+    store = _HookedObjectStore()
+
+    async def barrier(
+        validator: Any, zip_bytes: bytes, *, timeout_seconds: float
+    ) -> tuple[ReplayValidationResult | None, str | None]:
+        assert (await _row(session_factory, capture_id))["object_key"] == _KEY
+        await _end_row(session_factory, capture_id, ended)
+        return validator.validate(zip_bytes), None
+
+    monkeypatch.setattr(capture_module, "_validate_with_barrier", barrier)
+
+    report = await _run(_drain(session_factory, _Provider(_blob()), store))
+
+    row = await _row(session_factory, capture_id)
+    assert row["status"] == CaptureStatus.STORED
+    assert row["validated_by"] == "fake-engine@0.0.0"
+    assert row["object_key"] == _KEY
+    assert report["stored_total"] == 1
+
+
+@pytest.mark.parametrize(
+    "ended",
+    [CaptureStatus.EXPIRED, CaptureStatus.FAILED, CaptureStatus.UNAVAILABLE],
+    ids=["expired", "failed", "unavailable"],
+)
+async def test_a_resumed_reclaim_whose_row_another_drain_ended_ends_stored(
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+    ended: CaptureStatus,
+) -> None:
+    """The resume path passes the row's own committed key to the same mark."""
+    capture_id = await _seed(session_factory)
+    store = _HookedObjectStore({_KEY: _DOWNLOADED})
+    async with session_factory() as session:
+        await session.execute(
+            update(ReplayCapture)
+            .where(ReplayCapture.id == capture_id)
+            .values(
+                status=CaptureStatus.DOWNLOADING,
+                claimed_at=datetime.now(UTC) - timedelta(hours=1),
+                object_key=_KEY,
+                zip_bytes=len(_DOWNLOADED),
+                zip_sha256=_sha(_DOWNLOADED),
+            )
+        )
+        await session.commit()
+
+    async def barrier(
+        validator: Any, zip_bytes: bytes, *, timeout_seconds: float
+    ) -> tuple[ReplayValidationResult | None, str | None]:
+        await _end_row(session_factory, capture_id, ended)
+        return validator.validate(zip_bytes), None
+
+    monkeypatch.setattr(capture_module, "_validate_with_barrier", barrier)
+
+    provider = _Provider(_blob())
+    report = await _run(_drain(session_factory, provider, store))
+
+    row = await _row(session_factory, capture_id)
+    assert provider.calls == 0
+    assert row["status"] == CaptureStatus.STORED
+    assert row["validated_by"] == "fake-engine@0.0.0"
+    assert row["object_key"] == _KEY
+    assert report["stored_total"] == 1
+
+
+async def test_a_withdrawn_row_stays_withdrawn_and_names_the_object_after_the_mark(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """`withdrawn` is a refusal made on purpose, not an outcome of an attempt: a late write never
+    reverses it, in either place the row can be withdrawn."""
+    capture_id = await _seed(session_factory)
+    store = _HookedObjectStore()
+
+    async def withdrawn() -> None:
+        await _end_row(session_factory, capture_id, CaptureStatus.WITHDRAWN)
+
+    store.after_write = withdrawn
+    report = await _run(_drain(session_factory, _Provider(_blob()), store))
+
+    row = await _row(session_factory, capture_id)
+    assert row["status"] == CaptureStatus.WITHDRAWN
+    assert row["object_key"] == _KEY
+    assert row["validated_by"] is None
+    assert row["last_error"] == "ended by another drain"
+    assert report["stored_total"] == 0
+
+
+async def test_a_row_withdrawn_between_the_commit_and_the_mark_stays_withdrawn(
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    capture_id = await _seed(session_factory)
+    store = _HookedObjectStore()
+    snapshot: dict[str, Any] = {}
+
+    async def barrier(
+        validator: Any, zip_bytes: bytes, *, timeout_seconds: float
+    ) -> tuple[ReplayValidationResult | None, str | None]:
+        await _end_row(session_factory, capture_id, CaptureStatus.WITHDRAWN)
+        snapshot.update(await _row(session_factory, capture_id))
+        return validator.validate(zip_bytes), None
+
+    monkeypatch.setattr(capture_module, "_validate_with_barrier", barrier)
+
+    report = await _run(_drain(session_factory, _Provider(_blob()), store))
+
+    assert snapshot["object_key"] == _KEY
+    assert await _row(session_factory, capture_id) == snapshot
+    assert snapshot["status"] == CaptureStatus.WITHDRAWN
+    assert report["stored_total"] == 0
+
+
+@pytest.mark.parametrize(
+    "ended",
+    [CaptureStatus.EXPIRED, CaptureStatus.FAILED, CaptureStatus.UNAVAILABLE],
+    ids=["expired", "failed", "unavailable"],
+)
+async def test_a_row_naming_another_key_than_the_drains_is_not_marked(
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+    ended: CaptureStatus,
+) -> None:
+    """Exercises the defensive guard on the key equality, not an ordering guarantee: no writer
+    produces a row naming another key (`replay_object_key` is one key per pair), but a row ended
+    while naming one is never marked by a drain whose own key is not the one it names."""
+    capture_id = await _seed(session_factory)
+    store = _HookedObjectStore()
+    snapshot: dict[str, Any] = {}
+    other_key = "replays/someone-elses-object.zip"
+
+    async def barrier(
+        validator: Any, zip_bytes: bytes, *, timeout_seconds: float
+    ) -> tuple[ReplayValidationResult | None, str | None]:
+        await _end_row(session_factory, capture_id, ended, object_key=other_key)
+        snapshot.update(await _row(session_factory, capture_id))
+        return validator.validate(zip_bytes), None
+
+    monkeypatch.setattr(capture_module, "_validate_with_barrier", barrier)
+
+    report = await _run(_drain(session_factory, _Provider(_blob()), store))
+
+    assert snapshot["status"] == ended
+    assert snapshot["object_key"] == other_key
+    assert await _row(session_factory, capture_id) == snapshot
+    assert report["stored_total"] == 0
+
+
+async def test_a_quarantined_row_naming_the_drains_key_is_not_rewritten_by_the_mark(
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A resumer quarantined the row while this drain was validating the same bytes: `quarantined`
+    is not one of the statuses the drain's `stored` mark widens to (`_ENDED_BY_ANOTHER_DRAIN`), so
+    this drain's successful validation leaves the row byte-for-byte as it is and counts nothing."""
+    capture_id = await _seed(session_factory)
+    store = _HookedObjectStore()
+    snapshot: dict[str, Any] = {}
+
+    async def barrier(
+        validator: Any, zip_bytes: bytes, *, timeout_seconds: float
+    ) -> tuple[ReplayValidationResult | None, str | None]:
+        assert (await _row(session_factory, capture_id))["object_key"] == _KEY
+        await _end_row(session_factory, capture_id, CaptureStatus.QUARANTINED)
+        snapshot.update(await _row(session_factory, capture_id))
+        return validator.validate(zip_bytes), None
+
+    monkeypatch.setattr(capture_module, "_validate_with_barrier", barrier)
+
+    report = await _run(_drain(session_factory, _Provider(_blob()), store))
+
+    assert snapshot["status"] == CaptureStatus.QUARANTINED
+    assert snapshot["object_key"] == _KEY
+    assert await _row(session_factory, capture_id) == snapshot
+    assert report["stored_total"] == 0
+
+
+async def test_a_stored_row_naming_the_drains_own_key_is_not_rewritten_by_the_mark(
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    capture_id = await _seed(session_factory)
+    store = _HookedObjectStore()
+    snapshot: dict[str, Any] = {}
+
+    async def barrier(
+        validator: Any, zip_bytes: bytes, *, timeout_seconds: float
+    ) -> tuple[ReplayValidationResult | None, str | None]:
+        # Overwrites the drain's own naming with an upload's, under the same key.
+        await _land_upload(session_factory, capture_id, store)
+        snapshot.update(await _row(session_factory, capture_id))
+        return validator.validate(zip_bytes), None
+
+    monkeypatch.setattr(capture_module, "_validate_with_barrier", barrier)
+
+    report = await _run(_drain(session_factory, _Provider(_blob()), store))
+
+    assert snapshot["status"] == CaptureStatus.STORED
+    assert snapshot["object_key"] == _KEY
+    assert await _row(session_factory, capture_id) == snapshot
+    assert report["stored_total"] == 0
+
+
 # --- The drain recognises its own object --------------------------------------------------------
 
 

@@ -86,8 +86,8 @@ next page load.
 ```
 loading?: boolean            // before /api/me resolves — StatusRegion only; IdentityStatement and
                               // BasisStatement are static copy, never skeletoned
-submitting?: boolean         // the switch write is in flight; the one visible button disables and
-                              // shows its loading label
+submitting?: boolean         // the switch write is in flight; the one visible button is in `loading`
+                              // (focus kept, activation refused) and shows its loading label
 writeFailed?: boolean        // the write failed; WriteFailedRegion renders, state is unchanged
 unavailable?: boolean        // the route is unreachable; the switch disables, an info callout says so
 onObject?: () => void        // state="archiving" only
@@ -198,9 +198,9 @@ is not interactive and shows no hover affordance of its own. What each of those 
 like on the privacy link is §5.1 below: the `Link` primitive at `variant="standalone"`, in the
 `link` ink.
 
-**disabled** — the one visible switch button disables while its write is in flight, or while
-`unavailable`. There is exactly one button rendered at a time (`state` picks which), so there is no
-"one disabled, one not" case to rule out the way the old two-button decision row needed to.
+**disabled** — the one visible switch button is natively `disabled` while `unavailable`; while its write
+is in flight it is in `Button`'s `loading` state instead (focus kept, activation refused), and `loading`
+wins if both hold. Exactly one button renders at a time (`state` picks which): no "one disabled, one not" case.
 
 **loading** — before `/api/me` resolves, `StatusRegion` renders as `Skeleton` blocks at the loaded
 footprint (a text line for the heading, a block for the button). **The identity statement and the

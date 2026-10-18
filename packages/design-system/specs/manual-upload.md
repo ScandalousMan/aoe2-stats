@@ -195,8 +195,8 @@ tone. Nothing scales.
 **disabled** — there is **no resting disabled control**. `SubmitButton` does not exist until a file is
 chosen, so it is never rendered as a dead grey button waiting for one (the reasoning
 `third-party-objection.md` §5 gives, applied to a control that simply withholds itself rather than
-disabling). The only disable is transient: during `uploading`, the `Choose file` control, `Remove` and
-`SubmitButton` all disable so the file cannot change under an in-flight request.
+disabling). The only disable is transient: during `uploading` the file input and `Remove` are natively disabled (`Choose file` is
+already gone, the chip replaced it) and `SubmitButton` is in `loading` (focus kept, activation refused), so the file cannot change under an in-flight request.
 
 **loading** — `uploading`: the form is `aria-busy`, `SubmitButton` shows its loading label (§4.3) and
 busy state at its resting width, and the two phases (transfer, then server validation) are announced by

@@ -1,4 +1,4 @@
-import type { AnchorHTMLAttributes, ButtonHTMLAttributes, ReactNode } from 'react'
+import type { AnchorHTMLAttributes, ButtonHTMLAttributes, MouseEvent, ReactNode } from 'react'
 import { cx } from '../../lib/cx'
 import { Spinner } from '../../lib/Spinner'
 
@@ -13,7 +13,10 @@ interface SharedProps {
   size?: ButtonSize
   /** Present while the action triggered by this button is in flight. Replaces the leading icon
    * slot with a spinner and the label with a present-participle description; the button keeps its
-   * resting width. */
+   * resting width. A loading button keeps focus: it renders `aria-busy="true"` and
+   * `aria-disabled="true"` and never the native `disabled` attribute, even if the caller also
+   * passes `disabled` ("loading wins"), and it swallows every activation (click, Enter, Space,
+   * form submit) whatever `onClick` the caller passes. Ending the wait does nothing to focus. */
   loading?: boolean
   /** Present-participle label shown while `loading` ("Taking you to Steam…"). A caller that omits
    * this while `loading` gets the original label plus the spinner, never a bare spinner. */
@@ -102,10 +105,14 @@ const sizeClasses: Record<ButtonSize, string> = {
 // `currentColor`): the label underlines on hover (`decoration-2`, `underline-offset-2`) and the
 // underline drops to `underline-offset-4` on press — thickness for hover, position for press, the
 // same two axes `Link`'s own non-colour signal already uses (`Link/index.tsx`'s `underline`
-// comment). `disabled:no-underline` keeps a disabled or loading button from ever showing the rule;
+// comment). `disabled:no-underline` keeps a disabled button from ever showing the rule;
 // compiling this exact class set with tailwindcss 4.3.3 confirms `.disabled\:no-underline:disabled`
 // is emitted after the `:hover`-scoped rule in the generated stylesheet, at equal specificity, so
-// `disabled` always wins the cascade without needing an `!` or manual reordering.
+// `disabled` always wins the cascade without needing an `!` or manual reordering. A loading button
+// is not `:disabled` (T745: it keeps focus, so it carries `aria-disabled` instead), so no
+// `disabled:` rule reaches it; it takes its own class branch (`loadingPaint` below) that carries
+// no hover or press class at all, chosen by branch rather than by cascade order, the way `Menu`
+// composes its own states.
 const variantClasses: Record<ButtonVariant, string> = {
   primary:
     'bg-accent text-accent-contrast hover:bg-accent-hover active:bg-accent-active border border-transparent',
@@ -148,12 +155,41 @@ const primaryFocusRing =
 // `shared-primitives.md` §Button, "hover is not colour alone either"). Moved from `primary`'s own
 // variant string into this shared base so all four variants compose it identically; the underline
 // follows `currentColor`, so it needs no decoration-colour utility of its own.
-const base = cx(
+const baseStructure = cx(
   'inline-flex items-center justify-center gap-2 rounded-control font-sans font-semibold',
   'transition-colors duration-120 ease-standard motion-reduce:duration-0',
+)
+const base = cx(
+  baseStructure,
   'hover:underline hover:decoration-2 hover:underline-offset-2 active:underline-offset-4 disabled:no-underline',
   'disabled:bg-surface-sunken disabled:text-text-disabled disabled:border-border disabled:cursor-default',
 )
+
+// T745: a `loading` button paints `disabled`'s fill, label and boundary (`bg-surface-sunken
+// text-text-disabled border-border cursor-default`) but is not `:disabled`, so none of the
+// `disabled:` classes above can paint it; it carries those tokens bare instead. It omits
+// `variantClasses` (every variant's hover/press fill and ring), the hover/active underline line and
+// `primaryFocusRing`: the inward `accent-contrast` ring is only defined against an accent fill, and a
+// loading `primary` button has none, so every variant rings outward in `focus-ring` while it holds
+// focus.
+const loadingPaint = 'border bg-surface-sunken text-text-disabled border-border cursor-default'
+
+// Every activation of a loading button is swallowed. `preventDefault` on the click also blocks a
+// form submission (including implicit Enter submission, which the browser dispatches as a click on
+// the form's default button) and an `<a>`'s navigation; `stopPropagation` keeps an ancestor's
+// delegated handler from seeing it. The caller's own `onClick` is never called.
+function swallowActivation(event: MouseEvent<HTMLElement>) {
+  event.preventDefault()
+  event.stopPropagation()
+}
+
+// Spread AFTER the caller's props so none of them can override it; an empty object when not
+// loading, so a button at rest is exactly what the caller wrote.
+const LOADING_PROPS = {
+  'aria-busy': true,
+  'aria-disabled': true,
+  onClick: swallowActivation,
+} as const
 
 export function Button(props: ButtonProps) {
   const {
@@ -182,21 +218,24 @@ export function Button(props: ButtonProps) {
     </>
   )
 
-  const classes = cx(
-    base,
-    sizeClasses[size],
-    variantClasses[variant],
-    variant === 'primary' ? primaryFocusRing : focusRing,
-    className,
-  )
+  const classes = loading
+    ? cx(baseStructure, sizeClasses[size], loadingPaint, focusRing, className)
+    : cx(
+        base,
+        sizeClasses[size],
+        variantClasses[variant],
+        variant === 'primary' ? primaryFocusRing : focusRing,
+        className,
+      )
+  const loadingProps = loading ? LOADING_PROPS : {}
 
   if (href !== undefined) {
     return (
       <a
         href={href}
         className={classes}
-        aria-busy={loading || undefined}
         {...(rest as AnchorHTMLAttributes<HTMLAnchorElement>)}
+        {...loadingProps}
       >
         {content}
       </a>
@@ -213,9 +252,9 @@ export function Button(props: ButtonProps) {
     <button
       type={type}
       className={classes}
-      disabled={disabled || loading}
-      aria-busy={loading || undefined}
+      disabled={loading ? undefined : disabled}
       {...buttonRest}
+      {...loadingProps}
     >
       {content}
     </button>

@@ -28,8 +28,9 @@ export interface StubState {
   onMouseDown?: (stub: StubStoryPage) => void
   // Number of elements the force's locator finds.
   matches?: number
-  // Whether the forced element itself is disabled now (`:disabled` or `aria-disabled="true"`).
-  disabled?: () => boolean
+  // Whether the forced element itself is disabled now (`:disabled` or `aria-disabled="true"`). A
+  // boolean is a native `:disabled`; the object says which of the two the page reports (T745).
+  disabled?: () => boolean | { native: boolean; aria: boolean }
 }
 
 export interface StubStoryPage {
@@ -99,7 +100,8 @@ export function stubStoryPage(
       evaluate: async (_fn: unknown, options: { mode?: string } | undefined) => {
         if (options?.mode === 'element') return state.element()
         // The disabled question (`el.matches(':disabled')`, `aria-disabled`): answered by the test.
-        return state.disabled?.() ?? false
+        const answer = state.disabled?.() ?? false
+        return typeof answer === 'boolean' ? { native: answer, aria: false } : answer
       },
     }) as unknown as Locator
 
