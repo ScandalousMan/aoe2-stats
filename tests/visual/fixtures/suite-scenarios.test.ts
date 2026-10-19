@@ -936,7 +936,7 @@ test.describe('populated scenarios render their success branch', () => {
 // marks cannot still be on their way: a mark that arrives only after the 1 s judge window has
 // closed, counted from the substituted page's own sign, is credited by a plant as discriminating,
 // so that plant's evidence is weaker than its pass suggests; a mark that arrives within the window
-// is caught, because the plant then does not fail. Every kind of plant carries this, a sibling or
+// is caught, because the planted `enterScenario` then does not throw, so the planted case goes red. Every kind of plant carries this, a sibling or
 // a presence page whose marks all arrive before a base mark as much as an at-rest page or an
 // instant answer.
 

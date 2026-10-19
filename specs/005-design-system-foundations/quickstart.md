@@ -1317,7 +1317,7 @@ what it declares (all of a sibling's marks, a populated page's lists, one landma
 answer with nothing left busy). That proves the page is there, not that a mark of the scenario's own cannot still be on
 its way: a mark that arrives only after the 1 s judge window has closed is credited by a plant as discriminating,
 whichever kind of plant it is, so that plant's evidence is weaker than its pass suggests; a mark that arrives within
-the window is caught, because the plant then does not fail. Things the runs showed: a `useQuery`
+the window is caught, because the planted `enterScenario` then does not throw, so the planted case goes red. Things the runs showed: a `useQuery`
 shows its failure only after three retries (seven seconds), which the scenarios run the page's clock past instead of
 waiting for; a held *document* navigation (a download, the Steam redirect) freezes every evaluation in the page, so
 those navigations are cancelled instead and the transient timer is paused; several first versions of a planted case
@@ -1341,7 +1341,9 @@ scenario's keyboard result does not judge where the press left focus. Both are c
 neither is a row of the register; item 13 is Met only when T750 and T751 land and the markers are removed. Run locally (macOS Chromium): route-keyboard 334 tests, route-focus-visibility 324, route-touch-footprint
 324, route-reduced-motion 336 and the 876 under `tests/visual/fixtures/`, all passing. No scenario was added to
 `tests/visual/app-routes.spec.ts`, so no full-page baseline changed or was captured. The CI run that backs the verdict
-is the `visual` job of #178 at the head carrying this remediation, not yet recorded here.
+is run 39205473225, the `visual` job of #178 at f3b939fd (2026-10-19): its app-route step passed 2216 tests on
+Linux Chromium, the 2194 above plus the 22 of `tests/visual/app-routes.spec.ts`, the two `knownDefects` scenarios held
+to their message among them.
 
 ### Item 15's general-reviewer half — outstanding, no pull request covers this head
 
