@@ -187,12 +187,13 @@ _QUERY_SURFACE_FUNCTIONS: Final[tuple[tuple[str, Any], ...]] = (
     ("available_to", query.available_to),
 )
 
-#: T652v: exactly the two query-surface functions whose signature accepts `context=` at all
-#: (`query.py`'s own module docstring — `age_requirement`, `prerequisites`, `produced_at` and
-#: `available_to` take no such keyword). Passing `context=` to one of those four would be a
+#: T652v, extended by T764: exactly the query-surface functions whose signature accepts `context=`
+#: at all (`query.py`'s own module docstring — `age_requirement`, `prerequisites` and
+#: `available_to` take no such keyword). Passing `context=` to one of those three would be a
 #: `TypeError`, not a gap, so this pass checks membership here rather than passing it
-#: unconditionally to every one of `_QUERY_SURFACE_FUNCTIONS`.
-_CONTEXT_AWARE_FIELDS: Final[frozenset[str]] = frozenset({"cost", "production_time"})
+#: unconditionally to every one of `_QUERY_SURFACE_FUNCTIONS`. `produced_at` joined at T764, when
+#: an effect gained the means to add a producing building under a condition.
+_CONTEXT_AWARE_FIELDS: Final[frozenset[str]] = frozenset({"cost", "production_time", "produced_at"})
 
 #: T652v: the four columns `analysis_knowledge_gaps`' own unique index checks beside
 #: `identity_digest` (constant across one `coverage()` call, so irrelevant to whether two gaps from

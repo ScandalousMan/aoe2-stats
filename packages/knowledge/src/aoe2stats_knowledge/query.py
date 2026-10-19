@@ -93,6 +93,14 @@ identifier the pack names is never reported as aliased. The record that answers 
 and the effects selected for it are the target's too (an effect's selector names the pack's
 identifiers); a gap, by contrast, still names the identifier the caller asked for. `Answer.alias`
 carries the `Alias` that was followed, or `None`.
+
+**T764: `produced_at` answers a sequence, and an effect may extend it.** The pack places an entity
+at one building (`rules.json`'s `produced_at`, a `{kind, id}` table or `null`); a civilisation may
+place it at another (Goths' Anarchy: Huskarls at the Barracks). The answer is therefore an ordered
+sequence of `EntityRef`s of kind `"building"`: the pack's building first, then each building an
+effect adds, in file order, each once. `_baseline_producing_buildings` turns the stored table into
+the sequence's first element before `effects.apply` extends it, and `_civilisation_qualified` turns
+the identifiers back into `EntityRef`s after. `produced_at` takes `context` as `cost` does.
 """
 
 from __future__ import annotations
@@ -308,6 +316,23 @@ def _resolve_entity(
     return resolved, record, alias
 
 
+def _baseline_producing_buildings(record: Mapping[str, Any]) -> tuple[str, ...]:
+    """T764: the pack's own producing building as the first (and only) element of the sequence a
+    civilisation effect may extend: `rules.json` carries `produced_at` as one `{kind, id}` table, or
+    `null` for an entity the pack places at no building, which starts the sequence empty. A table
+    that names anything but a building is a defect in the snapshot, not a value to pass on."""
+    stored = record.get("produced_at")
+    if stored is None:
+        return ()
+    if (
+        not isinstance(stored, Mapping)
+        or stored.get("kind") != "building"
+        or not isinstance(stored.get("id"), str)
+    ):
+        raise ValueError(f"rules.json produced_at must be null or a building reference: {stored!r}")
+    return (stored["id"],)
+
+
 def _raw_value_for_field(record: Mapping[str, Any], field_name: str) -> Any:
     """The baseline value `record` (one resolved `rules.json` entity) carries for one
     query-level field name, before any civilisation effect is applied. `field_name` is the
@@ -328,7 +353,7 @@ def _raw_value_for_field(record: Mapping[str, Any], field_name: str) -> Any:
     if field_name == "age_requirement":
         return record.get("age_requirement")
     if field_name == "produced_at":
-        return record.get("produced_at")
+        return _baseline_producing_buildings(record)
     if field_name == "available_to":
         return True
     raise AssertionError(f"unreachable: unknown field_name {field_name!r}")  # pragma: no cover
@@ -349,11 +374,12 @@ def _civilisation_qualified(
     step 1, which remains the correct, honest state research.md D5 requires, not a shortcut this
     function takes.
 
-    `context` (T652u) is threaded straight through to `effects.apply` unread — only `cost` and
-    `production_time` accept it from a caller (contracts/knowledge-base.md, "The query surface");
-    every other query in this module calls this with the default `None`, so a query naming a field
-    no committed effect ever conditions never has to think about it, and `effects.apply` itself is
-    what raises `effects.ContextRequired` if that ever stops being true.
+    `context` (T652u) is threaded straight through to `effects.apply` unread — only `cost`,
+    `production_time` and (T764) `produced_at` accept it from a caller
+    (contracts/knowledge-base.md, "The query surface"); every other query in this module calls
+    this with the default `None`, so a query naming a field no committed effect ever conditions
+    never has to think about it, and `effects.apply` itself is what raises
+    `effects.ContextRequired` if that ever stops being true.
     """
     resolved = _resolve_entity(entity, civilisation=civilisation, field_name=field_name)
     if not isinstance(resolved, tuple):
@@ -420,6 +446,9 @@ def _civilisation_qualified(
             detail=applied.reason,
         )
     value, applied_effects = applied
+    if field_name == "produced_at":
+        assert isinstance(value, tuple)  # `effects.apply` extends the tuple the baseline started
+        value = tuple(EntityRef(kind="building", id=b, build=entity.build) for b in value)
     return Answer(
         value=value,
         snapshot_identity=snap.identity,
@@ -483,9 +512,21 @@ def prerequisites(
     return _civilisation_qualified(entity, civilisation=civilisation, field_name="prerequisites")
 
 
-def produced_at(entity: EntityRef, *, civilisation: str) -> Answer[EntityRef] | KnowledgeGap:
-    """The building `entity` is trained or researched at."""
-    return _civilisation_qualified(entity, civilisation=civilisation, field_name="produced_at")
+def produced_at(
+    entity: EntityRef, *, civilisation: str, context: Context | None = None
+) -> Answer[Sequence[EntityRef]] | KnowledgeGap:
+    """Every building `entity` is trained or researched at, for `civilisation` (T764): the pack's
+    own building first, then each building a civilisation effect adds, in the order those effects
+    apply (file order), each building once. An entity the pack places at no building and that no
+    effect places answers the empty sequence. Each element is an `EntityRef` of kind `"building"`
+    in the entity's own build.
+
+    `context` is the match state a **conditional** addition needs (Goths' Anarchy is conditional on
+    a researched technology); see `cost`'s own docstring for when it is ignored versus required.
+    """
+    return _civilisation_qualified(
+        entity, civilisation=civilisation, field_name="produced_at", context=context
+    )
 
 
 def available_to(entity: EntityRef, *, civilisation: str) -> Answer[bool] | KnowledgeGap:

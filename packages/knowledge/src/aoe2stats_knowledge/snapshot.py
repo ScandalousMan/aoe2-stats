@@ -106,6 +106,7 @@ from dataclasses import dataclass, field
 from importlib import resources
 from typing import Any, Final
 
+from aoe2stats_knowledge import effects
 from aoe2stats_knowledge.gaps import KnowledgeGap
 
 #: The package this module's data is anchored to. Never a filesystem path: `importlib.resources`
@@ -653,6 +654,37 @@ def parse_aliases(aliases_toml_text: str, rules: Mapping[str, Any]) -> tuple[Ali
     return tuple(aliases)
 
 
+def _check_added_buildings(
+    directory: str, effects_toml: bytes, rules_json: bytes, aliases: Sequence[Alias]
+) -> None:
+    """T764: every building a `produced_at` effect adds is a building the snapshot knows — one
+    `rules.json` names, or one its `aliases.toml` states (an identifier a recording carries). An
+    effect cannot check that itself, as it never sees the rules; the loader holds both. Refused
+    with `SnapshotError`, naming the identifier. A snapshot with no such effect parses nothing
+    beyond the text and keeps loading exactly as before."""
+    if b"produced_at" not in effects_toml:
+        return
+    try:
+        parsed = effects.parse_effects_toml(effects_toml.decode("utf-8"))
+    except (ValueError, effects.EffectsError) as exc:
+        raise SnapshotError(f"{directory}: effects.toml is not valid: {exc}") from exc
+    references = effects.producing_building_references(parsed)
+    if not references:
+        return
+    try:
+        rules = json.loads(rules_json)
+    except ValueError as exc:
+        raise SnapshotError(f"{directory}: rules.json is not valid text: {exc}") from exc
+    named = rules.get("entities", {}).get("building", {}) if isinstance(rules, dict) else {}
+    aliased = {alias.id for alias in aliases if alias.kind == "building"}
+    for reference in references:
+        if reference not in named and reference not in aliased:
+            raise SnapshotError(
+                f"{directory}: effects.toml adds producing building {reference!r}, which neither "
+                "rules.json nor aliases.toml names as a building"
+            )
+
+
 def load_snapshot(directory: str) -> Snapshot:
     """Load one packaged snapshot by its directory name under `snapshots/`.
 
@@ -707,6 +739,7 @@ def load_snapshot(directory: str) -> Snapshot:
             aliases = parse_aliases(aliases_text, rules)
         except SnapshotError as exc:
             raise SnapshotError(f"{directory}: {exc}") from exc
+    _check_added_buildings(directory, effects_toml, rules_json, aliases)
     return Snapshot(
         directory=directory,
         identity=identity,

@@ -115,7 +115,7 @@ def cost(entity, *, civilisation, context=None) -> Answer[Cost] | KnowledgeGap
 def production_time(entity, *, civilisation, context=None) -> Answer[Duration] | KnowledgeGap
 def age_requirement(entity, *, civilisation) -> Answer[Age] | KnowledgeGap
 def prerequisites(entity, *, civilisation) -> Answer[Sequence[EntityRef]] | KnowledgeGap
-def produced_at(entity, *, civilisation) -> Answer[EntityRef] | KnowledgeGap
+def produced_at(entity, *, civilisation, context=None) -> Answer[Sequence[EntityRef]] | KnowledgeGap
 def available_to(entity, *, civilisation) -> Answer[bool] | KnowledgeGap
 def name(entity) -> Answer[str] | KnowledgeGap
 ```
@@ -123,6 +123,15 @@ def name(entity) -> Answer[str] | KnowledgeGap
 - `prerequisites` answers a gap with cause `field-absent` for every entity the snapshot names: the
   one lawful source carries display links, not the game's prerequisites (research.md D3, T652y).
   The signature stays, so a future source changes no caller.
+- **`produced_at` answers an ordered sequence of buildings** (FR-022e, T764), each an `EntityRef` of
+  kind `building` in the entity's own build. The pack's building comes first, or nothing when the
+  pack places the entity at no building; each building an effect adds follows, in the order the
+  effects apply, which is file order; a building already in the sequence is not added again, so
+  every building appears once and an addition of the pack's own building changes nothing. An
+  entity no effect touches answers the pack's building alone. An addition for one civilisation
+  never reaches another, and it takes any condition `context` can decide (`researched`, `age`,
+  `controlled`, `team`), so `produced_at` accepts `context` as `cost` does and raises as they do
+  without the input a conditional addition needs.
 - `civilisation` is **keyword-only and required** on every rule query. There is no way to ask for a
   generic value, so there is no way to be handed one (FR-023).
 - `context` is the match state a conditional effect needs: the age, the technologies researched,
@@ -161,6 +170,13 @@ In order, for a rule query qualified by civilisation _c_:
 3. Otherwise apply each matching effect whose condition holds in `context`, in file order, and
    return the adjusted value with the effects listed. A team effect matches every civilisation on
    the owner's team, not the owner alone.
+
+An effect may add a producing building (T764): on the field `produced_at` the one operation is
+`add`, and its operand is one building identifier, a string spelled as `rules.json` keys it (under
+an `age` or `controlled` condition, a table whose values are such strings). A malformed operand and
+any other operation are refused when the file is parsed. The loader then refuses, with
+`SnapshotError`, an added identifier that is neither a building `rules.json` names nor a building
+`aliases.toml` states, because only the loader holds both files.
 
 A conditional effect that is modelled is complete knowledge, so the coverage pass does not report it
 as a gap. The pass supplies no age, research or controlled-count state, so it treats a query that

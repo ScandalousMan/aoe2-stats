@@ -3010,7 +3010,7 @@ phase.
       recording ordered answers true for that participant's civilisation (building 490 through T761's
       alias once a snapshot carries it); and every installed snapshot still re-derives byte for
       byte
-- [ ] T764 [US2] Let `produced_at` answer every building an entity is produced at, and let an effect
+- [x] T764 [US2] Let `produced_at` answer every building an entity is produced at, and let an effect
       add one: Goths' Anarchy (Huskarls at the Barracks), Huns' Marauders (Tarkans at the Stable),
       Italians' Condottiero at the Barracks, Mapuche Settlements training Spearmen and Skirmishers.
       The answer becomes an ordered sequence, the pack's building first. **Before changing the

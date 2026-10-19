@@ -33,11 +33,19 @@ contracts/knowledge-base.md), "Civilisation qualification" steps 2-3. Research:
   not otherwise track at all, e.g. a unit's hit points) — restricting it would silently imply that
   every effect in the pack's prose is one this package could someday model, which is not true.
 - `operation` — **closed**: `"multiply"`, `"add"`, `"set"` (data-model.md §6). Required, and
-  validated against this set, exactly when `modelled == "yes"`.
+  validated against this set, exactly when `modelled == "yes"`. On `field == "produced_at"`
+  (**T764**) only `"add"` is lawful: it appends a producing building to the ordered sequence the
+  pack's own building starts, so `"set"` (which would replace the pack's building) and the
+  numeric operations are refused at parse time.
 - `operand` — "the amount, per resource where the field is a cost": a mapping of resource name to
   amount when `field == "cost"` and only some resources are touched (Koreans' wood-only discount is
   exactly this shape — gold is absent from the mapping and therefore untouched), or a bare number
   for a single-valued field. Required, and shape-checked, exactly when `modelled == "yes"`.
+  For `field == "produced_at"` (**T764**) the operand is **one building identifier**, a string
+  spelled as `rules.json` keys it (`"12"`), never a number, a name or a list; under an `age` or
+  `controlled` condition each value of the table is such a string. Whether that identifier names
+  a building the snapshot knows is checked where `rules.json` is in hand, at snapshot load
+  (`snapshot.load_snapshot`), not here.
 - `validated_by` — FR-030's "the second reading that validated it": who re-read the source sentence
   a second time, against which file, when — recorded as data, not a placeholder string.
 - `condition` — **T652u** (2026-09-28, repository owner's arbitration of the fourth review,
@@ -189,6 +197,12 @@ def _is_canonical_count(key: object) -> bool:
     """T762: `key` is a non-negative integer written the one way (`"0"`, `"1"`, `"12"`) — no sign,
     no fraction, no leading zero, so `"01"` and `"1"` can never both be the count one."""
     return isinstance(key, str) and key.isascii() and key.isdigit() and str(int(key)) == key
+
+
+def _is_building_identifier(value: object) -> bool:
+    """T764: `value` is a building identifier written the one way `rules.json` keys it — a string of
+    decimal digits with no sign, fraction or leading zero. A number, a name and a list are not."""
+    return _is_canonical_count(value)
 
 
 def _is_numeric_operand(value: object) -> bool:
@@ -369,12 +383,27 @@ class Effect:
                         f'number written without sign, fraction or leading zero ("0", "1", '
                         f"...), got {bad_keys!r}"
                     )
-                bad_values = [v for v in self.operand.values() if not _is_numeric_operand(v)]
+                bad_values = [
+                    v
+                    for v in self.operand.values()
+                    if not (
+                        _is_building_identifier(v)
+                        if self.field == "produced_at"
+                        else _is_numeric_operand(v)
+                    )
+                ]
                 if bad_values:
                     raise EffectsError(
-                        "effect.operand's count table values must each be a number or a "
-                        f"non-empty table of numbers, got {bad_values!r}"
+                        "effect.operand's count table values must each be "
+                        + (
+                            "a building identifier string"
+                            if self.field == "produced_at"
+                            else "a number or a non-empty table of numbers"
+                        )
+                        + f", got {bad_values!r}"
                     )
+            if self.field == "produced_at":
+                _check_producing_building(self)
             # T652r: reject, at parse time, a numeric operand the game itself could never
             # produce — walked to every leaf via `_operand_leaves` so a `condition`'s own
             # nesting (an age table, a per-resource cost mapping, or both together) cannot hide
@@ -407,6 +436,45 @@ class Effect:
                             f"never prices a {self.field} fractionally, got {leaf!r} in operand "
                             f"{self.operand!r}"
                         )
+
+
+def _check_producing_building(effect: Effect) -> None:
+    """T764: a `modelled = "yes"` effect on `produced_at` adds one producing building. Refused at
+    parse time: any operation but `add` (`set` would replace the pack's building, which is always
+    answered first; the numeric operations mean nothing for a building), and an operand that is
+    not one building identifier — or, under an `age` or `controlled` condition, whose table values
+    are not. Runs after those two conditions have checked that their operand is a table."""
+    if effect.operation != "add":
+        raise EffectsError(
+            'an effect on field = "produced_at" must use operation = "add" (it appends a producing '
+            f"building to the pack's own; nothing else is a rule), got {effect.operation!r}"
+        )
+    if effect.condition in ("age", "controlled"):
+        assert isinstance(effect.operand, Mapping)  # checked by the condition's own branch
+        offenders = [v for v in effect.operand.values() if not _is_building_identifier(v)]
+        shape = "a table whose values are building identifier strings"
+    else:
+        offenders = [] if _is_building_identifier(effect.operand) else [effect.operand]
+        shape = 'one building identifier string such as "12"'
+    if offenders:
+        raise EffectsError(
+            f'effect.operand of a "produced_at" effect must be {shape}, got {offenders!r}'
+        )
+
+
+def producing_building_references(parsed: Sequence[Effect]) -> tuple[str, ...]:
+    """T764: every building identifier a modelled `produced_at` effect adds, in file order, one
+    entry per occurrence. The snapshot loader checks each against its own `rules.json` (and
+    aliases), which `Effect` cannot: it never sees the rules."""
+    references: list[str] = []
+    for effect in parsed:
+        if effect.field != "produced_at" or effect.modelled != "yes":
+            continue
+        if isinstance(effect.operand, Mapping):
+            references.extend(str(v) for v in effect.operand.values())
+        else:
+            references.append(str(effect.operand))
+    return tuple(references)
 
 
 @dataclass(frozen=True, slots=True)
@@ -779,9 +847,25 @@ def _apply_mapping(
     return result
 
 
+def _add_producing_building(value: object, operand: object, *, context: str = "") -> object:
+    """T764: `produced_at`'s one operation. `value` is the ordered sequence of building identifiers
+    so far (the pack's own first); the operand is appended unless already present, so the order is
+    the pack's building, then each added building in the order its effect applies, once each."""
+    if not isinstance(value, tuple) or not isinstance(operand, str):
+        raise EffectsError(
+            f"cannot add producing building {operand!r} to {value!r} — the value must be a "
+            "sequence of building identifiers and the operand one identifier string"
+            + (f" ({context})" if context else "")
+        )
+    return value if operand in value else (*value, operand)
+
+
 def _apply_operation(
     value: object, operation: str, operand: object, *, field: str, context: str = ""
 ) -> object:
+    if field == "produced_at":
+        assert operation == "add"  # enforced by Effect.__post_init__ (`_check_producing_building`)
+        return _add_producing_building(value, operand, context=context)
     if isinstance(value, Mapping) and isinstance(operand, Mapping):
         return _apply_mapping(value, operation, operand, context=context)
     if isinstance(value, int | float) and isinstance(operand, int | float):
