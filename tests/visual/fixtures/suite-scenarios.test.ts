@@ -550,6 +550,12 @@ test.describe('suite scenarios', () => {
     }
   })
 
+  test('the planted cases generated for the browser tests have unique titles', () => {
+    const titles = plantedCases().map((entry) => entry.title)
+    const repeated = titles.filter((title, index) => titles.indexOf(title) !== index)
+    expect(repeated, 'planted case title(s) generated more than once').toEqual([])
+  })
+
   test('a hold glob converts to the URLs Playwright would match', () => {
     const matches = (glob: string, url: string) => globToRegExp(glob).test(url)
     expect(matches('**/api/profiles', 'http://127.0.0.1:1/api/profiles')).toBe(true)
@@ -927,10 +933,11 @@ test.describe('populated scenarios render their success branch', () => {
 // all of a sibling's or a presence page's marks, all of a populated success page's lists, one
 // landmark of an at-rest success page, or, for a request answered at once, the answer and no busy
 // region left. That proves the substituted page is there. It does not prove the scenario's own
-// marks cannot still be on their way: a mark that renders later than the substituted page's own
-// signs can be credited by a plant as discriminating within the 1 s judge window, so that plant's
-// evidence is weaker than its pass suggests. Every kind of plant carries this, a sibling or a
-// presence page whose marks all arrive before a base mark as much as an at-rest page or an
+// marks cannot still be on their way: a mark that arrives only after the 1 s judge window has
+// closed, counted from the substituted page's own sign, is credited by a plant as discriminating,
+// so that plant's evidence is weaker than its pass suggests; a mark that arrives within the window
+// is caught, because the plant then does not fail. Every kind of plant carries this, a sibling or
+// a presence page whose marks all arrive before a base mark as much as an at-rest page or an
 // instant answer.
 
 // The page a route shows when none of its branches is in play: what a branch scenario is planted
@@ -1014,7 +1021,8 @@ const PRESENCE_PAGE_FOR: Readonly<Record<string, string>> = {
 // Marks added because two scenarios of a route that no ring compares (different families, or none)
 // had marks that one page satisfied both ways: each is a positive mark of `scenario` that the
 // `twin` page, which the broader selectors alone would have matched, must not show. The planted
-// cases run the mark alone on the twin's page and on the route's success page.
+// cases run the mark alone on the twin's page, and on the route's success page unless that page
+// shows the mark too (`onSuccessPage`).
 interface SeparatingMark {
   scenario: string
   mark: string
@@ -1201,6 +1209,9 @@ function plantedCases(): Case[] {
       })
     }
 
+    // One success-page plant per (scenario, mark): a mark with two twins is planted on each twin
+    // and on the success page once.
+    const plantedOnSuccess = new Set<string>()
     for (const separating of MARKS_THAT_SEPARATE.filter((entry) => entry.scenario === base.label)) {
       const separatingMark = base.shows.find((entry) => entry.name === separating.mark)
       const twin = byLabel.get(separating.twin)
@@ -1226,7 +1237,8 @@ function plantedCases(): Case[] {
             expected,
           ),
       })
-      if (!separating.onSuccessPage)
+      if (!separating.onSuccessPage && !plantedOnSuccess.has(separating.mark)) {
+        plantedOnSuccess.add(separating.mark)
         cases.push({
           title: `planted: ${base.label}'s '${separating.mark}' on the route's success page fails on that mark`,
           run: (page, url) =>
@@ -1247,6 +1259,7 @@ function plantedCases(): Case[] {
               expected,
             ),
         })
+      }
     }
 
     for (const absentMark of absentMarksOf(base)) {

@@ -1307,15 +1307,17 @@ the same element but are spelled differently are not seen as one, and scenarios 
 overlap that way are covered only by the discriminating marks a sweep added to the scenarios it named
 (`MARKS_THAT_SEPARATE`: `match loading`, `analysis document loading`, `analysis document failed` and the two
 `archival write in flight` scenarios, plus the absent marks of the profile-loading scenarios), not by the check. The
-suite plants four absences, each failing inside `enterScenario` naming the mark that fails: for every scenario, the
+suite plants five kinds of absence, each failing inside `enterScenario` naming the mark that fails: for every scenario, the
 route's success page before any action; for a scenario in a family of branches that could be mistaken for one another,
 the next scenario of that family in the ring (the other pairs are not run); for a held request, the same scenario with
-the request answered at once; and for every absent mark, a page where the thing is present; and each separating mark is
-planted alone on its twin's page and on the success page. Each plant first waits for the page it substituted to show
+the request answered at once; for every absent mark, a page where the thing is present; and for each separating mark,
+the mark alone on its twin's page, and on the route's success page unless that page shows the mark too
+(`onSuccessPage`). Each plant first waits for the page it substituted to show
 what it declares (all of a sibling's marks, a populated page's lists, one landmark of an at-rest page, or an instant
 answer with nothing left busy). That proves the page is there, not that a mark of the scenario's own cannot still be on
-its way: a mark that renders late can be credited as discriminating by a plant, whichever kind of plant it is, so that
-plant's evidence is weaker than its pass suggests. Things the runs showed: a `useQuery`
+its way: a mark that arrives only after the 1 s judge window has closed is credited by a plant as discriminating,
+whichever kind of plant it is, so that plant's evidence is weaker than its pass suggests; a mark that arrives within
+the window is caught, because the plant then does not fail. Things the runs showed: a `useQuery`
 shows its failure only after three retries (seven seconds), which the scenarios run the page's clock past instead of
 waiting for; a held *document* navigation (a download, the Steam redirect) freezes every evaluation in the page, so
 those navigations are cancelled instead and the transient timer is paused; several first versions of a planted case

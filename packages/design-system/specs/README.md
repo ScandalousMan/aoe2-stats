@@ -3931,12 +3931,14 @@ inventory is added or removed alone, when the number of scenarios changes, when 
 another's on the same route unless an absent mark separates them, and when a scenario opens with a mark that is not
 a positive one. That check compares mark selectors as written, so two selectors that match the same element but are
 spelled differently are not seen as one; scenarios in different families whose marks overlap that way are covered only
-by the discriminating marks a sweep added to the scenarios it named, not by the check. It plants four kinds of
+by the discriminating marks a sweep added to the scenarios it named, not by the check. It plants five kinds of
 absence, each failing inside `enterScenario` naming the mark that fails: for every scenario, the route's success page
 before any action; for a scenario in a family of branches that could be mistaken for one another, the next scenario of
-that family in the ring; for a held request, the request answered at once; and for every absent mark, a page where
-the thing is present. Each plant first waits for a sign that the page it substituted has rendered, which does not rule
-out a mark of the scenario's own rendering later, so a plant's pass can be weaker evidence than it looks. The two held loading
+that family in the ring; for a held request, the request answered at once; for every absent mark, a page where
+the thing is present; and for each separating mark, the mark alone on its twin's page, and on the route's success page
+unless that page shows the mark too. Each plant first waits for a sign that the page it substituted has rendered, which
+does not rule out a mark of the scenario's own arriving only after the 1 s judge window has closed, so a plant's pass can
+be weaker evidence than it looks; a mark that arrives within the window is caught. The two held loading
 states, `ProfileSummary`'s `Skeleton` and the erase button's `Spinner`, are branch scenarios too, so the keyboard,
 focus-visibility and touch-footprint suites run them held as well as the reduced-motion suite. Two things the new
 scenarios found are defects, not harness gaps, so they are not filed in this register. T750: `Dialog`'s Tab trap
