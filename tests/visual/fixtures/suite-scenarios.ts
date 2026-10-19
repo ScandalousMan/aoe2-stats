@@ -1080,6 +1080,9 @@ const ARCHIVAL_IN_FLIGHT: Pick<BranchScenario, 'hold' | 'prepare' | 'shows'> = {
       .catch(() => undefined)
   },
   shows: [
+    // The write that turns archival off starts from "Archival is on."; the resume's starts from
+    // "Archival is off.", and the busy button and the spinner are the same in both.
+    text('archival is on', 'Archival is on.'),
     {
       name: 'busy archival button',
       selector: 'main button[aria-busy="true"]:has-text("Saving your choice")',
@@ -2706,6 +2709,11 @@ function detailBranch(
   })
 }
 
+/** The loaded match's own header: the leaderboard name `MATCH_DETAIL_POPULATED` carries, which the
+ * panel renders only once the match response has arrived. The scenarios about the analysis section
+ * declare it so that none of them can hold on a page whose match is still loading or failed. */
+const LOADED_MATCH_PANEL = text('loaded match panel', 'Team Random Map')
+
 const MATCH_PAGE_BRANCHES: readonly BranchScenario[] = [
   detailBranch('match loading', 'match page', {
     hold: { urlGlob: MATCH_URL, body: detailBody() },
@@ -2713,7 +2721,10 @@ const MATCH_PAGE_BRANCHES: readonly BranchScenario[] = [
       await stubMe(page, SIGNED_IN_ME)
       await stubPopulatedProfiles(page, PROFILES_RESPONSE)
     },
-    shows: [mark('busy match panel', 'main [aria-busy="true"]'), SKELETON],
+    // `MatchDetailPanel`'s own busy region is the one with the header in it; the analysis section's
+    // busy region (`AnalysisTimeline loading`, rendered inside this page while the match loads) has
+    // none, so a page that only has the analysis section loading does not have this mark.
+    shows: [mark('busy match panel', 'main div[aria-busy="true"]:has(> header)'), SKELETON],
   }),
   detailBranch('match load failed', 'match page', {
     stub: async (page) => {
@@ -2723,7 +2734,7 @@ const MATCH_PAGE_BRANCHES: readonly BranchScenario[] = [
     },
     prepare: exhaustQueryRetries,
     shows: [
-      text('match failure callout', 'We could not load this match'),
+      exactText('match failure callout', 'We could not load this match'),
       control('Try again button', 'Try again', 2),
     ],
   }),
@@ -2748,6 +2759,7 @@ const ANALYSIS_SECTION_BRANCHES: readonly BranchScenario[] = [
     shows: [
       mark('busy analysis section', 'main section[aria-busy="true"]:has-text("Match analysis")'),
       SKELETON,
+      LOADED_MATCH_PANEL,
     ],
   }),
   detailBranch('analysis document failed', 'analysis state', {
@@ -2759,6 +2771,8 @@ const ANALYSIS_SECTION_BRANCHES: readonly BranchScenario[] = [
     shows: [
       text('analysis failure callout', "We could not load this match's analysis. Try again."),
       control('Try again button', 'Try again'),
+      LOADED_MATCH_PANEL,
+      absent('no match failure', 'main :text-is("We could not load this match")'),
     ],
   }),
   detailBranch('analysis takeover refused', 'analysis state', {
@@ -3420,7 +3434,12 @@ export const LOADING_SCENARIOS: readonly LoadingScenario[] = [
     ...DASHBOARD_PATHS,
     loop: 'skeleton',
     hold: { urlGlob: '**/api/profiles', body: PROFILES_RESPONSE },
-    shows: [{ name: 'skeleton', selector: `main ${LOOP_SELECTOR.skeleton}`, min: 1 }],
+    // The failed profile page also has a skeleton (the identity bar's) and a busy region, so the
+    // failure callout's absence is what makes this the held request.
+    shows: [
+      { name: 'skeleton', selector: `main ${LOOP_SELECTOR.skeleton}`, min: 1 },
+      absent('no ratings failure', 'main :text("We could not load your ratings")'),
+    ],
     stub: async (page: Page) => {
       await stubMe(page, SIGNED_IN_ME)
     },

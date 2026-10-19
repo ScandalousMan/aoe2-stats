@@ -414,14 +414,18 @@ test.describe('suite scenarios', () => {
   })
 
   // A scenario can be told from another of its route when its marks do not all hold on the other's
-  // page. The marks are declared, so this is a check on the declarations, and what it guarantees is
-  // exactly this: on one route, no scenario's *positive* marks (those that must be present) are all
-  // among another's (same selector, and the other asks for at least as many), unless an *absent*
-  // mark of the first (one that must not be present) has a selector the other requires present. That
-  // exception is what separates them: the other's page has the thing the first says is not there. A
-  // scenario that declares fewer positive marks than a twin, or the same ones, is caught; one that
-  // has a mark the twin lacks, or an absent mark the twin contradicts, is not. Whether a declared
-  // mark really is present on the other's page is what the planted cases below run.
+  // page. The marks are declared selectors, so this is a check on the declarations, and what it
+  // guarantees is exactly this: on one route, no scenario's *positive* marks (those that must be
+  // present) are all among another's *as written* (the same selector string, and the other asks for
+  // at least as many), unless an *absent* mark of the first (one that must not be present) has a
+  // selector the other requires present. That exception is what separates them: the other's page
+  // has the thing the first says is not there. What it does not see: two selectors spelled
+  // differently that match the same element (`main [aria-busy="true"]` and
+  // `main section[aria-busy="true"]:has-text("Match analysis")` match the same section) are two
+  // marks to it, so scenarios whose marks overlap that way are covered only by the discriminating
+  // marks listed in `MARKS_THAT_SEPARATE` and the ring plants, which a sweep of the scenarios named
+  // there added, not by this check. Whether a declared mark really is present on the other's page
+  // is what the planted cases below run.
   const positiveMarks = (scenario: BranchScenario) =>
     scenario.shows.filter((entry) => entry.max === undefined)
   const absentMarks = (scenario: BranchScenario) =>
@@ -530,6 +534,20 @@ test.describe('suite scenarios', () => {
       Object.values(PRESENCE_PAGE_FOR).filter((label) => !labels.has(label) && !sites.has(label)),
       'presence page(s) that are no scenario',
     ).toEqual([])
+  })
+
+  test('every separating mark is a positive mark of a real scenario and its twin is on the same route', () => {
+    const byLabel = new Map(BRANCH_SCENARIOS.map((scenario) => [scenario.label, scenario]))
+    for (const entry of MARKS_THAT_SEPARATE) {
+      const scenario = byLabel.get(entry.scenario)
+      const twin = byLabel.get(entry.twin)
+      expect(scenario, `${entry.scenario}: no such scenario`).toBeDefined()
+      expect(twin, `${entry.twin}: no such scenario`).toBeDefined()
+      expect(twin?.route, `${entry.twin} is on another route`).toBe(scenario?.route)
+      const found = scenario?.shows.find((mark) => mark.name === entry.mark)
+      expect(found, `${entry.scenario} declares no mark '${entry.mark}'`).toBeDefined()
+      expect(found?.max, `${entry.scenario}: '${entry.mark}' is an absent mark`).toBeUndefined()
+    }
   })
 
   test('a hold glob converts to the URLs Playwright would match', () => {
@@ -893,9 +911,10 @@ test.describe('populated scenarios render their success branch', () => {
 //   action against the success page;
 // - its *sibling*: for a scenario in a `family`, the next scenario of the same route and family in
 //   the ring (not every pair) run in its place, so two branches of one section that render alike
-//   are found. The pairs this does not run are covered as far as the unit check on the
-//   declarations goes, and no further: on one route, no scenario's positive marks are all among
-//   another's unless an absent mark of the first is required present by the second;
+//   are found. The other pairs are covered as far as the unit check on the declarations goes and
+//   no further: it compares selectors as written, so differently spelled selectors that match the
+//   same element are not seen as one. Those overlaps are covered only by the discriminating marks
+//   of the scenarios named in `MARKS_THAT_SEPARATE`, each planted against its twin;
 // - for a held request, the same scenario with the request *answered at once*, so a loading or
 //   in-flight state that never held fails;
 // - for every *absent* mark (`min: 0, max: 0`), a page where the thing is present, so the mark
@@ -908,9 +927,11 @@ test.describe('populated scenarios render their success branch', () => {
 // all of a sibling's or a presence page's marks, all of a populated success page's lists, one
 // landmark of an at-rest success page, or, for a request answered at once, the answer and no busy
 // region left. That proves the substituted page is there. It does not prove the scenario's own
-// marks cannot still be on their way, so for an at-rest success page and an instant answer a mark
-// that appears later than the sign could be credited as discriminating within the 1 s judge window;
-// the residue can only credit a plant, never make a scenario pass.
+// marks cannot still be on their way: a mark that renders later than the substituted page's own
+// signs can be credited by a plant as discriminating within the 1 s judge window, so that plant's
+// evidence is weaker than its pass suggests. Every kind of plant carries this, a sibling or a
+// presence page whose marks all arrive before a base mark as much as an at-rest page or an
+// instant answer.
 
 // The page a route shows when none of its branches is in play: what a branch scenario is planted
 // against. `/matches/$gameId` at rest is not it (its stub lacks an `analysis` key, which renders the
@@ -964,6 +985,9 @@ const PRESENCE_PAGE_FOR: Readonly<Record<string, string>> = {
   '/sign-in (link variant)|no outcome callout': '/sign-in (outcome profile_already_linked)',
   '/matches/$gameId (match download in flight)|no busy row download':
     '/matches/$gameId (replay download in flight)',
+  '/dashboard (profile summary loading)|no ratings failure': '/dashboard (profile load failed)',
+  '/matches/$gameId (analysis document failed)|no match failure':
+    '/matches/$gameId (match load failed)',
   '/matches (profile loading)|no ratings failure': '/matches (profile load failed)',
   '/matches (profile loading)|no profile identity': '/matches (match list loading)',
   '/players/$profileId/matches (profile loading)|no profile identity':
@@ -986,6 +1010,55 @@ const PRESENCE_PAGE_FOR: Readonly<Record<string, string>> = {
   '/matches/$gameId (capture pending, archival objected)|no countdown':
     '/matches/$gameId (capture pending)',
 }
+
+// Marks added because two scenarios of a route that no ring compares (different families, or none)
+// had marks that one page satisfied both ways: each is a positive mark of `scenario` that the
+// `twin` page, which the broader selectors alone would have matched, must not show. The planted
+// cases run the mark alone on the twin's page and on the route's success page.
+interface SeparatingMark {
+  scenario: string
+  mark: string
+  twin: string
+  /** The route's success page shows this too (the archived state starts "Archival is on."; the
+   * loaded match shows its header), so the mark is planted on the twin's page only. */
+  onSuccessPage?: true
+}
+const MARKS_THAT_SEPARATE: readonly SeparatingMark[] = [
+  {
+    scenario: '/matches/$gameId (match loading)',
+    mark: 'busy match panel',
+    twin: '/matches/$gameId (analysis document loading)',
+  },
+  {
+    scenario: '/matches/$gameId (match loading)',
+    mark: 'busy match panel',
+    twin: '/matches/$gameId (analysis queued)',
+  },
+  {
+    scenario: '/matches/$gameId (analysis document loading)',
+    mark: 'loaded match panel',
+    twin: '/matches/$gameId (match loading)',
+    onSuccessPage: true,
+  },
+  {
+    scenario: '/matches/$gameId (analysis document failed)',
+    mark: 'loaded match panel',
+    twin: '/matches/$gameId (match load failed)',
+    onSuccessPage: true,
+  },
+  {
+    scenario: '/dashboard (archival write in flight)',
+    mark: 'archival is on',
+    twin: '/dashboard (archival resume in flight)',
+    onSuccessPage: true,
+  },
+  {
+    scenario: '/privacy (archival write in flight)',
+    mark: 'archival is on',
+    twin: '/privacy (archival resume in flight)',
+    onSuccessPage: true,
+  },
+]
 
 function absentMarksOf(scenario: BranchScenario): ListExpectation[] {
   return scenario.shows.filter((entry) => entry.max !== undefined)
@@ -1126,6 +1199,54 @@ function plantedCases(): Case[] {
             rejectionFor(base),
           ),
       })
+    }
+
+    for (const separating of MARKS_THAT_SEPARATE.filter((entry) => entry.scenario === base.label)) {
+      const separatingMark = base.shows.find((entry) => entry.name === separating.mark)
+      const twin = byLabel.get(separating.twin)
+      if (!separatingMark || !twin) continue // `every separating mark is a real positive mark` fails by name
+      const expected = rejectionFor(base, separatingMark.name, 'fewer')
+      cases.push({
+        title: `planted: ${base.label}'s '${separating.mark}' on the twin '${twin.branch}' fails on that mark`,
+        run: (page, url) =>
+          expectRejected(
+            page,
+            {
+              ...base,
+              path: twin.path,
+              landedPath: twin.landedPath,
+              stub: twin.stub,
+              prepare: twin.prepare,
+              hold: twin.hold,
+              surface: twin.surface,
+              shows: [separatingMark],
+            },
+            url,
+            (target) => assertBranchScenario(target, twin, twin.label),
+            expected,
+          ),
+      })
+      if (!separating.onSuccessPage)
+        cases.push({
+          title: `planted: ${base.label}'s '${separating.mark}' on the route's success page fails on that mark`,
+          run: (page, url) =>
+            expectRejected(
+              page,
+              {
+                ...base,
+                path: success.path,
+                landedPath: success.landedPath,
+                stub: success.stub,
+                prepare: undefined,
+                hold: undefined,
+                surface: undefined,
+                shows: [separatingMark],
+              },
+              url,
+              (target) => successRendered(target, base.route),
+              expected,
+            ),
+        })
     }
 
     for (const absentMark of absentMarksOf(base)) {

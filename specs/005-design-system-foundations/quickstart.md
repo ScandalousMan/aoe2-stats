@@ -1302,14 +1302,20 @@ scenario's `prepare` (`assertBranchScenario`, which, unlike the populated judge,
 `aria-busy` regions). `tests/visual/fixtures/suite-scenarios.test.ts` fails by name when a scenario or its inventory
 entry is added or removed alone, when the number of scenarios changes, when one scenario's positive marks are all
 another's on the same route unless an absent mark of the first is required present by the second, and when a scenario
-opens with a mark that is not a positive one. It plants four absences, each failing inside
-`enterScenario` naming the mark that fails: for every scenario, the route's success page before any action; for a
-scenario in a family of branches that could be mistaken for one another, the next scenario of that family in the ring
-(the other pairs are not run: the check on the declared marks is all that covers them); for a held request, the same scenario with the request
-answered at once; and for every absent mark, a page where the thing is present. Each plant first waits for the page it
-substituted to show what it declares (all of a sibling's marks, a populated page's lists, one landmark of an at-rest
-page, or an instant answer with nothing left busy), which proves that page is there but not that a mark of the
-scenario's own cannot still be on its way, so a plant can be credited for a mark that is merely late. Things the runs showed: a `useQuery`
+opens with a mark that is not a positive one. That check compares mark selectors as written: two selectors that match
+the same element but are spelled differently are not seen as one, and scenarios in different families whose marks
+overlap that way are covered only by the discriminating marks a sweep added to the scenarios it named
+(`MARKS_THAT_SEPARATE`: `match loading`, `analysis document loading`, `analysis document failed` and the two
+`archival write in flight` scenarios, plus the absent marks of the profile-loading scenarios), not by the check. The
+suite plants four absences, each failing inside `enterScenario` naming the mark that fails: for every scenario, the
+route's success page before any action; for a scenario in a family of branches that could be mistaken for one another,
+the next scenario of that family in the ring (the other pairs are not run); for a held request, the same scenario with
+the request answered at once; and for every absent mark, a page where the thing is present; and each separating mark is
+planted alone on its twin's page and on the success page. Each plant first waits for the page it substituted to show
+what it declares (all of a sibling's marks, a populated page's lists, one landmark of an at-rest page, or an instant
+answer with nothing left busy). That proves the page is there, not that a mark of the scenario's own cannot still be on
+its way: a mark that renders late can be credited as discriminating by a plant, whichever kind of plant it is, so that
+plant's evidence is weaker than its pass suggests. Things the runs showed: a `useQuery`
 shows its failure only after three retries (seven seconds), which the scenarios run the page's clock past instead of
 waiting for; a held *document* navigation (a download, the Steam redirect) freezes every evaluation in the page, so
 those navigations are cancelled instead and the transient timer is paused; several first versions of a planted case
@@ -1331,7 +1337,7 @@ erasure dialog's confirm button is natively `disabled` while it is focused durin
 `/privacy (erasure re-mint in flight)`'s `prepare` moves focus back to the dialog heading after the press, so that
 scenario's keyboard result does not judge where the press left focus. Both are component defects, not harness gaps, so
 neither is a row of the register; item 13 is Met only when T750 and T751 land and the markers are removed. Run locally (macOS Chromium): route-keyboard 334 tests, route-focus-visibility 324, route-touch-footprint
-324, route-reduced-motion 336 and the 865 under `tests/visual/fixtures/`, all passing. No scenario was added to
+324, route-reduced-motion 336 and the 876 under `tests/visual/fixtures/`, all passing. No scenario was added to
 `tests/visual/app-routes.spec.ts`, so no full-page baseline changed or was captured. The CI run that backs the verdict
 is the `visual` job of #178 at the head carrying this remediation, not yet recorded here.
 
