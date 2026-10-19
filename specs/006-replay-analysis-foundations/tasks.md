@@ -2969,7 +2969,7 @@ phase.
       say about 490 and 673 ("age-upgraded visual variants"; closable only by a second vendored
       source): a referenced source names both "Gate", and FR-022d closes them without vendoring
       anything. Their strict expectations stay until T767's snapshot closes them
-- [ ] T762 [US2] Add the condition `controlled` to the effect model (FR-022e). The operand is a
+- [x] T762 [US2] Add the condition `controlled` to the effect model (FR-022e). The operand is a
       table keyed by a count; the count is how many of the entities `condition_entities` names the
       player controls, supplied by the caller in the query's `context`. A count above the table's
       highest key takes that key's operand, which is how a stated maximum is written; a count below

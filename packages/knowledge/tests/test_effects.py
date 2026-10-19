@@ -1439,3 +1439,286 @@ def test_no_refusal_reason_justifies_itself_by_an_unregistered_condition(directo
         "fault: "
         f"{[(e.civilisation, e.source_text) for e in offenders]!r}"
     )
+
+
+# ------------------------------------------------------------ T762: condition = "controlled"
+
+_TC_AND_CASTLE = frozenset(
+    {effects.SelectorEntry("building", "109"), effects.SelectorEntry("building", "82")}
+)
+_BARRACKS = frozenset({effects.SelectorEntry("building", "12")})
+
+
+def _controlled_effect_toml(
+    *,
+    operand: str = "{ 1 = 0.95, 2 = 0.90, 3 = 0.85, 4 = 0.80 }",
+    condition_entities: str | None = (
+        '[{ kind = "building", id = "109" }, { kind = "building", id = "82" }]'
+    ),
+    selector: str = '[{ kind = "unit", id = "74" }]',
+    field: str = "cost_factor",
+    operation: str = "multiply",
+    condition: str = "controlled",
+) -> str:
+    """A synthetic `controlled` effect: the operand is a table keyed by a count of the entities
+    `condition_entities` names (Saxons' Foot Soldiers shape, without transcribing Saxons)."""
+    entities_line = (
+        f"condition_entities = {condition_entities}\n" if condition_entities is not None else ""
+    )
+    return f"""\
+[[effect]]
+civilisation = "Synthetic"
+source_key = "0"
+source_text = "Foot Soldiers cost -5% per Town Center or Castle controlled (maximum -20%)"
+modelled = "yes"
+field = "{field}"
+operation = "{operation}"
+operand = {operand}
+condition = "{condition}"
+{entities_line}selector = {selector}
+validated_by = "synthetic"
+"""
+
+
+def _apply_controlled(effect: effects.Effect, controlled: object, *, value: object = 100) -> object:
+    result = effects.apply_matched(
+        (effect,),
+        civilisation="Synthetic",
+        kind="unit",
+        id="74",
+        field="cost_factor",
+        value=value,
+        context=None if controlled is None else effects.Context(controlled=controlled),  # type: ignore[arg-type]
+    )
+    assert not isinstance(result, effects.EffectNotModelled)
+    return result
+
+
+def test_controlled_is_a_registered_condition() -> None:
+    assert "controlled" in effects.CONDITIONS
+
+
+def test_a_controlled_effect_parses_its_entities_as_a_set_of_selector_entries() -> None:
+    (effect,) = effects.parse_effects_toml(_controlled_effect_toml())
+    assert effect.condition == "controlled"
+    assert frozenset(effect.condition_entities) == _TC_AND_CASTLE
+
+
+@pytest.mark.parametrize(
+    ("count", "expected_value", "expected_applied"),
+    [
+        (0, 100, 0),  # below the lowest key (1): the effect does not apply
+        (1, 95, 1),
+        (4, 80, 1),
+        (5, 80, 1),  # above the highest key: the highest key's operand, the stated maximum
+        (40, 80, 1),
+    ],
+)
+def test_a_controlled_table_keyed_one_to_four_at_counts_around_its_edges(
+    count: int, expected_value: float, expected_applied: int
+) -> None:
+    (effect,) = effects.parse_effects_toml(_controlled_effect_toml())
+    value, applied = _apply_controlled(effect, {_TC_AND_CASTLE: count})  # type: ignore[misc]
+    assert value == expected_value
+    assert len(applied) == expected_applied
+
+
+def test_a_controlled_sparse_table_takes_the_highest_key_not_above_the_count() -> None:
+    """The rule between keys: the highest key not above the count — the same rule that makes a
+    count above the highest key take that key's operand, applied between keys."""
+    (effect,) = effects.parse_effects_toml(_controlled_effect_toml(operand="{ 1 = 0.9, 3 = 0.5 }"))
+    results = {
+        count: _apply_controlled(effect, {_TC_AND_CASTLE: count})[0]  # type: ignore[index]
+        for count in (0, 1, 2, 3, 4)
+    }
+    assert results == {0: 100, 1: 90, 2: 90, 3: 50, 4: 50}
+
+
+def test_a_controlled_table_may_start_at_zero() -> None:
+    (effect,) = effects.parse_effects_toml(_controlled_effect_toml(operand="{ 0 = 0.5, 2 = 0.25 }"))
+    assert _apply_controlled(effect, {_TC_AND_CASTLE: 0})[0] == 50  # type: ignore[index]
+
+
+def test_a_controlled_effect_with_a_cost_mapping_operand() -> None:
+    (effect,) = effects.parse_effects_toml(
+        _controlled_effect_toml(
+            operand="{ 1 = { food = 0.95 }, 2 = { food = 0.90 } }", field="cost_factor"
+        )
+    )
+    value, _applied = _apply_controlled(
+        effect, {_TC_AND_CASTLE: 2}, value={"food": 100, "gold": 40}
+    )  # type: ignore[misc]
+    assert value == {"food": 90, "gold": 40}
+
+
+def test_a_controlled_effect_raises_without_a_context() -> None:
+    (effect,) = effects.parse_effects_toml(_controlled_effect_toml())
+    with pytest.raises(effects.ContextRequired):
+        _apply_controlled(effect, None)
+
+
+def test_a_controlled_effect_raises_when_the_context_carries_no_counts() -> None:
+    (effect,) = effects.parse_effects_toml(_controlled_effect_toml())
+    result_context = effects.Context(age=2)
+    with pytest.raises(effects.ContextRequired):
+        effects.apply_matched(
+            (effect,),
+            civilisation="Synthetic",
+            kind="unit",
+            id="74",
+            field="cost_factor",
+            value=100,
+            context=result_context,
+        )
+
+
+def test_a_count_for_other_entities_does_not_answer_this_effect() -> None:
+    """Two `controlled` effects on different entity sets must not be fed one count: a count the
+    caller stated for the Barracks says nothing about the Town Centers and Castles."""
+    (effect,) = effects.parse_effects_toml(_controlled_effect_toml())
+    with pytest.raises(effects.ContextRequired) as raised:
+        _apply_controlled(effect, {_BARRACKS: 3})
+    assert "109" in str(raised.value)
+    assert "82" in str(raised.value)
+
+
+def test_two_controlled_effects_on_different_entity_sets_each_read_their_own_count() -> None:
+    (first,) = effects.parse_effects_toml(_controlled_effect_toml())
+    (second,) = effects.parse_effects_toml(
+        _controlled_effect_toml(
+            operand="{ 1 = 0.5 }", condition_entities='[{ kind = "building", id = "12" }]'
+        )
+    )
+    value, applied = effects.apply_matched(
+        (first, second),
+        civilisation="Synthetic",
+        kind="unit",
+        id="74",
+        field="cost_factor",
+        value=100,
+        context=effects.Context(controlled={_TC_AND_CASTLE: 2, _BARRACKS: 7}),
+    )
+    assert value == 45  # 100 * 0.90 = 90, then 90 * 0.5
+    assert applied == (first, second)
+
+
+def test_the_order_condition_entities_are_written_in_does_not_matter() -> None:
+    (effect,) = effects.parse_effects_toml(
+        _controlled_effect_toml(
+            condition_entities=(
+                '[{ kind = "building", id = "82" }, { kind = "building", id = "109" }]'
+            )
+        )
+    )
+    assert _apply_controlled(effect, {_TC_AND_CASTLE: 1})[0] == 95  # type: ignore[index]
+
+
+@pytest.mark.parametrize("count", [-1, True, 2.0, "2", None])
+def test_a_malformed_count_is_a_value_error_not_context_required(count: object) -> None:
+    (effect,) = effects.parse_effects_toml(_controlled_effect_toml())
+    with pytest.raises(ValueError, match="count"):
+        _apply_controlled(effect, {_TC_AND_CASTLE: count})
+
+
+def test_an_unrelated_effect_on_the_same_entity_answers_without_any_count() -> None:
+    """The contrast case: only reaching a `controlled` effect needs a count. An unconditional
+    effect on the same entity and field answers with no context at all — and the same entity with
+    a `controlled` effect added beside it raises, so the count is asked for by that effect alone."""
+    (plain,) = effects.parse_effects_toml(_MINIMAL_MODELLED_EFFECT)
+    (gated,) = effects.parse_effects_toml(
+        _controlled_effect_toml(field="cost", selector='[{ kind = "unit", id = "358" }]')
+    )
+    query = {
+        "civilisation": "Byzantines",
+        "kind": "unit",
+        "id": "358",
+        "field": "cost",
+        "value": {"food": 35, "wood": 25},
+    }
+    answered = effects.apply_matched((plain,), **query)  # type: ignore[arg-type]
+    assert not isinstance(answered, effects.EffectNotModelled)
+    assert answered[0] == {"food": 26, "wood": 19}
+    assert answered[1] == (plain,)
+    with pytest.raises(effects.ContextRequired):
+        effects.apply_matched((plain, gated), **query)  # type: ignore[arg-type]
+
+
+def test_a_not_modelled_controlled_effect_still_refuses_without_a_count() -> None:
+    text = """\
+[[effect]]
+civilisation = "Synthetic"
+source_key = "0"
+source_text = "a bonus whose amount the source never states"
+modelled = "no"
+reason = "the amount is not stated"
+field = "cost_factor"
+condition = "controlled"
+condition_entities = [{ kind = "building", id = "109" }]
+selector = [{ kind = "unit", id = "74" }]
+validated_by = "synthetic"
+"""
+    (effect,) = effects.parse_effects_toml(text)
+    result = effects.apply_matched(
+        (effect,),
+        civilisation="Synthetic",
+        kind="unit",
+        id="74",
+        field="cost_factor",
+        value=100,
+    )
+    assert isinstance(result, effects.EffectNotModelled)
+
+
+# parse-time refusals
+
+
+def test_parse_rejects_a_controlled_effect_without_condition_entities() -> None:
+    with pytest.raises(effects.EffectsError, match="condition_entities"):
+        effects.parse_effects_toml(_controlled_effect_toml(condition_entities=None))
+
+
+def test_parse_rejects_a_controlled_effect_with_empty_condition_entities() -> None:
+    with pytest.raises(effects.EffectsError, match="condition_entities"):
+        effects.parse_effects_toml(_controlled_effect_toml(condition_entities="[]"))
+
+
+def test_parse_rejects_condition_entities_on_a_condition_that_does_not_use_them() -> None:
+    with pytest.raises(effects.EffectsError, match="condition_entities"):
+        effects.parse_effects_toml(_controlled_effect_toml(operand="{ 2 = 0.9 }", condition="age"))
+
+
+def test_parse_rejects_a_duplicated_condition_entity() -> None:
+    with pytest.raises(effects.EffectsError, match="condition_entities"):
+        effects.parse_effects_toml(
+            _controlled_effect_toml(
+                condition_entities='[{ kind = "building", id = "109" }, '
+                '{ kind = "building", id = "109" }]'
+            )
+        )
+
+
+@pytest.mark.parametrize(
+    "operand",
+    [
+        "{}",  # an empty table
+        "0.9",  # not a table
+        '{ "-1" = 0.9 }',  # a negative key
+        "{ one = 0.9 }",  # a non-integer key
+        '{ "1.5" = 0.9 }',  # a fractional key
+        '{ "01" = 0.9 }',  # a non-canonical key ("01" and "1" would both be count 1)
+        '{ 1 = "cheap" }',  # a non-numeric operand
+        "{ 1 = true }",  # a bool is not a number
+        "{ 1 = {} }",  # an empty cost mapping
+        '{ 1 = { food = "cheap" } }',  # a non-numeric leaf inside a cost mapping
+    ],
+)
+def test_parse_rejects_a_malformed_controlled_table(operand: str) -> None:
+    with pytest.raises(effects.EffectsError, match="operand"):
+        effects.parse_effects_toml(_controlled_effect_toml(operand=operand))
+
+
+def test_the_existing_numeric_guards_walk_a_controlled_table() -> None:
+    with pytest.raises(effects.EffectsError):
+        effects.parse_effects_toml(
+            _controlled_effect_toml(operand="{ 1 = { food = -0.5 } }", field="cost")
+        )

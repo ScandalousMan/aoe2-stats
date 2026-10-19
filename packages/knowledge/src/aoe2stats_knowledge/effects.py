@@ -46,15 +46,23 @@ contracts/knowledge-base.md), "Civilisation qualification" steps 2-3. Research:
   an age absent from the table answers the plain baseline, not a gap), `"researched"` (gated on
   `condition_technology` having been researched), `"team"` (the effect's own `civilisation` is the
   bonus's owner; it applies to every civilisation on the owner's team, decided by `Context.team`,
-  never by `civilisation` equality alone). Absent means unconditional, the pre-T652u behaviour
-  unchanged. A conditional effect is still `modelled = "yes"`/`"no"` exactly as any other — "no"
-  still means the field it touches stays gapped (Kamandaran below: conditional on research, but the
-  wood amount the pack never states is missing knowledge, not unplaced match state, so it stays
-  refused) — `condition` only changes *when* a modelled effect's operand applies, never whether an
-  unmodelled one is half-applied.
+  never by `civilisation` equality alone), and **T762** `"controlled"` (`operand` becomes a table
+  keyed by a count of the entities `condition_entities` names that the player controls, which the
+  caller supplies as `Context.controlled`; FR-022e). Absent means unconditional, the pre-T652u
+  behaviour unchanged. A conditional effect is still `modelled = "yes"`/`"no"` exactly as any
+  other — "no" still means the field it touches stays gapped (Kamandaran below: conditional on
+  research, but the wood amount the pack never states is missing knowledge, not unplaced match
+  state, so it stays refused) — `condition` only changes *when* a modelled effect's operand
+  applies, never whether an unmodelled one is half-applied.
 - `condition_technology` — required, and only present, when `condition == "researched"`: the
   technology id (as `rules.json` keys it) that must be in `Context.researched` for the effect to
   hold.
+- `condition_entities` — **T762**. Required and non-empty, and only present, when `condition ==
+  "controlled"`: the entities (`{kind, id}` tables, as `selector` writes them, never a class name)
+  whose controlled count the operand's table is keyed by. The count is **the sum over the whole
+  set** — "Town Center or Castle controlled" is one count of both kinds together — so the set is
+  also the identity of the question: `Context.controlled` is keyed by that set, which is how two
+  `controlled` effects on different sets are never fed one count. Duplicates are refused.
 
 **T652g: `[[civilisation_id]]`, the replay's raw civilisation integer mapped to this pack's
 civilisation name.** This is a second, independent record `effects.toml` carries, not an
@@ -119,7 +127,7 @@ OPERATIONS: Final[frozenset[str]] = frozenset({"multiply", "add", "set", "faster
 _MODELLED_VALUES: Final[frozenset[str]] = frozenset({"yes", "no"})
 
 #: data-model.md §6's closed `condition` set (T652u) — `None` (absent) means unconditional.
-CONDITIONS: Final[frozenset[str]] = frozenset({"age", "researched", "team"})
+CONDITIONS: Final[frozenset[str]] = frozenset({"age", "researched", "team", "controlled"})
 
 #: The pack's own age numbering (confirmed directly: unit 358 "Pikeman" = 3, unit 359 "Halberdier"
 #: = 4, `packages/knowledge/tests/test_effects.py`'s own Parthian Tactics test) — 1=Dark, 2=Feudal,
@@ -177,10 +185,24 @@ class EffectsError(ValueError):
     """
 
 
+def _is_canonical_count(key: object) -> bool:
+    """T762: `key` is a non-negative integer written the one way (`"0"`, `"1"`, `"12"`) — no sign,
+    no fraction, no leading zero, so `"01"` and `"1"` can never both be the count one."""
+    return isinstance(key, str) and key.isascii() and key.isdigit() and str(int(key)) == key
+
+
+def _is_numeric_operand(value: object) -> bool:
+    """T762: a bare number (not a `bool`), or a non-empty `{resource: amount}` mapping of them."""
+    if isinstance(value, Mapping):
+        return bool(value) and all(_is_numeric_operand(inner) for inner in value.values())
+    return isinstance(value, int | float) and not isinstance(value, bool)
+
+
 class ContextRequired(TypeError):
     """T652u: a query reached a **modelled** conditional effect (`condition` is `"age"`,
-    `"researched"` or `"team"`) without the piece of `Context` that decides whether it holds — the
-    age, the researched-technology set, or the team roster. Raised, never returned as part of the
+    `"researched"`, `"team"` or `"controlled"`) without the piece of `Context` that decides whether
+    it holds — the age, the researched-technology set, the team roster, or the count of the
+    effect's own `condition_entities`. Raised, never returned as part of the
     answer-or-gap union, the same way Python's own keyword-only `civilisation` raises when a caller
     omits it (contracts/knowledge-base.md, "The query surface": "a query that reaches a conditional
     effect without the input that decides it raises ... the caller asked for a value only the match
@@ -235,6 +257,7 @@ class Effect:
     operand: object | None = None
     condition: str | None = None
     condition_technology: str | None = None
+    condition_entities: tuple[SelectorEntry, ...] | None = None
 
     def __post_init__(self) -> None:
         for name, value in (
@@ -272,6 +295,22 @@ class Effect:
         elif self.condition_technology is not None:
             raise EffectsError(
                 'effect.condition_technology must be absent unless condition = "researched"'
+            )
+        if self.condition == "controlled":
+            if not self.condition_entities:
+                raise EffectsError(
+                    "effect.condition_entities is required and must name at least one entity "
+                    'when condition = "controlled" — the count is of those entities, and a '
+                    "table keyed by a count of nothing is not a rule"
+                )
+            if len(set(self.condition_entities)) != len(self.condition_entities):
+                raise EffectsError(
+                    "effect.condition_entities must not name an entity twice, got "
+                    f"{list(self.condition_entities)!r}"
+                )
+        elif self.condition_entities is not None:
+            raise EffectsError(
+                'effect.condition_entities must be absent unless condition = "controlled"'
             )
         if self.modelled == "no":
             if not isinstance(self.reason, str) or not self.reason.strip():
@@ -316,6 +355,25 @@ class Effect:
                     raise EffectsError(
                         f"effect.operand's age table keys must all be one of "
                         f"{sorted(_AGE_KEYS)}, got {sorted(self.operand.keys())!r}"
+                    )
+            if self.condition == "controlled":
+                if not isinstance(self.operand, Mapping) or not self.operand:
+                    raise EffectsError(
+                        "effect.operand must be a non-empty table keyed by a count when "
+                        'condition = "controlled", got ' + repr(self.operand)
+                    )
+                bad_keys = [key for key in self.operand if not _is_canonical_count(key)]
+                if bad_keys:
+                    raise EffectsError(
+                        "effect.operand's count table keys must each be a non-negative whole "
+                        f'number written without sign, fraction or leading zero ("0", "1", '
+                        f"...), got {bad_keys!r}"
+                    )
+                bad_values = [v for v in self.operand.values() if not _is_numeric_operand(v)]
+                if bad_values:
+                    raise EffectsError(
+                        "effect.operand's count table values must each be a number or a "
+                        f"non-empty table of numbers, got {bad_values!r}"
                     )
             # T652r: reject, at parse time, a numeric operand the game itself could never
             # produce — walked to every leaf via `_operand_leaves` so a `condition`'s own
@@ -368,11 +426,21 @@ class Context:
     - `researched` — the technology ids (as `rules.json` keys them) the player has researched.
     - `team` — the civilisation names on the player's team, the player's own included — a `"team"`
       effect matches every civilisation in this set, not the bonus owner alone.
+    - `controlled` — **T762**: how many of a set of entities the player controls, **keyed by that
+      set** (`frozenset[SelectorEntry]`, order-free), not a single number. A `"controlled"` effect
+      reads the entry whose key equals its own `condition_entities` exactly, so a count stated for
+      the Barracks never answers an effect about Town Centers and Castles, and a count for
+      "Town Center or Castle" is one count of both kinds summed, the way the source sentence reads.
+      An absent key is `ContextRequired`, like an absent age; a count that is not a non-negative
+      whole number (a `bool` included) is `ValueError`. Whether those entities are *controlled* at
+      the moment of the query — built, finished, not destroyed — is the caller's decision
+      (FR-022e: the knowledge base never decides which state held).
     """
 
     age: int | None = None
     researched: frozenset[str] | None = None
     team: frozenset[str] | None = None
+    controlled: Mapping[frozenset[SelectorEntry], int] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -438,15 +506,15 @@ def _require_str(table: Mapping[str, object], key: str) -> str:
     return value
 
 
-def _parse_selector(raw: object) -> tuple[SelectorEntry, ...]:
+def _parse_selector(raw: object, *, key: str = "selector") -> tuple[SelectorEntry, ...]:
     if not isinstance(raw, list) or not raw:
         raise EffectsError(
-            f"effect.selector must be a non-empty list of {{kind, id}} tables, got {raw!r}"
+            f"effect.{key} must be a non-empty list of {{kind, id}} tables, got {raw!r}"
         )
     entries: list[SelectorEntry] = []
     for item in raw:
         if not isinstance(item, dict):
-            raise EffectsError(f"effect.selector entries must be tables, got {item!r}")
+            raise EffectsError(f"effect.{key} entries must be tables, got {item!r}")
         entries.append(SelectorEntry(kind=_require_str(item, "kind"), id=_require_str(item, "id")))
     return tuple(entries)
 
@@ -485,6 +553,11 @@ def _parse_effect(table: Mapping[str, object]) -> Effect:
         operand=table.get("operand"),
         condition=_optional_str(table, "condition"),
         condition_technology=_optional_str(table, "condition_technology"),
+        condition_entities=(
+            _parse_selector(table["condition_entities"], key="condition_entities")
+            if "condition_entities" in table
+            else None
+        ),
     )
 
 
@@ -813,6 +886,32 @@ def _resolve_conditional_operand(
         if effect.civilisation not in context.team:
             return None, False
         return effect.operand, True
+    if effect.condition == "controlled":
+        assert effect.condition_entities is not None  # enforced by Effect.__post_init__
+        entities = frozenset(effect.condition_entities)
+        if context is None or context.controlled is None or entities not in context.controlled:
+            named = sorted(f"{entry.kind} {entry.id}" for entry in entities)
+            raise ContextRequired(
+                f"effect {effect.source_text!r} (civilisation={effect.civilisation!r}) is "
+                "conditional on how many of "
+                f"{named!r} the player controls, and reaching it needs "
+                "Context(controlled={frozenset of exactly those entities: count})"
+            )
+        count = context.controlled[entities]
+        if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+            raise ValueError(
+                f"Context.controlled's count for {sorted(f'{e.kind} {e.id}' for e in entities)!r} "
+                f"must be a non-negative whole number, got {count!r} — a count is how many the "
+                "player controls, not a flag or a measurement"
+            )
+        assert isinstance(effect.operand, Mapping)  # enforced by Effect.__post_init__
+        # The highest key not above the count: above the highest key that is the highest key (a
+        # stated maximum), between two keys it is the lower one, below the lowest key nothing
+        # (the effect does not apply). Keys are canonical decimal strings (parse-time check).
+        reached = [int(key) for key in effect.operand if int(key) <= count]
+        if not reached:
+            return None, False
+        return effect.operand[str(max(reached))], True
     raise AssertionError(f"unreachable: unknown condition {effect.condition!r}")  # pragma: no cover
 
 

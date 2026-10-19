@@ -393,10 +393,11 @@ def coverage(
                         # T652u, contracts/knowledge-base.md "Civilisation qualification": "a
                         # conditional effect that is modelled is complete knowledge, so the
                         # coverage pass does not report it as a gap." T652v supplies the team half
-                        # of `query.Context` for real (above), so only an age- or research-gated
-                        # effect can still reach this branch — this pass supplies neither, so
-                        # reaching one of those always raises; catching it is exactly that
-                        # treatment — the field *is* modelled, so there is nothing to report.
+                        # of `query.Context` for real (above), so only an age-, research- or
+                        # controlled-count-gated effect can still reach this branch — this pass
+                        # supplies none of them, so reaching one of those always raises; catching
+                        # it is exactly that treatment — the field *is* modelled, so there is
+                        # nothing to report.
                         continue
                     if isinstance(answer_or_gap, gaps.KnowledgeGap):
                         result.append(answer_or_gap)

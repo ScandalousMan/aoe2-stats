@@ -125,11 +125,23 @@ def name(entity) -> Answer[str] | KnowledgeGap
   The signature stays, so a future source changes no caller.
 - `civilisation` is **keyword-only and required** on every rule query. There is no way to ask for a
   generic value, so there is no way to be handed one (FR-023).
-- `context` is the match state a conditional effect needs: the age, the technologies researched, and
-  the civilisations on the player's team, the player's own included. A query whose matching effects
-  are unconditional ignores it. A query that reaches a conditional effect without the input that
-  decides it **raises**, as omitting `civilisation` does: the caller asked for a value only the
-  match can fix, and neither the baseline nor a guessed age is an answer.
+- `context` is the match state a conditional effect needs: the age, the technologies researched,
+  the civilisations on the player's team, the player's own included, and how many of a set of
+  entities the player controls. A query whose matching effects are unconditional ignores it. A
+  query that reaches a conditional effect without the input that decides it **raises**, as omitting
+  `civilisation` does: the caller asked for a value only the match can fix, and neither the baseline
+  nor a guessed age is an answer.
+- **The controlled count is keyed by the entities counted** (FR-022e). `Context.controlled` maps a
+  set of entity references, each a kind and an identifier, to the number of them the player
+  controls, summed over the set: "Town Center or Castle controlled" is one entry whose key is both
+  buildings. A `controlled` effect reads the entry whose key equals its own `condition_entities`
+  exactly, in any order. A count stated for another set never answers it, so two such effects on
+  different sets are never fed one number; an effect whose set has no entry **raises**, and the
+  message names the entities it needs. A count that is not a non-negative whole number is a
+  `ValueError`, a `bool` included. Which entities count as controlled at the moment of the query is
+  the caller's decision, never the knowledge base's. The effect takes the operand of the highest key
+  not above the count: above the highest key that key's operand (a stated maximum), between two keys
+  the lower one, below the lowest key nothing, and the effect does not apply.
 - `Answer` carries the value, the snapshot identity, the source the stored value came from, and the
   effects applied, in order (US2 scenario 1).
 - The union has **no third branch**. No function in the package returns a bare value, accepts a
@@ -151,12 +163,12 @@ In order, for a rule query qualified by civilisation _c_:
    the owner's team, not the owner alone.
 
 A conditional effect that is modelled is complete knowledge, so the coverage pass does not report it
-as a gap. The pass supplies no age or research state, so it treats a query that raises for want of
-one as modelled. **T652v**: the pass does supply each participant's real team, read from the
-recording's own header — every ally's civilisation, the participant's own included, never a guess —
-so a team-conditioned effect is applied for real rather than merely treated as modelled, and an
-unmodelled ally is what gaps every cost and time query for that ally's teammates (step 1, above), not
-only the query naming the unmodelled civilisation directly.
+as a gap. The pass supplies no age, research or controlled-count state, so it treats a query that
+raises for want of one as modelled. **T652v**: the pass does supply each participant's real team,
+read from the recording's own header — every ally's civilisation, the participant's own included,
+never a guess — so a team-conditioned effect is applied for real rather than merely treated as
+modelled, and an unmodelled ally is what gaps every cost and time query for that ally's teammates
+(step 1, above), not only the query naming the unmodelled civilisation directly.
 
 `name` is not civilisation-qualified and an unresolvable identifier degrades to the bare identifier
 at the presentation boundary, as 003 FR-043a already requires — it never gaps an analysis.
