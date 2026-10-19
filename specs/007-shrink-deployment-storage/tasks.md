@@ -167,7 +167,7 @@ route behaves as before.
       the two as a named, reasoned exception. **FR-004**: build the web app with
       `pnpm --filter web build` before and after the change and compare a hash over every file
       under `apps/web/dist`; identical is the only acceptable result, and the commit body says so
-- [ ] T809 [US1] **Turn the deployment-install test into the bundle-shaped dry run**
+- [x] T809 [US1] **Turn the deployment-install test into the bundle-shaped dry run**
       (**FR-003**, **FR-005**, research R8) in `tests/architecture/test_deployment_install.py`.
       (1) `uv sync --frozen --no-dev --no-editable` into a temporary environment, the builder's own
       flags (research R2); the editable sync it runs today resolves workspace packages to the
