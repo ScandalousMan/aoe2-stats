@@ -65,6 +65,9 @@ test.describe('touch footprints at 375px, every route, both themes', () => {
     // focusable, found by computed `cursor: pointer` or an interactive role
     // (`assertPointerTargetFootprint`) — which a Tab walk can never reach. The pointer sweep runs
     // first, before a surface walk closes the surface it is looking at.
+    // T744: `SUITE_SCENARIOS` also holds `BRANCH_SCENARIOS` (`fixtures/suite-scenarios.ts`) — each route's
+    // error, transient and unrendered-empty branches, and the two held loading states — so this loop runs
+    // them too, and `enterScenario` has asserted the branch is on screen before anything below measures it.
     for (const scenario of SUITE_SCENARIOS) {
       for (const theme of ['light', 'dark'] as const) {
         test(`${scenario.label} — every non-exempt interactive target clears 44×44 at 375px (${theme})`, async ({

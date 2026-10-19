@@ -1276,6 +1276,75 @@ measure the flag trigger at rest. The run that shows T681's and T682's parts tog
 skipped, the 22 of `tests/visual/app-routes.spec.ts`, route-keyboard 90, route-focus-visibility 82, route-touch-footprint 82,
 route-reduced-motion 94 and the 190 under `tests/visual/fixtures/`, the same counts a local macOS Chromium run reported.
 
+**Closed, 2026-10-18 (T744).** T744's own row of `packages/design-system/specs/README.md`'s "Verification-coverage gap
+register" is deleted, which empties the register. The condition the sentences above attach to item 13, that it stays
+partly met until that row is deleted, is superseded (the verdict is restated below), and so is their statement that the
+two loading states run in the reduced-motion suite only. T744's text names instances; its title says "each route's",
+and the work follows the title. `ROUTE_REQUIRED_BRANCHES` in `tests/visual/fixtures/suite-scenarios.ts` enumerates,
+from the containers in `apps/web/src/features/` and the screens and composites they render, every error, transient (in
+flight or held) and empty branch of the ten routes that have one (`/privacy-notice` is static text) that a route's own
+stubs can reach, covering each write a container issues in each direction (in flight, failed) as well as each read, and
+`BRANCH_SCENARIOS` holds one scenario for each: 121 in all, a number `suite-scenarios.test.ts` pins, so the four
+suites run each of them in both themes. They include the instances T744's text names: `DataExportPanel`'s `failed`
+state, `ArchivalControl` in flight and after a resume, the match page's analysis section in `queued`, `running`,
+`failed` and `unavailable`, the no-linked-account state on three routes, `/search`'s two empty answers and the two held
+loading states. The rest follow from the code, and this list gives examples rather than the whole: the sign-in outcomes
+and the Steam redirect in flight; the search answers; the favourites list's loading, failed and removal states;
+`ProfileSummary`'s `error`, `stale`, `empty`, unranked and `not-found` statuses and the player routes' loading; the
+match list's loading and failure and its capture statuses; the profile switcher's, sign-out's and unlink's writes; the
+archival objection and its resumption, each in flight and failed; the favourite toggle's add and remove, each in
+flight and failed; the match page's loading, failure and not-found, its analysis document's loading and failure, the
+refused takeover, the replay-download refusals and the downloads in flight; the upload control's states; the export's
+`requesting` and `preparing`; the erasure dialog's states, including a re-mint after an expired confirmation, and the
+erased screen; the objection form's states; and the unresolved map, civilisation, player and outcome fields. Each
+scenario declares the marks its branch puts on screen and `enterScenario` asserts them in a browser after the
+scenario's `prepare` (`assertBranchScenario`, which, unlike the populated judge, expects error callouts and
+`aria-busy` regions). `tests/visual/fixtures/suite-scenarios.test.ts` fails by name when a scenario or its inventory
+entry is added or removed alone, when the number of scenarios changes, when one scenario's positive marks are all
+another's on the same route unless an absent mark of the first is required present by the second, and when a scenario
+opens with a mark that is not a positive one. That check compares mark selectors as written: two selectors that match
+the same element but are spelled differently are not seen as one, and scenarios in different families whose marks
+overlap that way are covered only by the discriminating marks a sweep added to the scenarios it named
+(`MARKS_THAT_SEPARATE`: `match loading`, `analysis document loading`, `analysis document failed` and the two
+`archival write in flight` scenarios, plus the absent marks of the profile-loading scenarios), not by the check. The
+suite plants five kinds of absence, each failing inside `enterScenario` naming the mark that fails: for every scenario, the
+route's success page before any action; for a scenario in a family of branches that could be mistaken for one another,
+the next scenario of that family in the ring (the other pairs are not run); for a held request, the same scenario with
+the request answered at once; for every absent mark, a page where the thing is present; and for each separating mark,
+the mark alone on its twin's page, and on the route's success page unless that page shows the mark too
+(`onSuccessPage`). Each plant first waits for the page it substituted to show
+what it declares (all of a sibling's marks, a populated page's lists, one landmark of an at-rest page, or an instant
+answer with nothing left busy). That proves the page is there, not that a mark of the scenario's own cannot still be on
+its way: a mark that arrives only after the 1 s judge window has closed is credited by a plant as discriminating,
+whichever kind of plant it is, so that plant's evidence is weaker than its pass suggests; a mark that arrives within
+the window is caught, because the planted `enterScenario` then does not throw, so the planted case goes red. Things the runs showed: a `useQuery`
+shows its failure only after three retries (seven seconds), which the scenarios run the page's clock past instead of
+waiting for; a held *document* navigation (a download, the Steam redirect) freezes every evaluation in the page, so
+those navigations are cancelled instead and the transient timer is paused; several first versions of a planted case
+passed for the wrong reason, and each mark set was strengthened until the case failed on the mark it names; and
+`/matches` has no make-primary scenario because its Manage menu is rendered for the `board` variant only. The branches
+no route stub reaches, or that have nothing for a suite to judge, and the second paths to a covered state, are listed
+with their reasons in the comment above `ROUTE_REQUIRED_BRANCHES`, which this paragraph does not restate. The decision
+on the two held loading states is to run them through all four suites rather than record a reason per suite, and
+nothing failed on them. **Item 13 is partly met.** It is Met for every route's success branch, at rest and populated,
+with every `Dialog`, `Menu` and the country `Tooltip` open, and for every branch enumerated above, in both themes,
+except two defects the scenarios found. First, T750: the keyboard suite finds that `Dialog`'s Tab trap includes a
+disabled button (`packages/design-system/src/primitives/Dialog/index.tsx`, the `focusable` selector), so while a
+dialog's request is in flight and its secondary action is disabled, Tab leaves the dialog for the page behind the
+backdrop. It shows on `/dashboard (unlink in flight)` and `/privacy (erasure in flight)`. The keyboard suite asserts
+that those two walks fail with that message (`/focus left the dialog during its walk/`) and with no other, still runs
+its post-walk assertions, and fails when a walk passes (`SuiteScenario.knownDefects`, `expectKnownDefect`, both
+directions shown in `tests/visual/fixtures/known-defect.test.ts`); the other three suites pass both. Second, T751: the
+erasure dialog's confirm button is natively `disabled` while it is focused during a re-mint, and
+`/privacy (erasure re-mint in flight)`'s `prepare` moves focus back to the dialog heading after the press, so that
+scenario's keyboard result does not judge where the press left focus. Both are component defects, not harness gaps, so
+neither is a row of the register; item 13 is Met only when T750 and T751 land and the markers are removed. Run locally (macOS Chromium): route-keyboard 334 tests, route-focus-visibility 324, route-touch-footprint
+324, route-reduced-motion 336 and the 876 under `tests/visual/fixtures/`, all passing. No scenario was added to
+`tests/visual/app-routes.spec.ts`, so no full-page baseline changed or was captured. The CI run that backs the verdict
+is run 39205473225, the `visual` job of #178 at f3b939fd (2026-10-19): its app-route step passed 2216 tests on
+Linux Chromium, the 2194 above plus the 22 of `tests/visual/app-routes.spec.ts`, the two `knownDefects` scenarios held
+to their message among them.
+
 ### Item 15's general-reviewer half — outstanding, no pull request covers this head
 
 The `visual-reviewer` half is T595/T596/T600/T671's own, by their own words ("Production-readiness

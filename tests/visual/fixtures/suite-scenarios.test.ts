@@ -27,9 +27,15 @@
 //    container through another component rather than importing it, through a default import or a
 //    lazy `import()`, or from a nested route directory (the derivation reads braced named imports
 //    in the flat `apps/web/src/routes/` directory only).
+// 7. (T744) every error, transient (in flight or held) and empty branch of every route that a
+//    route's own stubs can reach has a branch scenario of *that route* (`ROUTE_REQUIRED_BRANCHES`,
+//    exact match, and the number of them pinned), every one is in `SUITE_SCENARIOS` so all four
+//    suites run it, no two scenarios of a route declare the same marks, each scenario's first mark
+//    is a positive one, and in a browser each renders the branch it names. The planted absences
+//    that show each mark can fail are described above the browser section below.
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
-import { expect, test } from '@playwright/test'
+import { expect, type Page, test } from '@playwright/test'
 import {
   createAppServerHarness,
   hasBuild,
@@ -37,24 +43,36 @@ import {
   PLAYER_PROFILE_RESPONSE,
   PROFILES_RESPONSE,
   ROUTE_SCENARIOS,
+  type RouteScenario,
   SAMPLE_GAME_ID,
   SIGNED_IN_ME,
   stubMe,
 } from './app-routes-harness'
 import {
+  apiResponses,
+  assertBranchScenario,
+  assertPopulatedScenario,
+  type BranchScenario,
+  BRANCH_SCENARIOS,
+  type HeldRequest,
+  type ListExpectation,
   enterScenario,
   findAvatarHashes,
+  LOADING_SCENARIOS,
+  NO_LINKED_ME,
   EXPORT_DOWNLOAD_PATH,
   OBJECTED_ME,
   POPULATED_FIXTURES,
   POPULATED_SCENARIOS,
   type PopulatedScenario,
+  ROUTE_REQUIRED_BRANCHES,
   ROUTE_REQUIRED_LISTS,
   SUITE_SCENARIOS,
   type SuiteScenario,
   SURFACE_SCENARIOS,
   type TooltipScenario,
   TOOLTIP_SCENARIOS,
+  unmetBranches,
   unpopulatedLists,
 } from './suite-scenarios'
 
@@ -300,6 +318,266 @@ test.describe('suite scenarios', () => {
         first,
       ]),
     ).toEqual(['no prepare', 'no surface'])
+  })
+
+  // --- T744: the branch inventory ---------------------------------------------------------------
+
+  function withoutBranch(label: string): BranchScenario[] {
+    const kept = BRANCH_SCENARIOS.filter((scenario) => scenario.label !== label)
+    expect(kept.length, `no branch scenario is labelled '${label}'`).toBe(
+      BRANCH_SCENARIOS.length - 1,
+    )
+    return kept
+  }
+
+  test('every route that renders a named branch has a scenario for each of its branches', () => {
+    const missing = unmetBranches(BRANCH_SCENARIOS)
+    expect(
+      missing,
+      `branch(es) no scenario of their own route declares: ${missing.join(', ')}`,
+    ).toEqual([])
+  })
+
+  test('every branch scenario names a real route and a branch its route requires', () => {
+    for (const scenario of BRANCH_SCENARIOS) {
+      expect(
+        ROUTE_SCENARIOS.map((route) => route.label),
+        `${scenario.label}: route '${scenario.route}' is not a ROUTE_SCENARIOS label`,
+      ).toContain(scenario.route)
+      expect(scenario.label).toBe(`${scenario.route} (${scenario.branch})`)
+      expect(
+        ROUTE_REQUIRED_BRANCHES[scenario.route] ?? [],
+        `${scenario.label}: ROUTE_REQUIRED_BRANCHES does not list this branch`,
+      ).toContain(scenario.branch)
+      expect(scenario.shows.length, `${scenario.label} declares nothing it shows`).toBeGreaterThan(
+        0,
+      )
+    }
+    expect(
+      Object.keys(ROUTE_REQUIRED_BRANCHES).filter(
+        (route) => !ROUTE_SCENARIOS.some((scenario) => scenario.label === route),
+      ),
+      'inventory entries naming a route ROUTE_SCENARIOS does not have',
+    ).toEqual([])
+  })
+
+  // The planted absence cases for the inventory, one per scenario: each removal fails by naming the
+  // route and the branch that is lost, and only that one — a sibling of the same route, or the same
+  // branch on another route, never stands in.
+  for (const scenario of BRANCH_SCENARIOS) {
+    test(`removing ${scenario.label} is caught by name`, () => {
+      expect(unmetBranches(withoutBranch(scenario.label))).toEqual([
+        `${scenario.route}: ${scenario.branch}`,
+      ])
+    })
+  }
+
+  test('every branch scenario is in SUITE_SCENARIOS, so all four route suites run it', () => {
+    const labels = new Set(SUITE_SCENARIOS.map((scenario) => scenario.label))
+    expect(
+      BRANCH_SCENARIOS.filter((scenario) => !labels.has(scenario.label)).map((s) => s.label),
+    ).toEqual([])
+  })
+
+  test('the two held loading states are branch scenarios, so all four suites measure them held', () => {
+    expect(LOADING_SCENARIOS.map((scenario) => scenario.label)).toEqual([
+      '/dashboard (profile summary loading)',
+      '/privacy (erase button minting)',
+    ])
+    for (const scenario of LOADING_SCENARIOS) {
+      expect(BRANCH_SCENARIOS).toContain(scenario)
+      expect(scenario.hold.urlGlob).not.toBe('')
+    }
+  })
+
+  // A defect a scenario is known to show is asserted by its message (`expectKnownDefect`, shown both
+  // ways in `known-defect.test.ts`). Pin which scenarios carry the marker, so one added to quiet a
+  // red walk is a visible change; one left behind after a fix fails the keyboard suite itself.
+  test('exactly the two in-flight dialogs carry a known keyboard defect', () => {
+    const marked = SUITE_SCENARIOS.filter((scenario) => scenario.knownDefects !== undefined)
+    expect(marked.map((scenario) => scenario.label)).toEqual([
+      '/dashboard (unlink in flight)',
+      '/privacy (erasure in flight)',
+    ])
+    for (const scenario of marked) {
+      expect(Object.keys(scenario.knownDefects ?? {})).toEqual(['keyboard'])
+      expect(scenario.surface, `${scenario.label}: a keyboard defect is a surface walk`).toBe(
+        'dialog',
+      )
+    }
+  })
+
+  // The number the prose says (quickstart.md, production-readiness item 13, T744): change it here
+  // and there together, or this fails.
+  test('there are exactly 121 branch scenarios', () => {
+    expect(BRANCH_SCENARIOS).toHaveLength(121)
+  })
+
+  // A scenario can be told from another of its route when its marks do not all hold on the other's
+  // page. The marks are declared selectors, so this is a check on the declarations, and what it
+  // guarantees is exactly this: on one route, no scenario's *positive* marks (those that must be
+  // present) are all among another's *as written* (the same selector string, and the other asks for
+  // at least as many), unless an *absent* mark of the first (one that must not be present) has a
+  // selector the other requires present. That exception is what separates them: the other's page
+  // has the thing the first says is not there. What it does not see: two selectors spelled
+  // differently that match the same element (`main [aria-busy="true"]` and
+  // `main section[aria-busy="true"]:has-text("Match analysis")` match the same section) are two
+  // marks to it, so scenarios whose marks overlap that way are covered only by the discriminating
+  // marks listed in `MARKS_THAT_SEPARATE` and the ring plants, which a sweep of the scenarios named
+  // there added, not by this check. Whether a declared mark really is present on the other's page
+  // is what the planted cases below run.
+  const positiveMarks = (scenario: BranchScenario) =>
+    scenario.shows.filter((entry) => entry.max === undefined)
+  const absentMarks = (scenario: BranchScenario) =>
+    scenario.shows.filter((entry) => entry.max !== undefined)
+
+  /** Ordered pairs of scenarios of one route where the first is not told apart from the second. */
+  function notToldApart(scenarios: readonly BranchScenario[]): string[] {
+    const pairs: string[] = []
+    for (const first of scenarios) {
+      for (const second of scenarios) {
+        if (first === second || first.route !== second.route) continue
+        const heldBySecond = positiveMarks(first).every((mark) =>
+          positiveMarks(second).some(
+            (other) => other.selector === mark.selector && other.min >= mark.min,
+          ),
+        )
+        const separatedByAbsence = absentMarks(first).some((gone) =>
+          positiveMarks(second).some((other) => other.selector === gone.selector),
+        )
+        if (heldBySecond && !separatedByAbsence) {
+          pairs.push(`${first.route}: '${first.branch}' is not told apart from '${second.branch}'`)
+        }
+      }
+    }
+    return pairs
+  }
+
+  test('no branch scenario is told apart from another of its route only by what the other lacks', () => {
+    expect(notToldApart(BRANCH_SCENARIOS)).toEqual([])
+  })
+
+  test('the twin check catches a duplicate and a subset, and allows a pair an absent mark separates', () => {
+    const [first] = BRANCH_SCENARIOS
+    const mark = (selector: string, min = 1) => ({ name: selector, selector, min })
+    const scenario = (branch: string, shows: ListExpectation[]): BranchScenario => ({
+      ...first,
+      branch,
+      label: branch,
+      shows,
+    })
+    const wide = scenario('wide', [mark('a'), mark('b')])
+    // The same marks: each is held by the other.
+    expect(notToldApart([wide, scenario('twin', [mark('a'), mark('b')])])).toEqual([
+      `${first.route}: 'wide' is not told apart from 'twin'`,
+      `${first.route}: 'twin' is not told apart from 'wide'`,
+    ])
+    // A subset: the narrow one is held by the wide one, the wide one is not held by the narrow one.
+    expect(notToldApart([wide, scenario('narrow', [mark('a')])])).toEqual([
+      `${first.route}: 'narrow' is not told apart from 'wide'`,
+    ])
+    // A mark that asks for more than the other shows is not held by it.
+    expect(
+      notToldApart([scenario('one', [mark('a', 1)]), scenario('two', [mark('a', 2)])]),
+    ).toEqual([`${first.route}: 'one' is not told apart from 'two'`])
+    // Separated by an absent mark the other requires present: allowed.
+    const gone = { name: 'no b', selector: 'b', min: 0, max: 0 }
+    expect(notToldApart([wide, scenario('narrow, without b', [mark('a'), gone])])).toEqual([])
+    // An absent mark on a selector the other does not require present separates nothing.
+    const elsewhere = { name: 'no c', selector: 'c', min: 0, max: 0 }
+    expect(notToldApart([wide, scenario('narrow, without c', [mark('a'), elsewhere])])).toEqual([
+      `${first.route}: 'narrow, without c' is not told apart from 'wide'`,
+    ])
+    // The same marks on another route are no clash: a branch is judged on its own route.
+    expect(
+      notToldApart([wide, { ...scenario('twin', [mark('a'), mark('b')]), route: '/else' }]),
+    ).toEqual([])
+  })
+
+  // `assertBranchScenario` judges the marks in order and a `max` mark on the first would pass on a
+  // page that shows nothing at all; and the planted case for an absent mark relies on the marks
+  // before it having proved the page is the right one.
+  function firstMarkNotPositive(scenarios: readonly BranchScenario[]): string[] {
+    return scenarios
+      .filter((scenario) => scenario.shows[0].min < 1 || scenario.shows[0].max !== undefined)
+      .map((scenario) => scenario.label)
+  }
+
+  test('every branch scenario opens with a positive mark, and a planted one that does not is caught', () => {
+    expect(firstMarkNotPositive(BRANCH_SCENARIOS)).toEqual([])
+    const [first] = BRANCH_SCENARIOS
+    const absentFirst = {
+      ...first,
+      label: 'absent first',
+      shows: [{ name: 'gone', selector: 'x', min: 0, max: 0 }],
+    }
+    expect(firstMarkNotPositive([first, absentFirst])).toEqual(['absent first'])
+  })
+
+  test('every absent mark has a page it is shown present on, and every such page exists', () => {
+    const labels = new Set(BRANCH_SCENARIOS.map((scenario) => scenario.label))
+    const wanted = BRANCH_SCENARIOS.flatMap((scenario) =>
+      scenario.shows
+        .filter((entry) => entry.max !== undefined)
+        .map((entry) => `${scenario.label}|${entry.name}`),
+    )
+    expect(
+      wanted.filter((key) => !(key in PRESENCE_PAGE_FOR)),
+      'absent mark(s) with no page they are shown present on',
+    ).toEqual([])
+    expect(
+      Object.keys(PRESENCE_PAGE_FOR).filter((key) => !wanted.includes(key)),
+      'presence page(s) for an absent mark no scenario declares',
+    ).toEqual([])
+    const sites = new Set([...ROUTE_SCENARIOS, ...POPULATED_SCENARIOS].map((entry) => entry.label))
+    expect(
+      Object.values(PRESENCE_PAGE_FOR).filter((label) => !labels.has(label) && !sites.has(label)),
+      'presence page(s) that are no scenario',
+    ).toEqual([])
+  })
+
+  test('every separating mark is a positive mark of a real scenario and its twin is on the same route', () => {
+    const byLabel = new Map(BRANCH_SCENARIOS.map((scenario) => [scenario.label, scenario]))
+    for (const entry of MARKS_THAT_SEPARATE) {
+      const scenario = byLabel.get(entry.scenario)
+      const twin = byLabel.get(entry.twin)
+      expect(scenario, `${entry.scenario}: no such scenario`).toBeDefined()
+      expect(twin, `${entry.twin}: no such scenario`).toBeDefined()
+      expect(twin?.route, `${entry.twin} is on another route`).toBe(scenario?.route)
+      const found = scenario?.shows.find((mark) => mark.name === entry.mark)
+      expect(found, `${entry.scenario} declares no mark '${entry.mark}'`).toBeDefined()
+      expect(found?.max, `${entry.scenario}: '${entry.mark}' is an absent mark`).toBeUndefined()
+    }
+  })
+
+  test('the planted cases generated for the browser tests have unique titles', () => {
+    const titles = plantedCases().map((entry) => entry.title)
+    const repeated = titles.filter((title, index) => titles.indexOf(title) !== index)
+    expect(repeated, 'planted case title(s) generated more than once').toEqual([])
+  })
+
+  test('a hold glob converts to the URLs Playwright would match', () => {
+    const matches = (glob: string, url: string) => globToRegExp(glob).test(url)
+    expect(matches('**/api/profiles', 'http://127.0.0.1:1/api/profiles')).toBe(true)
+    expect(matches('**/api/profiles', 'http://127.0.0.1:1/api/profiles?x=1')).toBe(false)
+    expect(matches('**/api/matches?*', 'http://127.0.0.1:1/api/matches?profile_id=1')).toBe(true)
+    expect(matches('**/api/favourites/*', 'http://127.0.0.1:1/api/favourites/9001')).toBe(true)
+    expect(matches('**/api/favourites/*', 'http://127.0.0.1:1/api/favourites')).toBe(false)
+    expect(
+      matches('**/api/profiles/4242?confirm=true', 'http://h/api/profiles/4242?confirm=true'),
+    ).toBe(true)
+    expect(matches('**/api/profiles/4242', 'http://h/api/profiles/4242?confirm=true')).toBe(false)
+  })
+
+  test('the no-linked-account fixture links nothing', () => {
+    expect(NO_LINKED_ME.authenticated).toBe(true)
+    expect(NO_LINKED_ME.profiles).toEqual([])
+  })
+
+  test('branch labels are unique, and a planted duplicate is caught', () => {
+    expect(duplicateLabels(BRANCH_SCENARIOS)).toEqual([])
+    const [first] = BRANCH_SCENARIOS
+    expect(duplicateLabels([...BRANCH_SCENARIOS, first])).toEqual([first.label])
   })
 })
 
@@ -624,6 +902,460 @@ test.describe('populated scenarios render their success branch', () => {
         /\(two linked profiles\): rating rows/,
       )
     })
+  }
+})
+
+// --- Each branch scenario renders the branch it names, in a browser (T744) -------------------------
+//
+// Every scenario is entered at 1280px and at 375px (the touch suite measures at the second), and
+// then planted against what it must not be taken for, each judged inside `enterScenario`, which is
+// what the four route suites call. Four kinds of plant, and what each covers:
+//
+// - the route's *success* page before any action (`SUCCESS_SCENARIO_FOR`): the stub the branch
+//   replaced, with the scenario's hold, `prepare` and surface dropped, for every scenario, so a
+//   branch whose stubs fell through to the success response fails. It does not run the scenario's
+//   action against the success page;
+// - its *sibling*: for a scenario in a `family`, the next scenario of the same route and family in
+//   the ring (not every pair) run in its place, so two branches of one section that render alike
+//   are found. The other pairs are covered as far as the unit check on the declarations goes and
+//   no further: it compares selectors as written, so differently spelled selectors that match the
+//   same element are not seen as one. Those overlaps are covered only by the discriminating marks
+//   of the scenarios named in `MARKS_THAT_SEPARATE`, each planted against its twin;
+// - for a held request, the same scenario with the request *answered at once*, so a loading or
+//   in-flight state that never held fails;
+// - for every *absent* mark (`min: 0, max: 0`), a page where the thing is present, so the mark
+//   fails by "more than", not only by its absence being untested.
+//
+// Each plant fails with the message `assertBranchScenario` throws for the mark that fails, and only
+// that. The error to guard against is a plant credited because the page it put in the scenario's
+// place had not rendered yet, so before the marks are judged (with a short timeout, since a failure
+// is the expected result) each plant first waits for the substituted page to show what it declares:
+// all of a sibling's or a presence page's marks, all of a populated success page's lists, one
+// landmark of an at-rest success page, or, for a request answered at once, the answer and no busy
+// region left. That proves the substituted page is there. It does not prove the scenario's own
+// marks cannot still be on their way: a mark that arrives only after the 1 s judge window has
+// closed, counted from the substituted page's own sign, is credited by a plant as discriminating,
+// so that plant's evidence is weaker than its pass suggests; a mark that arrives within the window
+// is caught, because the planted `enterScenario` then does not throw, so the planted case goes red. Every kind of plant carries this, a sibling or
+// a presence page whose marks all arrive before a base mark as much as an at-rest page or an
+// instant answer.
+
+// The page a route shows when none of its branches is in play: what a branch scenario is planted
+// against. `/matches/$gameId` at rest is not it (its stub lacks an `analysis` key, which renders the
+// analysis error branch), so the populated page stands in.
+const SUCCESS_SCENARIO_FOR: Readonly<Record<string, string>> = {
+  '/sign-in': '/sign-in',
+  '/dashboard': '/dashboard (two linked profiles)',
+  '/search': '/search',
+  '/favourites': '/favourites (populated)',
+  '/matches': '/matches (populated)',
+  '/matches/$gameId': '/matches/$gameId (populated)',
+  '/players/$profileId': '/players/$profileId (favourited)',
+  '/players/$profileId/matches': '/players/$profileId/matches (populated)',
+  '/privacy': '/privacy',
+  '/object': '/object',
+}
+
+// What shows that an at-rest success page has rendered: text only that page carries. A populated
+// success page is waited for by its own declared lists (`assertPopulatedScenario`).
+const AT_REST_LANDMARK: Readonly<Record<string, string>> = {
+  '/sign-in': 'main :text("Sign in to see your Age of Empires II stats")',
+  '/search': 'main :text("Search for a player by name.")',
+  '/privacy': 'main :text("Get a copy of your data")',
+  '/object': 'main :text("Your Age of Empires II profile id")',
+}
+
+function successFor(route: string): RouteScenario {
+  const label = SUCCESS_SCENARIO_FOR[route]
+  const found = [...ROUTE_SCENARIOS, ...POPULATED_SCENARIOS].find(
+    (scenario) => scenario.label === label,
+  )
+  if (!found) throw new Error(`no success scenario '${label}' for route '${route}'`)
+  return found
+}
+
+/** Waits for the success page of `route` to have rendered. */
+async function successRendered(page: Page, route: string): Promise<void> {
+  const success = successFor(route)
+  const landmark = AT_REST_LANDMARK[route]
+  if (landmark) {
+    await expect(page.locator(landmark).first()).toBeVisible()
+    return
+  }
+  if (!('renders' in success)) throw new Error(`no landmark for the success page of '${route}'`)
+  await assertPopulatedScenario(page, success as PopulatedScenario, success.label)
+}
+
+// The absent marks, and the page each is shown present on: the state the branch hides the thing
+// from, which is the state a regression would show it in. Keyed `scenario label|mark name`.
+const PRESENCE_PAGE_FOR: Readonly<Record<string, string>> = {
+  '/sign-in (link variant)|no outcome callout': '/sign-in (outcome profile_already_linked)',
+  '/matches/$gameId (match download in flight)|no busy row download':
+    '/matches/$gameId (replay download in flight)',
+  '/dashboard (profile summary loading)|no ratings failure': '/dashboard (profile load failed)',
+  '/matches/$gameId (analysis document failed)|no match failure':
+    '/matches/$gameId (match load failed)',
+  '/matches (profile loading)|no ratings failure': '/matches (profile load failed)',
+  '/matches (profile loading)|no profile identity': '/matches (match list loading)',
+  '/players/$profileId/matches (profile loading)|no profile identity':
+    '/players/$profileId/matches (match list loading)',
+  '/players/$profileId (profile loading)|no ratings failure':
+    '/players/$profileId (profile load failed)',
+  '/players/$profileId/matches (profile loading)|no ratings failure':
+    '/players/$profileId/matches (profile load failed)',
+  '/matches (capture statuses, archival objected)|no catchable badge':
+    '/matches (capture statuses)',
+  '/privacy (export requesting)|no preparing callout': '/privacy (export preparing)',
+  '/privacy (account erased)|no erase button': '/privacy',
+  '/privacy (erasure re-mint in flight)|no expiry callout':
+    '/privacy (erasure confirmation expired)',
+  '/matches/$gameId (capture quarantined)|no upload control': '/matches/$gameId (capture failed)',
+  '/matches/$gameId (capture status unrecognised)|no upload control':
+    '/matches/$gameId (capture failed)',
+  '/matches/$gameId (capture lost, archival objected)|no upload control':
+    '/matches/$gameId (capture failed)',
+  '/matches/$gameId (capture pending, archival objected)|no countdown':
+    '/matches/$gameId (capture pending)',
+}
+
+// Marks added because two scenarios of a route that no ring compares (different families, or none)
+// had marks that one page satisfied both ways: each is a positive mark of `scenario` that the
+// `twin` page, which the broader selectors alone would have matched, must not show. The planted
+// cases run the mark alone on the twin's page, and on the route's success page unless that page
+// shows the mark too (`onSuccessPage`).
+interface SeparatingMark {
+  scenario: string
+  mark: string
+  twin: string
+  /** The route's success page shows this too (the archived state starts "Archival is on."; the
+   * loaded match shows its header), so the mark is planted on the twin's page only. */
+  onSuccessPage?: true
+}
+const MARKS_THAT_SEPARATE: readonly SeparatingMark[] = [
+  {
+    scenario: '/matches/$gameId (match loading)',
+    mark: 'busy match panel',
+    twin: '/matches/$gameId (analysis document loading)',
+  },
+  {
+    scenario: '/matches/$gameId (match loading)',
+    mark: 'busy match panel',
+    twin: '/matches/$gameId (analysis queued)',
+  },
+  {
+    scenario: '/matches/$gameId (analysis document loading)',
+    mark: 'loaded match panel',
+    twin: '/matches/$gameId (match loading)',
+    onSuccessPage: true,
+  },
+  {
+    scenario: '/matches/$gameId (analysis document failed)',
+    mark: 'loaded match panel',
+    twin: '/matches/$gameId (match load failed)',
+    onSuccessPage: true,
+  },
+  {
+    scenario: '/dashboard (archival write in flight)',
+    mark: 'archival is on',
+    twin: '/dashboard (archival resume in flight)',
+    onSuccessPage: true,
+  },
+  {
+    scenario: '/privacy (archival write in flight)',
+    mark: 'archival is on',
+    twin: '/privacy (archival resume in flight)',
+    onSuccessPage: true,
+  },
+]
+
+function absentMarksOf(scenario: BranchScenario): ListExpectation[] {
+  return scenario.shows.filter((entry) => entry.max !== undefined)
+}
+
+/** The URLs a hold's glob matches, as Playwright reads one: `**` any run, `*` within a segment, `?` one
+ * character. Only the holds in this file are converted, and the test below pins what it does. */
+function globToRegExp(glob: string): RegExp {
+  const source = glob
+    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+    .replace(/\*\*/g, '\u0000')
+    .replace(/\*/g, '[^/]*')
+    .replace(/\?/g, '.')
+    .replace(/\u0000/g, '.*')
+  return new RegExp(`^${source}$`)
+}
+
+interface Case {
+  title: string
+  run: (page: Page, baseUrl: string) => Promise<void>
+}
+
+const PLANT_TIMEOUT_MS = 1_000
+
+function rejectionFor(base: BranchScenario, markName?: string, direction = 'fewer|more'): RegExp {
+  const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return new RegExp(
+    `${escape(base.label)}: ${markName ? escape(markName) : '.*'} \\(.*\\) rendered (${direction}) than \\d+ item\\(s\\) — the route is not showing its '${escape(base.branch)}' branch`,
+  )
+}
+
+async function expectRejected(
+  page: Page,
+  planted: BranchScenario,
+  url: string,
+  rendered: (page: Page) => Promise<void>,
+  expected: RegExp,
+) {
+  await expect(
+    enterScenario(page, planted, url, 'light', {
+      judgeTimeoutMs: PLANT_TIMEOUT_MS,
+      beforeJudge: rendered,
+    }),
+  ).rejects.toThrow(expected)
+}
+
+/** Waits for the held request's instant answer to have arrived and for nothing to be left busy. */
+function answeredAtOnce(held: HeldRequest) {
+  const matches = globToRegExp(held.urlGlob)
+  return async (page: Page) => {
+    await expect
+      .poll(() =>
+        apiResponses(page).some(
+          (response) =>
+            matches.test(response.url) &&
+            (held.method === undefined || held.method === response.method),
+        ),
+      )
+      .toBe(true)
+    await expect(page.locator('[aria-busy="true"]')).toHaveCount(0)
+  }
+}
+
+function plantedCases(): Case[] {
+  const cases: Case[] = []
+  const byLabel = new Map(BRANCH_SCENARIOS.map((scenario) => [scenario.label, scenario]))
+
+  for (const base of BRANCH_SCENARIOS) {
+    const success = successFor(base.route)
+    cases.push({
+      title: `planted: ${base.label} pointed at the route's success page fails on its marks`,
+      run: (page, url) =>
+        expectRejected(
+          page,
+          {
+            ...base,
+            path: success.path,
+            landedPath: success.landedPath,
+            stub: success.stub,
+            prepare: undefined,
+            hold: undefined,
+            surface: undefined,
+          },
+          url,
+          (target) => successRendered(target, base.route),
+          rejectionFor(base),
+        ),
+    })
+
+    const siblings = BRANCH_SCENARIOS.filter(
+      (other) =>
+        base.family !== undefined && other.route === base.route && other.family === base.family,
+    )
+    if (siblings.length > 1) {
+      const sibling = siblings[(siblings.indexOf(base) + 1) % siblings.length]
+      cases.push({
+        title: `planted: ${base.label} run as its sibling '${sibling.branch}' fails on its marks`,
+        run: (page, url) =>
+          expectRejected(
+            page,
+            {
+              ...base,
+              path: sibling.path,
+              landedPath: sibling.landedPath,
+              stub: sibling.stub,
+              prepare: sibling.prepare,
+              hold: sibling.hold,
+              surface: sibling.surface,
+            },
+            url,
+            (target) => assertBranchScenario(target, sibling, sibling.label),
+            rejectionFor(base),
+          ),
+      })
+    }
+
+    const held = base.hold
+    if (held) {
+      cases.push({
+        title: `planted: ${base.label} with its request answered at once fails on its marks`,
+        run: (page, url) =>
+          expectRejected(
+            page,
+            {
+              ...base,
+              hold: undefined,
+              stub: async (target) => {
+                await base.stub(target)
+                await target.route(held.urlGlob, (route) =>
+                  held.method !== undefined && route.request().method() !== held.method
+                    ? route.fallback()
+                    : fulfillJson(route, held.resolvesWith ?? held.body),
+                )
+              },
+            },
+            url,
+            answeredAtOnce(held),
+            rejectionFor(base),
+          ),
+      })
+    }
+
+    // One success-page plant per (scenario, mark): a mark with two twins is planted on each twin
+    // and on the success page once.
+    const plantedOnSuccess = new Set<string>()
+    for (const separating of MARKS_THAT_SEPARATE.filter((entry) => entry.scenario === base.label)) {
+      const separatingMark = base.shows.find((entry) => entry.name === separating.mark)
+      const twin = byLabel.get(separating.twin)
+      if (!separatingMark || !twin) continue // `every separating mark is a real positive mark` fails by name
+      const expected = rejectionFor(base, separatingMark.name, 'fewer')
+      cases.push({
+        title: `planted: ${base.label}'s '${separating.mark}' on the twin '${twin.branch}' fails on that mark`,
+        run: (page, url) =>
+          expectRejected(
+            page,
+            {
+              ...base,
+              path: twin.path,
+              landedPath: twin.landedPath,
+              stub: twin.stub,
+              prepare: twin.prepare,
+              hold: twin.hold,
+              surface: twin.surface,
+              shows: [separatingMark],
+            },
+            url,
+            (target) => assertBranchScenario(target, twin, twin.label),
+            expected,
+          ),
+      })
+      if (!separating.onSuccessPage && !plantedOnSuccess.has(separating.mark)) {
+        plantedOnSuccess.add(separating.mark)
+        cases.push({
+          title: `planted: ${base.label}'s '${separating.mark}' on the route's success page fails on that mark`,
+          run: (page, url) =>
+            expectRejected(
+              page,
+              {
+                ...base,
+                path: success.path,
+                landedPath: success.landedPath,
+                stub: success.stub,
+                prepare: undefined,
+                hold: undefined,
+                surface: undefined,
+                shows: [separatingMark],
+              },
+              url,
+              (target) => successRendered(target, base.route),
+              expected,
+            ),
+        })
+      }
+    }
+
+    for (const absentMark of absentMarksOf(base)) {
+      const presenceLabel = PRESENCE_PAGE_FOR[`${base.label}|${absentMark.name}`]
+      if (presenceLabel === undefined) continue // `every absent mark has a presence page` fails by name
+      const presence = byLabel.get(presenceLabel)
+      const page_ = presence ?? successFor(base.route)
+      cases.push({
+        title: `planted: ${base.label} where '${absentMark.name}' is present fails on that mark`,
+        run: (page, url) =>
+          expectRejected(
+            page,
+            {
+              ...base,
+              path: page_.path,
+              landedPath: page_.landedPath,
+              stub: page_.stub,
+              prepare: presence?.prepare,
+              hold: presence?.hold,
+              surface: presence?.surface,
+              shows: [absentMark],
+            },
+            url,
+            (target) =>
+              presence
+                ? assertBranchScenario(target, presence, presence.label)
+                : successRendered(target, base.route),
+            rejectionFor(base, absentMark.name, 'more'),
+          ),
+      })
+    }
+  }
+  return cases
+}
+
+const BRANCH_SHARDS = 4
+
+test.describe('branch scenarios render the branch they name', () => {
+  if (!hasBuild && process.env.CI) {
+    test('apps/web/dist must be built before this suite runs in CI', () => {
+      throw new Error(
+        'apps/web/dist has not been built. `.github/workflows/pr.yml` always runs ' +
+          '`pnpm --filter web build` before this suite — a missing build here means that step ' +
+          'failed or was skipped, not that this suite has nothing to test.',
+      )
+    })
+  } else {
+    test.skip(
+      () => !hasBuild,
+      'apps/web/dist has not been built — run `pnpm --filter web build` first.',
+    )
+
+    // `enterScenario` itself judges a branch scenario once its `prepare` has run.
+    const cases: Case[] = [
+      ...BRANCH_SCENARIOS.flatMap((scenario): Case[] => [
+        {
+          title: `${scenario.label} — every declared mark is on screen`,
+          run: async (page, url) => {
+            const external = await enterScenario(page, scenario, url, 'light')
+            external.assertNone(scenario.label)
+          },
+        },
+        {
+          title: `${scenario.label} — the same marks are on screen at 375px`,
+          run: async (page, url) => {
+            await page.setViewportSize({ width: 375, height: 800 })
+            await enterScenario(page, scenario, url, 'light')
+          },
+        },
+      ]),
+      ...plantedCases(),
+    ]
+
+    // Several hundred browser cases: dealt over serial groups, each with its own server, so the
+    // runner's workers share them (a serial group runs in one worker, in order).
+    for (let shard = 0; shard < BRANCH_SHARDS; shard += 1) {
+      test.describe(`shard ${shard + 1} of ${BRANCH_SHARDS}`, () => {
+        test.describe.configure({ mode: 'serial' })
+        const shardHarness = createAppServerHarness(String(4185 + shard))
+
+        test.beforeAll(async () => {
+          await shardHarness.start()
+        })
+
+        test.afterAll(() => {
+          shardHarness.stop()
+        })
+
+        cases.forEach((entry, index) => {
+          if (index % BRANCH_SHARDS !== shard) return
+          test(entry.title, async ({ page }) => {
+            await entry.run(page, shardHarness.baseUrl)
+          })
+        })
+      })
+    }
   }
 })
 

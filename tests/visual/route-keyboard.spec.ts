@@ -19,6 +19,7 @@ import {
   assertStopsInsideChrome,
   walkTabOrder,
 } from './fixtures/keyboard-walk'
+import { expectKnownDefect } from './fixtures/known-defect'
 import { assertSurfaceKeyboard, walkOpenSurface } from './fixtures/open-surface'
 import { enterScenario, SUITE_SCENARIOS, TOOLTIP_SCENARIOS } from './fixtures/suite-scenarios'
 import { assertTooltipKeyboard, walkOpenTooltip } from './fixtures/tooltip-open'
@@ -61,6 +62,9 @@ test.describe('keyboard operation, every route, both themes', () => {
     // keyboard contract (`fixtures/open-surface.ts`) instead — Tab cycling inside a `Dialog`,
     // roving-tabindex arrows through a `Menu` — because a Tab walk over the page behind an open
     // modal measures the wrong thing.
+    // T744: `SUITE_SCENARIOS` also holds `BRANCH_SCENARIOS` (`fixtures/suite-scenarios.ts`) — each route's
+    // error, transient and unrendered-empty branches, and the two held loading states — so this loop runs
+    // them too, and `enterScenario` has asserted the branch is on screen before anything below measures it.
     for (const scenario of SUITE_SCENARIOS) {
       for (const theme of ['light', 'dark'] as const) {
         const claim = scenario.surface
@@ -70,21 +74,30 @@ test.describe('keyboard operation, every route, both themes', () => {
           const external = await enterScenario(page, scenario, harness.baseUrl, theme)
           const context = `${scenario.label} (${theme})`
 
-          if (scenario.surface) {
-            assertSurfaceKeyboard(await walkOpenSurface(page, scenario.surface), context)
-          } else {
-            const result = await walkTabOrder(page)
+          const walk = async () => {
+            if (scenario.surface) {
+              assertSurfaceKeyboard(await walkOpenSurface(page, scenario.surface), context)
+            } else {
+              const result = await walkTabOrder(page)
 
-            // FR-049's "no trap": every stop the walk actually reaches sits inside the route's one
-            // main landmark or its header/footer chrome — never off in a detached or hidden branch
-            // of the DOM a real keyboard user could not have reached either.
-            assertStopsInsideChrome(result.steps, context)
+              // FR-049's "no trap": every stop the walk actually reaches sits inside the route's
+              // one main landmark or its header/footer chrome — never off in a detached or hidden
+              // branch of the DOM a real keyboard user could not have reached either.
+              assertStopsInsideChrome(result.steps, context)
 
-            // FR-049's "reachable, in order, with no trap": every candidate is reached exactly
-            // once, in DOM order. See `assertFullTabCoverage` for what each guard catches on its
-            // own.
-            assertFullTabCoverage(result, context)
+              // FR-049's "reachable, in order, with no trap": every candidate is reached exactly
+              // once, in DOM order. See `assertFullTabCoverage` for what each guard catches on its
+              // own.
+              assertFullTabCoverage(result, context)
+            }
           }
+
+          // T744: a scenario with a known keyboard defect must fail the walk with that defect's
+          // message and no other, and must fail the test when the walk passes (`expectKnownDefect`);
+          // the assertions after the walk run either way.
+          const defect = scenario.knownDefects?.keyboard
+          if (defect) await expectKnownDefect(walk, defect, context)
+          else await walk()
 
           external.assertNone(context)
         })
