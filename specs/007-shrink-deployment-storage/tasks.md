@@ -152,7 +152,7 @@ route behaves as before.
       `vercel.json` to the `python` paths filter in `.github/workflows/pr.yml`: a pull request
       touching only `vercel.json` must run the Python job, which is where this guard and the dry
       run live. **FR-002**
-- [ ] T808 [US1] **Write the `excludeFiles` value** into both entries in `vercel.json` (**FR-001**,
+- [x] T808 [US1] **Write the `excludeFiles` value** into both entries in `vercel.json` (**FR-001**,
       **FR-002**, research R1), and remove T807's markers. Two checks first, both recorded in the
       commit body and in T812's ADR section. (1) Re-run the search for runtime file reads that are
       not import-time (**FR-003**, the spec's first edge case) over every package production

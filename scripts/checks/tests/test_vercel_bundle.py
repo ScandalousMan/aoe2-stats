@@ -3,15 +3,16 @@
 `contracts/function-layout.md` invariant 1).
 
 Every function entry carries the same `excludeFiles` string: one brace-glob whose alternatives are
-every top-level entry of the repository except `api`, each an exact root file name or `<dir>/**`.
-This file holds that rule as small pure functions and asserts it twice over:
+every top-level entry of the repository except `api` and the two files named in `KEPT_IN_BUNDLE`,
+each an exact root file name or `<dir>/**`. This file holds that rule as small pure functions and
+asserts it twice over:
 
 - **Planted defects**, on synthetic input, which pass today: a new top-level directory nobody
-  listed, a nested alternative, a list that covers `api`, an entry whose value differs, a stale
-  alternative. They prove the guard fires, so a green run on the real file means something.
-- **The real `vercel.json` against the real `git ls-files`.** The assertions that need the
-  `excludeFiles` value are `xfail(strict=True)` until T808 writes it; T808 removes the markers. The
-  layout assertion (three entries, their limits) is true today and is not marked.
+  listed, a nested alternative, a list that covers `api` or a kept file, an entry whose value
+  differs, a stale alternative, a third root file next to the kept two. They prove the guard fires,
+  so a green run on the real file means something.
+- **The real `vercel.json` against the real `git ls-files`**: three entries at their limits, one
+  identical value, every tracked top-level entry accounted for.
 
 The matching is a prefix test on the first path segment, never a glob engine, so the node-glob
 dialect the builder uses and Python cannot disagree about it (research R1, "Why this shape"). The
@@ -63,6 +64,19 @@ BUILDER_EXCLUDES: frozenset[str] = frozenset(
     }
 )
 
+# The two root files `excludeFiles` must NOT list, on purpose (T808, check 2). The Python builder
+# (`packages/python/src/dependency-externalizer.ts` and `python/vercel-runtime/src/vercel_runtime/
+# vc_init.py`, `vercel/vercel` at commit c628be78, builder package 13.0.1) switches a function to
+# installing part of its dependencies at cold start when the bundle exceeds its size threshold. It
+# then writes `_uv/_runtime_config.json` with `projectDir` pointing at the project root and runs
+# `uv sync --frozen` there, and the source comment says `pyproject.toml` and `uv.lock` "are already
+# part of the Lambda zip (globbed from workPath)": it adds them itself only when the project root
+# lies above the work path, which is not our layout. Excluding them would be harmless today, because
+# the bundle is far below that threshold, and would make the function fail to boot the day it
+# crosses it, an outage no offline check sees. They weigh kilobytes; keeping them is the cheap side.
+# Re-read those two files when the builder changes; drop this constant only if that path is gone.
+KEPT_IN_BUNDLE: frozenset[str] = frozenset({"pyproject.toml", "uv.lock"})
+
 _NAME = re.compile(r"^[A-Za-z0-9._-]+$")
 _DIR_SUFFIX = "/**"
 
@@ -95,7 +109,8 @@ def alternative_name(alternative: str) -> str:
 
 
 def alternative_problems(alternatives: list[str]) -> list[str]:
-    """Why a list of alternatives breaks the shape: nested, wildcarded, covering `api`, repeated."""
+    """Why a list of alternatives breaks the shape: nested, wildcarded, covering `api` or a file the
+    runtime install needs, repeated."""
     problems: list[str] = []
     for alternative in alternatives:
         name = alternative_name(alternative)
@@ -106,6 +121,10 @@ def alternative_problems(alternatives: list[str]) -> list[str]:
             )
         elif name == "api":
             problems.append(f"{alternative!r}: `api` must never be excluded")
+        elif name in KEPT_IN_BUNDLE:
+            problems.append(
+                f"{alternative!r}: the builder's runtime install reads it from the bundle"
+            )
     for alternative in sorted(set(alternatives)):
         if alternatives.count(alternative) > 1:
             problems.append(f"{alternative!r}: listed more than once")
@@ -131,12 +150,16 @@ def is_excluded(path: str, alternatives: list[str]) -> bool:
 
 
 def uncovered_entries(
-    tracked: list[str], alternatives: list[str], builder_excludes: frozenset[str]
+    tracked: list[str],
+    alternatives: list[str],
+    builder_excludes: frozenset[str],
+    kept: frozenset[str] = KEPT_IN_BUNDLE,
 ) -> list[str]:
-    """Top-level entries that are not `api`, not dropped by the builder, and not fully excluded."""
+    """Top-level entries that are not `api`, not dropped by the builder, not a named exception in
+    `kept`, and not fully excluded."""
     uncovered = []
     for entry in top_level_entries(tracked):
-        if entry == "api" or entry in builder_excludes:
+        if entry == "api" or entry in builder_excludes or entry in kept:
             continue
         files = [p for p in tracked if p == entry or p.startswith(f"{entry}/")]
         if not all(is_excluded(path, alternatives) for path in files):
@@ -192,10 +215,11 @@ _TRACKED = [
     "docs/data-sources.md",
     "README.md",
     "pyproject.toml",
+    "uv.lock",
     ".gitignore",
     "pnpm-lock.yaml",
 ]
-_GOOD = ["apps/**", "docs/**", "README.md", "pyproject.toml"]
+_GOOD = ["apps/**", "docs/**", "README.md"]
 _GOOD_FUNCTIONS: dict[str, dict[str, object]] = {
     name: {"maxDuration": limit, "excludeFiles": "{apps/**,docs/**}"}
     for name, limit in EXPECTED_LIMITS.items()
@@ -234,11 +258,11 @@ def test_a_new_top_level_file_is_reported_until_it_is_listed() -> None:
 
 
 def test_a_file_alternative_does_not_cover_a_directory_and_the_reverse() -> None:
+    assert uncovered_entries(_TRACKED, ["apps", "docs/**", "README.md"], BUILDER_EXCLUDES) == [
+        "apps"
+    ]
     assert uncovered_entries(
-        _TRACKED, ["apps", "docs/**", "README.md", "pyproject.toml"], BUILDER_EXCLUDES
-    ) == ["apps"]
-    assert uncovered_entries(
-        _TRACKED, ["apps/**", "docs/**", "README.md/**", "pyproject.toml"], BUILDER_EXCLUDES
+        _TRACKED, ["apps/**", "docs/**", "README.md/**"], BUILDER_EXCLUDES
     ) == ["README.md"]
 
 
@@ -253,6 +277,28 @@ def test_an_entry_the_builder_drops_needs_no_alternative() -> None:
 )
 def test_a_nested_or_wildcarded_alternative_is_reported(alternative: str) -> None:
     assert len(alternative_problems([*_GOOD, alternative])) == 1
+
+
+def test_the_two_kept_files_need_no_alternative_and_a_third_root_file_still_does() -> None:
+    # `pyproject.toml` and `uv.lock` are tracked in _TRACKED and absent from _GOOD.
+    assert uncovered_entries(_TRACKED, _GOOD, BUILDER_EXCLUDES) == []
+    # the exception is exactly those two names: it does not widen into a pass for anything else
+    assert uncovered_entries([*_TRACKED, "setup.cfg"], _GOOD, BUILDER_EXCLUDES) == ["setup.cfg"]
+    assert uncovered_entries(
+        [*_TRACKED, "pyproject.toml.bak", "NOTES.md"], _GOOD, BUILDER_EXCLUDES
+    ) == ["NOTES.md", "pyproject.toml.bak"]
+    # without the exception the same two files are reported
+    assert uncovered_entries(_TRACKED, _GOOD, BUILDER_EXCLUDES, frozenset()) == [
+        "pyproject.toml",
+        "uv.lock",
+    ]
+
+
+@pytest.mark.parametrize("alternative", ["pyproject.toml", "uv.lock"])
+def test_a_list_that_excludes_a_kept_file_is_reported(alternative: str) -> None:
+    problems = alternative_problems([*_GOOD, alternative])
+    assert len(problems) == 1
+    assert "runtime install" in problems[0]
 
 
 @pytest.mark.parametrize("alternative", ["api", "api/**"])
@@ -346,29 +392,22 @@ def _alternatives() -> list[str]:
     return parse_exclude(next(iter(_functions().values()))["excludeFiles"])
 
 
-_T808 = pytest.mark.xfail(strict=True, reason="T808 not implemented yet")
-
-
 def test_vercel_json_keeps_the_three_functions_at_their_limits() -> None:
     """True today: the layout is not what this feature changes (FR-012)."""
     assert layout_problems(_functions()) == []
 
 
-@_T808
 def test_every_function_carries_the_same_exclude_string() -> None:
     assert exclude_value_problems(_functions()) == []
 
 
-@_T808
 def test_the_exclude_string_is_one_brace_glob_of_exact_names_and_directories() -> None:
     assert alternative_problems(_alternatives()) == []
 
 
-@_T808
 def test_every_tracked_top_level_entry_is_api_listed_or_dropped_by_the_builder() -> None:
     assert uncovered_entries(_tracked(), _alternatives(), BUILDER_EXCLUDES) == []
 
 
-@_T808
 def test_no_alternative_names_an_entry_that_is_no_longer_tracked() -> None:
     assert stale_alternatives(_tracked(), _alternatives()) == []
