@@ -444,8 +444,8 @@ links — their forward action is always a `Button`, never a link inside coloure
   reader announces "list, four items" over facts, which is accurate.
 - `ConfirmDialog` is `Dialog`: `role="dialog"`, `aria-modal="true"`, `aria-labelledby` on
   `DialogHeading`, focus moved to the heading on open, Tab trapped to the dialog's own focusables, and
-  **Escape calls `CancelAction`, never `ConfirmAction`** — the accidental key must never erase the
-  account.
+  Escape follows `Dialog`'s own rule (`shared-primitives.md` §Dialog) with `CancelAction` as its
+  secondary action — in no state does the accidental key reach `ConfirmAction`.
 - `Acknowledgement` is a real `<input type="checkbox">` with a `<label>`; `ConfirmAction` reflects the
   checked state via `disabled` and `aria-disabled`. The checkbox and its 44px-min hit area clear the
   touch minimum.

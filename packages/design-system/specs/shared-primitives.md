@@ -636,14 +636,14 @@ side by side from `md` up.
 
 **Accessibility** — `role="dialog"` with `aria-modal="true"` and `aria-labelledby` pointing at the
 heading; focus moves to the heading (`tabIndex={-1}`) on mount; Tab is trapped among the dialog's
-stops, only elements that can take focus (a `disabled` button or input is never one). Escape calls
-the **secondary** action, never the primary — the accidental key must not take the consequential
-path, hence no separate `onEscape` a caller could wire backwards — and only while it is enabled:
-with `secondaryAction.disabled` set (the primary's request in flight) Escape does nothing until the
-caller re-enables it, because closing mid-request would not stop the request, only hide its outcome.
+stops, only elements that can take focus (a `disabled` control, a hidden input or an unrendered
+element never is; a `loading` `Button` is). Escape calls the **secondary** action, never the
+primary — the accidental key must not take the consequential path, hence no `onEscape` a caller
+could wire backwards — and only when a click would: with `secondaryAction.disabled` or `loading`
+set, Escape does nothing, lest it hide the primary's outcome or rerun the secondary's request.
 
-**Acceptance** — heading is focused and announced on open; Escape reaches the secondary action's
-`onClick`, never the primary's, and with the secondary disabled calls nothing and the dialog stays
+**Acceptance** — heading is focused and announced on open; Escape reaches the secondary's `onClick`,
+never the primary's, and with the secondary disabled or loading calls nothing and the dialog stays
 open; Tab cycles exactly the dialog's focusable elements, never a disabled one, and never escapes
 to the page behind the backdrop; both actions render at least 44px tall; the heading is visibly the
 most prominent text, larger and heavier than the body — one in the body's type role fails (FR-063).
