@@ -104,19 +104,23 @@ GET /community/leaderboard/getLeaderBoard2?title=age2&leaderboard_id=3&start=1&c
 - **Ids 45-60 (T070i).** Not derived — no fixture here reaches them and the ordering rule above
   stops at 44 by construction. They were transcribed from SiegeEngineers/aoc-reference-data's
   `data/datasets/100.json`, then wrongly read as also confirming this table's Relic-space ids
-  0-44 — it cannot: that dataset is keyed to the replay space above, not to Relic's
-  `civilization_id`, so on its own it never corroborated this table at all (corrected 2026-09-27,
-  T652n). What actually corroborates ids 45-60 instead: a 2026-09-27 join of Relic's
+  0-44 — the dataset's keys cannot: they are the replay space above, not Relic's
+  `civilization_id` (corrected 2026-09-27, T652n). A 2026-09-27 join of Relic's
   `getRecentMatchHistory` (two profiles) against aoe2companion's `/api/matches`, keyed on
   `(match id, profile id)` — 88 rows, 37 distinct `civilization_id` values, zero conflicts —
-  reaching three of these fourteen ids (48 Shu, 52 Khitans, 59 Mapuche) and agreeing with the
-  table. **The other eleven rest on no measurement**: they do not match `100.json` either, which on
-  2026-09-27 has 46 Achaemenids where the table has 45, and 57 Muisca where the table has 58. Whether the dataset changed after T070i or the
-  transcription re-mapped it is not recorded. Ids 56 and 57 stay on the fallback. The same
-  2026-09-27 join also found three ids this table lacks —
-  61 Saxons, 62 Varangians, 63 Danes — which fall back to "Civilisation <id>" in production;
-  recorded here as known-absent, not added (that addition is outside feature 006, filed
-  separately). Unlike aoe2techtree, `aoc-reference-data` carries **no licence at all** (no
+  reached three of these fourteen ids (48 Shu, 52 Khitans, 59 Mapuche) and agreed with the
+  table. That day's comparison against `100.json` ("46 Achaemenids where the table has 45, and 57
+  Muisca where the table has 58") read the dataset's **keys**, which are the replay space, and so
+  could not agree. Each `civilizations` entry also carries an inner `id`; measured 2026-10-18, it
+  equals this table's id for every one of the fourteen, ids 45-55 and 58-60, with the same name
+  (§6, "aoc-reference-data"). That corroborates the **eleven** ids no join reached — 45, 46, 47, 49,
+  50, 51, 53, 54, 55, 58 and 60 — by the source they were first transcribed from, so the
+  agreement is that source's with itself, not a second reading. No entry of the dataset carries 56
+  or 57 as its inner `id` either, and they stay on the fallback. The same
+  2026-09-27 join also found three ids the table then lacked —
+  61 Saxons, 62 Varangians, 63 Danes — which fell back to "Civilisation <id>" in production until
+  T766 added them; the dataset's inner `id` carries the same three, with the same names, on
+  2026-10-18. Unlike aoe2techtree, `aoc-reference-data` carries **no licence at all** (no
   `LICENSE` file, GitHub reports `license: None`), the same defect recorded above for
   aoe2companion, so it is read, not vendored: the fourteen pairs are transcribed by hand into
   `apps/api/src/aoe2stats_api/civilizations.py` as the facts they are, the JSON file itself is
@@ -632,13 +636,19 @@ against keeping one measurement in two homes.
   omits, to be vendored by the task that first needs it — not vendored now, and never paired with
   aoe2techtree as a second source, because that would satisfy FR-028 and FR-030 on paper while
   deceiving the next reader about how validated the values actually are (research.md D3; plan.md
-  Complexity Tracking).
+  Complexity Tracking). Buildings 490 and 673 did not make it needed: a referenced source names
+  both ("Gate" in `aoc-reference-data`'s `objects`, read 2026-10-18), and halfon would read the same
+  file the pack does (research.md D3, amended 2026-10-18).
 - **Assessed**: 2026-09-19 (research.md D3).
 
 ### aoc-reference-data (`SiegeEngineers/aoc-reference-data`)
 
 - **Scope**: names only — identifiers to display names for civilisations and other constants. No
-  costs, times, ages, prerequisites or bonuses (research.md D3).
+  costs, times, ages, prerequisites or bonuses (research.md D3). Read 2026-10-18, its Definitive
+  Edition dataset (`data/datasets/100.json`) holds, beside a `dataset` header, five tables:
+  `civilizations` (62 entries, each a `name` and an inner `id`), `maps`, `technologies`,
+  `terrain`, and `objects` — identifier to display name, a string, for 1063 units and buildings,
+  first read for the gate family (`objects` 490 and 673 are both "Gate").
 - **Reliability**: community-maintained, with explicit identifiers — but keyed to the replay's own
   civilisation id space (1-based, release order), not to Relic's `civilization_id` (§1, "Two
   civilisation id spaces exist"). Read 2026-09-27: 9 Saracens, 26 Malians, 46 Achaemenids. It is the
@@ -647,15 +657,27 @@ against keeping one measurement in two homes.
   cannot also corroborate them. Read again 2026-10-18 (T746) for the build 185872 snapshot's table
   of eight ids (2 Franks, 4 Teutons, 8 Persians, 9 Saracens, 23 Slavs, 26 Malians, 33 Tatars,
   37 Sicilians, in `packages/knowledge/snapshots/aoe2techtree-185872-civilisations/effects.toml`),
-  where each entry records what else corroborates it. It does **not** corroborate `apps/api/src/aoe2stats_api/civilizations.py`
-  (Relic's space): reading it as doing so was T070i's error, corrected 2026-09-27 (T652n) — see §1
-  above, "Ids 45-60 (T070i)", for what actually established that table's ids 45-60.
-- **Update mechanism**: read by a human, by hand, against a checkout of the repository. Never
-  fetched at build, test or run time (FR-031, FR-032).
-- **Version identifier**: none — the source carries no release, tag or version field. Whichever
-  commit a maintainer happened to read is not recorded, because the source is never vendored (see
-  "Known limitations") and there is nothing to pin a digest to.
-- **Coverage**: it carries no Relic ids at all; §1 records what the Relic table rests on instead.
+  where each entry records what else corroborates it. The dataset's **keys** do not corroborate
+  `apps/api/src/aoe2stats_api/civilizations.py` (Relic's space): reading them as doing so was
+  T070i's error, corrected 2026-09-27 (T652n). Each entry's inner `id` is a separate field. Measured
+  2026-10-18: each of the 59 ids `civilizations.py` holds is the inner `id` of one entry, 58 with the
+  same name and id 30 spelled "Maya" where the table has "Mayans"; the other three inner ids
+  (61 Saxons, 62 Varangians, 63 Danes) were ones the table did not yet hold, and no entry carries
+  56 or 57. The source does not document what the field means, and this records
+  an agreement, not a statement of meaning. See §1, "Ids 45-60 (T070i)", for what that does to the
+  table's ids 45-60.
+- **Update mechanism**: read by a person, or by an agent working for the owner, by hand, against
+  a checkout of the repository; each transcription is recorded with its provenance. Never fetched
+  at build, test or run time (FR-031, FR-032).
+- **Version identifier**: none — the source carries no release or tag. Its dataset file carries a
+  `dataset.version` of "33315" (read 2026-10-18), which is not a game build number and is not
+  documented. Whichever commit a maintainer happened to read is not recorded, because the source
+  is never vendored (see "Known limitations") and there is nothing to pin a digest to; the
+  2026-10-18 measurements above were made against the default branch's head, whose last commit was
+  made 2026-10-11.
+- **Coverage**: 62 civilisations and 1063 objects in the one dataset read. It does not key by
+  Relic's `civilization_id`; its inner `id` agrees with that space (Scope, above), and §1 records
+  what the Relic table rests on.
 - **Known limitations**: **no licence** — GitHub reports `license: None`, and there is no `LICENSE`
   file in the repository. This is why it is read-and-transcribe-only rather than vendored: FR-031
   forbids vendoring a source with no licence and permits only a human's transcription, recorded with
@@ -733,8 +755,23 @@ against keeping one measurement in two homes.
   bulk import would breach the terms even where CC BY-SA would otherwise permit copying the text.
 - **Ruling**: **one human, one number, with provenance** — consulted only to settle a single
   contested value, by a person reading the page, with the reading recorded against the value it
-  supports. Never bulk-imported, never scraped.
+  supports. Never bulk-imported, never scraped. An agent may not read it at all: its terms forbid
+  automated access, so the reading is the owner's.
 - **Assessed**: 2026-09-19 (research.md D3).
+
+### The running game, read by a person
+
+- **Scope**: the cost or time a tooltip shows, in the running game, for a stated civilisation.
+- **Reliability**: the strong form of FR-030's validation — the game itself showing a value to a
+  person, not another tool's reading of a file.
+- **Update mechanism**: a person, after each patch; nothing is scripted and nothing is extracted
+  from the game's files.
+- **Version identifier**: the build the game reports.
+- **Coverage**: the current build only; a value read here says nothing about an earlier build.
+- **Known limitations**: one value at a time, no history, and read by the owner — an agent cannot
+  run the game.
+- **Ruling**: **read and transcribe**, recording who read it, when, and where in the game.
+- **Assessed**: 2026-10-18 (research.md D3, amended).
 
 ### Publisher patch notes
 

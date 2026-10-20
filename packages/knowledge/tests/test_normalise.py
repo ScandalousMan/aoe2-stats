@@ -318,14 +318,15 @@ def test_every_unit_and_technology_referenced_by_a_committed_recording_resolves(
 
 #: `building-placed` events name two object ids the vendored `aoe2techtree` pack carries nowhere
 #: at all — not in the base `Building` table, not in any per-civilisation tree, not anywhere else
-#: in the pack (confirmed by inspection, not assumed). Both are age-upgraded visual variants: the
-#: tech tree UI this pack was built from only needs one representative id per tech-tree tile, so a
-#: building type whose in-game object id changes with the player's age (the same mechanic that
-#: gives `Building` table id 12 its own internal name "Barracks Age1") has no id here for any age
-#: past the one the tech tree displays. This is a genuine, faithful gap in the vendored source —
-#: exactly what T647's `KnowledgeGap` machinery will represent at the query layer — not a defect in
-#: this normaliser's merge logic, which is why it is named explicitly here rather than silently
-#: excluded from the assertion below.
+#: in the pack (confirmed by inspection, not assumed). This is a genuine, faithful gap in the
+#: vendored source — exactly what T647's `KnowledgeGap` machinery represents at the query layer —
+#: not a defect in this normaliser's merge logic, which is why it is named explicitly here rather
+#: than silently excluded from the assertion below. **Corrected 2026-10-18 (T761):** an earlier
+#: version of this note called both ids age-upgraded visual variants of one tech-tree tile; that
+#: was never measured. A referenced source, `aoc-reference-data`'s `objects` (read 2026-10-18,
+#: `docs/data-sources.md` §6), names both "Gate", and FR-022d closes them with a transcribed alias
+#: in a snapshot's `aliases.toml`, vendoring nothing. The set below stays as the strict statement of
+#: what the pack names until T767's snapshot carries those aliases.
 _BUILDING_IDS_ABSENT_FROM_THE_VENDORED_PACK: frozenset[int] = frozenset({490, 673})
 
 

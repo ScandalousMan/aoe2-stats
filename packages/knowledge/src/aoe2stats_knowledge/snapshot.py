@@ -6,10 +6,11 @@ contracts/knowledge-base.md), "Identity and immutability". Data model:
 
 A snapshot's identity is its ``source``, that source's own ``source_version``, the game build it
 ``describes_build``, and a ``digest`` over its canonical content — ``rules.json`` and
-``effects.toml`` — recorded in the snapshot's ``snapshot.toml``. On load the digest is recomputed
-from the packaged files and compared; a mismatch refuses to load rather than serving content that
-no longer matches what was recorded (FR-025's "never modified or removed" is asserted here, at
-every load, not merely at publish time — publish-time enforcement is the promotion sequence below).
+``effects.toml`` (and ``aliases.toml`` when the snapshot has one, T761) — recorded in the
+snapshot's ``snapshot.toml``. On load the digest is recomputed from the packaged files and
+compared; a mismatch refuses to load rather than serving content that no longer matches what was
+recorded (FR-025's "never modified or removed" is asserted here, at every load, not merely at
+publish time — publish-time enforcement is the promotion sequence below).
 
 Every snapshot directory is read through :mod:`importlib.resources`, never a bare filesystem path,
 so the same code resolves a snapshot identically whether the package is installed from a wheel (a
@@ -67,6 +68,17 @@ a cycle would leave a build with promoted snapshots and none resolvable, which w
 `no-snapshot-for-build` gap. What stays checked at resolution, unchanged, is that two *current*
 promoted snapshots may not describe one build (`SnapshotError`).
 
+**Aliases (T761, FR-022d)**: a snapshot may carry `aliases.toml`, one `[[alias]]` per identifier an
+entity can be recorded under that the pack does not name: `kind`, `id`, `target` (an identifier of
+the same kind that `rules.json` names), `source_name` (the referenced source's name for it,
+verbatim), `source` and `read_on`. `load_snapshot` refuses, with `SnapshotError`, a target
+`rules.json` does not name (so an alias never chains), an alias whose own `id` `rules.json` names
+(the pack's own entity is never shadowed), two aliases for one (kind, id), a missing or blank key,
+a key outside those six, a kind outside `rules.json`'s three, and any table but `alias`. The digest
+covers the file when it is present and is the digest it always was when it is not, so every
+snapshot installed before this task verifies unchanged. Following an alias is `query.py`'s: this
+module only loads and validates the table.
+
 **Reproduction (FR-043, T658)**: `pinned_snapshot(snapshot)` is the one way a demoted snapshot is
 answerable by build, and only for the duration of a block the caller opens on purpose — it names the
 snapshot, it never searches for one. `load_all_snapshots` is how a caller finds the snapshot an
@@ -87,6 +99,7 @@ import contextlib
 import contextvars
 import functools
 import hashlib
+import json
 import tomllib
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -102,9 +115,26 @@ _PACKAGE: Final[str] = "aoe2stats_knowledge"
 #: `snapshot.toml`'s own filename, inside each snapshot directory.
 IDENTITY_FILENAME: Final[str] = "snapshot.toml"
 
-#: The two files the digest is computed over, in this fixed order (contracts/knowledge-base.md,
-#: "Identity and immutability": "the digest is recomputed over rules.json and effects.toml").
+#: The two files the digest is always computed over, in this fixed order
+#: (contracts/knowledge-base.md, "Identity and immutability").
 DIGESTED_FILENAMES: Final[tuple[str, str]] = ("rules.json", "effects.toml")
+
+#: The optional third file (T761): covered by the digest when the snapshot has it, absent from it
+#: when not, so a snapshot without one keeps the digest it was recorded with.
+ALIASES_FILENAME: Final[str] = "aliases.toml"
+
+#: `rules.json`'s three entity kinds, which an alias's `kind` must be one of.
+ALIAS_KINDS: Final[tuple[str, ...]] = ("unit", "building", "technology")
+
+#: An `[[alias]]` table's six keys, all required and all non-blank strings.
+_ALIAS_KEYS: Final[tuple[str, ...]] = (
+    "kind",
+    "id",
+    "target",
+    "source_name",
+    "source",
+    "read_on",
+)
 
 
 class SnapshotError(ValueError):
@@ -221,6 +251,20 @@ class SnapshotIdentity:
 
 
 @dataclass(frozen=True, slots=True)
+class Alias:
+    """One transcribed alias (FR-022d): `id`, an identifier of `kind` that `rules.json` does not
+    name, stands for `target`, one it does. `source_name` is the referenced source's name for `id`,
+    verbatim; `source` says which source and where in it, and `read_on` when it was read."""
+
+    kind: str
+    id: str
+    target: str
+    source_name: str
+    source: str
+    read_on: str
+
+
+@dataclass(frozen=True, slots=True)
 class Snapshot:
     """One packaged knowledge snapshot, verified against its own content on load.
 
@@ -231,6 +275,8 @@ class Snapshot:
     rules body it carries. `supersedes` (T746) is the digest of the snapshot of the same build this
     one replaces for resolution by build, or `None`; it is checked against the other installed
     snapshots by `_superseded_directories`, not here, because one snapshot cannot see the rest.
+    `aliases` (T761) is the validated content of `aliases.toml`, in file order, or `()` for a
+    snapshot without one; `alias_for` finds the one an identifier has.
     """
 
     directory: str
@@ -238,18 +284,36 @@ class Snapshot:
     promoted: bool = False
     validation: ValidationRecord | None = None
     supersedes: str | None = None
+    aliases: tuple[Alias, ...] = ()
+
+    def alias_for(self, kind: str, entity_id: str) -> Alias | None:
+        """The alias of `entity_id` under `kind`, or `None`. Whether `rules.json` names the id
+        directly is the caller's to check first: the loader guarantees an alias never shadows one,
+        so the two never both answer."""
+        for alias in self.aliases:
+            if alias.kind == kind and alias.id == entity_id:
+                return alias
+        return None
 
 
-def compute_digest(rules_json: bytes, effects_toml: bytes) -> str:
-    """The FR-024 digest over a snapshot's canonical content: `rules.json` then `effects.toml`.
+def compute_digest(
+    rules_json: bytes, effects_toml: bytes, aliases_toml: bytes | None = None
+) -> str:
+    """The FR-024 digest over a snapshot's canonical content: `rules.json` then `effects.toml`,
+    then `aliases.toml` when the snapshot has one (T761).
 
     Each file is hashed with its name and byte length as an unambiguous prefix, so the two files
     cannot be shuffled or truncated into producing the same digest as a different pair of
     contents. Returned as `"sha256:" + hex digest`, the same shape `MANIFEST.json` already uses
-    for a pack's own per-file digests.
+    for a pack's own per-file digests. With `aliases_toml` left `None` the bytes hashed are exactly
+    the two-file digest every snapshot installed before T761 was recorded with; an empty
+    `aliases_toml` (a present, empty file) is not `None` and digests differently.
     """
     hasher = hashlib.sha256()
-    for filename, content in zip(DIGESTED_FILENAMES, (rules_json, effects_toml), strict=True):
+    parts = list(zip(DIGESTED_FILENAMES, (rules_json, effects_toml), strict=True))
+    if aliases_toml is not None:
+        parts.append((ALIASES_FILENAME, aliases_toml))
+    for filename, content in parts:
         hasher.update(filename.encode("utf-8"))
         hasher.update(b"\0")
         hasher.update(len(content).to_bytes(8, "big"))
@@ -529,6 +593,66 @@ def parse_promotion(snapshot_toml_text: str) -> tuple[bool, ValidationRecord | N
     return promoted, validation
 
 
+def parse_aliases(aliases_toml_text: str, rules: Mapping[str, Any]) -> tuple[Alias, ...]:
+    """Parse and validate `aliases.toml` against the `rules.json` body `rules` (T761, FR-022d).
+
+    Refused with `SnapshotError`: invalid TOML; a top-level key other than the `alias` array of
+    tables; an entry that is not a table; an entry key outside `_ALIAS_KEYS`, or missing, or not a
+    non-blank string (an integer `id` is refused, not coerced: `rules.json` keys are strings); a
+    `kind` outside `ALIAS_KINDS`; a `target` that `rules.json` does not name under the same `kind`
+    (so an alias never chains through another); an `id` that `rules.json` names under that `kind`
+    (the pack's own entity is never shadowed, and an alias is never the way to reach a named one);
+    and a second alias for one (`kind`, `id`). A file with no `[[alias]]` at all parses to `()`.
+    """
+    try:
+        data = tomllib.loads(aliases_toml_text)
+    except tomllib.TOMLDecodeError as exc:
+        raise SnapshotError(f"{ALIASES_FILENAME} is not valid TOML: {exc}") from exc
+    unexpected_tables = sorted(set(data) - {"alias"})
+    if unexpected_tables:
+        raise SnapshotError(
+            f"{ALIASES_FILENAME}: only [[alias]] tables are allowed, got {unexpected_tables}"
+        )
+    entries = data.get("alias", [])
+    if not isinstance(entries, list):
+        raise SnapshotError(f"{ALIASES_FILENAME}: 'alias' must be an array of [[alias]] tables")
+    entities = rules.get("entities", {})
+    aliases: list[Alias] = []
+    seen: set[tuple[str, str]] = set()
+    for position, entry in enumerate(entries, start=1):
+        where = f"{ALIASES_FILENAME}: [[alias]] number {position}"
+        if not isinstance(entry, dict):
+            raise SnapshotError(f"{where} must be a table")
+        extra = sorted(set(entry) - set(_ALIAS_KEYS))
+        if extra:
+            raise SnapshotError(f"{where} carries key(s) {extra} outside {list(_ALIAS_KEYS)}")
+        for key in _ALIAS_KEYS:
+            value = entry.get(key)
+            if not isinstance(value, str) or not value.strip():
+                raise SnapshotError(f"{where}: {key} must be a non-blank string, got {value!r}")
+        alias = Alias(**{key: entry[key] for key in _ALIAS_KEYS})
+        where = f"{ALIASES_FILENAME}: alias of {alias.kind} {alias.id!r}"
+        if alias.kind not in ALIAS_KINDS:
+            raise SnapshotError(
+                f"{where}: kind must be one of {list(ALIAS_KINDS)}, got {alias.kind!r}"
+            )
+        named = entities.get(alias.kind, {})
+        if alias.id in named:
+            raise SnapshotError(
+                f"{where}: rules.json already names {alias.kind} {alias.id!r}, so it needs no "
+                "alias and an alias never shadows a named entity"
+            )
+        if alias.target not in named:
+            raise SnapshotError(
+                f"{where}: target {alias.target!r} is not a {alias.kind} rules.json names"
+            )
+        if (alias.kind, alias.id) in seen:
+            raise SnapshotError(f"{where}: more than one alias for {alias.kind} {alias.id!r}")
+        seen.add((alias.kind, alias.id))
+        aliases.append(alias)
+    return tuple(aliases)
+
+
 def load_snapshot(directory: str) -> Snapshot:
     """Load one packaged snapshot by its directory name under `snapshots/`.
 
@@ -556,19 +680,40 @@ def load_snapshot(directory: str) -> Snapshot:
     identity = parse_identity(identity_text)
     rules_json = snapshot_dir.joinpath("rules.json").read_bytes()
     effects_toml = snapshot_dir.joinpath("effects.toml").read_bytes()
-    recomputed = compute_digest(rules_json, effects_toml)
+    aliases_file = snapshot_dir.joinpath(ALIASES_FILENAME)
+    aliases_toml = aliases_file.read_bytes() if aliases_file.is_file() else None
+    recomputed = compute_digest(rules_json, effects_toml, aliases_toml)
     if recomputed != identity.digest:
+        covered = "rules.json and effects.toml" + (
+            " and aliases.toml" if aliases_toml is not None else ""
+        )
         raise SnapshotDigestMismatch(
             f"{directory}: recorded digest {identity.digest} does not match the digest "
-            f"recomputed over rules.json and effects.toml, {recomputed}"
+            f"recomputed over {covered}, {recomputed}"
         )
     promoted, validation = parse_promotion(identity_text)
+    aliases: tuple[Alias, ...] = ()
+    if aliases_toml is not None:
+        try:
+            aliases_text = aliases_toml.decode("utf-8")
+            rules = json.loads(rules_json)
+        except ValueError as exc:
+            raise SnapshotError(
+                f"{directory}: {ALIASES_FILENAME} or rules.json is not valid text: {exc}"
+            ) from exc
+        if not isinstance(rules, dict):
+            raise SnapshotError(f"{directory}: rules.json must be a JSON object")
+        try:
+            aliases = parse_aliases(aliases_text, rules)
+        except SnapshotError as exc:
+            raise SnapshotError(f"{directory}: {exc}") from exc
     return Snapshot(
         directory=directory,
         identity=identity,
         promoted=promoted,
         validation=validation,
         supersedes=parse_supersedes(identity_text),
+        aliases=aliases,
     )
 
 

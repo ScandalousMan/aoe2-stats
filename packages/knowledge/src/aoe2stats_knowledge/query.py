@@ -83,6 +83,16 @@ imported internals, is what lets `coverage.coverage` call these six public funct
 (T652b) — the point being that SC-008's "by construction rather than by inspection" then actually
 governs the gap list `coverage.coverage` publishes, not only the seven functions
 `test_structure.py` sweeps directly.
+
+**T761 (FR-022d): an alias is followed, and the answer says so.** An identifier the pack does not
+name may be stated by a referenced source as the pack's entity under another identifier, and a
+snapshot transcribes that as `aliases.toml` (`snapshot.Alias`; the loader has already refused any
+alias whose target `rules.json` does not name, so a followed alias always lands). `_lookup` reads
+`rules.json` first and the snapshot's aliases only when the identifier is absent from it, so an
+identifier the pack names is never reported as aliased. The record that answers is the target's,
+and the effects selected for it are the target's too (an effect's selector names the pack's
+identifiers); a gap, by contrast, still names the identifier the caller asked for. `Answer.alias`
+carries the `Alias` that was followed, or `None`.
 """
 
 from __future__ import annotations
@@ -106,7 +116,7 @@ from aoe2stats_knowledge import effects, snapshot
 # itself) never mistakes it for an eighth query to check against the answer-or-gap union.
 from aoe2stats_knowledge.effects import Context
 from aoe2stats_knowledge.gaps import KnowledgeGap
-from aoe2stats_knowledge.snapshot import Snapshot, SnapshotIdentity
+from aoe2stats_knowledge.snapshot import Alias, Snapshot, SnapshotIdentity
 
 #: The package this module's data is anchored to — the same anchor `snapshot.py` and
 #: `normalise.py` use, so a snapshot is resolved identically from a wheel or an editable checkout.
@@ -142,12 +152,18 @@ class Answer[T]:
     it, in order (`effects.Effect`, T644) — empty when no effect touched this query: either the
     civilisation asked for is not one of the six T645 named as modelled, or it is one of the six
     but no effect in that snapshot's `effects.toml` matches this entity/field.
+
+    `alias` (T761, FR-022d) is the `snapshot.Alias` followed to reach the entity the value was read
+    from, or `None` when the identifier asked for is one `rules.json` names. `source` is then the
+    target's, and `alias.source_name`, `alias.source` and `alias.read_on` are the provenance of the
+    step from the asked identifier to it.
     """
 
     value: T
     snapshot_identity: SnapshotIdentity
     source: str
     effects: Sequence[Any] = field(default_factory=tuple)
+    alias: Alias | None = None
 
 
 @functools.cache
@@ -239,9 +255,30 @@ def _field_present(record: Mapping[str, Any], field_name: str) -> bool:
     raise AssertionError(f"unreachable: unknown field_name {field_name!r}")  # pragma: no cover
 
 
+def _lookup(
+    snap: Snapshot, rules: Mapping[str, Any], entity: EntityRef
+) -> tuple[Mapping[str, Any], Alias | None] | None:
+    """`entity`'s record in `rules` and the alias followed to reach it (T761): the identifier
+    itself when `rules.json` names it, else its target through the snapshot's alias, else `None`.
+    The direct lookup comes first and the alias is consulted only on a miss, so an identifier the
+    pack names is never reported as aliased."""
+    kind_table = rules.get("entities", {}).get(entity.kind, {})
+    record = kind_table.get(entity.id)
+    if record is not None:
+        return record, None
+    alias = snap.alias_for(entity.kind, entity.id)
+    if alias is None:
+        return None
+    target = kind_table.get(alias.target)
+    if target is None:
+        # Only reachable under `rules_overrides`, whose body is not the one the loader validated.
+        return None
+    return target, alias
+
+
 def _resolve_entity(
     entity: EntityRef, *, civilisation: str, field_name: str
-) -> tuple[Snapshot, Mapping[str, Any]] | KnowledgeGap:
+) -> tuple[Snapshot, Mapping[str, Any], Alias | None] | KnowledgeGap:
     """`entity.build` to a promoted snapshot (`snapshot.snapshot_for`, FR-027), then `entity.id`
     within that snapshot's `rules.json` under `entity.kind` — the two steps every query in this
     module shares, whether or not it goes on to be civilisation-qualified.
@@ -250,15 +287,15 @@ def _resolve_entity(
     through only so a `"entity-absent"` gap (data-model.md §7) can name the full FR-035 shape (the
     field the caller actually asked for, and the civilisation the query was qualified by), rather
     than the bare `kind`/`id`/`build` the interim `EntityAbsent` used to carry before T647.
+
+    An identifier `rules.json` does not name resolves through the snapshot's alias, if it has one
+    (T761); the third element of the result is that alias, or `None` for a directly named entity.
     """
     resolved = snapshot.snapshot_for(entity.build)
     if isinstance(resolved, KnowledgeGap):
         return resolved
-    kind_table = (
-        _rules_for(entity.build, resolved.directory).get("entities", {}).get(entity.kind, {})
-    )
-    record = kind_table.get(entity.id)
-    if record is None:
+    found = _lookup(resolved, _rules_for(entity.build, resolved.directory), entity)
+    if found is None:
         return KnowledgeGap(
             cause="entity-absent",
             build=entity.build,
@@ -267,7 +304,8 @@ def _resolve_entity(
             field=field_name,
             civilisation=civilisation,
         )
-    return resolved, record
+    record, alias = found
+    return resolved, record, alias
 
 
 def _raw_value_for_field(record: Mapping[str, Any], field_name: str) -> Any:
@@ -320,7 +358,7 @@ def _civilisation_qualified(
     resolved = _resolve_entity(entity, civilisation=civilisation, field_name=field_name)
     if not isinstance(resolved, tuple):
         return resolved
-    snap, record = resolved
+    snap, record, alias = resolved
     modelled_civilisations = _civilisations_modelled(snap.directory)
     if civilisation not in modelled_civilisations:
         return KnowledgeGap(
@@ -366,7 +404,7 @@ def _civilisation_qualified(
         snap.directory,
         civilisation=civilisation,
         kind=entity.kind,
-        id=entity.id,
+        id=alias.target if alias is not None else entity.id,
         field=field_name,
         value=baseline,
         context=context,
@@ -387,6 +425,7 @@ def _civilisation_qualified(
         snapshot_identity=snap.identity,
         source=record["table_origin"],
         effects=applied_effects,
+        alias=alias,
     )
 
 
@@ -468,15 +507,16 @@ def name(entity: EntityRef) -> Answer[str] | KnowledgeGap:
     than a bare id") rather than gapping — contracts/knowledge-base.md, "Civilisation
     qualification": "it never gaps an analysis". A build with no promoted snapshot still gaps, with
     `cause="no-snapshot-for-build"` (the only cause this function can actually produce): there is
-    no snapshot to even attempt a lookup against.
+    no snapshot to even attempt a lookup against. An identifier the pack does not name but the
+    snapshot aliases (T761) answers the target's name, with `Answer.alias` set.
     """
     resolved = snapshot.snapshot_for(entity.build)
     if isinstance(resolved, KnowledgeGap):
         return resolved
-    kind_table = _rules(resolved.directory).get("entities", {}).get(entity.kind, {})
-    record = kind_table.get(entity.id)
+    found = _lookup(resolved, _rules(resolved.directory), entity)
+    record, alias = found if found is not None else (None, None)
     display_name = record.get("name") if record is not None else None
-    if not display_name:
+    if record is None or not display_name:
         return Answer(
             value=entity.id,
             snapshot_identity=resolved.identity,
@@ -488,4 +528,5 @@ def name(entity: EntityRef) -> Answer[str] | KnowledgeGap:
         snapshot_identity=resolved.identity,
         source=record["table_origin"],
         effects=(),
+        alias=alias,
     )

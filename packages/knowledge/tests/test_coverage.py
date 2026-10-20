@@ -296,17 +296,20 @@ _RECORDING_1_ENUMERATED_BLOCKING_GAPS: frozenset[tuple[str, str, str, str, str]]
 )
 
 #: **Two building ids (490, 673)**, referenced by `building-placed` events in this recording, are
-#: absent from the vendored `aoe2techtree` pack entirely — real, age-upgraded visual variants the
-#: pack's tech-tree UI source never enumerates a second id for (`test_normalise.py`'s
-#: `_BUILDING_IDS_ABSENT_FROM_THE_VENDORED_PACK`, first named by T640). A genuine third-party
-#: source coverage hole, not a decoding or civilisation-assignment error, and not a civilisation
-#: bonus at all — re-modelling a bonus as a conditional rule (T652u) has nothing to say about an
-#: id the pack never names in the first place; vendoring a second source to close it is explicitly
-#: rejected by research.md D3 for this feature. Each id fails three of `query.py`'s six
-#: query-surface fields, for the civilisation the recording actually places it under — building
-#: 490 for Franks, 673 for Teutons. **6 tuples** (T652y: down from 12 — `reconstruction.
-#: prerequisite_order_check`, blocked now, was the *only* register entry that required
-#: `age_requirement`, `available_to` or `prerequisites` at all (checked directly against
+#: absent from the vendored `aoe2techtree` pack entirely (`test_normalise.py`'s
+#: `_BUILDING_IDS_ABSENT_FROM_THE_VENDORED_PACK`, first named by T640). A genuine coverage hole of
+#: the pack, not a decoding or civilisation-assignment error, and not a civilisation bonus at all —
+#: re-modelling a bonus as a conditional rule (T652u) has nothing to say about an id the pack never
+#: names in the first place. **Corrected 2026-10-18 (T761):** an earlier version of this note called
+#: both ids age-upgraded visual variants and said only a second vendored source could close them;
+#: neither was measured. A referenced source, `aoc-reference-data`'s `objects` (read 2026-10-18,
+#: `docs/data-sources.md` §6), names both "Gate", and FR-022d closes them with a transcribed alias
+#: in a snapshot's `aliases.toml`, vendoring nothing. The expectation below stays, strictly, until
+#: T767's snapshot carries those aliases and the blocker is deleted. Each id fails three of
+#: `query.py`'s six query-surface fields, for the civilisation the recording actually places it
+#: under — building 490 for Franks, 673 for Teutons. **6 tuples** (T652y: down from 12 —
+#: `reconstruction.prerequisite_order_check`, blocked now, was the *only* register entry that
+#: required `age_requirement`, `available_to` or `prerequisites` at all (checked directly against
 #: register.toml, not assumed from the task text's own illustrative count), so D7 computes every
 #: gap naming one of those three fields `informational` now, not only `prerequisites`' own two —
 #: six tuples close per building, not two, leaving only `cost`, `produced_at` and
@@ -314,13 +317,13 @@ _RECORDING_1_ENUMERATED_BLOCKING_GAPS: frozenset[tuple[str, str, str, str, str]]
 _TWO_BUILDING_IDS_ARE_ABSENT_FROM_THE_VENDORED_PACK = _RecordingBlocker(
     name="Buildings 490 and 673 are absent from the vendored aoe2techtree pack entirely",
     why_the_vendored_source_cannot_close_it=(
-        "both ids are real, age-upgraded visual variants the pack's tech-tree UI source never "
-        "enumerates a second id for (test_normalise.py's "
-        "_BUILDING_IDS_ABSENT_FROM_THE_VENDORED_PACK, first found by T640); research.md D3 "
-        "explicitly rejects vendoring a second source to close it."
+        "the pack names neither id (test_normalise.py's "
+        "_BUILDING_IDS_ABSENT_FROM_THE_VENDORED_PACK, first found by T640) and no installed "
+        "snapshot carries an alias for them yet."
     ),
     what_would_close_it=(
-        "a second vendored source naming both ids, which research.md D3 rejects for this feature."
+        "a transcribed alias for each (FR-022d): aoc-reference-data's objects, read 2026-10-18, "
+        "name both 'Gate'; T767's snapshot carries them."
     ),
     gap_tuples=(
         ("building", "490", "cost", "Franks", "entity-absent"),
@@ -368,13 +371,12 @@ _RECORDING_2_ENUMERATED_BLOCKING_GAPS: frozenset[tuple[str, str, str, str, str]]
 _BUILDING_490_ABSENT_FOR_THE_SICILIANS = _RecordingBlocker(
     name="Building 490 is absent from the vendored aoe2techtree pack entirely, for the Sicilians",
     why_the_vendored_source_cannot_close_it=(
-        "the same hole recording 2 enumerates: an age-upgraded visual variant the pack's tech-tree "
-        "UI source never enumerates a second id for; research.md D3 explicitly rejects vendoring a "
-        "second source to close it."
+        "the same hole recording 2 enumerates: the pack names no building 490, and no installed "
+        "snapshot carries an alias for it yet."
     ),
     what_would_close_it=(
-        "a second vendored source naming the building, which research.md D3 rejects for this "
-        "feature."
+        "a transcribed alias for it (FR-022d): aoc-reference-data's objects, read 2026-10-18, "
+        "name it 'Gate'; T767's snapshot carries it."
     ),
     gap_tuples=(
         ("building", "490", "cost", "Sicilians", "entity-absent"),

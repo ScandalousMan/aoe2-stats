@@ -2932,7 +2932,7 @@ phase.
   `aoe2techtree-185872-civilisations-20` — so that the chain reads in order without opening
   `snapshot.toml`.
 
-- [ ] T760 [P] [US2] Record FR-022c's sources in `docs/data-sources.md` §6, the living home of a
+- [x] T760 [P] [US2] Record FR-022c's sources in `docs/data-sources.md` §6, the living home of a
       source's scope. **`aoc-reference-data`**: its "Scope" names civilisations only; widen it to
       the `objects` table (identifier to display name for units and buildings), read 2026-10-18 in
       its Definitive Edition dataset (dataset 100), first read for the gate family. Correct "Coverage" ("it carries no
@@ -2951,7 +2951,7 @@ phase.
       where in the game). **Fandom**: its ruling gains that an agent may not read it. **halfon**:
       its "Ruling" gains that buildings 490 and 673 did not make it needed (research D3, amended).
       Docs only; no test
-- [ ] T761 [US2] Resolve an entity identifier the pack does not name through a transcribed alias
+- [x] T761 [US2] Resolve an entity identifier the pack does not name through a transcribed alias
       (FR-022d). A snapshot may carry `aliases.toml`, one `[[alias]]` per identifier: `kind`, `id`,
       `target` (an identifier of the same kind that `rules.json` names), `source_name` (the
       referenced source's name for it, verbatim), `source` and `read_on`. The loader refuses, with
@@ -3034,7 +3034,7 @@ phase.
       no pack carries (the six Chronicles civilisations) is outside the test until T776 decides, and
       its docstring says so. If the run takes longer than 30 seconds, cache
       each snapshot's rules once per session; never sample entities
-- [ ] T766 [P] [US2] Add Saxons, Varangians and Danes to
+- [x] T766 [P] [US2] Add Saxons, Varangians and Danes to
       `apps/api/src/aoe2stats_api/civilizations.py`: today their matches show the
       "Civilisation <id>" fallback. Their Relic identifiers were measured on 2026-09-27 by the
       Relic and aoe2companion join `docs/data-sources.md` §1 records (61 Saxons, 62 Varangians,
