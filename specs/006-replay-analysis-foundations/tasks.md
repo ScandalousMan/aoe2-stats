@@ -3020,7 +3020,7 @@ phase.
       `specs/006-replay-analysis-foundations/`, by hand in the same change. **Red first** in
       `packages/knowledge/tests/test_effects.py`: an unconditional addition, a
       `researched`-conditioned addition before and after, and the pack's building staying first
-- [ ] T765 [US2] Write the whole-pack coverage test (SC-007b) in
+- [x] T765 [US2] Write the whole-pack coverage test (SC-007b) in
       `packages/knowledge/tests/test_whole_pack_coverage.py`. For each build's current snapshot
       (resolution by build, so a superseded one is skipped), parametrized by civilisation: every
       civilisation the snapshot's `rules.json` lists, every entity it names or aliases, every field
