@@ -1343,7 +1343,10 @@ neither is a row of the register; item 13 is Met only when T751 lands. Run local
 `tests/visual/app-routes.spec.ts`, so no full-page baseline changed or was captured. The CI run that backs the verdict
 is run 39205473225, the `visual` job of #178 at f3b939fd (2026-10-19): its app-route step passed 2216 tests on
 Linux Chromium, the 2194 above plus the 22 of `tests/visual/app-routes.spec.ts`, the two `knownDefects` scenarios held
-to their message among them.
+to their message among them. The CI run that backs T750's half of the verdict is run 39377563131, the `visual` job
+of #182 at 7274087e (2026-10-20): its app-route step passed 2219 tests on Linux Chromium, the 2216 above plus T750's
+three planted cases in `tests/visual/fixtures/open-surface.test.ts`, with both in-flight dialog walks passing every
+keyboard assertion and carrying no marker.
 
 ### Item 15's general-reviewer half — outstanding, no pull request covers this head
 
