@@ -10,7 +10,8 @@ packages/knowledge/
 ├── packs/<name>/              one vendored pack per pinned revision: source files at one commit
 │                              + MANIFEST.json + LICENCE.md
 └── snapshots/<label>/         one directory per snapshot, written once — under a size budget
-    ├── snapshot.toml          identity, validation record, civilisations modelled, `supersedes`
+    ├── snapshot.toml          identity, validation record, civilisations modelled, `supersedes`,
+    │                          `normaliser_version`
     ├── rules.json             normalised entities — the queryable body
     ├── effects.toml           hand-transcribed civilisation effects
     ├── aliases.toml           optional: identifiers the pack does not name (FR-022d)
@@ -39,6 +40,22 @@ reads a local checkout of the source at a stated commit and writes the pack. A s
 normalises a pack into `rules.json`. Neither step touches the network; the script's header carries
 the same warning `scripts/ops/sync_map_thumbnails.py` does, and states that automating the download
 is the moment a provider becomes mandatory (FR-032).
+
+**The normaliser has versions, and a snapshot names the one it was derived with** (T763). A change
+to the normaliser's output must not change what an installed snapshot re-derives to, so
+`snapshot.toml` may carry `normaliser_version`, an integer the normaliser has, and absent means the
+first. The first version writes `rules.json`'s `civilisations` as a sorted list of the pack's
+civilisation names. The second writes it as a table from each name to that civilisation's own tree:
+exactly three lists, `unit`, `building` and `technology`, each of identifier strings sorted by
+number, read from the `Unit`, `Building` and `Tech` lists of the pack's civilisation table. Those
+lists name an upgraded unit, not the technology that produces it, so an upgrade technology is also
+a member when any unit the pack's upgrade table keys it under is in the civilisation's `Unit` list;
+*any*, because the table keys eight technology ids under more than one unit and a civilisation has
+only one of them. Nothing else in `rules.json` differs between the versions. The loader refuses,
+with `SnapshotError`, a version the normaliser does not have, a second-version file whose
+`civilisations` is not such a table, and a first-version file whose `civilisations` is one. The
+re-derivation test derives each installed snapshot under the version it names, and every installed
+snapshot still re-derives byte for byte.
 
 **Several packs, one per pinned revision; a newer one goes beside, never over.** A promoted snapshot
 is immutable (FR-025) and must stay re-derivable from the pack it was imported from, so a newer
@@ -116,7 +133,7 @@ def production_time(entity, *, civilisation, context=None) -> Answer[Duration] |
 def age_requirement(entity, *, civilisation) -> Answer[Age] | KnowledgeGap
 def prerequisites(entity, *, civilisation) -> Answer[Sequence[EntityRef]] | KnowledgeGap
 def produced_at(entity, *, civilisation, context=None) -> Answer[Sequence[EntityRef]] | KnowledgeGap
-def available_to(entity, *, civilisation) -> Answer[bool] | KnowledgeGap
+def available_to(entity, *, civilisation, context=None) -> Answer[bool] | KnowledgeGap
 def name(entity) -> Answer[str] | KnowledgeGap
 ```
 
@@ -132,6 +149,19 @@ def name(entity) -> Answer[str] | KnowledgeGap
   never reaches another, and it takes any condition `context` can decide (`researched`, `age`,
   `controlled`, `team`), so `produced_at` accepts `context` as `cost` does and raises as they do
   without the input a conditional addition needs.
+- **`available_to` answers the civilisation's own tree, then applies effects** (T763). Where
+  `rules.json` carries the trees (the second version, "On disk"), the baseline is whether the
+  entity is in the queried civilisation's `unit`, `building` or `technology` list, by its kind; a
+  civilisation the trees do not name, though the snapshot models it, is a gap with cause
+  `field-absent` and never a default. An entity outside the tree answers `false`, and that is an
+  answer, not a gap. **A first-version snapshot makes no membership claim.** Its `rules.json`
+  carries no tree, so `available_to` answers `true` for any entity it resolves, exactly as it did
+  before the tree existed: what an installed snapshot's identity pins includes what it answers
+  (SC-005), so a published analysis reproduces. Nothing on an installed snapshot changes, and a
+  consumer that needs membership reads a snapshot derived under the second version. An effect then
+  sets the answer, on either version, under any condition `context` can decide, so `available_to`
+  accepts `context` as `cost` does and raises as they do without the input a conditional effect
+  needs.
 - `civilisation` is **keyword-only and required** on every rule query. There is no way to ask for a
   generic value, so there is no way to be handed one (FR-023).
 - `context` is the match state a conditional effect needs: the age, the technologies researched,
@@ -177,6 +207,15 @@ an `age` or `controlled` condition, a table whose values are such strings). A ma
 any other operation are refused when the file is parsed. The loader then refuses, with
 `SnapshotError`, an added identifier that is neither a building `rules.json` names nor a building
 `aliases.toml` states, because only the loader holds both files.
+
+An effect may set availability (T763): on the field `available_to` the one operation is `set`, and
+its operand is a boolean, `true` or `false` (under an `age` or `controlled` condition, a table whose
+values are booleans). A number, a string, a list and any other operation are refused when the file
+is parsed, and the answer is that boolean, not an integer. The shape expresses a substitution, an
+unlock and a removal: a civilisation that replaces a building with another sets the one `false` and
+the other `true`, and one that unlocks a building on researching a technology conditions the
+`true` on `researched`. The coverage pass does not pass `context` to `available_to`, so an
+availability effect that needs match state raises there and counts as modelled, as below.
 
 A conditional effect that is modelled is complete knowledge, so the coverage pass does not report it
 as a gap. The pass supplies no age, research or controlled-count state, so it treats a query that

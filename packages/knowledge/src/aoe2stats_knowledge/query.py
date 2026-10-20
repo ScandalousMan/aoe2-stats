@@ -94,6 +94,13 @@ and the effects selected for it are the target's too (an effect's selector names
 identifiers); a gap, by contrast, still names the identifier the caller asked for. `Answer.alias`
 carries the `Alias` that was followed, or `None`.
 
+**T763: `available_to` answers the civilisation's own tree.** A second-version `rules.json` carries
+per civilisation the units, buildings and technologies its tree offers; the baseline is membership,
+and an effect may set it. A first-version `rules.json` carries no tree and so makes no membership
+claim: it answers `True`, as it always has, because what a snapshot's identity pins includes what it
+answers (SC-005). `_tree_membership` tells the two apart by the shape of `civilisations`, which the
+snapshot loader checks against the `normaliser_version` `snapshot.toml` names.
+
 **T764: `produced_at` answers a sequence, and an effect may extend it.** The pack places an entity
 at one building (`rules.json`'s `produced_at`, a `{kind, id}` table or `null`); a civilisation may
 place it at another (Goths' Anarchy: Huskarls at the Barracks). The answer is therefore an ordered
@@ -244,9 +251,9 @@ def _field_present(record: Mapping[str, Any], field_name: str) -> bool:
     field reads from at all — checked *before* `_raw_value_for_field` reads it, so a field a
     `rules_overrides` mutation genuinely deleted is reported as missing (`cause="field-absent"`)
     rather than silently read back as `_raw_value_for_field`'s own default (`{}`, `[]`, `None`).
-    `available_to` has no stored field of its own at all (`_raw_value_for_field`'s own docstring:
-    resolving the entity already proves the baseline pack carries it), so it is never reported
-    absent.
+    `available_to` has no stored field of its own at all (its baseline is the civilisation's tree,
+    read by `_tree_membership`, which reports a missing tree itself), so it is never reported
+    absent here.
     """
     if field_name == "cost":
         return "cost" in record
@@ -333,6 +340,23 @@ def _baseline_producing_buildings(record: Mapping[str, Any]) -> tuple[str, ...]:
     return (stored["id"],)
 
 
+def _tree_membership(
+    rules: Mapping[str, Any], civilisation: str, kind: str, entity_id: str
+) -> bool | None:
+    """T763: whether `entity_id` is in `civilisation`'s own tree, or `None` when a second-version
+    `rules.json` carries no tree for that civilisation. A first-version `rules.json` (its
+    `civilisations` is a list of names) carries no tree and so makes no membership claim: `True`,
+    the baseline it has always answered. The two versions are told apart by that shape, which the
+    snapshot loader has checked against the version `snapshot.toml` names."""
+    trees = rules.get("civilisations")
+    if not isinstance(trees, Mapping):
+        return True
+    tree = trees.get(civilisation)
+    if tree is None:
+        return None
+    return entity_id in tree.get(kind, ())
+
+
 def _raw_value_for_field(record: Mapping[str, Any], field_name: str) -> Any:
     """The baseline value `record` (one resolved `rules.json` entity) carries for one
     query-level field name, before any civilisation effect is applied. `field_name` is the
@@ -340,8 +364,8 @@ def _raw_value_for_field(record: Mapping[str, Any], field_name: str) -> Any:
     necessarily `rules.json`'s own field name, since `production_time` reads whichever of
     `_TIME_FIELDS` the entity actually carries (a unit's `training_time`, a building's
     `construction_time`, a technology's `research_time`) and `available_to` has no stored field of
-    its own at all: resolving the entity in the first place already proves the baseline pack
-    carries it, so the baseline answer is `True` pending an effect that says otherwise.
+    its own at all: its baseline is `True` here, and `_civilisation_qualified` replaces it with the
+    civilisation's tree membership (T763) before any effect is applied.
     """
     if field_name == "cost":
         return record.get("cost", {})
@@ -426,6 +450,24 @@ def _civilisation_qualified(
             civilisation=civilisation,
         )
     baseline = _raw_value_for_field(record, field_name)
+    if field_name == "available_to":
+        member = _tree_membership(
+            _rules_for(entity.build, snap.directory),
+            civilisation,
+            entity.kind,
+            alias.target if alias is not None else entity.id,
+        )
+        if member is None:
+            return KnowledgeGap(
+                cause="field-absent",
+                build=entity.build,
+                entity_kind=entity.kind,
+                entity_id=entity.id,
+                field=field_name,
+                civilisation=civilisation,
+                detail="rules.json carries no tree for this civilisation",
+            )
+        baseline = member
     applied = effects.apply(
         snap.directory,
         civilisation=civilisation,
@@ -529,16 +571,29 @@ def produced_at(
     )
 
 
-def available_to(entity: EntityRef, *, civilisation: str) -> Answer[bool] | KnowledgeGap:
-    """Whether `civilisation` can build, train or research `entity` at all.
+def available_to(
+    entity: EntityRef, *, civilisation: str, context: Context | None = None
+) -> Answer[bool] | KnowledgeGap:
+    """Whether `civilisation` can build, train or research `entity` at all (T763).
 
-    Civilisation-qualified for the same reason cost and time are (research.md D5): which units,
-    buildings and technologies a civilisation has access to is itself a per-civilisation fact that
-    `rules.json`'s flattened, cross-civilisation baseline does not carry on its own, so this
-    refuses under the identical conservative rule rather than guessing from the baseline entity's
-    mere presence.
+    Civilisation-qualified for the same reason cost and time are (research.md D5), and a
+    civilisation not modelled refuses under the identical conservative rule. The baseline is
+    membership: whether the entity is in the civilisation's own tree, which a second-version
+    snapshot's `rules.json` carries (`normalise.py`). A civilisation effect then sets it, `true` or
+    `false`, under any condition `context` can decide, so a substitution, an unlock and a removal
+    are rows.
+
+    **A first-version snapshot makes no membership claim.** Its `rules.json` carries no tree, so
+    it answers `True` for any entity it resolves, exactly as it did before the tree existed: what an
+    installed snapshot's identity pins includes what it answers (SC-005), and a published analysis
+    must reproduce. A second-version snapshot whose tree does not name a modelled civilisation
+    gaps, `field-absent`; it never falls back to that `True`.
+
+    `context` is the match state a conditional effect needs; see `cost`'s own docstring.
     """
-    return _civilisation_qualified(entity, civilisation=civilisation, field_name="available_to")
+    return _civilisation_qualified(
+        entity, civilisation=civilisation, field_name="available_to", context=context
+    )
 
 
 def name(entity: EntityRef) -> Answer[str] | KnowledgeGap:

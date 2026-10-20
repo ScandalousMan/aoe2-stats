@@ -84,6 +84,35 @@ _USE_TYPE_KIND: Final[Mapping[str, str]] = {
 }
 
 
+#: The normaliser's versions (T763). A change to its output must not change what an installed
+#: snapshot re-derives to, so a snapshot names the version it was derived with in `snapshot.toml`
+#: (`[snapshot].normaliser_version`; absent means the first) and is re-derived under that one.
+#: **Version 1** writes `rules.json`'s `civilisations` as a sorted list of the pack's civilisation
+#: names. **Version 2** writes it as a table from each name to that civilisation's own tree
+#: (`CIVILISATION_TREE_KINDS`, each a sorted list of identifier strings), so that `available_to` can
+#: answer membership. Nothing else differs between the two.
+FIRST_NORMALISER_VERSION: Final[int] = 1
+NORMALISER_VERSIONS: Final[tuple[int, ...]] = (1, 2)
+
+#: The three lists of one civilisation's tree in a version-2 `rules.json`, named as the entity
+#: kinds are (`_USE_TYPE_KIND`'s values), so a tree is read by the kind of the entity asked about.
+CIVILISATION_TREE_KINDS: Final[tuple[str, ...]] = ("unit", "building", "technology")
+
+
+def check_normaliser_version(version: object) -> int:
+    """`version` itself when it is one the normaliser has, else `ValueError`. A `bool` is refused:
+    `True == 1` would otherwise pass for the first version."""
+    if (
+        isinstance(version, bool)
+        or not isinstance(version, int)
+        or (version not in NORMALISER_VERSIONS)
+    ):
+        raise ValueError(
+            f"normaliser version must be one of {list(NORMALISER_VERSIONS)}, got {version!r}"
+        )
+    return version
+
+
 @dataclass(frozen=True, slots=True)
 class Disagreement:
     """One FR-028 disagreement: the vendored pack's own two tables describe the same
@@ -107,6 +136,9 @@ class NormalisedPack:
     entities: Mapping[str, Mapping[str, Mapping[str, Any]]]
     civilisations: tuple[str, ...]
     disagreements: tuple[Disagreement, ...] = field(default_factory=tuple)
+    #: Version 2 only (T763): each civilisation's tree, `{name: {kind: (id, ...)}}`; `None` for
+    #: version 1, whose `rules.json` carries the names alone.
+    civilisation_trees: Mapping[str, Mapping[str, tuple[str, ...]]] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -277,14 +309,52 @@ def _technology_tree_lookup_key(
     return ("technology", technology_id)
 
 
+def _sorted_ids(ids: Iterable[int]) -> tuple[str, ...]:
+    return tuple(str(identifier) for identifier in sorted(set(ids)))
+
+
+def _civilisation_trees(
+    data: Mapping[str, Any],
+) -> dict[str, dict[str, tuple[str, ...]]]:
+    """Version 2's per-civilisation trees (T763), from the `Unit`, `Building` and `Tech` lists of
+    each entry of `data.json`'s `civs`.
+
+    Those lists name an upgraded unit, not the technology that produces it (measured 2026-10-18 on
+    match 511523321: technologies 98, 100 and 222 are in neither participant's `Tech` list). An
+    upgrade technology is therefore a member when **any** unit `unit_upgrades` keys it under is in
+    the civilisation's `Unit` list, whether or not its `Tech` list names it too. *Any*, because the
+    table keys eight technology ids under more than one unit (197 under 358 and 1787, 429 under 359
+    and 1788, ...) and a civilisation has only one of them: the owner table the first version keeps
+    for `upgrades_unit` is last-wins and must not decide membership.
+    """
+    table = data["data"]
+    keyed_under: dict[int, set[int]] = defaultdict(set)
+    for unit_id, raw in table["unit_upgrades"].items():
+        keyed_under[raw["ID"]].add(int(unit_id))
+    trees: dict[str, dict[str, tuple[str, ...]]] = {}
+    for name in sorted(data["civs"]):
+        civilisation = data["civs"][name]
+        units = set(civilisation["Unit"])
+        upgrades = {technology for technology, keys in keyed_under.items() if keys & units}
+        trees[name] = {
+            "unit": _sorted_ids(units),
+            "building": _sorted_ids(civilisation["Building"]),
+            "technology": _sorted_ids(set(civilisation["Tech"]) | upgrades),
+        }
+    return trees
+
+
 def normalise_pack_data(
     data: Mapping[str, Any],
     strings: Mapping[str, str],
     tree_by_civilisation: Mapping[str, Mapping[str, Any]],
+    *,
+    version: int = FIRST_NORMALISER_VERSION,
 ) -> NormalisedPack:
     """The pure normaliser: every argument already parsed from JSON, so this is exercised with
     small, synthetic fixtures in the test suite as well as with the real, committed pack (through
     `normalise_pack`, which is the only caller that reads `importlib.resources`)."""
+    check_normaliser_version(version)
     table = data["data"]
     civilisations = tuple(sorted(data["civs"].keys()))
     tree_readings = _collect_tree_readings(tree_by_civilisation, strings)
@@ -395,10 +465,11 @@ def normalise_pack_data(
         entities=entities,
         civilisations=civilisations,
         disagreements=tuple(disagreements),
+        civilisation_trees=_civilisation_trees(data) if version >= 2 else None,
     )
 
 
-def normalise_pack(pack_name: str) -> NormalisedPack:
+def normalise_pack(pack_name: str, *, version: int = FIRST_NORMALISER_VERSION) -> NormalisedPack:
     """Normalise one real, committed pack, `packages/knowledge/packs/<pack_name>/`, read entirely
     through `importlib.resources` (FR-026, SC-006: nothing here opens a socket or a filesystem
     path).
@@ -406,20 +477,29 @@ def normalise_pack(pack_name: str) -> NormalisedPack:
     `pack_name` has no default (T707a): packs are vendored beside one another, one per pinned
     revision, and a default would quietly derive a newer snapshot from the first revision. A
     caller names the pack its snapshot's `source_version` is pinned by (`MANIFEST.json`'s
-    `commit`)."""
+    `commit`). `version` (T763) defaults to the first because that is what a snapshot naming no
+    version was derived with; a caller deriving a snapshot that names another passes it."""
     data = _load_pack_json("data.json", pack_name)
     strings = _load_pack_json("strings.en.json", pack_name)
     tree_by_civilisation = {
         filename.removesuffix(".json"): _load_pack_json(f"trees/{filename}", pack_name)
         for filename in _tree_filenames(pack_name)
     }
-    return normalise_pack_data(data, strings, tree_by_civilisation)
+    return normalise_pack_data(data, strings, tree_by_civilisation, version=version)
 
 
 def rules_json_bytes(pack: NormalisedPack) -> bytes:
     """`rules.json`'s canonical bytes: sorted keys and a fixed indent, so re-running the
     normaliser over unchanged pack data reproduces the exact committed bytes, digest included."""
-    document = {"entities": pack.entities, "civilisations": list(pack.civilisations)}
+    civilisations: object = (
+        list(pack.civilisations)
+        if pack.civilisation_trees is None
+        else {
+            name: {kind: list(ids) for kind, ids in tree.items()}
+            for name, tree in pack.civilisation_trees.items()
+        }
+    )
+    document = {"entities": pack.entities, "civilisations": civilisations}
     return (json.dumps(document, indent=2, sort_keys=True) + "\n").encode("utf-8")
 
 

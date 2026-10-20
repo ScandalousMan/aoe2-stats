@@ -2003,3 +2003,199 @@ def test_a_numeric_field_still_refuses_a_string_operand_at_application() -> None
             field="cost",
             value={"food": 50},
         )
+
+
+# ------------------------------------------------ T763: available_to, an effect sets a boolean
+
+_STABLE = "101"
+_DONJON_LINE_SELECTOR = f'[{{ kind = "building", id = "{_STABLE}" }}]'
+
+
+def _availability_effect_toml(
+    *,
+    operand: str = "false",
+    operation: str = "set",
+    condition_lines: str = "",
+    civilisation: str = "Synthetic",
+    modelled: str = "yes",
+) -> str:
+    """A synthetic effect that makes an entity available or not (the Sicilians' Donjon, Folwark or
+    Harbors shape, without transcribing a civilisation): the operation is `set`, the operand a
+    boolean."""
+    body = (
+        f'operation = "{operation}"\noperand = {operand}\n'
+        if modelled == "yes"
+        else 'reason = "synthetic"\n'
+    )
+    return f"""\
+[[effect]]
+civilisation = "{civilisation}"
+source_key = "0"
+source_text = "Can build Donjon in Dark Age, replaces Watch Tower-line"
+modelled = "{modelled}"
+field = "available_to"
+{body}{condition_lines}selector = {_DONJON_LINE_SELECTOR}
+validated_by = "synthetic"
+"""
+
+
+def _availability(
+    toml_text: str,
+    *,
+    baseline: bool = True,
+    context: effects.Context | None = None,
+    civilisation: str = "Synthetic",
+) -> object:
+    result = effects.apply_matched(
+        effects.parse_effects_toml(toml_text),
+        civilisation=civilisation,
+        kind="building",
+        id=_STABLE,
+        field="available_to",
+        value=baseline,
+        context=context,
+    )
+    assert not isinstance(result, effects.EffectNotModelled)
+    value, _applied = result
+    return value
+
+
+def test_an_unconditional_false_removes_an_entity_the_tree_offers() -> None:
+    assert _availability(_availability_effect_toml(operand="false"), baseline=True) is False
+
+
+def test_an_unconditional_true_adds_an_entity_the_tree_does_not_offer() -> None:
+    assert _availability(_availability_effect_toml(operand="true"), baseline=False) is True
+
+
+def test_a_boolean_result_is_a_bool_not_an_integer() -> None:
+    """`set` on a number returns `int(operand)`; availability must not go through that path, or the
+    answer would be `1` and `0`, equal to `True` and `False` and not them."""
+    assert type(_availability(_availability_effect_toml(operand="true"), baseline=False)) is bool
+
+
+_RESEARCHED_THALASSOCRACY = 'condition = "researched"\ncondition_technology = "1230"\n'
+
+
+@pytest.mark.parametrize(
+    ("researched", "expected"),
+    [(frozenset(), True), (frozenset({"1230"}), False)],
+    ids=["before the technology", "after the technology"],
+)
+def test_a_researched_false_applies_only_once_its_technology_is(
+    researched: frozenset[str], expected: bool
+) -> None:
+    text = _availability_effect_toml(operand="false", condition_lines=_RESEARCHED_THALASSOCRACY)
+    context = effects.Context(researched=researched)
+    assert _availability(text, baseline=True, context=context) is expected
+
+
+def test_a_researched_availability_effect_raises_without_a_context() -> None:
+    text = _availability_effect_toml(operand="false", condition_lines=_RESEARCHED_THALASSOCRACY)
+    with pytest.raises(effects.ContextRequired):
+        _availability(text)
+
+
+@pytest.mark.parametrize(("age", "expected"), [(1, True), (2, False), (3, False)])
+def test_an_age_conditioned_true_holds_at_the_ages_its_table_names(
+    age: int, expected: bool
+) -> None:
+    text = _availability_effect_toml(operand="{ 1 = true }", condition_lines='condition = "age"\n')
+    assert _availability(text, baseline=False, context=effects.Context(age=age)) is expected
+
+
+def test_an_age_table_may_state_both_booleans() -> None:
+    text = _availability_effect_toml(
+        operand="{ 1 = true, 3 = false }", condition_lines='condition = "age"\n'
+    )
+    assert _availability(text, baseline=False, context=effects.Context(age=1)) is True
+    assert _availability(text, baseline=True, context=effects.Context(age=3)) is False
+
+
+def test_a_controlled_availability_table_reads_the_count() -> None:
+    entities = '[{ kind = "building", id = "109" }]'
+    text = _availability_effect_toml(
+        operand="{ 1 = true }",
+        condition_lines=f'condition = "controlled"\ncondition_entities = {entities}\n',
+    )
+    key = frozenset({effects.SelectorEntry(kind="building", id="109")})
+    assert (
+        _availability(text, baseline=False, context=effects.Context(controlled={key: 0})) is False
+    )
+    assert _availability(text, baseline=False, context=effects.Context(controlled={key: 2})) is True
+
+
+def test_a_team_availability_effect_reaches_a_teammate() -> None:
+    text = _availability_effect_toml(operand="true", condition_lines='condition = "team"\n')
+    allied = effects.Context(team=frozenset({"Synthetic", "Franks"}))
+    assert _availability(text, baseline=False, context=allied, civilisation="Franks") is True
+
+
+def test_a_not_modelled_availability_effect_still_refuses() -> None:
+    (effect,) = effects.parse_effects_toml(_availability_effect_toml(modelled="no"))
+    result = effects.apply_matched(
+        (effect,),
+        civilisation="Synthetic",
+        kind="building",
+        id=_STABLE,
+        field="available_to",
+        value=True,
+    )
+    assert isinstance(result, effects.EffectNotModelled)
+
+
+@pytest.mark.parametrize(
+    "operand",
+    ["1", "0", "1.0", '"true"', '"yes"', "[true]", "{}", "{ a = true }"],
+)
+def test_parse_rejects_a_non_boolean_availability_operand(operand: str) -> None:
+    with pytest.raises(effects.EffectsError, match="available_to"):
+        effects.parse_effects_toml(_availability_effect_toml(operand=operand))
+
+
+@pytest.mark.parametrize("operation", ["add", "multiply", "faster"])
+def test_parse_rejects_every_operation_on_available_to_but_set(operation: str) -> None:
+    with pytest.raises(effects.EffectsError, match="available_to"):
+        effects.parse_effects_toml(_availability_effect_toml(operation=operation))
+
+
+@pytest.mark.parametrize(
+    ("operand", "condition_lines"),
+    [
+        ("{ 1 = 1 }", 'condition = "age"\n'),
+        ('{ 1 = "true" }', 'condition = "age"\n'),
+        ("{ 1 = { x = true } }", 'condition = "age"\n'),
+        (
+            "{ 1 = 1 }",
+            'condition = "controlled"\ncondition_entities = [{ kind = "building", id = "109" }]\n',
+        ),
+        (
+            "{ 1 = 1.5 }",
+            'condition = "controlled"\ncondition_entities = [{ kind = "building", id = "109" }]\n',
+        ),
+    ],
+)
+def test_parse_rejects_a_non_boolean_availability_table_value(
+    operand: str, condition_lines: str
+) -> None:
+    with pytest.raises(effects.EffectsError):
+        effects.parse_effects_toml(
+            _availability_effect_toml(operand=operand, condition_lines=condition_lines)
+        )
+
+
+def test_parse_rejects_a_boolean_where_the_field_is_numeric() -> None:
+    """Contrast: the boolean rule is `available_to`'s alone; a cost 'set' still needs a number."""
+    text = _availability_effect_toml(operand="true").replace(
+        'field = "available_to"', 'field = "cost"'
+    )
+    (effect,) = effects.parse_effects_toml(text)
+    with pytest.raises(effects.EffectsError):
+        effects.apply_matched(
+            (effect,),
+            civilisation="Synthetic",
+            kind="building",
+            id=_STABLE,
+            field="cost",
+            value={"food": 50},
+        )

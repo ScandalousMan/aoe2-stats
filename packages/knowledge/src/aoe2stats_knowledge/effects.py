@@ -46,6 +46,9 @@ contracts/knowledge-base.md), "Civilisation qualification" steps 2-3. Research:
   `controlled` condition each value of the table is such a string. Whether that identifier names
   a building the snapshot knows is checked where `rules.json` is in hand, at snapshot load
   (`snapshot.load_snapshot`), not here.
+  For `field == "available_to"` (**T763**) the operation is `"set"` alone and the operand is a
+  boolean, `true` or `false`, never a number or a string; under an `age` or `controlled` condition
+  each value of the table is one. The answer is then that boolean, not an integer.
 - `validated_by` — FR-030's "the second reading that validated it": who re-read the source sentence
   a second time, against which file, when — recorded as data, not a placeholder string.
 - `condition` — **T652u** (2026-09-28, repository owner's arbitration of the fourth review,
@@ -111,7 +114,7 @@ from __future__ import annotations
 import functools
 import math
 import tomllib
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from importlib import resources
 from typing import Final
@@ -383,27 +386,17 @@ class Effect:
                         f'number written without sign, fraction or leading zero ("0", "1", '
                         f"...), got {bad_keys!r}"
                     )
-                bad_values = [
-                    v
-                    for v in self.operand.values()
-                    if not (
-                        _is_building_identifier(v)
-                        if self.field == "produced_at"
-                        else _is_numeric_operand(v)
-                    )
-                ]
+                is_valid, expected = _table_value_rule(self.field)
+                bad_values = [v for v in self.operand.values() if not is_valid(v)]
                 if bad_values:
                     raise EffectsError(
-                        "effect.operand's count table values must each be "
-                        + (
-                            "a building identifier string"
-                            if self.field == "produced_at"
-                            else "a number or a non-empty table of numbers"
-                        )
-                        + f", got {bad_values!r}"
+                        f"effect.operand's count table values must each be {expected}, "
+                        f"got {bad_values!r}"
                     )
             if self.field == "produced_at":
                 _check_producing_building(self)
+            if self.field == "available_to":
+                _check_availability(self)
             # T652r: reject, at parse time, a numeric operand the game itself could never
             # produce — walked to every leaf via `_operand_leaves` so a `condition`'s own
             # nesting (an age table, a per-resource cost mapping, or both together) cannot hide
@@ -436,6 +429,45 @@ class Effect:
                             f"never prices a {self.field} fractionally, got {leaf!r} in operand "
                             f"{self.operand!r}"
                         )
+
+
+def _is_boolean(value: object) -> bool:
+    """T763: `value` is a TOML boolean. An integer is not one, though `1 == True` in Python."""
+    return isinstance(value, bool)
+
+
+def _table_value_rule(field: str) -> tuple[Callable[[object], bool], str]:
+    """What one value of a `controlled` count table may be on `field`, and how to say so: a
+    building identifier for `produced_at` (T764), a boolean for `available_to` (T763), a number or
+    a non-empty table of numbers for everything else (T762)."""
+    if field == "produced_at":
+        return _is_building_identifier, "a building identifier string"
+    if field == "available_to":
+        return _is_boolean, "a boolean"
+    return _is_numeric_operand, "a number or a non-empty table of numbers"
+
+
+def _check_availability(effect: Effect) -> None:
+    """T763: a `modelled = "yes"` effect on `available_to` sets one boolean. Refused at parse time:
+    any operation but `set` (an availability is neither multiplied nor added to), and an operand
+    that is not a boolean, or, under an `age` or `controlled` condition, a table whose values are
+    not. Runs after those two conditions have checked that their operand is a table."""
+    if effect.operation != "set":
+        raise EffectsError(
+            'an effect on field = "available_to" must use operation = "set" (an entity is '
+            f"available or it is not; nothing else is a rule), got {effect.operation!r}"
+        )
+    if effect.condition in ("age", "controlled"):
+        assert isinstance(effect.operand, Mapping)  # checked by the condition's own branch
+        offenders = [v for v in effect.operand.values() if not _is_boolean(v)]
+        shape = "a table whose values are booleans"
+    else:
+        offenders = [] if _is_boolean(effect.operand) else [effect.operand]
+        shape = "one boolean, true or false"
+    if offenders:
+        raise EffectsError(
+            f'effect.operand of an "available_to" effect must be {shape}, got {offenders!r}'
+        )
 
 
 def _check_producing_building(effect: Effect) -> None:
@@ -866,6 +898,14 @@ def _apply_operation(
     if field == "produced_at":
         assert operation == "add"  # enforced by Effect.__post_init__ (`_check_producing_building`)
         return _add_producing_building(value, operand, context=context)
+    if field == "available_to":
+        assert operation == "set"  # enforced by Effect.__post_init__ (`_check_availability`)
+        if not isinstance(value, bool) or not isinstance(operand, bool):
+            raise EffectsError(
+                f"cannot set availability {operand!r} over {value!r} — both must be booleans"
+                + (f" ({context})" if context else "")
+            )
+        return operand
     if isinstance(value, Mapping) and isinstance(operand, Mapping):
         return _apply_mapping(value, operation, operand, context=context)
     if isinstance(value, int | float) and isinstance(operand, int | float):

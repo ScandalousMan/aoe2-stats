@@ -2983,7 +2983,7 @@ phase.
       `packages/knowledge/tests/test_effects.py`: a synthetic effect at counts 0, 1, 4 and 5 against
       a table keyed 1 to 4; the raise without a count; a parse-time refusal of a `controlled` effect
       with no `condition_entities`
-- [ ] T763 [US2] Answer `available_to` from the civilisation's own tree, and let an effect change
+- [x] T763 [US2] Answer `available_to` from the civilisation's own tree, and let an effect change
       it. Today it answers true for any entity that resolves, for every modelled civilisation
       (`packages/knowledge/src/aoe2stats_knowledge/query.py`, `_field_present`), although the pack
       carries each civilisation's tree and the normaliser drops it: `rules.json`'s `civilisations`
