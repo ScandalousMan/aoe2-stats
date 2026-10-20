@@ -83,6 +83,12 @@ export interface SuiteScenario extends RouteScenario {
   hold?: HeldRequest
   /** Set when `prepare` leaves a `Menu` or `Dialog` open: the suites then walk that surface. */
   surface?: SurfaceKind
+  /** Set on a `dialog` scenario whose secondary action is unavailable (`disabled` or `loading`)
+   * while the suite presses Escape: its own request is in flight, so Escape does nothing and the
+   * dialog stays open (shared-primitives.md#Dialog, T750). The keyboard suite asserts the walk read
+   * exactly this (`SurfaceWalk.secondaryUnavailable`) for every scenario, so a walk that took the
+   * other branch fails by name and `suite-scenarios.test.ts` pins which scenarios carry it. */
+  secondaryUnavailable?: true
   /** A defect this scenario's page is known to show to one suite, by suite. The suite asserts the
    * walk fails with exactly `message` (`expectKnownDefect`, `./known-defect`) and fails when the walk
    * passes, so the marker records a red walk and cannot outlive its fix. No scenario carries one
@@ -2200,6 +2206,7 @@ const DASHBOARD_ACTION_BRANCHES: readonly BranchScenario[] = [
   }),
   dashboardBranch('unlink in flight', 'unlink', {
     surface: 'dialog',
+    secondaryUnavailable: true, // `UnlinkDialog`: `disabled: pending` on the secondary action
     hold: { urlGlob: UNLINK_CONFIRM_URL, body: { unlinked: true } },
     stub: async (page) => {
       await dashboardWithTwoProfiles(page)
@@ -2367,6 +2374,7 @@ const PRIVACY_BRANCHES: readonly BranchScenario[] = [
   }),
   privacyBranch('erasure in flight', 'erasure', {
     surface: 'dialog',
+    secondaryUnavailable: true, // `AccountErasurePanel`: `disabled: state === 'erasing'`
     hold: { urlGlob: '**/api/privacy/erase', body: { status: 'erased' }, method: 'POST' },
     stub: async (page) => {
       await stubMe(page, SIGNED_IN_ME)

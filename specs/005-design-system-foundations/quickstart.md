@@ -1338,7 +1338,7 @@ carries a `SuiteScenario.knownDefects` marker (`tests/visual/fixtures/suite-scen
 erasure dialog's confirm button is natively `disabled` while it is focused during a re-mint, and
 `/privacy (erasure re-mint in flight)`'s `prepare` moves focus back to the dialog heading after the press, so that
 scenario's keyboard result does not judge where the press left focus. Both are component defects, not harness gaps, so
-neither is a row of the register; item 13 is Met only when T751 lands. Run locally (macOS Chromium): route-keyboard 334 tests, route-focus-visibility 324, route-touch-footprint
+neither is a row of the register; item 13 is Met only when T751 lands. T744's local run (macOS Chromium): route-keyboard 334 tests, route-focus-visibility 324, route-touch-footprint
 324, route-reduced-motion 336 and the 876 under `tests/visual/fixtures/`, all passing. No scenario was added to
 `tests/visual/app-routes.spec.ts`, so no full-page baseline changed or was captured. The CI run that backs the verdict
 is run 39205473225, the `visual` job of #178 at f3b939fd (2026-10-19): its app-route step passed 2216 tests on

@@ -9,8 +9,8 @@
 //   Tab cycles through its focusable elements and wraps from the last back to the first, Shift+Tab
 //   from the first wraps to the last (FR-049's "a trap outside a modal surface that defines its own"
 //   — here the modal *defines* one, so it is asserted present rather than absent); Escape closes it
-//   — except while its secondary action is disabled (a request in flight), when Escape does nothing
-//   and the dialog stays open (shared-primitives.md#Dialog, T750).
+//   — except while its secondary action is unavailable (`disabled` or `loading`, a request in
+//   flight), when Escape does nothing and the dialog stays open (shared-primitives.md#Dialog, T750).
 // - `Menu` (`packages/design-system/src/primitives/Menu`): focus moves to an item on open; exactly
 //   one item is a Tab stop (roving tabindex); Home, ArrowDown and ArrowUp visit every item once, in
 //   order, wrapping at both ends; Escape closes the menu and returns focus to its trigger.
@@ -57,11 +57,13 @@ export interface SurfaceWalk {
   reverseStop: TabStop | null
   /** Whether the surface was gone after Escape. */
   closedByEscape: boolean
-  /** `dialog` only: whether the dialog's secondary action was disabled when Escape was pressed.
-   * The secondary action is the dialog's second action-row button — the last `button` in the
-   * dialog, when the `button` just before it is its sibling. A dialog without such a pair, and
-   * every menu, reads `false`. */
-  secondaryDisabled: boolean
+  /** `dialog` only: whether the dialog's secondary action was unavailable when Escape was pressed
+   * — natively `disabled`, or `aria-disabled="true"` as a `loading` `Button` is. The secondary
+   * action is the dialog's second action-row button, found by DOM position: the last `button` in
+   * the dialog, when the `button` just before it is its sibling (`Dialog` renders the primary
+   * first). A dialog without such a pair, and every menu, reads `false`; a dialog that renders its
+   * actions in the other order reads its primary as the secondary. */
+  secondaryUnavailable: boolean
   /** `menu` only: whether focus is back on the surface's own trigger after Escape. */
   focusReturnedToTrigger: boolean
 }
@@ -103,7 +105,7 @@ async function isInside(page: Page, surface: string): Promise<boolean> {
 /** Walks the one `Menu` or `Dialog` currently open. The caller has already opened it *by keyboard*
  * (`tabTo` + Enter, see `app-routes-harness.ts`'s scenarios) and calls this with the surface on
  * screen; it presses Escape last, which closes the surface — except a dialog whose secondary action
- * is disabled, which stays open — so it must be the last thing a test does with the page. */
+ * is unavailable, which stays open — so it must be the last thing a test does with the page. */
 export async function walkOpenSurface(page: Page, kind: SurfaceKind): Promise<SurfaceWalk> {
   const surface = SURFACE_SELECTOR[kind]
   await page.locator(surface).waitFor({ state: 'visible' })
@@ -162,13 +164,13 @@ export async function walkOpenSurface(page: Page, kind: SurfaceKind): Promise<Su
       return trigger !== null
     }))
 
-  const secondaryDisabled =
+  const secondaryUnavailable =
     kind === 'dialog' &&
     (await page.evaluate((surfaceSelector) => {
       const buttons = document.querySelectorAll<HTMLButtonElement>(`${surfaceSelector} button`)
       const last = buttons.item(buttons.length - 1) as HTMLButtonElement | null
       return last !== null && last.previousElementSibling instanceof HTMLButtonElement
-        ? last.disabled
+        ? last.disabled || last.getAttribute('aria-disabled') === 'true'
         : false
     }, surface))
 
@@ -193,7 +195,7 @@ export async function walkOpenSurface(page: Page, kind: SurfaceKind): Promise<Su
     steps,
     reverseStop,
     closedByEscape,
-    secondaryDisabled,
+    secondaryUnavailable,
     focusReturnedToTrigger,
   }
 }
@@ -247,13 +249,13 @@ export function assertSurfaceKeyboard(walk: SurfaceWalk, context: string): void 
       `${context}: Escape did not return focus to the menu's trigger`,
     ).toBe(true)
   }
-  if (walk.secondaryDisabled) {
+  if (walk.secondaryUnavailable) {
     // The decided behaviour (T750): the key bound to an unavailable action does nothing, so the
-    // dialog stays open until the caller re-enables it.
+    // dialog stays open until the caller makes it available again.
     expect(
       walk.closedByEscape,
-      `${context}: Escape closed the ${kind} while its secondary action was disabled — it must do ` +
-        `nothing until the caller re-enables it`,
+      `${context}: Escape closed the ${kind} while its secondary action was unavailable (disabled or ` +
+        `loading) — it must do nothing until the caller makes it available again`,
     ).toBe(false)
   } else {
     expect(walk.closedByEscape, `${context}: Escape did not close the ${kind}`).toBe(true)

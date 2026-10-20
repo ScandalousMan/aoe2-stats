@@ -398,6 +398,23 @@ test.describe('suite scenarios', () => {
     expect(marked.map((scenario) => scenario.label)).toEqual([])
   })
 
+  // T750: the dialog scenarios whose secondary action is unavailable while Escape is pressed. The
+  // keyboard suite asserts the walk read exactly this for every surface scenario, so dropping a
+  // marker (or adding one) is a visible change here. The erasure re-mint scenario is deliberately
+  // absent: its confirm button is the disabled one (`minting`), and its secondary action
+  // (`disabled: state === 'erasing'`) stays live, so Escape closes that dialog.
+  test('the in-flight dialog scenarios whose secondary action is unavailable are exactly these two', () => {
+    const marked = SUITE_SCENARIOS.filter((scenario) => scenario.secondaryUnavailable === true)
+    expect(marked.map((scenario) => scenario.label)).toEqual([
+      '/dashboard (unlink in flight)',
+      '/privacy (erasure in flight)',
+    ])
+    for (const scenario of marked) {
+      expect(scenario.surface).toBe('dialog')
+      expect(scenario.hold).toBeDefined()
+    }
+  })
+
   // The number the prose says (quickstart.md, production-readiness item 13, T744): change it here
   // and there together, or this fails.
   test('there are exactly 121 branch scenarios', () => {
