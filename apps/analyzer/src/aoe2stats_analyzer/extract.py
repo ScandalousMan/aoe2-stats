@@ -94,9 +94,12 @@ _SILENCE_METHOD = "group-silence.banding@1"
 #: what makes a banding change trigger a recompute (FR-042) instead of keeping the same digest.
 #: The leading components move by hand when the coverage pass or the banding algorithm itself
 #: changes; `tests/test_document_build.py` pins that `_SILENCE_METHOD` is the method the episodes
-#: really carry.
+#: really carry, and pins the coverage component. `coverage@2` (T762 to T765): the pass passes
+#: `team` to `produced_at` and `available_to` as it already did to `cost` and `production_time`, so
+#: a modelled civilisation with an unmodelled ally gaps those two fields too; `coverage@1` published
+#: a different body under the same identity.
 ANALYTICS_VERSION = (
-    f"coverage@1+{_SILENCE_METHOD}"
+    f"coverage@2+{_SILENCE_METHOD}"
     f"+{hashlib.sha256(REGISTER[_SILENCE_DATUM].method.encode('utf-8')).hexdigest()[:12]}"
 )
 

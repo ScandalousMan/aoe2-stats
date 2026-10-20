@@ -937,6 +937,39 @@ def test_the_loader_refuses_a_malformed_tree(
         snapshot.load_snapshot(directory)
 
 
+@pytest.mark.parametrize(
+    "unit_ids",
+    [
+        ["74", "41"],  # descending
+        ["100", "74"],  # sorted as text, not as numbers
+        ["41", "41", "74"],  # a duplicate
+        ["41", "x"],  # not a number
+    ],
+)
+def test_the_loader_refuses_an_unsorted_or_duplicated_id_list(
+    install_availability: Callable[..., str], unit_ids: list[str]
+) -> None:
+    """The contract: a second-version tree's id lists are sorted by number, each id once."""
+    rules = json.loads(json.dumps(_TREES_RULES))
+    rules["civilisations"]["Franks"]["unit"] = unit_ids
+    directory = install_availability(rules, normaliser_version=2)
+
+    with pytest.raises(snapshot.SnapshotError, match="Franks"):
+        snapshot.load_snapshot(directory)
+
+
+@pytest.mark.parametrize("unit_ids", [[], ["74"], ["41", "74", "100"]])
+def test_the_loader_accepts_an_id_list_sorted_by_number(
+    install_availability: Callable[..., str], unit_ids: list[str]
+) -> None:
+    """The contrast: 74 before 100 is sorted by number though not as text."""
+    rules = json.loads(json.dumps(_TREES_RULES))
+    rules["civilisations"]["Franks"]["unit"] = unit_ids
+    directory = install_availability(rules, normaliser_version=2)
+
+    assert snapshot.load_snapshot(directory).normaliser_version == 2
+
+
 # every entity a participant of a committed recording ordered
 
 _FIXTURES = Path(__file__).resolve().parents[3] / "tests" / "fixtures" / "replays"

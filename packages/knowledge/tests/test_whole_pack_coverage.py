@@ -37,10 +37,12 @@ Achaemenids, Athenians, Macedonians, Puru, Spartans and Thracians, the Chronicle
 owner's arbitration on whether they are in scope.
 
 **Builds.** `test_the_current_snapshots_are_the_builds_this_module_covers` fails when the library
-resolves a build this module neither covers nor excludes by name, so a new build cannot be added
-without choosing. Build 177723 is excluded on purpose: its snapshot is the test infrastructure T646
-added (`aoe2techtree-177723-test`, byte-identical `rules.json` and `effects.toml` to build
-180059's), and no Phase 8 task models it (T773 supersedes build 180059's snapshot only).
+resolves a current build this module does not cover, so a new build cannot be added without being
+covered. Three builds are covered: 185872, 180059 and 177723. Build 177723's snapshot is the test
+infrastructure T646 added (`aoe2techtree-177723-test`, promoted, with `rules.json` and
+`effects.toml` byte for byte those of build 180059's), so it models the same six civilisations with
+the same open row, and no Phase 8 task models the other 47 (T773 supersedes build 180059's snapshot
+only).
 
 **Runtime.** Every case reads `rules.json` through `query._rules`, which is `functools.cache`d per
 snapshot directory for the whole session, so the pack is parsed once per build and no fixture is
@@ -61,15 +63,6 @@ type OpenRow = tuple[str, str, str, str]
 # ---------------------------------------------------------------------------------------------
 # The expectation, edited by hand by each Phase 8 batch.
 # ---------------------------------------------------------------------------------------------
-
-#: Builds this module excludes by name, with why (module docstring, "Builds"): 177723 is T646 test
-#: infrastructure, a copy of build 180059's content, and no Phase 8 task models it.
-_EXCLUDED_BUILDS: dict[int, str] = {
-    177723: (
-        "test infrastructure (T646): the snapshot aoe2techtree-177723-test repeats build 180059's "
-        "content, and no Phase 8 task models it"
-    ),
-}
 
 # Build 185872's batches, in the order tasks.md files them. A batch deletes its tuple here when it
 # models those civilisations (and the snapshot it promotes lists them in civilisations_modelled).
@@ -182,6 +175,58 @@ _BUILD_180059_T773 = (
     "Wu",
 )
 
+# Build 177723 (`aoe2techtree-177723-test`, T646 test infrastructure): promoted, with the same six
+# civilisations modelled as build 180059's snapshot, and the other 47 modelled by no task.
+_BUILD_177723_UNMODELLED = (
+    "Armenians",
+    "Aztecs",
+    "Bengalis",
+    "Berbers",
+    "Bohemians",
+    "Britons",
+    "Bulgarians",
+    "Burgundians",
+    "Burmese",
+    "Byzantines",
+    "Celts",
+    "Chinese",
+    "Cumans",
+    "Dravidians",
+    "Ethiopians",
+    "Georgians",
+    "Goths",
+    "Gurjaras",
+    "Hindustanis",
+    "Huns",
+    "Incas",
+    "Italians",
+    "Japanese",
+    "Jurchens",
+    "Khitans",
+    "Khmer",
+    "Koreans",
+    "Lithuanians",
+    "Magyars",
+    "Malay",
+    "Mapuche",
+    "Mayans",
+    "Mongols",
+    "Muisca",
+    "Poles",
+    "Portuguese",
+    "Romans",
+    "Shu",
+    "Sicilians",
+    "Slavs",
+    "Spanish",
+    "Tupi",
+    "Turks",
+    "Vietnamese",
+    "Vikings",
+    "Wei",
+    "Wu",
+)
+
 
 def _reasons(civilisations: tuple[str, ...], reason: str) -> dict[str, str]:
     return dict.fromkeys(civilisations, reason)
@@ -196,16 +241,21 @@ _NOT_YET_MODELLED: dict[int, dict[str, str]] = {
         **_reasons(_BATCH_D_T770, "T770 (batch D) models it"),
     },
     180059: _reasons(_BUILD_180059_T773, "T773 models every civilisation of build 180059"),
+    177723: _reasons(
+        _BUILD_177723_UNMODELLED,
+        "no Phase 8 task models build 177723 (T646 test infrastructure)",
+    ),
 }
 
 #: build -> civilisation -> that civilisation's open rows of owner-readings.md, expanded to one
 #: tuple per refused entity. Empty is the target (FR-022b).
 _OPEN_ROWS: dict[int, dict[str, tuple[OpenRow, ...]]] = {
     185872: {
-        # Row: Slavs / Castle / cost / "Detinets replaces 40% of the stone with wood; the wood is
-        # never stated". The bonus text the effect transcribes is "Replaces 40% of Castle and Watch
-        # Tower-line stone cost", so the one unknown covers the Castle (82) and the Watch Tower
-        # line: Watch Tower (79), Guard Tower (234), Keep (235).
+        # Row: Slavs / Castle and Watch Tower line (buildings 82, 79, 234, 235) / cost / Detinets
+        # researched / "Detinets replaces 40% of the stone with wood; the wood is never stated".
+        # The bonus text the effect transcribes is "Replaces 40% of Castle and Watch Tower-line
+        # stone cost", so the one unknown covers the Castle (82) and the Watch Tower line: Watch
+        # Tower (79), Guard Tower (234), Keep (235).
         "Slavs": (
             ("building", "79", "cost", "effect-not-modelled"),
             ("building", "82", "cost", "effect-not-modelled"),
@@ -236,6 +286,17 @@ _OPEN_ROWS: dict[int, dict[str, tuple[OpenRow, ...]]] = {
     180059: {
         # Row: Persians / Archer line / cost / Kamandaran researched / "the replacement amount is
         # never stated". The same bonus and the same members as build 185872's row.
+        "Persians": (
+            ("unit", "4", "cost", "effect-not-modelled"),
+            ("unit", "24", "cost", "effect-not-modelled"),
+            ("unit", "492", "cost", "effect-not-modelled"),
+        ),
+    },
+    177723: {
+        # Row: Persians / Archer line / cost / Kamandaran researched / "the replacement amount is
+        # never stated". Measured on this snapshot, not assumed: the six civilisations it models
+        # are Franks, Malians, Persians, Saracens, Tatars and Teutons, and Persians alone keeps
+        # blocking gaps, the three Archer-line costs below.
         "Persians": (
             ("unit", "4", "cost", "effect-not-modelled"),
             ("unit", "24", "cost", "effect-not-modelled"),
@@ -307,7 +368,11 @@ def _cases() -> list[object]:
     for build in _NOT_YET_MODELLED:
         for civilisation in _civilisations(build):
             reason = _NOT_YET_MODELLED[build].get(civilisation)
-            marks = [pytest.mark.xfail(strict=True, reason=reason)] if reason is not None else []
+            marks = (
+                [pytest.mark.xfail(strict=True, raises=AssertionError, reason=reason)]
+                if reason is not None
+                else []
+            )
             cases.append(
                 pytest.param(build, civilisation, marks=marks, id=f"{build}-{civilisation}")
             )
@@ -340,7 +405,7 @@ def test_a_civilisations_blocking_gaps_are_exactly_its_open_owner_rows(
 
 def test_the_current_snapshots_are_the_builds_this_module_covers() -> None:
     current = {s.identity.describes_build for s in snapshot.load_current_snapshots()}
-    assert current == set(_NOT_YET_MODELLED) | set(_EXCLUDED_BUILDS)
+    assert current == set(_NOT_YET_MODELLED)
     assert set(_OPEN_ROWS) == set(_NOT_YET_MODELLED)
 
 
@@ -376,10 +441,40 @@ def test_the_civilisations_outside_this_test_are_the_six_chronicles_civilisation
 
 
 def test_the_open_rows_are_blocking_gaps_by_the_register_not_by_this_module() -> None:
-    """A tuple of `_OPEN_ROWS` is held only if the gap it names really is blocking: guards a field
-    leaving the register's required set, which would turn the row informational and the tuple
-    stale without `_blocking_gaps` ever naming it."""
+    """A tuple of `_OPEN_ROWS` is held only if the gap it names really is blocking by the
+    register's own classification (research.md D7): the tuple is built into a `KnowledgeGap`, whose
+    `severity` the register computes, and that severity must be blocking. A field leaving the
+    register's required set turns the row informational, so its tuple fails here instead of going
+    stale unseen."""
     for build, by_civilisation in _OPEN_ROWS.items():
-        for rows in by_civilisation.values():
-            for _kind, _entity_id, field_name, _cause in rows:
-                assert field_name in _FIELDS, (build, field_name)
+        for civilisation, rows in by_civilisation.items():
+            for kind, entity_id, field_name, cause in rows:
+                gap = gaps.KnowledgeGap(
+                    cause=cause,
+                    build=build,
+                    entity_kind=kind,
+                    entity_id=entity_id,
+                    field=field_name,
+                    civilisation=civilisation,
+                )
+                assert gap.severity == gaps.BLOCKING, (
+                    build,
+                    civilisation,
+                    kind,
+                    entity_id,
+                    field_name,
+                )
+
+
+def test_a_field_no_register_datum_requires_is_not_blocking() -> None:
+    """The contrast: the check above can fail. `available_to` is required only by a blocked datum,
+    so a gap on it is informational, and a tuple naming it would be refused."""
+    gap = gaps.KnowledgeGap(
+        cause="effect-not-modelled",
+        build=185872,
+        entity_kind="building",
+        entity_id="82",
+        field="available_to",
+        civilisation="Slavs",
+    )
+    assert gap.severity == gaps.INFORMATIONAL

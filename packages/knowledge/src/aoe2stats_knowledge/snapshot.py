@@ -104,6 +104,7 @@ import tomllib
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from importlib import resources
+from itertools import pairwise
 from typing import Any, Final
 
 from aoe2stats_knowledge import effects, normalise
@@ -403,12 +404,23 @@ def parse_normaliser_version(snapshot_toml_text: str) -> int:
         raise SnapshotError(f"snapshot.toml: [snapshot].normaliser_version: {exc}") from exc
 
 
+def _is_strictly_increasing_by_number(ids: Sequence[str]) -> bool:
+    """Every identifier is a decimal number and each is greater than the one before: sorted by
+    number, and so with no identifier twice."""
+    if not all(i.isascii() and i.isdigit() for i in ids):
+        return False
+    numbers = [int(i) for i in ids]
+    return all(before < after for before, after in pairwise(numbers))
+
+
 def _check_rules_shape(directory: str, version: int, rules_json: bytes) -> None:
     """T763: `rules.json` has the `civilisations` shape the normaliser version `snapshot.toml`
     names writes: a table of trees for the second version, never one for the first. Refused with
     `SnapshotError`. A first-version `rules.json` is otherwise not inspected here (a hand-written
     stub may omit `civilisations` altogether), and one that is not JSON is the digest's concern,
-    not this check's. A second-version tree is exactly the three lists of identifier strings."""
+    not this check's. A second-version tree is exactly the three lists of identifier strings, each
+    sorted by number with no identifier twice, as the normaliser writes it (contracts/
+    knowledge-base.md, "On disk")."""
     try:
         rules = json.loads(rules_json)
     except ValueError:
@@ -440,6 +452,12 @@ def _check_rules_shape(directory: str, version: int, rules_json: bytes) -> None:
                 f"{directory}: civilisation {name!r} must be a table of exactly "
                 f"{list(normalise.CIVILISATION_TREE_KINDS)}, each a list of identifier strings"
             )
+        for kind, ids in tree.items():
+            if not _is_strictly_increasing_by_number(ids):
+                raise SnapshotError(
+                    f"{directory}: civilisation {name!r} lists its {kind} identifiers out of "
+                    "order or twice; each list is sorted by number, each identifier once"
+                )
 
 
 def parse_supersedes(snapshot_toml_text: str) -> str | None:
@@ -717,10 +735,9 @@ def _check_added_buildings(
     """T764: every building a `produced_at` effect adds is a building the snapshot knows — one
     `rules.json` names, or one its `aliases.toml` states (an identifier a recording carries). An
     effect cannot check that itself, as it never sees the rules; the loader holds both. Refused
-    with `SnapshotError`, naming the identifier. A snapshot with no such effect parses nothing
-    beyond the text and keeps loading exactly as before."""
-    if b"produced_at" not in effects_toml:
-        return
+    with `SnapshotError`, naming the identifier. The check reads the **parsed** effects, never the
+    bytes of the file, so an escaped TOML spelling of `produced_at` is checked like any other; a
+    file that is not a valid effects file is refused here, as it would be at the first query."""
     try:
         parsed = effects.parse_effects_toml(effects_toml.decode("utf-8"))
     except (ValueError, effects.EffectsError) as exc:

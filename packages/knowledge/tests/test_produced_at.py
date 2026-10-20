@@ -296,6 +296,42 @@ def test_the_loader_refuses_a_malformed_effects_file_naming_produced_at(
         snapshot_module.load_snapshot(directory)
 
 
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        # The value spelled with an escape: the bytes `produced_at` never appear in the file.
+        ('field = "produced_at"', 'field = "produced\\u005fat"'),
+        # The key spelled with an escape too (a quoted key is the same key).
+        ('field = "produced_at"', '"fiel\\u0064" = "produced\\u005fat"'),
+    ],
+)
+def test_the_loader_checks_an_added_building_whatever_the_toml_spelling(
+    install: Callable[..., str], old: str, new: str
+) -> None:
+    """The check reads the parsed effects, never the bytes of the file: an escaped spelling of
+    `produced_at` is the same field and must not skip the check on the added building."""
+    text = _effect("9999")
+    assert old in text
+    directory = install(text.replace(old, new))
+    assert b"produced_at" not in text.replace(old, new).encode("utf-8")
+
+    with pytest.raises(snapshot_module.SnapshotError, match="9999"):
+        snapshot_module.load_snapshot(directory)
+
+
+def test_a_snapshot_whose_effects_name_no_producing_building_still_loads(
+    install: Callable[..., str],
+) -> None:
+    """The contrast: an effects file with no `produced_at` effect loads, and the escaped spelling of
+    an accepted building loads too."""
+    other = _effect("12").replace('field = "produced_at"', 'field = "cost"')
+    other = other.replace('operation = "add"', 'operation = "multiply"')
+    other = other.replace('operand = "12"', "operand = 0.9")
+    assert snapshot_module.load_snapshot(install(other)).directory
+    escaped = _effect("12").replace('field = "produced_at"', 'field = "produced\\u005fat"')
+    assert snapshot_module.load_snapshot(install(escaped)).directory
+
+
 def test_a_not_modelled_produced_at_effect_adds_nothing_to_check(
     install: Callable[..., str],
 ) -> None:

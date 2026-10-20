@@ -324,8 +324,11 @@ def _civilisation_trees(
     upgrade technology is therefore a member when **any** unit `unit_upgrades` keys it under is in
     the civilisation's `Unit` list, whether or not its `Tech` list names it too. *Any*, because the
     table keys eight technology ids under more than one unit (197 under 358 and 1787, 429 under 359
-    and 1788, ...) and a civilisation has only one of them: the owner table the first version keeps
-    for `upgrades_unit` is last-wins and must not decide membership.
+    and 1788, ...) and a civilisation can have several of them: measured on both vendored packs, 112
+    and 117 (civilisation, technology) pairs have two or more of the keying units in the `Unit` list
+    (Armenians' 21, 529 and 2627 all key technology 34). The owner table the first version keeps for
+    `upgrades_unit` keeps only the last key, so reading it drops members and must not decide
+    membership.
     """
     table = data["data"]
     keyed_under: dict[int, set[int]] = defaultdict(set)

@@ -30,16 +30,17 @@ canonical stream alone without a reconstruction this feature does not do (007's 
 **T652v: the pass does build the team half of `query.Context`, from the canonical stream's own
 `match-started` event.** Each participant's `team` (`ParticipantEntry.team`, the recording's own
 header field, contracts/canonical-events.md) is real match state, not a reconstruction, so unlike
-age and researched technologies it is never left unsupplied. For every civilisation-qualified
-`cost`/`production_time` query this pass makes, `context.team` is the civilisation names of every
-participant who shares that query's own participant's real team, that participant's own
-civilisation included — a participant with no team at all (the header's own "no team" sentinel,
-translated to `None` by the adapter) gets a team of itself alone, the definite, measured fact that
-this participant has no ally, never a guess (`effects.Context`'s own contract: "never guessed by
-this package"). Per contracts/knowledge-base.md, "Civilisation qualification" step 1, an unmodelled
-teammate now makes *every* cost and time query this pass makes for that teammate's allies gap,
-naming the teammate — not only a query this pass happens to make *for* the unmodelled civilisation
-itself.
+age and researched technologies it is never left unsupplied. For every civilisation-qualified query
+this pass makes that accepts a `context` (`cost`, `production_time`, `produced_at` and
+`available_to`; `age_requirement` and `prerequisites` accept none), `context.team` is the
+civilisation names of every participant who shares that query's own participant's real team, that
+participant's own civilisation included — a participant with no team at all (the header's own "no
+team" sentinel, translated to `None` by the adapter) gets a team of itself alone, the definite,
+measured fact that this participant has no ally, never a guess (`effects.Context`'s own contract:
+"never guessed by this package"). Per contracts/knowledge-base.md, "Civilisation qualification" step
+1, an unmodelled teammate now makes *every* query of those four fields this pass makes for that
+teammate's allies gap, naming the teammate — not only a query this pass happens to make *for* the
+unmodelled civilisation itself.
 
 **Two allies sharing an unmodelled teammate raise the identical gap once each (T652v).** Two
 different, both-modelled civilisations on the same team as one unmodelled civilisation each reach

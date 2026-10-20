@@ -100,6 +100,7 @@ and an effect may set it. A first-version `rules.json` carries no tree and so ma
 claim: it answers `True`, as it always has, because what a snapshot's identity pins includes what it
 answers (SC-005). `_tree_membership` tells the two apart by the shape of `civilisations`, which the
 snapshot loader checks against the `normaliser_version` `snapshot.toml` names.
+`available_to` takes `context` as `cost` does.
 
 **T764: `produced_at` answers a sequence, and an effect may extend it.** The pack places an entity
 at one building (`rules.json`'s `produced_at`, a `{kind, id}` table or `null`); a civilisation may
@@ -399,7 +400,7 @@ def _civilisation_qualified(
     function takes.
 
     `context` (T652u) is threaded straight through to `effects.apply` unread — only `cost`,
-    `production_time` and (T764) `produced_at` accept it from a caller
+    `production_time`, (T764) `produced_at` and (T763) `available_to` accept it from a caller
     (contracts/knowledge-base.md, "The query surface"); every other query in this module calls
     this with the default `None`, so a query naming a field no committed effect ever conditions
     never has to think about it, and `effects.apply` itself is what raises
