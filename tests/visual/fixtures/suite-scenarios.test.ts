@@ -391,20 +391,11 @@ test.describe('suite scenarios', () => {
   })
 
   // A defect a scenario is known to show is asserted by its message (`expectKnownDefect`, shown both
-  // ways in `known-defect.test.ts`). Pin which scenarios carry the marker, so one added to quiet a
-  // red walk is a visible change; one left behind after a fix fails the keyboard suite itself.
-  test('exactly the two in-flight dialogs carry a known keyboard defect', () => {
+  // ways in `known-defect.test.ts`). T750 fixed the only two, so none is marked now: a marker added
+  // to quiet a red walk is a visible change here, and a future one needs this pin edited with it.
+  test('no scenario carries a known-defect marker', () => {
     const marked = SUITE_SCENARIOS.filter((scenario) => scenario.knownDefects !== undefined)
-    expect(marked.map((scenario) => scenario.label)).toEqual([
-      '/dashboard (unlink in flight)',
-      '/privacy (erasure in flight)',
-    ])
-    for (const scenario of marked) {
-      expect(Object.keys(scenario.knownDefects ?? {})).toEqual(['keyboard'])
-      expect(scenario.surface, `${scenario.label}: a keyboard defect is a surface walk`).toBe(
-        'dialog',
-      )
-    }
+    expect(marked.map((scenario) => scenario.label)).toEqual([])
   })
 
   // The number the prose says (quickstart.md, production-readiness item 13, T744): change it here

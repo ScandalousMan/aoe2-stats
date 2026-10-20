@@ -85,9 +85,8 @@ export interface SuiteScenario extends RouteScenario {
   surface?: SurfaceKind
   /** A defect this scenario's page is known to show to one suite, by suite. The suite asserts the
    * walk fails with exactly `message` (`expectKnownDefect`, `./known-defect`) and fails when the walk
-   * passes, so the marker records a red walk and cannot outlive its fix. The task that fixes the
-   * defect is named in `specs/005-design-system-foundations/tasks.md` (T750 for the `Dialog` Tab
-   * trap). */
+   * passes, so the marker records a red walk and cannot outlive its fix. No scenario carries one
+   * today (`suite-scenarios.test.ts` pins that). */
   knownDefects?: { keyboard?: KnownDefect }
 }
 
@@ -2106,19 +2105,6 @@ const MAKE_PRIMARY_BRANCHES: readonly BranchScenario[] = [['/dashboard', DASHBOA
 
 // --- /dashboard: sign-out, unlink and the archival write ------------------------------------------
 
-// `Dialog`'s Tab trap (`packages/design-system/src/primitives/Dialog/index.tsx`) wraps focus at the
-// first and last element its selector finds, and the selector includes a `disabled` button. While a
-// dialog's request is in flight its secondary action is natively `disabled` and is the last element
-// in the DOM, so Tab from the loading primary action is never wrapped and the browser walks focus
-// out to the page behind the backdrop. Found by this file's scenarios, fixed by T750
-// (`specs/005-design-system-foundations/tasks.md`), not by them.
-const DIALOG_TRAP_LEAK: KnownDefect = {
-  reason:
-    'Dialog traps Tab on elements that include a disabled button, so with its secondary action ' +
-    'disabled mid-request focus leaves the dialog (T750)',
-  message: /focus left the dialog during its walk/,
-}
-
 const UNLINK_PREVIEW_URL = `**/api/profiles/${VIEWER_ID}`
 const UNLINK_CONFIRM_URL = `**/api/profiles/${VIEWER_ID}?confirm=true`
 const UNLINK_PREVIEW_BODY = {
@@ -2215,7 +2201,6 @@ const DASHBOARD_ACTION_BRANCHES: readonly BranchScenario[] = [
   dashboardBranch('unlink in flight', 'unlink', {
     surface: 'dialog',
     hold: { urlGlob: UNLINK_CONFIRM_URL, body: { unlinked: true } },
-    knownDefects: { keyboard: DIALOG_TRAP_LEAK },
     stub: async (page) => {
       await dashboardWithTwoProfiles(page)
       await page.route(UNLINK_PREVIEW_URL, (route) => fulfillJson(route, UNLINK_PREVIEW_BODY))
@@ -2383,7 +2368,6 @@ const PRIVACY_BRANCHES: readonly BranchScenario[] = [
   privacyBranch('erasure in flight', 'erasure', {
     surface: 'dialog',
     hold: { urlGlob: '**/api/privacy/erase', body: { status: 'erased' }, method: 'POST' },
-    knownDefects: { keyboard: DIALOG_TRAP_LEAK },
     stub: async (page) => {
       await stubMe(page, SIGNED_IN_ME)
       await mintsToken(page)

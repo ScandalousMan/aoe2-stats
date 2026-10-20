@@ -76,6 +76,10 @@ interface DialogOptions {
   escapeIgnored?: boolean
   /** Opening the dialog leaves focus on the page behind it. */
   focusStaysOnPage?: boolean
+  /** The dialog's second action-row button (Cancel) is natively disabled, as mid-request. */
+  secondaryDisabled?: boolean
+  /** Escape leaves the dialog open (the decided behaviour while the secondary is disabled). */
+  escapeKeepsOpen?: boolean
 }
 
 function dialogPage(options: DialogOptions = {}): string {
@@ -84,14 +88,20 @@ function dialogPage(options: DialogOptions = {}): string {
     <div id="dialog" role="dialog" aria-modal="true" aria-labelledby="h">
       <h2 id="h" tabindex="-1">Are you sure?</h2>
       <label><input id="ack" type="checkbox"> I understand</label>
-      <button id="confirm">Confirm</button>
-      <button id="cancel">Cancel</button>
+      <div class="actions">
+        <button id="confirm">Confirm</button>
+        <button id="cancel" ${options.secondaryDisabled ? 'disabled' : ''}>Cancel</button>
+      </div>
     </div>
     <script>
       const dialog = document.getElementById('dialog')
-      const controls = ['ack', 'confirm', 'cancel'].map((id) => document.getElementById(id))
+      const controls = ['ack', 'confirm', 'cancel']
+        .map((id) => document.getElementById(id))
+        .filter((control) => !control.disabled)
       document.addEventListener('keydown', (event) => {
-        if (event.key === 'Escape' && !${Boolean(options.escapeIgnored)}) { dialog.remove(); return }
+        if (event.key === 'Escape' && !${Boolean(options.escapeIgnored || options.escapeKeepsOpen)}) {
+          dialog.remove(); return
+        }
         if (event.key !== 'Tab') return
         const active = document.activeElement
         if (!event.shiftKey && active === controls[controls.length - 1] && !${Boolean(options.noTrap)}) {
@@ -188,6 +198,34 @@ test.describe('open-surface keyboard guard, planted pages', () => {
 
   test('a dialog that ignores Escape fails', async ({ page }) => {
     const walk = await walkDialog(page, { escapeIgnored: true })
+    expect(() => assertSurfaceKeyboard(walk, 'planted')).toThrow(/Escape did not close the dialog/)
+  })
+
+  // T750: while the secondary action is disabled (the primary's request in flight) Escape does
+  // nothing and the dialog stays open; every other dialog must still close.
+  test('control: a dialog that stays open on Escape while its secondary is disabled passes', async ({
+    page,
+  }) => {
+    const walk = await walkDialog(page, { secondaryDisabled: true, escapeKeepsOpen: true })
+    expect(walk.secondaryDisabled).toBe(true)
+    // The checkbox and Confirm: the disabled Cancel is not a stop.
+    expect(walk.itemCount).toBe(2)
+    assertSurfaceKeyboard(walk, 'planted')
+  })
+
+  test('a dialog that closes on Escape while its secondary is disabled fails', async ({ page }) => {
+    const walk = await walkDialog(page, { secondaryDisabled: true })
+    expect(walk.secondaryDisabled).toBe(true)
+    expect(() => assertSurfaceKeyboard(walk, 'planted')).toThrow(
+      /Escape closed the dialog while its secondary action was disabled/,
+    )
+  })
+
+  test('a dialog that stays open on Escape while its secondary is enabled still fails', async ({
+    page,
+  }) => {
+    const walk = await walkDialog(page, { escapeKeepsOpen: true })
+    expect(walk.secondaryDisabled).toBe(false)
     expect(() => assertSurfaceKeyboard(walk, 'planted')).toThrow(/Escape did not close the dialog/)
   })
 

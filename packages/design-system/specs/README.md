@@ -2140,7 +2140,7 @@ disabled not statically resolvable (<story>)'` rather than a confirmed `'none'` 
    `'unreached'` guard already gets on one branch, generalised here to the whole story. Removes the
    one spurious `'unresolved: disabled not statically resolvable
 (Dialog:EmptyHoverActiveDisabledNotApplicable)'` reason `unresolved|lg`'s own disabled cell used
-   to carry (`primitives/Dialog/index.tsx:127,138`): no other `Dialog` story ever leaves
+   to carry (`primitives/Dialog/index.tsx:141,152`): no other `Dialog` story ever leaves
    `primaryAction`/`secondaryAction` themselves unresolved (every one that does render `Dialog`
    supplies both, even when a given field inside them is absent — `Default`'s own `primaryAction: {
 label: 'Turn it off' }` resolves `primaryAction.disabled` to a real `undefined`, not
@@ -3037,11 +3037,11 @@ generated region now settles on its own, and left two of them honestly `unresolv
 - **F2.** `ArchivalControl.stories.tsx`'s `HoverFocusActiveNotApplicable` — false for hover on the
   button half (`secondary|lg`, same elsewhere pointer as F1); the privacy-link half was F11, closed
   2026-09-21 (T596) — the rendered claim is now true of the privacy link.
-- **F3 (citation corrected 2026-09-19 — M2/M3: `:127,138` is each `<Button` tag's own opening line;
+- **F3 (citation corrected 2026-09-19 — M2/M3: `:141,152` is each `<Button` tag's own opening line;
   each `variant` prop is one line below it; corrected again 2026-09-20 — the `destructive` half of
   the supporting parenthetical went stale, the verdict itself did not).** `shared-primitives.md:613`
   and `Dialog.stories.tsx`'s `EmptyHoverActiveDisabledNotApplicable`
-  — false for hover. `Dialog`'s own two `Button` instances (`index.tsx:127-128,138-139`,
+  — false for hover. `Dialog`'s own two `Button` instances (`index.tsx:141-142,152-153`,
   `variant={primaryAction.variant ?? 'destructive'}`/`?? 'secondary'`) now resolve mechanically per
   story rather than staying `unresolved`: the generator substitutes each story's own merged `args`
   into the guard/attribute expressions a candidate carries, so `Dialog.stories.tsx`'s `FocusVisible`
@@ -3941,11 +3941,11 @@ does not rule out a mark of the scenario's own arriving only after the 1 s judge
 be weaker evidence than it looks; a mark that arrives within the window is caught. The two held loading
 states, `ProfileSummary`'s `Skeleton` and the erase button's `Spinner`, are branch scenarios too, so the keyboard,
 focus-visibility and touch-footprint suites run them held as well as the reduced-motion suite. Two things the new
-scenarios found are defects, not harness gaps, so they are not filed in this register. T750: `Dialog`'s Tab trap
-includes a disabled button, so while a dialog's request is in flight and its secondary action is disabled (`/dashboard
-(unlink in flight)`, `/privacy (erasure in flight)`), Tab leaves the dialog; the keyboard suite asserts that those two
-walks fail with that message and no other (`SuiteScenario.knownDefects`), and fails the day they pass. T751: the erasure
+scenarios found are defects, not harness gaps, so they are not filed in this register. T750, fixed: `Dialog`'s Tab
+trap counted a disabled button as a stop, so while a dialog's request was in flight and its secondary action disabled
+(`/dashboard (unlink in flight)`, `/privacy (erasure in flight)`) Tab left the dialog; both walks now pass every keyboard
+assertion with no `SuiteScenario.knownDefects` marker, and Escape leaves those dialogs open (§Dialog). T751: the erasure
 dialog's confirm button is natively `disabled` while it is focused during a re-mint, and `/privacy (erasure re-mint in
 flight)`'s `prepare` moves focus back to the dialog heading after the press, so that scenario's keyboard result does not
-judge where the press left focus. Item 13 stays partly met until T750 and T751 land. The row is deleted rather than
+judge where the press left focus. Item 13 stays partly met until T751 lands. The row is deleted rather than
 kept as a second copy of the fact; the register holds no row.
