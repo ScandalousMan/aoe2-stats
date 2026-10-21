@@ -14,12 +14,14 @@ the row then becomes an enumerated limit (FR-022b) instead of blocking promotion
 
 | Build  | Civilisation | Entity                               | Field           | Conditions            | Why the pack does not settle it                                        | Sources searched | Value read | Where read | Build shown | Date |
 | ------ | ------------ | ------------------------------------ | --------------- | --------------------- | ---------------------------------------------------------------------- | ---------------- | ---------- | ---------- | ----------- | ---- |
-| 185872 | Slavs        | Castle                               | cost            | none                  | Detinets replaces 40% of the stone with wood; the wood is never stated | pack (T746)      |            |            |             |      |
+| 185872 | Slavs        | Castle and Watch Tower line (buildings 82, 79, 234, 235) | cost            | Detinets researched   | Detinets replaces 40% of the stone with wood; the wood is never stated | pack (T746)      |            |            |             |      |
 | 185872 | Persians     | Archer line                          | cost            | Kamandaran researched | the replacement amount is never stated                                 | pack (T746)      |            |            |             |      |
+| 180059 | Persians     | Archer line                          | cost            | Kamandaran researched | the replacement amount is never stated                                 | pack (T645)      |            |            |             |      |
+| 177723 | Persians     | Archer line                          | cost            | Kamandaran researched | the replacement amount is never stated                                 | pack (T645; this snapshot's effects.toml repeats build 180059's content byte for byte) |            |            |             |      |
 | 185872 | Sicilians    | each building "Fortifications" names | production_time | none                  | the bullet never lists which buildings "Fortifications" names          | pack (T746)      |            |            |             |      |
 
 "Sources searched" names what was read before the row was opened: T767 adds the publisher's notes
-for these three, and closes any row they settle.
+for these rows, and closes any row they settle.
 
 ## Validation sample
 

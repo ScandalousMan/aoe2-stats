@@ -2969,7 +2969,7 @@ phase.
       say about 490 and 673 ("age-upgraded visual variants"; closable only by a second vendored
       source): a referenced source names both "Gate", and FR-022d closes them without vendoring
       anything. Their strict expectations stay until T767's snapshot closes them
-- [ ] T762 [US2] Add the condition `controlled` to the effect model (FR-022e). The operand is a
+- [x] T762 [US2] Add the condition `controlled` to the effect model (FR-022e). The operand is a
       table keyed by a count; the count is how many of the entities `condition_entities` names the
       player controls, supplied by the caller in the query's `context`. A count above the table's
       highest key takes that key's operand, which is how a stated maximum is written; a count below
@@ -2983,7 +2983,7 @@ phase.
       `packages/knowledge/tests/test_effects.py`: a synthetic effect at counts 0, 1, 4 and 5 against
       a table keyed 1 to 4; the raise without a count; a parse-time refusal of a `controlled` effect
       with no `condition_entities`
-- [ ] T763 [US2] Answer `available_to` from the civilisation's own tree, and let an effect change
+- [x] T763 [US2] Answer `available_to` from the civilisation's own tree, and let an effect change
       it. Today it answers true for any entity that resolves, for every modelled civilisation
       (`packages/knowledge/src/aoe2stats_knowledge/query.py`, `_field_present`), although the pack
       carries each civilisation's tree and the normaliser drops it: `rules.json`'s `civilisations`
@@ -3010,7 +3010,7 @@ phase.
       recording ordered answers true for that participant's civilisation (building 490 through T761's
       alias once a snapshot carries it); and every installed snapshot still re-derives byte for
       byte
-- [ ] T764 [US2] Let `produced_at` answer every building an entity is produced at, and let an effect
+- [x] T764 [US2] Let `produced_at` answer every building an entity is produced at, and let an effect
       add one: Goths' Anarchy (Huskarls at the Barracks), Huns' Marauders (Tarkans at the Stable),
       Italians' Condottiero at the Barracks, Mapuche Settlements training Spearmen and Skirmishers.
       The answer becomes an ordered sequence, the pack's building first. **Before changing the
@@ -3020,7 +3020,7 @@ phase.
       `specs/006-replay-analysis-foundations/`, by hand in the same change. **Red first** in
       `packages/knowledge/tests/test_effects.py`: an unconditional addition, a
       `researched`-conditioned addition before and after, and the pack's building staying first
-- [ ] T765 [US2] Write the whole-pack coverage test (SC-007b) in
+- [x] T765 [US2] Write the whole-pack coverage test (SC-007b) in
       `packages/knowledge/tests/test_whole_pack_coverage.py`. For each build's current snapshot
       (resolution by build, so a superseded one is skipped), parametrized by civilisation: every
       civilisation the snapshot's `rules.json` lists, every entity it names or aliases, every field

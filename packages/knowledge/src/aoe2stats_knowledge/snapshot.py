@@ -104,8 +104,10 @@ import tomllib
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from importlib import resources
+from itertools import pairwise
 from typing import Any, Final
 
+from aoe2stats_knowledge import effects, normalise
 from aoe2stats_knowledge.gaps import KnowledgeGap
 
 #: The package this module's data is anchored to. Never a filesystem path: `importlib.resources`
@@ -276,7 +278,9 @@ class Snapshot:
     one replaces for resolution by build, or `None`; it is checked against the other installed
     snapshots by `_superseded_directories`, not here, because one snapshot cannot see the rest.
     `aliases` (T761) is the validated content of `aliases.toml`, in file order, or `()` for a
-    snapshot without one; `alias_for` finds the one an identifier has.
+    snapshot without one; `alias_for` finds the one an identifier has. `normaliser_version` (T763)
+    is the version `snapshot.toml` names (the first when it names none), which `rules.json`'s
+    `civilisations` shape has been checked against.
     """
 
     directory: str
@@ -285,6 +289,7 @@ class Snapshot:
     validation: ValidationRecord | None = None
     supersedes: str | None = None
     aliases: tuple[Alias, ...] = ()
+    normaliser_version: int = 1
 
     def alias_for(self, kind: str, entity_id: str) -> Alias | None:
         """The alias of `entity_id` under `kind`, or `None`. Whether `rules.json` names the id
@@ -382,6 +387,77 @@ def parse_identity(snapshot_toml_text: str) -> SnapshotIdentity:
         describes_build=_require_int(table, "describes_build"),
         digest=_require_str(table, "digest"),
     )
+
+
+def parse_normaliser_version(snapshot_toml_text: str) -> int:
+    """`snapshot.toml`'s optional `[snapshot].normaliser_version` (T763): the normaliser version
+    `rules.json` was derived with. Absent means the first, which every snapshot written before the
+    key existed was derived with. A present value must be an integer the normaliser has (a `bool`
+    is not one); anything else is `SnapshotError`. Whether `rules.json` has the shape that version
+    writes is not knowable from this file; `load_snapshot` checks it."""
+    table = _require_table(_load_toml(snapshot_toml_text), "snapshot")
+    if "normaliser_version" not in table:
+        return normalise.FIRST_NORMALISER_VERSION
+    try:
+        return normalise.check_normaliser_version(table["normaliser_version"])
+    except ValueError as exc:
+        raise SnapshotError(f"snapshot.toml: [snapshot].normaliser_version: {exc}") from exc
+
+
+def _is_strictly_increasing_by_number(ids: Sequence[str]) -> bool:
+    """Every identifier is a decimal number and each is greater than the one before: sorted by
+    number, and so with no identifier twice."""
+    if not all(i.isascii() and i.isdigit() for i in ids):
+        return False
+    numbers = [int(i) for i in ids]
+    return all(before < after for before, after in pairwise(numbers))
+
+
+def _check_rules_shape(directory: str, version: int, rules_json: bytes) -> None:
+    """T763: `rules.json` has the `civilisations` shape the normaliser version `snapshot.toml`
+    names writes: a table of trees for the second version, never one for the first. Refused with
+    `SnapshotError`. A first-version `rules.json` is otherwise not inspected here (a hand-written
+    stub may omit `civilisations` altogether), and one that is not JSON is the digest's concern,
+    not this check's. A second-version tree is exactly the three lists of identifier strings, each
+    sorted by number with no identifier twice, as the normaliser writes it (contracts/
+    knowledge-base.md, "On disk")."""
+    try:
+        rules = json.loads(rules_json)
+    except ValueError:
+        rules = None
+    civilisations = rules.get("civilisations") if isinstance(rules, dict) else None
+    if version < 2:
+        if isinstance(civilisations, dict):
+            raise SnapshotError(
+                f"{directory}: rules.json carries a table of civilisation trees but "
+                "snapshot.toml names normaliser_version 1 (or none); name version 2"
+            )
+        return
+    if not isinstance(civilisations, dict):
+        raise SnapshotError(
+            f"{directory}: snapshot.toml names normaliser_version {version} but rules.json's "
+            "civilisations is not a table of civilisation trees"
+        )
+    for name, tree in civilisations.items():
+        ok = (
+            isinstance(tree, dict)
+            and set(tree) == set(normalise.CIVILISATION_TREE_KINDS)
+            and all(
+                isinstance(ids, list) and all(isinstance(i, str) for i in ids)
+                for ids in tree.values()
+            )
+        )
+        if not ok:
+            raise SnapshotError(
+                f"{directory}: civilisation {name!r} must be a table of exactly "
+                f"{list(normalise.CIVILISATION_TREE_KINDS)}, each a list of identifier strings"
+            )
+        for kind, ids in tree.items():
+            if not _is_strictly_increasing_by_number(ids):
+                raise SnapshotError(
+                    f"{directory}: civilisation {name!r} lists its {kind} identifiers out of "
+                    "order or twice; each list is sorted by number, each identifier once"
+                )
 
 
 def parse_supersedes(snapshot_toml_text: str) -> str | None:
@@ -653,6 +729,36 @@ def parse_aliases(aliases_toml_text: str, rules: Mapping[str, Any]) -> tuple[Ali
     return tuple(aliases)
 
 
+def _check_added_buildings(
+    directory: str, effects_toml: bytes, rules_json: bytes, aliases: Sequence[Alias]
+) -> None:
+    """T764: every building a `produced_at` effect adds is a building the snapshot knows — one
+    `rules.json` names, or one its `aliases.toml` states (an identifier a recording carries). An
+    effect cannot check that itself, as it never sees the rules; the loader holds both. Refused
+    with `SnapshotError`, naming the identifier. The check reads the **parsed** effects, never the
+    bytes of the file, so an escaped TOML spelling of `produced_at` is checked like any other; a
+    file that is not a valid effects file is refused here, as it would be at the first query."""
+    try:
+        parsed = effects.parse_effects_toml(effects_toml.decode("utf-8"))
+    except (ValueError, effects.EffectsError) as exc:
+        raise SnapshotError(f"{directory}: effects.toml is not valid: {exc}") from exc
+    references = effects.producing_building_references(parsed)
+    if not references:
+        return
+    try:
+        rules = json.loads(rules_json)
+    except ValueError as exc:
+        raise SnapshotError(f"{directory}: rules.json is not valid text: {exc}") from exc
+    named = rules.get("entities", {}).get("building", {}) if isinstance(rules, dict) else {}
+    aliased = {alias.id for alias in aliases if alias.kind == "building"}
+    for reference in references:
+        if reference not in named and reference not in aliased:
+            raise SnapshotError(
+                f"{directory}: effects.toml adds producing building {reference!r}, which neither "
+                "rules.json nor aliases.toml names as a building"
+            )
+
+
 def load_snapshot(directory: str) -> Snapshot:
     """Load one packaged snapshot by its directory name under `snapshots/`.
 
@@ -707,6 +813,9 @@ def load_snapshot(directory: str) -> Snapshot:
             aliases = parse_aliases(aliases_text, rules)
         except SnapshotError as exc:
             raise SnapshotError(f"{directory}: {exc}") from exc
+    _check_added_buildings(directory, effects_toml, rules_json, aliases)
+    normaliser_version = parse_normaliser_version(identity_text)
+    _check_rules_shape(directory, normaliser_version, rules_json)
     return Snapshot(
         directory=directory,
         identity=identity,
@@ -714,6 +823,7 @@ def load_snapshot(directory: str) -> Snapshot:
         validation=validation,
         supersedes=parse_supersedes(identity_text),
         aliases=aliases,
+        normaliser_version=normaliser_version,
     )
 
 

@@ -68,7 +68,7 @@ _RULES: dict[str, Any] = {
                 "age_requirement": 1,
                 "cost": {"food": 50},
                 "name": "Militia",
-                "produced_at": "12",
+                "produced_at": {"kind": "building", "id": "12"},
                 "table_origin": "unit",
                 "training_time": 21,
             }
@@ -214,7 +214,7 @@ def test_name_follows_an_alias_to_its_targets_name(install: Callable[..., _Insta
         ("cost", {"stone": 30}),
         ("production_time", 70),
         ("age_requirement", 2),
-        ("produced_at", None),
+        ("produced_at", ()),
         ("available_to", True),
     ],
 )

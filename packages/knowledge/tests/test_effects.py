@@ -1439,3 +1439,763 @@ def test_no_refusal_reason_justifies_itself_by_an_unregistered_condition(directo
         "fault: "
         f"{[(e.civilisation, e.source_text) for e in offenders]!r}"
     )
+
+
+# ------------------------------------------------------------ T762: condition = "controlled"
+
+_TC_AND_CASTLE = frozenset(
+    {effects.SelectorEntry("building", "109"), effects.SelectorEntry("building", "82")}
+)
+_BARRACKS = frozenset({effects.SelectorEntry("building", "12")})
+
+
+def _controlled_effect_toml(
+    *,
+    operand: str = "{ 1 = 0.95, 2 = 0.90, 3 = 0.85, 4 = 0.80 }",
+    condition_entities: str | None = (
+        '[{ kind = "building", id = "109" }, { kind = "building", id = "82" }]'
+    ),
+    selector: str = '[{ kind = "unit", id = "74" }]',
+    field: str = "cost_factor",
+    operation: str = "multiply",
+    condition: str = "controlled",
+) -> str:
+    """A synthetic `controlled` effect: the operand is a table keyed by a count of the entities
+    `condition_entities` names (Saxons' Foot Soldiers shape, without transcribing Saxons)."""
+    entities_line = (
+        f"condition_entities = {condition_entities}\n" if condition_entities is not None else ""
+    )
+    return f"""\
+[[effect]]
+civilisation = "Synthetic"
+source_key = "0"
+source_text = "Foot Soldiers cost -5% per Town Center or Castle controlled (maximum -20%)"
+modelled = "yes"
+field = "{field}"
+operation = "{operation}"
+operand = {operand}
+condition = "{condition}"
+{entities_line}selector = {selector}
+validated_by = "synthetic"
+"""
+
+
+def _apply_controlled(effect: effects.Effect, controlled: object, *, value: object = 100) -> object:
+    result = effects.apply_matched(
+        (effect,),
+        civilisation="Synthetic",
+        kind="unit",
+        id="74",
+        field="cost_factor",
+        value=value,
+        context=None if controlled is None else effects.Context(controlled=controlled),  # type: ignore[arg-type]
+    )
+    assert not isinstance(result, effects.EffectNotModelled)
+    return result
+
+
+def test_controlled_is_a_registered_condition() -> None:
+    assert "controlled" in effects.CONDITIONS
+
+
+def test_a_controlled_effect_parses_its_entities_as_a_set_of_selector_entries() -> None:
+    (effect,) = effects.parse_effects_toml(_controlled_effect_toml())
+    assert effect.condition == "controlled"
+    assert frozenset(effect.condition_entities) == _TC_AND_CASTLE
+
+
+@pytest.mark.parametrize(
+    ("count", "expected_value", "expected_applied"),
+    [
+        (0, 100, 0),  # below the lowest key (1): the effect does not apply
+        (1, 95, 1),
+        (4, 80, 1),
+        (5, 80, 1),  # above the highest key: the highest key's operand, the stated maximum
+        (40, 80, 1),
+    ],
+)
+def test_a_controlled_table_keyed_one_to_four_at_counts_around_its_edges(
+    count: int, expected_value: float, expected_applied: int
+) -> None:
+    (effect,) = effects.parse_effects_toml(_controlled_effect_toml())
+    value, applied = _apply_controlled(effect, {_TC_AND_CASTLE: count})  # type: ignore[misc]
+    assert value == expected_value
+    assert len(applied) == expected_applied
+
+
+def test_a_controlled_sparse_table_takes_the_highest_key_not_above_the_count() -> None:
+    """The rule between keys: the highest key not above the count — the same rule that makes a
+    count above the highest key take that key's operand, applied between keys."""
+    (effect,) = effects.parse_effects_toml(_controlled_effect_toml(operand="{ 1 = 0.9, 3 = 0.5 }"))
+    results = {
+        count: _apply_controlled(effect, {_TC_AND_CASTLE: count})[0]  # type: ignore[index]
+        for count in (0, 1, 2, 3, 4)
+    }
+    assert results == {0: 100, 1: 90, 2: 90, 3: 50, 4: 50}
+
+
+def test_a_controlled_table_may_start_at_zero() -> None:
+    (effect,) = effects.parse_effects_toml(_controlled_effect_toml(operand="{ 0 = 0.5, 2 = 0.25 }"))
+    assert _apply_controlled(effect, {_TC_AND_CASTLE: 0})[0] == 50  # type: ignore[index]
+
+
+def test_a_controlled_effect_with_a_cost_mapping_operand() -> None:
+    (effect,) = effects.parse_effects_toml(
+        _controlled_effect_toml(
+            operand="{ 1 = { food = 0.95 }, 2 = { food = 0.90 } }", field="cost_factor"
+        )
+    )
+    value, _applied = _apply_controlled(
+        effect, {_TC_AND_CASTLE: 2}, value={"food": 100, "gold": 40}
+    )  # type: ignore[misc]
+    assert value == {"food": 90, "gold": 40}
+
+
+def test_a_controlled_effect_raises_without_a_context() -> None:
+    (effect,) = effects.parse_effects_toml(_controlled_effect_toml())
+    with pytest.raises(effects.ContextRequired):
+        _apply_controlled(effect, None)
+
+
+def test_a_controlled_effect_raises_when_the_context_carries_no_counts() -> None:
+    (effect,) = effects.parse_effects_toml(_controlled_effect_toml())
+    result_context = effects.Context(age=2)
+    with pytest.raises(effects.ContextRequired):
+        effects.apply_matched(
+            (effect,),
+            civilisation="Synthetic",
+            kind="unit",
+            id="74",
+            field="cost_factor",
+            value=100,
+            context=result_context,
+        )
+
+
+def test_a_count_for_other_entities_does_not_answer_this_effect() -> None:
+    """Two `controlled` effects on different entity sets must not be fed one count: a count the
+    caller stated for the Barracks says nothing about the Town Centers and Castles."""
+    (effect,) = effects.parse_effects_toml(_controlled_effect_toml())
+    with pytest.raises(effects.ContextRequired) as raised:
+        _apply_controlled(effect, {_BARRACKS: 3})
+    assert "109" in str(raised.value)
+    assert "82" in str(raised.value)
+
+
+def test_two_controlled_effects_on_different_entity_sets_each_read_their_own_count() -> None:
+    (first,) = effects.parse_effects_toml(_controlled_effect_toml())
+    (second,) = effects.parse_effects_toml(
+        _controlled_effect_toml(
+            operand="{ 1 = 0.5 }", condition_entities='[{ kind = "building", id = "12" }]'
+        )
+    )
+    value, applied = effects.apply_matched(
+        (first, second),
+        civilisation="Synthetic",
+        kind="unit",
+        id="74",
+        field="cost_factor",
+        value=100,
+        context=effects.Context(controlled={_TC_AND_CASTLE: 2, _BARRACKS: 7}),
+    )
+    assert value == 45  # 100 * 0.90 = 90, then 90 * 0.5
+    assert applied == (first, second)
+
+
+def test_the_order_condition_entities_are_written_in_does_not_matter() -> None:
+    (effect,) = effects.parse_effects_toml(
+        _controlled_effect_toml(
+            condition_entities=(
+                '[{ kind = "building", id = "82" }, { kind = "building", id = "109" }]'
+            )
+        )
+    )
+    assert _apply_controlled(effect, {_TC_AND_CASTLE: 1})[0] == 95  # type: ignore[index]
+
+
+@pytest.mark.parametrize("count", [-1, True, 2.0, "2", None])
+def test_a_malformed_count_is_a_value_error_not_context_required(count: object) -> None:
+    (effect,) = effects.parse_effects_toml(_controlled_effect_toml())
+    with pytest.raises(ValueError, match="count"):
+        _apply_controlled(effect, {_TC_AND_CASTLE: count})
+
+
+def test_an_unrelated_effect_on_the_same_entity_answers_without_any_count() -> None:
+    """The contrast case: only reaching a `controlled` effect needs a count. An unconditional
+    effect on the same entity and field answers with no context at all — and the same entity with
+    a `controlled` effect added beside it raises, so the count is asked for by that effect alone."""
+    (plain,) = effects.parse_effects_toml(_MINIMAL_MODELLED_EFFECT)
+    (gated,) = effects.parse_effects_toml(
+        _controlled_effect_toml(field="cost", selector='[{ kind = "unit", id = "358" }]')
+    )
+    query = {
+        "civilisation": "Byzantines",
+        "kind": "unit",
+        "id": "358",
+        "field": "cost",
+        "value": {"food": 35, "wood": 25},
+    }
+    answered = effects.apply_matched((plain,), **query)  # type: ignore[arg-type]
+    assert not isinstance(answered, effects.EffectNotModelled)
+    assert answered[0] == {"food": 26, "wood": 19}
+    assert answered[1] == (plain,)
+    with pytest.raises(effects.ContextRequired):
+        effects.apply_matched((plain, gated), **query)  # type: ignore[arg-type]
+
+
+def test_a_not_modelled_controlled_effect_still_refuses_without_a_count() -> None:
+    text = """\
+[[effect]]
+civilisation = "Synthetic"
+source_key = "0"
+source_text = "a bonus whose amount the source never states"
+modelled = "no"
+reason = "the amount is not stated"
+field = "cost_factor"
+condition = "controlled"
+condition_entities = [{ kind = "building", id = "109" }]
+selector = [{ kind = "unit", id = "74" }]
+validated_by = "synthetic"
+"""
+    (effect,) = effects.parse_effects_toml(text)
+    result = effects.apply_matched(
+        (effect,),
+        civilisation="Synthetic",
+        kind="unit",
+        id="74",
+        field="cost_factor",
+        value=100,
+    )
+    assert isinstance(result, effects.EffectNotModelled)
+
+
+# parse-time refusals
+
+
+def test_parse_rejects_a_controlled_effect_without_condition_entities() -> None:
+    with pytest.raises(effects.EffectsError, match="condition_entities"):
+        effects.parse_effects_toml(_controlled_effect_toml(condition_entities=None))
+
+
+def test_parse_rejects_a_controlled_effect_with_empty_condition_entities() -> None:
+    with pytest.raises(effects.EffectsError, match="condition_entities"):
+        effects.parse_effects_toml(_controlled_effect_toml(condition_entities="[]"))
+
+
+def test_parse_rejects_condition_entities_on_a_condition_that_does_not_use_them() -> None:
+    with pytest.raises(effects.EffectsError, match="condition_entities"):
+        effects.parse_effects_toml(_controlled_effect_toml(operand="{ 2 = 0.9 }", condition="age"))
+
+
+def test_parse_rejects_a_duplicated_condition_entity() -> None:
+    with pytest.raises(effects.EffectsError, match="condition_entities"):
+        effects.parse_effects_toml(
+            _controlled_effect_toml(
+                condition_entities='[{ kind = "building", id = "109" }, '
+                '{ kind = "building", id = "109" }]'
+            )
+        )
+
+
+@pytest.mark.parametrize(
+    "operand",
+    [
+        "{}",  # an empty table
+        "0.9",  # not a table
+        '{ "-1" = 0.9 }',  # a negative key
+        "{ one = 0.9 }",  # a non-integer key
+        '{ "1.5" = 0.9 }',  # a fractional key
+        '{ "01" = 0.9 }',  # a non-canonical key ("01" and "1" would both be count 1)
+        '{ 1 = "cheap" }',  # a non-numeric operand
+        "{ 1 = true }",  # a bool is not a number
+        "{ 1 = {} }",  # an empty cost mapping
+        '{ 1 = { food = "cheap" } }',  # a non-numeric leaf inside a cost mapping
+    ],
+)
+def test_parse_rejects_a_malformed_controlled_table(operand: str) -> None:
+    with pytest.raises(effects.EffectsError, match="operand"):
+        effects.parse_effects_toml(_controlled_effect_toml(operand=operand))
+
+
+def test_the_existing_numeric_guards_walk_a_controlled_table() -> None:
+    with pytest.raises(effects.EffectsError):
+        effects.parse_effects_toml(
+            _controlled_effect_toml(operand="{ 1 = { food = -0.5 } }", field="cost")
+        )
+
+
+# ------------------------------------------------- T764: produced_at, an effect adds a building
+
+_HUSKARL = "41"
+_BARRACKS_ID = "12"
+_CASTLE_ID = "82"
+_STABLE_ID = "101"
+
+
+def _produced_at_effect_toml(
+    *,
+    operand: str = f'"{_BARRACKS_ID}"',
+    operation: str = "add",
+    condition_lines: str = "",
+    civilisation: str = "Synthetic",
+    selector: str = f'[{{ kind = "unit", id = "{_HUSKARL}" }}]',
+    modelled: str = "yes",
+) -> str:
+    """A synthetic effect that adds a producing building (the Goths' Anarchy shape, without
+    transcribing Goths): the operand is the building's identifier, the operation is `add`."""
+    body = (
+        f'operation = "{operation}"\noperand = {operand}\n'
+        if modelled == "yes"
+        else 'reason = "synthetic"\n'
+    )
+    return f"""\
+[[effect]]
+civilisation = "{civilisation}"
+source_key = "0"
+source_text = "Huskarls can be trained at Barracks"
+modelled = "{modelled}"
+field = "produced_at"
+{body}{condition_lines}selector = {selector}
+validated_by = "synthetic"
+"""
+
+
+def _produced_at(
+    toml_text: str,
+    *,
+    baseline: tuple[str, ...] = (_CASTLE_ID,),
+    context: effects.Context | None = None,
+    civilisation: str = "Synthetic",
+) -> tuple[str, ...]:
+    result = effects.apply_matched(
+        effects.parse_effects_toml(toml_text),
+        civilisation=civilisation,
+        kind="unit",
+        id=_HUSKARL,
+        field="produced_at",
+        value=baseline,
+        context=context,
+    )
+    assert not isinstance(result, effects.EffectNotModelled)
+    value, _applied = result
+    assert isinstance(value, tuple)
+    return value
+
+
+def test_an_unconditional_effect_adds_a_producing_building_after_the_packs_own() -> None:
+    assert _produced_at(_produced_at_effect_toml()) == (_CASTLE_ID, _BARRACKS_ID)
+
+
+@pytest.mark.parametrize(
+    ("researched", "expected"),
+    [
+        (frozenset(), (_CASTLE_ID,)),  # Anarchy not yet researched: the pack's building alone
+        (frozenset({"457"}), (_CASTLE_ID, _BARRACKS_ID)),  # researched: the addition follows
+    ],
+)
+def test_a_researched_addition_applies_only_after_its_technology(
+    researched: frozenset[str], expected: tuple[str, ...]
+) -> None:
+    text = _produced_at_effect_toml(
+        condition_lines='condition = "researched"\ncondition_technology = "457"\n'
+    )
+    assert _produced_at(text, context=effects.Context(researched=researched)) == expected
+
+
+def test_a_researched_addition_raises_without_a_context() -> None:
+    text = _produced_at_effect_toml(
+        condition_lines='condition = "researched"\ncondition_technology = "457"\n'
+    )
+    with pytest.raises(effects.ContextRequired):
+        _produced_at(text)
+
+
+def test_the_packs_building_stays_first_and_additions_follow_in_file_order() -> None:
+    text = _produced_at_effect_toml(operand='"101"') + _produced_at_effect_toml(operand='"12"')
+    assert _produced_at(text) == (_CASTLE_ID, "101", "12")
+
+
+def test_an_entity_the_pack_places_nowhere_gains_the_added_building_alone() -> None:
+    assert _produced_at(_produced_at_effect_toml(), baseline=()) == (_BARRACKS_ID,)
+
+
+def test_an_addition_works_with_an_age_condition() -> None:
+    text = _produced_at_effect_toml(operand='{ 3 = "12" }', condition_lines='condition = "age"\n')
+    assert _produced_at(text, context=effects.Context(age=2)) == (_CASTLE_ID,)
+    assert _produced_at(text, context=effects.Context(age=3)) == (_CASTLE_ID, _BARRACKS_ID)
+
+
+def test_an_addition_works_with_a_controlled_condition() -> None:
+    text = _produced_at_effect_toml(
+        operand='{ 1 = "12" }',
+        condition_lines='condition = "controlled"\n'
+        'condition_entities = [{ kind = "building", id = "109" }]\n',
+    )
+    key = frozenset({effects.SelectorEntry("building", "109")})
+    assert _produced_at(text, context=effects.Context(controlled={key: 0})) == (_CASTLE_ID,)
+    assert _produced_at(text, context=effects.Context(controlled={key: 1})) == (
+        _CASTLE_ID,
+        _BARRACKS_ID,
+    )
+
+
+def test_an_addition_works_with_a_team_condition() -> None:
+    text = _produced_at_effect_toml(condition_lines='condition = "team"\n')
+    allied = effects.Context(team=frozenset({"Synthetic", "Franks"}))
+    alone = effects.Context(team=frozenset({"Franks"}))
+    assert _produced_at(text, context=allied, civilisation="Franks") == (
+        _CASTLE_ID,
+        _BARRACKS_ID,
+    )
+    assert _produced_at(text, context=alone, civilisation="Franks") == (_CASTLE_ID,)
+
+
+def test_an_addition_of_the_packs_own_building_does_not_duplicate_it() -> None:
+    assert _produced_at(_produced_at_effect_toml(operand='"82"')) == (_CASTLE_ID,)
+
+
+def test_two_additions_of_one_building_answer_it_once() -> None:
+    text = _produced_at_effect_toml() + _produced_at_effect_toml()
+    assert _produced_at(text) == (_CASTLE_ID, _BARRACKS_ID)
+
+
+def test_an_entity_no_effect_touches_answers_the_packs_building_alone() -> None:
+    result = effects.apply_matched(
+        (),
+        civilisation="Synthetic",
+        kind="unit",
+        id=_HUSKARL,
+        field="produced_at",
+        value=(_CASTLE_ID,),
+    )
+    assert result == ((_CASTLE_ID,), ())
+
+
+def test_an_addition_for_one_civilisation_does_not_reach_another(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parsed = effects.parse_effects_toml(_produced_at_effect_toml(civilisation="Goths"))
+    monkeypatch.setattr(effects, "_effects", lambda _directory: parsed)
+
+    def answer(civilisation: str) -> object:
+        return effects.apply(
+            "any",
+            civilisation=civilisation,
+            kind="unit",
+            id=_HUSKARL,
+            field="produced_at",
+            value=(_CASTLE_ID,),
+        )
+
+    assert answer("Goths") == ((_CASTLE_ID, _BARRACKS_ID), parsed)
+    assert answer("Franks") == ((_CASTLE_ID,), ())
+
+
+def test_an_addition_does_not_reach_an_entity_its_selector_does_not_name() -> None:
+    result = effects.apply_matched(
+        (),  # what effects_for returns for another unit: the selector names only the Huskarl
+        civilisation="Synthetic",
+        kind="unit",
+        id="999",
+        field="produced_at",
+        value=(_STABLE_ID,),
+    )
+    assert result == ((_STABLE_ID,), ())
+
+
+def test_a_not_modelled_produced_at_effect_still_refuses() -> None:
+    (effect,) = effects.parse_effects_toml(_produced_at_effect_toml(modelled="no"))
+    result = effects.apply_matched(
+        (effect,),
+        civilisation="Synthetic",
+        kind="unit",
+        id=_HUSKARL,
+        field="produced_at",
+        value=(_CASTLE_ID,),
+    )
+    assert isinstance(result, effects.EffectNotModelled)
+
+
+def test_the_applied_effect_is_listed_even_when_it_added_nothing_new() -> None:
+    (effect,) = effects.parse_effects_toml(_produced_at_effect_toml(operand='"82"'))
+    result = effects.apply_matched(
+        (effect,),
+        civilisation="Synthetic",
+        kind="unit",
+        id=_HUSKARL,
+        field="produced_at",
+        value=(_CASTLE_ID,),
+    )
+    assert result == ((_CASTLE_ID,), (effect,))
+
+
+# parse-time refusals
+
+
+@pytest.mark.parametrize("operation", ["set", "multiply", "faster"])
+def test_parse_rejects_every_operation_on_produced_at_but_add(operation: str) -> None:
+    with pytest.raises(effects.EffectsError, match="produced_at"):
+        effects.parse_effects_toml(_produced_at_effect_toml(operation=operation))
+
+
+@pytest.mark.parametrize(
+    "operand",
+    [
+        "12",  # a bare number: rules.json keys are strings
+        "true",
+        '""',  # blank
+        '"Barracks"',  # a name, not an identifier
+        '"012"',  # not the one canonical spelling of an identifier
+        '"-12"',
+        '"12.0"',
+        '["12", "101"]',  # one building per effect
+        '{ food = "12" }',  # a table on an effect with no table-valued condition
+        "{}",
+    ],
+)
+def test_parse_rejects_a_produced_at_operand_that_is_not_one_building_identifier(
+    operand: str,
+) -> None:
+    with pytest.raises(effects.EffectsError, match="operand"):
+        effects.parse_effects_toml(_produced_at_effect_toml(operand=operand))
+
+
+@pytest.mark.parametrize(
+    ("operand", "condition_lines"),
+    [
+        ("{ 2 = 12 }", 'condition = "age"\n'),
+        ('{ 2 = "Barracks" }', 'condition = "age"\n'),
+        ('{ 2 = { food = "12" } }', 'condition = "age"\n'),
+        (
+            "{ 1 = 12 }",
+            'condition = "controlled"\ncondition_entities = [{ kind = "building", id = "109" }]\n',
+        ),
+    ],
+)
+def test_parse_rejects_a_malformed_produced_at_table_leaf(
+    operand: str, condition_lines: str
+) -> None:
+    with pytest.raises(effects.EffectsError, match="operand"):
+        effects.parse_effects_toml(
+            _produced_at_effect_toml(operand=operand, condition_lines=condition_lines)
+        )
+
+
+def test_parse_accepts_a_produced_at_age_table_of_identifiers() -> None:
+    (effect,) = effects.parse_effects_toml(
+        _produced_at_effect_toml(
+            operand='{ 3 = "12", 4 = "101" }', condition_lines='condition = "age"\n'
+        )
+    )
+    assert effect.operand == {"3": "12", "4": "101"}
+
+
+def test_a_numeric_field_still_refuses_a_string_operand_at_application() -> None:
+    """Contrast: only `produced_at` takes a building identifier; a cost still needs a number."""
+    text = _produced_at_effect_toml().replace('field = "produced_at"', 'field = "cost"')
+    (effect,) = effects.parse_effects_toml(text)
+    with pytest.raises(effects.EffectsError):
+        effects.apply_matched(
+            (effect,),
+            civilisation="Synthetic",
+            kind="unit",
+            id=_HUSKARL,
+            field="cost",
+            value={"food": 50},
+        )
+
+
+# ------------------------------------------------ T763: available_to, an effect sets a boolean
+
+_STABLE = "101"
+_DONJON_LINE_SELECTOR = f'[{{ kind = "building", id = "{_STABLE}" }}]'
+
+
+def _availability_effect_toml(
+    *,
+    operand: str = "false",
+    operation: str = "set",
+    condition_lines: str = "",
+    civilisation: str = "Synthetic",
+    modelled: str = "yes",
+) -> str:
+    """A synthetic effect that makes an entity available or not (the Sicilians' Donjon, Folwark or
+    Harbors shape, without transcribing a civilisation): the operation is `set`, the operand a
+    boolean."""
+    body = (
+        f'operation = "{operation}"\noperand = {operand}\n'
+        if modelled == "yes"
+        else 'reason = "synthetic"\n'
+    )
+    return f"""\
+[[effect]]
+civilisation = "{civilisation}"
+source_key = "0"
+source_text = "Can build Donjon in Dark Age, replaces Watch Tower-line"
+modelled = "{modelled}"
+field = "available_to"
+{body}{condition_lines}selector = {_DONJON_LINE_SELECTOR}
+validated_by = "synthetic"
+"""
+
+
+def _availability(
+    toml_text: str,
+    *,
+    baseline: bool = True,
+    context: effects.Context | None = None,
+    civilisation: str = "Synthetic",
+) -> object:
+    result = effects.apply_matched(
+        effects.parse_effects_toml(toml_text),
+        civilisation=civilisation,
+        kind="building",
+        id=_STABLE,
+        field="available_to",
+        value=baseline,
+        context=context,
+    )
+    assert not isinstance(result, effects.EffectNotModelled)
+    value, _applied = result
+    return value
+
+
+def test_an_unconditional_false_removes_an_entity_the_tree_offers() -> None:
+    assert _availability(_availability_effect_toml(operand="false"), baseline=True) is False
+
+
+def test_an_unconditional_true_adds_an_entity_the_tree_does_not_offer() -> None:
+    assert _availability(_availability_effect_toml(operand="true"), baseline=False) is True
+
+
+def test_a_boolean_result_is_a_bool_not_an_integer() -> None:
+    """`set` on a number returns `int(operand)`; availability must not go through that path, or the
+    answer would be `1` and `0`, equal to `True` and `False` and not them."""
+    assert type(_availability(_availability_effect_toml(operand="true"), baseline=False)) is bool
+
+
+_RESEARCHED_THALASSOCRACY = 'condition = "researched"\ncondition_technology = "1230"\n'
+
+
+@pytest.mark.parametrize(
+    ("researched", "expected"),
+    [(frozenset(), True), (frozenset({"1230"}), False)],
+    ids=["before the technology", "after the technology"],
+)
+def test_a_researched_false_applies_only_once_its_technology_is(
+    researched: frozenset[str], expected: bool
+) -> None:
+    text = _availability_effect_toml(operand="false", condition_lines=_RESEARCHED_THALASSOCRACY)
+    context = effects.Context(researched=researched)
+    assert _availability(text, baseline=True, context=context) is expected
+
+
+def test_a_researched_availability_effect_raises_without_a_context() -> None:
+    text = _availability_effect_toml(operand="false", condition_lines=_RESEARCHED_THALASSOCRACY)
+    with pytest.raises(effects.ContextRequired):
+        _availability(text)
+
+
+@pytest.mark.parametrize(("age", "expected"), [(1, True), (2, False), (3, False)])
+def test_an_age_conditioned_true_holds_at_the_ages_its_table_names(
+    age: int, expected: bool
+) -> None:
+    text = _availability_effect_toml(operand="{ 1 = true }", condition_lines='condition = "age"\n')
+    assert _availability(text, baseline=False, context=effects.Context(age=age)) is expected
+
+
+def test_an_age_table_may_state_both_booleans() -> None:
+    text = _availability_effect_toml(
+        operand="{ 1 = true, 3 = false }", condition_lines='condition = "age"\n'
+    )
+    assert _availability(text, baseline=False, context=effects.Context(age=1)) is True
+    assert _availability(text, baseline=True, context=effects.Context(age=3)) is False
+
+
+def test_a_controlled_availability_table_reads_the_count() -> None:
+    entities = '[{ kind = "building", id = "109" }]'
+    text = _availability_effect_toml(
+        operand="{ 1 = true }",
+        condition_lines=f'condition = "controlled"\ncondition_entities = {entities}\n',
+    )
+    key = frozenset({effects.SelectorEntry(kind="building", id="109")})
+    assert (
+        _availability(text, baseline=False, context=effects.Context(controlled={key: 0})) is False
+    )
+    assert _availability(text, baseline=False, context=effects.Context(controlled={key: 2})) is True
+
+
+def test_a_team_availability_effect_reaches_a_teammate() -> None:
+    text = _availability_effect_toml(operand="true", condition_lines='condition = "team"\n')
+    allied = effects.Context(team=frozenset({"Synthetic", "Franks"}))
+    assert _availability(text, baseline=False, context=allied, civilisation="Franks") is True
+
+
+def test_a_not_modelled_availability_effect_still_refuses() -> None:
+    (effect,) = effects.parse_effects_toml(_availability_effect_toml(modelled="no"))
+    result = effects.apply_matched(
+        (effect,),
+        civilisation="Synthetic",
+        kind="building",
+        id=_STABLE,
+        field="available_to",
+        value=True,
+    )
+    assert isinstance(result, effects.EffectNotModelled)
+
+
+@pytest.mark.parametrize(
+    "operand",
+    ["1", "0", "1.0", '"true"', '"yes"', "[true]", "{}", "{ a = true }"],
+)
+def test_parse_rejects_a_non_boolean_availability_operand(operand: str) -> None:
+    with pytest.raises(effects.EffectsError, match="available_to"):
+        effects.parse_effects_toml(_availability_effect_toml(operand=operand))
+
+
+@pytest.mark.parametrize("operation", ["add", "multiply", "faster"])
+def test_parse_rejects_every_operation_on_available_to_but_set(operation: str) -> None:
+    with pytest.raises(effects.EffectsError, match="available_to"):
+        effects.parse_effects_toml(_availability_effect_toml(operation=operation))
+
+
+@pytest.mark.parametrize(
+    ("operand", "condition_lines"),
+    [
+        ("{ 1 = 1 }", 'condition = "age"\n'),
+        ('{ 1 = "true" }', 'condition = "age"\n'),
+        ("{ 1 = { x = true } }", 'condition = "age"\n'),
+        (
+            "{ 1 = 1 }",
+            'condition = "controlled"\ncondition_entities = [{ kind = "building", id = "109" }]\n',
+        ),
+        (
+            "{ 1 = 1.5 }",
+            'condition = "controlled"\ncondition_entities = [{ kind = "building", id = "109" }]\n',
+        ),
+    ],
+)
+def test_parse_rejects_a_non_boolean_availability_table_value(
+    operand: str, condition_lines: str
+) -> None:
+    with pytest.raises(effects.EffectsError):
+        effects.parse_effects_toml(
+            _availability_effect_toml(operand=operand, condition_lines=condition_lines)
+        )
+
+
+def test_parse_rejects_a_boolean_where_the_field_is_numeric() -> None:
+    """Contrast: the boolean rule is `available_to`'s alone; a cost 'set' still needs a number."""
+    text = _availability_effect_toml(operand="true").replace(
+        'field = "available_to"', 'field = "cost"'
+    )
+    (effect,) = effects.parse_effects_toml(text)
+    with pytest.raises(effects.EffectsError):
+        effects.apply_matched(
+            (effect,),
+            civilisation="Synthetic",
+            kind="building",
+            id=_STABLE,
+            field="cost",
+            value={"food": 50},
+        )
