@@ -119,7 +119,10 @@ from aoe2stats_storage.repositories.base import session_scope
 if TYPE_CHECKING:
     from conftest import _FakeObjectStore
 
-pytestmark = [pytest.mark.usefixtures("environment")]
+#: `advance_erasure_clock` freezes the clock `POST /api/privacy/erase` checks its confirmation token
+#: against: `_erase` below mints the token and spends it in two requests, and a stall of ten minutes
+#: between them is a 403 on the real clock (the flake `test_erasure.py` names).
+pytestmark = [pytest.mark.usefixtures("environment", "advance_erasure_clock")]
 
 SESSION_COOKIE_NAME = "session_id"
 

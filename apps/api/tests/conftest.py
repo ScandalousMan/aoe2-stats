@@ -40,7 +40,8 @@ autouse fixture in this file would apply to all of them whether they asked for i
 from __future__ import annotations
 
 import re
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator, Callable, Iterator
+from datetime import UTC, datetime, timedelta, tzinfo
 from pathlib import Path
 from urllib.parse import quote
 
@@ -54,6 +55,7 @@ from aoe2stats_api.app import create_app
 from aoe2stats_api.deps import get_object_store, get_response_cache, get_session
 from aoe2stats_api.routers import matches as matches_router
 from aoe2stats_api.routers import players as players_router
+from aoe2stats_api.routers import privacy as privacy_router
 from aoe2stats_api.settings import get_settings
 from aoe2stats_storage.objects import ObjectNotFound
 from aoe2stats_storage.repositories.base import session_scope
@@ -134,6 +136,41 @@ if _missing_from_fixture or _missing_from_env_example:
         f"declared in .env.example but not in REQUIRED_ENV: {sorted(_missing_from_fixture)}; "
         f"in REQUIRED_ENV but not declared in .env.example: {sorted(_missing_from_env_example)}"
     )
+
+
+@pytest.fixture
+def advance_erasure_clock(monkeypatch: pytest.MonkeyPatch) -> Callable[[timedelta], None]:
+    """Freezes the clock `routers/privacy.py` reads and returns the only thing that moves it.
+
+    The erasure confirmation token is stamped by `GET /api/privacy/erase` and checked by
+    `POST /api/privacy/erase` against `_ERASURE_CONFIRMATION_TTL` (10 minutes), both through
+    `datetime.now(UTC)` in that module. On the real clock a test's `GET` and `POST` are only
+    milliseconds apart, but nothing makes that so: a loaded or suspended machine can put more than
+    ten minutes between them and the production check, correctly, answers 403 (a 2026-10-20 whole-
+    workspace run did exactly that to a test holding one token across two `POST`s). Frozen at the
+    real instant of setup, issuance and verification read the same time however long the process
+    stalls, and calling the returned function is the only way time passes, so expiry is exercised
+    on purpose instead of by accident.
+
+    Only that module's `datetime` name is swapped, for a subclass whose `now()` answers the frozen
+    instant (`datetime` is a C type and cannot be patched attribute by attribute; the technique
+    `test_players_routes.py` uses on `ratelimit`). `security.py`'s session expiry and the
+    database's own `now()` keep running on the real clock, `monkeypatch` puts the original name
+    back after the test, and the production TTL, its bounds and its 403 are untouched.
+    """
+    frozen = [datetime.now(UTC)]
+
+    class _ClockedDateTime(datetime):
+        @classmethod
+        def now(cls, tz: tzinfo | None = None) -> datetime:
+            return frozen[0] if tz is None else frozen[0].astimezone(tz)
+
+    monkeypatch.setattr(privacy_router, "datetime", _ClockedDateTime)
+
+    def advance(delta: timedelta) -> None:
+        frozen[0] += delta
+
+    return advance
 
 
 @pytest.fixture(autouse=True)
