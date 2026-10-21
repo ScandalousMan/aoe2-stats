@@ -153,7 +153,8 @@ def advance_erasure_clock(monkeypatch: pytest.MonkeyPatch) -> Callable[[timedelt
     check with the same response. Frozen at the real instant of setup, issuance and verification
     read the same time whichever of the two happened, and calling the returned function is the only
     way time passes, so both bounds are exercised on purpose instead of by accident
-    (`test_erasure.py`'s expiry and backward-step tests pin the TTL as a literal ten minutes).
+    (`test_erasure.py`'s at-TTL and past-TTL tests pin the TTL as a literal ten minutes, and its
+    backward-step test pins the lower bound).
 
     Only that module's `datetime` name is swapped, for a subclass whose `now()` answers the frozen
     instant (`datetime` is a C type and cannot be patched attribute by attribute; the technique
