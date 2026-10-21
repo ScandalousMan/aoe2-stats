@@ -76,11 +76,14 @@ from aoe2stats_storage.models import (
 from aoe2stats_storage.models import Session as UserSession
 from aoe2stats_storage.objects import replay_object_key, retained_recording_object_key
 
-#: `advance_erasure_clock` (`conftest.py`) is requested for every test in the file, not only the two
-#: that move it: each one that mints a token with `GET` and spends it with `POST` was one stall of
-#: ten minutes away from a 403 on the real clock (the 2026-10-20 whole-workspace flake of
-#: `test_repeated_refusals_keep_one_pending_row_with_the_latest_outcome`), and a test written later
-#: inherits the frozen clock instead of having to remember it.
+#: `advance_erasure_clock` (`conftest.py`) is requested for every test in the file, not only the
+#: three that move it: each one that mints a token with `GET` and spends it with `POST` fails with a
+#: 403 if the token's age on the real clock leaves its two bounds, and a whole-workspace run on
+#: 2026-10-20 saw that 403 in `test_repeated_refusals_keep_one_pending_row_with_the_latest_outcome`.
+#: The 403 was observed, its cause is inferred (an age over the TTL from a stall or suspend, or a
+#: backward wall-clock step), and the frozen clock covers both. A test written later inherits it
+#: instead of having to remember it. Never assert an ordering between an application-clock column
+#: (`completed_at`) and a database-clock one (`requested_at`) here: see the fixture's docstring.
 pytestmark = [pytest.mark.usefixtures("environment", "advance_erasure_clock")]
 
 SESSION_COOKIE_NAME = "session_id"
@@ -819,6 +822,14 @@ async def test_erasure_after_a_refusal_completes_the_earlier_pending_row(
     assert any((row.outcome or "").startswith("resolved by the erasure of ") for row in rows)
 
 
+#: The TTL as these tests pin it: ten minutes, written out here and not read back from
+#: `privacy._ERASURE_CONFIRMATION_TTL`, so a TTL widened to a day or narrowed to nine minutes fails
+#: them instead of moving with the value under test. The figure is the module's own rationale for
+#: the constant ("minutes, not hours", the CSRF-state precedent in `security.CSRF_STATE_TTL`); no
+#: spec sets it.
+_PINNED_CONFIRMATION_TTL = timedelta(minutes=10)
+
+
 async def test_a_token_is_still_accepted_by_a_second_post_exactly_at_the_ttl(
     client: TestClient,
     db_session: AsyncSession,
@@ -826,15 +837,15 @@ async def test_a_token_is_still_accepted_by_a_second_post_exactly_at_the_ttl(
     advance_erasure_clock: Callable[[timedelta], None],
 ) -> None:
     """The contrast to the expiry test below: one token across two `POST`s, the second spent
-    exactly `_ERASURE_CONFIRMATION_TTL` after the `GET`, is accepted both times (the bound is
-    inclusive). Both are refused for size, 503, which is what shows the token itself passed."""
+    exactly ten minutes after the `GET`, is accepted both times (the bound is inclusive). Both are
+    refused for size, 503, which is what shows the token itself passed."""
     monkeypatch.setattr(privacy, "_ERASURE_WAVE_BUDGET", 2)
     await _seed_account_for_wave_budget(client, db_session, monkeypatch, steam="76561197960280034")
     token = _get_confirmation_token(client)
 
     first = client.post(_ERASE_PATH, json={"confirmation_token": token})
     assert first.status_code == 503, f"Got {first.status_code}: {first.text}"
-    advance_erasure_clock(privacy._ERASURE_CONFIRMATION_TTL)
+    advance_erasure_clock(_PINNED_CONFIRMATION_TTL)
     second = client.post(_ERASE_PATH, json={"confirmation_token": token})
     assert second.status_code == 503, f"Got {second.status_code}: {second.text}"
 
@@ -845,9 +856,9 @@ async def test_a_token_past_the_ttl_is_refused_and_erases_nothing(
     monkeypatch: pytest.MonkeyPatch,
     advance_erasure_clock: Callable[[timedelta], None],
 ) -> None:
-    """Expiry is not disabled by the frozen clock: one microsecond past the TTL the same token that
-    was accepted a moment earlier is refused with the undifferentiated 403, and the account, its
-    objects and its single pending refusal row are exactly as the first `POST` left them."""
+    """Expiry is not disabled by the frozen clock: one microsecond past ten minutes the same token
+    that was accepted a moment earlier is refused with the undifferentiated 403, and the account,
+    its objects and its data-request rows are exactly as they were (none was written)."""
     monkeypatch.setattr(privacy, "_ERASURE_WAVE_BUDGET", 3)
     user, store, keys = await _seed_account_for_wave_budget(
         client, db_session, monkeypatch, steam="76561197960280035"
@@ -855,7 +866,7 @@ async def test_a_token_past_the_ttl_is_refused_and_erases_nothing(
     user_id = user.id
     token = _get_confirmation_token(client)
 
-    advance_erasure_clock(privacy._ERASURE_CONFIRMATION_TTL + timedelta(microseconds=1))
+    advance_erasure_clock(_PINNED_CONFIRMATION_TTL + timedelta(microseconds=1))
     expired = client.post(_ERASE_PATH, json={"confirmation_token": token})
 
     assert expired.status_code == 403, f"Got {expired.status_code}: {expired.text}"
@@ -875,6 +886,40 @@ async def test_a_token_past_the_ttl_is_refused_and_erases_nothing(
     fresh = _get_confirmation_token(client)
     accepted = client.post(_ERASE_PATH, json={"confirmation_token": fresh})
     assert accepted.status_code == 200, f"Got {accepted.status_code}: {accepted.text}"
+
+
+async def test_a_token_dated_in_the_future_is_refused_and_erases_nothing(
+    client: TestClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    advance_erasure_clock: Callable[[timedelta], None],
+) -> None:
+    """The check's other bound, `timedelta(0) <=`: a clock that steps back (an NTP or wake
+    correction) after the `GET` leaves the token younger than nothing, and one microsecond of it
+    is refused with the same undifferentiated 403. A token cannot be spent before it was minted."""
+    monkeypatch.setattr(privacy, "_ERASURE_WAVE_BUDGET", 3)
+    user, store, keys = await _seed_account_for_wave_budget(
+        client, db_session, monkeypatch, steam="76561197960280036"
+    )
+    user_id = user.id
+    token = _get_confirmation_token(client)
+
+    advance_erasure_clock(-timedelta(microseconds=1))
+    refused = client.post(_ERASE_PATH, json={"confirmation_token": token})
+
+    assert refused.status_code == 403, f"Got {refused.status_code}: {refused.text}"
+    assert refused.json()["error"]["code"] == "confirmation_token_invalid"
+    assert store.deleted == []
+    assert sorted(await store.list_keys()) == sorted(keys)
+    db_session.expire_all()
+    assert await db_session.get(User, user_id) is not None
+    assert (
+        await db_session.execute(
+            select(func.count())
+            .select_from(DataRequest)
+            .where(DataRequest.kind == DataRequestKind.ERASURE)
+        )
+    ).scalar_one() == 0, "a token from the future must not even record a request"
 
 
 async def test_erasure_exactly_at_the_wave_budget_is_erased_as_before(
