@@ -3944,7 +3944,7 @@ focus-visibility and touch-footprint suites run them held as well as the reduced
 scenarios found are defects, not harness gaps, so they are not filed in this register. T750, fixed: `Dialog`'s Tab
 trap counted a disabled button as a stop, so while a dialog's request was in flight and its secondary action disabled
 (`/dashboard (unlink in flight)`, `/privacy (erasure in flight)`) Tab left the dialog; both walks now pass every keyboard
-assertion with no `knownDefects` marker (CI run 39377563131, #182 at 7274087e), and Escape leaves them open. T751: the erasure
+assertion with no `knownDefects` marker (CI run 39495444917, #182 at 9ada830f), and Escape leaves them open. T751: the erasure
 dialog's confirm button is natively `disabled` while it is focused during a re-mint, and `/privacy (erasure re-mint in
 flight)`'s `prepare` moves focus back to the dialog heading after the press, so that scenario's keyboard result does not
 judge where the press left focus. Item 13 stays partly met until T751 lands. The row is deleted rather than

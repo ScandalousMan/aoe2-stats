@@ -3,7 +3,8 @@
 // The rule restates the one the route keyboard walk uses (`FOCUSABLE_SELECTOR` plus its
 // `checkVisibility` filter in `tests/visual/fixtures/keyboard-walk.ts`) because a package may not
 // import from `tests/`. `tests/visual/fixtures/focusable-rule.test.ts` renders one page of
-// candidates in Chromium and pins the two rules element by element, so they cannot drift.
+// candidates in Chromium and pins the two rules on each one; a branch added to either rule needs a
+// candidate there before the pin can see it.
 // It is stricter than the walk in two places, both because a browser never focuses the element:
 // a control inside a disabled `fieldset` (`:disabled`) and anything inside an `inert` subtree.
 
