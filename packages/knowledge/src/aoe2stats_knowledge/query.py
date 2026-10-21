@@ -13,11 +13,11 @@ explicitly: it is not civilisation-qualified at all.
 
 **Six civilisations are modelled today; every other one still gaps.** research.md D5's
 conservative rule: a civilisation whose bonus set is not modelled refuses every
-civilisation-qualified cost and time, because which fields its bonuses touch is exactly what is
-not known. T645 populated `civilisations_modelled` on both promoted fixtures
-(`aoe2techtree-180059`, `aoe2techtree-177723-test`); T652m (2026-09-23) corrected that table to
-the six civilisations actually in the two committed recordings — Franks, Teutons, Persians,
-Saracens, Malians, Tatars — so a query naming one of those six now proceeds past step 1
+civilisation-qualified query (every field, not only cost and time), because which fields its
+bonuses touch is exactly what is not known. T645 populated `civilisations_modelled` on both
+promoted fixtures (`aoe2techtree-180059`, `aoe2techtree-177723-test`); T652m (2026-09-23) corrected
+that table to the six civilisations actually in the two committed recordings — Franks, Teutons,
+Persians, Saracens, Malians, Tatars — so a query naming one of those six now proceeds past step 1
 into real effect application (T644, below). A civilisation outside that set still gaps at the same
 check, and that remains the correct, honest behaviour research.md D5 requires, not a shortcut:
 returning a baseline value for an unmodelled civilisation would be exactly the FR-038 substitution
@@ -124,8 +124,8 @@ from typing import Any, Final
 
 from aoe2stats_knowledge import effects, snapshot
 
-# T652u: re-exported so a caller building match state for `cost`/`production_time` names it as
-# `query.Context`, this module's own public surface (contracts/knowledge-base.md, "The query
+# T652u: re-exported so a caller building match state for a query that accepts `context` names it
+# as `query.Context`, this module's own public surface (contracts/knowledge-base.md, "The query
 # surface": "context is the match state a conditional effect needs"), rather than reaching into
 # `effects.py` for it. `Context` is a plain dataclass, not a function, so `test_structure.py`'s
 # `_public_module_functions` walk (which filters to functions defined in the sweeping module

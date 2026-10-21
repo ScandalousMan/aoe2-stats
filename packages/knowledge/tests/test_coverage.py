@@ -282,12 +282,12 @@ class _RecordingBlocker:
 #: FR-022b's closed list for recording 1: the empty tuple. T652o (2026-09-23) made this
 #: recording's own Malians University Team Bonus a real blocker once the third review found it
 #: touched production_time and had been left untranscribed; T652u (2026-09-28) closed it again —
-#: "Universities work +80% faster" is `condition = "team"`, `modelled = "yes"` now, and
-#: `coverage.coverage` never builds the `effects.Context` that would let it actually apply one, so
-#: reaching it raises `effects.ContextRequired`, caught as "modelled, not a gap" — recording 1's
-#: Malians participant researching four University technologies (47, 50, 93, 140) is exactly as
-#: much complete knowledge as before the third review found the transcription hole, just for a
-#: different reason: the bonus is a rule now, not an unwritten refusal.
+#: "Universities work +80% faster" is `condition = "team"`, `modelled = "yes"` now, and (since
+#: T652v) `coverage.coverage` supplies the team that decides it, so the bonus is applied for real,
+#: not merely counted as modelled — recording 1's Malians participant researching four University
+#: technologies (47, 50, 93, 140) is exactly as much complete knowledge as before the third review
+#: found the transcription hole, just for a different reason: the bonus is a rule now, not an
+#: unwritten refusal.
 _RECORDING_1_BLOCKERS: tuple[_RecordingBlocker, ...] = ()
 
 #: The flattened union of recording 1's blockers — the empty set, once again.
@@ -339,8 +339,8 @@ _TWO_BUILDING_IDS_ARE_ABSENT_FROM_THE_VENDORED_PACK = _RecordingBlocker(
 #: repository owner's arbitration of the fourth review) closed the other three** — Franks' Castle
 #: cost (age-scaled), Franks' Chivalry (conditional on research) and Persians' Town Center/Dock
 #: work speed (age-scaled) are all `modelled = "yes"` now, each carrying the `condition` that used
-#: to be the reason each one refused; a query with no `effects.Context` (which is all
-#: `coverage.coverage` ever builds) raises `effects.ContextRequired`, caught in its own loop as
+#: to be the reason each one refused; a query reaching one with no age or research state (the pass
+#: supplies only the team, T652v) raises `effects.ContextRequired`, caught in its own loop as
 #: "modelled, not a gap" — the same closure recording 1's own blocker got. The building-490/673
 #: blocker is untouched: it was never a civilisation bonus (see its own comment above), so nothing
 #: T652u re-modelled could have closed it.
@@ -466,9 +466,8 @@ def test_each_committed_recording_reports_zero_blocking_gaps(
     review's own finding that it touches production_time and had been left untranscribed) and
     T652u (2026-09-28, the repository owner's arbitration of the fourth review: "a conditional
     bonus is a rule, and is modelled") — it is `condition = "team"`, `modelled = "yes"` now, and
-    `coverage.coverage` never builds the `effects.Context` that would let it actually compute a
-    value, so reaching it raises `effects.ContextRequired`, caught in `coverage.py`'s own loop as
-    "modelled, not a gap" (contracts/knowledge-base.md, "Civilisation qualification"). Recording
+    (since T652v) `coverage.coverage` supplies the team that decides it, so the bonus is applied
+    for real and is no gap (contracts/knowledge-base.md, "Civilisation qualification"). Recording
     1's Malians participant still researches four University technologies (47, 50, 93, 140); none
     of them gap any more.
 

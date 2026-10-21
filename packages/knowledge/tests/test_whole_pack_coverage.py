@@ -466,7 +466,7 @@ def test_the_open_rows_are_blocking_gaps_by_the_register_not_by_this_module() ->
                 )
 
 
-def test_a_field_no_register_datum_requires_is_not_blocking() -> None:
+def test_a_field_only_a_blocked_register_datum_requires_is_informational() -> None:
     """The contrast: the check above can fail. `available_to` is required only by a blocked datum,
     so a gap on it is informational, and a tuple naming it would be refused."""
     gap = gaps.KnowledgeGap(

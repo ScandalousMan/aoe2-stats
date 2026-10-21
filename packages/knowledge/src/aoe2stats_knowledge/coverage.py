@@ -16,16 +16,18 @@ branch here that catches a gap and substitutes a value, a default, an average or
 answer for it — a query either resolves for real or its refusal is recorded, and the loop moves on
 to the next field.
 
-**T652u: a modelled conditional effect (`cost`/`production_time` only) gated on the age or on a
-researched technology is not a gap either, even though this pass never builds that half of
-`query.Context`.** Reaching such an effect with no context raises `effects.ContextRequired`
+**T652u: a modelled conditional effect on any field that accepts `context` (`cost`,
+`production_time`, `produced_at` and `available_to`) gated on the age, on a researched technology or
+on a controlled count is not a gap either, even though this pass never builds those parts of
+`query.Context`.** Reaching such an effect with no such state raises `effects.ContextRequired`
 (contracts/knowledge-base.md, "The query surface") — this pass catches that directly, in the loop
 below, and treats it as no gap at all: contracts/knowledge-base.md, "Civilisation qualification" is
 explicit that "a conditional effect that is modelled is complete knowledge, so the coverage pass
-does not report it as a gap. The pass supplies no age or research state, so it treats a query that
-raises for want of one as modelled." Building that context — the age a building was constructed in,
-which technologies a player has researched — stays out of scope: neither is observable from a
-canonical stream alone without a reconstruction this feature does not do (007's territory).
+does not report it as a gap. The pass supplies no age, research or controlled-count state, so it
+treats a query that raises for want of one as modelled." Building that context — the age a building
+was constructed in, which technologies a player has researched — stays out of scope: neither is
+observable from a canonical stream alone without a reconstruction this feature does not do (007's
+territory).
 
 **T652v: the pass does build the team half of `query.Context`, from the canonical stream's own
 `match-started` event.** Each participant's `team` (`ParticipantEntry.team`, the recording's own

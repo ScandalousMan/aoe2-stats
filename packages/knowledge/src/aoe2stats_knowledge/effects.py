@@ -513,9 +513,10 @@ def producing_building_references(parsed: Sequence[Effect]) -> tuple[str, ...]:
 class Context:
     """T652u: the match state a **modelled** conditional effect (`Effect.condition`) needs to
     decide whether it holds right now (contracts/knowledge-base.md, "The query surface": "the age,
-    the technologies researched, and the civilisations on the player's team, the player's own
-    included"). Which condition held at a given moment is a question about the match, answered by
-    the caller — never guessed by this package (research.md D5's amendment).
+    the technologies researched, the civilisations on the player's team, the player's own included,
+    and how many of a set of entities the player controls"). Which condition held at a given moment
+    is a question about the match, answered by the caller — never guessed by this package
+    (research.md D5's amendment).
 
     Every field is independently optional (`None`, not an empty collection) so a caller supplying
     some match state but not all of it still raises `ContextRequired` exactly at the piece it left
