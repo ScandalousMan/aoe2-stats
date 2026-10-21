@@ -211,7 +211,7 @@ silent substitution FR-027 and FR-038 both prohibit, moved from a value to a ver
 by hand from the English strings that ship in the MIT pack, each carrying the verbatim sentence it
 was transcribed from, the transcriber's reading of its scope, and its validation. The first snapshot
 models every civilisation that appears in a committed reference recording. For any other
-civilisation, a civilisation-qualified cost or time query records a gap and returns nothing.
+civilisation, a civilisation-qualified query records a gap and returns nothing.
 
 **Why this is forced, not chosen.** No lawful, vendorable source carries civilisation-specific
 values: aoe2techtree exports the baseline civilisation only, and its per-civilisation metadata is
@@ -224,8 +224,8 @@ else surface as a gap.
 
 **The conservative rule, stated once.** For a civilisation whose bonus set is not modelled, the
 knowledge base cannot know _which_ fields a bonus touches, so it refuses **every**
-civilisation-qualified cost and time for that civilisation. Coverage therefore grows by whole
-civilisations, and the aggregate gap report (FR-039) is the backlog.
+civilisation-qualified query for that civilisation, whatever its field. Coverage therefore grows by
+whole civilisations, and the aggregate gap report (FR-039) is the backlog.
 
 **A conditional bonus is a rule, and is modelled.** A bonus whose magnitude depends on the age, on
 a technology the player has researched, or on being on the owner's team carries that condition, and

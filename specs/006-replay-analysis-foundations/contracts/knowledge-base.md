@@ -10,7 +10,8 @@ packages/knowledge/
 ├── packs/<name>/              one vendored pack per pinned revision: source files at one commit
 │                              + MANIFEST.json + LICENCE.md
 └── snapshots/<label>/         one directory per snapshot, written once — under a size budget
-    ├── snapshot.toml          identity, validation record, civilisations modelled, `supersedes`
+    ├── snapshot.toml          identity, validation record, civilisations modelled, `supersedes`,
+    │                          `normaliser_version`
     ├── rules.json             normalised entities — the queryable body
     ├── effects.toml           hand-transcribed civilisation effects
     ├── aliases.toml           optional: identifiers the pack does not name (FR-022d)
@@ -39,6 +40,25 @@ reads a local checkout of the source at a stated commit and writes the pack. A s
 normalises a pack into `rules.json`. Neither step touches the network; the script's header carries
 the same warning `scripts/ops/sync_map_thumbnails.py` does, and states that automating the download
 is the moment a provider becomes mandatory (FR-032).
+
+**The normaliser has versions, and a snapshot names the one it was derived with** (T763). A change
+to the normaliser's output must not change what an installed snapshot re-derives to, so
+`snapshot.toml` may carry `normaliser_version`, an integer the normaliser has, and absent means the
+first. The first version writes `rules.json`'s `civilisations` as a sorted list of the pack's
+civilisation names. The second writes it as a table from each name to that civilisation's own tree:
+exactly three lists, `unit`, `building` and `technology`, each of identifier strings sorted by
+number, read from the `Unit`, `Building` and `Tech` lists of the pack's civilisation table. Those
+lists name an upgraded unit, not the technology that produces it, so an upgrade technology is also
+a member when any unit the pack's upgrade table keys it under is in the civilisation's `Unit` list;
+*any*, because the table keys eight technology ids under more than one unit and a civilisation can
+have several of them (measured on both vendored packs, 112 and 117 pairs of civilisation and
+technology; Armenians' units 21, 529 and 2627 all key technology 34), while the first version's
+owner table keeps only the last key, so reading it drops members. Nothing else in `rules.json`
+differs between the versions. The loader refuses, with `SnapshotError`, a version the normaliser
+does not have, a second-version file whose `civilisations` is not such a table or whose id lists
+are not sorted by number with each identifier once, and a first-version file whose `civilisations`
+is one. The re-derivation test derives each installed snapshot under the version it names, and
+every installed snapshot still re-derives byte for byte.
 
 **Several packs, one per pinned revision; a newer one goes beside, never over.** A promoted snapshot
 is immutable (FR-025) and must stay re-derivable from the pack it was imported from, so a newer
@@ -115,21 +135,56 @@ def cost(entity, *, civilisation, context=None) -> Answer[Cost] | KnowledgeGap
 def production_time(entity, *, civilisation, context=None) -> Answer[Duration] | KnowledgeGap
 def age_requirement(entity, *, civilisation) -> Answer[Age] | KnowledgeGap
 def prerequisites(entity, *, civilisation) -> Answer[Sequence[EntityRef]] | KnowledgeGap
-def produced_at(entity, *, civilisation) -> Answer[EntityRef] | KnowledgeGap
-def available_to(entity, *, civilisation) -> Answer[bool] | KnowledgeGap
+def produced_at(entity, *, civilisation, context=None) -> Answer[Sequence[EntityRef]] | KnowledgeGap
+def available_to(entity, *, civilisation, context=None) -> Answer[bool] | KnowledgeGap
 def name(entity) -> Answer[str] | KnowledgeGap
 ```
 
 - `prerequisites` answers a gap with cause `field-absent` for every entity the snapshot names: the
   one lawful source carries display links, not the game's prerequisites (research.md D3, T652y).
   The signature stays, so a future source changes no caller.
+- **`produced_at` answers an ordered sequence of buildings** (FR-022e, T764), each an `EntityRef` of
+  kind `building` in the entity's own build. The pack's building comes first, or nothing when the
+  pack places the entity at no building; each building an effect adds follows, in the order the
+  effects apply, which is file order; a building already in the sequence is not added again, so
+  every building appears once and an addition of the pack's own building changes nothing. An
+  entity no effect touches answers the pack's building alone. An addition for one civilisation
+  never reaches another, except under the `team` condition, whose addition reaches every civilisation
+  on the owner's team (step 3 of "Civilisation qualification"). It takes any condition `context` can
+  decide (`researched`, `age`, `controlled`, `team`), so `produced_at` accepts `context` as `cost`
+  does and raises as they do without the input a conditional addition needs.
+- **`available_to` answers the civilisation's own tree, then applies effects** (T763). Where
+  `rules.json` carries the trees (the second version, "On disk"), the baseline is whether the
+  entity is in the queried civilisation's `unit`, `building` or `technology` list, by its kind; a
+  civilisation the trees do not name, though the snapshot models it, is a gap with cause
+  `field-absent` and never a default. An entity outside the tree answers `false`, and that is an
+  answer, not a gap. **A first-version snapshot makes no membership claim.** Its `rules.json`
+  carries no tree, so `available_to` answers `true` for any entity it resolves, exactly as it did
+  before the tree existed: what an installed snapshot's identity pins includes what it answers
+  (SC-005), so a published analysis reproduces. Nothing on an installed snapshot changes, and a
+  consumer that needs membership reads a snapshot derived under the second version. An effect then
+  sets the answer, on either version, under any condition `context` can decide, so `available_to`
+  accepts `context` as `cost` does and raises as they do without the input a conditional effect
+  needs.
 - `civilisation` is **keyword-only and required** on every rule query. There is no way to ask for a
   generic value, so there is no way to be handed one (FR-023).
-- `context` is the match state a conditional effect needs: the age, the technologies researched, and
-  the civilisations on the player's team, the player's own included. A query whose matching effects
-  are unconditional ignores it. A query that reaches a conditional effect without the input that
-  decides it **raises**, as omitting `civilisation` does: the caller asked for a value only the
-  match can fix, and neither the baseline nor a guessed age is an answer.
+- `context` is the match state a conditional effect needs: the age, the technologies researched,
+  the civilisations on the player's team, the player's own included, and how many of a set of
+  entities the player controls. A query whose matching effects are unconditional ignores it. A
+  query that reaches a conditional effect without the input that decides it **raises**, as omitting
+  `civilisation` does: the caller asked for a value only the match can fix, and neither the baseline
+  nor a guessed age is an answer.
+- **The controlled count is keyed by the entities counted** (FR-022e). `Context.controlled` maps a
+  set of entity references, each a kind and an identifier, to the number of them the player
+  controls, summed over the set: "Town Center or Castle controlled" is one entry whose key is both
+  buildings. A `controlled` effect reads the entry whose key equals its own `condition_entities`
+  exactly, in any order. A count stated for another set never answers it, so two such effects on
+  different sets are never fed one number; an effect whose set has no entry **raises**, and the
+  message names the entities it needs. A count that is not a non-negative whole number is a
+  `ValueError`, a `bool` included. Which entities count as controlled at the moment of the query is
+  the caller's decision, never the knowledge base's. The effect takes the operand of the highest key
+  not above the count: above the highest key that key's operand (a stated maximum), between two keys
+  the lower one, below the lowest key nothing, and the effect does not apply.
 - `Answer` carries the value, the snapshot identity, the source the stored value came from, and the
   effects applied, in order (US2 scenario 1).
 - The union has **no third branch**. No function in the package returns a bare value, accepts a
@@ -140,23 +195,46 @@ def name(entity) -> Answer[str] | KnowledgeGap
 
 In order, for a rule query qualified by civilisation _c_:
 
-1. _c_ not in `civilisations_modelled` → gap, cause `civilisation-not-modelled`. Every cost and time
-   for _c_ refuses, because which fields a bonus touches is exactly what is not known. The same
-   holds for any civilisation in `context.team`: a teammate's team bonus touches _c_, so an
-   unmodelled teammate refuses every cost and time for _c_, and the gap names the teammate.
+1. _c_ not in `civilisations_modelled` → gap, cause `civilisation-not-modelled`. Every field for
+   _c_ refuses, because which fields a bonus touches is exactly what is not known. The same holds
+   for any civilisation in `context.team`, on every query that accepts `context` (`cost`,
+   `production_time`, `produced_at` and `available_to`): a teammate's team bonus could touch any of
+   those fields of _c_, so an unmodelled teammate refuses each of them for _c_, and the gap names
+   the teammate. `age_requirement` and `prerequisites` take no `context`, so the team never reaches
+   them.
 2. An effect for _c_ touches this entity and field and is `modelled = no` → gap, cause
    `effect-not-modelled`.
 3. Otherwise apply each matching effect whose condition holds in `context`, in file order, and
    return the adjusted value with the effects listed. A team effect matches every civilisation on
    the owner's team, not the owner alone.
 
+An effect may add a producing building (T764): on the field `produced_at` the one operation is
+`add`, and its operand is one building identifier, a string spelled as `rules.json` keys it (under
+an `age` or `controlled` condition, a table whose values are such strings). A malformed operand and
+any other operation are refused when the file is parsed. The loader then refuses, with
+`SnapshotError`, an added identifier that is neither a building `rules.json` names nor a building
+`aliases.toml` states, because only the loader holds both files.
+
+An effect may set availability (T763): on the field `available_to` the one operation is `set`, and
+its operand is a boolean, `true` or `false` (under an `age` or `controlled` condition, a table whose
+values are booleans). A number, a string, a list and any other operation are refused when the file
+is parsed, and the answer is that boolean, not an integer. The shape expresses a substitution, an
+unlock and a removal: a civilisation that replaces a building with another sets the one `false` and
+the other `true`, and one that unlocks a building on researching a technology conditions the
+`true` on `researched`. The coverage pass passes `context` to `available_to` as it does to `cost`,
+`production_time` and `produced_at`, so an availability effect that needs age, research or a
+controlled count raises there and counts as modelled, as below, and an unmodelled teammate refuses
+the field (step 1, above).
+
 A conditional effect that is modelled is complete knowledge, so the coverage pass does not report it
-as a gap. The pass supplies no age or research state, so it treats a query that raises for want of
-one as modelled. **T652v**: the pass does supply each participant's real team, read from the
-recording's own header — every ally's civilisation, the participant's own included, never a guess —
-so a team-conditioned effect is applied for real rather than merely treated as modelled, and an
-unmodelled ally is what gaps every cost and time query for that ally's teammates (step 1, above), not
-only the query naming the unmodelled civilisation directly.
+as a gap. The pass supplies no age, research or controlled-count state, so it treats a query that
+raises for want of one as modelled. **T652v**: the pass does supply each participant's real team,
+read from the recording's own header — every ally's civilisation, the participant's own included,
+never a guess — so a team-conditioned effect is applied for real rather than merely treated as
+modelled, and an unmodelled ally is what gaps every `cost`, `production_time`, `produced_at` and
+`available_to` query for that ally's teammates (step 1, above), not only the query naming the
+unmodelled civilisation directly. Passing `team` for `produced_at` and `available_to` changed what
+the pass publishes for such a match, so the analytics version names it (`coverage@2`, FR-042).
 
 `name` is not civilisation-qualified and an unresolvable identifier degrades to the bare identifier
 at the presentation boundary, as 003 FR-043a already requires — it never gaps an analysis.
