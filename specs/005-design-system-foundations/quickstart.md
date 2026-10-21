@@ -1345,8 +1345,8 @@ is run 39205473225, the `visual` job of #178 at f3b939fd (2026-10-19): its app-r
 Linux Chromium, the 2194 above plus the 22 of `tests/visual/app-routes.spec.ts`, the two `knownDefects` scenarios held
 to their message among them. The CI run that backs T750's half of the verdict is run 39495444917, the `visual` job
 of #182 at 9ada830f (2026-10-20): its app-route step passed 2226 tests on Linux Chromium, the 2216 above plus T750's
-seven planted cases (`open-surface.test.ts`, `focusable-rule.test.ts` and one `suite-scenarios.test.ts` pin, all under
-`tests/visual/fixtures/`), with both in-flight dialog walks carrying no marker, read by the walk as having an
+ten tests under `tests/visual/fixtures/` (seven in `open-surface.test.ts`, two in `focusable-rule.test.ts`, one net in
+`suite-scenarios.test.ts`), with both in-flight dialog walks carrying no marker, read by the walk as having an
 unavailable secondary action, as their scenarios declare, and passing every keyboard assertion.
 
 ### Item 15's general-reviewer half — outstanding, no pull request covers this head
