@@ -87,6 +87,9 @@ interface DialogOptions {
   actionsFlipped?: boolean
   /** Escape leaves the dialog open (the decided behaviour while the secondary is disabled). */
   escapeKeepsOpen?: boolean
+  /** Focus starts on the control with this id instead of the heading, as in the erasure dialog's
+   * in-flight scenarios, where the press that started the request leaves focus on Confirm. */
+  startOn?: 'ack' | 'confirm' | 'cancel'
 }
 
 function dialogPage(options: DialogOptions = {}): string {
@@ -123,7 +126,9 @@ function dialogPage(options: DialogOptions = {}): string {
           event.preventDefault(); controls[controls.length - 1].focus()
         }
       })
-      if (!${Boolean(options.focusStaysOnPage)}) document.getElementById('h').focus()
+      if (!${Boolean(options.focusStaysOnPage)}) {
+        document.getElementById(${JSON.stringify(options.startOn ?? 'h')}).focus()
+      }
     </script>`
 }
 
@@ -287,6 +292,52 @@ test.describe('open-surface keyboard guard, planted pages', () => {
     const walk = await walkDialog(page, { escapeKeepsOpen: true })
     expect(walk.secondaryUnavailable).toBe(false)
     expect(() => assertSurfaceKeyboard(walk, 'planted')).toThrow(/Escape did not close the dialog/)
+  })
+
+  // N5 (T751): the walk starts from wherever focus is inside the dialog, not from the heading. The
+  // in-flight erasure scenarios start on the busy Confirm button, which the old [0, 1, ..., 0]
+  // contract accepted only because Confirm happened to be the last stop.
+  test('a dialog walked from its heading records no start stop', async ({ page }) => {
+    const walk = await walkDialog(page)
+    expect(walk.startId).toBeNull()
+  })
+
+  test('control: a dialog walked from its first control passes, every item once from the next, then a wrap', async ({
+    page,
+  }) => {
+    const walk = await walkDialog(page, { startOn: 'ack' })
+    expect(walk.startId).toBe('0')
+    expect(walk.steps.map((step) => step.kbdId)).toEqual(['1', '2', '0', '1'])
+    assertSurfaceKeyboard(walk, 'planted')
+  })
+
+  test('control: a dialog walked from a middle control passes', async ({ page }) => {
+    const walk = await walkDialog(page, { startOn: 'confirm' })
+    expect(walk.startId).toBe('1')
+    expect(walk.steps.map((step) => step.kbdId)).toEqual(['2', '0', '1', '2'])
+    assertSurfaceKeyboard(walk, 'planted')
+  })
+
+  test('control: a dialog walked from its last control passes', async ({ page }) => {
+    const walk = await walkDialog(page, { startOn: 'cancel' })
+    expect(walk.startId).toBe('2')
+    assertSurfaceKeyboard(walk, 'planted')
+  })
+
+  test('a dialog walked from a middle control that does not trap Tab still fails', async ({
+    page,
+  }) => {
+    const walk = await walkDialog(page, { startOn: 'confirm', noTrap: true })
+    expect(() => assertSurfaceKeyboard(walk, 'planted')).toThrow(/focus left the dialog|visited/)
+  })
+
+  test('a dialog walked from a middle control that does not trap Shift+Tab still fails', async ({
+    page,
+  }) => {
+    const walk = await walkDialog(page, { startOn: 'confirm', noReverseTrap: true })
+    expect(() => assertSurfaceKeyboard(walk, 'planted')).toThrow(
+      /moving backwards from the first item did not wrap to the last/,
+    )
   })
 
   test('a dialog that opens without moving focus into it fails', async ({ page }) => {

@@ -234,7 +234,7 @@ Verifiable from a screenshot; this is the list `visual-reviewer` works through.
 
 **Loading**
 
-- [ ] The pressed button shows a spinner, a present-participle label and the same width as at rest.
+- [ ] The pressed button shows a spinner beside a present-participle label ("Taking you to Steam…").
 - [ ] The `returning` variant shows skeleton blocks whose footprint matches the default layout —
       overlaying the two screenshots shows no reflow — and contains no `0` or placeholder numeral.
 

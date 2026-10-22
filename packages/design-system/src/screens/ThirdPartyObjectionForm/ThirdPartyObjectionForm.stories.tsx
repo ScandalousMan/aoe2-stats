@@ -31,7 +31,7 @@ export const Idle: Story = {
 }
 
 export const Submitting: Story = {
-  name: 'submitting — busy button, same width as at rest, field read-only',
+  name: 'submitting — busy button, field read-only',
   args: { ...noopHandlers, initialState: 'submitting' },
 }
 

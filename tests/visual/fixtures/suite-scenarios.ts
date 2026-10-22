@@ -69,6 +69,9 @@ export interface HeldRequest {
   body: unknown
   /** Holds only requests of this method; any other goes to the scenario's own stub. */
   method?: string
+  /** Holds only the nth (1-based) request matching `urlGlob` and `method`; the others go to the
+   * scenario's own stub. The erase endpoint's re-mint is its second `GET` (T751). */
+  occurrence?: number
   /** What the request answers when the transient is meant to be over, where `body` alone would
    * leave it going (a poll that reads `queued` keeps the export `preparing`). Read by the planted
    * case that answers the request at once, never by `enterScenario`. */
@@ -2276,6 +2279,18 @@ async function confirmErasure(page: Page): Promise<void> {
   await activate(page, page.getByRole('button', { name: 'Erase my account permanently' }))
 }
 
+/** What the erasure dialog shows for the whole run (T751, privacy-data-rights.md §9), whichever
+ * request is pending: the busy confirm button holding the focus the press left on it, and the
+ * acknowledgement locked and still ticked. A dialog that returned to `confirmation-expired` or
+ * `failed` shows neither. */
+const ERASE_RUN_FRAME: ListExpectation[] = [
+  mark('locked, ticked acknowledgement', '[role="dialog"] input[type="checkbox"]:checked:disabled'),
+  mark(
+    'busy confirm button holding focus',
+    '[role="dialog"] button[aria-busy="true"]:focus:has-text("Erasing your account")',
+  ),
+]
+
 async function mintsToken(page: Page): Promise<void> {
   await page.route('**/api/privacy/erase', (route) =>
     route.request().method() === 'GET'
@@ -2380,17 +2395,14 @@ const PRIVACY_BRANCHES: readonly BranchScenario[] = [
       await stubMe(page, SIGNED_IN_ME)
       await mintsToken(page)
     },
+    // T751: the press leaves focus on the busy confirm button, and this `prepare` does not move it,
+    // so the keyboard walk judges where the press left it. `erasure re-mint in flight` renders this
+    // same frame; the two differ only in which request is held (`hold`), not in anything on screen.
     prepare: async (page) => {
       await confirmErasure(page)
       await waitQuietly(page.locator('[role="dialog"] button[aria-busy="true"]'))
-      await focusDialogHeading(page)
     },
-    shows: [
-      busy('busy erase confirm button', 'Erasing your account'),
-      // This `prepare` puts focus back on the heading; `erasure re-mint in flight` renders the same
-      // busy frame and leaves focus where the press put it, which is what separates the two.
-      mark('focus on the dialog heading', '[role="dialog"] h2:focus'),
-    ],
+    shows: ERASE_RUN_FRAME,
   }),
   privacyBranch('erasure confirmation expired', 'erasure', {
     surface: 'dialog',
@@ -2420,38 +2432,30 @@ const PRIVACY_BRANCHES: readonly BranchScenario[] = [
   // never the native `disabled`) and keeps the focus the press left on it, and "Keep my account" is
   // disabled. This `prepare` does not move focus after the press, so the keyboard walk judges where
   // the press left it. A failed re-mint ends in the `failed` dialog with the acknowledgement still
-  // ticked, which a failed erase also ends in, so it is not a scenario of its own.
+  // ticked, which a failed erase also ends in, so it is not a scenario of its own. It renders the
+  // same frame as `erasure in flight` (`ERASE_RUN_FRAME`); what it holds is the second `GET` of the
+  // erase endpoint (`occurrence: 2`), where that one holds the `POST`.
   privacyBranch('erasure re-mint in flight', 'erasure', {
     surface: 'dialog',
-    secondaryUnavailable: true, // `AccountErasurePanel`: `disabled: state === 'minting' || ...`
+    secondaryUnavailable: true, // `AccountErasurePanel`: `disabled: running`
+    hold: {
+      urlGlob: '**/api/privacy/erase',
+      body: { confirmation_token: 'visual-suite-token-2' },
+      method: 'GET',
+      occurrence: 2,
+    },
     stub: async (page) => {
       await stubMe(page, SIGNED_IN_ME)
-      let mints = 0
-      let release: () => void = () => {}
-      const gate = new Promise<void>((resolve) => {
-        release = resolve
-      })
-      // Answered as the page closes, never left dangling.
-      page.once('close', () => release())
-      await page.route('**/api/privacy/erase', async (route) => {
-        if (route.request().method() === 'POST') {
-          await route.fulfill({
-            status: 403,
-            contentType: 'application/json',
-            body: JSON.stringify(apiError('confirmation_token_invalid')),
-          })
-          return
-        }
-        mints += 1
-        if (mints === 1) {
-          await fulfillJson(route, { confirmation_token: 'visual-suite-token' })
-          return
-        }
-        await gate
-        await fulfillJson(route, { confirmation_token: 'visual-suite-token-2' }).catch(
-          () => undefined,
-        )
-      })
+      await mintsToken(page)
+      await page.route('**/api/privacy/erase', (route) =>
+        route.request().method() === 'POST'
+          ? route.fulfill({
+              status: 403,
+              contentType: 'application/json',
+              body: JSON.stringify(apiError('confirmation_token_invalid')),
+            })
+          : route.fallback(),
+      )
     },
     prepare: async (page) => {
       await confirmErasure(page)
@@ -2460,12 +2464,7 @@ const PRIVACY_BRANCHES: readonly BranchScenario[] = [
       await waitQuietly(page.locator('[role="dialog"] button[aria-busy="true"]'))
     },
     shows: [
-      mark('ticked acknowledgement', '[role="dialog"] input[type="checkbox"]:checked'),
-      // The same frame as `erasure in flight`: what tells them apart is where the press left focus.
-      mark(
-        'busy confirm button holding focus',
-        '[role="dialog"] button[aria-busy="true"]:focus:has-text("Erasing your account")',
-      ),
+      ...ERASE_RUN_FRAME,
       absent('no expiry callout', '[role="dialog"] :text("Your confirmation expired.")'),
     ],
   }),
@@ -3519,7 +3518,13 @@ export async function enterScenario(
   await seedThemeOverride(page, theme)
   await scenario.stub(page)
   const held = scenario.hold
-    ? await holdRequests(page, scenario.hold.urlGlob, scenario.hold.body, scenario.hold.method)
+    ? await holdRequests(
+        page,
+        scenario.hold.urlGlob,
+        scenario.hold.body,
+        scenario.hold.method,
+        scenario.hold.occurrence,
+      )
     : undefined
   // A request still held when the test ends is answered as the page closes, never left dangling.
   page.once('close', () => void held?.release())

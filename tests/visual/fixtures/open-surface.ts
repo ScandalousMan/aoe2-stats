@@ -47,6 +47,11 @@ export interface SurfaceWalk {
   itemCount: number
   /** Whether focus was already inside the surface the moment it opened. */
   focusInsideOnOpen: boolean
+  /** `dialog` only: the `kbdId` of the item holding focus when the walk began, or `null` when focus
+   * was on the heading (or anywhere that is not one of the items). A dialog whose request is in
+   * flight starts on the control that was pressed (T751), so the walk cannot assume the heading.
+   * Always `null` for a menu, whose walk starts at its first item (Home). */
+  startId: string | null
   /** `menu` only: how many items carry `tabindex="0"` — the roving-tabindex contract says one. */
   rovingTabStops: number
   /** One stop per item, in the order the surface's own keys visited them. For a `dialog` this is
@@ -119,6 +124,12 @@ export async function walkOpenSurface(page: Page, kind: SurfaceKind): Promise<Su
   const rovingTabStops =
     kind === 'menu' ? await page.locator(`${surface} ${MENU_ITEM}[tabindex="0"]`).count() : 0
 
+  // Where a dialog's focus is before the first Tab: an item's stamp, or null on the heading.
+  const startId =
+    kind === 'dialog'
+      ? await page.evaluate(() => document.activeElement?.getAttribute('data-kbd-walk-id') ?? null)
+      : null
+
   const steps: TabStop[] = []
   let reverseStop: TabStop | null = null
 
@@ -140,15 +151,22 @@ export async function walkOpenSurface(page: Page, kind: SurfaceKind): Promise<Su
     await pressAndSettle(page, 'ArrowUp')
     reverseStop = await readFocusedStop(page, surface)
   } else {
-    // The dialog opened with focus on its heading (not a candidate itself); N+1 Tab presses visit
-    // every focusable once and then wrap.
+    // N+1 Tab presses from wherever focus is (the heading, which is not a candidate itself, or an
+    // item): every focusable once, then the wrap. `assertSurfaceKeyboard` reads the order from
+    // `startId`.
     for (let i = 0; i < itemCount + 1; i += 1) {
       await page.keyboard.press('Tab')
       const stop = await readFocusedStop(page, surface)
       if (stop === null) break
       steps.push(stop)
     }
-    // Back to the first item (the wrap), then one step backwards must land on the last.
+    // Onto the first item (Tab on from wherever the walk ended, a no-op when it ended there: from a
+    // start other than the last item the walk's last stop is not item 0), then one step backwards
+    // must wrap to the last. The extra presses record nothing.
+    for (let i = 0; i < itemCount; i += 1) {
+      if ((await readFocusedStop(page, surface))?.kbdId === '0') break
+      await page.keyboard.press('Tab')
+    }
     await page.keyboard.press('Shift+Tab')
     reverseStop = await readFocusedStop(page, surface)
   }
@@ -191,6 +209,7 @@ export async function walkOpenSurface(page: Page, kind: SurfaceKind): Promise<Su
     kind,
     itemCount,
     focusInsideOnOpen,
+    startId,
     rovingTabStops,
     steps,
     reverseStop,
@@ -224,13 +243,18 @@ export function assertSurfaceKeyboard(walk: SurfaceWalk, context: string): void 
   ).toBe(0)
 
   const ids = steps.map((step) => step.kbdId)
-  const inOrder = Array.from({ length: itemCount }, (_, index) => String(index))
-  // Both surfaces end their walk on one extra stop: the wrap back to the first item.
-  const expected = [...inOrder, '0']
+  // The walk starts on the heading (`startId` null: before item 0) or on an item, and each key
+  // moves to the next item, wrapping at the end; N+1 keys visit every item once and then repeat the
+  // first stop reached. From the heading that is [0 .. N-1, 0].
+  const first = walk.startId === null ? 0 : (Number(walk.startId) + 1) % itemCount
+  const expected = Array.from({ length: itemCount + 1 }, (_, index) =>
+    String((first + index) % itemCount),
+  )
+  const from = walk.startId === null ? 'the heading' : `item #${walk.startId}`
   expect(
     ids,
     `${context}: the ${kind}'s keys visited [${ids.join(', ')}] but its contract is ` +
-      `[${expected.join(', ')}] — every item once, in order, then a wrap to the first`,
+      `[${expected.join(', ')}] — every item once, in order, then a wrap to the first, from ${from}`,
   ).toEqual(expected)
 
   expect(

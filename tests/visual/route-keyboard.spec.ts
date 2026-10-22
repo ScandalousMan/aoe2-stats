@@ -12,7 +12,7 @@
 // removed), not through containment. `assertStopsInsideChrome`, asserted separately below, checks
 // the containment `tests/visual/focus-ring.spec.ts` assumes implicitly: every stop stays inside the
 // route's one `main` landmark or its `header`/`footer` chrome.
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 import { createAppServerHarness, hasBuild } from './fixtures/app-routes-harness'
 import {
   assertFullTabCoverage,
@@ -143,6 +143,48 @@ test.describe('keyboard operation, every route, both themes', () => {
         external.assertNone(context)
       })
     }
+
+    // T751: a press that leaves focus on the control that held it (Safari does not focus a clicked
+    // button; `element.click()` models that) while the run disables that control. Chromium drops a
+    // focused control to `body` the moment it becomes `:disabled`, so the panel has to move focus to
+    // the busy confirm button itself. Entered through `/privacy (erasure in flight)`, whose marks
+    // include "busy confirm button holding focus": `enterScenario` fails if focus is anywhere else.
+    const erasureInFlight = SUITE_SCENARIOS.find(
+      (scenario) => scenario.label === '/privacy (erasure in flight)',
+    )
+    if (!erasureInFlight) throw new Error("SUITE_SCENARIOS has no '/privacy (erasure in flight)'")
+    test('/privacy (erasure in flight) — a press that leaves focus on the ticked checkbox ends with focus on the busy confirm button, never the body', async ({
+      page,
+    }) => {
+      const scenario = {
+        ...erasureInFlight,
+        label: '/privacy (erasure in flight, focus left on the checkbox)',
+        prepare: async (target: Page) => {
+          await target.getByRole('button', { name: 'Erase my account' }).focus()
+          await target.keyboard.press('Enter')
+          await target.getByRole('dialog').waitFor({ state: 'visible' })
+          await target.keyboard.press('Tab')
+          await target.keyboard.press('Space')
+          await expect(target.getByRole('checkbox')).toBeFocused()
+          await target
+            .getByRole('button', { name: 'Erase my account permanently' })
+            .evaluate((button) => (button as HTMLButtonElement).click())
+          await target.locator('[role="dialog"] button[aria-busy="true"]').waitFor()
+        },
+      }
+      const external = await enterScenario(page, scenario, harness.baseUrl, 'light')
+      const context = scenario.label
+
+      const bodyHoldsFocus = await page.evaluate(() => document.activeElement === document.body)
+      expect(bodyHoldsFocus, `${context}: focus fell to document.body`).toBe(false)
+      await expect(
+        page.getByRole('button', { name: /Erasing your account/ }),
+        `${context}: focus is not on the busy confirm button`,
+      ).toBeFocused()
+      await expect(page.getByRole('checkbox')).toBeDisabled()
+
+      external.assertNone(context)
+    })
 
     // T681: the `Tooltip` is no `Menu` or `Dialog`, so the loop above never opens it. Each route
     // that renders one is entered, the tooltip opened by Tab to its trigger (`:focus-visible` opens

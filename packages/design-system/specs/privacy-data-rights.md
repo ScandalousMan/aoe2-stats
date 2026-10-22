@@ -335,15 +335,15 @@ this paragraph.
 `AccountErasurePanel`: `ConfirmAction` is `disabled` while `Acknowledgement` is unchecked — sanctioned
 because the act is irreversible and the checkbox beside it _is_ the visible reason `Button` requires —
 and for no other reason: a request in flight (the re-mint, the `POST`) makes it `loading`, never
-`disabled`. `CancelAction` is `disabled` only while that request runs. Nothing else is ever disabled:
-the `EraseButton` on the page is always live, and a right greyed out is withdrawn without saying so.
+`disabled`. `CancelAction` and `Acknowledgement` are `disabled` only while that request runs (§9);
+nothing else ever is: the `EraseButton` is always live, and a right greyed out is withdrawn unspoken.
 
 **loading** — `DataExportPanel`: `requesting` shows the `RequestButton` in its loading state;
 `preparing` shows `ProgressRegion` with a `Skeleton` block at the download link's footprint (honouring
 `Skeleton`'s 200 ms floor and 10 s ceiling — after 10 s the panel replaces the skeleton with the
 `FailureRegion` and a retry, per `Skeleton`'s own rule). `AccountErasurePanel`: `minting` shows the
 `EraseButton` busy while the token is fetched; a re-mint inside the open dialog, then `erasing`, show
-`ConfirmAction` `loading` as one run, **Erasing your account…**, focus kept, `CancelAction` disabled (§9).
+`ConfirmAction` `loading` as one run, **Erasing your account…**, focus kept, its siblings disabled (§9).
 
 **error** — `DataExportPanel`: `failed` renders `FailureRegion` (`Callout/danger`) with a retry; the
 button returns to enabled. `AccountErasurePanel`: `DialogFailure` renders inside the open dialog per
@@ -447,22 +447,35 @@ links — their forward action is always a `Button`, never a link inside coloure
   Escape follows `Dialog`'s own rule (`shared-primitives.md` §Dialog) with `CancelAction` as its
   secondary action — in no state does the accidental key reach `ConfirmAction`.
 - **Focus while a confirm is in flight (T751).** A press of `ConfirmAction` leaves focus on it until
-  the request settles, by either path: straight to `erasing` with a held token, or — after a `403`
-  (`confirmation-expired`) — through the re-mint (`minting` with `dialogHasOpened`), then `erasing`.
-  For the whole run `ConfirmAction` is `Button`'s `loading` (`aria-busy` and `aria-disabled`, never
-  the `disabled` attribute) with `loadingLabel` **Erasing your account…**: one frame for both steps,
-  because the press asked for one thing, the erasure — a separate "Confirming…" label would flip
-  mid-press and name a step the user never chose. Focus is never on `body` or behind the backdrop,
-  and the dialog does not close or remount across the step. `CancelAction` is `disabled` and Escape
-  calls nothing for the whole run, exactly as during `erasing`: the `POST` follows the `GET` with no
-  further input, so a Cancel live during the re-mint would race a `POST` the user already confirmed,
-  and would go live then dead under the pointer within one press. The `DialogFailure` callout clears
-  on the press, as on any retry. When the run settles in `failed` or another `confirmation-expired`,
-  `ConfirmAction` is enabled again with focus still on it; on success the route swaps in
-  `ErasedScreen`.
-- `Acknowledgement` is a real `<input type="checkbox">` with a `<label>`; `ConfirmAction` reflects the
-  checked state via `disabled` and `aria-disabled`. The checkbox and its 44px-min hit area clear the
-  touch minimum.
+  the request settles, on each of two paths: a first confirm, from `confirming` with the token minted
+  when the dialog opened, goes straight to `erasing`; a confirm from `confirmation-expired` re-mints
+  first (`minting` with `dialogHasOpened`), then goes to `erasing`. For the whole run `ConfirmAction`
+  is `Button`'s `loading` (`aria-busy` and `aria-disabled`, never the `disabled` attribute) with
+  `loadingLabel` **Erasing your account…**: one frame for both steps, because the press asked for one
+  thing, the erasure — a separate "Confirming…" label would flip mid-press and name a step the user
+  never chose. Focus is never on `body` or behind the backdrop, and the dialog does not close or
+  remount across the step. `CancelAction` is `disabled` and Escape calls nothing for the whole run,
+  exactly as during `erasing`: the `POST` follows the `GET` with no further input, so a Cancel live
+  during the re-mint would race a `POST` the user already confirmed, and would go live then dead
+  under the pointer within one press. The `DialogFailure` callout clears on the press, as on any
+  retry. When the run settles in `failed` or another `confirmation-expired`, `ConfirmAction` is
+  enabled again with focus still on it; on success the route swaps in `ErasedScreen`.
+- **`Acknowledgement` during the run (T751).** The checkbox takes the native `disabled` attribute for
+  the whole run, on both paths, and stays ticked; when the run settles in `failed` or
+  `confirmation-expired` it is enabled again, still ticked. An untick cannot stop an erasure the
+  press already committed, for the reason `CancelAction` is disabled: the `POST` follows the `GET`
+  with no further input. A live checkbox would either be ignored — a control misstating its own
+  effect, since unticking during the re-mint would still erase — or abort only while the `GET` is
+  pending and lapse silently once the `POST` is sent, a meaning that changes under the user's hand
+  within one press. Its visible reason is `CancelAction`'s: the busy **Erasing your account…** beside
+  it. Its label stays `text-primary`, because the statement the user ticked still stands. No control
+  the run disables may keep focus: if focus is on `Acknowledgement` or `CancelAction` when the run
+  starts — a browser that does not focus a clicked button (Safari on macOS) leaves it where it was —
+  it moves to `ConfirmAction` as the run starts.
+- `Acknowledgement` is a real `<input type="checkbox">` with a `<label>`. While it is unchecked,
+  `ConfirmAction` carries the native `disabled` attribute and no `aria-disabled`; during a run its
+  `aria-disabled` comes from `Button`'s `loading`, not from the checkbox. The checkbox and its
+  44px-min hit area clear the touch minimum.
 - `DownloadLink` is an `<a href download>`, not a `<button>`, because it navigates to a file; it is
   never the only carrier of the "ready" meaning — the `ReadyRegion` heading states it in text too.
 - The export `ProgressRegion` and `ReadyRegion` announce via `Callout`'s own `role="status"`; the
@@ -517,16 +530,26 @@ links — their forward action is always a `Button`, never a link inside coloure
       button is enabled again.
 - [ ] In the re-mint frame (`/privacy (erasure re-mint in flight)`: confirm pressed from the
       token-expired dialog, the `GET` still pending), the dialog is open; the confirm button shows a
-      spinner and reads "Erasing your account…", the same as the erasing frame and at its resting
-      width; "Keep my account" is visibly disabled; the "Your confirmation expired." callout is gone;
-      and the focus ring, if shown, is on the confirm button — nowhere else, and not absent because
-      focus fell to the page.
-- [ ] Keyboard, falsifiable in a unit test (T751): with focus on the confirm button in the
-      token-expired dialog, Enter leaves `document.activeElement` on that same button while the
-      re-mint is pending, after it resolves into `erasing`, and after the run settles in `failed` or
-      a second token-expired — never `body`. Throughout the run the button has no `disabled`
-      attribute and carries `aria-busy="true"` and `aria-disabled="true"`; Escape pressed during it
-      calls neither action and the dialog stays open.
+      spinner and reads "Erasing your account…", the same label as the erasing frame; "Keep my
+      account" is visibly disabled; the acknowledgement checkbox is still ticked; the "Your
+      confirmation expired." callout is gone; and the focus ring, if shown, is on the confirm button
+      — nowhere else, and not absent because focus fell to the page.
+- [ ] Keyboard, falsifiable in a unit test (T751), on both paths — a first confirm from the
+      `confirming` dialog, and a confirm from the token-expired dialog: with focus on the confirm
+      button, Enter leaves `document.activeElement` on that same button while the request is
+      pending, after a re-mint resolves into `erasing`, and after the run settles in `failed` or
+      token-expired — never `body`. Throughout the run the button has no `disabled` attribute and
+      carries `aria-busy="true"` and `aria-disabled="true"`; Escape pressed during it calls neither
+      action and the dialog stays open.
+- [ ] The checkbox during the run, falsifiable in a unit test (T751): from the token-expired dialog
+      with the box ticked, a confirm press leaves the checkbox `disabled` and checked while the
+      re-mint is pending; a click on the checkbox or on its label text leaves it checked; when the
+      re-mint resolves, `onErase` is called with the new token. After the run settles in `failed`,
+      the checkbox is enabled and still checked. With focus on the checkbox, a click on the confirm
+      button that does not itself move focus leaves `document.activeElement` on the confirm button,
+      never `body`.
+- [ ] With the box unchecked, the confirm button carries the `disabled` attribute and no
+      `aria-disabled`.
 - [ ] The `ErasedScreen` frame states the account is erased, names what survives, and carries no "sign
       back in" control.
 

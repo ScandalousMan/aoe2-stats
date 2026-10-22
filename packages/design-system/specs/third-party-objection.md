@@ -377,7 +377,7 @@ closes.
 
 - [ ] `idle`: explanation, an empty field with its label and help text, and an enabled "Record my
       objection" button — the submit button is never rendered disabled in any frame.
-- [ ] `submitting`: the button shows its loading label and busy state at the same width as at rest.
+- [ ] `submitting`: the button shows its busy state, a spinner beside its loading label.
 - [ ] Field error: the message is visible beside the field, the field is marked invalid, and no
       success or "recorded" wording is in the frame.
 - [ ] `rate-limited`: a warning callout is present with a try-again message; the button is present.
