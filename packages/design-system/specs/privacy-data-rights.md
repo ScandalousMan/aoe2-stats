@@ -469,9 +469,9 @@ links — their forward action is always a `Button`, never a link inside coloure
   pending and lapse silently once the `POST` is sent, a meaning that changes under the user's hand
   within one press. Its visible reason is `CancelAction`'s: the busy **Erasing your account…** beside
   it. Its label stays `text-primary`, because the statement the user ticked still stands. No control
-  the run disables may keep focus: if focus is on `Acknowledgement` or `CancelAction` when the run
-  starts — a browser that does not focus a clicked button (Safari on macOS) leaves it where it was —
-  it moves to `ConfirmAction` as the run starts.
+  the run disables may keep focus: if, when the run starts, focus is on `Acknowledgement` or
+  `CancelAction` (an activation that does not move focus) or has left the dialog (Chromium drops it
+  to `body` the moment it disables the focused control), it moves to `ConfirmAction`.
 - `Acknowledgement` is a real `<input type="checkbox">` with a `<label>`. While it is unchecked,
   `ConfirmAction` carries the native `disabled` attribute and no `aria-disabled`; during a run its
   `aria-disabled` comes from `Button`'s `loading`, not from the checkbox. The checkbox and its

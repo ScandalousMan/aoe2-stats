@@ -47,7 +47,7 @@ export function AccountErasurePanel({
 }: AccountErasurePanelProps) {
   const [state, setState] = useState<ErasureUiState>(initialState)
   const [confirmationToken, setConfirmationToken] = useState<string | undefined>(undefined)
-  const [acknowledged, setAcknowledged] = useState(false)
+  const [acknowledged, setAcknowledged] = useState(initialState === 'erasing')
   // §5's `minting` covers two moments: the very first mint, fired by `EraseButton` before the
   // dialog has ever opened, and the re-mint §4.4 describes, fired from inside the open dialog
   // after a stale token expired. This flag tells them apart without a second state value;
@@ -67,8 +67,8 @@ export function AccountErasurePanel({
   )
 
   // T751 (§9): the run is the in-dialog re-mint plus the erase after it, `ConfirmAction` `loading`
-  // through it. The checkbox and "Keep my account" are `disabled`, so neither may keep focus:
-  // Safari leaves it there, Chromium drops it to `body`. Both are moved; a live control stays.
+  // through it. The checkbox and "Keep my account" are `disabled`, so neither may keep focus: an
+  // activation that moves none leaves it there, Chromium drops it to `body`. Both are moved.
   const sectionRef = useRef<HTMLElement>(null)
   const running = state === 'erasing' || (state === 'minting' && dialogHasOpened)
   useLayoutEffect(() => {

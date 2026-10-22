@@ -144,8 +144,8 @@ test.describe('keyboard operation, every route, both themes', () => {
       })
     }
 
-    // T751: a press that leaves focus on the control that held it (Safari does not focus a clicked
-    // button; `element.click()` models that) while the run disables that control. Chromium drops a
+    // T751: an activation that leaves focus on the control that held it (`element.click()`, which
+    // moves none) while the run disables that control. Chromium drops a
     // focused control to `body` the moment it becomes `:disabled`, so the panel has to move focus to
     // the busy confirm button itself. Entered through `/privacy (erasure in flight)`, whose marks
     // include "busy confirm button holding focus": `enterScenario` fails if focus is anywhere else.

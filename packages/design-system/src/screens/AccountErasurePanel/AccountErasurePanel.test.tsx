@@ -378,8 +378,8 @@ describe('AccountErasurePanel — focus while a confirm is in flight (T751)', ()
     expect(checkbox()).toBeChecked()
   })
 
-  // A browser that does not focus a clicked button (Safari on macOS) leaves focus on the control
-  // that held it; `fireEvent.click` models that press. The run disables the checkbox and Cancel, and
+  // An activation that does not move focus (a programmatic click, some assistive technology)
+  // leaves it on the control that held it; `fireEvent.click` models that. The run disables the checkbox and Cancel, and
   // a disabled control may not keep focus. Browsers differ in what a just-disabled focused control
   // leaves behind: WebKit and Firefox keep it as `activeElement` until the next frame, Chromium has
   // already blurred it to `body` when React's layout effect runs. jsdom does neither, so the second
@@ -450,6 +450,24 @@ describe('AccountErasurePanel — focus while a confirm is in flight (T751)', ()
     })
   })
 
+  // `initialState: 'erasing'` (the `Erasing` story) is a state reachable only through a ticked box,
+  // so it opens with the box ticked and locked. `confirmation-expired` and `failed` are not forced:
+  // the box is live there, and `failed` is also reached from a mint that failed with it unticked.
+  it("opens 'erasing' with the acknowledgement ticked and locked, as the run leaves it", () => {
+    render(<AccountErasurePanel {...noop} initialState="erasing" />)
+    expect(checkbox()).toBeChecked()
+    expect(checkbox()).toBeDisabled()
+  })
+
+  it.each(['confirming', 'confirmation-expired', 'failed'] as const)(
+    "opens '%s' with the acknowledgement unticked and live",
+    (initialState) => {
+      render(<AccountErasurePanel {...noop} initialState={initialState} />)
+      expect(checkbox()).not.toBeChecked()
+      expect(checkbox()).toBeEnabled()
+    },
+  )
+
   it('keeps the native disabled on the confirm button only while the acknowledgement is unchecked', async () => {
     const user = userEvent.setup()
     const onRequestConfirmation = vi.fn().mockResolvedValue({ confirmationToken: 'tok' })
@@ -459,6 +477,7 @@ describe('AccountErasurePanel — focus while a confirm is in flight (T751)', ()
 
     const confirm = screen.getByRole('button', { name: CONFIRM })
     expect(confirm).toHaveAttribute('disabled')
+    expect(confirm).not.toHaveAttribute('aria-disabled')
     expect(confirm).not.toHaveAttribute('aria-busy')
     // Keep my account is live: nothing is in flight.
     expect(screen.getByRole('button', { name: 'Keep my account' })).toBeEnabled()
