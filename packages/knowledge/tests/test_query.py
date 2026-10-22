@@ -1037,9 +1037,12 @@ _RECORDINGS = (
 #: (read 2026-10-18). A replay carries intent, never outcome: the order is one the game does not
 #: allow, so it is not a defect in membership.
 #:
-#: **Buildings 490 (Franks, Sicilians) and 673 (Teutons) are `entity-absent` today**: the pack names
-#: neither, and no installed snapshot carries an alias for them until T767's does. The expectation
-#: is strict, not skipped: when a snapshot carries the alias, this entry fails and is deleted.
+#: **Buildings 490 (Franks) and 673 (Teutons) are `entity-absent` in the build 180059 recording**:
+#: the pack names neither, and that build's snapshot carries no alias for them until T773's does.
+#: Building 490 for the Sicilians of the build 185872 recording answers true since T767: its
+#: snapshot
+#: carries the alias to the Gate. The expectation is strict, not skipped: when a snapshot carries
+#: the alias, the entry fails and is deleted (T767 deleted the 185872 one).
 _EXPECTED_NOT_TRUE: dict[str, dict[tuple[str, str, str], object]] = {
     "AgeIIDE_Replay_500546441": {},
     "AgeIIDE_Replay_504695319": {
@@ -1047,7 +1050,7 @@ _EXPECTED_NOT_TRUE: dict[str, dict[tuple[str, str, str], object]] = {
         ("Franks", "building", "490"): "entity-absent",
         ("Teutons", "building", "673"): "entity-absent",
     },
-    "AgeIIDE_Replay_511523321": {("Sicilians", "building", "490"): "entity-absent"},
+    "AgeIIDE_Replay_511523321": {},
 }
 
 

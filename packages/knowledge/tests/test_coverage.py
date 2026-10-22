@@ -304,8 +304,11 @@ _RECORDING_1_ENUMERATED_BLOCKING_GAPS: frozenset[tuple[str, str, str, str, str]]
 #: both ids age-upgraded visual variants and said only a second vendored source could close them;
 #: neither was measured. A referenced source, `aoc-reference-data`'s `objects` (read 2026-10-18,
 #: `docs/data-sources.md` §6), names both "Gate", and FR-022d closes them with a transcribed alias
-#: in a snapshot's `aliases.toml`, vendoring nothing. The expectation below stays, strictly, until
-#: T767's snapshot carries those aliases and the blocker is deleted. Each id fails three of
+#: in a snapshot's `aliases.toml`, vendoring nothing. This recording is build 180059, whose snapshot
+#: carries no `aliases.toml` yet, so the expectation below stays, strictly, until T773's snapshot
+#: for build 180059 carries those aliases and the blocker is deleted (T767 did it for build 185872,
+#: whose
+#: recording 3 no longer has it). Each id fails three of
 #: `query.py`'s six query-surface fields, for the civilisation the recording actually places it
 #: under — building 490 for Franks, 673 for Teutons. **6 tuples** (T652y: down from 12 —
 #: `reconstruction.prerequisite_order_check`, blocked now, was the *only* register entry that
@@ -323,7 +326,8 @@ _TWO_BUILDING_IDS_ARE_ABSENT_FROM_THE_VENDORED_PACK = _RecordingBlocker(
     ),
     what_would_close_it=(
         "a transcribed alias for each (FR-022d): aoc-reference-data's objects, read 2026-10-18, "
-        "name both 'Gate'; T767's snapshot carries them."
+        "name both 'Gate'; T773's snapshot for build 180059 carries them (T767's, for build "
+        "185872, already does)."
     ),
     gap_tuples=(
         ("building", "490", "cost", "Franks", "entity-absent"),
@@ -357,71 +361,42 @@ _RECORDING_2_ENUMERATED_BLOCKING_GAPS: frozenset[tuple[str, str, str, str, str]]
 )
 
 
-#: **T746: recording 3 (match 511523321, build 185872, Slavs versus Sicilians) keeps three
-#: blockers**, measured against `aoe2techtree-185872-civilisations` (the 450 gaps and 225 blocking
-#: ones it had against the first build 185872 snapshot, which models no civilisation, are gone). One
-#: is the same hole recording 2 has: building 490 is absent from the vendored pack, here for the
-#: Sicilians. The other two are bonuses the pack's own string cannot size or scope, each refused in
-#: `effects.toml` with its reason and each the condition under which a second reading closes it:
-#: Slavs' Detinets (the string never states the wood amount that replaces 40% of a Castle's
-#: stone, so the Castle's cost for the Slavs is not knowledge the snapshot has) and Sicilians'
-#: "Fortifications built +50% faster" (the string never lists which buildings that names, so the
-#: Donjon's construction time for the Sicilians is not knowledge it has). Neither is answered at
-#: the baseline.
-_BUILDING_490_ABSENT_FOR_THE_SICILIANS = _RecordingBlocker(
-    name="Building 490 is absent from the vendored aoe2techtree pack entirely, for the Sicilians",
-    why_the_vendored_source_cannot_close_it=(
-        "the same hole recording 2 enumerates: the pack names no building 490, and no installed "
-        "snapshot carries an alias for it yet."
-    ),
-    what_would_close_it=(
-        "a transcribed alias for it (FR-022d): aoc-reference-data's objects, read 2026-10-18, "
-        "name it 'Gate'; T767's snapshot carries it."
-    ),
-    gap_tuples=(
-        ("building", "490", "cost", "Sicilians", "entity-absent"),
-        ("building", "490", "produced_at", "Sicilians", "entity-absent"),
-        ("building", "490", "production_time", "Sicilians", "entity-absent"),
-    ),
-)
-
+#: **Recording 3 (match 511523321, build 185872, Slavs versus Sicilians) keeps one blocker** (T746
+#: had three; T767 closed two), measured against `aoe2techtree-185872-civilisations-20`, the third
+#: snapshot of that build. **Closed by T767:** building 490, absent from the vendored pack, is now
+#: the pack's Gate through a transcribed alias (FR-022d: `aoc-reference-data`'s `objects` names it
+#: "Gate", `aliases.toml`), so its three fields answer the Gate's for the Sicilians; and the
+#: Donjon's
+#: construction time under Sicilians' "Fortifications built +50% faster", which the pack never
+#: scopes, is stated by the publisher's own notes (update 111772: "Donjon base construction time
+#: increased from 90 seconds -> 125 seconds (83 seconds after civilization bonus)"), so the Donjon
+#: (building 1665) and the Castle the bonus used to name alone (update 81058) are modelled. The
+#: remaining Fortifications the notes do not name (the tower line, the Bombard Tower, the Krepost)
+#: are not on this recording and are held in `test_whole_pack_coverage.py` and
+#: `owner-readings.md`. **Kept:** Slavs' Detinets, whose publisher's note (update 61321: "Replaces
+#: 40% of Castles' and Towers' stone cost with wood") repeats the pack's string and states no wood
+#: amount, so the Castle's cost for the Slavs is not knowledge any referenced source has. Neither is
+#: answered at the baseline.
 _SLAVS_DETINETS_AMOUNT_IS_NOT_STATED = _RecordingBlocker(
     name="Slavs' Detinets: the wood amount replacing 40% of a Castle's stone is not stated",
     why_the_vendored_source_cannot_close_it=(
         "the pack's string says only 'Replaces 40% of Castle and Watch Tower-line stone cost with "
-        "additional wood cost'; the build 185872 release notes do not mention Detinets; reading it "
-        "as a one-for-one swap would be a guess, and a bonus is never half-applied (research.md "
-        "D5)."
+        "additional wood cost'; the publisher's notes, read in full for every build since the "
+        "bonus appeared (update 61321 introduced it, no later note changes it), repeat that "
+        "sentence and state no wood amount; reading it as a one-for-one swap would be a guess, "
+        "and a bonus is never half-applied (research.md D5)."
     ),
     what_would_close_it=(
-        "a second reading that states the amount (the publisher's notes or the game's own text), "
-        "recorded in effects.toml as a modelled, researched-conditional cost effect."
+        "the owner's reading of the Castle's cost in the running game after Detinets "
+        "(owner-readings.md), recorded in effects.toml as a modelled, researched-conditional cost "
+        "effect."
     ),
     gap_tuples=(("building", "82", "cost", "Slavs", "effect-not-modelled"),),
 )
 
-_SICILIANS_FORTIFICATIONS_ARE_NOT_LISTED = _RecordingBlocker(
-    name="Sicilians' 'Fortifications built +50% faster': the buildings it names are not listed",
-    why_the_vendored_source_cannot_close_it=(
-        "the pack's strings use 'Fortifications' as a class and never list its members; "
-        "effects.toml refuses the construction time of every building the pack's usage points at "
-        "rather than answer the Donjon's at the baseline, and the release notes do not define the "
-        "word."
-    ),
-    what_would_close_it=(
-        "a second reading that lists the buildings (the publisher's notes or the game's own text), "
-        "recorded in effects.toml as a modelled construction-time effect over them."
-    ),
-    gap_tuples=(("building", "1665", "production_time", "Sicilians", "effect-not-modelled"),),
-)
+_RECORDING_3_BLOCKERS: tuple[_RecordingBlocker, ...] = (_SLAVS_DETINETS_AMOUNT_IS_NOT_STATED,)
 
-_RECORDING_3_BLOCKERS: tuple[_RecordingBlocker, ...] = (
-    _BUILDING_490_ABSENT_FOR_THE_SICILIANS,
-    _SLAVS_DETINETS_AMOUNT_IS_NOT_STATED,
-    _SICILIANS_FORTIFICATIONS_ARE_NOT_LISTED,
-)
-
-#: The flattened union of recording 3's blockers: 5 tuples.
+#: The flattened union of recording 3's blockers: 1 tuple.
 _RECORDING_3_ENUMERATED_BLOCKING_GAPS: frozenset[tuple[str, str, str, str, str]] = frozenset(
     gap_tuple for blocker in _RECORDING_3_BLOCKERS for gap_tuple in blocker.gap_tuples
 )
@@ -489,12 +464,12 @@ def test_each_committed_recording_reports_zero_blocking_gaps(
     is untouched by T652u: it was never a civilisation bonus, so re-modelling what a bonus is
     conditional on has nothing to close there.
 
-    **Recording 3 (T746)** is the build 185872 recording, Slavs versus Sicilians, and resolves
-    against `aoe2techtree-185872-civilisations`, the second snapshot of that build, which supersedes
-    the first (that one models no civilisation, so every civilisation-qualified query on this
-    recording was a gap: 450 gaps, 225 of them blocking, before the second existed). It keeps the
-    three blockers `_RECORDING_3_BLOCKERS` enumerates, two of them refused bonuses and not holes in
-    the source, and is asserted by set equality exactly as recording 2 is.
+    **Recording 3 (T746, T767)** is the build 185872 recording, Slavs versus Sicilians, and resolves
+    against `aoe2techtree-185872-civilisations-20`, the third snapshot of that build, which
+    supersedes the second, which superseded the first (that one models no civilisation, so every
+    civilisation-qualified query on this recording was a gap: 450 gaps, 225 of them blocking, before
+    the second existed). It keeps the one blocker `_RECORDING_3_BLOCKERS` enumerates, a refused
+    bonus and not a hole in the source, and is asserted by set equality exactly as recording 2 is.
     """
     from aoe2stats_knowledge import coverage, gaps
 

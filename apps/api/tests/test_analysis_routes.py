@@ -405,8 +405,9 @@ async def test_published_analysis_answers_a_result_for_every_participant(
 
 def _named_document(*, game_id: int, build: int, participant_ids: tuple[int, ...]) -> bytes:
     """A version-2-shaped document whose identity names the promoted snapshot for `build`, carrying
-    Feudal Age and Castle Age (age-ups), a House (building 70) and building 490, which neither
-    promoted snapshot carries."""
+    Feudal Age and Castle Age (age-ups), a House (building 70) and building 99999, which no
+    promoted snapshot names or aliases. (It was building 490 until T767: build 185872's snapshot
+    aliases that to the Gate.)"""
     from aoe2stats_knowledge.snapshot import load_current_snapshots
 
     # The current snapshot of the build: promoted and not superseded (T746: build 185872 has two).
@@ -435,7 +436,7 @@ def _named_document(*, game_id: int, build: int, participant_ids: tuple[int, ...
     participant["age_up_commands"] = {"101": 600_000, "102": 1_200_000}
     participant["builds"] = [
         {"building_id": 70, "world_time_ms": 1000},
-        {"building_id": 490, "world_time_ms": 2000},
+        {"building_id": 99_999, "world_time_ms": 2000},
     ]
     return json.dumps(document, sort_keys=True, indent=1).encode("utf-8") + b"\n"
 
@@ -445,7 +446,7 @@ async def test_names_are_served_beside_the_stored_document_and_the_stored_bytes_
     client: TestClient, db_session: AsyncSession, build: int
 ) -> None:
     """T709: a build 180059 and a build 185872 document each show Feudal Age, Castle Age and
-    House; building 490, outside both snapshots, stays unresolved while 70 beside it resolves; the
+    House; building 99999, outside both snapshots, stays unresolved while 70 beside it resolves; the
     stored object is byte-identical before and after the read, and is the prefix of the body."""
     import hashlib
 
@@ -477,7 +478,7 @@ async def test_names_are_served_beside_the_stored_document_and_the_stored_bytes_
     assert names["technology"]["101"] == "Feudal Age"
     assert names["technology"]["102"] == "Castle Age"
     assert names["building"]["70"] == "House"
-    assert "490" not in names["building"]
+    assert "99999" not in names["building"]
     assert names["snapshot"]["describes_build"] == build
     assert response.content.startswith(stored.rstrip()[:-1])
     assert hashlib.sha256(store._documents[result_key]).hexdigest() == digest_before

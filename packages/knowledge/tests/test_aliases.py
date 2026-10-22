@@ -11,13 +11,16 @@ target, and `Answer.alias` says that it did.
 
 Every case builds a synthetic snapshot directory under `tmp_path` and points the three readers
 (`snapshot`, `query`, `effects`) at it, as `tests/snapshot_refresh.py` does; nothing here touches
-the committed tree. The strict gaps for buildings 490 and 673 in `test_coverage.py` are untouched:
-no promoted snapshot carries an alias yet, and T767's is the first.
+the committed tree. The last section reads the committed tree instead: T767's snapshot,
+`aoe2techtree-185872-civilisations-20`, carries the first `aliases.toml`, and the cases there say
+what it holds and what it does not. Buildings 490 and 673 close for build 185872 only; the strict
+gaps for them in `test_coverage.py` stay for build 180059 until T773.
 """
 
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -338,13 +341,16 @@ def test_a_snapshot_without_aliases_toml_keeps_the_digest_it_has() -> None:
     assert snapshot_module.compute_digest(rules, effects_bytes, b"") != two_files
 
 
-def test_every_installed_snapshot_still_verifies_and_carries_no_aliases() -> None:
-    """The committed tree, through the real resolver: nothing recorded changed, and no promoted
-    snapshot carries the file yet (T767's is the first)."""
+def test_every_installed_snapshot_still_verifies_and_only_the_third_185872_carries_aliases() -> (
+    None
+):
+    """The committed tree, through the real resolver: nothing recorded changed, and exactly one
+    promoted snapshot carries the file (T767's is the first)."""
     installed = snapshot_module.load_all_snapshots()
 
     assert installed
-    assert all(loaded.aliases == () for loaded in installed)
+    carrying = [loaded.directory for loaded in installed if loaded.aliases]
+    assert carrying == ["aoe2techtree-185872-civilisations-20"]
 
 
 # ----------------------------------------------------------------------------- the digest covers
@@ -486,3 +492,109 @@ def test_a_refused_alias_table_refuses_the_whole_installed_set(
 
     with pytest.raises(snapshot_module.SnapshotError):
         snapshot_module.load_all_snapshots()
+
+
+# ------------------------------------------------------------- the committed first aliases.toml
+
+#: The identifiers `aoc-reference-data`'s `objects` table (data/datasets/100.json, read 2026-10-22,
+#: T767) names "Fortified Gate", "Sea Gate", "City Gate", "Paifang Gate" or "Trowulan Gate", with or
+#: without an orientation qualifier: differently named gates, which FR-022d does not alias by name.
+#: Transcribed from the source here so the absence is asserted, not just remembered.
+_DIFFERENTLY_NAMED_GATES = (
+    "63", "67", "80", "85", "90", "92", "488", "491", "660", "662", "664", "666", "668", "670",
+    "672", "674", "1176", "1379", "1380", "1381", "1382", "1383", "1384", "1385", "1386", "1387",
+    "1388", "1389", "1390", "1391", "1392", "1393", "1394", "1562", "1579", "1580", "1581", "1582",
+    "1583", "1584", "1585", "1586", "1587", "1588", "1589", "1590", "1591", "1592", "1593", "1594",
+)  # fmt: skip
+
+#: The orientation qualifiers `objects` writes in parentheses (up., down., hori., vert.).
+_ORIENTATION = re.compile(r"\s*\((?:up\.|down\.|hori\.|vert\.)\)$")
+
+_CURRENT_BUILD = 185872
+
+
+def _current() -> snapshot_module.Snapshot:
+    resolved = snapshot_module.snapshot_for(_CURRENT_BUILD)
+    assert isinstance(resolved, snapshot_module.Snapshot)
+    return resolved
+
+
+def test_buildings_490_and_673_answer_the_gate_of_the_third_snapshot() -> None:
+    """The two identifiers two committed recordings place and the pack never named."""
+    gate_cost = query.cost(
+        query.EntityRef(kind="building", id="487", build=_CURRENT_BUILD), civilisation="Franks"
+    )
+    assert not isinstance(gate_cost, KnowledgeGap)
+    for identifier in ("490", "673"):
+        entity = query.EntityRef(kind="building", id=identifier, build=_CURRENT_BUILD)
+        answer = query.cost(entity, civilisation="Franks")
+        assert not isinstance(answer, KnowledgeGap), f"{identifier}: {answer!r}"
+        assert answer.value == gate_cost.value == {"stone": 30}
+        assert answer.alias is not None
+        assert (answer.alias.id, answer.alias.target, answer.alias.source_name) == (
+            identifier,
+            "487",
+            "Gate",
+        )
+        assert answer.alias.read_on == "2026-10-22"
+        assert "aoc-reference-data" in answer.alias.source
+        name = query.name(entity)
+        assert not isinstance(name, KnowledgeGap)
+        assert name.value == "Gate"
+
+
+def test_every_alias_names_its_target_exactly_apart_from_an_orientation_qualifier() -> None:
+    """FR-022d: never inferred from a name other than the pack entity's own."""
+    rules = json.loads(
+        (
+            Path(str(snapshot_module._snapshots_root())) / _current().directory / "rules.json"
+        ).read_text(encoding="utf-8")
+    )["entities"]
+    assert _current().aliases
+    for alias in _current().aliases:
+        assert alias.kind in ("unit", "building")
+        assert _ORIENTATION.sub("", alias.source_name) == rules[alias.kind][alias.target]["name"], (
+            alias
+        )
+        assert alias.id not in rules[alias.kind], alias
+        assert alias.read_on == "2026-10-22"
+
+
+def test_every_gate_and_palisade_gate_goes_to_the_packs_own() -> None:
+    by_name: dict[str, set[str]] = {}
+    for alias in _current().aliases:
+        by_name.setdefault(_ORIENTATION.sub("", alias.source_name), set()).add(alias.target)
+    assert by_name["Gate"] == {"487"}
+    assert by_name["Palisade Gate"] == {"792"}
+    assert {alias.id for alias in _current().aliases if alias.source_name.startswith("Gate")} >= {
+        "64", "78", "81", "88", "91", "95", "490", "659", "661", "663", "665", "667", "669",
+        "671", "673", "1192",
+    }  # fmt: skip
+    assert len([a for a in _current().aliases if a.source_name.startswith("Palisade Gate")]) == 15
+
+
+def test_a_differently_named_gate_is_not_aliased_by_name() -> None:
+    aliased = {alias.id for alias in _current().aliases if alias.kind == "building"}
+    assert not aliased & set(_DIFFERENTLY_NAMED_GATES)
+    assert not any(
+        word in alias.source_name
+        for alias in _current().aliases
+        for word in ("Fortified", "Sea Gate", "City Gate", "Paifang", "Trowulan")
+    )
+    # Contrast: such an identifier is still an absent entity, not a guess at the nearest gate.
+    absent = query.cost(
+        query.EntityRef(kind="building", id="488", build=_CURRENT_BUILD), civilisation="Franks"
+    )
+    assert isinstance(absent, KnowledgeGap)
+    assert absent.cause == "entity-absent"
+
+
+def test_an_object_whose_qualifier_is_not_an_orientation_is_not_aliased() -> None:
+    """`objects` 204 is "Trade Cart (Full)": a qualifier that is not an orientation. The pack's
+    Trade Cart (unit 128) is not its alias."""
+    assert _current().alias_for("unit", "204") is None
+    absent = query.cost(
+        query.EntityRef(kind="unit", id="204", build=_CURRENT_BUILD), civilisation="Franks"
+    )
+    assert isinstance(absent, KnowledgeGap)
+    assert absent.cause == "entity-absent"

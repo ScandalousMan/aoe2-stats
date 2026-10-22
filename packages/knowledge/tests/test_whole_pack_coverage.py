@@ -36,6 +36,10 @@ Achaemenids, Athenians, Macedonians, Puru, Spartans and Thracians, the Chronicle
 (the table's names minus every current pack's) rather than trusting this paragraph. T776 is the
 owner's arbitration on whether they are in scope.
 
+**Batch A (T767)** models twenty civilisations on build 185872 in
+`aoe2techtree-185872-civilisations-20`; the twelve it added lost their `xfail` and each is held to
+its open rows like the eight before them. Persians' Kamandaran is no longer open for that build.
+
 **Builds.** `test_the_current_snapshots_are_the_builds_this_module_covers` fails when the library
 resolves a current build this module does not cover, so a new build cannot be added without being
 covered. Three builds are covered: 185872, 180059 and 177723. Build 177723's snapshot is the test
@@ -66,20 +70,7 @@ type OpenRow = tuple[str, str, str, str]
 
 # Build 185872's batches, in the order tasks.md files them. A batch deletes its tuple here when it
 # models those civilisations (and the snapshot it promotes lists them in civilisations_modelled).
-_BATCH_A_T767 = (
-    "Aztecs",
-    "Britons",
-    "Byzantines",
-    "Celts",
-    "Chinese",
-    "Goths",
-    "Japanese",
-    "Mayans",
-    "Mongols",
-    "Spanish",
-    "Turks",
-    "Vikings",
-)
+# Batch A (T767) is gone: `aoe2techtree-185872-civilisations-20` models its twelve.
 _BATCH_B_T768 = (
     "Berbers",
     "Burmese",
@@ -235,7 +226,6 @@ def _reasons(civilisations: tuple[str, ...], reason: str) -> dict[str, str]:
 #: build -> civilisation -> the reason it is expected to fail today, naming the task that models it.
 _NOT_YET_MODELLED: dict[int, dict[str, str]] = {
     185872: {
-        **_reasons(_BATCH_A_T767, "T767 (batch A) models it"),
         **_reasons(_BATCH_B_T768, "T768 (batch B) models it"),
         **_reasons(_BATCH_C_T769, "T769 (batch C) models it"),
         **_reasons(_BATCH_D_T770, "T770 (batch D) models it"),
@@ -251,36 +241,70 @@ _NOT_YET_MODELLED: dict[int, dict[str, str]] = {
 #: tuple per refused entity. Empty is the target (FR-022b).
 _OPEN_ROWS: dict[int, dict[str, tuple[OpenRow, ...]]] = {
     185872: {
+        # Row: Aztecs / Dock warships and Monk in the Aztecs' tree / production_time / "Military
+        # Units train +15% faster": the pack never says whether the warships the Dock trains and
+        # the Monk the Monastery trains are Military Units. The members are the Aztecs' own
+        # warships - War Galley (21), Demolition Ship (527), Fire Ship (529), Fast Fire Ship (532),
+        # Galley (539), Fire Galley (1103), Demolition Raft (1104), Hulk (2626), War Hulk (2627),
+        # Carrack (2628), Catapult Galleon (2633) - and the Monk (125).
+        "Aztecs": (
+            ("unit", "21", "production_time", "effect-not-modelled"),
+            ("unit", "125", "production_time", "effect-not-modelled"),
+            ("unit", "527", "production_time", "effect-not-modelled"),
+            ("unit", "529", "production_time", "effect-not-modelled"),
+            ("unit", "532", "production_time", "effect-not-modelled"),
+            ("unit", "539", "production_time", "effect-not-modelled"),
+            ("unit", "1103", "production_time", "effect-not-modelled"),
+            ("unit", "1104", "production_time", "effect-not-modelled"),
+            ("unit", "2626", "production_time", "effect-not-modelled"),
+            ("unit", "2627", "production_time", "effect-not-modelled"),
+            ("unit", "2628", "production_time", "effect-not-modelled"),
+            ("unit", "2633", "production_time", "effect-not-modelled"),
+        ),
+        # Row: Chinese / Castle Age and Imperial Age advances (technologies 102, 103) / cost /
+        # "Technologies cost -5/10/15%": no source states whether an Age advance is discounted.
+        "Chinese": (
+            ("technology", "102", "cost", "effect-not-modelled"),
+            ("technology", "103", "cost", "effect-not-modelled"),
+        ),
         # Row: Slavs / Castle and Watch Tower line (buildings 82, 79, 234, 235) / cost / Detinets
         # researched / "Detinets replaces 40% of the stone with wood; the wood is never stated".
-        # The bonus text the effect transcribes is "Replaces 40% of Castle and Watch Tower-line
-        # stone cost", so the one unknown covers the Castle (82) and the Watch Tower line: Watch
-        # Tower (79), Guard Tower (234), Keep (235).
+        # Update 61321 repeats the sentence and no note sizes it. The bonus text is "Replaces 40%
+        # of Castle and Watch Tower-line stone cost", so the one unknown covers the Castle (82) and
+        # the Watch Tower line: Watch Tower (79), Guard Tower (234), Keep (235).
         "Slavs": (
             ("building", "79", "cost", "effect-not-modelled"),
             ("building", "82", "cost", "effect-not-modelled"),
             ("building", "234", "cost", "effect-not-modelled"),
             ("building", "235", "cost", "effect-not-modelled"),
         ),
-        # Row: Persians / Archer line / cost / Kamandaran researched / "the replacement amount is
-        # never stated". The Archer line is Archer (4), Crossbowman (24), Arbalester (492).
-        "Persians": (
-            ("unit", "4", "cost", "effect-not-modelled"),
-            ("unit", "24", "cost", "effect-not-modelled"),
-            ("unit", "492", "cost", "effect-not-modelled"),
-        ),
-        # Row: Sicilians / each building "Fortifications" names / production_time / "the bullet
-        # never lists which buildings 'Fortifications' names". The buildings the pack's own strings
-        # use the word for: Watch Tower (79), Castle (82), Guard Tower (234), Keep (235), Bombard
-        # Tower (236), Krepost (1251), Donjon (1665).
+        # Row: Sicilians / each building "Fortifications" names beyond the Castle and the Donjon /
+        # production_time. The publisher's notes state the Castle and the Donjon (update 111772:
+        # "83 seconds after civilization bonus"); the buildings the pack's own strings use the
+        # word for besides them are the Watch Tower (79), Guard Tower (234), Keep (235), Bombard
+        # Tower (236) and Krepost (1251). Persians' Kamandaran closed: update 162286 states it.
         "Sicilians": (
             ("building", "79", "production_time", "effect-not-modelled"),
-            ("building", "82", "production_time", "effect-not-modelled"),
             ("building", "234", "production_time", "effect-not-modelled"),
             ("building", "235", "production_time", "effect-not-modelled"),
             ("building", "236", "production_time", "effect-not-modelled"),
             ("building", "1251", "production_time", "effect-not-modelled"),
-            ("building", "1665", "production_time", "effect-not-modelled"),
+        ),
+        # Row: Turks / Gunpowder technologies and Gunner units / "Chemistry free; Gunpowder
+        # technologies costs -50%" and "Team Bonus: Gunpowder Units train +25% faster". Cost of
+        # the candidate technologies Artillery (10), Bombard Tower (64), Elite Janissary (369)
+        # and Elite Cannon Galleon (376); training time of the Foot Gunners and Mounted Gunners
+        # the pack never calls Gunpowder Units: Janissary (46), Elite Janissary (557),
+        # Conquistador (771), Elite Conquistador (773).
+        "Turks": (
+            ("technology", "10", "cost", "effect-not-modelled"),
+            ("technology", "64", "cost", "effect-not-modelled"),
+            ("technology", "369", "cost", "effect-not-modelled"),
+            ("technology", "376", "cost", "effect-not-modelled"),
+            ("unit", "46", "production_time", "effect-not-modelled"),
+            ("unit", "557", "production_time", "effect-not-modelled"),
+            ("unit", "771", "production_time", "effect-not-modelled"),
+            ("unit", "773", "production_time", "effect-not-modelled"),
         ),
     },
     180059: {
