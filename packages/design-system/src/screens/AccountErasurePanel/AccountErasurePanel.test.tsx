@@ -1,7 +1,13 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { composeStories, setProjectAnnotations } from '@storybook/react'
+import preview from '../../../.storybook/preview'
 import { AccountErasurePanel, ErasedScreen } from './index'
+import * as AccountErasurePanelStories from './AccountErasurePanel.stories'
+
+// Same portable-stories setup as `Field.test.tsx` and `SiteHeader.test.tsx`.
+setProjectAnnotations([preview])
 
 const noop = {
   onRequestConfirmation: () => Promise.reject(new Error('unused')),
@@ -450,23 +456,69 @@ describe('AccountErasurePanel — focus while a confirm is in flight (T751)', ()
     })
   })
 
-  // `initialState: 'erasing'` (the `Erasing` story) is a state reachable only through a ticked box,
-  // so it opens with the box ticked and locked. `confirmation-expired` and `failed` are not forced:
-  // the box is live there, and `failed` is also reached from a mint that failed with it unticked.
-  it("opens 'erasing' with the acknowledgement ticked and locked, as the run leaves it", () => {
-    render(<AccountErasurePanel {...noop} initialState="erasing" />)
-    expect(checkbox()).toBeChecked()
-    expect(checkbox()).toBeDisabled()
-  })
-
-  it.each(['confirming', 'confirmation-expired', 'failed'] as const)(
-    "opens '%s' with the acknowledgement unticked and live",
-    (initialState) => {
+  // T779 (privacy-data-rights.md §10, "The frame each `initialState` opens on"): a story's entry
+  // frame is the frame its flow names. `erasing` and `confirmation-expired` are reached only through
+  // a ticked box (§9), and the `Failed` story depicts a confirmed press that failed, so the three
+  // open ticked; `confirming` is the frame before the box was touched. The rule is about the entry
+  // frame, not about `failed`: a first mint that fails reaches it unticked (the case below).
+  it.each([
+    { initialState: 'failed', checked: true, locked: false },
+    { initialState: 'confirmation-expired', checked: true, locked: false },
+    { initialState: 'erasing', checked: true, locked: true },
+    { initialState: 'confirming', checked: false, locked: false },
+  ] as const)(
+    'opens $initialState with the acknowledgement checked=$checked, disabled=$locked',
+    ({ initialState, checked, locked }) => {
       render(<AccountErasurePanel {...noop} initialState={initialState} />)
-      expect(checkbox()).not.toBeChecked()
-      expect(checkbox()).toBeEnabled()
+      if (checked) expect(checkbox()).toBeChecked()
+      else expect(checkbox()).not.toBeChecked()
+      if (locked) expect(checkbox()).toBeDisabled()
+      else expect(checkbox()).toBeEnabled()
     },
   )
+
+  // `erasing`'s confirm is the busy `loading` button (T751), pinned by its own tests above.
+  it.each(['failed', 'confirmation-expired'] as const)(
+    'opens %s with the confirm button carrying none of disabled, aria-disabled, aria-busy',
+    (initialState) => {
+      render(<AccountErasurePanel {...noop} initialState={initialState} />)
+      const confirm = screen.getByRole('button', { name: CONFIRM })
+      expect(confirm).not.toHaveAttribute('disabled')
+      expect(confirm).not.toHaveAttribute('aria-disabled')
+      expect(confirm).not.toHaveAttribute('aria-busy')
+    },
+  )
+
+  it('opens confirming with the confirm button disabled, and neither aria-disabled nor aria-busy', () => {
+    render(<AccountErasurePanel {...noop} initialState="confirming" />)
+    const confirm = screen.getByRole('button', { name: CONFIRM })
+    expect(confirm).toHaveAttribute('disabled')
+    expect(confirm).not.toHaveAttribute('aria-disabled')
+    expect(confirm).not.toHaveAttribute('aria-busy')
+  })
+
+  it.each(['idle', 'minting'] as const)("opens '%s' with no dialog", (initialState) => {
+    render(<AccountErasurePanel {...noop} initialState={initialState} />)
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  // Contrast case, passing before and after T779: the rule above is about a story's entry frame,
+  // so `openDialog`'s catch is unchanged. A first mint that rejects opens the dialog in `failed`
+  // with the box never ticked — unticked, live, confirm gated — which no `initialState` depicts.
+  it('opens the dialog in failed, unticked and gated, when the first mint rejects', async () => {
+    const user = userEvent.setup()
+    const onRequestConfirmation = vi.fn().mockRejectedValue(new Error('mint failed'))
+    render(<AccountErasurePanel onRequestConfirmation={onRequestConfirmation} onErase={vi.fn()} />)
+
+    await user.click(screen.getByRole('button', { name: 'Erase my account' }))
+    await waitFor(() =>
+      expect(screen.getByText('We could not erase your account.')).toBeInTheDocument(),
+    )
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(checkbox()).not.toBeChecked()
+    expect(checkbox()).toBeEnabled()
+    expect(screen.getByRole('button', { name: CONFIRM })).toHaveAttribute('disabled')
+  })
 
   it('keeps the native disabled on the confirm button only while the acknowledgement is unchecked', async () => {
     const user = userEvent.setup()
@@ -550,5 +602,42 @@ describe('AccountErasurePanel — unmount safety', () => {
     await act(async () => {
       resolveConfirmation({ confirmationToken: 'tok' })
     })
+  })
+})
+
+// T779: the 20 px acknowledgement box is far under the visual comparator's tolerance
+// (`maxDiffPixelRatio` 0.01), so no story baseline guards its tick. These render the real stories,
+// the same composed render Storybook runs, and assert the entry frame each one depicts.
+describe('AccountErasurePanel stories — the acknowledgement each opens with (T779)', () => {
+  const { Failed, ConfirmationExpired, Erasing, Confirming } = composeStories(
+    AccountErasurePanelStories,
+  )
+  const CONFIRM = 'Erase my account permanently'
+  const checkbox = () =>
+    screen.getByRole('checkbox', { name: /I understand this cannot be undone/ })
+
+  it.each([
+    ['Failed', Failed],
+    ['ConfirmationExpired', ConfirmationExpired],
+  ])('%s opens ticked and live with the confirm button enabled', (_name, Story) => {
+    render(<Story />)
+    expect(checkbox()).toBeChecked()
+    expect(checkbox()).toBeEnabled()
+    const confirm = screen.getByRole('button', { name: CONFIRM })
+    expect(confirm).not.toHaveAttribute('disabled')
+    expect(confirm).not.toHaveAttribute('aria-disabled')
+    expect(confirm).not.toHaveAttribute('aria-busy')
+  })
+
+  it('Erasing opens ticked and locked', () => {
+    render(<Erasing />)
+    expect(checkbox()).toBeChecked()
+    expect(checkbox()).toBeDisabled()
+  })
+
+  it('Confirming opens unticked with the confirm button disabled', () => {
+    render(<Confirming />)
+    expect(checkbox()).not.toBeChecked()
+    expect(screen.getByRole('button', { name: CONFIRM })).toHaveAttribute('disabled')
   })
 })
