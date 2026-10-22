@@ -129,8 +129,8 @@ interface AccountErasurePanelProps {
 
 type ErasureUiState =
   | 'idle'
-  | 'minting' // GET in flight — `EraseButton` busy before the dialog first opens, or a silent
-  // re-mint once it already has (`dialogHasOpened` tells the two apart, `AccountErasurePanel/index.tsx`)
+  | 'minting' // GET in flight — `EraseButton` busy before the dialog first opens, or, once it has,
+  // a re-mint with `ConfirmAction` busy (`dialogHasOpened` tells the two apart, `AccountErasurePanel/index.tsx`)
   | 'confirming' // dialog open, token held, waiting for the acknowledged confirm
   | 'erasing' // POST in flight
   | 'confirmation-expired' // 403 from POST: the token aged out; dialog says so
@@ -247,7 +247,7 @@ the erasure component, which is the copy-heavy one.)
 `Acknowledgement` checkbox label: **I understand this cannot be undone.**
 
 `ConfirmAction`: **Erase my account permanently** (`Button/destructive`; `disabled` until the box is
-checked). Loading label: **Erasing your account…**
+checked). Loading label, for the re-mint and the erase alike: **Erasing your account…**
 
 `CancelAction`: **Keep my account** (`Button/secondary`; this is `Dialog`'s Escape target — the
 accidental key never takes the destructive path, per `Dialog`'s own rule).
@@ -255,9 +255,9 @@ accidental key never takes the destructive path, per `Dialog`'s own rule).
 `DialogFailure` inside the body:
 
 - Token expired (`confirmation-expired`, the `POST`'s `403`): **Your confirmation expired.** _For your
-  safety a confirmation is only good for a few minutes. Confirm again to erase your account._ — and the
-  panel silently re-mints a token (re-runs `onRequestConfirmation`) the next time `ConfirmAction` is
-  pressed, so the user simply confirms once more.
+  safety a confirmation is only good for a few minutes. Confirm again to erase your account._ — the
+  next `ConfirmAction` press re-mints (`onRequestConfirmation`) and then erases: one press, no extra
+  step and no extra copy; the button reads **Erasing your account…** through both (§5, §9, T751).
 - Other failure (`failed`): **We could not erase your account.** _Nothing was changed, and your account
   is still here. Try again when you are ready._
 
@@ -332,18 +332,18 @@ this paragraph.
 
 **disabled** — `DataExportPanel`: none — while a request is in flight or a job is preparing, the
 `RequestButton` is in `Button`'s `loading` state: it keeps focus, and a second export cannot start.
-`AccountErasurePanel`: `ConfirmAction` is `disabled` until `Acknowledgement` is checked — the one
-sanctioned disabled control in these two specs, because the action it guards is irreversible and the
-checkbox beside it _is_ the visible reason (satisfying `Button`'s rule that a disabled button carry a
-visible explanation). Nothing else is ever disabled: the `EraseButton` on the page is always live, and
-a right that is greyed out has been withdrawn without saying so.
+`AccountErasurePanel`: `ConfirmAction` is `disabled` while `Acknowledgement` is unchecked — sanctioned
+because the act is irreversible and the checkbox beside it _is_ the visible reason `Button` requires —
+and for no other reason: a request in flight (the re-mint, the `POST`) makes it `loading`, never
+`disabled`. `CancelAction` is `disabled` only while that request runs. Nothing else is ever disabled:
+the `EraseButton` on the page is always live, and a right greyed out is withdrawn without saying so.
 
 **loading** — `DataExportPanel`: `requesting` shows the `RequestButton` in its loading state;
 `preparing` shows `ProgressRegion` with a `Skeleton` block at the download link's footprint (honouring
 `Skeleton`'s 200 ms floor and 10 s ceiling — after 10 s the panel replaces the skeleton with the
 `FailureRegion` and a retry, per `Skeleton`'s own rule). `AccountErasurePanel`: `minting` shows the
-`EraseButton` busy while the token is fetched; `erasing` shows `ConfirmAction` busy with `CancelAction`
-disabled for the duration.
+`EraseButton` busy while the token is fetched; a re-mint inside the open dialog, then `erasing`, show
+`ConfirmAction` `loading` as one run, **Erasing your account…**, focus kept, `CancelAction` disabled (§9).
 
 **error** — `DataExportPanel`: `failed` renders `FailureRegion` (`Callout/danger`) with a retry; the
 button returns to enabled. `AccountErasurePanel`: `DialogFailure` renders inside the open dialog per
@@ -446,6 +446,20 @@ links — their forward action is always a `Button`, never a link inside coloure
   `DialogHeading`, focus moved to the heading on open, Tab trapped to the dialog's own focusables, and
   Escape follows `Dialog`'s own rule (`shared-primitives.md` §Dialog) with `CancelAction` as its
   secondary action — in no state does the accidental key reach `ConfirmAction`.
+- **Focus while a confirm is in flight (T751).** A press of `ConfirmAction` leaves focus on it until
+  the request settles, by either path: straight to `erasing` with a held token, or — after a `403`
+  (`confirmation-expired`) — through the re-mint (`minting` with `dialogHasOpened`), then `erasing`.
+  For the whole run `ConfirmAction` is `Button`'s `loading` (`aria-busy` and `aria-disabled`, never
+  the `disabled` attribute) with `loadingLabel` **Erasing your account…**: one frame for both steps,
+  because the press asked for one thing, the erasure — a separate "Confirming…" label would flip
+  mid-press and name a step the user never chose. Focus is never on `body` or behind the backdrop,
+  and the dialog does not close or remount across the step. `CancelAction` is `disabled` and Escape
+  calls nothing for the whole run, exactly as during `erasing`: the `POST` follows the `GET` with no
+  further input, so a Cancel live during the re-mint would race a `POST` the user already confirmed,
+  and would go live then dead under the pointer within one press. The `DialogFailure` callout clears
+  on the press, as on any retry. When the run settles in `failed` or another `confirmation-expired`,
+  `ConfirmAction` is enabled again with focus still on it; on success the route swaps in
+  `ErasedScreen`.
 - `Acknowledgement` is a real `<input type="checkbox">` with a `<label>`; `ConfirmAction` reflects the
   checked state via `disabled` and `aria-disabled`. The checkbox and its 44px-min hit area clear the
   touch minimum.
@@ -501,6 +515,18 @@ links — their forward action is always a `Button`, never a link inside coloure
       again; nothing claims the account was erased.
 - [ ] In the failure dialog frame, the dialog is still open, the message is present, and the confirm
       button is enabled again.
+- [ ] In the re-mint frame (`/privacy (erasure re-mint in flight)`: confirm pressed from the
+      token-expired dialog, the `GET` still pending), the dialog is open; the confirm button shows a
+      spinner and reads "Erasing your account…", the same as the erasing frame and at its resting
+      width; "Keep my account" is visibly disabled; the "Your confirmation expired." callout is gone;
+      and the focus ring, if shown, is on the confirm button — nowhere else, and not absent because
+      focus fell to the page.
+- [ ] Keyboard, falsifiable in a unit test (T751): with focus on the confirm button in the
+      token-expired dialog, Enter leaves `document.activeElement` on that same button while the
+      re-mint is pending, after it resolves into `erasing`, and after the run settles in `failed` or
+      a second token-expired — never `body`. Throughout the run the button has no `disabled`
+      attribute and carries `aria-busy="true"` and `aria-disabled="true"`; Escape pressed during it
+      calls neither action and the dialog stays open.
 - [ ] The `ErasedScreen` frame states the account is erased, names what survives, and carries no "sign
       back in" control.
 

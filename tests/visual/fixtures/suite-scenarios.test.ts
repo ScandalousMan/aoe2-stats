@@ -400,18 +400,22 @@ test.describe('suite scenarios', () => {
 
   // T750: the dialog scenarios whose secondary action is unavailable while Escape is pressed. The
   // keyboard suite asserts the walk read exactly this for every surface scenario, so dropping a
-  // marker (or adding one) is a visible change here. The erasure re-mint scenario is deliberately
-  // absent: its confirm button is the disabled one (`minting`), and its secondary action
-  // (`disabled: state === 'erasing'`) stays live, so Escape closes that dialog.
-  test('the in-flight dialog scenarios whose secondary action is unavailable are exactly these two', () => {
+  // marker (or adding one) is a visible change here. T751: the erasure re-mint scenario is one of
+  // them since the re-mint became part of the in-flight run (`AccountErasurePanel`: the secondary
+  // action is `disabled` while `minting` inside the dialog, as while `erasing`). It holds its second
+  // `GET` in its own `stub` rather than through `hold`, so it is the one marked scenario without one.
+  test('the in-flight dialog scenarios whose secondary action is unavailable are exactly these three', () => {
     const marked = SUITE_SCENARIOS.filter((scenario) => scenario.secondaryUnavailable === true)
     expect(marked.map((scenario) => scenario.label)).toEqual([
       '/dashboard (unlink in flight)',
       '/privacy (erasure in flight)',
+      '/privacy (erasure re-mint in flight)',
     ])
     for (const scenario of marked) {
       expect(scenario.surface).toBe('dialog')
-      expect(scenario.hold).toBeDefined()
+      if (scenario.label !== '/privacy (erasure re-mint in flight)') {
+        expect(scenario.hold).toBeDefined()
+      }
     }
   })
 

@@ -9,8 +9,8 @@ import { Link } from '../../primitives/Link'
 
 export type ErasureUiState =
   | 'idle'
-  | 'minting' // GET in flight — `EraseButton` busy before the dialog first opens, or a silent
-  // re-mint once it already has (`dialogHasOpened` tells the two apart, below)
+  | 'minting' // GET in flight — `EraseButton` busy before the dialog first opens, or, once it has,
+  // a re-mint with `ConfirmAction` busy (`dialogHasOpened` tells the two apart, below)
   | 'confirming' // dialog open, token held, waiting for the acknowledged confirm
   | 'erasing' // POST in flight
   | 'confirmation-expired' // 403 from POST: the token aged out; dialog says so
@@ -36,8 +36,8 @@ const focusRing =
 
 /** FR-037: irreversible account erasure, gated by a real two-step confirmation — a `GET` mints a
  * short-lived token, then a `Dialog` with a required "I understand" checkbox gates the destructive
- * `POST`. On the `POST`'s 403 (token expiry) the panel silently re-mints and retries once the user
- * confirms again. Owns its own dialog lifecycle; `initialState` exists only for stories. */
+ * `POST`. On the `POST`'s 403 (token expiry) the next confirm press re-mints, then erases, as one
+ * in-flight run (T751). Owns its own dialog lifecycle; `initialState` exists only for stories. */
 export function AccountErasurePanel({
   onRequestConfirmation,
   onErase,
@@ -51,7 +51,7 @@ export function AccountErasurePanel({
   // §5's `minting` names two different moments the same state value covers: the very first mint,
   // triggered by `EraseButton` before `ConfirmDialog` has ever opened ("minting shows the
   // `EraseButton` busy while the token is fetched" — before the dialog exists to hold anything
-  // busy itself), and the silent re-mint §4.4 describes, fired from inside an already-open dialog
+  // busy itself), and the re-mint §4.4 describes, fired from inside an already-open dialog
   // when a stale token expired. Both are `state === 'minting'`; this flag is what tells them
   // apart without a second state value the vocabulary does not need. `initialState === 'minting'`
   // (the `Minting` story) starts `false` — the pre-dialog case — deliberately: no story ever needs
@@ -70,9 +70,9 @@ export function AccountErasurePanel({
     [],
   )
 
-  // The dialog is open for `minting` only once it has already opened once this cycle (the
-  // in-dialog re-mint above) — the very first `minting`, fired from `EraseButton` on the page
-  // itself, renders that button busy instead (below) and does not open `ConfirmDialog` early.
+  // `minting` opens the dialog only with `dialogHasOpened` (the in-dialog re-mint), so the `Dialog`
+  // below sees `minting` only as that re-mint: `ConfirmAction` is `loading` and "Keep my account"
+  // disabled for it as for `erasing` (T751, §9); the first mint busies `EraseButton` instead.
   const dialogOpen =
     (state === 'minting' && dialogHasOpened) ||
     state === 'confirming' ||
@@ -131,8 +131,8 @@ export function AccountErasurePanel({
     if (!acknowledged) return
 
     // A 403 means the token aged out (module docstring, `_ERASURE_CONFIRMATION_TTL`): the very
-    // next `ConfirmAction` press silently re-mints and immediately retries the erase with the
-    // fresh token — one press does both steps, so "the user simply confirms once more" (§4.4) is
+    // next `ConfirmAction` press re-mints and immediately retries the erase with the fresh
+    // token — one press does both steps, so "the user simply confirms once more" (§4.4) is
     // literally true rather than a second, separate mint-only step.
     if (confirmationToken === undefined) {
       setState('minting')
@@ -232,15 +232,15 @@ export function AccountErasurePanel({
           primaryAction={{
             label: 'Erase my account permanently',
             variant: 'destructive',
-            disabled: !acknowledged || state === 'minting' || state === 'erasing',
-            loading: state === 'erasing',
+            disabled: !acknowledged,
+            loading: state === 'minting' || state === 'erasing',
             loadingLabel: 'Erasing your account…',
             onClick: handleConfirm,
           }}
           secondaryAction={{
             label: 'Keep my account',
             variant: 'secondary',
-            disabled: state === 'erasing',
+            disabled: state === 'minting' || state === 'erasing',
             onClick: closeDialog,
           }}
         >

@@ -2385,7 +2385,12 @@ const PRIVACY_BRANCHES: readonly BranchScenario[] = [
       await waitQuietly(page.locator('[role="dialog"] button[aria-busy="true"]'))
       await focusDialogHeading(page)
     },
-    shows: [busy('busy erase confirm button', 'Erasing your account')],
+    shows: [
+      busy('busy erase confirm button', 'Erasing your account'),
+      // This `prepare` puts focus back on the heading; `erasure re-mint in flight` renders the same
+      // busy frame and leaves focus where the press put it, which is what separates the two.
+      mark('focus on the dialog heading', '[role="dialog"] h2:focus'),
+    ],
   }),
   privacyBranch('erasure confirmation expired', 'erasure', {
     surface: 'dialog',
@@ -2410,14 +2415,15 @@ const PRIVACY_BRANCHES: readonly BranchScenario[] = [
     shows: ERASE_DIALOG_FAILED('Your confirmation expired.', true),
   }),
   // Pressing the confirm button again after a 403 mints a fresh token inside the open dialog
-  // (`handleConfirm`: `minting` with `dialogHasOpened`): the confirm button is natively disabled for
-  // the wait, and was the focused element. A failed re-mint ends in the `failed` dialog with the
-  // acknowledgement still ticked, which a failed erase also ends in, so it is not a scenario of its
-  // own. T751 files the focus drop; this `prepare` moves focus back to the dialog heading after the
-  // press (`focusDialogHeading`), so the keyboard result here does not judge where the press left
-  // focus, and T751 owns removing that step.
+  // (`handleConfirm`: `minting` with `dialogHasOpened`). T751 (privacy-data-rights.md §9): the
+  // re-mint and the erase after it are one run, so the confirm button is `loading` (`aria-busy`,
+  // never the native `disabled`) and keeps the focus the press left on it, and "Keep my account" is
+  // disabled. This `prepare` does not move focus after the press, so the keyboard walk judges where
+  // the press left it. A failed re-mint ends in the `failed` dialog with the acknowledgement still
+  // ticked, which a failed erase also ends in, so it is not a scenario of its own.
   privacyBranch('erasure re-mint in flight', 'erasure', {
     surface: 'dialog',
+    secondaryUnavailable: true, // `AccountErasurePanel`: `disabled: state === 'minting' || ...`
     stub: async (page) => {
       await stubMe(page, SIGNED_IN_ME)
       let mints = 0
@@ -2451,16 +2457,14 @@ const PRIVACY_BRANCHES: readonly BranchScenario[] = [
       await confirmErasure(page)
       await waitQuietly(page.locator('[role="dialog"] :text("Your confirmation expired.")'))
       await activate(page, page.getByRole('button', { name: 'Erase my account permanently' }))
-      await waitQuietly(
-        page.locator('[role="dialog"] button:disabled:has-text("Erase my account permanently")'),
-      )
-      await focusDialogHeading(page)
+      await waitQuietly(page.locator('[role="dialog"] button[aria-busy="true"]'))
     },
     shows: [
       mark('ticked acknowledgement', '[role="dialog"] input[type="checkbox"]:checked'),
+      // The same frame as `erasure in flight`: what tells them apart is where the press left focus.
       mark(
-        'disabled confirm button',
-        '[role="dialog"] button:disabled:has-text("Erase my account permanently")',
+        'busy confirm button holding focus',
+        '[role="dialog"] button[aria-busy="true"]:focus:has-text("Erasing your account")',
       ),
       absent('no expiry callout', '[role="dialog"] :text("Your confirmation expired.")'),
     ],

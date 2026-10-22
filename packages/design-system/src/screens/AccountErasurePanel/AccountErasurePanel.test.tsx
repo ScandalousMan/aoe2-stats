@@ -129,6 +129,154 @@ describe('AccountErasurePanel — token expiry (403) silently re-mints', () => {
   })
 })
 
+// T751 (privacy-data-rights.md §9, "Focus while a confirm is in flight"): the re-mint and the erase
+// that follows it are one in-flight run. `ConfirmAction` is `Button`'s `loading` for all of it —
+// never the native `disabled`, which would drop the focus the press left on it to `body`.
+describe('AccountErasurePanel — focus while a confirm is in flight (T751)', () => {
+  const CONFIRM = 'Erase my account permanently'
+
+  function deferred<T>() {
+    let resolve: (value: T) => void = () => {}
+    let reject: (reason: unknown) => void = () => {}
+    const promise = new Promise<T>((res, rej) => {
+      resolve = res
+      reject = rej
+    })
+    return { promise, resolve, reject }
+  }
+
+  const expired = () => Object.assign(new Error('expired'), { status: 403 })
+
+  /** Opens the dialog, ticks the box, and lets the first `POST` end in a 403, so the dialog reads
+   * `confirmation-expired`. The second mint and the second erase stay pending until the test
+   * settles them. */
+  async function openExpiredDialog() {
+    const user = userEvent.setup()
+    const remint = deferred<{ confirmationToken: string }>()
+    const secondErase = deferred<void>()
+    const onRequestConfirmation = vi
+      .fn()
+      .mockResolvedValueOnce({ confirmationToken: 'stale-token' })
+      .mockReturnValueOnce(remint.promise)
+    const onErase = vi
+      .fn()
+      .mockRejectedValueOnce(expired())
+      .mockReturnValueOnce(secondErase.promise)
+    render(<AccountErasurePanel onRequestConfirmation={onRequestConfirmation} onErase={onErase} />)
+
+    await user.click(screen.getByRole('button', { name: 'Erase my account' }))
+    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument())
+    await user.click(screen.getByRole('checkbox', { name: /I understand this cannot be undone/ }))
+    await user.click(screen.getByRole('button', { name: CONFIRM }))
+    await waitFor(() => expect(screen.getByText('Your confirmation expired.')).toBeInTheDocument())
+
+    const confirm = screen.getByRole('button', { name: CONFIRM })
+    act(() => confirm.focus())
+    expect(confirm).toHaveFocus()
+    return { user, confirm, remint, secondErase, onRequestConfirmation, onErase }
+  }
+
+  function expectInFlight(confirm: HTMLElement) {
+    expect(confirm).toHaveFocus()
+    expect(confirm).not.toHaveAttribute('disabled')
+    expect(confirm).toHaveAttribute('aria-busy', 'true')
+    expect(confirm).toHaveAttribute('aria-disabled', 'true')
+    expect(confirm).toHaveTextContent('Erasing your account…')
+    expect(screen.getByRole('button', { name: 'Keep my account' })).toBeDisabled()
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+  }
+
+  it('keeps focus on the confirm button through the re-mint, the erase, and a failed run', async () => {
+    const { user, confirm, remint, secondErase, onRequestConfirmation, onErase } =
+      await openExpiredDialog()
+
+    await user.keyboard('{Enter}')
+    await waitFor(() => expect(onRequestConfirmation).toHaveBeenCalledTimes(2))
+
+    // The re-mint is pending: the same element, busy, not disabled, the callout gone.
+    expectInFlight(screen.getByRole('button', { name: /Erasing your account/ }))
+    expect(screen.getByRole('button', { name: /Erasing your account/ })).toBe(confirm)
+    expect(screen.queryByText('Your confirmation expired.')).not.toBeInTheDocument()
+
+    // Escape during the re-mint calls neither action and leaves the dialog open.
+    await user.keyboard('{Escape}')
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(onErase).toHaveBeenCalledTimes(1)
+    expect(onRequestConfirmation).toHaveBeenCalledTimes(2)
+    expectInFlight(confirm)
+
+    // The re-mint resolves and the erase starts: one run, same element, same frame.
+    await act(async () => {
+      remint.resolve({ confirmationToken: 'fresh-token' })
+    })
+    await waitFor(() => expect(onErase).toHaveBeenLastCalledWith('fresh-token'))
+    expectInFlight(confirm)
+    await user.keyboard('{Escape}')
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(onErase).toHaveBeenCalledTimes(2)
+
+    // The run ends in `failed`: the button is enabled again, focus still on it.
+    await act(async () => {
+      secondErase.reject(new Error('server error'))
+    })
+    await waitFor(() =>
+      expect(screen.getByText('We could not erase your account.')).toBeInTheDocument(),
+    )
+    expect(screen.getByRole('button', { name: CONFIRM })).toBe(confirm)
+    expect(confirm).toBeEnabled()
+    expect(confirm).not.toHaveAttribute('aria-busy')
+    expect(confirm).toHaveFocus()
+    expect(screen.getByRole('button', { name: 'Keep my account' })).toBeEnabled()
+  })
+
+  it('keeps focus on the confirm button when the run ends in a second token expiry', async () => {
+    const { user, confirm, remint, secondErase } = await openExpiredDialog()
+
+    await user.keyboard('{Enter}')
+    expectInFlight(confirm)
+    await act(async () => {
+      remint.resolve({ confirmationToken: 'fresh-token' })
+    })
+    expectInFlight(confirm)
+    await act(async () => {
+      secondErase.reject(expired())
+    })
+    await waitFor(() => expect(screen.getByText('Your confirmation expired.')).toBeInTheDocument())
+    expect(screen.getByRole('button', { name: CONFIRM })).toBe(confirm)
+    expect(confirm).toBeEnabled()
+    expect(confirm).toHaveFocus()
+  })
+
+  it('keeps focus on the confirm button when the re-mint itself fails', async () => {
+    const { user, confirm, remint } = await openExpiredDialog()
+
+    await user.keyboard('{Enter}')
+    expectInFlight(confirm)
+    await act(async () => {
+      remint.reject(new Error('mint failed'))
+    })
+    await waitFor(() =>
+      expect(screen.getByText('We could not erase your account.')).toBeInTheDocument(),
+    )
+    expect(confirm).toBeEnabled()
+    expect(confirm).toHaveFocus()
+  })
+
+  it('keeps the native disabled on the confirm button only while the acknowledgement is unchecked', async () => {
+    const user = userEvent.setup()
+    const onRequestConfirmation = vi.fn().mockResolvedValue({ confirmationToken: 'tok' })
+    render(<AccountErasurePanel onRequestConfirmation={onRequestConfirmation} onErase={vi.fn()} />)
+    await user.click(screen.getByRole('button', { name: 'Erase my account' }))
+    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument())
+
+    const confirm = screen.getByRole('button', { name: CONFIRM })
+    expect(confirm).toHaveAttribute('disabled')
+    expect(confirm).not.toHaveAttribute('aria-busy')
+    // Keep my account is live: nothing is in flight.
+    expect(screen.getByRole('button', { name: 'Keep my account' })).toBeEnabled()
+  })
+})
+
 describe('AccountErasurePanel — other failure', () => {
   it('keeps the dialog open, shows the failure message, and re-enables confirm', async () => {
     const user = userEvent.setup()
