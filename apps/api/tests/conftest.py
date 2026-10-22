@@ -40,7 +40,8 @@ autouse fixture in this file would apply to all of them whether they asked for i
 from __future__ import annotations
 
 import re
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator, Callable, Iterator
+from datetime import UTC, datetime, timedelta, tzinfo
 from pathlib import Path
 from urllib.parse import quote
 
@@ -54,6 +55,7 @@ from aoe2stats_api.app import create_app
 from aoe2stats_api.deps import get_object_store, get_response_cache, get_session
 from aoe2stats_api.routers import matches as matches_router
 from aoe2stats_api.routers import players as players_router
+from aoe2stats_api.routers import privacy as privacy_router
 from aoe2stats_api.settings import get_settings
 from aoe2stats_storage.objects import ObjectNotFound
 from aoe2stats_storage.repositories.base import session_scope
@@ -134,6 +136,84 @@ if _missing_from_fixture or _missing_from_env_example:
         f"declared in .env.example but not in REQUIRED_ENV: {sorted(_missing_from_fixture)}; "
         f"in REQUIRED_ENV but not declared in .env.example: {sorted(_missing_from_env_example)}"
     )
+
+
+@pytest.fixture
+def advance_erasure_clock(monkeypatch: pytest.MonkeyPatch) -> Callable[[timedelta], None]:
+    """Freezes the clock `routers/privacy.py` reads and returns the only thing that moves it.
+
+    The erasure confirmation token is stamped by `GET /api/privacy/erase` and checked by
+    `POST /api/privacy/erase` against `_ERASURE_CONFIRMATION_TTL`, both through `datetime.now(UTC)`
+    in that module, and the check has two clock bounds: the token's age must not exceed the TTL and
+    must not be negative. On the real clock a test's `GET` and `POST` are only milliseconds apart,
+    but nothing makes that so. A whole-workspace run on 2026-10-20 answered 403
+    `confirmation_token_invalid` to the second `POST` of a test holding one token across two. That
+    403 was observed; its cause is inferred, not measured: either an age over the TTL (a stalled or
+    suspended machine) or a backward wall-clock step (an NTP or wake correction) fails the same
+    check with the same response. Frozen at the real instant of setup, issuance and verification
+    read the same time whichever of the two happened, and calling the returned function is the only
+    way time passes, so both bounds are exercised on purpose instead of by accident
+    (`test_erasure.py`'s at-TTL and past-TTL tests pin the TTL as a literal ten minutes, and its
+    backward-step test pins the lower bound).
+
+    Only that module's `datetime` name is swapped, for a subclass whose `now()` answers the frozen
+    instant (`datetime` is a C type and cannot be patched attribute by attribute; the technique
+    `test_players_routes.py` uses on `ratelimit`). `security.py`'s session expiry and the
+    database's own `now()` keep running on the real clock, `monkeypatch` puts the original name
+    back after the test, and the production TTL, its bounds and its 403 are untouched.
+
+    **What the freeze reaches.** Every `datetime.now(...)` in `routers/privacy.py`, not just the
+    token: the archival objection's timestamp (`set_archival_objection`), the export's
+    `completed_at` (`start_export`), the token's issue and verification
+    (`_issue_erasure_confirmation_token`, `_verify_erasure_confirmation_token`), the erasure's
+    `completed_at` and the "resolved by the erasure of ..." outcome built from it (`erase_account`),
+    the objection route's rate-limit window (`object_to_processing`) and the objection resolution's
+    `completed_at` (`resolve_third_party_objection`). Those are application-clock values. Columns
+    the database stamps itself (`data_requests.requested_at`, a `func.now()` default) stay on the
+    real clock, so under this fixture an application-clock column precedes a database-clock one:
+    measured, an erasure's `completed_at` 19:55:23.844 against the same row's `requested_at`
+    19:55:24.117. A test using this fixture must never assert an ordering, a duration or deadline
+    arithmetic between an application-clock column and a database-clock column.
+
+    **Naive clock reads are refused.** The real `datetime.now()` returns a naive value, which
+    cannot be subtracted from the aware issue time. A stub that quietly answered an aware value to
+    `now()` would hide exactly that production defect, so `now()` without a time zone, `utcnow()`
+    and `today()` raise here. `datetime.fromtimestamp` is left alone: it is deterministic given its
+    argument, and `routers/privacy.py` does not call it.
+    """
+    frozen = [datetime.now(UTC)]
+
+    class _ClockedDateTime(datetime):
+        @classmethod
+        def now(cls, tz: tzinfo | None = None) -> datetime:
+            if tz is None:
+                raise AssertionError(
+                    "aoe2stats_api.routers.privacy called datetime.now() without a time zone: the "
+                    "real call returns a naive value that cannot be compared with the aware "
+                    "confirmation-token timestamp; ask for an aware time, datetime.now(UTC)"
+                )
+            return frozen[0].astimezone(tz)
+
+        @classmethod
+        def utcnow(cls) -> datetime:
+            raise AssertionError(
+                "aoe2stats_api.routers.privacy called datetime.utcnow(), which is naive; ask for "
+                "an aware time, datetime.now(UTC)"
+            )
+
+        @classmethod
+        def today(cls) -> datetime:
+            raise AssertionError(
+                "aoe2stats_api.routers.privacy called datetime.today(), which is naive and reads "
+                "the real clock; ask for an aware time, datetime.now(UTC)"
+            )
+
+    monkeypatch.setattr(privacy_router, "datetime", _ClockedDateTime)
+
+    def advance(delta: timedelta) -> None:
+        frozen[0] += delta
+
+    return advance
 
 
 @pytest.fixture(autouse=True)
