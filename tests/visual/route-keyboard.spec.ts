@@ -76,7 +76,17 @@ test.describe('keyboard operation, every route, both themes', () => {
 
           const walk = async () => {
             if (scenario.surface) {
-              assertSurfaceKeyboard(await walkOpenSurface(page, scenario.surface), context)
+              const surfaceWalk = await walkOpenSurface(page, scenario.surface)
+              // T750: which branch of Escape this walk judged is declared on the scenario, not
+              // inferred: a walk that read the other one passes `assertSurfaceKeyboard` for the
+              // wrong reason (or not at all), so it is asserted before the contract is.
+              expect(
+                surfaceWalk.secondaryUnavailable,
+                `${context}: the walk read the dialog's secondary action as ` +
+                  `${surfaceWalk.secondaryUnavailable ? 'unavailable' : 'available'}, but the ` +
+                  `scenario declares it ${scenario.secondaryUnavailable ? 'unavailable' : 'available'}`,
+              ).toBe(scenario.secondaryUnavailable === true)
+              assertSurfaceKeyboard(surfaceWalk, context)
             } else {
               const result = await walkTabOrder(page)
 

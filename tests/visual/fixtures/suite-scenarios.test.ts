@@ -391,19 +391,27 @@ test.describe('suite scenarios', () => {
   })
 
   // A defect a scenario is known to show is asserted by its message (`expectKnownDefect`, shown both
-  // ways in `known-defect.test.ts`). Pin which scenarios carry the marker, so one added to quiet a
-  // red walk is a visible change; one left behind after a fix fails the keyboard suite itself.
-  test('exactly the two in-flight dialogs carry a known keyboard defect', () => {
+  // ways in `known-defect.test.ts`). T750 fixed the only two, so none is marked now: a marker added
+  // to quiet a red walk is a visible change here, and a future one needs this pin edited with it.
+  test('no scenario carries a known-defect marker', () => {
     const marked = SUITE_SCENARIOS.filter((scenario) => scenario.knownDefects !== undefined)
+    expect(marked.map((scenario) => scenario.label)).toEqual([])
+  })
+
+  // T750: the dialog scenarios whose secondary action is unavailable while Escape is pressed. The
+  // keyboard suite asserts the walk read exactly this for every surface scenario, so dropping a
+  // marker (or adding one) is a visible change here. The erasure re-mint scenario is deliberately
+  // absent: its confirm button is the disabled one (`minting`), and its secondary action
+  // (`disabled: state === 'erasing'`) stays live, so Escape closes that dialog.
+  test('the in-flight dialog scenarios whose secondary action is unavailable are exactly these two', () => {
+    const marked = SUITE_SCENARIOS.filter((scenario) => scenario.secondaryUnavailable === true)
     expect(marked.map((scenario) => scenario.label)).toEqual([
       '/dashboard (unlink in flight)',
       '/privacy (erasure in flight)',
     ])
     for (const scenario of marked) {
-      expect(Object.keys(scenario.knownDefects ?? {})).toEqual(['keyboard'])
-      expect(scenario.surface, `${scenario.label}: a keyboard defect is a surface walk`).toBe(
-        'dialog',
-      )
+      expect(scenario.surface).toBe('dialog')
+      expect(scenario.hold).toBeDefined()
     }
   })
 
