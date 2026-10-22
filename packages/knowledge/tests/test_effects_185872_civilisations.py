@@ -1,6 +1,12 @@
 """T746: the civilisation effects of `aoe2techtree-185872-civilisations`, the second build 185872
 snapshot, which supersedes the first and models eight civilisations.
 
+**Since T767 this snapshot is no longer the one the build resolves to**: the third,
+`aoe2techtree-185872-civilisations-20`, supersedes it (`test_effects_185872_civilisations_20.py`).
+This file keeps the second snapshot's own record, so every query below runs with that snapshot
+pinned (`snapshot.pinned_snapshot`, SC-005): what it answered when it was current is what it still
+answers, and the four sources T767 took again are asserted here as they were.
+
 Three kinds of claim, none of them a restatement of `test_effects.py` or `test_bullet_coverage.py`
 (which are about the build 180059 snapshot and the first pack):
 
@@ -23,7 +29,7 @@ from __future__ import annotations
 
 import json
 import tomllib
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from importlib import resources
 
 import pytest
@@ -95,6 +101,15 @@ _NO_SELECTOR_BULLETS: Mapping[str, tuple[str, ...]] = {
 _ENTITY_REPRESENTED_BUT_NEEDS_NO_EFFECT_ROW: Mapping[str, tuple[str, ...]] = {
     "Persians": ("Can build Caravanserai in Imperial Age",),
 }
+
+
+@pytest.fixture(autouse=True)
+def _pin_the_second_snapshot() -> Iterator[None]:
+    """The build resolves to a newer snapshot now; this file is about the second, found by its
+    directory, which is a label and so only ever used to find the identity to pin."""
+    (second,) = (s for s in snapshot.load_all_snapshots() if s.directory == _DIRECTORY)
+    with snapshot.pinned_snapshot(second):
+        yield
 
 
 def _pack_root() -> resources.abc.Traversable:

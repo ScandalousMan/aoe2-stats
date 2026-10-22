@@ -3044,7 +3044,7 @@ phase.
       docstring beside T070i's, and correct the docstring where it says that source corroborates
       nothing in this table. **Red first** in `apps/api/tests/`: each of the three resolves to its
       name
-- [ ] T767 [US2] Model batch A on build 185872 in `aoe2techtree-185872-civilisations-20`, which
+- [x] T767 [US2] Model batch A on build 185872 in `aoe2techtree-185872-civilisations-20`, which
       supersedes `aoe2techtree-185872-civilisations`: Britons, Goths, Japanese, Chinese,
       Byzantines, Turks, Vikings, Mongols, Celts, Spanish, Aztecs and Mayans, with T746's eight
       carried. `rules.json` is derived again under T763's normaliser. The snapshot carries the first

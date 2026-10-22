@@ -52,43 +52,129 @@ def test_the_names_of_the_ids_a_recording_carries_resolve_for_the_build(
 #: The first build 185872 snapshot's digest (`aoe2techtree-185872/snapshot.toml`), which the second
 #: names as the one it supersedes (T746). A promoted snapshot is never edited (FR-025), so modelling
 #: civilisations for the build could not be done in it.
-_SUPERSEDED_DIGEST = "sha256:1c77d7cb5034b48dcb15641370512854a222d5f7d40baaa6129fb1b1c56fca5a"
+_FIRST_DIGEST = "sha256:1c77d7cb5034b48dcb15641370512854a222d5f7d40baaa6129fb1b1c56fca5a"
 
-#: The raw civilisation ids the committed build 185872 recording seats (Slavs, Sicilians) and the
-#: six `aoe2techtree-180059` models (Franks, Teutons, Persians, Saracens, Malians, Tatars).
-_MODELLED_RAW_IDS = {
+#: The second snapshot's digest (`aoe2techtree-185872-civilisations/snapshot.toml`, T746), which the
+#: third, `aoe2techtree-185872-civilisations-20`, names as the one it supersedes (T767). Build
+#: 185872 now has a chain of three: resolution answers the last, and the first two stay loadable by
+#: identity.
+_SECOND_DIGEST = "sha256:becd35a158dafb72c304aeb07bae66347b4442f62d209d8cedb23d0c1f34f004"
+
+#: Every replay-space civilisation id of `aoc-reference-data`'s `civilizations` table (read again
+#: 2026-10-22, T767) whose name is a civilisation of the vendored pack: 56 of the dataset's 62
+#: entries. The six it holds that the pack does not (46 Achaemenids, 47 Athenians, 48 Spartans,
+#: 54 Macedonians, 55 Thracians, 56 Puru) are the Chronicles civilisations, outside the pack and
+#: outside this snapshot (T776 decides them). The dataset spells id 16 "Maya", the pack "Mayans".
+_RAW_IDS = {
+    1: "Britons",
     2: "Franks",
+    3: "Goths",
     4: "Teutons",
+    5: "Japanese",
+    6: "Chinese",
+    7: "Byzantines",
     8: "Persians",
     9: "Saracens",
+    10: "Turks",
+    11: "Vikings",
+    12: "Mongols",
+    13: "Celts",
+    14: "Spanish",
+    15: "Aztecs",
+    16: "Mayans",
+    17: "Huns",
+    18: "Koreans",
+    19: "Italians",
+    20: "Hindustanis",
+    21: "Incas",
+    22: "Magyars",
     23: "Slavs",
+    24: "Portuguese",
+    25: "Ethiopians",
     26: "Malians",
+    27: "Berbers",
+    28: "Khmer",
+    29: "Malay",
+    30: "Burmese",
+    31: "Vietnamese",
+    32: "Bulgarians",
     33: "Tatars",
+    34: "Cumans",
+    35: "Lithuanians",
+    36: "Burgundians",
     37: "Sicilians",
+    38: "Poles",
+    39: "Bohemians",
+    40: "Dravidians",
+    41: "Bengalis",
+    42: "Gurjaras",
+    43: "Romans",
+    44: "Armenians",
+    45: "Georgians",
+    49: "Shu",
+    50: "Wu",
+    51: "Wei",
+    52: "Jurchens",
+    53: "Khitans",
+    57: "Muisca",
+    58: "Mapuche",
+    59: "Tupi",
+    60: "Saxons",
+    61: "Varangians",
+    62: "Danes",
 }
 
+#: The twenty civilisations batch A models (T767): T746's eight and the twelve it adds.
+_MODELLED = sorted(
+    [
+        "Franks",
+        "Teutons",
+        "Persians",
+        "Saracens",
+        "Malians",
+        "Tatars",
+        "Slavs",
+        "Sicilians",
+        "Britons",
+        "Goths",
+        "Japanese",
+        "Chinese",
+        "Byzantines",
+        "Turks",
+        "Vikings",
+        "Mongols",
+        "Celts",
+        "Spanish",
+        "Aztecs",
+        "Mayans",
+    ]
+)
 
-def _first_snapshot() -> snapshot.Snapshot:
-    (first,) = (s for s in snapshot.load_all_snapshots() if s.identity.digest == _SUPERSEDED_DIGEST)
-    return first
+
+def _snapshot_by_digest(digest: str) -> snapshot.Snapshot:
+    (found,) = (s for s in snapshot.load_all_snapshots() if s.identity.digest == digest)
+    return found
 
 
-def test_the_build_resolves_to_the_snapshot_that_supersedes_the_first() -> None:
+def test_the_build_resolves_to_the_third_snapshot_of_its_chain() -> None:
     resolved = snapshot.snapshot_for(_BUILD)
 
     assert isinstance(resolved, snapshot.Snapshot)
     assert resolved.promoted
-    assert resolved.supersedes == _SUPERSEDED_DIGEST
-    assert resolved.identity.digest != _SUPERSEDED_DIGEST
+    assert resolved.directory == "aoe2techtree-185872-civilisations-20"
+    assert resolved.supersedes == _SECOND_DIGEST
+    assert resolved.identity.digest not in (_FIRST_DIGEST, _SECOND_DIGEST)
     assert resolved.identity.describes_build == _BUILD
     assert resolved.identity.source_version == _SOURCE_COMMIT
-    assert resolved.directory != _first_snapshot().directory
+    second = _snapshot_by_digest(_SECOND_DIGEST)
+    assert second.supersedes == _FIRST_DIGEST
+    assert resolved.directory != second.directory
 
 
 def test_the_first_snapshot_stays_loadable_by_identity_and_models_no_civilisation() -> None:
     """SC-005: the analysis published under it must still reproduce, so it is never deleted and
     never edited. Pinned, it answers as it always did: every civilisation is a gap."""
-    first = _first_snapshot()
+    first = _snapshot_by_digest(_FIRST_DIGEST)
     assert first.promoted
     assert first.supersedes is None
 
@@ -102,27 +188,53 @@ def test_the_first_snapshot_stays_loadable_by_identity_and_models_no_civilisatio
     assert result.build == _BUILD
 
 
-def test_the_current_snapshot_models_the_scoped_civilisations_and_only_those() -> None:
-    """Raw ids 23 and 37 (the recording's seats) and the six 180059 models; 5, 10, 49 and 51 stay
-    the aggregate gap report's backlog (research.md D5)."""
+def test_the_second_snapshot_stays_loadable_by_identity_and_models_eight_civilisations() -> None:
+    """SC-005 for the link T767 superseded: pinned by identity, it still models the eight
+    civilisations of T746 and nothing else, and answers its own bytes."""
+    second = _snapshot_by_digest(_SECOND_DIGEST)
+    assert second.promoted
+    assert second.directory == "aoe2techtree-185872-civilisations"
+    assert second.identity.describes_build == _BUILD
+
+    entity = query.EntityRef(kind="building", id="70", build=_BUILD)
+    with snapshot.pinned_snapshot(second):
+        modelled = query.cost(entity, civilisation="Malians")
+        unmodelled = query.cost(entity, civilisation="Britons")
+
+    assert not isinstance(modelled, gaps.KnowledgeGap), f"gap: {modelled!r}"
+    assert modelled.snapshot_identity.digest == _SECOND_DIGEST
+    assert isinstance(unmodelled, gaps.KnowledgeGap)
+    assert unmodelled.cause == "civilisation-not-modelled"
+
+
+def test_the_current_snapshot_models_twenty_civilisations_and_names_every_pack_civilisation() -> (
+    None
+):
+    """T767: batch A models twenty civilisations; its `[[civilisation_id]]` table names all 56 of
+    the pack, from `aoc-reference-data`'s keys, so a raw id of a civilisation not yet modelled
+    resolves to its name and gaps as `civilisation-not-modelled`, not as an unknown id."""
     from aoe2stats_knowledge import effects
 
     current = snapshot.snapshot_for(_BUILD)
     assert isinstance(current, snapshot.Snapshot)
 
-    assert dict(effects.civilisation_id_names(current.directory)) == _MODELLED_RAW_IDS
-    for out_of_scope in (5, 10, 49, 51):
-        assert out_of_scope not in effects.civilisation_id_names(current.directory)
+    assert dict(effects.civilisation_id_names(current.directory)) == _RAW_IDS
+    assert sorted(query._civilisations_modelled(current.directory)) == _MODELLED
+    for chronicles_id in (46, 47, 48, 54, 55, 56):
+        assert chronicles_id not in effects.civilisation_id_names(current.directory)
 
 
 def test_a_modelled_civilisation_answers_and_an_unmodelled_one_still_refuses() -> None:
     entity = query.EntityRef(kind="building", id="84", build=_BUILD)
 
     modelled = query.cost(entity, civilisation="Saracens")
-    unmodelled = query.cost(entity, civilisation="Britons")
+    newly_modelled = query.cost(entity, civilisation="Britons")
+    unmodelled = query.cost(entity, civilisation="Huns")
 
     assert not isinstance(modelled, gaps.KnowledgeGap), f"gap: {modelled!r}"
     assert modelled.value == {"wood": 75}
+    assert not isinstance(newly_modelled, gaps.KnowledgeGap), f"gap: {newly_modelled!r}"
+    assert newly_modelled.value == {"wood": 175}
     assert isinstance(unmodelled, gaps.KnowledgeGap)
     assert unmodelled.cause == "civilisation-not-modelled"
     assert unmodelled.build == _BUILD

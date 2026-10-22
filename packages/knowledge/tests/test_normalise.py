@@ -328,7 +328,8 @@ def test_every_unit_and_technology_referenced_by_a_committed_recording_resolves(
 #: was never measured. A referenced source, `aoc-reference-data`'s `objects` (read 2026-10-18,
 #: `docs/data-sources.md` §6), names both "Gate", and FR-022d closes them with a transcribed alias
 #: in a snapshot's `aliases.toml`, vendoring nothing. The set below stays as the strict statement of
-#: what the pack names until T767's snapshot carries those aliases.
+#: what the pack names: T767's snapshot (build 185872) carries those aliases, and build 180059's
+#: will (T773), but the pack stays what it is.
 _BUILDING_IDS_ABSENT_FROM_THE_VENDORED_PACK: frozenset[int] = frozenset({490, 673})
 
 
