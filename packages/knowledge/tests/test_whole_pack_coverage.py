@@ -40,6 +40,12 @@ owner's arbitration on whether they are in scope.
 `aoe2techtree-185872-civilisations-20`; the twelve it added lost their `xfail` and each is held to
 its open rows like the eight before them. Persians' Kamandaran is no longer open for that build.
 
+**Batch B (T768)** models thirty-two in `aoe2techtree-185872-civilisations-32`; the twelve it added
+lost their `xfail` too. Three of them keep open rows: Magyars' Corvinian Army and Malay's Forced
+Levy (the food that replaces a gold cost is stated nowhere) and Berbers' Kasbah (a bonus that needs
+a researched technology and the owner's team together, which an effect cannot express). The other
+nine have none.
+
 **Builds.** `test_the_current_snapshots_are_the_builds_this_module_covers` fails when the library
 resolves a current build this module does not cover, so a new build cannot be added without being
 covered. Three builds are covered: 185872, 180059 and 177723. Build 177723's snapshot is the test
@@ -71,20 +77,7 @@ type OpenRow = tuple[str, str, str, str]
 # Build 185872's batches, in the order tasks.md files them. A batch deletes its tuple here when it
 # models those civilisations (and the snapshot it promotes lists them in civilisations_modelled).
 # Batch A (T767) is gone: `aoe2techtree-185872-civilisations-20` models its twelve.
-_BATCH_B_T768 = (
-    "Berbers",
-    "Burmese",
-    "Ethiopians",
-    "Hindustanis",
-    "Huns",
-    "Incas",
-    "Italians",
-    "Khmer",
-    "Koreans",
-    "Magyars",
-    "Malay",
-    "Portuguese",
-)
+# Batch B (T768) is gone: `aoe2techtree-185872-civilisations-32` models its twelve.
 _BATCH_C_T769 = (
     "Armenians",
     "Bengalis",
@@ -226,7 +219,6 @@ def _reasons(civilisations: tuple[str, ...], reason: str) -> dict[str, str]:
 #: build -> civilisation -> the reason it is expected to fail today, naming the task that models it.
 _NOT_YET_MODELLED: dict[int, dict[str, str]] = {
     185872: {
-        **_reasons(_BATCH_B_T768, "T768 (batch B) models it"),
         **_reasons(_BATCH_C_T769, "T769 (batch C) models it"),
         **_reasons(_BATCH_D_T770, "T770 (batch D) models it"),
     },
@@ -261,11 +253,49 @@ _OPEN_ROWS: dict[int, dict[str, tuple[OpenRow, ...]]] = {
             ("unit", "2628", "production_time", "effect-not-modelled"),
             ("unit", "2633", "production_time", "effect-not-modelled"),
         ),
+        # Row: Berbers / the Castle's units and technologies in the Berbers' tree /
+        # production_time / "Kasbah (Team Castles work +25% faster)": the bonus needs Kasbah
+        # researched by the owner and the owner's team together, and an effect carries one
+        # condition. The members are what the Berbers' tree produces at the Castle - Trebuchet
+        # (331) and the identifier 1690, which the snapshot aliases to it, Petard (440), Camel
+        # Archer (1007), Elite Camel Archer (1009) and the technologies
+        # Conscription (315), Hoardings (379), Spies/Treason (408), Elite Camel Archer (565),
+        # Kasbah (578) and Maghrebi Camels (579).
+        "Berbers": (
+            ("technology", "315", "production_time", "effect-not-modelled"),
+            ("technology", "379", "production_time", "effect-not-modelled"),
+            ("technology", "408", "production_time", "effect-not-modelled"),
+            ("technology", "565", "production_time", "effect-not-modelled"),
+            ("technology", "578", "production_time", "effect-not-modelled"),
+            ("technology", "579", "production_time", "effect-not-modelled"),
+            ("unit", "331", "production_time", "effect-not-modelled"),
+            ("unit", "440", "production_time", "effect-not-modelled"),
+            ("unit", "1007", "production_time", "effect-not-modelled"),
+            ("unit", "1009", "production_time", "effect-not-modelled"),
+            ("unit", "1690", "production_time", "effect-not-modelled"),
+        ),
         # Row: Chinese / Castle Age and Imperial Age advances (technologies 102, 103) / cost /
         # "Technologies cost -5/10/15%": no source states whether an Age advance is discounted.
         "Chinese": (
             ("technology", "102", "cost", "effect-not-modelled"),
             ("technology", "103", "cost", "effect-not-modelled"),
+        ),
+        # Row: Magyars / Magyar Huszar (units 869, 871) / cost / Corvinian Army researched /
+        # "Magyar Huszar gold cost is replaced by additional food cost": update 95810 names the
+        # effect and no source states the food.
+        "Magyars": (
+            ("unit", "869", "cost", "effect-not-modelled"),
+            ("unit", "871", "cost", "effect-not-modelled"),
+        ),
+        # Row: Malay / Militia-line (units 74, 75, 77, 473, 567) / cost / Forced Levy researched /
+        # "Militia-line gold cost is replaced by additional food cost": no page of the publisher's
+        # notes names the technology and no source states the food.
+        "Malay": (
+            ("unit", "74", "cost", "effect-not-modelled"),
+            ("unit", "75", "cost", "effect-not-modelled"),
+            ("unit", "77", "cost", "effect-not-modelled"),
+            ("unit", "473", "cost", "effect-not-modelled"),
+            ("unit", "567", "cost", "effect-not-modelled"),
         ),
         # Row: Slavs / Castle and Watch Tower line (buildings 82, 79, 234, 235) / cost / Detinets
         # researched / "Detinets replaces 40% of the stone with wood; the wood is never stated".

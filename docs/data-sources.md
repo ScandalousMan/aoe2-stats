@@ -564,8 +564,8 @@ against keeping one measurement in two homes.
   `LICENCE.md` under `packages/knowledge/packs/`. The first, `b9d494df6921d4080df69b22f9dbb7a4d1dcd9f0`
   (2026-06-21, pack `aoe2techtree`), is the one `aoe2techtree-180059` is derived from. The second,
   `3bb43b1439eef88dfe7fe892d7f7dc41ac9dd76f` (pack `aoe2techtree-3bb43b1`; authored 2026-09-11,
-  committed 2026-09-22, assessed 2026-10-08), is the one `aoe2techtree-185872`, `aoe2techtree-185872-civilisations` and
-  `aoe2techtree-185872-civilisations-20` are
+  committed 2026-09-22, assessed 2026-10-08), is the one `aoe2techtree-185872`, `aoe2techtree-185872-civilisations`,
+  `aoe2techtree-185872-civilisations-20` and `aoe2techtree-185872-civilisations-32` are
   derived from; it is vendored beside the first because a snapshot must stay re-derivable from its own source revision.
   The source carries no explicit build tag; the game build a commit implements is read from that
   commit's own message, a derived reading, not a field (research.md D3, D4). The first pinned
@@ -599,9 +599,12 @@ against keeping one measurement in two homes.
   models twenty: those eight, carried unchanged except where the publisher's notes settled a value
   T746 had refused (Persians' Kamandaran, the Castle and the Donjon of the Sicilians'
   "Fortifications"), and Britons, Goths, Japanese, Chinese, Byzantines, Turks, Vikings, Mongols,
-  Celts, Spanish, Aztecs and Mayans; it carries the first `aliases.toml`. The first two stay
-  installed so that the analyses published under them still reproduce; resolution by build
-  answers the third. Its open values are in
+  Celts, Spanish, Aztecs and Mayans; it carries the first `aliases.toml`. Since 2026-10-22 (T768)
+  a fourth, `aoe2techtree-185872-civilisations-32`, supersedes the third and models thirty-two:
+  those twenty, carried unchanged, and Huns, Koreans, Italians, Hindustanis, Incas, Magyars,
+  Portuguese, Ethiopians, Berbers, Khmer, Malay and Burmese; its `rules.json`, `aliases.toml` and
+  raw-id table are the third's. The first three stay installed so that the analyses published under
+  them still reproduce; resolution by build answers the fourth. Its open values are in
   `specs/006-replay-analysis-foundations/owner-readings.md`.
 - **Known limitations**: no civilisation-specific bonus data as structured values, no build/version
   field of its own, no combat attributes (attack, armour, hit points, range) — halfon carries those
@@ -618,7 +621,9 @@ against keeping one measurement in two homes.
   second one 2026-10-18
   (`packages/knowledge/snapshots/aoe2techtree-185872-civilisations/snapshot.toml`) and by a third
   2026-10-22
-  (`packages/knowledge/snapshots/aoe2techtree-185872-civilisations-20/snapshot.toml`). Licence: MIT,
+  (`packages/knowledge/snapshots/aoe2techtree-185872-civilisations-20/snapshot.toml`) and by a
+  fourth 2026-10-22
+  (`packages/knowledge/snapshots/aoe2techtree-185872-civilisations-32/snapshot.toml`). Licence: MIT,
   **copy in** — `docs/asset-packs.md` "Knowledge packs".
 
 ### halfon
@@ -810,7 +815,13 @@ against keeping one measurement in two homes.
   Read again 2026-10-18 (T746) and 2026-10-22 (T767) for build 185872, and, for T767's retaken
   rows, every Definitive Edition update page the site's sitemap lists (fetched 2026-10-22): they
   state Kamandaran's cost (update 162286), the Donjon's construction time under the Sicilians'
-  bonus (update 111772) and that Detinets' wood amount is never given (update 61321).
+  bonus (update 111772) and that Detinets' wood amount is never given (update 61321). T768 searched the same
+  pages (77, with the build's own) for the twelve civilisations of batch B: they state that the
+  Portuguese team bonus excludes Age Up (update 73855), that the Ethiopians' Outposts lose their stone
+  cost (update 81058), that the Koreans' wood discount reaches the War Wagon (update 87863) and which
+  units the Incas' food discount affects (update 81058); they do not size the food that replaces a
+  gold cost in the Magyars' Corvinian Army (update 95810 names the effect) or the Malay's Forced Levy
+  (named by no page).
 - **Known limitations**: all rights reserved — read and transcribed only, never copied in; and, as
   above, minor-update sections carry no independent dated timestamp of their own, a stated weakness
   of the validation rather than a hidden one (research.md D4).

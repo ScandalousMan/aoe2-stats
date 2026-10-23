@@ -3065,7 +3065,7 @@ phase.
       490's three tuples, by set equality; its Detinets and "Fortifications" blockers (building 82's
       cost, building 1665's production time) stay unless the publisher's notes settle them. The
       Donjon's availability is informational and was never on that set
-- [ ] T768 [US2] Model batch B on build 185872 in `aoe2techtree-185872-civilisations-32`, which
+- [x] T768 [US2] Model batch B on build 185872 in `aoe2techtree-185872-civilisations-32`, which
       supersedes T767's snapshot: Huns, Koreans, Italians, Hindustanis, Incas, Magyars, Portuguese,
       Ethiopians, Berbers, Khmer, Malay and Burmese. Magyars' Corvinian Army and Malay's Forced
       Levy replace a gold cost with "additional" food the strings do not size: FR-022c's order, then
