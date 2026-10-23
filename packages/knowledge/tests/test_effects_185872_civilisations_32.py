@@ -1,6 +1,12 @@
 """T768: the civilisation effects of `aoe2techtree-185872-civilisations-32`, the fourth build 185872
 snapshot, which supersedes the third (`-20`) and models thirty-two civilisations.
 
+**Since T769 this snapshot is no longer the one the build resolves to**: the fifth,
+`aoe2techtree-185872-civilisations-44`, supersedes it (`test_effects_185872_civilisations_44.py`).
+This file keeps the fourth snapshot's own record, so every query below runs with that snapshot
+pinned (`snapshot.pinned_snapshot`, SC-005): what it answered when it was current is what it still
+answers.
+
 Six kinds of claim, none of them a restatement of `test_effects.py`, `test_bullet_coverage.py`,
 `test_effects_185872_civilisations.py` or `test_effects_185872_civilisations_20.py` (which keep the
 earlier snapshots' records, pinned):
@@ -34,7 +40,7 @@ from __future__ import annotations
 import json
 import math
 import tomllib
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from importlib import resources
 from pathlib import Path
 
@@ -225,6 +231,15 @@ _ENTITY_REPRESENTED_BUT_NEEDS_NO_EFFECT_ROW: Mapping[str, tuple[str, ...]] = {
     "Hindustanis": ("Can build Caravanserai in Imperial Age",),
     "Portuguese": ("Can build Feitoria in Imperial Age",),
 }
+
+
+@pytest.fixture(autouse=True)
+def _pin_the_fourth_snapshot() -> Iterator[None]:
+    """The build resolves to a newer snapshot now; this file is about the fourth, found by its
+    directory, which is a label and so only ever used to find the identity to pin."""
+    (fourth,) = (s for s in snapshot.load_all_snapshots() if s.directory == _DIRECTORY)
+    with snapshot.pinned_snapshot(fourth):
+        yield
 
 
 def _pack_root() -> resources.abc.Traversable:

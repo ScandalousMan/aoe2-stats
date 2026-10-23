@@ -1,0 +1,95 @@
+# The fifth knowledge snapshot for game build 185872 (T769, 2026-10-23): it models forty-four
+# civilisations, the thirty-two of the fourth (`aoe2techtree-185872-civilisations-32`, T746, T767 and
+# T768) and twelve more (batch C of Phase 8). A promoted snapshot is never edited (FR-025), so this
+# one names the digest it supersedes: resolution by build now answers this snapshot, and the first
+# four stay installed, promoted and loadable by their full identity so that the analyses published
+# under them still reproduce their own bytes (SC-005). An analysis of a build 185872 recording
+# published under any of them names a digest that is no longer the current one, so it is recomputed
+# under this snapshot on the analyzer's next pass, as the contract's staleness rule says.
+#
+# Same source, same pack revision (`packages/knowledge/packs/aoe2techtree-3bb43b1/`), same
+# normaliser version (2): `rules.json`, `aliases.toml` and `disagreements.toml` are the fourth
+# snapshot's, byte for byte. What is new is `effects.toml` (twelve civilisations and the open rows
+# they leave). The label states the build and how many civilisations the snapshot models, so the
+# chain reads in order without opening this file.
+[snapshot]
+source = "aoe2techtree"
+source_version = "3bb43b1439eef88dfe7fe892d7f7dc41ac9dd76f"
+describes_build = 185872
+digest = "sha256:93d084ea8886b4c2d98f67a7f02524f107ffab3c3bcb29142389ceac226dc263"
+promoted = true
+supersedes = "sha256:c24448836cade9ff724ac32935a52280a447df7278cb8cfe3f7cecd58dbf37ae"
+normaliser_version = 2
+civilisations_modelled = ["Franks", "Teutons", "Persians", "Saracens", "Malians", "Tatars", "Slavs", "Sicilians", "Britons", "Goths", "Japanese", "Chinese", "Byzantines", "Turks", "Vikings", "Mongols", "Celts", "Spanish", "Aztecs", "Mayans", "Huns", "Koreans", "Italians", "Hindustanis", "Incas", "Magyars", "Portuguese", "Ethiopians", "Berbers", "Khmer", "Malay", "Burmese", "Vietnamese", "Bulgarians", "Cumans", "Lithuanians", "Burgundians", "Poles", "Bohemians", "Dravidians", "Bengalis", "Gurjaras", "Romans", "Armenians"]
+
+# FR-030's validation record. The `rules.json`, `aliases.toml` and raw-id halves are the third
+# snapshot's and are validated there (and no more than there); this record is for what is new:
+# `effects.toml`'s twelve civilisations.
+[validation]
+method = "second-reading-checked-against-release-notes"
+checked_against = """\
+the vendored pack's own English strings, \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json (the help_string_id text of each of \
+the twelve new civilisations, and the help strings of the units, buildings and technologies a class \
+name was resolved from), read twice: once to transcribe each bonus, once to resolve each selector \
+against rules.json and to check every bullet is accounted for; and the publisher's release notes \
+for build 185872, \
+https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/ \
+(datePublished 2026-09-22T10:16:33-07:00, dateModified 2026-09-23T08:59:03-07:00), fetched and \
+read on 2026-10-23 (the Balance Changes section in full, the rest searched for the twelve \
+civilisations' names). Every value the pack does not size was searched, in the order FR-022c \
+gives, in the publisher's notes of 130 of the pages the site's sitemap lists under its news posts \
+(every Age of Empires II Definitive Edition update, hotfix and preview page among them, and other \
+posts about the game), fetched 2026-10-23, and the values they state are transcribed with the \
+update id in the row: the \
+Burgundians' economic discount is 40% (updates 47820, 78174 and 177723), the Romans' Legionary \
+replaces the Two-Handed Swordsman and the Champion at the Barracks, which puts it in the \
+Militia-line (update 83607), the Romans' Scorpion discount is 50% (update 153015) and the \
+Vietnamese economic upgrades cost no wood (update 35584). The values no page states are open rows \
+of specs/006-replay-analysis-foundations/owner-readings.md: which of the Town Center's, the Dock's \
+and the Market's technologies are economic upgrades (Vietnamese and Burgundians), the food that \
+replaces the gold of the Monk and of each Monastery technology under Hussite Reforms (Bohemians), \
+which of the Gurjaras' units are Camel and Elephant Units, and two bonuses the effect model cannot \
+express (the Cumans' additional Town Center and Cuman Mercenaries)\
+"""
+performed_by = "the T769 implementer (an AI agent working for the repository owner), by direct reading; no person has reviewed it yet"
+performed_at = "2026-10-23"
+not_checked = """\
+No value was compared with the game or with any second source that is independent of the pack: \
+the bonuses, the baseline costs, times and ages in rules.json and the strings they are read from \
+all come from the one vendored pack (research.md D3: no second source is lawful to vendor), so \
+this is a second reading of one source and not independent validation. The release notes can only \
+show a change the publisher chose to write down; a bonus change they omit cannot be detected from \
+them. Read in full: the Balance Changes section. The rest of the page was searched for the twelve \
+civilisations' names and for cost, time, bonus and discount wording, not read line by line. The \
+notes name the Vietnamese (Masonry, the Archery Range HP bonus restated as Foot Archers and \
+Skirmishers, the Rattan Archer), Armenians (Treadmill Crane), Bengalis (the Ratha's train time, \
+Treadmill Crane), Bohemians (the Hussite Wagon's cost, Wagenburg Tactics' effect, Mounted \
+Crossbowmen), Burgundians (the Flemish Militia's cost and train time, Mounted Crossbowmen), Gurjaras \
+(the Docks garrison bonus removed), Poles (Mounted Crossbowmen) and, through the notification of \
+their unique technologies, the Cumans (Cuman Mercenaries); the Bulgarians, Lithuanians, Dravidians \
+and Romans are not named anywhere on the page. Changes to which technologies and units a \
+civilisation can reach are not bonuses and are not rows; the tree in rules.json (normaliser \
+version 2) answers them. Classes were resolved from the pack's help strings or production sites, \
+not from a definition. The 'Economic upgrades' class is not defined by any source: the Mill's, \
+Lumber Camp's and Mining Camp's technologies are taken as members on the strength of update \
+153015's earlier enumeration of exactly those three sites, which is an inference, and the Town \
+Center's, Dock's and Market's technologies are refused for the Vietnamese and the Burgundians, \
+only where the bonus could change their cost, time or age. The Elite Genitour technology and the \
+Koreans' tower upgrades are as the fourth snapshot left them. Where a bullet names an upgrade and \
+the unit it makes available, the row sets both (the Cavalier, the Capped Ram, Chemistry and the \
+Hand Cannoneer, the Spearman- and Militia-line upgrades); the unit's own age is an inference from \
+the bullet, and no source states it. The Cumans' additional Town Center and Cuman Mercenaries are \
+refused because the effect model cannot express them (age_requirement takes no match state; an \
+effect carries one condition), not because a value is missing. The open values this snapshot \
+leaves are in specs/006-replay-analysis-foundations/owner-readings.md. The transcription was not \
+blind: the implementer had read the fourth snapshot's effects.toml to learn the file's shape and \
+carried its thirty-two civilisations from it; the twelve new civilisations were transcribed from \
+the strings and rules.json.\
+"""
+
+[validation.release_notes]
+url = "https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/"
+published = "2026-09-22T10:16:33-07:00"
+modified = "2026-09-23T08:59:03-07:00"
+read_on = "2026-10-23"

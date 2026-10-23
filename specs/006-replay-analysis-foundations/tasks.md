@@ -3072,7 +3072,7 @@ phase.
       the owner's sheet. Khmer's bonus removes building prerequisites, a field the knowledge base
       does not carry (research D3); it is listed in the file's header as a bullet with no row, never
       written as a row. **Tests**: as T767's, for thirty-two civilisations
-- [ ] T769 [US2] Model batch C on build 185872 in `aoe2techtree-185872-civilisations-44`, which
+- [x] T769 [US2] Model batch C on build 185872 in `aoe2techtree-185872-civilisations-44`, which
       supersedes T768's snapshot: Vietnamese, Bulgarians, Cumans, Lithuanians, Burgundians, Poles,
       Bohemians, Dravidians, Bengalis, Gurjaras, Romans and Armenians. Bohemians' Hussite Reforms
       replace a gold cost with a food cost the strings do not size, for the Monk and each Monastery

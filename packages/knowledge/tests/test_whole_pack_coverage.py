@@ -46,6 +46,14 @@ Levy (the food that replaces a gold cost is stated nowhere) and Berbers' Kasbah 
 a researched technology and the owner's team together, which an effect cannot express). The other
 nine have none.
 
+**Batch C (T769)** models forty-four in `aoe2techtree-185872-civilisations-44`; the twelve it added
+lost their `xfail`. Four of them keep open rows: Vietnamese and Burgundians (no source says whether
+the Town Center's, the Dock's and the Market's technologies are "economic upgrades"), Bohemians (the
+food that replaces the gold under Hussite Reforms is stated nowhere: the Monk and eleven
+technologies) and Gurjaras (no source lists the Camel and Elephant Units). The other eight have
+none: the Cumans' additional Town Center and Cuman Mercenaries are refused, but the fields they gap
+are not ones a register datum requires, so their gaps are informational and not blocking.
+
 **Builds.** `test_the_current_snapshots_are_the_builds_this_module_covers` fails when the library
 resolves a current build this module does not cover, so a new build cannot be added without being
 covered. Three builds are covered: 185872, 180059 and 177723. Build 177723's snapshot is the test
@@ -78,20 +86,7 @@ type OpenRow = tuple[str, str, str, str]
 # models those civilisations (and the snapshot it promotes lists them in civilisations_modelled).
 # Batch A (T767) is gone: `aoe2techtree-185872-civilisations-20` models its twelve.
 # Batch B (T768) is gone: `aoe2techtree-185872-civilisations-32` models its twelve.
-_BATCH_C_T769 = (
-    "Armenians",
-    "Bengalis",
-    "Bohemians",
-    "Bulgarians",
-    "Burgundians",
-    "Cumans",
-    "Dravidians",
-    "Gurjaras",
-    "Lithuanians",
-    "Poles",
-    "Romans",
-    "Vietnamese",
-)
+# Batch C (T769) is gone: `aoe2techtree-185872-civilisations-44` models its twelve.
 _BATCH_D_T770 = (
     "Danes",
     "Georgians",
@@ -219,7 +214,6 @@ def _reasons(civilisations: tuple[str, ...], reason: str) -> dict[str, str]:
 #: build -> civilisation -> the reason it is expected to fail today, naming the task that models it.
 _NOT_YET_MODELLED: dict[int, dict[str, str]] = {
     185872: {
-        **_reasons(_BATCH_C_T769, "T769 (batch C) models it"),
         **_reasons(_BATCH_D_T770, "T770 (batch D) models it"),
     },
     180059: _reasons(_BUILD_180059_T773, "T773 models every civilisation of build 180059"),
@@ -274,11 +268,61 @@ _OPEN_ROWS: dict[int, dict[str, tuple[OpenRow, ...]]] = {
             ("unit", "1009", "production_time", "effect-not-modelled"),
             ("unit", "1690", "production_time", "effect-not-modelled"),
         ),
+        # Row: Bohemians / the Monk and each Monastery technology / cost / Hussite Reforms
+        # researched / "Monks and Monastery technologies gold cost is replaced by food cost": no
+        # source states the food. One owner row per entity: the Monk (125), Faith (45), Devotion
+        # (46), Block Printing (230), Sanctity (231), Illumination (233), Fervor (252), Redemption
+        # (316), Atonement (319), Theocracy (438), Heresy (439) and Herbal Medicine (441).
+        "Bohemians": (
+            ("technology", "45", "cost", "effect-not-modelled"),
+            ("technology", "46", "cost", "effect-not-modelled"),
+            ("technology", "230", "cost", "effect-not-modelled"),
+            ("technology", "231", "cost", "effect-not-modelled"),
+            ("technology", "233", "cost", "effect-not-modelled"),
+            ("technology", "252", "cost", "effect-not-modelled"),
+            ("technology", "316", "cost", "effect-not-modelled"),
+            ("technology", "319", "cost", "effect-not-modelled"),
+            ("technology", "438", "cost", "effect-not-modelled"),
+            ("technology", "439", "cost", "effect-not-modelled"),
+            ("technology", "441", "cost", "effect-not-modelled"),
+            ("unit", "125", "cost", "effect-not-modelled"),
+        ),
+        # Row: Burgundians / the Town Center's, the Dock's and the Market's economic-looking
+        # technologies / cost / "Economic upgrades available one age earlier and cost -40% food":
+        # no source defines the class. Wheelbarrow (213), Hand Cart (249), Gillnets (65), Fishing
+        # Lines (906), Guilds (15), Banking (17), Coinage (23), Caravan (48) cost food. Their age is
+        # refused for the same reason and is informational, so it has no tuple.
+        "Burgundians": (
+            ("technology", "15", "cost", "effect-not-modelled"),
+            ("technology", "17", "cost", "effect-not-modelled"),
+            ("technology", "23", "cost", "effect-not-modelled"),
+            ("technology", "48", "cost", "effect-not-modelled"),
+            ("technology", "65", "cost", "effect-not-modelled"),
+            ("technology", "213", "cost", "effect-not-modelled"),
+            ("technology", "249", "cost", "effect-not-modelled"),
+            ("technology", "906", "cost", "effect-not-modelled"),
+        ),
         # Row: Chinese / Castle Age and Imperial Age advances (technologies 102, 103) / cost /
         # "Technologies cost -5/10/15%": no source states whether an Age advance is discounted.
         "Chinese": (
             ("technology", "102", "cost", "effect-not-modelled"),
             ("technology", "103", "cost", "effect-not-modelled"),
+        ),
+        # Row: Gurjaras / the Gurjaras' candidate Camel and Elephant Units / production_time /
+        # "Team Bonus: Camel and Elephant Units train +25% faster": no source lists the members.
+        # Camel Rider (329), Heavy Camel Rider (330), Camel Scout (1755), Shrivamsha Rider (1751)
+        # and Elite (1753), Elephant Archer (873) and Elite (875), Armored Elephant (1744), Siege
+        # Elephant (1746).
+        "Gurjaras": (
+            ("unit", "329", "production_time", "effect-not-modelled"),
+            ("unit", "330", "production_time", "effect-not-modelled"),
+            ("unit", "873", "production_time", "effect-not-modelled"),
+            ("unit", "875", "production_time", "effect-not-modelled"),
+            ("unit", "1744", "production_time", "effect-not-modelled"),
+            ("unit", "1746", "production_time", "effect-not-modelled"),
+            ("unit", "1751", "production_time", "effect-not-modelled"),
+            ("unit", "1753", "production_time", "effect-not-modelled"),
+            ("unit", "1755", "production_time", "effect-not-modelled"),
         ),
         # Row: Magyars / Magyar Huszar (units 869, 871) / cost / Corvinian Army researched /
         # "Magyar Huszar gold cost is replaced by additional food cost": update 95810 names the
@@ -335,6 +379,26 @@ _OPEN_ROWS: dict[int, dict[str, tuple[OpenRow, ...]]] = {
             ("unit", "557", "production_time", "effect-not-modelled"),
             ("unit", "771", "production_time", "effect-not-modelled"),
             ("unit", "773", "production_time", "effect-not-modelled"),
+        ),
+        # Row: Vietnamese / the Town Center's, the Dock's and the Market's economic-looking
+        # technologies / cost and production_time / "Economic upgrades cost no wood and research
+        # +100% faster": no source defines the class. Cost, for the four that cost wood:
+        # Wheelbarrow (213), Hand Cart (249), Gillnets (65), Fishing Lines (906). Research time,
+        # for those four and Loom (22), Guilds (15), Banking (17), Coinage (23), Caravan (48).
+        "Vietnamese": (
+            ("technology", "15", "production_time", "effect-not-modelled"),
+            ("technology", "17", "production_time", "effect-not-modelled"),
+            ("technology", "22", "production_time", "effect-not-modelled"),
+            ("technology", "23", "production_time", "effect-not-modelled"),
+            ("technology", "48", "production_time", "effect-not-modelled"),
+            ("technology", "65", "cost", "effect-not-modelled"),
+            ("technology", "65", "production_time", "effect-not-modelled"),
+            ("technology", "213", "cost", "effect-not-modelled"),
+            ("technology", "213", "production_time", "effect-not-modelled"),
+            ("technology", "249", "cost", "effect-not-modelled"),
+            ("technology", "249", "production_time", "effect-not-modelled"),
+            ("technology", "906", "cost", "effect-not-modelled"),
+            ("technology", "906", "production_time", "effect-not-modelled"),
         ),
     },
     180059: {

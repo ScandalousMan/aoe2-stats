@@ -565,8 +565,8 @@ against keeping one measurement in two homes.
   (2026-06-21, pack `aoe2techtree`), is the one `aoe2techtree-180059` is derived from. The second,
   `3bb43b1439eef88dfe7fe892d7f7dc41ac9dd76f` (pack `aoe2techtree-3bb43b1`; authored 2026-09-11,
   committed 2026-09-22, assessed 2026-10-08), is the one `aoe2techtree-185872`, `aoe2techtree-185872-civilisations`,
-  `aoe2techtree-185872-civilisations-20` and `aoe2techtree-185872-civilisations-32` are
-  derived from; it is vendored beside the first because a snapshot must stay re-derivable from its own source revision.
+  `aoe2techtree-185872-civilisations-20`, `aoe2techtree-185872-civilisations-32` and
+  `aoe2techtree-185872-civilisations-44` are derived from; it is vendored beside the first because a snapshot must stay re-derivable from its own source revision.
   The source carries no explicit build tag; the game build a commit implements is read from that
   commit's own message, a derived reading, not a field (research.md D3, D4). The first pinned
   commit's own newest "Implement DE Update" commit is `daf5fa18de` (2026-06-03), implementing build
@@ -603,9 +603,13 @@ against keeping one measurement in two homes.
   a fourth, `aoe2techtree-185872-civilisations-32`, supersedes the third and models thirty-two:
   those twenty, carried unchanged, and Huns, Koreans, Italians, Hindustanis, Incas, Magyars,
   Portuguese, Ethiopians, Berbers, Khmer, Malay and Burmese; its `rules.json`, `aliases.toml` and
-  raw-id table are the third's. The first three stay installed so that the analyses published under
-  them still reproduce; resolution by build answers the fourth. Its open values are in
-  `specs/006-replay-analysis-foundations/owner-readings.md`.
+  raw-id table are the third's. Since 2026-10-23 (T769) a fifth,
+  `aoe2techtree-185872-civilisations-44`, supersedes the fourth and models forty-four: those
+  thirty-two, carried unchanged, and Vietnamese, Bulgarians, Cumans, Lithuanians, Burgundians,
+  Poles, Bohemians, Dravidians, Bengalis, Gurjaras, Romans and Armenians; its `rules.json`,
+  `aliases.toml` and raw-id table are the fourth's. The first four stay installed so that the
+  analyses published under them still reproduce; resolution by build answers the fifth. Its open
+  values are in `specs/006-replay-analysis-foundations/owner-readings.md`.
 - **Known limitations**: no civilisation-specific bonus data as structured values, no build/version
   field of its own, no combat attributes (attack, armour, hit points, range) — halfon carries those
   (below). Three builds (178524, 179158, 180059) unimplemented by the first pinned commit as of this
@@ -623,7 +627,9 @@ against keeping one measurement in two homes.
   2026-10-22
   (`packages/knowledge/snapshots/aoe2techtree-185872-civilisations-20/snapshot.toml`) and by a
   fourth 2026-10-22
-  (`packages/knowledge/snapshots/aoe2techtree-185872-civilisations-32/snapshot.toml`). Licence: MIT,
+  (`packages/knowledge/snapshots/aoe2techtree-185872-civilisations-32/snapshot.toml`) and by a
+  fifth 2026-10-23
+  (`packages/knowledge/snapshots/aoe2techtree-185872-civilisations-44/snapshot.toml`). Licence: MIT,
   **copy in** — `docs/asset-packs.md` "Knowledge packs".
 
 ### halfon
@@ -821,7 +827,14 @@ against keeping one measurement in two homes.
   cost (update 81058), that the Koreans' wood discount reaches the War Wagon (update 87863) and which
   units the Incas' food discount affects (update 81058); they do not size the food that replaces a
   gold cost in the Magyars' Corvinian Army (update 95810 names the effect) or the Malay's Forced Levy
-  (named by no page).
+  (named by no page). T769 searched 130 pages (fetched 2026-10-23: every Definitive Edition update,
+  hotfix and preview page the sitemap lists, and other posts about the game, with the build's own)
+  for the twelve civilisations of batch C: they state the Burgundians' economic discount (updates
+  47820, 78174 and 177723: 40%), that the Romans' Legionary replaces the Two-Handed Swordsman and the
+  Champion at the Barracks (update 83607), that their Scorpion discount is 50% (update 153015) and
+  that the Vietnamese economic upgrades cost no wood (update 35584); they do not define "economic
+  upgrades" or list the Camel and Elephant Units, and they do not size the food that replaces the
+  gold under the Bohemians' Hussite Reforms (update 81058 changes only the technology's own cost).
 - **Known limitations**: all rights reserved — read and transcribed only, never copied in; and, as
   above, minor-update sections carry no independent dated timestamp of their own, a stated weakness
   of the validation rather than a hidden one (research.md D4).
