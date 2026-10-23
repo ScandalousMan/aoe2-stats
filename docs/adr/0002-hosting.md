@@ -82,6 +82,32 @@ Constitution principle XII exists because of this ADR. In particular:
   `.env*` files (except `.env.example`, which `config-preflight.mjs` reads) out of a CLI upload,
   since the CLI does not apply `.gitignore`. Deployment storage had reached ~86.9 GB of 10 GB on 2026-10-04.
 
+## Function bundles and build skips
+
+Before value, for the production deployment serving traffic before any of feature 007 merged. A function's
+size is read from Deployment → Resources → Functions; the project's figure is read from Usage →
+Deployment Storage → Functions Storage → Projects. The maintainer fills the cells from the
+dashboard, and the PR for feature 007 does not merge while any of them is empty. T812 writes the
+rest of this section.
+
+| Measure                                     | Size    | Date read  | Deployment id                       |
+| ------------------------------------------- | ------- | ---------- | ----------------------------------- |
+| Function `api/index.py`                     | 68.3 MB | 2026-10-18 | `dpl_7cVtADCsXGsHs6iY7SwGJUYmVb7P` |
+| Function `api/analyze.py`                   | 68.3 MB | 2026-10-18 | `dpl_7cVtADCsXGsHs6iY7SwGJUYmVb7P` |
+| Function `api/cron/ingest.py`               | 68.3 MB | 2026-10-18 | `dpl_7cVtADCsXGsHs6iY7SwGJUYmVb7P` |
+| Project: Functions Storage → Projects       | 7.33 GB | 2026-10-18 | —                                   |
+
+The deployment is the production build of `63827989`. The project figure is every stored deployment
+of `aoe2-stats` against the plan's 10 GB allowance; no other project on the account stores a
+function, so it is also the account's total.
+
+`pip` stays installed in production (decided 2026-10-18, feature 007's Story 3 dropped). The replay
+parser declares it and never imports it, but `read_engine_dependencies` in `packages/replay-engine/src/aoe2stats_replay_engine/dependencies.py` records the
+installed version of every requirement the parser declares and refuses one that is not installed,
+and the analyzer's staleness check compares that record with the one stored for each analysis.
+Removing `pip` would fail every analysis, and recording it as skipped would make every published
+analysis read as stale.
+
 ## The single-page fallback is a host requirement, not a Vercel setting
 
 Every route the client-side router owns must resolve to `index.html` on a direct request — a
