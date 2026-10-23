@@ -133,7 +133,7 @@ every build, ahead of any request.
 ```python
 def cost(entity, *, civilisation, context=None) -> Answer[Cost] | KnowledgeGap
 def production_time(entity, *, civilisation, context=None) -> Answer[Duration] | KnowledgeGap
-def age_requirement(entity, *, civilisation) -> Answer[Age] | KnowledgeGap
+def age_requirement(entity, *, civilisation, context=None) -> Answer[Age] | KnowledgeGap
 def prerequisites(entity, *, civilisation) -> Answer[Sequence[EntityRef]] | KnowledgeGap
 def produced_at(entity, *, civilisation, context=None) -> Answer[Sequence[EntityRef]] | KnowledgeGap
 def available_to(entity, *, civilisation, context=None) -> Answer[bool] | KnowledgeGap
@@ -153,6 +153,15 @@ def name(entity) -> Answer[str] | KnowledgeGap
   on the owner's team (step 3 of "Civilisation qualification"). It takes any condition `context` can
   decide (`researched`, `age`, `controlled`, `team`), so `produced_at` accepts `context` as `cost`
   does and raises as they do without the input a conditional addition needs.
+- **`age_requirement` takes `context` as `cost` does** (FR-022e, T780). A civilisation bonus is a
+  fact, and one that moves an age only while some match state holds is a conditional effect on
+  `age_requirement`: the Cumans' additional Town Center, buildable in the Feudal Age once a count of
+  Town Centers is controlled, is a `controlled` table whose values are age numbers. The effect may
+  carry any condition `context` can decide (`age`, `researched`, `team`, `controlled`), and a query
+  that reaches a conditional one without the input that decides it raises, as `cost` does. A query
+  without `context` on an entity no conditional effect touches answers as it always has, so an
+  installed snapshot reproduces (SC-005). An unmodelled civilisation in `context.team` refuses the
+  query (step 1 of "Civilisation qualification").
 - **`available_to` answers the civilisation's own tree, then applies effects** (T763). Where
   `rules.json` carries the trees (the second version, "On disk"), the baseline is whether the
   entity is in the queried civilisation's `unit`, `building` or `technology` list, by its kind; a
@@ -170,10 +179,14 @@ def name(entity) -> Answer[str] | KnowledgeGap
   generic value, so there is no way to be handed one (FR-023).
 - `context` is the match state a conditional effect needs: the age, the technologies researched,
   the civilisations on the player's team, the player's own included, and how many of a set of
-  entities the player controls. A query whose matching effects are unconditional ignores it. A
-  query that reaches a conditional effect without the input that decides it **raises**, as omitting
-  `civilisation` does: the caller asked for a value only the match can fix, and neither the baseline
-  nor a guessed age is an answer.
+  entities the player controls, and (T781) the technologies researched by any player on the team,
+  the player's own included (`team_researched`). A query whose matching effects are unconditional
+  ignores it. A query that reaches a conditional effect without the input that decides it
+  **raises**, as omitting `civilisation` does: the caller asked for a value only the match can fix,
+  and neither the baseline nor a guessed age is an answer. An effect may carry several conditions
+  (T781) and applies when every one holds; it raises when any one lacks its input, even if another
+  has already failed. `researched` beside `team` reads `team_researched`: the technology is the
+  owner's, not the queried teammate's.
 - **The controlled count is keyed by the entities counted** (FR-022e). `Context.controlled` maps a
   set of entity references, each a kind and an identifier, to the number of them the player
   controls, summed over the set: "Town Center or Castle controlled" is one entry whose key is both
@@ -198,10 +211,10 @@ In order, for a rule query qualified by civilisation _c_:
 1. _c_ not in `civilisations_modelled` → gap, cause `civilisation-not-modelled`. Every field for
    _c_ refuses, because which fields a bonus touches is exactly what is not known. The same holds
    for any civilisation in `context.team`, on every query that accepts `context` (`cost`,
-   `production_time`, `produced_at` and `available_to`): a teammate's team bonus could touch any of
-   those fields of _c_, so an unmodelled teammate refuses each of them for _c_, and the gap names
-   the teammate. `age_requirement` and `prerequisites` take no `context`, so the team never reaches
-   them.
+   `production_time`, `age_requirement`, `produced_at` and `available_to`): a teammate's team bonus
+   could touch any of those fields of _c_, so an unmodelled teammate refuses each of them for _c_,
+   and the gap names the teammate. `prerequisites` takes no `context`, so the team never reaches
+   it.
 2. An effect for _c_ touches this entity and field and is `modelled = no` → gap, cause
    `effect-not-modelled`.
 3. Otherwise apply each matching effect whose condition holds in `context`, in file order, and
@@ -224,17 +237,18 @@ the other `true`, and one that unlocks a building on researching a technology co
 `true` on `researched`. The coverage pass passes `context` to `available_to` as it does to `cost`,
 `production_time` and `produced_at`, so an availability effect that needs age, research or a
 controlled count raises there and counts as modelled, as below, and an unmodelled teammate refuses
-the field (step 1, above).
+the field (step 1, above). It does the same for `age_requirement` (T780).
 
 A conditional effect that is modelled is complete knowledge, so the coverage pass does not report it
 as a gap. The pass supplies no age, research or controlled-count state, so it treats a query that
 raises for want of one as modelled. **T652v**: the pass does supply each participant's real team,
 read from the recording's own header — every ally's civilisation, the participant's own included,
 never a guess — so a team-conditioned effect is applied for real rather than merely treated as
-modelled, and an unmodelled ally is what gaps every `cost`, `production_time`, `produced_at` and
-`available_to` query for that ally's teammates (step 1, above), not only the query naming the
-unmodelled civilisation directly. Passing `team` for `produced_at` and `available_to` changed what
-the pass publishes for such a match, so the analytics version names it (`coverage@2`, FR-042).
+modelled, and an unmodelled ally is what gaps every `cost`, `production_time`, `age_requirement`,
+`produced_at` and `available_to` query for that ally's teammates (step 1, above), not only the query
+naming the unmodelled civilisation directly. Passing `team` for `produced_at` and `available_to`
+changed what the pass publishes for such a match, so the analytics version named it (`coverage@2`,
+FR-042), and passing it for `age_requirement` changed it again (`coverage@3`).
 
 `name` is not civilisation-qualified and an unresolvable identifier degrades to the bare identifier
 at the presentation boundary, as 003 FR-043a already requires — it never gaps an analysis.

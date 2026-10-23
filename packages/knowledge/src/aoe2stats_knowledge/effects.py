@@ -59,11 +59,14 @@ contracts/knowledge-base.md), "Civilisation qualification" steps 2-3. Research:
   bonus's owner; it applies to every civilisation on the owner's team, decided by `Context.team`,
   never by `civilisation` equality alone), and **T762** `"controlled"` (`operand` becomes a table
   keyed by a count of the entities `condition_entities` names that the player controls, which the
-  caller supplies as `Context.controlled`; FR-022e). Absent means unconditional, the pre-T652u
-  behaviour unchanged. A conditional effect is still `modelled = "yes"`/`"no"` exactly as any
-  other — "no" still means the field it touches stays gapped (Kamandaran below: conditional on
-  research, but the wood amount the pack never states is missing knowledge, not unplaced match
-  state, so it stays refused) — `condition` only changes *when* a modelled effect's operand
+  caller supplies as `Context.controlled`; FR-022e). **T781**: it may be a non-empty list of
+  distinct names, all of which must hold; `age` with `controlled` and `team` with anything but
+  `researched` are refused, and `researched` beside `team` reads `Context.team_researched`. Absent
+  means unconditional, the pre-T652u behaviour unchanged. A conditional effect is still
+  `modelled = "yes"`/`"no"` exactly as any other — "no" still means the field it touches stays
+  gapped (Kamandaran below: conditional on research, but the wood amount the pack never states is
+  missing knowledge, not unplaced match state, so it stays refused) — `condition` only changes
+  *when* a modelled effect's operand
   applies, never whether an unmodelled one is half-applied.
 - `condition_technology` — required, and only present, when `condition == "researched"`: the
   technology id (as `rules.json` keys it) that must be in `Context.researched` for the effect to
@@ -272,9 +275,66 @@ class Effect:
     reason: str | None = None
     operation: str | None = None
     operand: object | None = None
-    condition: str | None = None
+    condition: str | tuple[str, ...] | None = None
     condition_technology: str | None = None
     condition_entities: tuple[SelectorEntry, ...] | None = None
+
+    @property
+    def conditions(self) -> tuple[str, ...]:
+        """T781: the condition names this effect carries, `()` when unconditional. A bare name
+        (every effect before T781) is a one-name tuple; `condition` itself stays what the file
+        wrote, a string for one name, so a single-name effect is unchanged."""
+        if self.condition is None:
+            return ()
+        if isinstance(self.condition, str):
+            return (self.condition,)
+        return self.condition
+
+    @property
+    def operand_is_table(self) -> bool:
+        """`age` and `controlled` each make the operand a table; at most one is ever present."""
+        return "age" in self.conditions or "controlled" in self.conditions
+
+    def _normalise_conditions(self) -> None:
+        """T781: validate `condition` (a closed name, or a list of them) and store a list as a
+        tuple. A one-name list collapses to the bare name, so the two spellings are one effect."""
+        condition = self.condition
+        if condition is None:
+            return
+        if isinstance(condition, list | tuple):
+            names = tuple(condition)
+            if not names:
+                raise EffectsError("effect.condition must not be an empty list")
+            for name in names:
+                if not isinstance(name, str) or name not in CONDITIONS:
+                    raise EffectsError(
+                        f"effect.condition must name only {sorted(CONDITIONS)}, got {name!r}"
+                    )
+            if len(set(names)) != len(names):
+                raise EffectsError(
+                    f"effect.condition must not name a condition twice, got {names!r}"
+                )
+            if len(names) == 1:
+                object.__setattr__(self, "condition", names[0])
+                return
+            if "age" in names and "controlled" in names:
+                raise EffectsError(
+                    'effect.condition must not carry both "age" and "controlled": each makes the '
+                    "operand a table, and an operand has one"
+                )
+            if "team" in names and set(names) != {"team", "researched"}:
+                raise EffectsError(
+                    'a condition list that carries "team" carries besides it "researched" alone '
+                    "(T781): whose age or count any other name would read is undecided, got "
+                    f"{names!r}"
+                )
+            object.__setattr__(self, "condition", names)
+            return
+        if not isinstance(condition, str) or condition not in CONDITIONS:
+            raise EffectsError(
+                f"effect.condition must be one of {sorted(CONDITIONS)}, a list of them, or "
+                f"absent, got {condition!r}"
+            )
 
     def __post_init__(self) -> None:
         for name, value in (
@@ -295,12 +355,9 @@ class Effect:
                 "effect.selector must name at least one entity explicitly — never empty, and "
                 "never a fuzzy class name in place of one"
             )
-        if self.condition is not None and self.condition not in CONDITIONS:
-            raise EffectsError(
-                f"effect.condition must be one of {sorted(CONDITIONS)} or absent, "
-                f"got {self.condition!r}"
-            )
-        if self.condition == "researched":
+        self._normalise_conditions()
+        conditions = self.conditions
+        if "researched" in conditions:
             if (
                 not isinstance(self.condition_technology, str)
                 or not self.condition_technology.strip()
@@ -313,7 +370,7 @@ class Effect:
             raise EffectsError(
                 'effect.condition_technology must be absent unless condition = "researched"'
             )
-        if self.condition == "controlled":
+        if "controlled" in conditions:
             if not self.condition_entities:
                 raise EffectsError(
                     "effect.condition_entities is required and must name at least one entity "
@@ -362,7 +419,7 @@ class Effect:
                     '"faster" applies to field = "production_time" only (data-model.md §6), '
                     f"got field={self.field!r}"
                 )
-            if self.condition == "age":
+            if "age" in conditions:
                 if not isinstance(self.operand, Mapping) or not self.operand:
                     raise EffectsError(
                         "effect.operand must be a non-empty table keyed by age when "
@@ -373,7 +430,7 @@ class Effect:
                         f"effect.operand's age table keys must all be one of "
                         f"{sorted(_AGE_KEYS)}, got {sorted(self.operand.keys())!r}"
                     )
-            if self.condition == "controlled":
+            if "controlled" in conditions:
                 if not isinstance(self.operand, Mapping) or not self.operand:
                     raise EffectsError(
                         "effect.operand must be a non-empty table keyed by a count when "
@@ -457,7 +514,7 @@ def _check_availability(effect: Effect) -> None:
             'an effect on field = "available_to" must use operation = "set" (an entity is '
             f"available or it is not; nothing else is a rule), got {effect.operation!r}"
         )
-    if effect.condition in ("age", "controlled"):
+    if effect.operand_is_table:
         assert isinstance(effect.operand, Mapping)  # checked by the condition's own branch
         offenders = [v for v in effect.operand.values() if not _is_boolean(v)]
         shape = "a table whose values are booleans"
@@ -481,7 +538,7 @@ def _check_producing_building(effect: Effect) -> None:
             'an effect on field = "produced_at" must use operation = "add" (it appends a producing '
             f"building to the pack's own; nothing else is a rule), got {effect.operation!r}"
         )
-    if effect.condition in ("age", "controlled"):
+    if effect.operand_is_table:
         assert isinstance(effect.operand, Mapping)  # checked by the condition's own branch
         offenders = [v for v in effect.operand.values() if not _is_building_identifier(v)]
         shape = "a table whose values are building identifier strings"
@@ -536,12 +593,17 @@ class Context:
       whole number (a `bool` included) is `ValueError`. Whether those entities are *controlled* at
       the moment of the query — built, finished, not destroyed — is the caller's decision
       (FR-022e: the knowledge base never decides which state held).
+    - `team_researched` — **T781**: the technologies researched by any player on the team, the
+      player's own included. A `researched` condition beside `team` reads this instead of
+      `researched`, because the technology belongs to the bonus's owner, not to the teammate
+      queried. Absent is `ContextRequired`.
     """
 
     age: int | None = None
     researched: frozenset[str] | None = None
     team: frozenset[str] | None = None
     controlled: Mapping[frozenset[SelectorEntry], int] | None = None
+    team_researched: frozenset[str] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -634,6 +696,17 @@ def _optional_str(table: Mapping[str, object], key: str) -> str | None:
     return value
 
 
+def _parse_condition(table: Mapping[str, object]) -> str | tuple[str, ...] | None:
+    """T781: `condition` as one name (every effect before T781) or a list of names. Which names,
+    how many, and in what combination is `Effect`'s to refuse."""
+    value = table.get("condition")
+    if value is None or isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        return tuple(value)
+    raise EffectsError(f"effect.condition must be a string or a list of strings, got {value!r}")
+
+
 def _parse_effect(table: Mapping[str, object]) -> Effect:
     for key in _COMMON_REQUIRED_FIELDS:
         if key not in table:
@@ -652,7 +725,7 @@ def _parse_effect(table: Mapping[str, object]) -> Effect:
         reason=_optional_str(table, "reason"),
         operation=_optional_str(table, "operation"),
         operand=table.get("operand"),
-        condition=_optional_str(table, "condition"),
+        condition=_parse_condition(table),
         condition_technology=_optional_str(table, "condition_technology"),
         condition_entities=(
             _parse_selector(table["condition_entities"], key="condition_entities")
@@ -751,7 +824,7 @@ def _matches(effect: Effect, *, civilisation: str, kind: str, id: str, field: st
         return False
     if not any(entry.kind == kind and entry.id == id for entry in effect.selector):
         return False
-    if effect.condition == "team" and effect.modelled == "yes":
+    if "team" in effect.conditions and effect.modelled == "yes":
         # T652u remediation, defect 1 (coordinator, measured against the working tree): a team
         # effect's *value*, for every civilisation — not only its owner — depends on team
         # composition, because the owner might be that civilisation's ally. Matching is therefore
@@ -961,9 +1034,32 @@ def _resolve_conditional_operand(
     not assumed, since the fix for `age` is not "reject every bool everywhere" but "close the one
     comparison a bool can silently pass".
     """
-    if effect.condition is None:
+    if not effect.conditions:
         return effect.operand, True
-    if effect.condition == "age":
+    # T781: every name is evaluated, none short-circuits, so a query missing the input any one
+    # name needs raises even when another name has already said no. At most one name makes the
+    # operand a table, and its selected value is the effect's operand when all of them hold.
+    operand: object = effect.operand
+    holds = True
+    for name in effect.conditions:
+        selected, name_holds = _resolve_condition(
+            effect, name, civilisation=civilisation, context=context
+        )
+        holds = holds and name_holds
+        if name in ("age", "controlled"):
+            operand = selected
+    if not holds:
+        return None, False
+    return operand, True
+
+
+def _resolve_condition(
+    effect: Effect, name: str, *, civilisation: str, context: Context | None
+) -> tuple[object, bool]:
+    """One condition name of `effect`, resolved under `context`: `(operand, holds)` as
+    `_resolve_conditional_operand` returns it, the operand being the effect's own for every name
+    but `age` and `controlled`, whose table it selects from."""
+    if name == "age":
         if context is None or context.age is None:
             raise ContextRequired(
                 f"effect {effect.source_text!r} (civilisation={effect.civilisation!r}) is "
@@ -982,18 +1078,24 @@ def _resolve_conditional_operand(
         if key not in effect.operand:
             return None, False
         return effect.operand[key], True
-    if effect.condition == "researched":
-        if context is None or context.researched is None:
+    if name == "researched":
+        by_team = "team" in effect.conditions
+        researched = (
+            None
+            if context is None
+            else (context.team_researched if by_team else context.researched)
+        )
+        if researched is None:
+            needs = "Context(team_researched=...)" if by_team else "Context(researched=...)"
             raise ContextRequired(
                 f"effect {effect.source_text!r} (civilisation={effect.civilisation!r}) is "
-                "conditional on a researched technology, and reaching it needs "
-                "Context(researched=...)"
+                f"conditional on a researched technology, and reaching it needs {needs}"
             )
         assert effect.condition_technology is not None  # enforced by Effect.__post_init__
-        if effect.condition_technology not in context.researched:
+        if effect.condition_technology not in researched:
             return None, False
         return effect.operand, True
-    if effect.condition == "team":
+    if name == "team":
         if context is None or context.team is None:
             raise ContextRequired(
                 f"effect {effect.source_text!r} (civilisation={effect.civilisation!r}) is a team "
@@ -1011,7 +1113,7 @@ def _resolve_conditional_operand(
         if effect.civilisation not in context.team:
             return None, False
         return effect.operand, True
-    if effect.condition == "controlled":
+    if name == "controlled":
         assert effect.condition_entities is not None  # enforced by Effect.__post_init__
         entities = frozenset(effect.condition_entities)
         if context is None or context.controlled is None or entities not in context.controlled:
@@ -1037,7 +1139,7 @@ def _resolve_conditional_operand(
         if not reached:
             return None, False
         return effect.operand[str(max(reached))], True
-    raise AssertionError(f"unreachable: unknown condition {effect.condition!r}")  # pragma: no cover
+    raise AssertionError(f"unreachable: unknown condition {name!r}")  # pragma: no cover
 
 
 def apply_matched(

@@ -36,7 +36,8 @@ from __future__ import annotations
 
 import pytest
 
-from aoe2stats_knowledge import effects
+from aoe2stats_knowledge import effects, query
+from aoe2stats_knowledge.gaps import KnowledgeGap
 
 # --------------------------------------------------------------------------------- parsing
 
@@ -2199,3 +2200,282 @@ def test_parse_rejects_a_boolean_where_the_field_is_numeric() -> None:
             field="cost",
             value={"food": 50},
         )
+
+
+# ----------------------------------------------- T780: age_requirement takes the match state
+#
+# `age_requirement` took no `context`, so a bonus that moves an age with the match state (the
+# Cumans' additional Town Center, "in Feudal Age" once a count of Town Centers is controlled) could
+# only be refused. These go through the query surface, not `apply_matched`: the parse and the
+# application of a `controlled` table were already proven for every field above; what T780 adds is
+# that the query lets the state in, reaches the effect with it, and refuses an unmodelled teammate
+# first.
+
+_AGE_BUILD = 180059  # a promoted snapshot that models Franks
+_PIKEMAN = "358"  # baseline age_requirement 3 in that snapshot
+_TOWN_CENTER_ONLY = frozenset({effects.SelectorEntry("building", "109")})
+
+
+def _age_requirement_controlled_toml(*, civilisation: str = "Franks") -> str:
+    return f"""\
+[[effect]]
+civilisation = "{civilisation}"
+source_key = "0"
+source_text = "synthetic: the age moves with the Town Centers controlled"
+modelled = "yes"
+field = "age_requirement"
+operation = "set"
+operand = {{ 0 = 4, 2 = 2 }}
+condition = "controlled"
+condition_entities = [{{ kind = "building", id = "109" }}]
+selector = [{{ kind = "unit", id = "{_PIKEMAN}" }}]
+validated_by = "synthetic"
+"""
+
+
+@pytest.fixture
+def synthetic_age_requirement(monkeypatch: pytest.MonkeyPatch) -> None:
+    parsed = effects.parse_effects_toml(_age_requirement_controlled_toml())
+    monkeypatch.setattr(effects, "_effects", lambda _directory: parsed)
+
+
+def _pikeman() -> query.EntityRef:
+    return query.EntityRef(kind="unit", id=_PIKEMAN, build=_AGE_BUILD)
+
+
+@pytest.mark.parametrize(("count", "expected"), [(0, 4), (1, 4), (2, 2)])
+def test_a_controlled_age_requirement_reads_the_count_it_is_given(
+    synthetic_age_requirement: None, count: int, expected: int
+) -> None:
+    """The table is keyed "0" and "2": a count between the keys takes the lower one, a count at the
+    highest key takes it. The baseline is 3, so no count answers it by coincidence."""
+    answer = query.age_requirement(
+        _pikeman(),
+        civilisation="Franks",
+        context=query.Context(controlled={_TOWN_CENTER_ONLY: count}),
+    )
+    assert not isinstance(answer, KnowledgeGap)
+    assert answer.value == expected
+    assert isinstance(answer.value, int)
+    assert len(answer.effects) == 1
+
+
+@pytest.mark.parametrize(
+    "context",
+    [None, query.Context(), query.Context(team=frozenset({"Franks"}))],
+    ids=["no context", "empty context", "a team and no count"],
+)
+def test_a_controlled_age_requirement_raises_without_a_count(
+    synthetic_age_requirement: None, context: query.Context | None
+) -> None:
+    with pytest.raises(effects.ContextRequired):
+        query.age_requirement(_pikeman(), civilisation="Franks", context=context)
+
+
+def test_a_count_for_other_entities_does_not_answer_a_controlled_age_requirement(
+    synthetic_age_requirement: None,
+) -> None:
+    with pytest.raises(effects.ContextRequired):
+        query.age_requirement(
+            _pikeman(),
+            civilisation="Franks",
+            context=query.Context(controlled={_BARRACKS: 2}),
+        )
+
+
+def test_an_unmodelled_teammate_refuses_age_requirement_and_is_named() -> None:
+    """Step 1 of "Civilisation qualification" reaches `age_requirement` as it reaches `cost`: an
+    unmodelled civilisation in `context.team` makes the answer unknown, whatever effect touches the
+    entity, and the gap names the teammate. Britons is not modelled in that snapshot."""
+    answer = query.age_requirement(
+        _pikeman(),
+        civilisation="Franks",
+        context=query.Context(team=frozenset({"Franks", "Britons"})),
+    )
+    assert isinstance(answer, KnowledgeGap)
+    assert answer.cause == "civilisation-not-modelled"
+    assert answer.field == "age_requirement"
+    assert answer.civilisation == "Britons"
+
+
+def test_age_requirement_answers_as_before_where_no_conditional_effect_applies() -> None:
+    answer = query.age_requirement(_pikeman(), civilisation="Franks")
+    assert not isinstance(answer, KnowledgeGap)
+    assert answer.value == 3
+    assert answer.effects == ()
+    with_team = query.age_requirement(
+        _pikeman(),
+        civilisation="Franks",
+        context=query.Context(team=frozenset({"Franks", "Teutons"})),
+    )
+    assert not isinstance(with_team, KnowledgeGap)
+    assert with_team.value == 3
+
+
+def test_the_coverage_pass_hands_context_to_age_requirement() -> None:
+    from aoe2stats_knowledge import coverage
+
+    assert "age_requirement" in coverage._CONTEXT_AWARE_FIELDS
+
+
+# ------------------------------------------------- T781: more than one condition on one effect
+
+
+def _multi_condition_toml(
+    condition: str = '["researched", "team"]',
+    *,
+    operand: str = "0.8",
+    technology: str | None = '"kasbah"',
+    entities: bool = False,
+) -> str:
+    """A synthetic Kasbah-shaped effect: Castles work faster once the owner has researched a
+    technology, for the owner's whole team."""
+    lines = [
+        "[[effect]]",
+        'civilisation = "Owner"',
+        'source_key = "0"',
+        'source_text = "Team Castles work faster once the owner researches the technology"',
+        'modelled = "yes"',
+        'field = "production_time"',
+        'operation = "multiply"',
+        f"operand = {operand}",
+        f"condition = {condition}",
+    ]
+    if technology is not None:
+        lines.append(f"condition_technology = {technology}")
+    if entities:
+        lines.append(
+            'condition_entities = [{ kind = "building", id = "109" }]',
+        )
+    lines += ['selector = [{ kind = "building", id = "82" }]', 'validated_by = "synthetic"', ""]
+    return "\n".join(lines)
+
+
+def _apply_multi(
+    effect: effects.Effect, civilisation: str, context: effects.Context | None
+) -> tuple[object, bool]:
+    result = effects.apply_matched(
+        (effect,),
+        civilisation=civilisation,
+        kind="building",
+        id="82",
+        field="production_time",
+        value=100,
+        context=context,
+    )
+    assert not isinstance(result, effects.EffectNotModelled)
+    return result
+
+
+def test_a_researched_and_team_effect_applies_to_a_teammate_whose_team_researched_it() -> None:
+    (effect,) = effects.parse_effects_toml(_multi_condition_toml())
+    team = frozenset({"Owner", "Mate"})
+    reached = _apply_multi(
+        effect, "Mate", effects.Context(team=team, team_researched=frozenset({"kasbah"}))
+    )
+    assert reached[0] == 80  # type: ignore[index]
+    not_reached = _apply_multi(
+        effect, "Mate", effects.Context(team=team, team_researched=frozenset({"other"}))
+    )
+    assert not_reached[0] == 100  # type: ignore[index]
+
+
+def test_a_researched_and_team_effect_reads_team_researched_not_researched() -> None:
+    """The technology belongs to the owner, not to the teammate queried, so the teammate's own
+    `researched` set neither grants nor withholds it."""
+    (effect,) = effects.parse_effects_toml(_multi_condition_toml())
+    team = frozenset({"Owner", "Mate"})
+    only_own = effects.Context(
+        team=team, researched=frozenset({"kasbah"}), team_researched=frozenset()
+    )
+    assert _apply_multi(effect, "Mate", only_own)[0] == 100  # type: ignore[index]
+    only_team = effects.Context(
+        team=team, researched=frozenset(), team_researched=frozenset({"kasbah"})
+    )
+    assert _apply_multi(effect, "Mate", only_team)[0] == 80  # type: ignore[index]
+
+
+def test_a_researched_and_team_effect_does_not_reach_a_civilisation_off_the_owners_team() -> None:
+    (effect,) = effects.parse_effects_toml(_multi_condition_toml())
+    context = effects.Context(team=frozenset({"Stranger"}), team_researched=frozenset({"kasbah"}))
+    assert _apply_multi(effect, "Stranger", context)[0] == 100  # type: ignore[index]
+
+
+def test_a_researched_and_team_effect_raises_without_team_researched() -> None:
+    (effect,) = effects.parse_effects_toml(_multi_condition_toml())
+    with pytest.raises(effects.ContextRequired):
+        _apply_multi(
+            effect,
+            "Mate",
+            effects.Context(team=frozenset({"Owner", "Mate"}), researched=frozenset({"kasbah"})),
+        )
+    with pytest.raises(effects.ContextRequired):
+        _apply_multi(effect, "Mate", None)
+
+
+def test_a_researched_and_team_effect_raises_without_team_even_with_team_researched() -> None:
+    (effect,) = effects.parse_effects_toml(_multi_condition_toml())
+    with pytest.raises(effects.ContextRequired):
+        _apply_multi(effect, "Mate", effects.Context(team_researched=frozenset({"kasbah"})))
+
+
+def test_a_list_does_not_stop_at_the_first_condition_that_fails() -> None:
+    """A query that reaches the effect without the input any one name needs raises, even when
+    another name has already said no."""
+    (effect,) = effects.parse_effects_toml(
+        _multi_condition_toml('["age", "researched"]', operand="{ 1 = 0.5 }")
+    )
+    with pytest.raises(effects.ContextRequired):
+        _apply_multi(effect, "Owner", effects.Context(age=2))
+
+
+def test_an_age_and_researched_effect_needs_both_to_hold() -> None:
+    (effect,) = effects.parse_effects_toml(
+        _multi_condition_toml('["age", "researched"]', operand="{ 2 = 0.5 }")
+    )
+    held = effects.Context(age=2, researched=frozenset({"kasbah"}))
+    assert _apply_multi(effect, "Owner", held)[0] == 50  # type: ignore[index]
+    wrong_age = effects.Context(age=3, researched=frozenset({"kasbah"}))
+    assert _apply_multi(effect, "Owner", wrong_age)[0] == 100  # type: ignore[index]
+    not_researched = effects.Context(age=2, researched=frozenset())
+    assert _apply_multi(effect, "Owner", not_researched)[0] == 100  # type: ignore[index]
+
+
+def test_a_one_name_list_parses_to_the_same_effect_as_the_bare_name() -> None:
+    (as_list,) = effects.parse_effects_toml(_multi_condition_toml('["researched"]'))
+    (as_name,) = effects.parse_effects_toml(_multi_condition_toml('"researched"'))
+    assert as_list == as_name
+    assert as_name.condition == "researched"
+
+
+@pytest.mark.parametrize(
+    ("condition", "technology", "entities", "reason"),
+    [
+        ("[]", None, False, "empty list"),
+        ('["researched", "researched"]', '"kasbah"', False, "twice"),
+        ('["age", "controlled"]', None, True, 'both "age" and "controlled"'),
+        ('["team", "age"]', None, False, '"researched" alone'),
+        ('["team", "controlled"]', None, True, '"researched" alone'),
+        ('["team", "researched", "age"]', '"kasbah"', False, '"researched" alone'),
+        ('["researched", "nonsense"]', '"kasbah"', False, "'nonsense'"),
+        ('["researched", 3]', '"kasbah"', False, "3"),
+        ("3", None, False, "string or a list"),
+    ],
+)
+def test_a_condition_list_is_refused_at_parse_time(
+    condition: str, technology: str | None, entities: bool, reason: str
+) -> None:
+    operand = "{ 1 = 0.5 }" if "age" in condition or "controlled" in condition else "0.8"
+    with pytest.raises(effects.EffectsError, match=reason):
+        effects.parse_effects_toml(
+            _multi_condition_toml(
+                condition, operand=operand, technology=technology, entities=entities
+            )
+        )
+
+
+def test_condition_technology_is_still_required_for_researched_inside_a_list() -> None:
+    with pytest.raises(effects.EffectsError):
+        effects.parse_effects_toml(_multi_condition_toml(technology=None))
+    with pytest.raises(effects.EffectsError):
+        effects.parse_effects_toml(_multi_condition_toml('["team"]', technology='"kasbah"'))

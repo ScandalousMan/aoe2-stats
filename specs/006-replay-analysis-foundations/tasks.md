@@ -3079,7 +3079,7 @@ phase.
       technology: FR-022c's order, then the owner's sheet, one row per entity. "Available one age
       earlier" is an `age_requirement` row, never a reading of the tree's display links (research
       D3). **Tests**: as T767's, for forty-four civilisations
-- [ ] T780 [US2] Let `age_requirement` take the match state its effects need (FR-022e). The
+- [x] T780 [US2] Let `age_requirement` take the match state its effects need (FR-022e). The
       signature becomes `age_requirement(entity, *, civilisation, context=None)`; an effect on
       `age_requirement` may carry any condition `context` decides (`age`, `researched`, `team`,
       `controlled`), and a query that reaches a conditional one without its input raises
@@ -3102,7 +3102,7 @@ phase.
       first** in `packages/knowledge/tests/test_effects.py`: a synthetic `controlled` effect on
       `age_requirement` at counts 0, 1 and 2 against a table keyed `"0"` and `"2"`; the raise
       without a count; an unmodelled teammate's refusal
-- [ ] T781 [US2] Let one effect carry more than one condition (FR-022e). Besides the single name it
+- [x] T781 [US2] Let one effect carry more than one condition (FR-022e). Besides the single name it
       takes today, `condition` takes a non-empty list of distinct names from the same closed
       vocabulary, and the effect applies when every one of them holds; a query that reaches it
       without the input any one of them needs raises `ContextRequired`. At most one of `age` and

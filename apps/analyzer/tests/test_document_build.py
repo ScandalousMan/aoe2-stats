@@ -199,13 +199,14 @@ def test_the_identity_names_every_component_and_its_digest_recomputes(
     assert AnalysisIdentity.from_block(identity).digest == identity["digest"]
 
 
-def test_the_analytics_version_names_the_second_coverage_pass() -> None:
-    """The coverage pass changed what it publishes for a match with an unmodelled ally (it now
-    passes `team` to `produced_at` and `available_to`, so both refuse for a modelled civilisation
-    whose teammate is unmodelled, as `cost` and `production_time` already did), and an identity must
-    change when the body it covers does (FR-042): the version string is `coverage@2`, never the
-    first pass's `coverage@1`."""
-    assert ANALYTICS_VERSION.startswith("coverage@2+")
+def test_the_analytics_version_names_the_third_coverage_pass() -> None:
+    """The coverage pass changed what it publishes for a match with an unmodelled ally again (it now
+    passes `team` to `age_requirement` too, so that field refuses for a modelled civilisation whose
+    teammate is unmodelled, as `cost`, `production_time`, `produced_at` and `available_to` already
+    did), and an identity must change when the body it covers does (FR-042): the version string is
+    `coverage@3`, never the second pass's `coverage@2` nor the first's `coverage@1`."""
+    assert ANALYTICS_VERSION.startswith("coverage@3+")
+    assert "coverage@2" not in ANALYTICS_VERSION
     assert "coverage@1" not in ANALYTICS_VERSION
 
 
