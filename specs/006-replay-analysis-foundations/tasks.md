@@ -3087,13 +3087,17 @@ phase.
       reaches `cost`: an unmodelled civilisation in `context.team` refuses it, and the gap names the
       teammate. The coverage pass passes `context` to it as it does to `cost`; a committed
       recording's blocker set that changes for that reason is updated by set equality, and the
-      hand-back names each added tuple and the ally that causes it. Its first user is the Cumans'
+      hand-back names each added tuple and the ally that causes it. That changes what the pass
+      publishes for such a match, so the analytics version becomes `coverage@3` (FR-042), as
+      `coverage@2` did for `produced_at` and `available_to`, and
+      `apps/analyzer/tests/test_document_build.py` pins it. Its first user is the Cumans'
       "One additional Town Center can be built in Feudal Age", which T769 refused because the query
       took no context: FR-022e forbids refusing a bonus for the match state it needs. A query
       without `context` on an entity no conditional effect touches answers as it does today; if a
       superseded snapshot's reproduction test changes anyway (SC-005), stop and report it, never
       re-pin it. Amend `specs/006-replay-analysis-foundations/contracts/knowledge-base.md` ("The
-      query surface" and "Civilisation qualification", step 1) and
+      query surface", "Civilisation qualification" step 1, and the coverage paragraph that names
+      `coverage@2`) and
       `specs/006-replay-analysis-foundations/data-model.md` §6 by hand in the same change. **Red
       first** in `packages/knowledge/tests/test_effects.py`: a synthetic `controlled` effect on
       `age_requirement` at counts 0, 1 and 2 against a table keyed `"0"` and `"2"`; the raise
@@ -3107,7 +3111,10 @@ phase.
       parses to the same effect as today, so every installed snapshot reproduces (SC-005).
       `researched` beside `team` reads a new `Context.team_researched`, the technologies researched
       by any player on the team, the player's own included, because the technology belongs to the
-      bonus's owner and not to the teammate queried; absent, it raises. Its first users are Berbers'
+      bonus's owner and not to the teammate queried; absent, it raises. A list that carries `team`
+      carries besides it `researched` alone, and any other name beside `team` is refused at parse
+      time: whose age or count it would read is undecided, and a bonus that needs it widens this
+      rule then. Its first users are Berbers'
       Kasbah (T768) and Cuman Mercenaries (T769), each refused because an effect carried one
       condition. Amend `specs/006-replay-analysis-foundations/data-model.md` §6's `condition` row
       and `specs/006-replay-analysis-foundations/contracts/knowledge-base.md` ("The query surface",
@@ -3115,8 +3122,8 @@ phase.
       **Red first** in `packages/knowledge/tests/test_effects.py`: a synthetic `researched` and
       `team` effect applied to a teammate whose team researched the technology and not to one whose
       team did not; the raise without `team_researched`; a list refused at parse time when empty,
-      when a name repeats, when it carries both `age` and `controlled`, and when a name is outside
-      the vocabulary
+      when a name repeats, when it carries both `age` and `controlled`, when it carries `team` with
+      `age` or `controlled`, and when a name is outside the vocabulary
 - [ ] T770 [US2] Model batch D on build 185872 in `aoe2techtree-185872-civilisations-56`, which
       supersedes T769's snapshot: Georgians, Shu, Wu, Wei, Jurchens, Khitans, Muisca, Mapuche, Tupi,
       Saxons, Varangians and Danes. Saxons' Foot Soldiers discount is a `controlled` row (T762).
@@ -3126,8 +3133,9 @@ phase.
       value this snapshot answers, for the owner to read in the game. **Tests**: as T767's, for every
       civilisation of the pack; T765 then has no `xfail` left for build 185872. The same snapshot
       replaces the three refusals the effect model forced, each with a modelled row: the Cumans'
-      additional Town Center (building 621, `age_requirement`, a `controlled` count of Town Centers,
-      T780), Cuman Mercenaries (unit 1260, `available_to`, `researched` and `team`, T781) and
+      additional Town Center (building 621, `age_requirement`, a `controlled` count of Town Centers
+      whose counted set is taken from the sources under FR-022c and named in `validated_by`, T780),
+      Cuman Mercenaries (unit 1260, `available_to`, `researched` and `team`, T781) and
       Berbers' Kasbah (`production_time`, `researched` and `team`, T781). Their open rows of
       [owner-readings.md](./owner-readings.md), and the paragraph under its table naming the two
       Cuman bonuses, are removed in the same change. Depends on T780 and T781

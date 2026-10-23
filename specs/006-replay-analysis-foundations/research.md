@@ -251,6 +251,14 @@ the caller supplies (FR-022e), as an age or a researched technology already is. 
 bonus ("Infantry", "Gunpowder Units") is still never a selector: its members are resolved from what
 the pack states and listed, and a member the pack does not settle goes to a person, not to a guess.
 
+_Amended 2026-10-23, at the repository owner's arbitration (T769's hand-back)._ A civilisation's
+bonus is a fact, and the effect model carries it. A bonus the model cannot express is never a
+`modelled: no` row for that reason: the model is widened (T780, T781) and the bonus is modelled.
+The Cumans' additional Town Center in the Feudal Age, Cuman Mercenaries and Berbers' Kasbah were
+refused because `age_requirement` took no context and an effect carried one condition; both limits
+go. What stays refused is unchanged: an amount or a scope no referenced source and no reading of the
+game settles (FR-022b), and a bonus on a field this knowledge base does not carry.
+
 ## D6 — The register is TOML inside the package that enforces it
 
 **Decision.** `packages/core/src/aoe2stats_core/truth/register.toml` is the single source. The
