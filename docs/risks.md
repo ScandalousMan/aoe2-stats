@@ -33,7 +33,9 @@ cannot be recreated by anyone, at any price.
   so nothing was re-validated. Read the same day: every capture row is `stored` or `expired`, none
   was first seen after 2026-08-28, and none is for a match after 2026-05-02. The five most recent
   daily cycles each polled the one archiving profile and were answered by the source, which has
-  returned nothing later than 2026-05-02 for it.
+  returned nothing later than 2026-05-02 for it. That was the profile not playing, not capture
+  failing: its next match, 512927942 (ended 2026-10-11 15:30Z), was stored on 2026-10-12 at 04:01Z,
+  on the first attempt, by the next daily cycle (read from production 2026-10-23).
 - **2026-08-19 — R4.** `aoe-api.reliclink.com` now serves a certificate for `*.worldsedgelink.com`,
   so every community document naming that host is stale. Recorded before it could cost anything.
 - **2026-08-19 — R4.** aoe2companion returned 403 from CI while the identical request succeeded from
