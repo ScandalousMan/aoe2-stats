@@ -179,10 +179,14 @@ def name(entity) -> Answer[str] | KnowledgeGap
   generic value, so there is no way to be handed one (FR-023).
 - `context` is the match state a conditional effect needs: the age, the technologies researched,
   the civilisations on the player's team, the player's own included, and how many of a set of
-  entities the player controls. A query whose matching effects are unconditional ignores it. A
-  query that reaches a conditional effect without the input that decides it **raises**, as omitting
-  `civilisation` does: the caller asked for a value only the match can fix, and neither the baseline
-  nor a guessed age is an answer.
+  entities the player controls, and (T781) the technologies researched by any player on the team,
+  the player's own included (`team_researched`). A query whose matching effects are unconditional
+  ignores it. A query that reaches a conditional effect without the input that decides it
+  **raises**, as omitting `civilisation` does: the caller asked for a value only the match can fix,
+  and neither the baseline nor a guessed age is an answer. An effect may carry several conditions
+  (T781) and applies when every one holds; it raises when any one lacks its input, even if another
+  has already failed. `researched` beside `team` reads `team_researched`: the technology is the
+  owner's, not the queried teammate's.
 - **The controlled count is keyed by the entities counted** (FR-022e). `Context.controlled` maps a
   set of entity references, each a kind and an identifier, to the number of them the player
   controls, summed over the set: "Town Center or Castle controlled" is one entry whose key is both
