@@ -3102,7 +3102,7 @@ phase.
       first** in `packages/knowledge/tests/test_effects.py`: a synthetic `controlled` effect on
       `age_requirement` at counts 0, 1 and 2 against a table keyed `"0"` and `"2"`; the raise
       without a count; an unmodelled teammate's refusal
-- [ ] T781 [US2] Let one effect carry more than one condition (FR-022e). Besides the single name it
+- [x] T781 [US2] Let one effect carry more than one condition (FR-022e). Besides the single name it
       takes today, `condition` takes a non-empty list of distinct names from the same closed
       vocabulary, and the effect applies when every one of them holds; a query that reaches it
       without the input any one of them needs raises `ContextRequired`. At most one of `age` and
