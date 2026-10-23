@@ -1,11 +1,11 @@
-"""T746 / T767 / SC-005: an analysis published under a superseded knowledge snapshot still
+"""T746 / T767 / T768 / SC-005: an analysis published under a superseded knowledge snapshot still
 reproduces.
 
 A promoted snapshot is never edited (FR-025), so build 185872's civilisations were modelled in a
-second snapshot that names the digest it supersedes (T746), and twelve more in a third (T767).
-Resolution by build now answers the third; the analyses published before it name the first or the
-second, and `reproduce` must still rebuild exactly those bytes from the identity they recorded -
-not the current snapshot's answer (FR-038).
+second snapshot that names the digest it supersedes (T746), twelve more in a third (T767) and
+twelve more in a fourth (T768). Resolution by build now answers the fourth; the analyses published
+before it name the first, the second or the third, and `reproduce` must still rebuild exactly those
+bytes from the identity they recorded - not the current snapshot's answer (FR-038).
 
 The "published" analysis is built with the superseded snapshot pinned, which is what the build
 resolved to when it was published. The contrast cases prove the snapshots genuinely differ for this
@@ -39,7 +39,8 @@ _BUILD = 185872
 _MAX_RAW_BYTES = 25_165_824  # `.env.example`'s ANALYSIS_MAX_RAW_BYTES
 _FIRST_DIGEST = "sha256:1c77d7cb5034b48dcb15641370512854a222d5f7d40baaa6129fb1b1c56fca5a"
 _SECOND_DIGEST = "sha256:becd35a158dafb72c304aeb07bae66347b4442f62d209d8cedb23d0c1f34f004"
-_SUPERSEDED_DIGESTS = (_FIRST_DIGEST, _SECOND_DIGEST)
+_THIRD_DIGEST = "sha256:a4f213b6e84f90ee88a916929a136165c3979f214a191556877669dd0a92b4db"
+_SUPERSEDED_DIGESTS = (_FIRST_DIGEST, _SECOND_DIGEST, _THIRD_DIGEST)
 
 
 @pytest.fixture(autouse=True)
@@ -99,7 +100,7 @@ def extractor() -> Aoe2RecExtractor:
     return Aoe2RecExtractor(max_raw_bytes=_MAX_RAW_BYTES)
 
 
-@pytest.mark.parametrize("superseded_digest", _SUPERSEDED_DIGESTS, ids=["first", "second"])
+@pytest.mark.parametrize("superseded_digest", _SUPERSEDED_DIGESTS, ids=["first", "second", "third"])
 async def test_an_analysis_published_under_a_superseded_snapshot_reproduces_byte_for_byte(
     superseded_digest: str, zip_bytes: bytes, extractor: Aoe2RecExtractor
 ) -> None:
