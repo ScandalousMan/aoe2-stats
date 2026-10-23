@@ -134,7 +134,7 @@ type ErasureUiState =
   | 'confirming' // dialog open, token held, waiting for the acknowledged confirm
   | 'erasing' // POST in flight
   | 'confirmation-expired' // 403 from POST: the token aged out; dialog says so
-  | 'failed' // POST failed for another reason; dialog says so
+  | 'failed' // POST failed for another reason, or a mint GET failed (§10); dialog says so
   | 'erased' // terminal; the route shows ErasedScreen, not this panel
 ```
 
@@ -348,8 +348,8 @@ nothing else ever is: the `EraseButton` is always live, and a right greyed out i
 **error** — `DataExportPanel`: `failed` renders `FailureRegion` (`Callout/danger`) with a retry; the
 button returns to enabled. `AccountErasurePanel`: `DialogFailure` renders inside the open dialog per
 §4.4 — the dialog **stays open** on failure (closing it would lose the message and, worse, leave the
-user unsure whether the erasure went through), `ConfirmAction` returns to enabled, and `state` is
-exactly what it was — nothing was erased.
+user unsure whether the erasure went through), `ConfirmAction` returns to enabled with the box still
+ticked, and nothing was erased. A failed first mint opens it in `failed`, box unticked (§10, T779).
 
 **empty** — `DataExportPanel`: the `idle` state **is** the empty state — no export has been requested
 yet — and it is a real rendered state (the contents statement plus the button), never a blank panel;
@@ -524,10 +524,24 @@ links — their forward action is always a `Button`, never a link inside coloure
 - [ ] The `ConfirmDialog` restates that it cannot be undone, shows a required "I understand this cannot
       be undone" checkbox, and the "Erase my account permanently" button is visibly disabled until the
       box is checked.
-- [ ] In the token-expired dialog frame, the copy says the confirmation expired and offers to confirm
-      again; nothing claims the account was erased.
-- [ ] In the failure dialog frame, the dialog is still open, the message is present, and the confirm
-      button is enabled again.
+- [ ] In the token-expired dialog frame — the `ConfirmationExpired` story and
+      `/privacy (erasure confirmation expired)`; entered only from a `403` on the `POST` at the end
+      of a run, so the box is ticked when it appears (§9) — the copy says the confirmation expired
+      and offers to confirm again; the acknowledgement checkbox is ticked and enabled; the confirm
+      button is enabled, not in the greyed `surface-sunken` fill and `text-disabled` label it
+      carries in the `confirming` frame; nothing claims the account was erased.
+- [ ] In the failure dialog frame — the `Failed` story and `/privacy (erasure failed)`; entered from
+      a confirmed press, when the `POST` fails other than with a `403` or the re-mint after an
+      expiry fails, both leaving the box ticked (§9) — the dialog is still open, the message is
+      present, the acknowledgement checkbox is ticked and enabled, and the confirm button is enabled
+      again, not greyed as in the `confirming` frame.
+- [ ] In the first-mint failure frame — `/privacy (erasure confirmation minting failed)`: the `GET`
+      behind "Erase my account" failed, so the dialog opens for the first time already in `failed`,
+      before the box could be ticked — the dialog is open, "We could not erase your account." is
+      present, the acknowledgement checkbox is unticked and enabled, and the confirm button is
+      visibly disabled until it is ticked. No story depicts this frame (T779): its failure callout
+      is the `Failed` story's and its gated confirm is the `Confirming` story's; that route
+      scenario's unticked-acknowledgement mark and the `initialState` criterion below guard it.
 - [ ] In the re-mint frame (`/privacy (erasure re-mint in flight)`: confirm pressed from the
       token-expired dialog, the `GET` still pending), the dialog is open; the confirm button shows a
       spinner and reads "Erasing your account…", the same label as the erasing frame; "Keep my
@@ -550,6 +564,13 @@ links — their forward action is always a `Button`, never a link inside coloure
       never `body`.
 - [ ] With the box unchecked, the confirm button carries the `disabled` attribute and no
       `aria-disabled`.
+- [ ] The frame each `initialState` opens on, falsifiable in a unit test (T779): `failed` and
+      `confirmation-expired` open with the acknowledgement checkbox checked and enabled, and the
+      confirm button carrying none of `disabled`, `aria-disabled` and `aria-busy`; `erasing` opens
+      with it checked and `disabled`; `confirming` opens with it unchecked and enabled and the
+      confirm button `disabled`; `idle` and `minting` open no dialog. The rule names a story's entry
+      frame, not a property of `failed`: from `idle`, a first mint that rejects opens the dialog in
+      `failed` with the checkbox unchecked and enabled and the confirm button `disabled`.
 - [ ] The `ErasedScreen` frame states the account is erased, names what survives, and carries no "sign
       back in" control.
 

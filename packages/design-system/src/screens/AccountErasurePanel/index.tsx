@@ -14,7 +14,7 @@ export type ErasureUiState =
   | 'confirming' // dialog open, token held, waiting for the acknowledged confirm
   | 'erasing' // POST in flight
   | 'confirmation-expired' // 403 from POST: the token aged out; dialog says so
-  | 'failed' // POST failed for another reason; dialog says so
+  | 'failed' // POST failed for another reason, or a mint GET failed; dialog says so
   | 'erased' // terminal; the route shows ErasedScreen, not this panel
 
 export interface AccountErasurePanelProps {
@@ -47,12 +47,12 @@ export function AccountErasurePanel({
 }: AccountErasurePanelProps) {
   const [state, setState] = useState<ErasureUiState>(initialState)
   const [confirmationToken, setConfirmationToken] = useState<string | undefined>(undefined)
-  const [acknowledged, setAcknowledged] = useState(initialState === 'erasing')
-  // §5's `minting` covers two moments: the very first mint, fired by `EraseButton` before the
-  // dialog has ever opened, and the re-mint §4.4 describes, fired from inside the open dialog
-  // after a stale token expired. This flag tells them apart without a second state value;
-  // `initialState === 'minting'` (the `Minting` story) starts it `false`, the pre-dialog case, as
-  // no story needs the re-mint frame, which only exists inside a real `handleConfirm` retry.
+  const [acknowledged, setAcknowledged] = useState(
+    ['erasing', 'failed', 'confirmation-expired'].includes(initialState),
+  )
+  // §5's `minting` is the first mint, fired by `EraseButton` before the dialog opens, or the re-mint
+  // fired from inside the open dialog; `dialogHasOpened` tells them apart. `initialState:
+  // 'minting'` starts it `false` (the first mint): no story needs the re-mint frame.
   const [dialogHasOpened, setDialogHasOpened] = useState(false)
 
   // Guards every `.then()`/`.catch()` below against setting state once this panel has unmounted
