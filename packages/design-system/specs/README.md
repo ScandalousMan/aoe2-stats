@@ -3928,24 +3928,28 @@ comment above it names every branch no route stub reaches or that has nothing fo
 Each scenario declares the marks its branch puts on screen and `enterScenario` asserts them in a browser after
 `prepare` (`assertBranchScenario`). `suite-scenarios.test.ts` fails by name when a scenario or its entry in the
 inventory is added or removed alone, when the number of scenarios changes, when one scenario's positive marks are all
-another's on the same route unless an absent mark separates them, and when a scenario opens with a mark that is not
-a positive one. That check compares mark selectors as written, so two selectors that match the same element but are
-spelled differently are not seen as one; scenarios in different families whose marks overlap that way are covered only
-by the discriminating marks a sweep added to the scenarios it named, not by the check. It plants five kinds of
-absence, each failing inside `enterScenario` naming the mark that fails: for every scenario, the route's success page
-before any action; for a scenario in a family of branches that could be mistaken for one another, the next scenario of
-that family in the ring; for a held request, the request answered at once; for every absent mark, a page where
-the thing is present; and for each separating mark, the mark alone on its twin's page, and on the route's success page
-unless that page shows the mark too. Each plant first waits for a sign that the page it substituted has rendered, which
-does not rule out a mark of the scenario's own arriving only after the 1 s judge window has closed, so a plant's pass can
-be weaker evidence than it looks; a mark that arrives within the window is caught. The two held loading
-states, `ProfileSummary`'s `Skeleton` and the erase button's `Spinner`, are branch scenarios too, so the keyboard,
-focus-visibility and touch-footprint suites run them held as well as the reduced-motion suite. Two things the new
-scenarios found are defects, not harness gaps, so they are not filed in this register. T750, fixed: `Dialog`'s Tab
-trap counted a disabled button as a stop, so while a dialog's request was in flight and its secondary action disabled
-(`/dashboard (unlink in flight)`, `/privacy (erasure in flight)`) Tab left the dialog; both walks now pass every keyboard
-assertion with no `knownDefects` marker (CI run 39495444917, #182 at 9ada830f), and Escape leaves them open. T751: the erasure
-dialog's confirm button is natively `disabled` while it is focused during a re-mint, and `/privacy (erasure re-mint in
-flight)`'s `prepare` moves focus back to the dialog heading after the press, so that scenario's keyboard result does not
-judge where the press left focus. Item 13 stays partly met until T751 lands. The row is deleted rather than
-kept as a second copy of the fact; the register holds no row.
+another's on the same route unless an absent mark separates them or the two hold provably different requests (the
+identical glob with different explicit methods, or with the same method and different explicit occurrences;
+`holdsDisjoint`), and when a scenario opens with a mark that is not a positive one. That check compares mark selectors
+as written, so two selectors that match the same element but are spelled differently are not seen as one; scenarios in
+different families whose marks overlap that way are covered only by the discriminating marks a sweep added to the
+scenarios it named, not by the check. It plants five kinds of absence, each failing inside `enterScenario` naming the
+mark that fails: for every scenario, the route's success page before any action; for a scenario in a family of
+branches that could be mistaken for one another, the next scenario of that family in the ring; for a held request, the
+request answered at once; for every absent mark, a page where the thing is present; and for each separating mark, the
+mark alone on its twin's page, and on the route's success page unless that page shows the mark too. Each plant first
+waits for a sign that the page it substituted has rendered, which does not rule out a mark of the scenario's own
+arriving only after the 1 s judge window has closed, so a plant's pass can be weaker evidence than it looks; a mark
+that arrives within the window is caught. The two held loading states, `ProfileSummary`'s `Skeleton` and the erase
+button's `Spinner`, are branch scenarios too, so the keyboard, focus-visibility and touch-footprint suites run them
+held as well as the reduced-motion suite. Two things the new scenarios found are defects, not harness gaps, so they
+are not filed in this register. T750, fixed: `Dialog`'s Tab trap counted a disabled button as a stop, so while a
+dialog's request was in flight and its secondary action disabled (`/dashboard (unlink in flight)`, `/privacy (erasure
+in flight)`) Tab left the dialog; both walks now pass every keyboard assertion with no `knownDefects` marker (CI run
+39495444917, #182 at 9ada830f), and Escape leaves them open. T751, fixed: a re-mint inside the erasure dialog gave its
+focused confirm button the native `disabled` attribute, so focus dropped to `body`; the re-mint and the erase are now
+one in-flight run with that button `loading`, the acknowledgement locked and ticked, and focus kept on the button
+(`privacy-data-rights.md` §9), and neither `/privacy (erasure in flight)` nor `/privacy (erasure re-mint in flight)`
+moves focus after its press, so both keyboard walks judge where the press left it and pass every assertion (CI run
+39846980488, #185 at ddb0ccc2). Item 13 is Met. The row is deleted rather than kept as a second copy of the fact; the
+register holds no row.

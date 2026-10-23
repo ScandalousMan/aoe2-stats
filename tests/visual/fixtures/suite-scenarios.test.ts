@@ -400,14 +400,16 @@ test.describe('suite scenarios', () => {
 
   // T750: the dialog scenarios whose secondary action is unavailable while Escape is pressed. The
   // keyboard suite asserts the walk read exactly this for every surface scenario, so dropping a
-  // marker (or adding one) is a visible change here. The erasure re-mint scenario is deliberately
-  // absent: its confirm button is the disabled one (`minting`), and its secondary action
-  // (`disabled: state === 'erasing'`) stays live, so Escape closes that dialog.
-  test('the in-flight dialog scenarios whose secondary action is unavailable are exactly these two', () => {
+  // marker (or adding one) is a visible change here. T751: the erasure re-mint scenario is one of
+  // them since the re-mint became part of the in-flight run (`AccountErasurePanel`: the secondary
+  // action is `disabled` while `minting` inside the dialog, as while `erasing`). It holds the second
+  // `GET` of the erase endpoint through `hold`'s `occurrence`, like the others hold their request.
+  test('the in-flight dialog scenarios whose secondary action is unavailable are exactly these three', () => {
     const marked = SUITE_SCENARIOS.filter((scenario) => scenario.secondaryUnavailable === true)
     expect(marked.map((scenario) => scenario.label)).toEqual([
       '/dashboard (unlink in flight)',
       '/privacy (erasure in flight)',
+      '/privacy (erasure re-mint in flight)',
     ])
     for (const scenario of marked) {
       expect(scenario.surface).toBe('dialog')
@@ -434,6 +436,23 @@ test.describe('suite scenarios', () => {
   // marks listed in `MARKS_THAT_SEPARATE` and the ring plants, which a sweep of the scenarios named
   // there added, not by this check. Whether a declared mark really is present on the other's page
   // is what the planted cases below run.
+  //
+  // T751: two frames can be identical on screen and differ only in which request is pending (the
+  // erasure dialog's re-mint `GET` and its erase `POST`, by design one frame). No mark can tell
+  // them apart, so the check also accepts a pair whose scenarios hold requests that cannot be the
+  // same one, read from the declarations alone and only where that is certain: the identical glob
+  // string with two different explicit methods, or the identical glob and method with two different
+  // explicit occurrences. Anything else is no separation: an omitted method or occurrence means
+  // "any", which includes the other's, and two glob spellings can match one URL. This is a
+  // statement about the scenarios, not the pages; what keeps each hold real is the planted case
+  // that answers it at once and expects the marks to fail. A scenario that holds nothing is never
+  // separated from one that does.
+  const holdsDisjoint = (a: BranchScenario, b: BranchScenario) => {
+    const [x, y] = [a.hold, b.hold]
+    if (x === undefined || y === undefined || x.urlGlob !== y.urlGlob) return false
+    if (x.method !== y.method) return x.method !== undefined && y.method !== undefined
+    return x.occurrence !== undefined && y.occurrence !== undefined && x.occurrence !== y.occurrence
+  }
   const positiveMarks = (scenario: BranchScenario) =>
     scenario.shows.filter((entry) => entry.max === undefined)
   const absentMarks = (scenario: BranchScenario) =>
@@ -453,7 +472,8 @@ test.describe('suite scenarios', () => {
         const separatedByAbsence = absentMarks(first).some((gone) =>
           positiveMarks(second).some((other) => other.selector === gone.selector),
         )
-        if (heldBySecond && !separatedByAbsence) {
+        const separatedByHold = holdsDisjoint(first, second)
+        if (heldBySecond && !separatedByAbsence && !separatedByHold) {
           pairs.push(`${first.route}: '${first.branch}' is not told apart from '${second.branch}'`)
         }
       }
@@ -496,6 +516,41 @@ test.describe('suite scenarios', () => {
     expect(notToldApart([wide, scenario('narrow, without c', [mark('a'), elsewhere])])).toEqual([
       `${first.route}: 'narrow, without c' is not told apart from 'wide'`,
     ])
+    // Identical marks, a different request held: allowed (T751). The same request held, or one side
+    // holding nothing, still clashes.
+    const holding = (branch: string, hold?: BranchScenario['hold']) => ({
+      ...scenario(branch, [mark('a'), mark('b')]),
+      hold,
+    })
+    const get = { urlGlob: 'g', body: null, method: 'GET', occurrence: 2 }
+    const post = { urlGlob: 'g', body: null, method: 'POST' }
+    expect(notToldApart([holding('re-mint', get), holding('erase', post)])).toEqual([])
+    expect(notToldApart([holding('one', get), holding('two', { ...get })])).toEqual([
+      `${first.route}: 'one' is not told apart from 'two'`,
+      `${first.route}: 'two' is not told apart from 'one'`,
+    ])
+    expect(notToldApart([holding('held', get), holding('unheld')])).toEqual([
+      `${first.route}: 'held' is not told apart from 'unheld'`,
+      `${first.route}: 'unheld' is not told apart from 'held'`,
+    ])
+    // The two shapes that string inequality over-credited (a hold's key differing is not the holds
+    // being disjoint): a wildcard occurrence includes an explicit one, and two glob spellings can
+    // match the same URL. Neither separates the pair.
+    const wildcardGet = { urlGlob: 'g', body: null, method: 'GET' }
+    expect(notToldApart([holding('any', wildcardGet), holding('second', get)])).toEqual([
+      `${first.route}: 'any' is not told apart from 'second'`,
+      `${first.route}: 'second' is not told apart from 'any'`,
+    ])
+    expect(
+      notToldApart([holding('one', get), holding('spelled', { ...get, urlGlob: '**/g' })]),
+    ).toEqual([
+      `${first.route}: 'one' is not told apart from 'spelled'`,
+      `${first.route}: 'spelled' is not told apart from 'one'`,
+    ])
+    // The same glob and method with different explicit occurrences are disjoint: allowed.
+    expect(
+      notToldApart([holding('first', { ...get, occurrence: 1 }), holding('second', get)]),
+    ).toEqual([])
     // The same marks on another route are no clash: a branch is judged on its own route.
     expect(
       notToldApart([wide, { ...scenario('twin', [mark('a'), mark('b')]), route: '/else' }]),
@@ -1203,11 +1258,16 @@ function plantedCases(): Case[] {
               hold: undefined,
               stub: async (target) => {
                 await base.stub(target)
-                await target.route(held.urlGlob, (route) =>
-                  held.method !== undefined && route.request().method() !== held.method
+                let seen = 0
+                await target.route(held.urlGlob, (route) => {
+                  if (held.method !== undefined && route.request().method() !== held.method) {
+                    return route.fallback()
+                  }
+                  seen += 1
+                  return held.occurrence !== undefined && seen !== held.occurrence
                     ? route.fallback()
-                    : fulfillJson(route, held.resolvesWith ?? held.body),
-                )
+                    : fulfillJson(route, held.resolvesWith ?? held.body)
+                })
               },
             },
             url,

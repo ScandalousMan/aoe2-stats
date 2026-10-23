@@ -1141,7 +1141,7 @@ absence of an action is silent.
 - **disabled** — never, and this is the state FR-024 is about: the control that caused the failure
   returns to being pressable, and the retry inside an `ErrorState` is never disabled after a failed
   attempt. A retry that greys itself out after failing is how a recoverable error becomes permanent.
-- **loading** — a retry in progress shows `Button`'s own loading state (spinner, unchanged width, an
+- **loading** — a retry in progress shows `Button`'s own loading state (spinner beside an
   action-specific label). The `ErrorState` itself does not become a skeleton — the explanation must
   stay readable while the retry runs, or the reader loses the only account of what went wrong.
 - **error** — this component **is** the error state. A retry that fails again re-renders it with the

@@ -1326,28 +1326,33 @@ passed for the wrong reason, and each mark set was strengthened until the case f
 no route stub reaches, or that have nothing for a suite to judge, and the second paths to a covered state, are listed
 with their reasons in the comment above `ROUTE_REQUIRED_BRANCHES`, which this paragraph does not restate. The decision
 on the two held loading states is to run them through all four suites rather than record a reason per suite, and
-nothing failed on them. **Item 13 is partly met.** It is Met for every route's success branch, at rest and populated,
-with every `Dialog`, `Menu` and the country `Tooltip` open, and for every branch enumerated above, in both themes,
-except one of the two defects the scenarios found. First, T750, fixed: `Dialog`'s Tab trap counted a disabled button
-as a stop (`packages/design-system/src/primitives/Dialog/index.tsx`, the `focusable` selector), so while a dialog's
-request was in flight and its secondary action disabled, Tab left the dialog for the page behind the backdrop, on
-`/dashboard (unlink in flight)` and `/privacy (erasure in flight)`. The trap's stops are now only elements that can
-take focus, and Escape does nothing while the secondary action is disabled or loading (`packages/design-system/specs/shared-primitives.md`
+nothing failed on them. **Item 13 is Met.** It is Met for every route's success branch, at rest and populated, with
+every `Dialog`, `Menu` and the country `Tooltip` open, and for every branch enumerated above, in both themes, and both
+defects the scenarios found are fixed. First, T750, fixed: `Dialog`'s Tab trap counted a disabled button as a stop
+(`packages/design-system/src/primitives/Dialog/index.tsx`, the `focusable` selector), so while a dialog's request was in
+flight and its secondary action disabled, Tab left the dialog for the page behind the backdrop, on `/dashboard (unlink
+in flight)` and `/privacy (erasure in flight)`. The trap's stops are now only elements that can take focus, and Escape
+does nothing while the secondary action is disabled or loading (`packages/design-system/specs/shared-primitives.md`
 §Dialog, asserted by `assertSurfaceKeyboard`). Both scenarios pass every assertion of all four suites, and no scenario
-carries a `SuiteScenario.knownDefects` marker (`tests/visual/fixtures/suite-scenarios.test.ts` pins that). Second, T751: the
-erasure dialog's confirm button is natively `disabled` while it is focused during a re-mint, and
-`/privacy (erasure re-mint in flight)`'s `prepare` moves focus back to the dialog heading after the press, so that
-scenario's keyboard result does not judge where the press left focus. Both are component defects, not harness gaps, so
-neither is a row of the register; item 13 is Met only when T751 lands. T744's local run (macOS Chromium): route-keyboard 334 tests, route-focus-visibility 324, route-touch-footprint
-324, route-reduced-motion 336 and the 876 under `tests/visual/fixtures/`, all passing. No scenario was added to
+carries a `SuiteScenario.knownDefects` marker (`tests/visual/fixtures/suite-scenarios.test.ts` pins that). Second, T751,
+fixed: a re-mint inside the erasure dialog gave its focused confirm button the native `disabled` attribute, so focus
+dropped to `body`. The re-mint and the erase are now one in-flight run with that button `loading`, the acknowledgement
+locked and ticked, and focus kept on the button (`packages/design-system/specs/privacy-data-rights.md` §9); neither
+`/privacy (erasure in flight)` nor `/privacy (erasure re-mint in flight)` moves focus after its press, so both keyboard
+walks judge where the press left it. Both are component defects, not harness gaps, so neither is a row of the register.
+T744's local run (macOS Chromium): route-keyboard 334 tests, route-focus-visibility 324, route-touch-footprint 324,
+route-reduced-motion 336 and the 876 under `tests/visual/fixtures/`, all passing. No scenario was added to
 `tests/visual/app-routes.spec.ts`, so no full-page baseline changed or was captured. The CI run that backs the verdict
-is run 39205473225, the `visual` job of #178 at f3b939fd (2026-10-19): its app-route step passed 2216 tests on
-Linux Chromium, the 2194 above plus the 22 of `tests/visual/app-routes.spec.ts`, the two `knownDefects` scenarios held
-to their message among them. The CI run that backs T750's half of the verdict is run 39495444917, the `visual` job
-of #182 at 9ada830f (2026-10-20): its app-route step passed 2226 tests on Linux Chromium, the 2216 above plus T750's
-ten tests under `tests/visual/fixtures/` (seven in `open-surface.test.ts`, two in `focusable-rule.test.ts`, one net in
+is run 39205473225, the `visual` job of #178 at f3b939fd (2026-10-19): its app-route step passed 2216 tests on Linux
+Chromium, the 2194 above plus the 22 of `tests/visual/app-routes.spec.ts`, the two `knownDefects` scenarios held to
+their message among them. The CI run that backs T750's half of the verdict is run 39495444917, the `visual` job of #182
+at 9ada830f (2026-10-20): its app-route step passed 2226 tests on Linux Chromium, the 2216 above plus T750's ten tests
+under `tests/visual/fixtures/` (seven in `open-surface.test.ts`, two in `focusable-rule.test.ts`, one net in
 `suite-scenarios.test.ts`), with both in-flight dialog walks carrying no marker, read by the walk as having an
-unavailable secondary action, as their scenarios declare, and passing every keyboard assertion.
+unavailable secondary action, as their scenarios declare, and passing every keyboard assertion. The CI run that backs
+T751's half is run 39846980488, the `visual` job of #185 at ddb0ccc2 (2026-10-22): its app-route step passed 2235 tests
+on Linux Chromium, both erasure walks among them with focus where each press left it, and its story step passed 5011
+with no baseline moved.
 
 ### Item 15's general-reviewer half — outstanding, no pull request covers this head
 

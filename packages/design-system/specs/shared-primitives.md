@@ -34,8 +34,8 @@ line for the file:
 how recommended that action is.
 
 **Anatomy** — root `<button>` (or `<a>` when it navigates) / optional leading icon slot / label /
-optional trailing icon slot / loading indicator that replaces the leading icon slot without changing
-the button's width.
+optional trailing icon slot / loading indicator (a spinner) that takes the leading icon slot's place.
+Width follows content: `Button` reserves none, so a `loadingLabel` can change an intrinsic width.
 
 **Variants**
 
@@ -253,8 +253,8 @@ lower than the hover frame's; `primary`'s hover fill is visibly darker than its 
 active fill darker again; `secondary` / `ghost` / `destructive`'s hover fill (`surface-sunken`) and
 active fill (`background`) are two different, already-measured tokens, and `ghost`'s active
 additionally draws a boundary its hover does not — no hover frame shows a ring, a border that the
-resting frame lacks, or any shift of the label — loading button shows a spinner and the same width
-as at rest; disabled button has visible explanatory text near it, and no underline.
+resting frame lacks, or any shift of the label — loading button shows a spinner beside its loading
+label, or the resting one; disabled button has visible explanatory text near it, and no underline.
 
 ---
 

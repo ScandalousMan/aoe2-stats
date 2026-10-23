@@ -230,4 +230,26 @@ test.describe('loading-state loop guard, planted pages', () => {
     await held.release()
     await posted
   })
+  // T751: the re-mint is the erase endpoint's second GET; the first mint must be answered by
+  // whatever stood in front, and only the second held.
+  test('holdRequests with an occurrence holds only that request of the method and passes the rest on', async ({
+    page,
+  }) => {
+    await page.route('**/plant', (route) => route.fulfill({ status: 200, body: 'first' }))
+    const held = await holdRequests(page, '**/plant', { ok: true }, 'GET', 2)
+
+    // The navigation is the first GET: answered by the earlier route, nothing held.
+    await page.goto('http://127.0.0.1:1/plant')
+    expect(await page.textContent('body')).toBe('first')
+    expect(held.heldCount()).toBe(0)
+
+    const second = page.evaluate(() => fetch('/plant').then((r) => r.text()))
+    await expect.poll(() => held.heldCount()).toBe(1)
+    await held.release()
+    expect(await second).toBe('{"ok":true}')
+
+    // A third request is past the occurrence: it is not held either.
+    expect(await page.evaluate(() => fetch('/plant').then((r) => r.text()))).toBe('first')
+    expect(held.heldCount()).toBe(1)
+  })
 })

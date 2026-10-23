@@ -199,7 +199,7 @@ disabling). The only disable is transient: during `uploading` the file input and
 already gone, the chip replaced it) and `SubmitButton` is in `loading` (focus kept, activation refused), so the file cannot change under an in-flight request.
 
 **loading** — `uploading`: the form is `aria-busy`, `SubmitButton` shows its loading label (§4.3) and
-busy state at its resting width, and the two phases (transfer, then server validation) are announced by
+a busy spinner beside it, and the two phases (transfer, then server validation) are announced by
 the label switching from **Uploading…** to **Checking the file…**. If a determinate transfer
 percentage is available it renders as a `role="progressbar"`; if not, the busy button is the whole
 indication — no fake indeterminate bar pretending to know a duration it does not. There is **no
@@ -341,7 +341,7 @@ file` control and a "Drop the `.aoe2record` file here" prompt, and **no** submit
 
 - [ ] The `file-chosen` frame shows the file name (monospaced) and size, a `Remove` control, and an
       enabled "Upload and archive" button.
-- [ ] The `uploading` frame shows the button busy at its resting width with an "Uploading…" or "Checking
+- [ ] The `uploading` frame shows the button busy, a spinner beside an "Uploading…" or "Checking
       the file…" label; the file cannot be changed while it is in flight.
 
 **Outcomes — one per state of §4.4**
