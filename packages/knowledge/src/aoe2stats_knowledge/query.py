@@ -109,6 +109,14 @@ sequence of `EntityRef`s of kind `"building"`: the pack's building first, then e
 effect adds, in file order, each once. `_baseline_producing_buildings` turns the stored table into
 the sequence's first element before `effects.apply` extends it, and `_civilisation_qualified` turns
 the identifiers back into `EntityRef`s after. `produced_at` takes `context` as `cost` does.
+
+**T780 (FR-022e): `age_requirement` takes `context` as `cost` does.** A civilisation bonus is a
+fact, and one that moves an age only while some match state holds (the Cumans' additional Town
+Center: Feudal Age, once Town Centers are controlled) is a conditional effect on `age_requirement`
+like any other. The query therefore accepts the match state, reaches such an effect with it, raises
+`effects.ContextRequired` without the input that decides it, and refuses an unmodelled civilisation
+in `context.team` at step 1. Called without `context` on an entity no conditional effect touches it
+answers exactly as before.
 """
 
 from __future__ import annotations
@@ -400,7 +408,8 @@ def _civilisation_qualified(
     function takes.
 
     `context` (T652u) is threaded straight through to `effects.apply` unread — only `cost`,
-    `production_time`, (T764) `produced_at` and (T763) `available_to` accept it from a caller
+    `production_time`, (T764) `produced_at`, (T763) `available_to` and (T780) `age_requirement`
+    accept it from a caller
     (contracts/knowledge-base.md, "The query surface"); every other query in this module calls
     this with the default `None`, so a query naming a field no committed effect ever conditions
     never has to think about it, and `effects.apply` itself is what raises
@@ -536,10 +545,23 @@ def production_time(
     )
 
 
-def age_requirement(entity: EntityRef, *, civilisation: str) -> Answer[int] | KnowledgeGap:
+def age_requirement(
+    entity: EntityRef, *, civilisation: str, context: Context | None = None
+) -> Answer[int] | KnowledgeGap:
     """The age id `entity` requires, adjusted for a civilisation whose bonus moves it (research.md
-    D5: e.g. Burgundians' and Armenians' early-technology bonuses)."""
-    return _civilisation_qualified(entity, civilisation=civilisation, field_name="age_requirement")
+    D5: e.g. Burgundians' and Armenians' early-technology bonuses).
+
+    `context` (T780, FR-022e) is the match state a **conditional** effect needs: an age requirement
+    a bonus moves only while some count of buildings is controlled (the Cumans' additional Town
+    Center), or only for a researched technology or an ally. A query on an entity no conditional
+    effect touches ignores it and answers as it did before it existed; one that reaches a
+    conditional effect without the input that decides it raises `effects.ContextRequired`, as
+    `cost` does. An unmodelled civilisation in `context.team` refuses the query, naming the
+    teammate (step 1 of "Civilisation qualification"). See `cost`'s own docstring.
+    """
+    return _civilisation_qualified(
+        entity, civilisation=civilisation, field_name="age_requirement", context=context
+    )
 
 
 def prerequisites(

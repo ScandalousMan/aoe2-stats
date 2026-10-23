@@ -36,7 +36,8 @@ from __future__ import annotations
 
 import pytest
 
-from aoe2stats_knowledge import effects
+from aoe2stats_knowledge import effects, query
+from aoe2stats_knowledge.gaps import KnowledgeGap
 
 # --------------------------------------------------------------------------------- parsing
 
@@ -2199,3 +2200,119 @@ def test_parse_rejects_a_boolean_where_the_field_is_numeric() -> None:
             field="cost",
             value={"food": 50},
         )
+
+
+# ----------------------------------------------- T780: age_requirement takes the match state
+#
+# `age_requirement` took no `context`, so a bonus that moves an age with the match state (the
+# Cumans' additional Town Center, "in Feudal Age" once a count of Town Centers is controlled) could
+# only be refused. These go through the query surface, not `apply_matched`: the parse and the
+# application of a `controlled` table were already proven for every field above; what T780 adds is
+# that the query lets the state in, reaches the effect with it, and refuses an unmodelled teammate
+# first.
+
+_AGE_BUILD = 180059  # a promoted snapshot that models Franks
+_PIKEMAN = "358"  # baseline age_requirement 3 in that snapshot
+_TOWN_CENTER_ONLY = frozenset({effects.SelectorEntry("building", "109")})
+
+
+def _age_requirement_controlled_toml(*, civilisation: str = "Franks") -> str:
+    return f"""\
+[[effect]]
+civilisation = "{civilisation}"
+source_key = "0"
+source_text = "synthetic: the age moves with the Town Centers controlled"
+modelled = "yes"
+field = "age_requirement"
+operation = "set"
+operand = {{ 0 = 4, 2 = 2 }}
+condition = "controlled"
+condition_entities = [{{ kind = "building", id = "109" }}]
+selector = [{{ kind = "unit", id = "{_PIKEMAN}" }}]
+validated_by = "synthetic"
+"""
+
+
+@pytest.fixture
+def synthetic_age_requirement(monkeypatch: pytest.MonkeyPatch) -> None:
+    parsed = effects.parse_effects_toml(_age_requirement_controlled_toml())
+    monkeypatch.setattr(effects, "_effects", lambda _directory: parsed)
+
+
+def _pikeman() -> query.EntityRef:
+    return query.EntityRef(kind="unit", id=_PIKEMAN, build=_AGE_BUILD)
+
+
+@pytest.mark.parametrize(("count", "expected"), [(0, 4), (1, 4), (2, 2)])
+def test_a_controlled_age_requirement_reads_the_count_it_is_given(
+    synthetic_age_requirement: None, count: int, expected: int
+) -> None:
+    """The table is keyed "0" and "2": a count between the keys takes the lower one, a count at the
+    highest key takes it. The baseline is 3, so no count answers it by coincidence."""
+    answer = query.age_requirement(
+        _pikeman(),
+        civilisation="Franks",
+        context=query.Context(controlled={_TOWN_CENTER_ONLY: count}),
+    )
+    assert not isinstance(answer, KnowledgeGap)
+    assert answer.value == expected
+    assert isinstance(answer.value, int)
+    assert len(answer.effects) == 1
+
+
+@pytest.mark.parametrize(
+    "context",
+    [None, query.Context(), query.Context(team=frozenset({"Franks"}))],
+    ids=["no context", "empty context", "a team and no count"],
+)
+def test_a_controlled_age_requirement_raises_without_a_count(
+    synthetic_age_requirement: None, context: query.Context | None
+) -> None:
+    with pytest.raises(effects.ContextRequired):
+        query.age_requirement(_pikeman(), civilisation="Franks", context=context)
+
+
+def test_a_count_for_other_entities_does_not_answer_a_controlled_age_requirement(
+    synthetic_age_requirement: None,
+) -> None:
+    with pytest.raises(effects.ContextRequired):
+        query.age_requirement(
+            _pikeman(),
+            civilisation="Franks",
+            context=query.Context(controlled={_BARRACKS: 2}),
+        )
+
+
+def test_an_unmodelled_teammate_refuses_age_requirement_and_is_named() -> None:
+    """Step 1 of "Civilisation qualification" reaches `age_requirement` as it reaches `cost`: an
+    unmodelled civilisation in `context.team` makes the answer unknown, whatever effect touches the
+    entity, and the gap names the teammate. Britons is not modelled in that snapshot."""
+    answer = query.age_requirement(
+        _pikeman(),
+        civilisation="Franks",
+        context=query.Context(team=frozenset({"Franks", "Britons"})),
+    )
+    assert isinstance(answer, KnowledgeGap)
+    assert answer.cause == "civilisation-not-modelled"
+    assert answer.field == "age_requirement"
+    assert answer.civilisation == "Britons"
+
+
+def test_age_requirement_answers_as_before_where_no_conditional_effect_applies() -> None:
+    answer = query.age_requirement(_pikeman(), civilisation="Franks")
+    assert not isinstance(answer, KnowledgeGap)
+    assert answer.value == 3
+    assert answer.effects == ()
+    with_team = query.age_requirement(
+        _pikeman(),
+        civilisation="Franks",
+        context=query.Context(team=frozenset({"Franks", "Teutons"})),
+    )
+    assert not isinstance(with_team, KnowledgeGap)
+    assert with_team.value == 3
+
+
+def test_the_coverage_pass_hands_context_to_age_requirement() -> None:
+    from aoe2stats_knowledge import coverage
+
+    assert "age_requirement" in coverage._CONTEXT_AWARE_FIELDS
