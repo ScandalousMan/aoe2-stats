@@ -341,11 +341,11 @@ def test_a_snapshot_without_aliases_toml_keeps_the_digest_it_has() -> None:
     assert snapshot_module.compute_digest(rules, effects_bytes, b"") != two_files
 
 
-def test_every_installed_snapshot_still_verifies_and_only_the_last_two_185872_carry_aliases() -> (
+def test_every_installed_snapshot_still_verifies_and_only_the_last_three_185872_carry_aliases() -> (
     None
 ):
-    """The committed tree, through the real resolver: nothing recorded changed, and exactly two
-    promoted snapshots carry the file (T767's is the first, T768's carries it forward unchanged)."""
+    """The committed tree, through the real resolver: nothing recorded changed, and exactly three
+    promoted snapshots carry the file (T767's is the first; T768's and T769's carry it forward)."""
     installed = snapshot_module.load_all_snapshots()
 
     assert installed
@@ -353,6 +353,7 @@ def test_every_installed_snapshot_still_verifies_and_only_the_last_two_185872_ca
     assert carrying == [
         "aoe2techtree-185872-civilisations-20",
         "aoe2techtree-185872-civilisations-32",
+        "aoe2techtree-185872-civilisations-44",
     ]
 
 
