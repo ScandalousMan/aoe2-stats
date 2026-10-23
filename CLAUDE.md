@@ -25,7 +25,8 @@ history, and automatic replay archival.
 
 ## Why the architecture looks like this
 
-The Microsoft replay retention window is about 31 days. An uncaptured replay is lost forever, so
+The Microsoft replay retention window is under a month, and it moves (`docs/data-sources.md` §2
+holds the current measurement). An uncaptured replay is lost forever, so
 ingestion and raw archival ship in the MVP while parsing and analysis wait for V2.
 
 - `docs/data-sources.md` — every external source, measured, with its traps
