@@ -3079,7 +3079,7 @@ phase.
       technology: FR-022c's order, then the owner's sheet, one row per entity. "Available one age
       earlier" is an `age_requirement` row, never a reading of the tree's display links (research
       D3). **Tests**: as T767's, for forty-four civilisations
-- [ ] T780 [US2] Let `age_requirement` take the match state its effects need (FR-022e). The
+- [x] T780 [US2] Let `age_requirement` take the match state its effects need (FR-022e). The
       signature becomes `age_requirement(entity, *, civilisation, context=None)`; an effect on
       `age_requirement` may carry any condition `context` decides (`age`, `researched`, `team`,
       `controlled`), and a query that reaches a conditional one without its input raises
