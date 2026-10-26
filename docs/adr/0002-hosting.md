@@ -17,9 +17,9 @@ whether Vercel Hobby could serve as a simpler starting point.
 Vercel Hobby restricts cron jobs to **once per day**, with ±59 minutes of scheduling imprecision.
 More frequent expressions fail at deploy time. That looks fatal for an ingestion pipeline.
 
-It is not, because of ADR-adjacent measurement: the replay retention window is ~31 days
-(see `docs/data-sources.md`) and the internal capture budget is 21 days. A daily job produces at most
-~25 h of detection lag, leaving about 20 days of margin. Live stats and match history are read from
+It is not, because of ADR-adjacent measurement: the replay retention window is several weeks long
+(`docs/data-sources.md` §2 holds the current figure) and the internal capture budget is 21 days. A
+daily job produces at most ~25 h of detection lag, leaving about 20 days of margin before the budget. Live stats and match history are read from
 the Relic API per request, so nothing the user _sees_ is delayed — only archival is batched.
 
 ## Corrections to widely-cited limits

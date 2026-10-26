@@ -38,7 +38,7 @@ obtained again later, not whether the request can be repeated.
 | Response                                      | Recoverable?                                                           | Raw kept                                                     |
 | --------------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------ |
 | Relic match history (`getRecentMatchHistory`) | **No** — a match leaves the "recent" window and cannot be fetched back | `matches.raw_payload`                                        |
-| `aoe.ms` replay zip                           | **No** — ~31-day retention, then gone for everyone                     | the object store, byte-for-byte                              |
+| `aoe.ms` replay zip                           | **No** — rolling retention, ~27 days on 2026-10-23 (§2)                | the object store, byte-for-byte                              |
 | Relic leaderboards and personal stats         | Yes — current standing, re-queryable at any time                       | not kept                                                     |
 | aoe2companion enrichment                      | Yes — re-queryable, and degradable by design                           | not kept                                                     |
 | aoestats parquet dumps                        | Yes — published artifacts, re-downloadable                             | not kept (V2)                                                |
@@ -218,7 +218,13 @@ the one shared client every provider here is built from for exactly this reason.
 | Availability   | see "Publication delay: distribution" below                               |
 | Rate limits    | undocumented; ~25 requests in 30 min saw no throttling                    |
 
-### Retention: approximately 31 days
+### Retention: a rolling window, ~27 days when last measured
+
+**Current reading (2026-10-23): rolling, about 26.75 days from match end, for the point of view
+measured.** It was about 31 days on 2026-08-19, on the same profile. The window is not a constant
+of the source: it has shrunk by about four days in two months, and nothing announced it. The
+sections below keep each sample in the order it was taken; the 2026-10-23 one settles what the
+2026-08-28 one left open.
 
 Bisection against profile 196240, reference time `2026-08-19T16:09Z`:
 
@@ -238,9 +244,10 @@ Bisection against profile 196240, reference time `2026-08-19T16:09Z`:
 The boundary is sharp, inside a ~4 h interval, and is not patch-scoped: replays from patch 1800 sit
 on both sides of it. It is a rolling, time-based purge.
 
-**Internal capture budget: 21 days**, leaving 10 days of slack for an outage or a migration.
+**Internal capture budget: 21 days.** Against the 2026-10-23 reading that leaves about 5.75 days of
+slack for an outage or a migration, not the 10 days this line first recorded.
 
-#### Contradicted 2026-08-28, and not yet resolved — do not rely on the 31 days alone
+#### Contradicted 2026-08-28 — resolved 2026-10-23, below
 
 A second, larger sample disagrees with the reading above, and the disagreement is not marginal.
 Draining 78 captures for profile 2322168 on 2026-08-28 produced a boundary just as sharp — inside a
@@ -269,6 +276,50 @@ constitution I resolves the ambiguity the same way it resolves every other: capt
 _not_ happen is the opposite inference — that replays are now safe for six months and capture can
 relax. This sample cannot support that, and 56 recordings were permanently lost while it was being
 taken.
+
+#### Re-measured 2026-10-23: rolling, about 26.75 days, with per-point-of-view survivors
+
+Both conditions above are met: a profile other than 2322168, eight weeks after 2026-08-28. Profile
+196240 again, match list from `data.aoe2companion.com` (§3), each replay fetched in full (`HEAD` and
+`Range` are unusable, see the table above), first pass at `2026-10-23T12:02Z`:
+
+| gameId        | match end (UTC)      | result at 12:02Z                    |
+| ------------- | -------------------- | ----------------------------------- |
+| 515424817     | 2026-10-22 08:14     | 200 (0.61 MB)                       |
+| 511751559     | 2026-10-06 14:43     | 200 (2.57 MB)                       |
+| 509862159     | 2026-09-28 13:36     | 200 (1.40 MB)                       |
+| 509606039     | 2026-09-27 12:41     | 200 (0.71 MB)                       |
+| **509409788** | **2026-09-26 18:18** | **200 (0.75 MB)** — last available  |
+| **509406408** | **2026-09-26 17:50** | **404** — first missing             |
+| 509403317     | 2026-09-26 17:35     | 404                                 |
+| 508495143     | 2026-09-22 20:08     | 404                                 |
+| 506610620     | 2026-09-14 11:11     | 404                                 |
+| 459906922     | 2026-03-01 10:14     | 404                                 |
+| 458240475     | 2026-02-22 15:54     | 404                                 |
+
+**It is rolling, and it moves in real time.** At `12:42Z` the same day, 509409788 — a 200 forty
+minutes earlier — answered 404. The boundary advanced past it inside the hour, which a fixed epoch
+cannot do, and it puts the window between 26 d 17 h 44 min and 26 d 18 h 12 min after match end.
+That second probe also shows that **fetching a replay does not keep it**: it had been downloaded in
+full at 12:02Z and was purged on schedule all the same. Matches after 2026-02-22 are gone for this
+profile, so the 2026-02-22 boundary is not an epoch that applies to everyone.
+
+**But some points of view outlive the window, and the reason is not known.** On the same day,
+profile 2322168's own point of view of matches from 2026-04-28 to 2026-05-02 — 174 days old —
+still answered 200, which is consistent with the 2026-08-28 sample. Other participants of those
+same matches mostly answered 404 for the same `gameId`: three of four did. The survivor and the
+three that did not are not separated by how many matches each profile has played since (97 newer
+matches purged, 197 newer kept), so retention is not a per-profile match count either. What makes
+one `(gameId, profileId)` pair survive is unmeasured. It explains why the 2026-08-28 sample read
+like an epoch, and it is not something capture may rely on.
+
+**What this settles for R1** (`docs/risks.md`): the purge is a rolling window and not an epoch that
+can be dropped wholesale, so the second loss mode R1 named is not observed. Its length is what
+changed: ~27 days, and shrinking. The 21-day budget still sits inside it. Constitution I 4.1.0
+allows tightening the budget on this reading and forbids widening it. Whether to tighten it is a
+decision this measurement informs; it is not made here. Re-measure whenever a capture expires
+earlier than its deadline predicts, and at least every quarter: the window moved four days between
+two samples without notice.
 
 ### Settled: no current-patch ranked recording carries a post-game statistics block
 
