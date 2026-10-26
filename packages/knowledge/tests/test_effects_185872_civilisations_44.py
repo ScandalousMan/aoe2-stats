@@ -307,9 +307,9 @@ def test_every_selector_entry_exists_in_this_snapshots_rules() -> None:
 def test_every_condition_names_entities_and_technologies_of_this_snapshot() -> None:
     rules = _rules()
     for effect in _effects():
-        if effect.condition == "researched":
+        if "researched" in effect.conditions:
             assert effect.condition_technology in rules["technology"], effect.source_text
-        if effect.condition == "controlled":  # pragma: no cover - none in batches A to C
+        if "controlled" in effect.conditions:  # pragma: no cover - none in batches A to C
             for entry in effect.condition_entities or ():
                 assert entry.id in rules[entry.kind]
 
@@ -319,7 +319,7 @@ def test_the_researched_conditions_of_batch_c_are_the_technologies_the_bullets_n
     conditional = {
         (e.civilisation, e.condition_technology, e.field)
         for e in _effects()
-        if e.condition == "researched" and e.civilisation in _BATCH_C
+        if "researched" in e.conditions and e.civilisation in _BATCH_C
     }
     assert conditional == {
         ("Cumans", "689", "production_time"),
@@ -658,9 +658,10 @@ def test_cumans_steppe_husbandry_doubles_the_training_speed_of_the_scouts_lancer
 
 
 def test_the_cumans_additional_town_center_and_mercenaries_are_refused_to_the_cumans_only() -> None:
-    """Two bonuses the effect model cannot express: `age_requirement` takes no `context`, so an
-    age that depends on how many Town Centers are controlled cannot be asked; and Cuman Mercenaries
-    needs a researched technology and the owner's team together."""
+    """Two bonuses the snapshot refuses. The additional Town Center needs an age that depends on how
+    many Town Centers are controlled: `age_requirement` takes `context` since T780, but the row is
+    not written yet (T770). Cuman Mercenaries needs a researched technology and the owner's team
+    together (T781)."""
     _refused(query.age_requirement(_entity("building", 621), civilisation="Cumans"), "Cumans")
     _refused(
         query.available_to(_entity("unit", 1260), civilisation="Cumans", context=_team("Cumans")),

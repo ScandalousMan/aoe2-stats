@@ -148,7 +148,7 @@ def _entities_produced_at(
 
 
 def _expected_production_speed_selector(
-    civilisation: str, building_ids: tuple[str, ...], *, condition: str | None
+    civilisation: str, building_ids: tuple[str, ...], *, conditions: tuple[str, ...]
 ) -> frozenset[tuple[str, str]]:
     """**T652w, the fifth review's blocker.** A `condition = "team"` row's selector is never
     restricted by its own owner's tree: the row applies to every civilisation on the owner's team
@@ -161,7 +161,7 @@ def _expected_production_speed_selector(
     apply to), stated once, here, rather than re-derived per condition at each call site."""
     rules = _rules()
     candidates = _entities_produced_at(rules, frozenset(building_ids))
-    if condition == "team":
+    if "team" in conditions:
         return frozenset(candidates)
     tree = _tree_index(civilisation)
     return frozenset(
@@ -233,11 +233,11 @@ def test_production_speed_row_selector_equals_every_entity_produced_at_the_named
     ]
     observed = frozenset((entry.kind, entry.id) for entry in effect.selector)
     expected = _expected_production_speed_selector(
-        civilisation, building_ids, condition=effect.condition
+        civilisation, building_ids, conditions=effect.conditions
     )
     restriction = (
         "no owner-tree restriction (a team row)"
-        if effect.condition == "team"
+        if "team" in effect.conditions
         else f"{civilisation}'s own tree"
     )
     assert observed == expected, (
@@ -326,7 +326,7 @@ def _parsed_university_availability_claims(directory: str) -> Mapping[str, froze
     (effect,) = [
         e
         for e in effects._effects(directory)
-        if e.civilisation == "Malians" and e.condition == "team" and e.field == "production_time"
+        if e.civilisation == "Malians" and "team" in e.conditions and e.field == "production_time"
     ]
     claims: dict[str, frozenset[str]] = {}
     for match in _AVAILABILITY_SENTENCE.finditer(effect.validated_by):
@@ -379,7 +379,7 @@ def test_university_row_shipwright_notavailable_claim_matches_the_trees(director
     (effect,) = [
         e
         for e in effects._effects(directory)
-        if e.civilisation == "Malians" and e.condition == "team" and e.field == "production_time"
+        if e.civilisation == "Malians" and "team" in e.conditions and e.field == "production_time"
     ]
     assert "Shipwright (373) is `NotAvailable` for all six modelled civilisations" in (
         effect.validated_by
