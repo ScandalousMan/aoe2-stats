@@ -3124,7 +3124,7 @@ phase.
       team did not; the raise without `team_researched`; a list refused at parse time when empty,
       when a name repeats, when it carries both `age` and `controlled`, when it carries `team` with
       `age` or `controlled`, and when a name is outside the vocabulary
-- [ ] T770 [US2] Model batch D on build 185872 in `aoe2techtree-185872-civilisations-56`, which
+- [x] T770 [US2] Model batch D on build 185872 in `aoe2techtree-185872-civilisations-56`, which
       supersedes T769's snapshot: Georgians, Shu, Wu, Wei, Jurchens, Khitans, Muisca, Mapuche, Tupi,
       Saxons, Varangians and Danes. Saxons' Foot Soldiers discount is a `controlled` row (T762).
       Then write the validation sample in [owner-readings.md](./owner-readings.md), "Validation

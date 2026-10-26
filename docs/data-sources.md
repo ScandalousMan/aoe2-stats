@@ -637,8 +637,8 @@ against keeping one measurement in two homes.
   (2026-06-21, pack `aoe2techtree`), is the one `aoe2techtree-180059` is derived from. The second,
   `3bb43b1439eef88dfe7fe892d7f7dc41ac9dd76f` (pack `aoe2techtree-3bb43b1`; authored 2026-09-11,
   committed 2026-09-22, assessed 2026-10-08), is the one `aoe2techtree-185872`, `aoe2techtree-185872-civilisations`,
-  `aoe2techtree-185872-civilisations-20`, `aoe2techtree-185872-civilisations-32` and
-  `aoe2techtree-185872-civilisations-44` are derived from; it is vendored beside the first because a snapshot must stay re-derivable from its own source revision.
+  `aoe2techtree-185872-civilisations-20`, `aoe2techtree-185872-civilisations-32`,
+  `aoe2techtree-185872-civilisations-44` and `aoe2techtree-185872-civilisations-56` are derived from; it is vendored beside the first because a snapshot must stay re-derivable from its own source revision.
   The source carries no explicit build tag; the game build a commit implements is read from that
   commit's own message, a derived reading, not a field (research.md D3, D4). The first pinned
   commit's own newest "Implement DE Update" commit is `daf5fa18de` (2026-06-03), implementing build
@@ -680,8 +680,15 @@ against keeping one measurement in two homes.
   thirty-two, carried unchanged, and Vietnamese, Bulgarians, Cumans, Lithuanians, Burgundians,
   Poles, Bohemians, Dravidians, Bengalis, Gurjaras, Romans and Armenians; its `rules.json`,
   `aliases.toml` and raw-id table are the fourth's. The first four stay installed so that the
-  analyses published under them still reproduce; resolution by build answers the fifth. Its open
-  values are in `specs/006-replay-analysis-foundations/owner-readings.md`.
+  analyses published under them still reproduce; resolution by build answers the fifth. Since
+  2026-10-26 (T770) a sixth, `aoe2techtree-185872-civilisations-56`, supersedes the fifth and models
+  fifty-six, every civilisation of the pack: those forty-four, carried unchanged but three rows (the
+  Cumans' additional Town Center, Cuman Mercenaries and the Berbers' Kasbah, which the effect model
+  now expresses), and Georgians, Shu, Wu, Wei, Jurchens, Khitans, Muisca, Mapuche, Tupi, Saxons,
+  Varangians and Danes; its `rules.json`, `aliases.toml` and raw-id table are the fifth's. The first
+  five stay installed so that the analyses published under them still reproduce; resolution by
+  build answers the sixth. Its open values are in
+  `specs/006-replay-analysis-foundations/owner-readings.md`.
 - **Known limitations**: no civilisation-specific bonus data as structured values, no build/version
   field of its own, no combat attributes (attack, armour, hit points, range) — halfon carries those
   (below). Three builds (178524, 179158, 180059) unimplemented by the first pinned commit as of this
@@ -701,7 +708,9 @@ against keeping one measurement in two homes.
   fourth 2026-10-22
   (`packages/knowledge/snapshots/aoe2techtree-185872-civilisations-32/snapshot.toml`) and by a
   fifth 2026-10-23
-  (`packages/knowledge/snapshots/aoe2techtree-185872-civilisations-44/snapshot.toml`). Licence: MIT,
+  (`packages/knowledge/snapshots/aoe2techtree-185872-civilisations-44/snapshot.toml`) and by a
+  sixth 2026-10-26
+  (`packages/knowledge/snapshots/aoe2techtree-185872-civilisations-56/snapshot.toml`). Licence: MIT,
   **copy in** — `docs/asset-packs.md` "Knowledge packs".
 
 ### halfon
@@ -756,7 +765,10 @@ against keeping one measurement in two homes.
   identifiers that name a pack unit or building exactly, with or without an orientation qualifier
   (`aliases.toml`: each "Gate" to the pack's Gate, each "Palisade Gate" to its own; the differently
   named gates are not aliased). Only the eight raw ids of T746 are corroborated by a committed
-  recording; the other 48 rest on the dataset alone, plus the inner `id` agreement. The dataset's
+  recording; the other 48 rest on the dataset alone, plus the inner `id` agreement. Read again 2026-10-26 (T770), repository head commit
+  `9ee0fe29fa05` (2026-10-26): `objects` names twenty identifiers exactly
+  "Town Center" (71, 109, 141, 142, 481 to 484, 597, 611 to 621), of which the vendored pack names
+  three (71, 109, 621); the Cumans' additional Town Center counts those three. The dataset's
   **keys** do not corroborate
   `apps/api/src/aoe2stats_api/civilizations.py` (Relic's space): reading them as doing so was
   T070i's error, corrected 2026-09-27 (T652n). Each entry's inner `id` is a separate field. Measured
@@ -907,6 +919,15 @@ against keeping one measurement in two homes.
   that the Vietnamese economic upgrades cost no wood (update 35584); they do not define "economic
   upgrades" or list the Camel and Elephant Units, and they do not size the food that replaces the
   gold under the Bohemians' Hussite Reforms (update 81058 changes only the technology's own cost).
+  T770 searched 171 pages (fetched 2026-10-26: the post sitemaps' Age of Empires II Definitive
+  Edition updates, hotfixes and previews, the build's own, and the Saxons, Varangians and Danes deep
+  dives) for the twelve civilisations of batch D: update 177723 states that the Jurchens' bonus
+  applies to Murder Holes, that the Muisca's Settlement discount is 33% and Huaracas' train bonus
+  50%; update 169123 that the Khitans' bonus is 15% and that the Wu's Careening and Dry Dock are
+  free; the Saxons deep dive that Foot Soldiers cost less per Town Center or Castle controlled. They
+  do not define "Foot Soldiers" or the Jurchens' "Siege and Fortification upgrades" beyond Murder
+  Holes. Update 61321 says only that Cuman Town Centers can be repaired in the Feudal Age even if the
+  player has more than two.
 - **Known limitations**: all rights reserved — read and transcribed only, never copied in; and, as
   above, minor-update sections carry no independent dated timestamp of their own, a stated weakness
   of the validation rather than a hidden one (research.md D4).

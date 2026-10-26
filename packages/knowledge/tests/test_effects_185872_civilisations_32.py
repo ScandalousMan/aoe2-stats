@@ -1043,6 +1043,7 @@ def test_the_three_refusals_of_batch_b_that_touch_a_carried_field_are_open_owner
     sheet = _OWNER_READINGS.read_text(encoding="utf-8")
     assert "Corvinian Army" in sheet
     assert "Forced Levy" in sheet
-    assert "Kasbah" in sheet
-    for civilisation, _ in refusals:
+    # The Berbers' Kasbah row left the sheet with T770, which models it (T781); the sheet describes
+    # the current snapshot, so only the two refusals it still carries are looked up in it.
+    for civilisation, _ in refusals - {("Berbers", "production_time")}:
         assert f"| 185872 | {civilisation} |" in sheet, civilisation

@@ -54,6 +54,13 @@ technologies) and Gurjaras (no source lists the Camel and Elephant Units). The o
 none: the Cumans' additional Town Center and Cuman Mercenaries are refused, but the fields they gap
 are not ones a register datum requires, so their gaps are informational and not blocking.
 
+**Batch D (T770)** models the last twelve in `aoe2techtree-185872-civilisations-56`, so every
+civilisation of build 185872 is modelled and no `xfail` is left for it. Two of the twelve keep open
+rows: Saxons (no source says whether the ranged foot units are Foot Soldiers) and Jurchens (no
+source classes Siege Engineers, Arrowslits and Hoardings as Siege or Fortification upgrades). The
+Berbers lost theirs: the Kasbah is a `researched` and `team` row now (T781), as the Cumans'
+additional Town Center and Cuman Mercenaries are rows (T780, T781).
+
 **Builds.** `test_the_current_snapshots_are_the_builds_this_module_covers` fails when the library
 resolves a current build this module does not cover, so a new build cannot be added without being
 covered. Three builds are covered: 185872, 180059 and 177723. Build 177723's snapshot is the test
@@ -87,20 +94,8 @@ type OpenRow = tuple[str, str, str, str]
 # Batch A (T767) is gone: `aoe2techtree-185872-civilisations-20` models its twelve.
 # Batch B (T768) is gone: `aoe2techtree-185872-civilisations-32` models its twelve.
 # Batch C (T769) is gone: `aoe2techtree-185872-civilisations-44` models its twelve.
-_BATCH_D_T770 = (
-    "Danes",
-    "Georgians",
-    "Jurchens",
-    "Khitans",
-    "Mapuche",
-    "Muisca",
-    "Saxons",
-    "Shu",
-    "Tupi",
-    "Varangians",
-    "Wei",
-    "Wu",
-)
+# Batch D (T770) is gone: `aoe2techtree-185872-civilisations-56` models its twelve, and with them
+# every civilisation of the pack: no civilisation of build 185872 is left to `xfail`.
 
 # Build 180059: T773 models every civilisation of that build's pack in one snapshot. Six are
 # modelled today (Franks, Malians, Persians, Saracens, Tatars, Teutons); the other 47 wait for it.
@@ -213,9 +208,7 @@ def _reasons(civilisations: tuple[str, ...], reason: str) -> dict[str, str]:
 
 #: build -> civilisation -> the reason it is expected to fail today, naming the task that models it.
 _NOT_YET_MODELLED: dict[int, dict[str, str]] = {
-    185872: {
-        **_reasons(_BATCH_D_T770, "T770 (batch D) models it"),
-    },
+    185872: {},
     180059: _reasons(_BUILD_180059_T773, "T773 models every civilisation of build 180059"),
     177723: _reasons(
         _BUILD_177723_UNMODELLED,
@@ -246,27 +239,6 @@ _OPEN_ROWS: dict[int, dict[str, tuple[OpenRow, ...]]] = {
             ("unit", "2627", "production_time", "effect-not-modelled"),
             ("unit", "2628", "production_time", "effect-not-modelled"),
             ("unit", "2633", "production_time", "effect-not-modelled"),
-        ),
-        # Row: Berbers / the Castle's units and technologies in the Berbers' tree /
-        # production_time / "Kasbah (Team Castles work +25% faster)": the bonus needs Kasbah
-        # researched by the owner and the owner's team together, and an effect carries one
-        # condition. The members are what the Berbers' tree produces at the Castle - Trebuchet
-        # (331) and the identifier 1690, which the snapshot aliases to it, Petard (440), Camel
-        # Archer (1007), Elite Camel Archer (1009) and the technologies
-        # Conscription (315), Hoardings (379), Spies/Treason (408), Elite Camel Archer (565),
-        # Kasbah (578) and Maghrebi Camels (579).
-        "Berbers": (
-            ("technology", "315", "production_time", "effect-not-modelled"),
-            ("technology", "379", "production_time", "effect-not-modelled"),
-            ("technology", "408", "production_time", "effect-not-modelled"),
-            ("technology", "565", "production_time", "effect-not-modelled"),
-            ("technology", "578", "production_time", "effect-not-modelled"),
-            ("technology", "579", "production_time", "effect-not-modelled"),
-            ("unit", "331", "production_time", "effect-not-modelled"),
-            ("unit", "440", "production_time", "effect-not-modelled"),
-            ("unit", "1007", "production_time", "effect-not-modelled"),
-            ("unit", "1009", "production_time", "effect-not-modelled"),
-            ("unit", "1690", "production_time", "effect-not-modelled"),
         ),
         # Row: Bohemians / the Monk and each Monastery technology / cost / Hussite Reforms
         # researched / "Monks and Monastery technologies gold cost is replaced by food cost": no
@@ -324,6 +296,18 @@ _OPEN_ROWS: dict[int, dict[str, tuple[OpenRow, ...]]] = {
             ("unit", "1753", "production_time", "effect-not-modelled"),
             ("unit", "1755", "production_time", "effect-not-modelled"),
         ),
+        # Row: Jurchens / Siege Engineers (377), Arrowslits (608) and Hoardings (379) / cost and
+        # production_time / "Siege and Fortification upgrades cost -75% wood and research +100%
+        # faster": no source says whether the game applies the bonus to the three technologies the
+        # Jurchens' tree offers and whose strings name Siege Weapons, Towers, Castles and Donjons.
+        "Jurchens": (
+            ("technology", "377", "cost", "effect-not-modelled"),
+            ("technology", "377", "production_time", "effect-not-modelled"),
+            ("technology", "379", "cost", "effect-not-modelled"),
+            ("technology", "379", "production_time", "effect-not-modelled"),
+            ("technology", "608", "cost", "effect-not-modelled"),
+            ("technology", "608", "production_time", "effect-not-modelled"),
+        ),
         # Row: Magyars / Magyar Huszar (units 869, 871) / cost / Corvinian Army researched /
         # "Magyar Huszar gold cost is replaced by additional food cost": update 95810 names the
         # effect and no source states the food.
@@ -363,6 +347,17 @@ _OPEN_ROWS: dict[int, dict[str, tuple[OpenRow, ...]]] = {
             ("building", "235", "production_time", "effect-not-modelled"),
             ("building", "236", "production_time", "effect-not-modelled"),
             ("building", "1251", "production_time", "effect-not-modelled"),
+        ),
+        # Row: Saxons / the Saxons' ranged foot units / cost / "Foot Soldiers cost -5% per Town
+        # Center or Castle controlled (maximum -20%)": no source defines Foot Soldiers. Infantry is
+        # taken as one (T770); whether Archer (4), Crossbowman (24), Arbalester (492), Skirmisher
+        # (7) and Elite Skirmisher (6) are is not stated.
+        "Saxons": (
+            ("unit", "4", "cost", "effect-not-modelled"),
+            ("unit", "6", "cost", "effect-not-modelled"),
+            ("unit", "7", "cost", "effect-not-modelled"),
+            ("unit", "24", "cost", "effect-not-modelled"),
+            ("unit", "492", "cost", "effect-not-modelled"),
         ),
         # Row: Turks / Gunpowder technologies and Gunner units / "Chemistry free; Gunpowder
         # technologies costs -50%" and "Team Bonus: Gunpowder Units train +25% faster". Cost of
