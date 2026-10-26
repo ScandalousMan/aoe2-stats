@@ -5,7 +5,7 @@ environment variables; no local filesystem state") both land here: this module o
 key declared in the repository's ``.env.example`` and nothing here has a Python-side
 default. A value the deployment target does not set is a validation error at startup, not a
 silently applied fallback — the ``.env.example`` values (including the tuning knobs such as
-``CAPTURE_BUDGET_DAYS=21``) are a template for what a real environment should carry, not a
+``CAPTURE_BUDGET_DAYS=18``) are a template for what a real environment should carry, not a
 second copy of the truth for this module to duplicate.
 
 Local ``.env`` loading — if a developer wants one — is dev tooling's job (direnv, uv, an

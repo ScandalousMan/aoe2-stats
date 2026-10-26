@@ -119,7 +119,7 @@ from aoe2stats_storage.models import (
 )
 from aoe2stats_storage.objects import ObjectStore, ObjectStoreConfig, replay_object_key
 
-_CAPTURE_BUDGET_DAYS = 21
+_CAPTURE_BUDGET_DAYS = 18
 _REPLAY_PUBLICATION_GRACE_HOURS = 72
 
 _PROFILE_PRIMARY = 197_000_301
@@ -128,7 +128,7 @@ _PROFILE_SECONDARY = 197_000_302
 # Recent, available on both profiles: expect `stored`.
 _GAME_PRIMARY_RECENT = 611_000_301
 _GAME_SECONDARY_RECENT = 611_000_303
-# Old enough that `capture_deadline_at` (`completed_at` + 21 days) has already elapsed by the time
+# Old enough that `capture_deadline_at` (`completed_at` + the budget) has already elapsed by the
 # the backfill sweep runs, and never available at the source: expect `expired` (FR-019).
 _GAME_PRIMARY_OLD = 611_000_302
 

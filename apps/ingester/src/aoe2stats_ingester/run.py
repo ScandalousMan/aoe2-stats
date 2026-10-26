@@ -520,7 +520,7 @@ async def _raise_deadline_breach_alert(
     `_DEADLINE_BREACH_EXCLUDED_STATUSES` — never one row per capture, which would bury the alert a
     backlog is supposed to surface (see the module docstring's T059a paragraph).
 
-    This fires at the internal 21-day `capture_deadline_at`, not at the source's own ~31-day
+    This fires at the internal 18-day `capture_deadline_at`, not at the source's own ~31-day
     retention expiry `capture.py`'s `_classify_not_found` (T056) already raises `expired_capture`
     against — a different kind, at a different time, with roughly ten days still left to act by the
     time this one fires.

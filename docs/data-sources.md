@@ -244,8 +244,10 @@ Bisection against profile 196240, reference time `2026-08-19T16:09Z`:
 The boundary is sharp, inside a ~4 h interval, and is not patch-scoped: replays from patch 1800 sit
 on both sides of it. It is a rolling, time-based purge.
 
-**Internal capture budget: 21 days.** Against the 2026-10-23 reading that leaves about 5.75 days of
-slack for an outage or a migration, not the 10 days this line first recorded.
+**Internal capture budget: 18 days.** Against the 2026-10-23 reading that leaves about 8.75 days of
+slack for an outage or a migration, not the 10 days this line first recorded. The budget was 21 days
+until the owner tightened it on 2026-10-26 (T820); captures enqueued before the deployed setting
+changed keep the 21-day deadline computed at insert (`discover.py`).
 
 #### Contradicted 2026-08-28 — resolved 2026-10-23, below
 
@@ -315,9 +317,9 @@ like an epoch, and it is not something capture may rely on.
 
 **What this settles for R1** (`docs/risks.md`): the purge is a rolling window and not an epoch that
 can be dropped wholesale, so the second loss mode R1 named is not observed. Its length is what
-changed: ~27 days, and shrinking. The 21-day budget still sits inside it. Constitution I 4.1.0
-allows tightening the budget on this reading and forbids widening it. Whether to tighten it is a
-decision this measurement informs; it is not made here. Re-measure whenever a capture expires
+changed: ~27 days, and shrinking. The 21-day budget still sat inside it. Constitution I 4.1.0
+allows tightening the budget on this reading and forbids widening it. The owner tightened it to 18
+days on 2026-10-26 (T820). Re-measure whenever a capture expires
 earlier than its deadline predicts, and at least every quarter: the window moved four days between
 two samples without notice.
 

@@ -34,7 +34,7 @@ in no longer owns a constant claiming to. Most `completed_at` values below are t
 be unambiguous regardless of `capture_budget_days`: days for "obviously still inside whatever
 budget the caller supplies" and well over a year for "obviously outside it". The one exception is
 the dedicated `capture_budget_days` section below, where `_CAPTURE_BUDGET_DAYS` mirrors
-`.env.example`'s own `CAPTURE_BUDGET_DAYS=21` — supplied as any caller would, through the
+`.env.example`'s own `CAPTURE_BUDGET_DAYS=18` — supplied as any caller would, through the
 parameter, never restated as an assertion about what `derive_availability` computes internally.
 That restraint is the same one `research.md`'s own header states for itself: a number that exists
 in two files is wrong in one of them.
@@ -347,11 +347,11 @@ def test_obtainable_until_is_null_in_every_state_while_the_window_is_unresolved(
 
 # --- `capture_budget_days`: the window comes from configuration, never a module constant --------
 
-#: Mirrors `.env.example`'s `CAPTURE_BUDGET_DAYS=21` default, exactly as `apps/ingester/tests/
+#: Mirrors `.env.example`'s `CAPTURE_BUDGET_DAYS=18` default, exactly as `apps/ingester/tests/
 #: test_backfill.py`, `test_idempotency.py`, `test_reconcile.py` and `test_shared_match.py`
 #: already mirror it for the identical number. Supplied here as any caller would — through the
 #: parameter — never restated as this module's own threshold.
-_CAPTURE_BUDGET_DAYS = 21
+_CAPTURE_BUDGET_DAYS = 18
 
 
 def test_derive_availability_requires_capture_budget_days_with_no_default() -> None:
@@ -414,15 +414,15 @@ def test_the_configured_budget_leaves_real_margin_under_the_shortest_measured_re
     interval offers zero margin, so a match at day 30.9 rendered `obtainable` for a recording that
     may already be gone.
 
-    `_CAPTURE_BUDGET_DAYS` (21, mirroring `.env.example`) is strictly shorter than 31 — the
+    `_CAPTURE_BUDGET_DAYS` (18, mirroring `.env.example`) is strictly shorter than 31 — the
     shorter of the two contradicted readings `docs/data-sources.md` records — with real room to
     spare: a match completed 25 days ago sits comfortably *inside* that 31-day reading, and still
     renders `expired` once the configured budget is applied, precisely the margin the old,
     unconfigured constant had none of. Nothing here asserts what `derive_availability` computes
-    equals `timedelta(days=21)` — a fixed day-count check on this module's own math would recreate
-    the defect being fixed one layer up; this instead pins that the configured value is what
-    decides the split, and that a realistic configured value clears the measured floor with
-    margin."""
+    equals `timedelta(days=_CAPTURE_BUDGET_DAYS)` — a fixed day-count check on this module's own
+    math would recreate the defect being fixed one layer up; this instead pins that the configured
+    value is what decides the split, and that a realistic configured value clears the measured
+    floor with margin."""
     from aoe2stats_api.availability import Availability, derive_availability
 
     # Inside docs/data-sources.md's shorter contradicted reading (~31 days) with days to spare,

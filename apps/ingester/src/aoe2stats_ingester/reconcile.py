@@ -1,6 +1,6 @@
 """`ReconcileStage` (T054): the second of the three stages `run.py` drains in order.
 
-This is the mechanism the 21-day `CAPTURE_BUDGET_DAYS` is sized around (research.md §6). Discovery
+This is the mechanism the 18-day `CAPTURE_BUDGET_DAYS` is sized around (research.md §6). Discovery
 (`discover.py`, T053) runs daily and enqueues a capture the moment a match is first seen; this
 stage exists for everything discovery, for whatever reason, did not: the "25-day reconciliation
 sweep" the edge case in spec.md names ("the match discovery source is unreachable for several days:

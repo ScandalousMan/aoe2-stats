@@ -70,7 +70,7 @@ that fixes both halves of the defect with a single, host-agnostic mechanism (con
 **What this still does not guarantee.** A serverless platform is free to run two invocations of
 the same logical cron trigger in two separate OS processes (a retried Vercel invocation, two
 overlapping triggers). No in-process cache — caching or teardown, either one — can pace those
-against each other: each process starts its own token bucket full. The 21-day capture budget and
+against each other: each process starts its own token bucket full. The 18-day capture budget and
 the "stop the whole run" behaviour on `ProviderRateLimited` (`ratelimit.py`, `contracts/
 providers.md`) are what absorb that gap; this module only makes the *common* case (one process,
 many sequential calls, which is what `routers/cron.py` actually does) correctly serial.
