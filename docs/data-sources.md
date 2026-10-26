@@ -38,7 +38,7 @@ obtained again later, not whether the request can be repeated.
 | Response                                      | Recoverable?                                                           | Raw kept                                                     |
 | --------------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------ |
 | Relic match history (`getRecentMatchHistory`) | **No** — a match leaves the "recent" window and cannot be fetched back | `matches.raw_payload`                                        |
-| `aoe.ms` replay zip                           | **No** — rolling retention, ~27 days on 2026-10-23 (§2)                | the object store, byte-for-byte                              |
+| `aoe.ms` replay zip                           | **No** — rolling, per profile; shortest measured ~27 days (§2)         | the object store, byte-for-byte                              |
 | Relic leaderboards and personal stats         | Yes — current standing, re-queryable at any time                       | not kept                                                     |
 | aoe2companion enrichment                      | Yes — re-queryable, and degradable by design                           | not kept                                                     |
 | aoestats parquet dumps                        | Yes — published artifacts, re-downloadable                             | not kept (V2)                                                |
@@ -218,10 +218,10 @@ the one shared client every provider here is built from for exactly this reason.
 | Availability   | see "Publication delay: distribution" below                               |
 | Rate limits    | undocumented; ~25 requests in 30 min saw no throttling                    |
 
-### Retention: a rolling window, ~27 days when last measured
+### Retention: a rolling window per profile, shortest measured ~27 days
 
-**Current reading (2026-10-23): rolling, about 26.75 days from match end, for the point of view
-measured.** It was about 31 days on 2026-08-19, on the same profile. The window is not a constant
+**Current reading (2026-10-23, widened 2026-10-26): rolling, about 26.75 days from match end, for
+the shortest-window profile measured; other profiles keep far longer (2026-10-26 subsection).** It was about 31 days on 2026-08-19, on the same profile. The window is not a constant
 of the source: it has shrunk by about four days in two months, and nothing announced it. The
 sections below keep each sample in the order it was taken; the 2026-10-23 one settles what the
 2026-08-28 one left open.
@@ -314,6 +314,25 @@ three that did not are not separated by how many matches each profile has played
 matches purged, 197 newer kept), so retention is not a per-profile match count either. What makes
 one `(gameId, profileId)` pair survive is unmeasured. It explains why the 2026-08-28 sample read
 like an epoch, and it is not something capture may rely on.
+
+#### 2026-10-26: the window differs per profile, by more than a factor of two
+
+Measured while building `scripts/checks/retention_sentinel.py` (T821), at about `20:05Z`:
+
+| profile | oldest pair probed still `200` | first `404` probed | reading                                    |
+| ------- | ------------------------------ | ------------------ | ------------------------------------------ |
+| 196240  | 28.23 days                     | 28.26 days         | ~28.25 days, up from ~26.75 on 2026-10-23  |
+| 377935  | 66.1 days (every pair 25–66 d) | 1529 days          | window at least 66 days                    |
+| 9958277 | 26.0 days (Relic history ends) | none in range      | not bracketed                              |
+
+So "the window" is a per-profile property, not a constant of the source, and it moves for one profile
+from day to day: 196240's grew by about a day and a half in three days. 196240 — a very active
+player, about 160 matches in its last 27 days — has the shortest window measured; 377935 keeps more
+than two months. What sets a profile's window is not known. It is not the match count alone: a
+pair with 97 newer matches on its profile was already gone while one with 176 newer matches
+survived, and an estimate by recording size (team size as proxy) does not separate them either.
+Until it is known, the budget is sized against the shortest window measured on any profile, and a
+profile more active than any measured may have a shorter one still.
 
 **What this settles for R1** (`docs/risks.md`): the purge is a rolling window and not an epoch that
 can be dropped wholesale, so the second loss mode R1 named is not observed. Its length is what
