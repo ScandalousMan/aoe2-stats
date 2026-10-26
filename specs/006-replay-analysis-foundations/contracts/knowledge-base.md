@@ -157,8 +157,9 @@ def name(entity) -> Answer[str] | KnowledgeGap
   fact, and one that moves an age only while some match state holds can be a conditional effect on
   `age_requirement`; the Cumans' additional Town Center can be modelled as such a row (T770). Every
   value an `age_requirement` effect carries is a whole age number in the pack's age range, 1 to 4:
-  the unconditional `set` operand, and each value of an `age` or `controlled` table. A table, a
-  boolean, a fraction or a number outside 1 to 4 is refused at parse time. The effect may
+  the unconditional operand, and each value of an `age` or `controlled` table. The operation is
+  `set` alone; `add` and `multiply` are refused at parse time, as is a table, a boolean, a
+  fraction or a number outside 1 to 4. The effect may
   carry any condition `context` can decide (`age`, `researched`, `team`, `controlled`), and a query
   that reaches a conditional one without the input that decides it raises, as `cost` does. A query
   without `context` on an entity no conditional effect touches answers as it always has, so an

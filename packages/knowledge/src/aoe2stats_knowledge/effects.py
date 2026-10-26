@@ -49,9 +49,10 @@ contracts/knowledge-base.md), "Civilisation qualification" steps 2-3. Research:
   For `field == "available_to"` (**T763**) the operation is `"set"` alone and the operand is a
   boolean, `true` or `false`, never a number or a string; under an `age` or `controlled` condition
   each value of the table is one. The answer is then that boolean, not an integer.
-  For `field == "age_requirement"` every value is a whole age number from 1 to 4 (`_VALID_AGES`),
-  never a table, a boolean or a fraction: the `set` operand, and each value of an `age` or
-  `controlled` table.
+  For `field == "age_requirement"` the operation is `"set"` alone (`add` and `multiply` are refused
+  at parse time) and every value is a whole age number from 1 to 4 (`_VALID_AGES`), never a
+  table, a boolean or a fraction: the scalar operand, and each value of an `age` or `controlled`
+  table.
 - `validated_by` — FR-030's "the second reading that validated it": who re-read the source sentence
   a second time, against which file, when — recorded as data, not a placeholder string.
 - `condition` — **T652u** (2026-09-28, repository owner's arbitration of the fourth review,
@@ -433,6 +434,12 @@ class Effect:
                 raise EffectsError(
                     '"faster" applies to field = "production_time" only (data-model.md §6), '
                     f"got field={self.field!r}"
+                )
+            if self.field == "age_requirement" and self.operation != "set":
+                raise EffectsError(
+                    'an effect on field = "age_requirement" must use operation = "set" (an age '
+                    "is replaced, never added to or scaled; nothing else is a rule), got "
+                    f"{self.operation!r}"
                 )
             if "age" in conditions:
                 if not isinstance(self.operand, Mapping) or not self.operand:

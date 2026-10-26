@@ -1356,7 +1356,7 @@ civilisation = "Franks"
 source_key = "998"
 source_text = "synthetic: an add effect on a scalar field, T652r"
 modelled = "yes"
-field = "age_requirement"
+field = "production_time"
 operation = "add"
 operand = {operand}
 selector = [{{ kind = "technology", id = "1" }}]
@@ -1376,7 +1376,7 @@ def test_a_scalar_add_that_would_drive_a_field_negative_raises() -> None:
             civilisation="Franks",
             kind="technology",
             id="1",
-            field="age_requirement",
+            field="production_time",
             value=3,
         )
 
@@ -1388,7 +1388,7 @@ def test_a_scalar_add_that_lands_exactly_at_zero_does_not_raise() -> None:
         civilisation="Franks",
         kind="technology",
         id="1",
-        field="age_requirement",
+        field="production_time",
         value=3,
     )
     assert value == 0
@@ -2553,6 +2553,69 @@ def test_a_valid_age_requirement_value_still_parses(
         _age_effect_toml(operand, condition=condition, entities=entities)
     )
     assert effect.operand is not None
+
+
+@pytest.mark.parametrize("operation", ["add", "multiply"])
+@pytest.mark.parametrize(
+    ("operand", "condition", "entities"),
+    [
+        ("2", None, False),
+        ("true", None, False),
+        ("-4", None, False),
+        ("{ food = 1 }", None, False),
+        ("{ 2 = 1 }", '"age"', False),
+        ("{ 2 = -1 }", '"age"', False),
+        ("{ 0 = 1 }", '"controlled"', True),
+        ("{ 0 = 2 }", '"controlled"', True),
+    ],
+)
+def test_an_age_requirement_effect_takes_the_operation_set_alone(
+    operation: str, operand: str, condition: str | None, entities: bool
+) -> None:
+    """An age is replaced, never added to or scaled: `add 5` on a baseline of 3 would answer 8.
+    Refused at parse time, whatever the operand or condition, and the message names both."""
+    with pytest.raises(effects.EffectsError, match=r"age_requirement.*set|set.*age_requirement"):
+        effects.parse_effects_toml(
+            _age_effect_toml(operand, condition=condition, entities=entities, operation=operation)
+        )
+
+
+@pytest.mark.parametrize("operation", ["add", "multiply"])
+@pytest.mark.parametrize("field", ["cost", "production_time"])
+def test_add_and_multiply_still_parse_on_the_other_numeric_fields(
+    operation: str, field: str
+) -> None:
+    """The restriction is scoped to `age_requirement`."""
+    operand = "{ food = 2 }" if field == "cost" else "2"
+    toml = _age_effect_toml(operand, operation=operation).replace(
+        'field = "age_requirement"', f'field = "{field}"'
+    )
+    (effect,) = effects.parse_effects_toml(toml)
+    assert effect.operation == operation
+
+
+@pytest.mark.parametrize(
+    ("operand", "condition", "entities", "context", "expected"),
+    [
+        ("2", None, False, None, 2),
+        ("{ 2 = 1 }", '"age"', False, query.Context(age=2), 1),
+        ("{ 0 = 4 }", '"controlled"', True, query.Context(controlled={_TOWN_CENTER_ONLY: 0}), 4),
+    ],
+)
+def test_a_set_age_requirement_still_parses_and_answers(
+    monkeypatch: pytest.MonkeyPatch,
+    operand: str,
+    condition: str | None,
+    entities: bool,
+    context: query.Context | None,
+    expected: int,
+) -> None:
+    parsed = effects.parse_effects_toml(
+        _age_effect_toml(operand, condition=condition, entities=entities)
+    )
+    monkeypatch.setattr(effects, "_effects", lambda _directory: parsed)
+    answer = query.age_requirement(_pikeman(), civilisation="Franks", context=context)
+    assert answer.value == expected
 
 
 def test_a_controlled_age_requirement_table_with_a_table_value_never_reaches_a_query() -> None:
