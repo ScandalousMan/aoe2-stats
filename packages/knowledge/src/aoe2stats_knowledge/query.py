@@ -112,8 +112,8 @@ the identifiers back into `EntityRef`s after. `produced_at` takes `context` as `
 
 **T780 (FR-022e): `age_requirement` takes `context` as `cost` does.** A civilisation bonus is a
 fact, and one that moves an age only while some match state holds (the Cumans' additional Town
-Center: Feudal Age, once Town Centers are controlled) is a conditional effect on `age_requirement`
-like any other. The query therefore accepts the match state, reaches such an effect with it, raises
+Center, whose row is T770's) can be a conditional effect on `age_requirement` like any other.
+The query therefore accepts the match state, reaches such an effect with it, raises
 `effects.ContextRequired` without the input that decides it, and refuses an unmodelled civilisation
 in `context.team` at step 1. Called without `context` on an entity no conditional effect touches it
 answers exactly as before.

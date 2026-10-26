@@ -963,7 +963,11 @@ def test_an_unmodelled_ally_in_a_committed_recording_gaps_produced_at_and_availa
 
     result = coverage.coverage(events)
 
-    for field_name, severity in (("produced_at", gaps.BLOCKING), ("available_to", "informational")):
+    for field_name, severity in (
+        ("produced_at", gaps.BLOCKING),
+        ("available_to", "informational"),
+        ("age_requirement", "informational"),
+    ):
         refused = [
             gap
             for gap in result

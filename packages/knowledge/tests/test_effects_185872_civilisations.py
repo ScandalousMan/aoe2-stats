@@ -217,7 +217,7 @@ def test_every_selector_entry_exists_in_this_snapshots_rules() -> None:
 
 def test_a_researched_condition_names_a_technology_of_this_snapshot() -> None:
     technologies = _rules()["technology"]
-    conditional = [e for e in _effects() if e.condition == "researched"]
+    conditional = [e for e in _effects() if "researched" in e.conditions]
     assert {(e.civilisation, e.condition_technology) for e in conditional} == {
         ("Franks", "1496"),
         ("Franks", "493"),

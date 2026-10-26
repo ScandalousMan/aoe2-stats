@@ -307,9 +307,9 @@ def test_every_selector_entry_exists_in_this_snapshots_rules() -> None:
 def test_every_condition_names_entities_and_technologies_of_this_snapshot() -> None:
     rules = _rules()
     for effect in _effects():
-        if effect.condition == "researched":
+        if "researched" in effect.conditions:
             assert effect.condition_technology in rules["technology"], effect.source_text
-        if effect.condition == "controlled":  # pragma: no cover - none in batches A to C
+        if "controlled" in effect.conditions:  # pragma: no cover - none in batches A to C
             for entry in effect.condition_entities or ():
                 assert entry.id in rules[entry.kind]
 
@@ -319,7 +319,7 @@ def test_the_researched_conditions_of_batch_c_are_the_technologies_the_bullets_n
     conditional = {
         (e.civilisation, e.condition_technology, e.field)
         for e in _effects()
-        if e.condition == "researched" and e.civilisation in _BATCH_C
+        if "researched" in e.conditions and e.civilisation in _BATCH_C
     }
     assert conditional == {
         ("Cumans", "689", "production_time"),

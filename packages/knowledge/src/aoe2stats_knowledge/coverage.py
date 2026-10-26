@@ -198,7 +198,8 @@ _QUERY_SURFACE_FUNCTIONS: Final[tuple[tuple[str, Any], ...]] = (
 #: joined at T764, when an effect gained the means to add a producing building under a condition,
 #: `available_to` at T763, when an effect gained the means to set an availability under one, and
 #: `age_requirement` at T780, when a bonus that moves an age with the match state (the Cumans'
-#: additional Town Center) became a row rather than a refusal.
+#: additional Town Center, whose row is T770's) became expressible as a row rather than only a
+#: refusal.
 _CONTEXT_AWARE_FIELDS: Final[frozenset[str]] = frozenset(
     {"cost", "production_time", "age_requirement", "produced_at", "available_to"}
 )

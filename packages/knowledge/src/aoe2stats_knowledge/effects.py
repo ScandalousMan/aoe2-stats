@@ -49,6 +49,9 @@ contracts/knowledge-base.md), "Civilisation qualification" steps 2-3. Research:
   For `field == "available_to"` (**T763**) the operation is `"set"` alone and the operand is a
   boolean, `true` or `false`, never a number or a string; under an `age` or `controlled` condition
   each value of the table is one. The answer is then that boolean, not an integer.
+  For `field == "age_requirement"` every value is a whole age number from 1 to 4 (`_VALID_AGES`),
+  never a table, a boolean or a fraction: the `set` operand, and each value of an `age` or
+  `controlled` table.
 - `validated_by` — FR-030's "the second reading that validated it": who re-read the source sentence
   a second time, against which file, when — recorded as data, not a placeholder string.
 - `condition` — **T652u** (2026-09-28, repository owner's arbitration of the fourth review,
@@ -143,6 +146,12 @@ _MODELLED_VALUES: Final[frozenset[str]] = frozenset({"yes", "no"})
 #: data-model.md §6's closed `condition` set (T652u) — `None` (absent) means unconditional.
 CONDITIONS: Final[frozenset[str]] = frozenset({"age", "researched", "team", "controlled"})
 
+#: The order a condition list is stored in, whatever order the file wrote it: the vocabulary as
+#: data-model.md §6 documents it. `["team", "researched"]` and `["researched", "team"]` are one
+#: effect, and when a query's context is wrong in more than one way the first name in this order
+#: names the error that is raised.
+_CONDITION_ORDER: Final[tuple[str, ...]] = ("age", "researched", "team", "controlled")
+
 #: The pack's own age numbering (confirmed directly: unit 358 "Pikeman" = 3, unit 359 "Halberdier"
 #: = 4, `packages/knowledge/tests/test_effects.py`'s own Parthian Tactics test) — 1=Dark, 2=Feudal,
 #: 3=Castle, 4=Imperial. An `condition = "age"` effect's `operand` table is keyed by one of these,
@@ -209,6 +218,12 @@ def _is_building_identifier(value: object) -> bool:
     """T764: `value` is a building identifier written the one way `rules.json` keys it — a string of
     decimal digits with no sign, fraction or leading zero. A number, a name and a list are not."""
     return _is_canonical_count(value)
+
+
+def _is_age_value(value: object) -> bool:
+    """A whole number in the pack's age range, 1 to 4 (`_VALID_AGES`): never a table, a boolean or
+    a fraction. `bool` is an `int` subclass, so it is excluded by name."""
+    return isinstance(value, int) and not isinstance(value, bool) and value in _VALID_AGES
 
 
 def _is_numeric_operand(value: object) -> bool:
@@ -328,7 +343,7 @@ class Effect:
                     "(T781): whose age or count any other name would read is undecided, got "
                     f"{names!r}"
                 )
-            object.__setattr__(self, "condition", names)
+            object.__setattr__(self, "condition", tuple(sorted(names, key=_CONDITION_ORDER.index)))
             return
         if not isinstance(condition, str) or condition not in CONDITIONS:
             raise EffectsError(
@@ -430,6 +445,14 @@ class Effect:
                         f"effect.operand's age table keys must all be one of "
                         f"{sorted(_AGE_KEYS)}, got {sorted(self.operand.keys())!r}"
                     )
+                if self.field == "age_requirement":
+                    is_valid, expected = _table_value_rule(self.field)
+                    bad_values = [v for v in self.operand.values() if not is_valid(v)]
+                    if bad_values:
+                        raise EffectsError(
+                            f"effect.operand's age table values must each be {expected}, "
+                            f"got {bad_values!r}"
+                        )
             if "controlled" in conditions:
                 if not isinstance(self.operand, Mapping) or not self.operand:
                     raise EffectsError(
@@ -450,6 +473,16 @@ class Effect:
                         f"effect.operand's count table values must each be {expected}, "
                         f"got {bad_values!r}"
                     )
+            if (
+                self.field == "age_requirement"
+                and self.operation == "set"
+                and not self.operand_is_table
+                and not _is_age_value(self.operand)
+            ):
+                raise EffectsError(
+                    "effect.operand of an \"age_requirement\" 'set' must be a whole age number, "
+                    f"one of {sorted(_VALID_AGES)}, got {self.operand!r}"
+                )
             if self.field == "produced_at":
                 _check_producing_building(self)
             if self.field == "available_to":
@@ -501,6 +534,8 @@ def _table_value_rule(field: str) -> tuple[Callable[[object], bool], str]:
         return _is_building_identifier, "a building identifier string"
     if field == "available_to":
         return _is_boolean, "a boolean"
+    if field == "age_requirement":
+        return _is_age_value, f"a whole age number, one of {sorted(_VALID_AGES)}"
     return _is_numeric_operand, "a number or a non-empty table of numbers"
 
 
@@ -596,7 +631,10 @@ class Context:
     - `team_researched` — **T781**: the technologies researched by any player on the team, the
       player's own included. A `researched` condition beside `team` reads this instead of
       `researched`, because the technology belongs to the bonus's owner, not to the teammate
-      queried. Absent is `ContextRequired`.
+      queried. Absent is `ContextRequired`. When `researched` is also given it must be a subset
+      of this set (the player's own are on the team), else `ValueError`, as a `team` that omits
+      the queried civilisation is; a teammate's `researched` that is a subset neither grants nor
+      withholds the bonus.
     """
 
     age: int | None = None
@@ -1090,6 +1128,19 @@ def _resolve_condition(
             raise ContextRequired(
                 f"effect {effect.source_text!r} (civilisation={effect.civilisation!r}) is "
                 f"conditional on a researched technology, and reaching it needs {needs}"
+            )
+        if (
+            by_team
+            and context is not None
+            and context.researched is not None
+            and not context.researched <= researched
+        ):
+            raise ValueError(
+                "Context.team_researched must include every technology in Context.researched "
+                f"(the player's own are part of the team's); got researched="
+                f"{sorted(context.researched)!r} and team_researched={sorted(researched)!r} — "
+                "a team set that omits what the player researched is malformed input, not an "
+                "answer"
             )
         assert effect.condition_technology is not None  # enforced by Effect.__post_init__
         if effect.condition_technology not in researched:

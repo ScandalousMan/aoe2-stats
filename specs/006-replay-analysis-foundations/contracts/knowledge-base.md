@@ -154,9 +154,11 @@ def name(entity) -> Answer[str] | KnowledgeGap
   decide (`researched`, `age`, `controlled`, `team`), so `produced_at` accepts `context` as `cost`
   does and raises as they do without the input a conditional addition needs.
 - **`age_requirement` takes `context` as `cost` does** (FR-022e, T780). A civilisation bonus is a
-  fact, and one that moves an age only while some match state holds is a conditional effect on
-  `age_requirement`: the Cumans' additional Town Center, buildable in the Feudal Age once a count of
-  Town Centers is controlled, is a `controlled` table whose values are age numbers. The effect may
+  fact, and one that moves an age only while some match state holds can be a conditional effect on
+  `age_requirement`; the Cumans' additional Town Center can be modelled as such a row (T770). Every
+  value an `age_requirement` effect carries is a whole age number in the pack's age range, 1 to 4:
+  the unconditional `set` operand, and each value of an `age` or `controlled` table. A table, a
+  boolean, a fraction or a number outside 1 to 4 is refused at parse time. The effect may
   carry any condition `context` can decide (`age`, `researched`, `team`, `controlled`), and a query
   that reaches a conditional one without the input that decides it raises, as `cost` does. A query
   without `context` on an entity no conditional effect touches answers as it always has, so an
@@ -185,8 +187,14 @@ def name(entity) -> Answer[str] | KnowledgeGap
   **raises**, as omitting `civilisation` does: the caller asked for a value only the match can fix,
   and neither the baseline nor a guessed age is an answer. An effect may carry several conditions
   (T781) and applies when every one holds; it raises when any one lacks its input, even if another
-  has already failed. `researched` beside `team` reads `team_researched`: the technology is the
-  owner's, not the queried teammate's.
+  has already failed. The names are stored in the vocabulary's order (`age`, `researched`, `team`,
+  `controlled`) however the file wrote them, so two spellings are one effect and the first name in
+  that order decides which error a bad context raises. `researched` beside `team` reads
+  `team_researched`: the technology is the owner's, not the queried teammate's. The player's own
+  technologies are on the team, so a query that gives both `researched` and `team_researched` with
+  a `researched` that is not a subset of `team_researched` raises `ValueError`, as a `team` that
+  omits the queried civilisation does; a teammate's `researched` that is a subset neither grants
+  nor withholds the bonus.
 - **The controlled count is keyed by the entities counted** (FR-022e). `Context.controlled` maps a
   set of entity references, each a kind and an identifier, to the number of them the player
   controls, summed over the set: "Town Center or Castle controlled" is one entry whose key is both
