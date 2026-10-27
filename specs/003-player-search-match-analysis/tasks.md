@@ -649,3 +649,34 @@ data fault, not a nitpick.
   `packages/design-system/specs/match-history.md` §1, which currently says the detail route carries a
   `ProfileSummary` header, to record that it does not. Update the container/route tests and any
   affected Playwright full-page baseline (captured from CI, never locally).
+
+## Phase 15: Constitution I 5.0.1 alignment
+
+Added 2026-10-27. Constitution I was amended to 5.0.1 (PR #195): the retention window that 003
+recorded as "contradicted and unresolved" on 2026-08-28 is settled as rolling, not a fixed epoch,
+and it differs per profile and moves from day to day, with nothing known that sets it
+(`docs/data-sources.md` §2). 003's artifacts and `availability.py` still give "the question is
+open" as the reason `obtainable_until` is null.
+
+- [ ] T823 Re-derive why `obtainable_until` is null, in `apps/api/src/aoe2stats_api/availability.py`'s
+  module docstring, and in `specs/003-player-search-match-analysis/research.md` R8,
+  `specs/003-player-search-match-analysis/spec.md` (the FR-024 amendment and the other "contradicted
+  and unresolved" mentions), `specs/003-player-search-match-analysis/contracts/http-api.md` and
+  `specs/003-player-search-match-analysis/quickstart.md`, and in
+  `packages/design-system/specs/replay-availability.md` if it gives the same reason. **Behaviour does
+  not change**: `obtainable_until` stays null in every state, and the `obtainable`/`expired` split
+  stays on `capture_budget_days`. Only the reason changes. A date would be a promise about how long
+  the source keeps one point of view. That length is the window of that profile, and §2 records it
+  as different per profile, moving from day to day, and set by nothing known, so no date can be
+  derived that the source will honour. `capture_budget_days` is a capture setting this project
+  chose, not the source's deadline; publishing it as a date would present the setting as the
+  source's promise. R8's condition for showing a date becomes the one constitution I sets for
+  widening the budget: `docs/data-sources.md` records as settled what sets a profile's window. R8's
+  stated cost is restated against the new reading: for a profile whose window is longer than the
+  budget, the service says `expired` for a recording the source would still serve, so SC-004 still
+  cannot be claimed. The epoch reading is no longer the cause, and is named only as history. Each
+  amended artifact keeps a dated amendment note in the style of the 2026-08-29 one, and restates no
+  measurement from `docs/data-sources.md`. Remove the constitution's follow-up entry for
+  `availability.py`. **Done**: no live sentence in 003's artifacts or `availability.py` gives an
+  unresolved or epoch window as the reason for the null date; the whole suite and spec_lint on
+  every feature are green.
