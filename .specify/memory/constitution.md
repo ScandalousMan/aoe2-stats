@@ -1,6 +1,14 @@
 <!--
 Sync Impact Report — compact changelog. Full rationale for each entry is in git history.
 
+5.0.1 (2026-10-27, PATCH) — Principle I: replace "the contradiction is unresolved" with what
+docs/data-sources.md §2 now records (re-measured 2026-10-23 and 2026-10-26): the window is rolling,
+not an epoch; it differs per profile and moves day to day; the budget sits strictly inside the
+shortest window measured on any profile. The epoch argument in the ratchet paragraph is retired with
+it. The widening bar is restated against the shortest window rather than "the question", so settling
+rolling-vs-epoch cannot be read as unlocking a wider budget — the 4.1.0 intent, not a new rule. No
+behaviour changes: the budget ratchet stands. Modified: I.
+
 5.0.0 (2026-08-30, MAJOR) — Principle X: retire the ban on copying game assets into the repo. Asset
 packs needed to display game content MAY now be copied in and served, conditional on the two surviving
 anchors (non-commercial + the README/footer disclaimer) plus a per-pack licence record (feature 002's
@@ -52,21 +60,28 @@ capture resolves in favour of capture. No PR may degrade the ingestion pipeline 
 feature. Corollary: `expired_total` must stay at zero; any non-zero value is a severity-1 incident.
 
 **This principle states no retention figure.** The measured window is a property of the outside
-world and lives in `docs/data-sources.md` alone. A number written down twice goes stale in one of
-the two copies, and that is not hypothetical here: the 31-day reading this principle carried from
-2026-08-19 was contradicted on 2026-08-28 by an equally sharp boundary sitting six months back,
-measured after the replay endpoint had moved. The contradiction is unresolved, and this document
-does not get to decide it.
+world and lives in `docs/data-sources.md` §2 alone. A number written down twice goes stale in one of
+the two copies, and that is not hypothetical here: the figure this principle carried from 2026-08-19
+had stopped being true within two months, and nothing announced the change.
 
-**Capture runs against a budget strictly shorter than the shortest credible window**, configured
-(`CAPTURE_BUDGET_DAYS`) and never hard-coded, so a re-measurement changes a setting, not code.
+**The window is rolling, and it belongs to the player, not to the source.** The 2026-08-28
+contradiction this principle once recorded as unresolved is settled: the purge is a rolling window
+counted from match end, not a fixed epoch. It is not one window. Its length differs from one profile
+to another and moves for the same profile from day to day, and what sets a profile's window is not
+known. Some individual recordings outlive their profile's window for reasons equally unknown; capture
+never relies on them.
 
-**A longer or unresolved reading never widens that budget.** New evidence MAY tighten it at any
-time. Widening it requires `docs/data-sources.md` to record the question as settled, corroborated
-across more than one profile and more than one date. Until then the ambiguity argues for capturing
-sooner, not later: an unexplained boundary may be a fixed epoch rather than a rolling window, and an
-epoch can be emptied wholesale with no notice. A PR that relaxes capture on the strength of an
-uncorroborated measurement is rejected.
+**Capture runs against a budget strictly shorter than the shortest window measured on any
+profile**, configured (`CAPTURE_BUDGET_DAYS`) and never hard-coded, so a re-measurement changes a
+setting, not code. A profile more active than any measured may have a shorter window still; that
+argues for slack, never for less of it.
+
+**A longer reading never widens that budget.** New evidence MAY tighten it at any time. Widening it
+requires `docs/data-sources.md` to record the shortest window itself as settled, corroborated across
+more than one profile and more than one date. That the window is rolling does not meet this bar, and
+neither does a profile that keeps its recordings longer: a long window on one profile says nothing
+about the next. A PR that relaxes capture on the strength of an uncorroborated or single-profile
+measurement is rejected.
 
 ### II. Python Backend
 
@@ -244,4 +259,4 @@ dedicated PR carrying their rationale, and bump the version below using semantic
 MAJOR for removing or redefining a principle, MINOR for adding one or materially expanding guidance,
 PATCH for clarifications that change no behaviour.
 
-**Version**: 5.0.0 | **Ratified**: 2026-08-19 | **Last Amended**: 2026-08-30
+**Version**: 5.0.1 | **Ratified**: 2026-08-19 | **Last Amended**: 2026-10-27
