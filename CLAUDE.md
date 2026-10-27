@@ -59,7 +59,7 @@ contract tests, and a package-local fact needs its own — the contrast table is
 
 **Never copy a measurement between them.** A number that exists in two files will be wrong in one of
 them. Skills and specs reference `docs/`; they do not restate it. Repeating a _constraint_ where it
-governs a decision — the 21-day capture budget appears wherever something depends on it — is
+governs a decision — the 18-day capture budget appears wherever something depends on it — is
 different and correct.
 
 ## Workflow

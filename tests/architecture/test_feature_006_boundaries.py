@@ -86,6 +86,8 @@ _BASELINE_SCHEDULED_JOBS: Mapping[str, frozenset[str]] = {
             "state-signal-sweep",
             # Added by 005's T693 (#114), its own task and spec, which merged alongside 006.
             "state-coverage-runtime",
+            # Added by 001's T821 (#193), its own task: the nightly retention-window sentinel.
+            "retention-sentinel",
             "report",
         }
     ),

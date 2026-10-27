@@ -110,7 +110,7 @@ class ProviderMoved(ProviderUnavailable):
 class ProviderRateLimited(ProviderError):
     """A 429, or an unexpected 403. Raised on the first occurrence, never retried within the call:
     skill `aoe2-data-sources` — this stops the whole ingest run, not just the one item, because
-    the capture budget is 21 days and there is always tomorrow.
+    the capture budget is 18 days and there is always tomorrow.
     """
 
     def __init__(

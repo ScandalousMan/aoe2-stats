@@ -169,7 +169,7 @@ error / empty) applies to the whole component, not to be confused with §3's fiv
 
 - Unit is **days** while at least 1 full day remains to `capture_deadline_at` (floor, not round —
   "6 days left" never means less than 144 hours remain); **hours** below that while at least 1 full
-  hour remains; **minutes** below that. Never seconds — a 21-day budget has no use for them.
+  hour remains; **minutes** below that. Never seconds — an 18-day budget has no use for them.
 - Correct pluralisation (`"1 day left"`, not `"1 days left"`).
 - Recomputed on an interval no coarser than once per minute while mounted: a text update with no
   transition — §"Numbers before atmosphere" (`README.md`) rules out a second-by-second countdown.

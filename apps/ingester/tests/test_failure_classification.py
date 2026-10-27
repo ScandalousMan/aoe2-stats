@@ -32,7 +32,7 @@ path that does.
 
 **Why three hours / four days / forty days, and not values nearer the real thresholds**: this test
 deliberately avoids asserting which exact number decides "past the retention window" — nothing in
-`data-model.md` or `.env.example` names that value; only `CAPTURE_BUDGET_DAYS` (21, the internal
+`data-model.md` or `.env.example` names that value; only `CAPTURE_BUDGET_DAYS` (18, the internal
 deadline) and the measured ~31-day source retention exist, and T056 is free to compare against
 either. Forty days safely exceeds both, four days safely exceeds `REPLAY_PUBLICATION_GRACE_HOURS`
 (72 h) while staying under either 21 or 31, and three hours stays under all three — so every
@@ -79,7 +79,7 @@ from aoe2stats_storage.models import (
 #: .capture_deadline_at`'s NOT NULL constraint when seeding rows directly (this test bypasses
 #: `discover.py`, which is what normally computes this column). Not a claim about which threshold
 #: T056 uses to decide `expired` — see the module docstring.
-_CAPTURE_BUDGET_DAYS = 21
+_CAPTURE_BUDGET_DAYS = 18
 
 #: `REPLAY_PUBLICATION_GRACE_HOURS` from `.env.example`.
 _GRACE_HOURS = 72
@@ -285,7 +285,7 @@ async def test_404_past_the_retention_window_is_expired_and_raises_an_alert(
     assert len(alerts) == 1
     assert alerts[0].kind == AlertKind.EXPIRED_CAPTURE
     assert alerts[0].severity == 1
-    # Not `deadline_breach`: that kind fires at the day-21 deadline (T059a, T047b), a different
+    # Not `deadline_breach`: that kind fires at the capture deadline (T059a, T047b), a different
     # producer with a different timing than the post-mortem this one is.
     assert alerts[0].kind != AlertKind.DEADLINE_BREACH
 

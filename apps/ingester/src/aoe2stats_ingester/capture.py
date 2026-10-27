@@ -178,7 +178,7 @@ caller holding `matches.completed_at` can tell them apart (`contracts/providers.
   floor governs only "never recorded" (`unavailable`), not "past the window" — and raises a
   severity-1 `expired_capture` alert through `raise_alert` (T014a), the one alert kind that means a
   replay is now provably gone rather than merely not yet available. This is a different kind, with
-  a different timing, from `deadline_breach` (T059a): that one fires at day 21 while there is still
+  a different timing, from `deadline_breach` (T059a): that one fires at day 18 while there is still
   time to act, a warning; `expired_capture` fires only once a 404 past that same deadline proves
   the loss actually happened, a post-mortem. Neither subsumes the other.
 
@@ -360,7 +360,7 @@ DEFAULT_VALIDATION_TIMEOUT_SECONDS = 30.0
 #: budget in effect when it was enqueued, even if this setting changes later (`discover.py`'s own
 #: docstring), and reading `self._capture_budget_days` here instead would silently apply *today's*
 #: budget to a row enqueued under a different one.
-DEFAULT_CAPTURE_BUDGET_DAYS = 21
+DEFAULT_CAPTURE_BUDGET_DAYS = 18
 
 #: `REPLAY_PUBLICATION_GRACE_HOURS` (`.env.example`). Read by `_classify_not_found` (T056) as the
 #: first of its two thresholds — see the module docstring's "three-way 404 reading" paragraph.
