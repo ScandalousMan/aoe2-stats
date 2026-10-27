@@ -6,8 +6,11 @@ docs/data-sources.md §2 now records (re-measured 2026-10-23 and 2026-10-26): th
 not an epoch; it differs per profile and moves day to day; the budget sits strictly inside the
 shortest window measured on any profile. The epoch argument in the ratchet paragraph is retired with
 it. The widening bar is restated against the shortest window rather than "the question", so settling
-rolling-vs-epoch cannot be read as unlocking a wider budget — the 4.1.0 intent, not a new rule. No
-behaviour changes: the budget ratchet stands. Modified: I.
+rolling-vs-epoch, or measuring more profiles, cannot be read as unlocking a wider budget — the
+4.1.0 intent, not a new rule. Adds that a profile more active than any measured may have a shorter
+window, which argues for slack. The public-recording paragraph's "about 31 days" becomes a pointer to
+§2: the figure was a copied measurement and contradicted I's "not one window". No behaviour changes:
+the budget ratchet stands. Modified: I.
 
 5.0.0 (2026-08-30, MAJOR) — Principle X: retire the ban on copying game assets into the repo. Asset
 packs needed to display game content MAY now be copied in and served, conditional on the two surviving
@@ -38,6 +41,12 @@ rule, the no-hiding/no-circumvention rule, and the carriage-vs-action split for 
 Modified: IX.
 
 Open follow-ups (dependent artifacts not yet in line):
+- apps/api/src/aoe2stats_api/availability.py — docstring still calls the window "contradicted and
+  unresolved" and "may be a fixed epoch", and ties obtainable_until = None to the question being open;
+  the rationale must be re-derived against a rolling, per-profile window (5.0.1).
+- "about 31 days" copies: apps/api/src/aoe2stats_api/settings.py, apps/ingester/src/
+  aoe2stats_ingester/run.py, and the user-facing PrivacyNotice and ArchivalControl screens in
+  packages/design-system — false for the shortest measured profile (5.0.1).
 - specs/001-steam-link-replay-ingestion/quickstart.md scenario 2 — still titled "Nothing happens
   without consent"; must invert to an objection that stops capture (4.0.0).
 - specs/003-player-search-match-analysis/spec.md — several "consenting user" phrasings; the
@@ -62,14 +71,13 @@ feature. Corollary: `expired_total` must stay at zero; any non-zero value is a s
 **This principle states no retention figure.** The measured window is a property of the outside
 world and lives in `docs/data-sources.md` §2 alone. A number written down twice goes stale in one of
 the two copies, and that is not hypothetical here: the figure this principle carried from 2026-08-19
-had stopped being true within two months, and nothing announced the change.
+had stopped being true in about two months, and nothing announced the change.
 
 **The window is rolling, and it belongs to the player, not to the source.** The 2026-08-28
 contradiction this principle once recorded as unresolved is settled: the purge is a rolling window
 counted from match end, not a fixed epoch. It is not one window. Its length differs from one profile
 to another and moves for the same profile from day to day, and what sets a profile's window is not
-known. Some individual recordings outlive their profile's window for reasons equally unknown; capture
-never relies on them.
+known.
 
 **Capture runs against a budget strictly shorter than the shortest window measured on any
 profile**, configured (`CAPTURE_BUDGET_DAYS`) and never hard-coded, so a re-measurement changes a
@@ -77,10 +85,11 @@ setting, not code. A profile more active than any measured may have a shorter wi
 argues for slack, never for less of it.
 
 **A longer reading never widens that budget.** New evidence MAY tighten it at any time. Widening it
-requires `docs/data-sources.md` to record the shortest window itself as settled, corroborated across
-more than one profile and more than one date. That the window is rolling does not meet this bar, and
-neither does a profile that keeps its recordings longer: a long window on one profile says nothing
-about the next. A PR that relaxes capture on the strength of an uncorroborated or single-profile
+requires `docs/data-sources.md` to record as settled what sets a profile's window, so that a lower
+bound holds for every profile and not only for the ones measured, corroborated across more than one
+date. That the window is rolling does not meet this bar, measuring more profiles does not meet it,
+and neither does a profile that keeps its recordings longer: a long window on one profile says
+nothing about the next. A PR that relaxes capture on the strength of an uncorroborated or single-profile
 measurement is rejected.
 
 ### II. Python Backend
@@ -170,8 +179,8 @@ processing register with its balancing test.
 A recording that is **already public at its source** may additionally be retained when a user
 deliberately asks for that match to be analysed. The reason is principle IV, not convenience: the
 resulting analysis is shown to everyone who opens that match, and a derived artifact that cannot be
-recomputed from its raw is one this project may not publish. The source purges the recording after
-about 31 days, so declining to keep it means publishing a conclusion that can never again be
+recomputed from its raw is one this project may not publish. The source purges the recording on a
+rolling window (`docs/data-sources.md` §2), so declining to keep it means publishing a conclusion that can never again be
 checked or corrected. Retention on this basis is bounded by explicit human requests and never by
 traffic; it MUST be rate-limited and capped, and MUST be recorded in the processing register with
 its own legal basis.

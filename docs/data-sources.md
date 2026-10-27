@@ -336,7 +336,7 @@ profile more active than any measured may have a shorter one still.
 
 **What this settles for R1** (`docs/risks.md`): the purge is a rolling window and not an epoch that
 can be dropped wholesale, so the second loss mode R1 named is not observed. Its length is what
-changed: ~27 days, and shrinking. The 21-day budget still sat inside it. Constitution I 4.1.0
+changed: ~27 days, and shrinking. The 21-day budget still sat inside it. Constitution I
 allows tightening the budget on this reading and forbids widening it. The owner tightened it to 18
 days on 2026-10-26 (T820). Re-measure whenever a capture expires
 earlier than its deadline predicts, and at least every quarter: the window moved four days between
