@@ -5,7 +5,7 @@ Sync Impact Report — compact changelog. Full rationale for each entry is in gi
 docs/data-sources.md §2 now records (re-measured 2026-10-23 and 2026-10-26): the window is rolling,
 not an epoch; it differs per profile and moves day to day; the budget sits strictly inside the
 shortest window measured on any profile. The epoch argument in the ratchet paragraph is retired with
-it. The widening bar is restated against the shortest window rather than "the question", so settling
+it. The widening bar is restated against what sets a profile's window rather than "the question", so settling
 rolling-vs-epoch, or measuring more profiles, cannot be read as unlocking a wider budget — the
 4.1.0 intent, not a new rule. Adds that a profile more active than any measured may have a shorter
 window, which argues for slack. The public-recording paragraph's "about 31 days" becomes a pointer to
@@ -44,8 +44,8 @@ Open follow-ups (dependent artifacts not yet in line):
 - apps/api/src/aoe2stats_api/availability.py — docstring still calls the window "contradicted and
   unresolved" and "may be a fixed epoch", and ties obtainable_until = None to the question being open;
   the rationale must be re-derived against a rolling, per-profile window (5.0.1).
-- "about 31 days" copies: apps/api/src/aoe2stats_api/settings.py, apps/ingester/src/
-  aoe2stats_ingester/run.py, and the user-facing PrivacyNotice and ArchivalControl screens in
+- "about 31 days" copies: apps/api/src/aoe2stats_api/settings.py,
+  apps/ingester/src/aoe2stats_ingester/run.py, and the user-facing PrivacyNotice and ArchivalControl screens in
   packages/design-system — false for the shortest measured profile (5.0.1).
 - specs/001-steam-link-replay-ingestion/quickstart.md scenario 2 — still titled "Nothing happens
   without consent"; must invert to an objection that stops capture (4.0.0).
@@ -89,8 +89,8 @@ requires `docs/data-sources.md` to record as settled what sets a profile's windo
 bound holds for every profile and not only for the ones measured, corroborated across more than one
 date. That the window is rolling does not meet this bar, measuring more profiles does not meet it,
 and neither does a profile that keeps its recordings longer: a long window on one profile says
-nothing about the next. A PR that relaxes capture on the strength of an uncorroborated or single-profile
-measurement is rejected.
+nothing about the next. A PR that relaxes capture on the strength of an uncorroborated or
+single-profile measurement is rejected.
 
 ### II. Python Backend
 
@@ -180,8 +180,8 @@ A recording that is **already public at its source** may additionally be retaine
 deliberately asks for that match to be analysed. The reason is principle IV, not convenience: the
 resulting analysis is shown to everyone who opens that match, and a derived artifact that cannot be
 recomputed from its raw is one this project may not publish. The source purges the recording on a
-rolling window (`docs/data-sources.md` §2), so declining to keep it means publishing a conclusion that can never again be
-checked or corrected. Retention on this basis is bounded by explicit human requests and never by
+rolling window (`docs/data-sources.md` §2), so declining to keep it means publishing a conclusion
+that can never again be checked or corrected. Retention on this basis is bounded by explicit human requests and never by
 traffic; it MUST be rate-limited and capped, and MUST be recorded in the processing register with
 its own legal basis.
 
