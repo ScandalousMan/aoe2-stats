@@ -10,15 +10,16 @@
 #
 # Same source, same pack revision (`packages/knowledge/packs/aoe2techtree-3bb43b1/`), same
 # normaliser version (2): `rules.json`, `aliases.toml` and `disagreements.toml` are the fifth
-# snapshot's, byte for byte. What is new is `effects.toml`: twelve civilisations, and three rows of
-# the fifth that the effect model could not express then and can now (the Cumans' additional Town
-# Center, Cuman Mercenaries, the Berbers' Kasbah), replaced in place. The label states the build
+# snapshot's, byte for byte. What is new is `effects.toml`: twelve civilisations, the rows of the
+# fifth that the effect model could not express then and can now (the Cumans' additional Town
+# Center, Cuman Mercenaries, the Berbers' Kasbah), replaced in place, and an amended `validated_by`
+# on the Persians' Kamandaran. The label states the build
 # and how many civilisations the snapshot models.
 [snapshot]
 source = "aoe2techtree"
 source_version = "3bb43b1439eef88dfe7fe892d7f7dc41ac9dd76f"
 describes_build = 185872
-digest = "sha256:659634976bdde12bb848841e11fc4304d85d39bc6e4239510365b2fc5034e404"
+digest = "sha256:b247190134e69b46e5111487db0ff98514df9ceb41bcd4f926a7278fbedd952f"
 promoted = true
 supersedes = "sha256:93d084ea8886b4c2d98f67a7f02524f107ffab3c3bcb29142389ceac226dc263"
 normaliser_version = 2
@@ -26,7 +27,7 @@ civilisations_modelled = ["Franks", "Teutons", "Persians", "Saracens", "Malians"
 
 # FR-030's validation record. The `rules.json`, `aliases.toml` and raw-id halves are the third
 # snapshot's and are validated there (and no more than there); this record is for what is new:
-# `effects.toml`'s twelve civilisations and three replaced rows.
+# `effects.toml`'s twelve civilisations and the rows replaced or amended in the fifth's.
 [validation]
 method = "second-reading-checked-against-release-notes"
 checked_against = """\

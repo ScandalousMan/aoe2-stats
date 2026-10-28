@@ -682,9 +682,9 @@ against keeping one measurement in two homes.
   `aliases.toml` and raw-id table are the fourth's. The first four stay installed so that the
   analyses published under them still reproduce; resolution by build answers the fifth. Since
   2026-10-26 (T770) a sixth, `aoe2techtree-185872-civilisations-56`, supersedes the fifth and models
-  fifty-six, every civilisation of the pack: those forty-four, carried unchanged but three rows (the
+  fifty-six, every civilisation of the pack: those forty-four, carried unchanged but for the rows replaced (the
   Cumans' additional Town Center, Cuman Mercenaries and the Berbers' Kasbah, which the effect model
-  now expresses), and Georgians, Shu, Wu, Wei, Jurchens, Khitans, Muisca, Mapuche, Tupi, Saxons,
+  now expresses) and one amended `validated_by` (the Persians' Kamandaran), and Georgians, Shu, Wu, Wei, Jurchens, Khitans, Muisca, Mapuche, Tupi, Saxons,
   Varangians and Danes; its `rules.json`, `aliases.toml` and raw-id table are the fifth's. The first
   five stay installed so that the analyses published under them still reproduce; resolution by
   build answers the sixth. Its open values are in

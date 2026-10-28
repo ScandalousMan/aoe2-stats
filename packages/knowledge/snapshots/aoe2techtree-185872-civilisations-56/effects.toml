@@ -14,8 +14,9 @@
 # Varangians, Danes). Nothing of the pack is left to `civilisation-not-modelled`.
 #
 # **Carried, not transcribed again.** Every row of the fifth snapshot is here, in the same place,
-# byte for byte, except three (`test_effects_185872_civilisations_56.py` asserts it row by row):
-# the three bonuses the effect model forced the fifth to refuse, now that it can express them.
+# byte for byte, except the rows named here (`test_effects_185872_civilisations_56.py` asserts it row
+# by row): the bonuses the effect model forced the fifth to refuse, now that it can express them,
+# are replaced; and the `validated_by` of the Persians' Kamandaran is amended.
 #   - Cumans' "One additional Town Center can be built in Feudal Age": an `age_requirement` row on
 #     building 621 with a `controlled` condition over buildings 71, 109 and 621 (T762, T780).
 #   - Cumans' Cuman Mercenaries: `available_to` on unit 1260, `researched` (technology 690) and
@@ -71,7 +72,7 @@
 # of the Imperial Skirmisher (the Khitans' tree has none, so no game reading can reach it) and the
 # unit age of their Heavy Cavalry Archer, which the sample does not choose; the Saxons' reading of
 # every Infantry unit as a Foot Soldier (and the Petard's absence from it); the Persians' Kamandaran
-# total; the Cumans' count table; the Butalmapu selector beyond the units the sample names.
+# total; the Cumans' count table.
 #
 # **Butalmapu** (Mapuche): "Team Castle Unique Units" is every unit the pack produces at the Castle
 # except the Trebuchet and the Petard (116 units), plus the Bolas Riders. The Krepost's Konnik and the
@@ -667,8 +668,9 @@ unit strings state. Read as the cost the line has once the technology is researc
 no gold, so gold is set to 0 and wood to 50. This reading is the weakest link of the row: the \
 notes say 'costs 50 wood' and the pack says 'additional wood cost'; a total of 50 wood (against \
 25 wood and 45 gold) makes the change an 'improvement' where 25 wood plus 50 more would be a \
-price rise. No person has read the Archer's cost in the game after Kamandaran yet, and the owner's \
-sheet asks no row for it; the snapshot's not_checked lists it.\
+price rise. No person has read the Archer's cost in the game after Kamandaran yet: the owner's \
+sheet carries it as a closed row filled from the publisher's notes, for comparison with the game, \
+and the snapshot's not_checked lists it.\
 """
 
 [[effect]]

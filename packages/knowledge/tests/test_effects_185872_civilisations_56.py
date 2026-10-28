@@ -11,11 +11,12 @@ claims, pinned to them):
 - **Nothing dangles.** Every row's `source_key` and `source_text` are the pack's own, every selector
   and condition entity exists in this snapshot's `rules.json`, and `civilisations_modelled` is the
   whole pack.
-- **The forty-four are carried, except three.** Every row of the fifth snapshot is here, in place,
-  byte for byte as a parsed row, but the Cumans' additional Town Center, Cuman Mercenaries and the
-  Berbers' Kasbah, which the fifth refused because the effect model could not say them (T780, T781)
-  and this one models. `rules.json`, `aliases.toml`, `disagreements.toml` and the raw-id table are
-  the fifth's, byte for byte.
+- **The forty-four are carried, with named exceptions.** Every row of the fifth snapshot is here, in
+  place, byte for byte as a parsed row, but the Cumans' additional Town Center, Cuman Mercenaries
+  and the Berbers' Kasbah, which the fifth refused because the effect model could not say them
+  (T780, T781) and this one models, and the `validated_by` of the Persians' Kamandaran, amended.
+  `rules.json`, `aliases.toml`, `disagreements.toml` and the raw-id table are the fifth's, byte for
+  byte.
 - **The values come out as the strings say**, one case per kind of row, each with the contrast case
   that must not apply, every expectation derived from the pack's own baseline and the bullet's
   arithmetic and not read back from the file under test.
@@ -435,7 +436,7 @@ def _replaced_positions(old: tuple[effects.Effect, ...]) -> list[int]:
     ]
 
 
-def test_every_row_of_the_fifth_snapshot_is_carried_unchanged_but_the_three_replaced() -> None:
+def test_every_row_of_the_fifth_snapshot_is_carried_unchanged_but_the_named_exceptions() -> None:
     """Same build, same pack revision, same strings: a row is carried, not re-derived. Compared as
     parsed rows, every field including `validated_by`, and in the same order; the three refusals
     are in the same places and are rows now."""
