@@ -693,12 +693,13 @@ against keeping one measurement in two homes.
   Build 180059 has a second snapshot since 2026-10-28 (T773),
   `aoe2techtree-180059-civilisations-53`, which supersedes the first and models fifty-three, every
   civilisation of the first pack (the sixth's, but the Saxons, Varangians and Danes, which build
-  185872 added). A row of the sixth snapshot is carried to it only where the bullet is
-  byte-identical in the two packs, every selector resolves to the same identifiers in the older
-  pack's `rules.json`, and build 185872's release notes name no change to the bonus or to an entity
-  it selects; every other row is transcribed from the older pack's strings. Its `aliases.toml`
-  closes the second committed recording's buildings 490 and 673 (both "Gate"), read again
-  2026-10-28 at repository head commit `9ee0fe29fa05`.
+  185872 added). A row of the sixth snapshot is carried to it only where that row's bullet is
+  byte-identical in the two packs, every selector of that row resolves to the same identifiers in
+  the older pack's `rules.json`, and build 185872's release notes name no change to the row's bonus
+  or to an entity the row selects; each row is decided on its own, so one bullet's rows can be
+  carried and transcribed both. Every other row is transcribed from the older pack's strings. Its
+  `aliases.toml` closes the second committed recording's buildings 490 and 673 (both "Gate"), read
+  again 2026-10-28 at repository head commit `9ee0fe29fa05`.
 - **Known limitations**: no civilisation-specific bonus data as structured values, no build/version
   field of its own, no combat attributes (attack, armour, hit points, range) — halfon carries those
   (below). Three builds (178524, 179158, 180059) unimplemented by the first pinned commit as of this

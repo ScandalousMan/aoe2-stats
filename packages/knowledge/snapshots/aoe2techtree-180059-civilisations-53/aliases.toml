@@ -15,10 +15,11 @@
 # Gate, Sea Gate, City Gate, Paifang Gate, Trowulan Gate), which FR-022d does not alias by name; an
 # object whose parenthesis is not an orientation ("Trade Cart (Full)"); an object whose name matches
 # two pack entities ("Town Center" is the pack's 109 and 621); and an object whose name differs
-# from the pack's only by the line break the pack's string carries. This pack names two fewer
-# entities than the build 185872 one that the table also names exactly (units 931 and 1298), so
-# this file holds 71 aliases and that one 73. The two identifiers the second committed
-# recording places that the pack does not name, 490 and 673, are both "Gate" and are aliased below.
+# from the pack's only by the line break the pack's string carries. The build 185872 file holds two
+# aliases, ids 931 and 1298, whose target is the Jarl (unit 2708); this pack has no unit 2708, so
+# neither alias is here, and this file holds 71 aliases where that one holds 73. The two
+# identifiers the second committed recording places that the pack does not name, 490 and 673, are
+# both "Gate" and are aliased below.
 
 [[alias]]
 kind = "unit"
