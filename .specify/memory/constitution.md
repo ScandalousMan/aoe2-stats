@@ -41,12 +41,6 @@ rule, the no-hiding/no-circumvention rule, and the carriage-vs-action split for 
 Modified: IX.
 
 Open follow-ups (dependent artifacts not yet in line):
-- apps/api/src/aoe2stats_api/availability.py — docstring still calls the window "contradicted and
-  unresolved" and "may be a fixed epoch", and ties obtainable_until = None to the question being open;
-  the rationale must be re-derived against a rolling, per-profile window (5.0.1).
-- "about 31 days" copies: apps/api/src/aoe2stats_api/settings.py,
-  apps/ingester/src/aoe2stats_ingester/run.py, and the user-facing PrivacyNotice and ArchivalControl screens in
-  packages/design-system — false for the shortest measured profile (5.0.1).
 - specs/001-steam-link-replay-ingestion/quickstart.md scenario 2 — still titled "Nothing happens
   without consent"; must invert to an objection that stops capture (4.0.0).
 - specs/003-player-search-match-analysis/spec.md — several "consenting user" phrasings; the

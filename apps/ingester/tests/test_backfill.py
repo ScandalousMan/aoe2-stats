@@ -23,15 +23,15 @@ that ignores the budget entirely.
 `expired` as "past the retention window before we got it", and `contracts/providers.md` assigns
 that three-way reading of an identical 404 to the caller, since only the caller holds
 `matches.completed_at`. Nothing in `settings.py` or `.env.example` names the *true* source
-retention (~31 days) as a tunable — the one number that is configured, `CAPTURE_BUDGET_DAYS`
-(21), is commented there as "we never let a capture get closer than this", i.e. a deliberately
-tighter margin the system controls, chosen specifically so nothing about a capture is ever cutting
-it close against the real, unmeasurable retention window. `capture_deadline_at =
-completed_at + CAPTURE_BUDGET_DAYS` is therefore the only threshold the caller can classify a 404
-against, and this is what this test asserts: a match whose deadline has already elapsed by the time
-its 404 is read is `expired` on the spot (matching T047/quickstart scenario 7's "a match completed
-forty days ago yields expired... on the first attempt", no two-attempt floor — that floor belongs
-only to the `unavailable` branch, for a match still inside its own deadline).
+retention (a rolling window, `docs/data-sources.md` §2) as a tunable — the one number that is
+configured, `CAPTURE_BUDGET_DAYS`, is a deliberately tighter margin the system controls, chosen
+specifically so nothing about a capture is ever cutting it close against the real retention
+window. `capture_deadline_at = completed_at + CAPTURE_BUDGET_DAYS` is therefore the only
+threshold the caller can classify a 404 against, and this is what this test asserts: a match whose
+deadline has already elapsed by the time its 404 is read is `expired` on the spot (matching
+T047/quickstart scenario 7's "a match completed forty days ago yields expired... on the first
+attempt", no two-attempt floor — that floor belongs only to the `unavailable` branch, for a match
+still inside its own deadline).
 
 **Assumed contract for `ReconcileStage`** (T054), since `aoe2stats_ingester.reconcile` does not
 exist yet and this test is what defines it, following the shape T053's own sibling tests already

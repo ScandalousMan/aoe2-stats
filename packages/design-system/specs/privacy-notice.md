@@ -219,8 +219,8 @@ term.
 - Legal basis: our legitimate interest in saving them before that happens (GDPR Art. 6-1-f). You can
   object at any time — see "Your rights".
 - How long we keep it: until you erase your account. There is no other expiry.
-- Body: _Age of Empires II deletes your replay files about 31 days after the match. After that
-  nobody can get them back — not you, not us, not Microsoft. So we download the recording of each of
+- Body: _Age of Empires II deletes your replay files some weeks after the match — for some players,
+  in less than a month. After that nobody can get them back — not you, not us, not Microsoft. So we download the recording of each of
   your matches, from your own point of view, and keep the original file unchanged. A recording
   contains your actions, your alias, and whatever was typed in the in-game chat during that match.
   We only ever take your own point of view, never another player's. If you object to this, we also
@@ -289,7 +289,7 @@ term.
 - How long we keep it: indefinitely. **This one is not deleted by erasing your account, and not by a
   third-party objection.**
 - Body: _If you ask us to analyse a match, we keep the recording the analysis was computed from. The
-  game deletes its own copy after about a month, so throwing ours away would mean publishing a
+  game deletes its own copy some weeks after the match, so throwing ours away would mean publishing a
   conclusion nobody could ever check or correct again. Erasing your account removes the record that
   you were the one who asked; it does not delete the recording, and the recording is never modified,
   because modifying it would break both its checksum and the reason for keeping it. We are stating

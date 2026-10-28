@@ -786,7 +786,7 @@ async def test_match_detail_renders_completely_for_a_match_older_than_the_retent
 ) -> None:
     """FR-019: the page renders entirely from stored match data, never from the recording it
     describes, so it stays complete for a match of any age — proven with a match completed 45
-    days ago (past the ~31-day retention window, `docs/data-sources.md` §2) that never acquired a
+    days ago (past the source's retention window, `docs/data-sources.md` §2) that never acquired a
     `replay_captures` row for anyone. `matches.py`'s own module docstring already states this
     route is "read-only wrappers" around `MatchesRepository`, which touches no provider — there is
     nothing to fetch here in the first place, so what this test proves is that the *response*

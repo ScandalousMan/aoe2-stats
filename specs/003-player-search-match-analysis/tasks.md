@@ -658,7 +658,7 @@ and it differs per profile and moves from day to day, with nothing known that se
 (`docs/data-sources.md` §2). 003's artifacts and `availability.py` still give "the question is
 open" as the reason `obtainable_until` is null.
 
-- [ ] T823 Re-derive why `obtainable_until` is null, in `apps/api/src/aoe2stats_api/availability.py`'s
+- [x] T823 Re-derive why `obtainable_until` is null, in `apps/api/src/aoe2stats_api/availability.py`'s
   module docstring, and in `specs/003-player-search-match-analysis/research.md` R8,
   `specs/003-player-search-match-analysis/spec.md` (the FR-024 amendment and the other "contradicted
   and unresolved" mentions), `specs/003-player-search-match-analysis/contracts/http-api.md` and

@@ -327,7 +327,8 @@ class Match(Base):
 
     `raw_payload` is the provider's response, unmodified (constitution IV): it is what lets a
     misinterpreted field be corrected months later without re-fetching anything, which matters
-    because after 31 days there may be nothing left to re-fetch from.
+    because once the source's retention window has passed there may be nothing left to re-fetch
+    from.
     """
 
     __tablename__ = "matches"

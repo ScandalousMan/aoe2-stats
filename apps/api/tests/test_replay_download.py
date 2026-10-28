@@ -420,10 +420,9 @@ _T335_BROWSER_BOUNDARY_RACE_GAME_ID = 850_100_013
 _T335_ACCEPT_HTML_FALLBACK_GAME_ID = 850_100_014
 _T335_CORS_FETCH_GAME_ID = 850_100_015
 
-#: FR-024, amended 2026-08-29 (`research.md` R8): a match old enough to be `expired` under either
-#: the ~31-day rolling reading or the contradicted six-month epoch reading — the derivation stays
-#: conservative under either, so a match this old renders `expired` whichever the open question
-#: eventually settles.
+#: FR-024, amended 2026-08-29 (`research.md` R8): a match far older than the source's rolling,
+#: per-profile retention window (`docs/data-sources.md` §2), which the capture budget sits below —
+#: so a match this old renders `expired` for any profile, whatever its window is on a given day.
 _T335_DEFINITELY_EXPIRED_AGE = timedelta(days=400)
 
 #: Comfortably inside every credible reading of the retention window.

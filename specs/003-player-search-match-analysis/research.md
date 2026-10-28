@@ -382,39 +382,54 @@ So the four states FR-025 requires are each derived from something this service 
 
 ### The retention window is not settled, and this table assumed it was — decided 2026-08-29
 
+> **Amended 2026-10-27 (T823).** Passages marked *(History, 2026-08-29)* record the earlier reasoning;
+> the rest of this section is rewritten. `docs/data-sources.md` §2 has since settled the question this
+> section called open. The
+> window is rolling, not a fixed epoch, so the epoch reading is no longer the cause of anything here.
+> It is also not one window: it differs per profile, moves from day to day, and is set by nothing
+> known. The null `obtainable_until` and the `capture_budget_days` split are unchanged; their reasons
+> are in the two paragraphs headed "Live reading" at the end of this section.
+
 The two middle rows read "the retention window" as a **rolling** window of known length. On
 2026-08-28 `docs/data-sources.md` recorded a second, larger sample that contradicts that reading: an
 equally sharp boundary six months back rather than 31 days, measured after the replay endpoint moved,
 with a **fixed epoch** fitting the sample as well as any rolling window. The question is open, and
-constitution I 4.1.0 forbids settling it by assumption.
+constitution I 4.1.0 forbids settling it by assumption. *(History, 2026-08-29.)*
 
 **What is decided, and what is not.** The derivation stays conservative, but it no longer reads the
 measured window at all: the `obtainable`/`expired` split now runs against `capture_budget_days`
-(`CAPTURE_BUDGET_DAYS`, constitution I), a configured budget deliberately **shorter** than either
-contested reading of the window, not a restatement of it. Reading the split as `docs/data-sources.md`'s
-own "approximately 31 days" — itself the reading the second sample above contradicts — offered zero
-margin: a match at day 30.9 rendered `obtainable` for a recording the source may already have
-discarded, which is exactly the failure FR-025 forbids. `capture_budget_days` is strictly shorter than
-either reading of the window, so the derivation genuinely under-offers, with margin rather than at
-exact equality: it renders `expired` sooner than either reading of the window requires and never
-later, so it still never presents an unobtainable download as an action that then fails — the same
-guarantee as before, now held by a number this project configures rather than one it measures.
+(`CAPTURE_BUDGET_DAYS`, constitution I), a configured budget deliberately **shorter** than the
+window, not a restatement of it. Reading the split as the window's own measured figure offered zero
+margin: a match at the boundary rendered `obtainable` for a recording the source may already have
+discarded, which is exactly the failure FR-025 forbids. With `capture_budget_days` below the shortest
+measured window, the derivation under-offers, with margin rather than at exact equality: it renders
+`expired` sooner than the shortest measured window requires, so it still never presents an
+unobtainable download as an action that then fails — a guarantee held by a number this project
+configures rather than one it measures.
 
-**What changes is the date.** `obtainable_until` is a promise about the future, and under an
-unresolved window there is no honest one to make. It is therefore **null while the question is open**,
-and FR-024's date appears only once `docs/data-sources.md` records the window as settled. A date
-derived from a window that may not exist is worse than no date: the user plans around it.
+**What changes is the date.** `obtainable_until` is a promise about the future. *(History, 2026-08-29:
+this section gave "no honest one to make under an unresolved window" as the reason, and made the
+date null "while the question is open".)*
 
-**The cost is stated rather than hidden.** Under the epoch reading this service tells a user `expired`
-for a recording the source would still serve. That is a real defect and it is accepted knowingly, for
-one turn of the argument: the alternative is probing, and probing is a full download per participant
-per page view (`HEAD` answers `405`), which is the browsing-driven bulk read of third-party recordings
-constitution IX forbids and FR-012 restates. There is no cheap third option. **SC-004 cannot be
-claimed while this stands** — it measures stated availability against what the source actually
-answers, and under the epoch reading it fails by construction, not by implementation error.
+**Live reading, 2026-10-27 — why the date is null.** A date would be a promise about how long the
+source keeps one point of view. That length is the window of that profile, and
+`docs/data-sources.md` §2 records it as different per profile, moving from day to day, and set by
+nothing known, so no date can be derived that the source will honour. `capture_budget_days` is a
+capture setting this project chose, not the source's deadline; publishing it as a date would present
+the setting as the source's promise. The condition for showing a date is the one constitution I sets
+for widening the budget: `docs/data-sources.md` records as settled what sets a profile's window.
 
-This reverses the moment the measurement settles, and what would settle it is written down in
-`docs/data-sources.md`: re-measure on a different profile, and again a week later. Until then this
+**Live reading, 2026-10-27 — the cost is stated rather than hidden.** For a profile whose window is
+longer than the budget, this service tells a user `expired` for a recording the source would still
+serve. That is a real defect and it is accepted knowingly, for one turn of the argument: the
+alternative is probing, and probing is a full download per participant per page view (`HEAD` answers
+`405`), which is the browsing-driven bulk read of third-party recordings constitution IX forbids and
+FR-012 restates. There is no cheap third option. **SC-004 cannot be claimed while this stands** — it
+measures stated availability against what the source actually answers, and for such a profile it
+fails by construction, not by implementation error. *(History, 2026-08-29: the same sentence was
+written against the fixed-epoch reading.)*
+
+This reverses when `docs/data-sources.md` records as settled what sets a profile's window. This
 paragraph is the reason a reader does not have to re-derive any of it from the diff.
 
 **A retained recording is not an archive for this purpose** — decided 2026-08-23. Deriving `archived`
@@ -439,7 +454,7 @@ SC-004 asks that the stated availability match what the source answers "at that 
 boundary race in the spec's edge cases is the case where it cannot: a match hours from expiry is
 offered, and by the time the user clicks, the source has purged it. The design does not pretend to
 close that race — it names it. **Nothing currently warns the user before the click.** With
-`obtainable_until` null while the window is unresolved (above), there is no date to count down to,
+`obtainable_until` null in every state (above), there is no date to count down to,
 and the row renders the same `Obtainable`/`info` badge it would with one
 (`packages/design-system/specs/replay-availability.md` §3.2) — no countdown, no other signal that this
 particular row is closer to the boundary than any other `obtainable` one. What the design does instead

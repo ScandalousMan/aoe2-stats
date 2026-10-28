@@ -414,10 +414,11 @@ def test_the_configured_budget_leaves_real_margin_under_the_shortest_measured_re
     interval offers zero margin, so a match at day 30.9 rendered `obtainable` for a recording that
     may already be gone.
 
-    `_CAPTURE_BUDGET_DAYS` (18, mirroring `.env.example`) is strictly shorter than 31 — the
-    shorter of the two contradicted readings `docs/data-sources.md` records — with real room to
-    spare: a match completed 25 days ago sits comfortably *inside* that 31-day reading, and still
-    renders `expired` once the configured budget is applied, precisely the margin the old,
+    `_CAPTURE_BUDGET_DAYS` (18, mirroring `.env.example`) sits strictly below the shortest
+    retention window measured on any profile (`docs/data-sources.md` §2: the window is rolling and
+    differs per profile), with real room to spare: a match completed 25 days ago can sit
+    comfortably *inside* the source's window, and still renders `expired` once the configured
+    budget is applied, precisely the margin the old,
     unconfigured constant had none of. Nothing here asserts what `derive_availability` computes
     equals `timedelta(days=_CAPTURE_BUDGET_DAYS)` — a fixed day-count check on this module's own
     math would recreate the defect being fixed one layer up; this instead pins that the configured
@@ -425,8 +426,8 @@ def test_the_configured_budget_leaves_real_margin_under_the_shortest_measured_re
     floor with margin."""
     from aoe2stats_api.availability import Availability, derive_availability
 
-    # Inside docs/data-sources.md's shorter contradicted reading (~31 days) with days to spare,
-    # yet outside the configured budget.
+    # Inside the shortest window measured (docs/data-sources.md §2) with days to spare, yet
+    # outside the configured budget.
     completed_at = _NOW - timedelta(days=25)
     assert _CAPTURE_BUDGET_DAYS < 31, "the configured budget must stay under the shorter reading"
 

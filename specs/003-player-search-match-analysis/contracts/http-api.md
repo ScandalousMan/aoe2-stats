@@ -136,8 +136,10 @@ established for `civ_name` and `leaderboard_name`.
 `availability` is derived, never probed — R8, and `docs/data-sources.md` §2 measured why: `HEAD`
 answers `405` and `Range` is ignored, so a probe is a full download. `obtainable_until` is derived
 from the measured retention window in that file and is restated in no configuration of ours (FR-024).
-**Amended 2026-08-29**: that window is contradicted and unresolved, so the field is `null` in _every_
-state — not only the two below — until `docs/data-sources.md` records it as settled. The example
+**Amended 2026-08-29**: the field is `null` in _every_ state — not only the two below. **Re-derived
+2026-10-27**: the reason is not an open epoch question (history) but that the window belongs to each
+profile, so no date can be derived that the source will honour; it stays null until
+`docs/data-sources.md` records as settled what sets a profile's window. The example
 above shows the null, because an example carrying a date is the way this amendment gets reverted by
 someone reading the shape rather than the sentence.
 

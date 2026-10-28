@@ -41,8 +41,8 @@ panel, not a surface with a row height or reading measure of its own to classify
 ## 1. Purpose
 
 Let a user rescue a match whose replay automatic capture never got, by adding the file from their own
-machine, and have it archived and marked as manually supplied — the only route left once the ~31-day
-window has closed.
+machine, and have it archived and marked as manually supplied — the only route left once the source's
+retention window has closed.
 
 ## 2. Anatomy
 

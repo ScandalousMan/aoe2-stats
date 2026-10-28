@@ -137,14 +137,14 @@ different scenario. There is nothing to walk here.
 
 1. Open a recent third-party match. Expect one download per participant, each with its state
    (FR-023). **Amended 2026-08-29**: this point used to expect "for the obtainable ones, the date it
-   stops being obtainable". FR-024's own amendment retired that date — the retention window is
-   contradicted and unresolved (R8), so `obtainable_until` is null in every state and no date is
-   shown. A walker who expects one and finds none is reading this scenario against a superseded
+   stops being obtainable". FR-024's own amendment retired that date — `obtainable_until` is null
+   in every state and no date is shown, for the reason R8 records (re-derived 2026-10-27: the window
+   belongs to each profile). A walker who expects one and finds none is reading this scenario against a superseded
    requirement, not finding a defect.
    **Amended 2026-08-29**: "recent" here means inside `CAPTURE_BUDGET_DAYS` (`.env.example`, 21 days
    today), not inside the source's own measured retention window — R8's `obtainable`/`expired` split
-   runs on the former, deliberately shorter than either contested reading of the latter. A match aged
-   22-31 days renders `expired` on every row even though the source would likely still serve it; that
+   runs on the former, deliberately shorter than the shortest window measured. A match older than
+   the budget renders `expired` on every row even though the source may still serve it; that
    is the accepted cost R8 states, not a defect to chase while walking this scenario. Pick a match
    inside 21 days old to see `obtainable` at all.
 2. Download two different participants' points of view. Open both in the game and confirm each shows
