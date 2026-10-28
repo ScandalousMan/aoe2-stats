@@ -2,7 +2,7 @@
 
 The tuple is the recording, the parser's name and version, the parser's dependencies, the knowledge
 snapshot, the reconstruction engine version and the analytics version. Its shape never changes:
-the reconstruction engine carries an explicit ``NOT_APPLICABLE`` marker until 007 ships, so the
+the reconstruction engine carries an explicit ``NOT_APPLICABLE`` marker until 008 ships, so the
 tuple is not retrofitted later. Analytics carries **no** such marker, because marking it
 not-applicable would let a banding change keep the same digest and never trigger a recompute
 (FR-042).

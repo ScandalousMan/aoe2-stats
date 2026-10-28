@@ -31,7 +31,7 @@ The closed, ordered set carried by every published value (FR-007, FR-008).
   at it, so no value can carry it (FR-001 lists seven classifications, FR-008 six tiers, and the
   difference is this).
 - Tiers 3, 4 and 6 have no producer in this feature. They exist now so that the vocabulary does not
-  change when 007 arrives.
+  change when 008 arrives.
 
 ## 2. Confidence
 
@@ -220,7 +220,7 @@ The tuple that makes a published analysis reproducible (FR-040 to FR-044). Docum
 | `parser`                | Name and version from the adapter.                                                                                  |
 | `parser_dependencies`   | Installed distribution versions of the engine's declared requirements. **Non-empty, or validation fails** (FR-044). |
 | `knowledge`             | The snapshot identity, or an explicit record that no snapshot matched the build.                                    |
-| `reconstruction_engine` | `not-applicable` until 007. Present from the start so the tuple never changes shape.                                |
+| `reconstruction_engine` | `not-applicable` until 008. Present from the start so the tuple never changes shape.                                |
 | `analytics`             | This feature's own version for the coverage pass and the group-silence method.                                      |
 
 `digest` is computed over the canonical serialisation of the six, and is stored on the row in a new

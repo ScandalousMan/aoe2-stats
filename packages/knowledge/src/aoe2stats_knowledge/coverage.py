@@ -27,7 +27,7 @@ knowledge, so the coverage pass does not report it as a gap. The pass supplies n
 controlled-count state, so it treats a query that raises for want of one as modelled." Building that
 context — the age a building was constructed in, which technologies a player has researched — stays
 out of scope: neither is observable from a canonical stream alone without a reconstruction this
-feature does not do (007's territory).
+feature does not do (008's territory).
 
 **T652v: the pass does build the team half of `query.Context`, from the canonical stream's own
 `match-started` event.** Each participant's `team` (`ParticipantEntry.team`, the recording's own
@@ -64,7 +64,7 @@ this pass does not ask about: see the end of this paragraph). The first six are 
 `query.py`'s civilisation-qualified query surface (`cost`, `production_time`, `age_requirement`,
 `prerequisites`, `produced_at`, `available_to` — `query.py`'s own module docstring). `line_of_sight`
 names no query this package exposes at all: it belongs to map control and exploration, blocked on
-the unread starting state (research.md D1), which is feature 007's territory, not this package's —
+the unread starting state (research.md D1), which is feature 008's territory, not this package's —
 `gaps.py`'s own `test_gaps.py` already exercises `line_of_sight`'s severity computation directly,
 so this pass does not have to ask about it to make that field's severity real. `query.py`'s seventh
 public function, `name()`, is not civilisation-qualified at all (the one exception the contract

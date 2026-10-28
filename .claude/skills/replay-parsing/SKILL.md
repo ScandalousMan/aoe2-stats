@@ -118,7 +118,7 @@ findable by an anchor without a full grammar, and the lobby presets are already 
 wheel's output. Do not conclude that the starting state is unreadable: the anchor and what is
 asserted of it are in `docs/data-sources.md` §2; D1 in
 `specs/006-replay-analysis-foundations/research.md` is the history. A repository-local decoder is
-planned for feature 007; none exists yet.
+planned for feature 008; none exists yet.
 
 **A `.aoe2record` is a command log, not a state log.** It records what a player told the game to do,
 never the game's derived response — resources, population, units lost. Anything about _state_ is a

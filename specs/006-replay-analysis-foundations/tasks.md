@@ -203,7 +203,7 @@ the view fails the suite.
       weakest input — that is a function signature, not a review note. `non-determinable` is
       deliberately **absent** from this enumeration: it is a register classification and nothing is
       ever published at it, which is why **FR-001** lists seven classifications and **FR-008** six
-      tiers. Tiers with no producer in this feature exist from the start so that 007 adds no member
+      tiers. Tiers with no producer in this feature exist from the start so that 008 adds no member
 - [x] T610 [P] [US3] Create `packages/core/src/aoe2stats_core/truth/confidence.py` (**FR-010a**): a
       closed, ordered level set and a mandatory non-empty basis, constructed together. A number is
       **not accepted in any form** — no float field, no numeric coercion, no optional escape hatch —
@@ -233,7 +233,7 @@ the view fails the suite.
       condition that would change the answer (**FR-003** — the last question is answered, not left
       open). Explicit deletions and market transactions at **decoded** (**FR-014**) — the wheel returns
       both as raw payloads, so observed would mis-tier them. The
-      group-silence datum at **inferred** with its non-claim (**FR-013**). Every datum feature 007
+      group-silence datum at **inferred** with its non-claim (**FR-013**). Every datum feature 008
       intends to publish, at planned or blocked, each carrying the knowledge it requires
       (**FR-005**) — that list is what makes gap severity computable in phase 4, so an entry with an
       empty requirement set had better mean it. The starting-state data are **blocked** on the named
@@ -780,7 +780,7 @@ Three were arbitration and are decided, with the decision recorded in the task t
       **FR-014** requires to be exact, while `register.toml:564` declares `requires_knowledge = []`
       although the entry's own method admits the constant is not in the recording. **Decided
       2026-09-21: publish the step count, not the amount.** The count is in the payload and is
-      exact; the multiplication is knowledge-qualified and belongs in 007's reconstruction layer,
+      exact; the multiplication is knowledge-qualified and belongs in 008's reconstruction layer,
       where a versioned constant can gap. This keeps the decoded tier honestly exact and needs no
       snapshot change. Rename the register entry and the payload field to say what is carried
       (**FR-012**), and regenerate both canonical goldens under the README's discipline — the
@@ -1234,7 +1234,7 @@ after everything underneath it moves.
 - [x] T653 [US6] Implement `packages/core/src/aoe2stats_core/truth/identity.py`: the tuple of
       recording, parser name and version, parser dependencies, knowledge version, reconstruction
       engine version and analytics version (**FR-040**), with a digest over its canonical
-      serialisation. The reconstruction engine carries an explicit not-applicable marker until 007
+      serialisation. The reconstruction engine carries an explicit not-applicable marker until 008
       ships; **analytics does not** — it is this feature's own version for the coverage pass and
       the group-silence method ([data-model.md](./data-model.md) §8), and marking it not-applicable
       would let a banding change keep the same digest and never trigger T657a's recompute
@@ -1559,7 +1559,7 @@ quickstart run, and the lint. `/speckit-implement` stops here when T670 exits 0.
       self-verifying anchor, and the object table sits behind a per-patch grammar. A living fact in
       `docs/` is trustworthy only because a test asserts it, so add a fixture test that finds the
       attribute anchor in every committed recording. This retires the claim that the section is
-      unreadable **without** promising the decoder, which is 007's. [research.md](./research.md)
+      unreadable **without** promising the decoder, which is 008's. [research.md](./research.md)
       **D1** then becomes the historical record and stops being the home
 - [x] T669 [P] Run the full quickstart end to end on a clean checkout and record any step whose
       stated expectation did not match what happened. A quickstart nobody has executed is a
@@ -3187,7 +3187,7 @@ phase.
       their trees, so including them means choosing a source for every entity they can build, under
       FR-022c. The decision is recorded in [spec.md](./spec.md), Clarifications, Session
       2026-10-18, and the tasks it needs are filed here
-- [ ] T777 [P] Renumber the reconstruction from feature 007 to feature 008 everywhere it is named:
+- [x] T777 [P] Renumber the reconstruction from feature 007 to feature 008 everywhere it is named:
       007 is now the deployment-storage feature (`specs/007-shrink-deployment-storage/`, open as PR
       #176). `git grep -n -i 'feature 007'` lists the sites, among them
       `packages/core/src/aoe2stats_core/truth/register.toml`, whose readable view is regenerated

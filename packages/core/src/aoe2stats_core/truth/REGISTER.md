@@ -582,7 +582,7 @@ Read from the recording after decoding an encoded field.
 
 - status: planned
 - source: the raw payload of a market sell or buy command; the pinned wheel returns it as undecoded bytes
-- method: the repository's own market-payload decoder, golden-tested over every committed recording; exact, and never blended into an inferred quantity. The payload carries a count of market steps, only 1 and 5 occurring, and that count is published unmultiplied — the step's size in resource units (100) is the game's fixed constant, not carried by any recording, and multiplying it is 007's reconstruction layer's job, behind a versioned constant that can gap
+- method: the repository's own market-payload decoder, golden-tested over every committed recording; exact, and never blended into an inferred quantity. The payload carries a count of market steps, only 1 and 5 occurring, and that count is published unmultiplied — the step's size in resource units (100) is the game's fixed constant, not carried by any recording, and multiplying it is 008's reconstruction layer's job, behind a versioned constant that can gap
 - requires knowledge: none
 - depends on: none
 - validation: packages/replay-engine/tests — golden canonical stream (feature 006 phase 3)
@@ -591,29 +591,29 @@ Read from the recording after decoding an encoded field.
 ### `participant.starting_attributes`
 
 - status: blocked
-- blocked on: the starting-attributes decoder (feature 007, research D1 tier A)
+- blocked on: the starting-attributes decoder (feature 008, research D1 tier A)
 - source: the per-player attribute array in the decompressed header, present in the file and reachable by no working parser
 - method: a repository-local decoder anchored on the participant's name string, golden-tested against committed recordings
 - requires knowledge: none
 - depends on: none
-- validation: packages/replay-engine/tests — golden starting attributes (feature 007)
+- validation: packages/replay-engine/tests — golden starting attributes (feature 008)
 - evidence: specs/006-replay-analysis-foundations/research.md D1
 
 ### `participant.starting_resources`
 
 - status: blocked
-- blocked on: the starting-attributes decoder (feature 007, research D1 tier A)
+- blocked on: the starting-attributes decoder (feature 008, research D1 tier A)
 - source: the first entries of the participant's starting attribute array: food, wood, stone and gold
 - method: read from the decoded attribute array in the engine's own resource order
 - requires knowledge: none
 - depends on: `participant.starting_attributes`
-- validation: packages/replay-engine/tests — golden starting attributes (feature 007)
+- validation: packages/replay-engine/tests — golden starting attributes (feature 008)
 - evidence: specs/006-replay-analysis-foundations/research.md D1
 
 ### `event.starting_attributes.values`
 
 - status: blocked
-- blocked on: the starting-attributes decoder (feature 007, research D1 tier A)
+- blocked on: the starting-attributes decoder (feature 008, research D1 tier A)
 - source: the per-participant attribute values of the declared-only starting-attributes canonical event
 - method: emitted by the starting-attributes decoder once it exists; the type is declared now so its arrival changes no type
 - requires knowledge: none
@@ -624,18 +624,18 @@ Read from the recording after decoding an encoded field.
 ### `map.starting_objects`
 
 - status: blocked
-- blocked on: the starting-object-table decoder (feature 007, research D1 tier B)
+- blocked on: the starting-object-table decoder (feature 008, research D1 tier B)
 - source: the Gaia and per-player object table in the decompressed header, present in the file and behind a variable-length grammar
 - method: a repository-local decoder ported from an existing open grammar, golden-tested against committed recordings
 - requires knowledge: none
 - depends on: none
-- validation: packages/replay-engine/tests — golden object table (feature 007)
+- validation: packages/replay-engine/tests — golden object table (feature 008)
 - evidence: specs/006-replay-analysis-foundations/research.md D1
 
 ### `event.starting_object.object_id`
 
 - status: blocked
-- blocked on: the starting-object-table decoder (feature 007, research D1 tier B)
+- blocked on: the starting-object-table decoder (feature 008, research D1 tier B)
 - source: the object identifier of the declared-only starting-object canonical event
 - method: emitted by the starting-object-table decoder once it exists; the type is declared now so its arrival changes no type
 - requires knowledge: none
@@ -646,7 +646,7 @@ Read from the recording after decoding an encoded field.
 ### `event.starting_object.object_class`
 
 - status: blocked
-- blocked on: the starting-object-table decoder (feature 007, research D1 tier B)
+- blocked on: the starting-object-table decoder (feature 008, research D1 tier B)
 - source: the object class of the declared-only starting-object canonical event
 - method: emitted by the starting-object-table decoder once it exists; the type is declared now so its arrival changes no type
 - requires knowledge: none
@@ -657,7 +657,7 @@ Read from the recording after decoding an encoded field.
 ### `event.starting_object.position`
 
 - status: blocked
-- blocked on: the starting-object-table decoder (feature 007, research D1 tier B)
+- blocked on: the starting-object-table decoder (feature 008, research D1 tier B)
 - source: the position of the declared-only starting-object canonical event
 - method: emitted by the starting-object-table decoder once it exists; the type is declared now so its arrival changes no type
 - requires knowledge: none
@@ -668,7 +668,7 @@ Read from the recording after decoding an encoded field.
 ### `event.starting_object.owner`
 
 - status: blocked
-- blocked on: the starting-object-table decoder (feature 007, research D1 tier B)
+- blocked on: the starting-object-table decoder (feature 008, research D1 tier B)
 - source: the owning participant of the declared-only starting-object canonical event
 - method: emitted by the starting-object-table decoder once it exists; the type is declared now so its arrival changes no type
 - requires knowledge: none
@@ -679,23 +679,23 @@ Read from the recording after decoding an encoded field.
 ### `participant.start_position`
 
 - status: blocked
-- blocked on: the starting-object-table decoder (feature 007, research D1 tier B)
+- blocked on: the starting-object-table decoder (feature 008, research D1 tier B)
 - source: the position of the participant's starting town centre among the decoded starting objects
 - method: read from the decoded object table; the participant is the object's owner
 - requires knowledge: none
 - depends on: `map.starting_objects`
-- validation: packages/replay-engine/tests — golden object table (feature 007)
+- validation: packages/replay-engine/tests — golden object table (feature 008)
 - evidence: specs/006-replay-analysis-foundations/research.md D1
 
 ### `map.resource_geometry`
 
 - status: blocked
-- blocked on: the starting-object-table decoder (feature 007, research D1 tier B)
+- blocked on: the starting-object-table decoder (feature 008, research D1 tier B)
 - source: the positions of gold, stone, berries, huntables and forest among the decoded objects and the terrain
-- method: read from the decoded object table and the terrain grid; deferred behind feature 007's income work
+- method: read from the decoded object table and the terrain grid; deferred behind feature 008's income work
 - requires knowledge: none
 - depends on: `map.starting_objects`
-- validation: packages/replay-engine/tests — golden object table (feature 007)
+- validation: packages/replay-engine/tests — golden object table (feature 008)
 - evidence: specs/006-replay-analysis-foundations/research.md D1
 
 ## reconstructed (7)
@@ -709,8 +709,8 @@ Rebuilt from several recorded facts.
 - method: sum, per resource, of the knowledge base's cost for each ordered entity, cancellations subtracted; an order is a command, not a completion
 - requires knowledge: `cost`
 - depends on: `event.unit_queued.unit_id`, `event.unit_queued.count`, `event.research_queued.technology_id`, `event.building_placed.building_id`, `event.match_started.participants`
-- validation: feature 007 golden reconstruction fixtures and reconstruction invariants
-- evidence: specs/006-replay-analysis-foundations/spec.md (Out of Scope: feature 007)
+- validation: feature 008 golden reconstruction fixtures and reconstruction invariants
+- evidence: specs/006-replay-analysis-foundations/spec.md (Out of Scope: feature 008)
 
 ### `reconstruction.ordered_production_ms`
 
@@ -719,8 +719,8 @@ Rebuilt from several recorded facts.
 - method: sum of the knowledge base's production time for each order against the producing building, per building; an order is a command, not a completion
 - requires knowledge: `production_time`, `produced_at`
 - depends on: `event.unit_queued.unit_id`, `event.unit_queued.count`, `event.unit_queued.building_object`, `event.research_queued.technology_id`, `event.research_queued.researching_building`, `event.match_started.participants`
-- validation: feature 007 golden reconstruction fixtures and reconstruction invariants
-- evidence: specs/006-replay-analysis-foundations/spec.md (Out of Scope: feature 007)
+- validation: feature 008 golden reconstruction fixtures and reconstruction invariants
+- evidence: specs/006-replay-analysis-foundations/spec.md (Out of Scope: feature 008)
 
 ### `reconstruction.age_up_modelled_arrival_ms`
 
@@ -729,8 +729,8 @@ Rebuilt from several recorded facts.
 - method: command time plus the modelled research time; a model of an arrival, kept apart from the observed command time
 - requires knowledge: `production_time`
 - depends on: `participant.age_up_commands`, `event.match_started.participants`
-- validation: feature 007 golden reconstruction fixtures and reconstruction invariants
-- evidence: specs/006-replay-analysis-foundations/spec.md (Out of Scope: feature 007)
+- validation: feature 008 golden reconstruction fixtures and reconstruction invariants
+- evidence: specs/006-replay-analysis-foundations/spec.md (Out of Scope: feature 008)
 
 ### `reconstruction.prerequisite_order_check`
 
@@ -740,41 +740,41 @@ Rebuilt from several recorded facts.
 - method: for each order, whether its age requirement and prerequisites were commanded earlier on the match clock
 - requires knowledge: `age_requirement`, `prerequisites`, `available_to`
 - depends on: `event.unit_queued.unit_id`, `event.research_queued.technology_id`, `event.building_placed.building_id`, `event.clock_ms`, `event.match_started.participants`
-- validation: feature 007 golden reconstruction fixtures and reconstruction invariants
-- evidence: specs/006-replay-analysis-foundations/spec.md (Out of Scope: feature 007)
+- validation: feature 008 golden reconstruction fixtures and reconstruction invariants
+- evidence: specs/006-replay-analysis-foundations/spec.md (Out of Scope: feature 008)
 
 ### `reconstruction.income_model`
 
 - status: blocked
-- blocked on: the starting-attributes decoder (feature 007, research D1 tier A)
+- blocked on: the starting-attributes decoder (feature 008, research D1 tier A)
 - source: the reconstructed spending and the participant's decoded starting resources
 - method: starting resources plus modelled income less modelled spending over the match clock
 - requires knowledge: `cost`
 - depends on: `participant.starting_resources`, `reconstruction.resources_spent`
-- validation: feature 007 golden reconstruction fixtures and reconstruction invariants
-- evidence: specs/006-replay-analysis-foundations/spec.md (Out of Scope: feature 007)
+- validation: feature 008 golden reconstruction fixtures and reconstruction invariants
+- evidence: specs/006-replay-analysis-foundations/spec.md (Out of Scope: feature 008)
 
 ### `reconstruction.exploration_coverage`
 
 - status: blocked
-- blocked on: the starting-object-table decoder (feature 007, research D1 tier B)
+- blocked on: the starting-object-table decoder (feature 008, research D1 tier B)
 - source: the participant's start position, commanded movement and the map's decoded objects
 - method: tiles within modelled line of sight of commanded positions; a model of sight, never an observation of what was seen
 - requires knowledge: `line_of_sight`
 - depends on: `participant.start_position`, `map.starting_objects`, `event.units_commanded.unit_object_ids`
-- validation: feature 007 golden reconstruction fixtures and reconstruction invariants
-- evidence: specs/006-replay-analysis-foundations/spec.md (Out of Scope: feature 007)
+- validation: feature 008 golden reconstruction fixtures and reconstruction invariants
+- evidence: specs/006-replay-analysis-foundations/spec.md (Out of Scope: feature 008)
 
 ### `reconstruction.map_control_model`
 
 - status: blocked
-- blocked on: the starting-object-table decoder (feature 007, research D1 tier B)
+- blocked on: the starting-object-table decoder (feature 008, research D1 tier B)
 - source: decoded starting objects, placed buildings and commanded movement
 - method: a modelled reading of where each participant had presence; not a measurement of control
 - requires knowledge: `line_of_sight`
 - depends on: `map.starting_objects`, `event.building_placed.position`, `event.units_commanded.unit_object_ids`
-- validation: feature 007 golden reconstruction fixtures and reconstruction invariants
-- evidence: specs/006-replay-analysis-foundations/spec.md (Out of Scope: feature 007)
+- validation: feature 008 golden reconstruction fixtures and reconstruction invariants
+- evidence: specs/006-replay-analysis-foundations/spec.md (Out of Scope: feature 008)
 
 ## derived (6)
 
@@ -842,8 +842,8 @@ Computed from other published data.
 - method: resources spent restricted to units the knowledge base classes as military; a spending figure, not an army value, since losses are unknowable
 - requires knowledge: `cost`
 - depends on: `reconstruction.resources_spent`
-- validation: feature 007 golden reconstruction fixtures and reconstruction invariants
-- evidence: specs/006-replay-analysis-foundations/spec.md (Out of Scope: feature 007)
+- validation: feature 008 golden reconstruction fixtures and reconstruction invariants
+- evidence: specs/006-replay-analysis-foundations/spec.md (Out of Scope: feature 008)
 
 ## inferred (1)
 
