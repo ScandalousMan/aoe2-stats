@@ -27,10 +27,11 @@ its own configured budget.
 
 **No window-length constant is asserted against `derive_availability`'s own arithmetic anywhere
 below**, only against the parameter it is given. R8's 2026-08-29 amendment leaves the true
-retention window contradicted and unresolved (`docs/data-sources.md`), and states only that "the
-derivation stays conservative and unchanged: a match older than the shortest credible window
-renders expired" — without settling what that window's length is, and the module this fix landed
-in no longer owns a constant claiming to. Most `completed_at` values below are therefore chosen to
+retention window rolling and different per profile (`docs/data-sources.md` §2), and states only
+(History, 2026-08-29, when the window was recorded as contradicted) that "the derivation stays
+conservative and unchanged: a match older than the shortest credible window renders expired" —
+without giving that window a length, and the module this fix landed in no longer owns a constant
+claiming to. Most `completed_at` values below are therefore chosen to
 be unambiguous regardless of `capture_budget_days`: days for "obviously still inside whatever
 budget the caller supplies" and well over a year for "obviously outside it". The one exception is
 the dedicated `capture_budget_days` section below, where `_CAPTURE_BUDGET_DAYS` mirrors
@@ -40,11 +41,12 @@ That restraint is the same one `research.md`'s own header states for itself: a n
 in two files is wrong in one of them.
 
 **`obtainable_until` is asserted `None` in every state**, not just the two FR-025 already required
-it null for. FR-024's 2026-08-29 amendment reads: "that window is contradicted and unresolved ...
-so the date MUST be null while the question is open rather than derived from the superseded
-reading" — a promise about the future drawn from a window that may not exist is worse than no
-promise. Nothing in this file restates the (currently nonexistent) settled window as a value either;
-the day this becomes claimable again is a `research.md` R8 decision, not a change owed here.
+it null for. FR-024, re-derived 2026-10-27 (T823), gives the reason: the window belongs to each
+profile and no date can be derived that the source will honour, so the date stays null in every
+state until `docs/data-sources.md` records as settled what sets a profile's window. (History: the
+2026-08-29 amendment gave "that window is contradicted and unresolved" as the reason; that wording
+is superseded.) Nothing in this file restates a window as a value either; the day a date becomes
+claimable is a `research.md` R8 decision, not a change owed here.
 
 **A `retained_recordings` row is not an input, asserted two ways.** Behaviourally: a match whose
 only surviving copy is a `retained_recordings` row (no `replay_captures` row, no other evidence)
@@ -191,9 +193,10 @@ def test_obtainable_for_a_recent_match_with_no_capture_and_no_recorded_404() -> 
 
 
 def test_expired_for_an_ancient_match_with_no_capture_and_no_recorded_404() -> None:
-    """R8's table: "expired — the match completed outside it", and the 2026-08-29 amendment: "the
-    derivation stays conservative and unchanged: a match older than the shortest credible window
-    renders expired" — under either candidate reading of the contradicted measurement."""
+    """R8's table: "expired — the match completed outside it" (the capture budget). A match far
+    older than any budget a caller could configure renders expired whatever the source's window
+    is for any profile. (History, 2026-08-29: R8 first stated this against two candidate readings
+    of a window then recorded as contradicted.)"""
     from aoe2stats_api.availability import Availability, derive_availability
 
     view = derive_availability(
@@ -310,7 +313,7 @@ async def test_a_retained_recording_never_yields_archived_and_is_not_a_parameter
     )
 
 
-# --- `obtainable_until`: null in every state while the window is unresolved (FR-024, 2026-08-29) --
+# --- `obtainable_until`: null in every state, the window being per profile (FR-024, T823) -------
 
 
 @pytest.mark.parametrize(
@@ -324,14 +327,15 @@ async def test_a_retained_recording_never_yields_archived_and_is_not_a_parameter
         pytest.param(_RECENT_COMPLETION, None, True, id="never_recorded"),
     ],
 )
-def test_obtainable_until_is_null_in_every_state_while_the_window_is_unresolved(
+def test_obtainable_until_is_null_in_every_state_because_the_window_belongs_to_each_profile(
     completed_at: datetime, capture: ReplayCapture | None, recorded_404: bool
 ) -> None:
-    """FR-024, amended 2026-08-29: "that window is contradicted and unresolved ... so the date
-    MUST be null while the question is open rather than derived from the superseded reading." This
-    holds for every one of the four states, not only the two `contracts/http-api.md` already
-    required it null for — an `archived` or `obtainable` point of view has no honest expiry date to
-    state either, for exactly the reason `research.md` R8 gives."""
+    """FR-024, re-derived 2026-10-27 (T823): the date stays null because the window belongs to each
+    profile and no date can be derived that the source will honour. This holds for every one of the
+    four states, not only the two `contracts/http-api.md` already required it null for — an
+    `archived` or `obtainable` point of view has no honest expiry date to state either, for
+    exactly the reason `research.md` R8 gives. (History: the 2026-08-29 amendment gave an
+    unresolved window as the reason.)"""
     from aoe2stats_api.availability import derive_availability
 
     view = derive_availability(
@@ -408,28 +412,31 @@ def test_the_obtainable_expired_split_moves_only_with_capture_budget_days() -> N
 
 
 def test_the_configured_budget_leaves_real_margin_under_the_shortest_measured_reading() -> None:
-    """R8 (2026-08-29 amendment) claims the derivation "only ever *under*-offers" under either
-    contested reading of `docs/data-sources.md`'s retention measurement. That was false at the
-    boundary as previously coded: a `days=31` constant taken from a reading bisected to a ~4 h
-    interval offers zero margin, so a match at day 30.9 rendered `obtainable` for a recording that
-    may already be gone.
+    """R8 (2026-08-29 amendment) claims the derivation under-offers. That was false at the boundary
+    as previously coded: a constant equal to a measured window offers zero margin, so a match at
+    the boundary rendered `obtainable` for a recording that may already be gone.
 
-    `_CAPTURE_BUDGET_DAYS` (18, mirroring `.env.example`) sits strictly below the shortest
+    `_CAPTURE_BUDGET_DAYS` (18, mirroring `.env.example`) is configured shorter than the shortest
     retention window measured on any profile (`docs/data-sources.md` §2: the window is rolling and
-    differs per profile), with real room to spare: a match completed 25 days ago can sit
-    comfortably *inside* the source's window, and still renders `expired` once the configured
-    budget is applied, precisely the margin the old,
-    unconfigured constant had none of. Nothing here asserts what `derive_availability` computes
-    equals `timedelta(days=_CAPTURE_BUDGET_DAYS)` — a fixed day-count check on this module's own
-    math would recreate the defect being fixed one layer up; this instead pins that the configured
-    value is what decides the split, and that a realistic configured value clears the measured
-    floor with margin."""
+    differs per profile), with room to spare: a match completed 25 days ago can sit inside the
+    source's window, and still renders `expired` once the configured budget is applied, precisely
+    the margin the old, unconfigured constant had none of. The margin holds for every profile
+    measured and not beyond; for a profile whose window is shorter than the budget, if one exists,
+    the same match would read `obtainable` for a purged recording. Nothing here asserts what
+    `derive_availability` computes equals `timedelta(days=_CAPTURE_BUDGET_DAYS)` — a fixed day-count
+    check on this module's own math would recreate the defect being fixed one layer up; this instead
+    pins that the configured value is what decides the split, and that this configured value is
+    shorter than the test's own match age."""
     from aoe2stats_api.availability import Availability, derive_availability
 
     # Inside the shortest window measured (docs/data-sources.md §2) with days to spare, yet
     # outside the configured budget.
-    completed_at = _NOW - timedelta(days=25)
-    assert _CAPTURE_BUDGET_DAYS < 31, "the configured budget must stay under the shorter reading"
+    match_age_days = 25
+    completed_at = _NOW - timedelta(days=match_age_days)
+    assert match_age_days > _CAPTURE_BUDGET_DAYS, (
+        "this test needs the configured budget to be shorter than its own match age, or the match "
+        "would not fall outside the budget"
+    )
 
     view = derive_availability(
         completed_at=completed_at,

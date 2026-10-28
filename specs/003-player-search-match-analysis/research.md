@@ -380,7 +380,7 @@ So the four states FR-025 requires are each derived from something this service 
 | expired                        | the match completed outside it                                        |
 | never recorded by the game     | a prior attempt that answered 404 while inside the window             |
 
-### The retention window is not settled, and this table assumed it was — decided 2026-08-29
+### History (2026-08-29): the retention window is not settled, and this table assumed it was
 
 > **Amended 2026-10-27 (T823).** Passages marked *(History, 2026-08-29)* record the earlier reasoning;
 > the rest of this section is rewritten. `docs/data-sources.md` §2 has since settled the question this
@@ -403,9 +403,11 @@ window, not a restatement of it. Reading the split as the window's own measured 
 margin: a match at the boundary rendered `obtainable` for a recording the source may already have
 discarded, which is exactly the failure FR-025 forbids. With `capture_budget_days` below the shortest
 measured window, the derivation under-offers, with margin rather than at exact equality: it renders
-`expired` sooner than the shortest measured window requires, so it still never presents an
-unobtainable download as an action that then fails — a guarantee held by a number this project
-configures rather than one it measures.
+`expired` sooner than the shortest measured window requires, so for every profile measured it
+does not present an unobtainable download as an action that then fails — a guarantee held by a
+number this project configures rather than one it measures. The bound is exact: a profile whose
+window is shorter than the budget, if one exists (`docs/data-sources.md` §2 says a more active
+profile than any measured may have one), would see `obtainable` for a purged recording.
 
 **What changes is the date.** `obtainable_until` is a promise about the future. *(History, 2026-08-29:
 this section gave "no honest one to make under an unresolved window" as the reason, and made the

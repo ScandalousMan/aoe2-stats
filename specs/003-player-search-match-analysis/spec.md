@@ -584,8 +584,10 @@ their current standing and reachable in one click.
   `capture_budget_days`, a configured budget deliberately shorter than the shortest window measured, so a match can render `expired` here while the source would still serve it. The
   reasoning, and the cost accepted, are recorded once in [research.md](./research.md) R8 and are not
   restated here. The clause forbidding an unobtainable download from being presented as an action that
-  then fails is unaffected: that half is satisfied — the derivation is conservative, not merely
-  approximate, so it never claims obtainable for a recording that has actually expired.
+  then fails is unaffected: that half is satisfied for every profile measured — the derivation is conservative, not merely
+  approximate, so for those profiles it does not claim obtainable for a recording that has actually
+  expired. The bound is exact: a profile whose window is shorter than the budget, if one exists,
+  would see `obtainable` for a purged recording.
 - **FR-026**: System MUST serve the signed-in user's own point of view from this service's archive
   when it holds one, so that it remains available regardless of the match's age (001 FR-028).
 - **FR-027**: System MUST NOT store a recorded game obtained solely to serve a download. Downloading

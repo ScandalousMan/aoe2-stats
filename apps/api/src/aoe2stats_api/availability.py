@@ -46,17 +46,21 @@ question (a fixed epoch against a rolling window) as the reason; that question i
 no longer the cause.
 
 **The `obtainable`/`expired` split still needs one number, and it must be a conservative floor,
-never the measurement itself.** FR-025 guards one direction: the derivation never presents an
-unobtainable download as an action that then fails. Constitution I settles what the floor must be:
+never the measurement itself.** FR-025 guards one direction: the derivation should not present an
+unobtainable download as an action that then fails. That holds for every profile measured
+(`docs/data-sources.md` §2) and not beyond it. Constitution I settles what the floor must be:
 "Capture runs against a budget strictly shorter than the shortest window measured on any profile,
 configured (`CAPTURE_BUDGET_DAYS`) and never hard-coded, so a re-measurement changes a setting, not
 code." `capture_budget_days` below is that same setting, threaded in by the caller from
 `apps/api/src/aoe2stats_api/settings.py`'s `Settings.capture_budget_days` — the identical value
-`apps/ingester/src/aoe2stats_ingester/discover.py` already threads for the same reason. This
-function is wrong, if at all, only in the direction of saying `expired` for a recording the source
-would still serve, which `docs/data-sources.md` §2 records as possible for a profile whose window is
-longer than the budget — never the reverse. `derive_availability` takes no default for it: a default
-would be a hard-coded window under another name.
+`apps/ingester/src/aoe2stats_ingester/discover.py` already threads for the same reason. For
+every profile measured, this function is wrong, if at all, only in the direction of saying
+`expired` for a recording the source would still serve, which `docs/data-sources.md` §2 records as
+possible for a profile whose window is longer than the budget. The reverse is possible for a
+profile whose window is shorter than the budget, if one exists (§2 says a more active profile than
+any measured may have one): it would see `obtainable` for a purged recording.
+`derive_availability` takes no default for it: a default would be a hard-coded window under
+another name.
 """
 
 from __future__ import annotations

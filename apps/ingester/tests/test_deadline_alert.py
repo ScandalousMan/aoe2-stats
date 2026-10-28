@@ -11,8 +11,9 @@ run, never one per capture: a backlog would otherwise bury the alert it is suppo
 
 This is a different alert, with a different timing, from `expired_capture` (T056, tested by T047):
 `expired_capture` is a post-mortem raised once the source's retention window has actually closed,
-whereas `deadline_breach` fires at the internal 18-day budget with the rest of the window still
-left to act. Asserting one for the other would hide a missing alert — see T047's own module
+whereas `deadline_breach` fires at the internal 18-day budget. For every profile measured the rest
+of the window is still left to act; a profile whose window is shorter than the budget, if one
+exists, has none. Asserting one for the other would hide a missing alert — see T047's own module
 docstring for the same warning from the other direction.
 
 **Why `run_once(..., session_factory=session_factory)`.** `run_once`'s own module docstring says

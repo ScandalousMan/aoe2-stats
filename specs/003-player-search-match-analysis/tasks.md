@@ -681,14 +681,16 @@ open" as the reason `obtainable_until` is null.
   unresolved or epoch window as the reason for the null date; the whole suite and spec_lint on
   every feature are green.
 
-- [ ] T824 Remediate PR #196's review of T822 and T823, in `apps/api/src/aoe2stats_api/availability.py`,
+- [x] T824 Remediate PR #196's review of T822 and T823, in `apps/api/src/aoe2stats_api/availability.py`,
   `apps/api/src/aoe2stats_api/settings.py`, `apps/ingester/src/aoe2stats_ingester/run.py`,
   `apps/ingester/tests/test_deadline_alert.py`, `apps/api/tests/test_replay_availability.py`,
   `apps/api/tests/test_replay_download.py`, `scripts/checks/contract_sources.py`,
   `specs/003-player-search-match-analysis/research.md`, `specs/003-player-search-match-analysis/spec.md`,
   `specs/003-player-search-match-analysis/quickstart.md`,
   `packages/design-system/src/screens/ArchivalControl/ArchivalControl.test.tsx` and
-  `packages/design-system/src/screens/PrivacyNotice/PrivacyNotice.test.tsx`. (1) The claim that the
+  `packages/design-system/src/screens/PrivacyNotice/PrivacyNotice.test.tsx`, and, for (2)'s sentence class,
+  `apps/web/src/features/matches/api.ts`, `apps/web/src/features/replays/availability.test.ts` and
+  `packages/design-system/src/composites/ReplayAvailabilityList/ReplayAvailabilityList.stories.tsx`. (1) The claim that the
   derivation errs only toward `expired`, "never the reverse", rested on the budget being below every
   reading of one window; `docs/data-sources.md` §2 now records a window per profile and says a profile
   more active than any measured may have a shorter one, so the claim holds for every profile measured

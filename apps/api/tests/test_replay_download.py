@@ -34,11 +34,12 @@ import, only a route and a response field not yet present. `xfail(strict=True, r
 implemented yet")` marks the one test about the match-detail `replay` object; every other test
 below carries `reason="T337 not implemented yet"` — see each test's own marker.
 
-`obtainable_until` is asserted `null` throughout, never a date: FR-024 was amended 2026-08-29 —
-the source's retention window is contradicted and unresolved (`research.md` R8) — so no promise
-about a future date may be derived from a window that may not be the real one. That amendment is
-independent of T337/T338 and is asserted here because SC-004 is explicitly not claimable while it
-stands (R8's own words), which this file's assertions must not contradict by asserting a date.
+`obtainable_until` is asserted `null` throughout, never a date: FR-024 was re-derived 2026-10-27
+(T823) — the source's window belongs to each profile (`research.md` R8), so no date can be derived
+that the source will honour. (History: the 2026-08-29 amendment gave a contradicted, unresolved
+window as the reason.) That re-derivation is independent of T337/T338 and is asserted here because
+SC-004 is explicitly not claimable while it stands (R8's own words), which this file's assertions
+must not contradict by asserting a date.
 
 `_T335_AOEMS_HOST`, `_FakeAoemsUpstream` and `_install_fake_aoems_upstream` mirror
 `test_third_party_history.py`'s own `_RELIC_HOST`/`_FakeRelicMatchHistoryUpstream` seam — the
@@ -631,8 +632,8 @@ async def test_match_detail_replay_object_offers_one_download_per_participant_po
     entry per participant, never more, never fewer. The caller's own archived point of view reads
     `archived`; a co-participant with no archive, in the same match still inside the retention
     window, reads `obtainable`. `obtainable_until` is `null` for every entry regardless of state —
-    FR-024's 2026-08-29 amendment (module docstring): no date may be derived while the source's
-    retention window is contradicted and unresolved (`research.md` R8).
+    FR-024 (module docstring, re-derived 2026-10-27): no date may be derived, the source's window
+    belonging to each profile (`research.md` R8).
     """
     game_id = _T335_MATCH_DETAIL_GAME_ID
     owner = await _seed_linked_profile(
@@ -687,8 +688,8 @@ async def test_match_detail_replay_object_offers_one_download_per_participant_po
         assert replay is not None, f"missing `replay` object for participant {profile_id}"
         assert replay["profile_id"] == profile_id
         assert replay["obtainable_until"] is None, (
-            "FR-024, amended 2026-08-29: obtainable_until must be null while the retention "
-            "window is unresolved (research.md R8), for every state"
+            "FR-024, re-derived 2026-10-27: obtainable_until must be null because the retention "
+            "window belongs to each profile (research.md R8), for every state"
         )
 
     owner_replay = replay_by_profile[_T335_OWNER_PROFILE_ID]
