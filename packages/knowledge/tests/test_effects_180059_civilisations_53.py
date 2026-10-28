@@ -1,0 +1,1020 @@
+"""T773: the civilisation effects of `aoe2techtree-180059-civilisations-53`, the second snapshot of
+build 180059: it supersedes the first (`aoe2techtree-180059`, six civilisations) and models
+fifty-three, every civilisation of the pack that build is derived from
+(`packages/knowledge/packs/aoe2techtree/`).
+
+Seven kinds of claim, none of them a restatement of `test_effects.py`, `test_bullet_coverage.py` or
+the build 185872 snapshots' records (`test_effects_185872_civilisations*.py`):
+
+- **Nothing is dropped.** Every bullet of the fifty-three civilisations' strings in the build 180059
+  pack is an `[[effect]]` row's `source_text` or is in one closed registry, each a real bullet.
+- **Nothing dangles.** Every row's `source_key` and `source_text` are the pack's own, every selector
+  and condition entity exists in this snapshot's `rules.json`, `civilisations_modelled` is the
+  whole pack, and the raw-id table names each civilisation once.
+- **The carry rule holds row by row (T773).** A row is carried from
+  `aoe2techtree-185872-civilisations-56` only where the bullet is byte-identical under the same key
+  in both packs, every selector and condition identifier has the same name here and a class the pack
+  defines by a producing building has the same members, and no selected entity is one the build
+  185872 release notes name or one whose data differs between the two packs. The conditions are
+  recomputed here from both packs, never read back from the file under test; every carried row is
+  the source row but for an appended `validated_by` that names the source digest, and every row
+  that is not carried fails at least one condition.
+- **The derivation is reproducible.** `rules.json` and `disagreements.toml` are what the
+  normaliser (version 2) derives from the pack, byte for byte; the snapshot names the pack's commit.
+- **Resolution.** Build 180059 resolves to this snapshot, which names the first one's digest, and
+  the first still loads by identity and answers its own bytes (SC-005).
+- **The aliases** close the two building identifiers the second committed recording places that the
+  pack does not name (490 and 673, both the Gate).
+- **The values come out as the strings say**: carried and transcribed rows answer through the public
+  query surface, each with its contrast case.
+"""
+
+from __future__ import annotations
+
+import functools
+import json
+import re
+import tomllib
+from collections.abc import Mapping
+from importlib import resources
+
+import pytest
+
+from aoe2stats_knowledge import effects, gaps, normalise, query, snapshot
+
+_PACKAGE = "aoe2stats_knowledge"
+_PACK = "aoe2techtree"
+_OTHER_PACK = "aoe2techtree-3bb43b1"
+_DIRECTORY = "aoe2techtree-180059-civilisations-53"
+_FIRST_DIRECTORY = "aoe2techtree-180059"
+_SOURCE_DIRECTORY = "aoe2techtree-185872-civilisations-56"
+_BUILD = 180059
+_FIRST_DIGEST = "sha256:6167f0b69be56d7a33803d29a060b9f29f34c917073eb970ccccc1c206c6b81a"
+_SOURCE_DIGEST = "sha256:b247190134e69b46e5111487db0ff98514df9ceb41bcd4f926a7278fbedd952f"
+_CARRIED_MARK = "Carried to build 180059 by T773"
+_NOT_CARRIED_MARK = "Not carried from the build 185872 snapshot"
+
+#: The three civilisations of the build 185872 pack that the build 180059 pack does not have: the
+#: Viking Sagas added them in build 185872.
+_NOT_IN_THIS_PACK = ("Saxons", "Varangians", "Danes")
+
+#: `strings.en.json`'s `help_string_id` for each of the fifty-three civilisations, the same key in
+#: both packs.
+_HELP_STRING_ID: Mapping[str, str] = {
+    "Franks": "120151",
+    "Teutons": "120153",
+    "Persians": "120157",
+    "Saracens": "120158",
+    "Malians": "120175",
+    "Tatars": "120182",
+    "Slavs": "120172",
+    "Sicilians": "120186",
+    "Britons": "120150",
+    "Goths": "120152",
+    "Japanese": "120154",
+    "Chinese": "120155",
+    "Byzantines": "120156",
+    "Turks": "120159",
+    "Vikings": "120160",
+    "Mongols": "120161",
+    "Celts": "120162",
+    "Spanish": "120163",
+    "Aztecs": "120164",
+    "Mayans": "120165",
+    "Huns": "120166",
+    "Koreans": "120167",
+    "Italians": "120168",
+    "Hindustanis": "120169",
+    "Incas": "120170",
+    "Magyars": "120171",
+    "Portuguese": "120173",
+    "Ethiopians": "120174",
+    "Berbers": "120176",
+    "Khmer": "120177",
+    "Malay": "120178",
+    "Burmese": "120179",
+    "Vietnamese": "120180",
+    "Bulgarians": "120181",
+    "Cumans": "120183",
+    "Lithuanians": "120184",
+    "Burgundians": "120185",
+    "Poles": "120187",
+    "Bohemians": "120188",
+    "Dravidians": "120189",
+    "Bengalis": "120190",
+    "Gurjaras": "120191",
+    "Romans": "120192",
+    "Armenians": "120193",
+    "Georgians": "120194",
+    "Shu": "120198",
+    "Wu": "120199",
+    "Wei": "120200",
+    "Jurchens": "120201",
+    "Khitans": "120202",
+    "Muisca": "120206",
+    "Mapuche": "120207",
+    "Tupi": "120208",
+}
+
+#: Bullets with no row: a class the pack does not enumerate, on a field this knowledge base does not
+#: carry, or a resource, a start condition or a victory rule no entity carries. They are the build
+#: 185872 snapshots' registries (their tests hold them, bullet by bullet) but for four bullets this
+#: pack words differently from the other: the Bohemians' Wagenburg Tactics (+15%), the Vietnamese's
+#: Archery Range units, the Vikings' Chieftains (with the gold clause) and the Wu's +55 food
+#: (without "when built"). The test named "..._registries_but_four" asserts it.
+_NO_ROW_BULLETS: Mapping[str, tuple[str, ...]] = {
+    "Franks": (
+        "Foragers work +15% faster",
+        "Mounted Units +20% HP starting in Feudal Age",
+    ),
+    "Teutons": (
+        "Ironclad (Siege Weapons +4 melee armor)",
+        "Team Bonus: Units more resistant to conversion",
+    ),
+    "Persians": (
+        "Start with +50 wood and +50 food",
+        "Can build Caravanserai in Imperial Age",
+    ),
+    "Saracens": (
+        "Camel Units +25% HP",
+        "Team Bonus: Foot Archers and Skirmishers +2 attack vs. buildings",
+    ),
+    "Malians": ("Farimba (Cavalry +5 attack)",),
+    "Tatars": (
+        "Livestock animals last +50% longer",
+        "Units deal +25% damage when fighting from higher elevation",
+        "Team Bonus: Mounted Archers +2 line of sight",
+    ),
+    "Slavs": (
+        "Farmers work +15% faster",
+        "Druzhina (Infantry deals trample damage)",
+        "Team Bonus: Military buildings (except Castles) provide +5 population space",
+    ),
+    "Sicilians": (
+        "Start with +100 stone",
+        "Farm upgrades provide +125% additional food",
+        "Soldiers receive -40% bonus damage",
+    ),
+    "Britons": (
+        "Shepherds work +25% faster",
+        "Foot Archers +1/+2 range in Castle/Imperial Age",
+    ),
+    "Goths": (
+        "Hunters carry +15; hunted animals last +20% longer",
+        "Infantry +1/+2/+3 attack vs. buildings in Feudal/Castle/Imperial Age",
+        "+10 population space in Imperial Age",
+    ),
+    "Japanese": ("Infantry attacks +33% faster starting in Feudal Age",),
+    "Chinese": ("Start with +3 Villagers, but -50 wood and -200 food",),
+    "Byzantines": ("Buildings +10/20/30/40% HP in Dark/Feudal/Castle/Imperial Age",),
+    "Turks": (
+        "Gold miners work +25% faster",
+        "Gunpowder Units +25% HP",
+        "Sipahi (Mounted Archers +20 HP)",
+    ),
+    "Vikings": (
+        "Infantry +20% HP starting in Feudal Age",
+        "Chieftains (Infantry +5 attack vs. Cavalry, +4 vs. Camel Units; generate +5 gold when defeating Villagers, Trade Units and Monks)",  # noqa: E501
+    ),
+    "Mongols": (
+        "Hunters work +40% faster",
+        "Nomads (Lost Houses do not decrease population space)",
+    ),
+    "Celts": (
+        "Lumberjacks work +15% faster",
+        "Livestock animals within Celt unit line of sight cannot be stolen",
+        "Infantry moves +5/10/15/20% faster in Dark/Feudal/Castle/Imperial Age",
+        "Siege Weapons attack +25% faster",
+        "Furor Celtica (Siege Weapons +40% HP)",
+    ),
+    "Spanish": (
+        "Builders work +30% faster",
+        "Receive +20 gold for each technology researched",
+        "Gunpowder Units attack +18% faster",
+    ),
+    "Aztecs": (
+        "Start with +50 gold",
+        "Garland Wars (Infantry +4 attack)",
+        "Team Bonus: Relics generate +33% gold",
+    ),
+    "Mayans": (
+        "Start with +1 Villager, but -50 food",
+        "Resources last +15% longer",
+    ),
+    "Huns": (
+        "Do not need houses, but start with -100 wood",
+        "Atheism (Enemy Relics generate -50% resources; Wonder and Relic victory takes +100 years)",
+    ),
+    "Koreans": ("Stone miners work +20% faster",),
+    "Hindustanis": (
+        "Gunpowder Units +1 melee/+1 pierce armor",
+        "Can build Caravanserai in Imperial Age",
+    ),
+    "Incas": ("Team Bonus: Start with a free Llama",),
+    "Magyars": ("Recurve Bow (Mounted Archers +1 attack, +1 range)",),
+    "Portuguese": (
+        "Foragers generate wood in addition to food",
+        "Can build Feitoria in Imperial Age",
+        "Ships +10/15/20% HP in Feudal/Castle/Imperial Age",
+        "Arquebus (Gunpowder Units fire more accurately at moving targets)",
+    ),
+    "Ethiopians": (
+        "Receive +100 gold and +100 food when advancing to the next Age",
+        "Foot Archers attack +18% faster",
+    ),
+    "Berbers": (
+        "Ships move +10% faster",
+        "Maghrebi Camels (Camel Units regenerate 15 HP per minute)",
+    ),
+    "Khmer": (
+        "No buildings required to advance to the next Age or to unlock other buildings",
+        "Farmers don't require Mills or Town Centers to drop off food",
+    ),
+    "Burmese": (
+        "Infantry +1/+2/+3 attack in Feudal/Castle/Imperial Age",
+        "Manipur Cavalry (Cavalry +4 attack vs. Ranged Soldiers)",
+        "Team Bonus: Relics visible on the map at the start of the game",
+    ),
+    "Vietnamese": (
+        "Enemy Town Centers are revealed at the start of the game",
+        "Archery Range units and Fire Lancers +20% HP",
+        "Paper Money (Lumberjacks slowly generate gold in addition to wood)",
+    ),
+    "Bulgarians": (
+        "Can build Krepost in Castle Age",
+        "Stirrups (Cavalry attacks +33% faster)",
+    ),
+    "Cumans": ("Mounted Units move +5/10/15% faster in Feudal/Castle/Imperial Age",),
+    "Burgundians": (
+        "Gunpowder Units +25% attack",
+        "Burgundian Vineyards (Farmers slowly generate gold in addition to food)",
+        "Team Bonus: Relics generate food in addition to gold",
+    ),
+    "Poles": ("Stone Miners generate gold in addition to stone",),
+    "Bohemians": ("Wagenburg Tactics (Gunpowder Units move +15% faster)",),
+    "Dravidians": (
+        "Receive +200 wood when advancing to the next Age",
+        "Medical Corps (Elephant Units regenerate 30 HP per minute)",
+        "Wootz Steel (Infantry and Cavalry attacks ignore armor)",
+    ),
+    "Bengalis": (
+        "Cavalry +2 attack vs. Skirmishers",
+        "Elephant Units receive -25% bonus damage and are more resistant to conversion",
+        "Ships regenerate 15 HP per minute",
+    ),
+    "Gurjaras": (
+        "Start with 2 Forage Bushes",
+        "Mounted Units deal +20/30/40% bonus damage in Feudal/Castle/Imperial Age",
+    ),
+    "Armenians": ("Team Bonus: Infantry +2 line of sight",),
+    "Georgians": (
+        "Start with a Mule Cart",
+        "Units and buildings receive -15% damage when located on higher elevation",
+        "Mounted Units regenerate 2/8/14 HP per minute in Feudal/Castle/Imperial Age",
+        "Svan Towers (Fortifications +2 attack; Watch Tower-line deals pass through damage)",
+        "Aznauri Cavalry (Mounted Units take -20% population space)",
+        "Team Bonus: Building repairs cost -25%",
+    ),
+    "Shu": (
+        "Lumberjacks generate food in addition to wood",
+        "Siege Weapons and Siege Warships move +10/15% faster in Castle/Imperial Age",
+        "Team Bonus: Foot Archers +2 line of sight",
+    ),
+    "Wu": (
+        "Military production buildings and Docks provide +55 food",
+        "Infantry regenerates 10/15/30 HP per minute in Feudal/Castle/Imperial Age",
+    ),
+    "Wei": (
+        "Receive one free Villager for each economic upgrade researched",
+        "Tuntian (Soldiers passively produce food)",
+        "Ming Guang Armor (Mounted Units +4 melee armor)",
+        "Team Bonus: Cavalry +2 attack vs. Siege Weapons",
+    ),
+    "Jurchens": (
+        "Meat of hunted and livestock animals doesn't decay",
+        "Mounted Units and Fire Lancers attack +25% faster starting in Feudal Age",
+        "Units receive -50% friendly fire damage",
+        "Fortified Bastions (Fortifications regenerate 500 HP per minute)",
+        "Thunderclap Bombs (Rocket Carts, Grenadiers and Lou Chuans detonate when defeated; projectiles produce additional explosions)",  # noqa: E501
+        "Team Bonus: Gunpowder Units +2 line of sight",
+    ),
+    "Khitans": (
+        "Lamellar Armor (Infantry and Skirmishers reflect 25% melee damage back to the attacker)",
+        "Ordo Cavalry (Cavalry regenerates HP in combat)",
+        "Team Bonus: Infantry +2 attack vs. Ranged Soldiers",
+    ),
+    "Muisca": (
+        "Champi Warriors and Archery Range Units +1/2/3 melee armor in Feudal/Castle/Imperial Age",
+        "Team Bonus: Natural gold sources last +15% longer",
+    ),
+    "Mapuche": (
+        "Foragers drop off +25% food",
+        "Infantry, Slingers and Skirmishers +5/10/15 HP in Feudal/Castle/Imperial Age",
+        "Mounted Units generate +3 gold when defeating military units",
+        "Enemy Castles are revealed on the map",
+        "Team Bonus: Spearman-line and Skirmishers +2 line of sight",
+    ),
+    "Tupi": (
+        "Start with +25 of each resource",
+        "Fallen units return 15% of their cost",
+        "Curare (Foot Archers and Fortifications deal poison damage)",
+        "Team Bonus: Towers and Castles provide +10 population space",
+    ),
+}
+
+#: The entities build 185872's release notes name as the subject of a balance line (the Balance
+#: Changes section, read in full 2026-10-28; a line that only grants or removes a civilisation's
+#: access to an entity is not a change to the entity and names none here), restricted to the
+#: entities this pack also names. A bonus that selects one is not carried. The entities whose cost
+#: or time differs between the two packs' `rules.json` are in it, but for the three the pack renames
+#: and two units the notes name through their parents; a bonus selecting those is not carried either
+#: (the carry test compares the data itself).
+_NAMED_BY_THE_NOTES: frozenset[tuple[str, str]] = frozenset(
+    {
+        ("building", "101"),
+        ("building", "1806"),
+        ("building", "45"),
+        ("building", "87"),
+        ("technology", "1378"),
+        ("technology", "1389"),
+        ("technology", "1401"),
+        ("technology", "207"),
+        ("technology", "21"),
+        ("technology", "217"),
+        ("technology", "222"),
+        ("technology", "257"),
+        ("technology", "264"),
+        ("technology", "34"),
+        ("technology", "361"),
+        ("technology", "363"),
+        ("technology", "364"),
+        ("technology", "448"),
+        ("technology", "463"),
+        ("technology", "472"),
+        ("technology", "563"),
+        ("technology", "60"),
+        ("technology", "61"),
+        ("technology", "621"),
+        ("technology", "781"),
+        ("technology", "784"),
+        ("technology", "828"),
+        ("technology", "905"),
+        ("unit", "1001"),
+        ("unit", "1003"),
+        ("unit", "1103"),
+        ("unit", "1105"),
+        ("unit", "1129"),
+        ("unit", "1131"),
+        ("unit", "1258"),
+        ("unit", "1699"),
+        ("unit", "1704"),
+        ("unit", "1706"),
+        ("unit", "1744"),
+        ("unit", "1759"),
+        ("unit", "1761"),
+        ("unit", "1911"),
+        ("unit", "1948"),
+        ("unit", "1952"),
+        ("unit", "1962"),
+        ("unit", "25"),
+        ("unit", "2569"),
+        ("unit", "2571"),
+        ("unit", "2579"),
+        ("unit", "2581"),
+        ("unit", "2586"),
+        ("unit", "2587"),
+        ("unit", "2626"),
+        ("unit", "2627"),
+        ("unit", "281"),
+        ("unit", "40"),
+        ("unit", "473"),
+        ("unit", "527"),
+        ("unit", "531"),
+        ("unit", "550"),
+        ("unit", "553"),
+        ("unit", "554"),
+        ("unit", "567"),
+        ("unit", "75"),
+        ("unit", "751"),
+        ("unit", "77"),
+        ("unit", "771"),
+        ("unit", "773"),
+        ("unit", "775"),
+        ("unit", "831"),
+        ("unit", "832"),
+        ("unit", "869"),
+        ("unit", "871"),
+    }
+)
+
+
+# ---------------------------------------------------------------------------------- the readers
+
+
+def _pack_root(pack: str = _PACK) -> resources.abc.Traversable:
+    return resources.files(_PACKAGE).joinpath("packs").joinpath(pack)
+
+
+def _snapshot_root(directory: str = _DIRECTORY) -> resources.abc.Traversable:
+    return resources.files(_PACKAGE).joinpath("snapshots").joinpath(directory)
+
+
+@functools.cache
+def _strings(pack: str) -> Mapping[str, str]:
+    return json.loads(_pack_root(pack).joinpath("strings.en.json").read_text(encoding="utf-8"))
+
+
+@functools.cache
+def _rules(directory: str = _DIRECTORY) -> dict[str, dict[str, dict[str, object]]]:
+    parsed: dict[str, dict[str, dict[str, object]]] = json.loads(
+        _snapshot_root(directory).joinpath("rules.json").read_text(encoding="utf-8")
+    )["entities"]
+    return parsed
+
+
+def _entity_name(directory: str, kind: str, entity_id: str) -> str:
+    return re.sub(r"\s*<br>\s*", " ", str(_rules(directory)[kind][entity_id]["name"] or ""))
+
+
+@functools.cache
+def _toml(directory: str, name: str) -> dict[str, list[dict[str, object]]]:
+    return tomllib.loads(_snapshot_root(directory).joinpath(name).read_text(encoding="utf-8"))
+
+
+def _rows(directory: str = _DIRECTORY) -> list[dict[str, object]]:
+    return _toml(directory, "effects.toml")["effect"]
+
+
+def _bullets_for(pack: str, help_string_id: str) -> tuple[str, ...]:
+    """Every bonus bullet of one civilisation's string, as `test_bullet_coverage.py` reads them:
+    each top-level and "Unique Techs:" bullet (a mid-bullet line break rejoined) and the one line
+    after "Team Bonus:", prefixed with that label. The unique units' names are not bonuses."""
+    lines = [
+        line.strip()
+        for line in _strings(pack)[help_string_id].replace("<br>\n", "<br>").split("<br>")
+    ]
+    bullets: list[str] = []
+    section = "top"
+    for line in (line for line in lines if line):
+        if line.startswith("<b>Unique Unit"):
+            section = "skip"
+        elif line.startswith("<b>Unique Tech"):
+            section = "unique_techs"
+        elif line.startswith("<b>Team Bonus"):
+            section = "team_bonus_pending"
+        elif section == "skip":
+            continue
+        elif line.startswith("•"):
+            bullets.append(line.lstrip("•").strip())
+        elif section == "team_bonus_pending":
+            bullets.append(f"Team Bonus: {line}")
+            section = "done"
+        elif section in ("top", "unique_techs") and bullets:
+            separator = "" if bullets[-1].endswith("/") else " "
+            bullets[-1] = f"{bullets[-1]}{separator}{line}"
+    return tuple(bullets)
+
+
+def _refs(row: Mapping[str, object]) -> list[tuple[str, str]]:
+    """Every entity a row selects or conditions on."""
+    found = [(s["kind"], s["id"]) for s in row["selector"]]  # type: ignore[index, attr-defined]
+    found += [(s["kind"], s["id"]) for s in row.get("condition_entities", [])]  # type: ignore[attr-defined, index]
+    if row.get("condition_technology"):
+        found.append(("technology", str(row["condition_technology"])))
+    return found
+
+
+def _at(directory: str, kind: str, building: str) -> frozenset[str]:
+    return frozenset(
+        i
+        for i, rec in _rules(directory)[kind].items()
+        if (rec.get("produced_at") or {}).get("id") == building  # type: ignore[attr-defined]
+    )
+
+
+def _data_differs(kind: str, entity_id: str) -> bool:
+    """Whether the two packs' `rules.json` disagree on an entity both name (name, age, cost, time,
+    producing building)."""
+    here = _rules()[kind].get(entity_id)
+    there = _rules(_SOURCE_DIRECTORY)[kind].get(entity_id)
+    return here is not None and there is not None and here != there
+
+
+def _carry_conditions(row_group: list[dict[str, object]]) -> dict[str, bool]:
+    """The three conditions of the carry rule, recomputed from both packs for one bonus (the rows
+    that share one bullet of the source snapshot). Never read from the snapshot under test."""
+    civilisation = str(row_group[0]["civilisation"])
+    text = str(row_group[0]["source_text"])
+    key = _HELP_STRING_ID[civilisation]
+    byte_identical = (
+        text in _bullets_for(_PACK, key)
+        and text in _bullets_for(_OTHER_PACK, key)
+        and _strings(_PACK)[key].split("<br>") != []
+    )
+    same_identifiers = True
+    same_classes = True
+    unnamed_by_notes = True
+    for row in row_group:
+        refs = _refs(row)
+        for kind, identifier in refs:
+            if identifier not in _rules()[kind]:
+                same_identifiers = False
+                continue
+            if _entity_name(_DIRECTORY, kind, identifier) != _entity_name(
+                _SOURCE_DIRECTORY, kind, identifier
+            ):
+                same_identifiers = False
+            if _data_differs(kind, identifier) or (kind, identifier) in _NAMED_BY_THE_NOTES:
+                unnamed_by_notes = False
+        selected = {kind: {i for k, i in refs if k == kind} for kind in _rules()}
+        for kind in _rules():
+            here_buildings = {
+                (_rules(_SOURCE_DIRECTORY)[kind].get(i, {}).get("produced_at") or {}).get("id")  # type: ignore[attr-defined]
+                for i in selected[kind]
+            } - {None}
+            for building in here_buildings:
+                whole = _at(_SOURCE_DIRECTORY, kind, str(building))
+                if (
+                    whole
+                    and whole <= selected[kind]
+                    and whole != _at(_DIRECTORY, kind, str(building))
+                ):
+                    same_classes = False
+    return {
+        "bullet is byte-identical": byte_identical,
+        "identifiers resolve to the same": same_identifiers and same_classes,
+        "release notes name no change": unnamed_by_notes,
+    }
+
+
+def _groups(rows: list[dict[str, object]]) -> dict[tuple[str, str], list[dict[str, object]]]:
+    grouped: dict[tuple[str, str], list[dict[str, object]]] = {}
+    for row in rows:
+        grouped.setdefault((str(row["civilisation"]), str(row["source_text"])), []).append(row)
+    return grouped
+
+
+def _carried(row: Mapping[str, object]) -> bool:
+    return _CARRIED_MARK in str(row["validated_by"])
+
+
+def _transcribed(row: Mapping[str, object]) -> bool:
+    return _NOT_CARRIED_MARK in str(row["validated_by"])
+
+
+#: The three bullets of the build 180059 pack the build 185872 pack words differently, by the key
+#: the transcribed row follows: this pack's text -> the other pack's.
+_REWORDED = {
+    (
+        "Byzantines",
+        "Logistica (Cataphracts deal trample damage, +6 attack vs. Infantry)",
+    ): "Logistica (Cataphracts and Varangian Guards deal trample damage)",
+    (
+        "Mapuche",
+        "Malon (Bolas Riders, Slingers and Skirmishers deal pass through damage)",
+    ): "Malon (Bolas Riders, Slingers, and Skirmishers deal pass through damage)",
+    (
+        "Vikings",
+        "Bogsveigar (Archer-line and Longboats +1 attack)",
+    ): "Bogsveigar (Archer-line and Longships +1 attack)",
+}
+
+#: Two rows of the first snapshot of this build, carried byte for byte: bullets this pack has and
+#: the build 185872 pack does not.
+_FROM_THE_FIRST_SNAPSHOT = (
+    ("Franks", "Bearded Axe (Throwing Axemen +2 range)"),
+    ("Teutons", "Barracks and Stable Units +1/+2 melee armor in Castle/Imperial Age"),
+)
+
+#: The one row no earlier snapshot has: the build 185872 notes remove this bonus from the Gurjaras.
+_NEW_ROW = ("Gurjaras", "Docks +5 garrison capacity")
+
+
+# ----------------------------------------------------------------------- nothing is dropped
+
+
+def test_every_registry_entry_is_a_real_bullet_of_this_pack() -> None:
+    for civilisation, entries in _NO_ROW_BULLETS.items():
+        bullets = _bullets_for(_PACK, _HELP_STRING_ID[civilisation])
+        for entry in entries:
+            assert entry in bullets, f"{civilisation}: {entry!r} is not a bullet"
+
+
+def test_every_bullet_is_a_row_or_a_registry_entry_exactly_once() -> None:
+    for civilisation, key in _HELP_STRING_ID.items():
+        bullets = _bullets_for(_PACK, key)
+        row_texts = {row["source_text"] for row in _rows() if row["civilisation"] == civilisation}
+        registered = set(_NO_ROW_BULLETS.get(civilisation, ()))
+        assert not row_texts & registered, f"{civilisation}: both a row and a registry entry"
+        assert set(bullets) - (row_texts | registered) == set(), f"{civilisation}: dropped"
+        assert (row_texts | registered) - set(bullets) == set(), f"{civilisation}: invented"
+        assert len(row_texts | registered) == len(bullets)
+
+
+def test_the_bullets_of_the_fifty_three_civilisations_number_three_hundred_and_seventy_three() -> (
+    None
+):
+    """A guard on the reader: a changed pack string that silently shifted the count would move every
+    assertion above together."""
+    assert sum(len(_bullets_for(_PACK, key)) for key in _HELP_STRING_ID.values()) == 373
+    assert sum(len(entries) for entries in _NO_ROW_BULLETS.values()) == 121
+    assert len({(r["civilisation"], r["source_text"]) for r in _rows()}) == 252
+
+
+def test_the_bullets_with_no_row_are_the_build_185872_registries_but_four() -> None:
+    """A bullet with no row here has no row in the build 185872 snapshot either, unless this pack
+    words it differently: then it is one of four, each a bullet that field-wise touches nothing the
+    knowledge base carries."""
+    source_texts = {(r["civilisation"], r["source_text"]) for r in _rows(_SOURCE_DIRECTORY)}
+    reworded = {
+        ("Bohemians", "Wagenburg Tactics (Gunpowder Units move +15% faster)"),
+        ("Vietnamese", "Archery Range units and Fire Lancers +20% HP"),
+        (
+            "Vikings",
+            "Chieftains (Infantry +5 attack vs. Cavalry, +4 vs. Camel Units; generate +5 gold when "
+            "defeating Villagers, Trade Units and Monks)",
+        ),
+        ("Wu", "Military production buildings and Docks provide +55 food"),
+    }
+    for civilisation, entries in _NO_ROW_BULLETS.items():
+        other = set(_bullets_for(_OTHER_PACK, _HELP_STRING_ID[civilisation]))
+        for entry in entries:
+            if (civilisation, entry) in reworded:
+                assert entry not in other
+            else:
+                assert entry in other, (civilisation, entry)
+                assert (civilisation, entry) not in source_texts, (civilisation, entry)
+    assert reworded <= {(c, e) for c, es in _NO_ROW_BULLETS.items() for e in es}
+
+
+# ----------------------------------------------------------------------- nothing dangles
+
+
+def test_every_row_carries_the_packs_own_key_and_a_bullet_of_its_own_civilisation() -> None:
+    for row in _rows():
+        civilisation = str(row["civilisation"])
+        assert civilisation in _HELP_STRING_ID
+        assert row["source_key"] == _HELP_STRING_ID[civilisation]
+        assert row["source_text"] in _bullets_for(_PACK, str(row["source_key"])), row["source_text"]
+
+
+def test_every_selector_and_condition_entity_exists_in_this_snapshots_rules() -> None:
+    for row in _rows():
+        assert row["selector"], (row["civilisation"], row["source_text"])
+        for kind, identifier in _refs(row):
+            assert identifier in _rules()[kind], (
+                row["civilisation"],
+                row["source_text"],
+                kind,
+                identifier,
+            )
+
+
+def test_civilisations_modelled_is_the_whole_pack_and_the_set_the_effects_name() -> None:
+    text = _snapshot_root().joinpath("snapshot.toml").read_text(encoding="utf-8")
+    modelled = set(tomllib.loads(text)["snapshot"]["civilisations_modelled"])
+    pack = set(query._rules(_DIRECTORY)["civilisations"])
+    named = {str(row["civilisation"]) for row in _rows()}
+    assert modelled == pack == set(_HELP_STRING_ID) == named
+    assert len(modelled) == 53
+    assert not modelled & set(_NOT_IN_THIS_PACK)
+
+
+def test_the_raw_id_table_is_the_source_snapshots_for_the_fifty_three_and_names_each_once() -> None:
+    here = _toml(_DIRECTORY, "effects.toml")["civilisation_id"]
+    there = _toml(_SOURCE_DIRECTORY, "effects.toml")["civilisation_id"]
+    assert [(e["raw_id"], e["civilisation"]) for e in here] == [
+        (e["raw_id"], e["civilisation"])
+        for e in there
+        if e["civilisation"] not in _NOT_IN_THIS_PACK
+    ]
+    assert len({e["civilisation"] for e in here}) == 53
+    assert {e["civilisation"] for e in here} == set(_HELP_STRING_ID)
+    for entry in here:
+        assert "9ee0fe29fa05f176575ce6e3befd21a116d27e12" in str(entry["validated_by"])
+
+
+# ----------------------------------------------------------------------- the derivation
+
+
+def test_rules_json_and_disagreements_are_what_the_normaliser_derives_from_this_pack() -> None:
+    pack = normalise.normalise_pack(_PACK, version=2)
+    assert _snapshot_root().joinpath("rules.json").read_bytes() == normalise.rules_json_bytes(pack)
+    assert _snapshot_root().joinpath("disagreements.toml").read_text(
+        encoding="utf-8"
+    ) == normalise.disagreements_toml_text(pack.disagreements)
+
+
+def test_the_snapshot_names_this_packs_commit_and_the_first_snapshots_digest() -> None:
+    loaded = snapshot.load_snapshot(_DIRECTORY)
+    manifest = json.loads(_pack_root().joinpath("MANIFEST.json").read_text(encoding="utf-8"))
+    assert loaded.identity.source_version == manifest["commit"]
+    assert loaded.identity.describes_build == _BUILD
+    assert loaded.normaliser_version == 2
+    assert loaded.promoted
+    assert loaded.supersedes == _FIRST_DIGEST
+    assert loaded.validation is not None
+    assert "9ee0fe29fa05f176575ce6e3befd21a116d27e12" in loaded.validation.checked_against
+    assert "185872" in loaded.validation.checked_against
+    assert "not independent validation" in str(loaded.validation.details["not_checked"])
+    assert "no notes read here" in str(loaded.validation.details["not_checked"])
+
+
+# ----------------------------------------------------------------------- the carry rule
+
+
+def test_a_bonus_is_carried_exactly_when_the_three_conditions_hold() -> None:
+    """The rule, both ways, over every bonus of the source snapshot: carried rows pass all three
+    conditions, and every bonus that is in this snapshot but not carried fails at least one."""
+    carried_keys = set()
+    transcribed_keys = set()
+    for (civilisation, text), group in _groups(_rows(_SOURCE_DIRECTORY)).items():
+        if civilisation in _NOT_IN_THIS_PACK:
+            continue
+        here = [
+            r for r in _rows() if r["civilisation"] == civilisation and r["source_text"] == text
+        ]
+        conditions = _carry_conditions(group)
+        if not here:
+            # Dropped: the bullet is not in this pack (Franks' Ordonnance Companies).
+            assert not conditions["bullet is byte-identical"], (civilisation, text)
+            continue
+        if all(conditions.values()):
+            assert all(_carried(r) for r in here), (civilisation, text, conditions)
+            carried_keys.add((civilisation, text))
+        else:
+            assert all(_transcribed(r) and not _carried(r) for r in here), (civilisation, text)
+            transcribed_keys.add((civilisation, text))
+    assert len(carried_keys) == 180
+    assert len(transcribed_keys) == 66
+    # The reworded bullets are transcribed under the text this pack gives.
+    for (civilisation, own), theirs in _REWORDED.items():
+        assert (civilisation, theirs) in {
+            (r["civilisation"], r["source_text"]) for r in _rows(_SOURCE_DIRECTORY)
+        }
+        assert any(
+            r["civilisation"] == civilisation and r["source_text"] == own and _transcribed(r)
+            for r in _rows()
+        )
+
+
+def test_the_rows_are_carried_transcribed_old_or_new_and_nothing_else() -> None:
+    counts = {"carried": 0, "transcribed": 0, "first snapshot": 0, "new": 0}
+    for row in _rows():
+        own = (str(row["civilisation"]), str(row["source_text"]))
+        if _carried(row):
+            counts["carried"] += 1
+        elif _transcribed(row):
+            counts["transcribed"] += 1
+        elif own in _FROM_THE_FIRST_SNAPSHOT:
+            counts["first snapshot"] += 1
+        else:
+            assert own == _NEW_ROW, own
+            counts["new"] += 1
+    assert counts == {"carried": 216, "transcribed": 79, "first snapshot": 2, "new": 1}
+
+
+def test_every_carried_row_is_the_source_row_with_its_reading_kept_and_the_digest_named() -> None:
+    source = _groups(_rows(_SOURCE_DIRECTORY))
+    for (civilisation, text), group in _groups(_rows()).items():
+        if not all(_carried(r) for r in group):
+            continue
+        original = source[(civilisation, text)]
+        assert len(original) == len(group)
+        for mine, theirs in zip(group, original, strict=True):
+            assert {k: v for k, v in mine.items() if k != "validated_by"} == {
+                k: v for k, v in theirs.items() if k != "validated_by"
+            }
+            assert str(mine["validated_by"]).startswith(str(theirs["validated_by"]))
+            assert _SOURCE_DIGEST in str(mine["validated_by"])
+            assert "byte-identical" in str(mine["validated_by"])
+
+
+def test_every_transcribed_row_keeps_the_figures_and_the_selector_re_resolved_for_this_pack() -> (
+    None
+):
+    source = _groups(_rows(_SOURCE_DIRECTORY))
+    reworded = {own: theirs for (civilisation, own), theirs in _REWORDED.items()}
+    for (civilisation, text), group in _groups(_rows()).items():
+        if not all(_transcribed(r) for r in group):
+            continue
+        original = source[(civilisation, reworded.get(text, text))]
+        assert len(original) == len(group)
+        for mine, theirs in zip(group, original, strict=True):
+            for field in ("modelled", "field", "operation", "operand", "condition", "reason"):
+                assert mine.get(field) == theirs.get(field), (civilisation, text, field)
+            assert mine.get("condition_entities") == theirs.get("condition_entities")
+            assert mine.get("condition_technology") == theirs.get("condition_technology")
+            pack_ids = {
+                (s["kind"], s["id"]) for s in theirs["selector"] if s["id"] in _rules()[s["kind"]]
+            }  # type: ignore[attr-defined, index]
+            mine_ids = {(s["kind"], s["id"]) for s in mine["selector"]}  # type: ignore[attr-defined, index]
+            assert pack_ids <= mine_ids, (civilisation, text)
+            # The one entity only this pack has is the Franks' Bearded Axe, in a class that takes
+            # every technology the Castle produces or every technology but the age advances.
+            assert mine_ids - pack_ids <= {("technology", "83")}, (civilisation, text)
+            assert _DIGEST_NAMED in str(mine["validated_by"])
+            assert _SOURCE_DIGEST in str(mine["validated_by"])
+
+
+_DIGEST_NAMED = "sha256:"
+
+
+def test_the_two_rows_of_the_first_snapshot_are_carried_byte_for_byte() -> None:
+    first = _groups(_rows(_FIRST_DIRECTORY))
+    here = _groups(_rows())
+    for own in _FROM_THE_FIRST_SNAPSHOT:
+        assert own in here and own not in {
+            (r["civilisation"], r["source_text"]) for r in _rows(_SOURCE_DIRECTORY)
+        }
+        for mine, theirs in zip(here[own], first[own], strict=True):
+            assert {k: v for k, v in mine.items() if k != "validated_by"} == {
+                k: v for k, v in theirs.items() if k != "validated_by"
+            }
+            assert str(mine["validated_by"]).startswith(str(theirs["validated_by"]))
+            assert _FIRST_DIGEST in str(mine["validated_by"])
+
+
+def test_no_row_of_a_civilisation_outside_this_pack_is_here() -> None:
+    assert not {r["civilisation"] for r in _rows()} & set(_NOT_IN_THIS_PACK)
+    for name in _NOT_IN_THIS_PACK:
+        result = query.cost(_entity("building", 84), civilisation=name)
+        assert isinstance(result, gaps.KnowledgeGap)
+        assert result.cause == "civilisation-not-modelled"
+
+
+def test_the_notes_set_contains_every_entity_whose_data_differs_between_the_packs() -> None:
+    differing = {
+        (kind, identifier)
+        for kind in _rules()
+        for identifier in _rules()[kind]
+        if identifier in _rules(_SOURCE_DIRECTORY)[kind] and _data_differs(kind, identifier)
+    }
+    renamed_only = {("technology", "372"), ("unit", "250"), ("unit", "533")}
+    assert len(differing) == 25
+    assert differing - _NAMED_BY_THE_NOTES == renamed_only | {("unit", "1738"), ("unit", "1980")}
+
+
+# ----------------------------------------------------------------------- the aliases
+
+
+def test_the_second_committed_recordings_two_unnamed_buildings_are_the_gate() -> None:
+    loaded = snapshot.load_snapshot(_DIRECTORY)
+    assert len(loaded.aliases) == 71
+    for identifier in ("490", "673"):
+        assert identifier not in _rules()["building"]
+        alias = loaded.alias_for("building", identifier)
+        assert alias is not None
+        assert alias.source_name == "Gate"
+        assert _entity_name(_DIRECTORY, "building", alias.target) == "Gate"
+    for alias in loaded.aliases:
+        assert _entity_name(_DIRECTORY, alias.kind, alias.target) == re.sub(
+            r"\s*\((up|down|hori|vert)\.\)$", "", alias.source_name
+        )
+
+
+# ----------------------------------------------------------------------- resolution
+
+
+def test_the_build_resolves_to_the_second_snapshot_and_the_first_reproduces_by_identity() -> None:
+    resolved = snapshot.snapshot_for(_BUILD)
+    assert isinstance(resolved, snapshot.Snapshot)
+    assert resolved.directory == _DIRECTORY
+    assert resolved.supersedes == _FIRST_DIGEST
+
+    first = snapshot.load_snapshot(_FIRST_DIRECTORY)
+    assert first.identity.digest == _FIRST_DIGEST
+    assert first.promoted
+    assert first.aliases == ()
+    first_text = _snapshot_root(_FIRST_DIRECTORY).joinpath("snapshot.toml").read_text("utf-8")
+    assert set(tomllib.loads(first_text)["snapshot"]["civilisations_modelled"]) == {
+        "Franks",
+        "Teutons",
+        "Persians",
+        "Saracens",
+        "Malians",
+        "Tatars",
+    }
+    entity = query.EntityRef(kind="building", id="84", build=_BUILD)
+    with snapshot.pinned_snapshot(first):
+        modelled = query.cost(entity, civilisation="Saracens")
+        unmodelled = query.cost(entity, civilisation="Vietnamese")
+    assert not isinstance(modelled, gaps.KnowledgeGap), f"gap: {modelled!r}"
+    assert modelled.snapshot_identity.digest == _FIRST_DIGEST
+    assert isinstance(unmodelled, gaps.KnowledgeGap)
+    assert unmodelled.cause == "civilisation-not-modelled"
+    # The same query under the current snapshot is answered, by the second.
+    now = query.cost(entity, civilisation="Vietnamese")
+    assert not isinstance(now, gaps.KnowledgeGap), f"gap: {now!r}"
+    assert now.snapshot_identity.digest == resolved.identity.digest
+
+
+# ----------------------------------------------------------------------- the values
+
+
+def _entity(kind: str, entity_id: int | str) -> query.EntityRef:
+    return query.EntityRef(kind=kind, id=str(entity_id), build=_BUILD)
+
+
+def _value(result: object) -> object:
+    assert not isinstance(result, gaps.KnowledgeGap), f"gap: {result!r}"
+    return result.value  # type: ignore[attr-defined]
+
+
+def _baseline(kind: str, entity_id: int | str, key: str) -> object:
+    return _rules()[kind][str(entity_id)][key]
+
+
+def _half_up(value: float) -> int:
+    return int(value + 0.5)
+
+
+def test_a_carried_bonus_answers_as_the_strings_say() -> None:
+    """Britons' Town Centers cost -50% wood starting in Castle Age: carried, so the answer is the
+    source snapshot's, applied to this pack's own baseline."""
+    town_center = _entity("building", 109)
+    base = _baseline("building", 109, "cost")
+    castle = effects.Context(age=3)
+    feudal = effects.Context(age=2)
+    got = _value(query.cost(town_center, civilisation="Britons", context=castle))
+    assert got == {**base, "wood": _half_up(base["wood"] * 0.5)}  # type: ignore[index, operator]
+    assert _value(query.cost(town_center, civilisation="Britons", context=feudal)) == base
+    assert _value(query.cost(town_center, civilisation="Franks")) == base
+    with pytest.raises(effects.ContextRequired):
+        query.cost(town_center, civilisation="Britons")
+
+
+def test_a_transcribed_class_is_this_packs_class_not_the_other_packs() -> None:
+    """Portuguese units cost -20% gold, transcribed: every unit this pack names, and not the
+    Mounted Crossbowmen (2700, 2701), which only the build 185872 pack names."""
+    for unit in ("4", "250", "38"):
+        base = _baseline("unit", unit, "cost")
+        got = _value(query.cost(_entity("unit", unit), civilisation="Portuguese"))
+        expected = {k: (_half_up(v * 0.8) if k == "gold" else v) for k, v in base.items()}  # type: ignore[attr-defined]
+        assert got == expected, unit
+    assert "2700" not in _rules()["unit"]
+    absent = query.cost(_entity("unit", 2700), civilisation="Portuguese")
+    assert isinstance(absent, gaps.KnowledgeGap)
+    assert absent.cause == "entity-absent"
+    assert _value(query.cost(_entity("unit", "4"), civilisation="Franks")) == _baseline(
+        "unit", "4", "cost"
+    )
+
+
+def test_the_vikings_warships_discount_reaches_the_longboat_under_its_name_in_this_pack() -> None:
+    assert _entity_name(_DIRECTORY, "unit", "250") == "Longboat"
+    base = _baseline("unit", 250, "cost")
+    feudal = effects.Context(age=2)
+    got = _value(query.cost(_entity("unit", 250), civilisation="Vikings", context=feudal))
+    assert got != base
+    assert all(got[k] <= base[k] for k in base)  # type: ignore[index, attr-defined]
+    assert _value(query.cost(_entity("unit", 250), civilisation="Franks")) == base
+
+
+def test_the_bearded_axe_is_in_the_classes_that_take_every_castle_technology() -> None:
+    """Technology 83 exists in this pack only (the build 185872 pack removed it), produced at the
+    Castle: the Chinese's discount on technologies and the Berbers' Kasbah take it, as the
+    source snapshot's rows take the Franks' Ordonnance Companies, which replaced it."""
+    assert "83" in _at(_DIRECTORY, "technology", "82")
+    base = _baseline("technology", 83, "cost")
+    got = _value(
+        query.cost(
+            _entity("technology", 83), civilisation="Chinese", context=effects.Context(age=2)
+        )
+    )
+    assert got == {k: _half_up(v * 0.95) for k, v in base.items()}  # type: ignore[attr-defined]
+    team = frozenset({"Berbers", "Franks"})
+    done = effects.Context(team=team, team_researched=frozenset({"578"}))
+    time_base = _baseline("technology", 83, "research_time")
+    assert _value(
+        query.production_time(_entity("technology", 83), civilisation="Franks", context=done)
+    ) == pytest.approx(time_base / 1.25)  # type: ignore[operator]
+
+
+def test_the_gurjaras_docks_bonus_is_a_refused_field_with_a_stated_reason() -> None:
+    rows = [r for r in _rows() if (r["civilisation"], r["source_text"]) == _NEW_ROW]
+    assert len(rows) == 1
+    assert rows[0]["modelled"] == "no"
+    assert rows[0]["field"] == "garrison_capacity"
+    assert rows[0]["selector"] == [{"kind": "building", "id": "45"}]
+    assert len(str(rows[0]["reason"])) > 40
+
+
+def test_the_persians_kamandaran_is_the_carried_total_not_the_first_snapshots_refusal() -> None:
+    """The first snapshot refused the Kamandaran for want of an amount; the source snapshot reads
+    it as a total of 50 wood, flagged as unvalidated, and the carry rule holds for it."""
+    group = [
+        r
+        for r in _rows()
+        if r["civilisation"] == "Persians" and str(r["source_text"]).startswith("Kamandaran")
+    ]
+    assert group
+    assert all(_carried(r) for r in group)
+    assert all(r["modelled"] == "yes" for r in group)
+    first = [
+        r
+        for r in _rows(_FIRST_DIRECTORY)
+        if r["civilisation"] == "Persians" and str(r["source_text"]).startswith("Kamandaran")
+    ]
+    assert first
+    assert all(r["modelled"] == "no" for r in first)

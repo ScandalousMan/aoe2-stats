@@ -1,0 +1,589 @@
+# Entity aliases for build 180059 (T773, FR-022d, 2026-10-28): read again for the pack this snapshot
+# derives from (`packages/knowledge/packs/aoe2techtree/`, commit b9d494df6921d4080df69b22f9dbb7a4d1dcd9f0),
+# not copied from `aoe2techtree-185872-civilisations-56`.
+#
+# Every identifier SiegeEngineers aoc-reference-data's `objects` table (data/datasets/100.json,
+# the Definitive Edition dataset, repository head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12, read 2026-10-28) names exactly as a
+# unit or building of that pack, with or without an orientation qualifier in
+# parentheses ((up.), (down.), (hori.), (vert.)), and that this snapshot's `rules.json` does not
+# itself name. The source has no licence, so each pair is a hand-transcribed fact (FR-031) and the
+# file is not vendored. `source_name` is the table's string verbatim; `target` is the pack's entity
+# of the same kind whose name equals it once the qualifier is removed, and only when exactly one
+# does.
+#
+# Not aliased, on purpose, as in the build 185872 snapshots: the differently named gates (Fortified
+# Gate, Sea Gate, City Gate, Paifang Gate, Trowulan Gate), which FR-022d does not alias by name; an
+# object whose parenthesis is not an orientation ("Trade Cart (Full)"); an object whose name matches
+# two pack entities ("Town Center" is the pack's 109 and 621); and an object whose name differs
+# from the pack's only by the line break the pack's string carries. This pack names two fewer
+# entities than the build 185872 one that the table also names exactly (units 931 and 1298), so
+# this file holds 71 aliases and that one 73. The two identifiers the second committed
+# recording places that the pack does not name, 490 and 673, are both "Gate" and are aliased below.
+
+[[alias]]
+kind = "unit"
+id = "1"
+target = "1793"
+source_name = "Legionary"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "18"
+target = "103"
+source_name = "Blacksmith"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "19"
+target = "103"
+source_name = "Blacksmith"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "20"
+target = "12"
+source_name = "Barracks"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "30"
+target = "104"
+source_name = "Monastery"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "31"
+target = "104"
+source_name = "Monastery"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "32"
+target = "104"
+source_name = "Monastery"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "47"
+target = "45"
+source_name = "Dock"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "51"
+target = "45"
+source_name = "Dock"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "64"
+target = "487"
+source_name = "Gate (up.)"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "78"
+target = "487"
+source_name = "Gate"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "81"
+target = "487"
+source_name = "Gate"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "86"
+target = "101"
+source_name = "Stable"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "88"
+target = "487"
+source_name = "Gate (down.)"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "91"
+target = "487"
+source_name = "Gate"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "unit"
+id = "94"
+target = "692"
+source_name = "Berserk"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "95"
+target = "487"
+source_name = "Gate"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "105"
+target = "103"
+source_name = "Blacksmith"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "116"
+target = "84"
+source_name = "Market"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "129"
+target = "68"
+source_name = "Mill"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "130"
+target = "68"
+source_name = "Mill"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "131"
+target = "68"
+source_name = "Mill"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "132"
+target = "12"
+source_name = "Barracks"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "133"
+target = "45"
+source_name = "Dock"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "137"
+target = "84"
+source_name = "Market"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "153"
+target = "101"
+source_name = "Stable"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "unit"
+id = "184"
+target = "882"
+source_name = "Condottiero"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "191"
+target = "70"
+source_name = "House"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "192"
+target = "70"
+source_name = "House"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "210"
+target = "209"
+source_name = "University"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "unit"
+id = "275"
+target = "1790"
+source_name = "Centurion"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "463"
+target = "70"
+source_name = "House"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "464"
+target = "70"
+source_name = "House"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "465"
+target = "70"
+source_name = "House"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "490"
+target = "487"
+source_name = "Gate"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "498"
+target = "12"
+source_name = "Barracks"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "unit"
+id = "583"
+target = "1010"
+source_name = "Genitour"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "659"
+target = "487"
+source_name = "Gate (hori.)"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "661"
+target = "487"
+source_name = "Gate"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "663"
+target = "487"
+source_name = "Gate"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "665"
+target = "487"
+source_name = "Gate"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "667"
+target = "487"
+source_name = "Gate (vert.)"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "669"
+target = "487"
+source_name = "Gate"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "671"
+target = "487"
+source_name = "Gate"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "673"
+target = "487"
+source_name = "Gate"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "789"
+target = "792"
+source_name = "Palisade Gate (up.)"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "790"
+target = "792"
+source_name = "Palisade Gate"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "791"
+target = "792"
+source_name = "Palisade Gate"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "793"
+target = "792"
+source_name = "Palisade Gate (down.)"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "794"
+target = "792"
+source_name = "Palisade Gate"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "795"
+target = "792"
+source_name = "Palisade Gate"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "796"
+target = "792"
+source_name = "Palisade Gate"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "797"
+target = "792"
+source_name = "Palisade Gate (hori.)"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "798"
+target = "792"
+source_name = "Palisade Gate"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "799"
+target = "792"
+source_name = "Palisade Gate"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "800"
+target = "792"
+source_name = "Palisade Gate"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "801"
+target = "792"
+source_name = "Palisade Gate (vert.)"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "802"
+target = "792"
+source_name = "Palisade Gate"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "803"
+target = "792"
+source_name = "Palisade Gate"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "804"
+target = "792"
+source_name = "Palisade Gate"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "805"
+target = "45"
+source_name = "Dock"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "806"
+target = "45"
+source_name = "Dock"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "807"
+target = "45"
+source_name = "Dock"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "808"
+target = "45"
+source_name = "Dock"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "unit"
+id = "932"
+target = "1813"
+source_name = "Savar"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "unit"
+id = "938"
+target = "1302"
+source_name = "Dragon Ship"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "1192"
+target = "487"
+source_name = "Gate"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "unit"
+id = "1299"
+target = "1813"
+source_name = "Savar"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "building"
+id = "1646"
+target = "84"
+source_name = "Market"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "unit"
+id = "293"
+target = "83"
+source_name = "Villager"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"
+
+[[alias]]
+kind = "unit"
+id = "1690"
+target = "331"
+source_name = "Trebuchet"
+source = "SiegeEngineers/aoc-reference-data, data/datasets/100.json, objects (head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12)"
+read_on = "2026-10-28"

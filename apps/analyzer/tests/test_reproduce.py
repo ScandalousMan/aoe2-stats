@@ -14,7 +14,6 @@ from __future__ import annotations
 import dataclasses
 import hashlib
 import json
-import shutil
 import socket
 from collections.abc import Iterator
 from dataclasses import dataclass, replace
@@ -23,6 +22,7 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 import pytest
+from tests.snapshot_refresh import copy_real_snapshot
 
 from aoe2stats_analyzer.extract import ANALYTICS_VERSION, build_document, compared_body
 from aoe2stats_analyzer.reproduce import ReproductionRefused, reproduce
@@ -36,7 +36,7 @@ _FIXTURE_ZIP = _REPO_ROOT / "tests" / "fixtures" / "replays" / "AgeIIDE_Replay_5
 _GAME_ID = 500_546_441
 _KEY = f"retained-recordings/{_GAME_ID}/196240.zip"
 _MAX_RAW_BYTES = 25_165_824
-_REAL_SNAPSHOT_DIRECTORY = "aoe2techtree-180059"
+_REAL_SNAPSHOT_DIRECTORY = "aoe2techtree-180059-civilisations-53"
 
 
 @pytest.fixture(autouse=True)
@@ -302,10 +302,7 @@ async def test_a_packaged_snapshot_that_no_longer_matches_its_own_digest_is_refu
     original: _Original, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     root = tmp_path / "snapshots"
-    shutil.copytree(
-        Path(str(snapshot._snapshots_root())) / _REAL_SNAPSHOT_DIRECTORY,
-        root / _REAL_SNAPSHOT_DIRECTORY,
-    )
+    copy_real_snapshot(root)
     rules = root / _REAL_SNAPSHOT_DIRECTORY / "rules.json"
     rules.write_bytes(rules.read_bytes() + b" ")
     monkeypatch.setattr(snapshot, "_snapshots_root", lambda: root)
@@ -325,10 +322,7 @@ async def test_a_demoted_snapshot_is_still_resolvable_by_the_identity_that_names
     named snapshot is demoted in place (its digest covers only rules.json and effects.toml), and the
     identity naming it still reproduces."""
     root = tmp_path / "snapshots"
-    shutil.copytree(
-        Path(str(snapshot._snapshots_root())) / _REAL_SNAPSHOT_DIRECTORY,
-        root / _REAL_SNAPSHOT_DIRECTORY,
-    )
+    copy_real_snapshot(root)
     identity_file = root / _REAL_SNAPSHOT_DIRECTORY / snapshot.IDENTITY_FILENAME
     text = identity_file.read_text(encoding="utf-8")
     assert "promoted = true" in text

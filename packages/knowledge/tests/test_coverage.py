@@ -295,67 +295,21 @@ _RECORDING_1_ENUMERATED_BLOCKING_GAPS: frozenset[tuple[str, str, str, str, str]]
     gap_tuple for blocker in _RECORDING_1_BLOCKERS for gap_tuple in blocker.gap_tuples
 )
 
-#: **Two building ids (490, 673)**, referenced by `building-placed` events in this recording, are
-#: absent from the vendored `aoe2techtree` pack entirely (`test_normalise.py`'s
-#: `_BUILDING_IDS_ABSENT_FROM_THE_VENDORED_PACK`, first named by T640). A genuine coverage hole of
-#: the pack, not a decoding or civilisation-assignment error, and not a civilisation bonus at all —
-#: re-modelling a bonus as a conditional rule (T652u) has nothing to say about an id the pack never
-#: names in the first place. **Corrected 2026-10-18 (T761):** an earlier version of this note called
-#: both ids age-upgraded visual variants and said only a second vendored source could close them;
-#: neither was measured. A referenced source, `aoc-reference-data`'s `objects` (read 2026-10-18,
-#: `docs/data-sources.md` §6), names both "Gate", and FR-022d closes them with a transcribed alias
-#: in a snapshot's `aliases.toml`, vendoring nothing. This recording is build 180059, whose snapshot
-#: carries no `aliases.toml` yet, so the expectation below stays, strictly, until T773's snapshot
-#: for build 180059 carries those aliases and the blocker is deleted (T767 did it for build 185872,
-#: whose
-#: recording 3 no longer has it). Each id fails three of
-#: `query.py`'s six query-surface fields, for the civilisation the recording actually places it
-#: under — building 490 for Franks, 673 for Teutons. **6 tuples** (T652y: down from 12 —
-#: `reconstruction.prerequisite_order_check`, blocked now, was the *only* register entry that
-#: required `age_requirement`, `available_to` or `prerequisites` at all (checked directly against
-#: register.toml, not assumed from the task text's own illustrative count), so D7 computes every
-#: gap naming one of those three fields `informational` now, not only `prerequisites`' own two —
-#: six tuples close per building, not two, leaving only `cost`, `produced_at` and
-#: `production_time`).
-_TWO_BUILDING_IDS_ARE_ABSENT_FROM_THE_VENDORED_PACK = _RecordingBlocker(
-    name="Buildings 490 and 673 are absent from the vendored aoe2techtree pack entirely",
-    why_the_vendored_source_cannot_close_it=(
-        "the pack names neither id (test_normalise.py's "
-        "_BUILDING_IDS_ABSENT_FROM_THE_VENDORED_PACK, first found by T640) and no installed "
-        "snapshot carries an alias for them yet."
-    ),
-    what_would_close_it=(
-        "a transcribed alias for each (FR-022d): aoc-reference-data's objects, read 2026-10-18, "
-        "name both 'Gate'; T773's snapshot for build 180059 carries them (T767's, for build "
-        "185872, already does)."
-    ),
-    gap_tuples=(
-        ("building", "490", "cost", "Franks", "entity-absent"),
-        ("building", "490", "produced_at", "Franks", "entity-absent"),
-        ("building", "490", "production_time", "Franks", "entity-absent"),
-        ("building", "673", "cost", "Teutons", "entity-absent"),
-        ("building", "673", "produced_at", "Teutons", "entity-absent"),
-        ("building", "673", "production_time", "Teutons", "entity-absent"),
-    ),
-)
+#: **Recording 2 keeps no blocker (T773).** Two building ids (490, 673), referenced by
+#: `building-placed` events in this recording, are absent from the vendored `aoe2techtree` pack
+#: entirely (`test_normalise.py`'s `_BUILDING_IDS_ABSENT_FROM_THE_VENDORED_PACK`, first named by
+#: T640): a coverage hole of the pack, not a decoding or civilisation-assignment error and not a
+#: civilisation bonus. A referenced source, `aoc-reference-data`'s `objects` (read 2026-10-18 and
+#: again 2026-10-28, `docs/data-sources.md` section 6), names both "Gate", and FR-022d closes them
+#: with a transcribed alias in a snapshot's `aliases.toml`, vendoring nothing. T773's snapshot for
+#: build 180059 (`aoe2techtree-180059-civilisations-53`) carries both aliases, so the blocker this
+#: recording used to hold (six tuples: cost, produced_at and production_time of each, for the
+#: civilisation the recording places it under, building 490 for Franks and 673 for Teutons) is
+#: closed, as T767 closed building 490 for build 185872's recording 3. FR-022b's list is empty.
+_RECORDING_2_BLOCKERS: tuple[_RecordingBlocker, ...] = ()
 
-#: FR-022b's closed list: exactly the one blocker above, none other. **T652u (2026-09-28,
-#: repository owner's arbitration of the fourth review) closed the other three** — Franks' Castle
-#: cost (age-scaled), Franks' Chivalry (conditional on research) and Persians' Town Center/Dock
-#: work speed (age-scaled) are all `modelled = "yes"` now, each carrying the `condition` that used
-#: to be the reason each one refused; a query reaching one with no age or research state (the pass
-#: supplies only the team, T652v) raises `effects.ContextRequired`, caught in its own loop as
-#: "modelled, not a gap" — the same closure recording 1's own blocker got. The building-490/673
-#: blocker is untouched: it was never a civilisation bonus (see its own comment above), so nothing
-#: T652u re-modelled could have closed it.
-_RECORDING_2_BLOCKERS: tuple[_RecordingBlocker, ...] = (
-    _TWO_BUILDING_IDS_ARE_ABSENT_FROM_THE_VENDORED_PACK,
-)
-
-#: The flattened union of every blocker's `gap_tuples` — what recording 2's observed blocking
-#: gaps must equal, exactly, for SC-007a to hold via FR-022b's exception. 6 tuples (T652y: down
-#: from 12 — see the blocker's own comment above; T652u: down from 24 before that — three of the
-#: four T652q-derived blockers closed; see the note above).
+#: The flattened union of every blocker's `gap_tuples`: empty, which `test_each_committed_recording_
+#: reports_zero_blocking_gaps` asserts by set equality against what the pass observes.
 _RECORDING_2_ENUMERATED_BLOCKING_GAPS: frozenset[tuple[str, str, str, str, str]] = frozenset(
     gap_tuple for blocker in _RECORDING_2_BLOCKERS for gap_tuple in blocker.gap_tuples
 )
@@ -460,9 +414,9 @@ def test_each_committed_recording_reports_zero_blocking_gaps(
     failure names the mismatched tuple directly, so a stale entry or a further blocker cannot hide
     behind a single `reason=` string the way a marker would.
 
-    The one blocker that remains — buildings 490 and 673, absent from the vendored pack entirely —
-    is untouched by T652u: it was never a civilisation bonus, so re-modelling what a bonus is
-    conditional on has nothing to close there.
+    The one blocker that remained after T652u — buildings 490 and 673, absent from the first
+    snapshot's pack entirely — was never a civilisation bonus; T773's snapshot for build 180059
+    closes it with two transcribed aliases (FR-022d), so recording 2's list is empty now.
 
     **Recording 3 (T746, T767)** is the build 185872 recording, Slavs versus Sicilians, and resolves
     against `aoe2techtree-185872-civilisations-20`, the third snapshot of that build, which
@@ -711,11 +665,11 @@ _TEUTONS_RAW_ID = 4
 _MALIANS_RAW_ID = 26
 
 #: An arbitrary raw id no real civilisation ever carries (`test_query.py`'s own convention for a
-#: synthetic id), resolved to "Britons" — a real pack civilisation name genuinely absent from
-#: `civilisations_modelled` (T645/T652m: the six are Franks, Teutons, Persians, Saracens, Malians,
-#: Tatars) — only through this test file's own `civilisation_names` override, the same seam
-#: `test_query.py`'s own `test_a_teammate_outside_civilisations_modelled_gaps_naming_that_teammate`
-#: uses Britons for.
+#: synthetic id), resolved to "Saxons" — a real civilisation (added by build 185872) that no build
+#: 180059 pack carries, so it is genuinely absent from `civilisations_modelled` (T773 models all 53
+#: civilisations of that pack, which is why this was "Britons" until then) — only through this test
+#: file's own `civilisation_names` override, the same seam `test_query.py`'s own
+#: `test_a_teammate_outside_civilisations_modelled_gaps_naming_that_teammate` uses Saxons for.
 _UNMODELLED_ALLY_RAW_ID = 900_101
 _UNMODELLED_OPPONENT_RAW_ID = 900_102
 
@@ -766,7 +720,7 @@ def _building_event(slot: int, building_id: str, clock_ms: int = 1_000) -> Canon
     ("ally_raw_id", "ally_name", "expect_gap"),
     [
         (_TEUTONS_RAW_ID, "Teutons", False),  # the contrast: a modelled ally, no gap at all
-        (_UNMODELLED_ALLY_RAW_ID, "Britons", True),
+        (_UNMODELLED_ALLY_RAW_ID, "Saxons", True),
     ],
 )
 def test_an_unmodelled_ally_gaps_every_cost_and_time_the_ally_modelled_answers(
@@ -776,8 +730,8 @@ def test_an_unmodelled_ally_gaps_every_cost_and_time_the_ally_modelled_answers(
     unmodelled teammate gaps every cost and time for its allies" — contrast test, "the same stream
     with that ally modelled answers." Franks (slot 1) places a Mill (cost) and researches Siege
     Engineers (production_time); slot 2, on the same team, is either Teutons (modelled — the
-    contrast, no gap at all) or an unmodelled civilisation (Britons) — every one of Franks' cost
-    and production_time queries must then gap, naming Britons, cause `civilisation-not-modelled`,
+    contrast, no gap at all) or an unmodelled civilisation (Saxons) — every one of Franks' cost
+    and production_time queries must then gap, naming Saxons, cause `civilisation-not-modelled`,
     regardless of whether any real effect touches the Mill or Siege Engineers at all (step 1 fires
     before step 2/3 are ever reached)."""
     from aoe2stats_knowledge import coverage, gaps
@@ -806,13 +760,13 @@ def test_an_unmodelled_ally_gaps_every_cost_and_time_the_ally_modelled_answers(
         return
 
     assert len(franks_cost_and_time_gaps) == 4, (
-        "both the Mill's and Siege Engineers' cost and production_time must all gap once Britons "
+        "both the Mill's and Siege Engineers' cost and production_time must all gap once Saxons "
         f"is an unmodelled ally, got {franks_cost_and_time_gaps!r}"
     )
     for gap in franks_cost_and_time_gaps:
         assert isinstance(gap, gaps.KnowledgeGap)
         assert gap.cause == "civilisation-not-modelled"
-        assert gap.civilisation == "Britons", (
+        assert gap.civilisation == "Saxons", (
             "the gap must name the unmodelled teammate, not Franks (which is itself modelled) — "
             f"got {gap.civilisation!r}"
         )
@@ -821,10 +775,10 @@ def test_an_unmodelled_ally_gaps_every_cost_and_time_the_ally_modelled_answers(
 def test_two_allies_sharing_one_unmodelled_teammate_produce_one_gap_not_two() -> None:
     """T652v: "A gap naming an unmodelled teammate is the same row for every ally that raised it,
     so de-duplicate it against `analysis_knowledge_gaps`' unique index, as T652k did for slots."
-    Franks (slot 1) and Teutons (slot 3) are both modelled and both on Britons' (slot 2, unmodelled)
+    Franks (slot 1) and Teutons (slot 3) are both modelled and both on Saxons' (slot 2, unmodelled)
     team; both place a Mill (building 68), a real, shared, non-unique building both civilisations
     can build. Each of their two `cost` queries independently reaches "is every member of
-    context.team modelled" and both name the same unmodelled teammate (Britons) — the resulting
+    context.team modelled" and both name the same unmodelled teammate (Saxons) — the resulting
     `KnowledgeGap`s are equal on every column the unique index checks (`entity_kind`, `entity_id`,
     `field`, `civilisation`), even though they were raised by two different civilisations' own
     queries, so they must collapse to one row, not two."""
@@ -840,7 +794,7 @@ def test_two_allies_sharing_one_unmodelled_teammate_produce_one_gap_not_two() ->
         _building_event(3, _MILL_ID),
     ]
 
-    result = coverage.coverage(events, civilisation_names={_UNMODELLED_ALLY_RAW_ID: "Britons"})
+    result = coverage.coverage(events, civilisation_names={_UNMODELLED_ALLY_RAW_ID: "Saxons"})
 
     matching = [
         gap
@@ -848,18 +802,18 @@ def test_two_allies_sharing_one_unmodelled_teammate_produce_one_gap_not_two() ->
         if gap.entity_kind == "building"
         and gap.entity_id == _MILL_ID
         and gap.field == "cost"
-        and gap.civilisation == "Britons"
+        and gap.civilisation == "Saxons"
     ]
     assert len(matching) == 1, (
         "Franks' and Teutons' own, independent queries both name the same unmodelled teammate "
-        f"(Britons) for the same entity and field — expected exactly one row, got {matching!r}"
+        f"(Saxons) for the same entity and field — expected exactly one row, got {matching!r}"
     )
 
 
 def test_an_unmodelled_participant_does_not_gap_an_opposing_teams_queries() -> None:
     """T652v: "key it by civilisation and team" — an unmodelled civilisation on the *opposing*
     team must never leak into an unrelated team's own `context.team`. Franks (slot 1) is allied
-    with Teutons (slot 2, modelled) on one team; an unmodelled civilisation (Britons, slot 3) sits
+    with Teutons (slot 2, modelled) on one team; an unmodelled civilisation (Saxons, slot 3) sits
     alone on the opposing team. If the pass ignored team boundaries and built `context.team` from
     every seated participant instead of only this participant's own team, Franks' and Teutons'
     queries would incorrectly gap, naming an opponent that is not their ally at all — this is the
@@ -888,9 +842,11 @@ def test_an_unmodelled_participant_does_not_gap_an_opposing_teams_queries() -> N
     )
 
 
-#: A raw civilisation id no promoted snapshot's `[[civilisation_id]]` table carries, so the pass
-#: names it `unknown-civilisation-1` — an ally that is not modelled and cannot be.
-_UNMAPPED_RAW_ID = 1
+#: A raw civilisation id no promoted snapshot's `[[civilisation_id]]` table carries (46 is the
+#: Achaemenids, a Chronicles civilisation no pack has; it was 1 until T773 mapped the Britons for
+#: build 180059), so the pass names it `unknown-civilisation-46` - an ally that is not modelled and
+#: cannot be.
+_UNMAPPED_RAW_ID = 46
 
 #: Recording 2 seats Franks (slot 1) and Teutons (slot 3) on one team, Persians and Tatars on the
 #: other.
@@ -930,8 +886,9 @@ def _recording_2_franks_with_slot_3_as(raw_civilisation: int) -> list[CanonicalE
 
 
 def _franks_resolved_entities(events: list[CanonicalEvent]) -> set[tuple[str, str]]:
-    """Every entity slot 1 (Franks) referenced that the pack names — building 490 is absent from
-    the pack, so it gaps `entity-absent` before any civilisation is looked at."""
+    """Every entity slot 1 (Franks) referenced. Building 490, which the pack does not name, is the
+    Gate through a transcribed alias in build 180059's snapshot since T773 (FR-022d), so it answers
+    like any other entity and is among them."""
     entities: set[tuple[str, str]] = set()
     for event in events:
         if event.participant != _RECORDING_2_FRANKS_SLOT:
@@ -943,7 +900,6 @@ def _franks_resolved_entities(events: list[CanonicalEvent]) -> set[tuple[str, st
             entities.add(("building", str(payload.building_id)))
         elif event.kind is EventKind.RESEARCH_QUEUED and isinstance(payload, ResearchQueuedPayload):
             entities.add(("technology", str(payload.technology_id)))
-    entities.discard(("building", "490"))
     return entities
 
 
@@ -971,7 +927,7 @@ def test_an_unmodelled_ally_in_a_committed_recording_gaps_produced_at_and_availa
         refused = [
             gap
             for gap in result
-            if gap.field == field_name and gap.civilisation == "unknown-civilisation-1"
+            if gap.field == field_name and gap.civilisation == "unknown-civilisation-46"
         ]
         assert {(gap.entity_kind, gap.entity_id) for gap in refused} == expected, (
             f"{field_name}: every entity Franks referenced must gap once, naming the unmodelled "
@@ -983,8 +939,8 @@ def test_an_unmodelled_ally_in_a_committed_recording_gaps_produced_at_and_availa
 
 def test_the_same_recording_with_every_slot_modelled_has_no_such_gaps() -> None:
     """The contrast: the stream of the test above with slot 3 left as the Teutons it is. Franks'
-    entities gap neither field, except building 490, which the pack does not name (`entity-absent`,
-    for Franks, never `civilisation-not-modelled`)."""
+    entities gap neither field: building 490, which the pack does not name, is the Gate through the
+    snapshot's alias since T773, and answers like the rest."""
     from aoe2stats_knowledge import coverage
 
     events = _recording_2_franks_with_slot_3_as(_TEUTONS_RAW_ID)
@@ -992,17 +948,16 @@ def test_the_same_recording_with_every_slot_modelled_has_no_such_gaps() -> None:
     result = coverage.coverage(events)
 
     on_the_two_fields = [gap for gap in result if gap.field in ("produced_at", "available_to")]
-    assert on_the_two_fields, "building 490 still gaps both fields; an empty list proves nothing"
-    assert {gap.cause for gap in on_the_two_fields} == {"entity-absent"}, on_the_two_fields
-    assert {(gap.entity_id, gap.civilisation) for gap in on_the_two_fields} == {("490", "Franks")}
+    assert on_the_two_fields == [], on_the_two_fields
+    assert not [gap for gap in result if gap.cause == "entity-absent"], "490 is the Gate now"
 
 
 def test_ffa_or_unset_team_does_not_make_two_participants_allies() -> None:
     """T652v: "A free-for-all or unset team is its own value, never team 0 shared by strangers."
     Two participants each carry `team=None` (the adapter's own translation of the recording's "no
     team" sentinel, `contracts/canonical-events.md`) — Franks (modelled) and an unmodelled
-    civilisation (Britons). Both being `None` must never read as sharing a team: Franks' own
-    queries must not gap on Britons' account, and `_context_for`'s own "a participant with no team
+    civilisation (Saxons). Both being `None` must never read as sharing a team: Franks' own
+    queries must not gap on Saxons' account, and `_context_for`'s own "a participant with no team
     gets a team of itself alone" must hold even when a *different* participant, elsewhere in the
     same stream, also carries `None`."""
     from aoe2stats_knowledge import coverage
@@ -1015,9 +970,9 @@ def test_ffa_or_unset_team_does_not_make_two_participants_allies() -> None:
         _building_event(1, _MILL_ID),
     ]
 
-    result = coverage.coverage(events, civilisation_names={_UNMODELLED_ALLY_RAW_ID: "Britons"})
+    result = coverage.coverage(events, civilisation_names={_UNMODELLED_ALLY_RAW_ID: "Saxons"})
 
-    leaked = [gap for gap in result if gap.civilisation == "Britons"]
+    leaked = [gap for gap in result if gap.civilisation == "Saxons"]
     assert leaked == [], (
         "two participants who each individually carry team=None must never be read as allies of "
         f"one another — got {leaked!r}"

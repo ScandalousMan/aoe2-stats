@@ -59,8 +59,8 @@ _RECORDINGS = ((500_546_441, 180059), (511_523_321, 185872))
 _PROMOTED_BUILDS = (180059, 185872)
 
 #: No promoted snapshot names or aliases this building, so it must stay unresolved while its
-#: neighbours resolve. (Building 490, which the 185872 recording builds, was this id until T767: the
-#: build 185872 snapshot now aliases it to the Gate, and `test_a_transcribed_alias_is_named` below
+#: neighbours resolve. (Building 490 was this id until T767 and T773: the current snapshots of
+#: builds 185872 and 180059 now alias it to the Gate, and `test_a_transcribed_alias_is_named` below
 #: says so.)
 _ID_OUTSIDE_THE_SNAPSHOT = 99_999
 
@@ -137,9 +137,9 @@ def test_an_id_outside_the_snapshot_is_left_out_while_its_neighbour_resolves(bui
 
 
 def test_a_transcribed_alias_is_named_for_the_build_that_carries_it_and_only_that_build() -> None:
-    """T767 (FR-022d): building 490 is "Gate" in `aoc-reference-data`'s `objects`; build 185872's
-    snapshot aliases it to the pack's Gate, so the name resolves there. Build 180059's snapshot
-    carries no alias (T773's will), so the same id stays unresolved there."""
+    """T767, T773 (FR-022d): building 490 is "Gate" in `aoc-reference-data`'s `objects`; the current
+    snapshots of builds 185872 (T767) and 180059 (T773) alias it to the pack's Gate, so the name
+    resolves in both."""
     served = {}
     for build in _PROMOTED_BUILDS:
         document = _document(_knowledge_identity(build))
@@ -147,7 +147,7 @@ def test_a_transcribed_alias_is_named_for_the_build_that_carries_it_and_only_tha
         served[build] = _served_names(with_names(_stored(document)))["building"]
 
     assert served[185872].get("490") == "Gate"
-    assert "490" not in served[180059]
+    assert served[180059].get("490") == "Gate"
 
 
 @pytest.mark.parametrize("build", _PROMOTED_BUILDS)

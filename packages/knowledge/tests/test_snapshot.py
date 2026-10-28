@@ -933,13 +933,15 @@ def test_verify_installed_snapshots_reads_the_tree_once_and_never_caches_a_failu
 
 
 def test_snapshot_for_resolves_the_committed_promoted_fixture_by_its_real_build() -> None:
-    """Against the real, unpatched, committed tree: `aoe2techtree-180059` now
-    `describes_build = 180059`, the game build the committed reference recordings actually report
-    (`tests/fixtures/replays/README.md`), wired there by T642's carry-forward validation record —
-    resolving that exact build returns it."""
+    """Against the real, unpatched, committed tree: `aoe2techtree-180059` describes build 180059,
+    the game build the committed reference recordings actually report
+    (`tests/fixtures/replays/README.md`), wired there by T642's carry-forward validation record.
+    Since T773 a second snapshot supersedes it, so resolving that exact build returns the second
+    (`aoe2techtree-180059-civilisations-53`), and the first stays loadable by its directory."""
     result = snapshot_for(180059)
     assert isinstance(result, Snapshot)
-    assert result.directory == "aoe2techtree-180059"
+    assert result.directory == "aoe2techtree-180059-civilisations-53"
+    assert load_snapshot("aoe2techtree-180059").identity.describes_build == 180059
 
 
 def test_the_committed_promoted_fixtures_validation_record_is_a_complete_carry_forward() -> None:
@@ -1000,7 +1002,7 @@ def test_a_pin_changes_the_answer_for_its_own_build_and_no_other() -> None:
         )
         real = snapshot_for(180059)
         assert isinstance(real, Snapshot)
-        assert real.directory == "aoe2techtree-180059"
+        assert real.directory == "aoe2techtree-180059-civilisations-53"
 
 
 def test_the_pin_is_released_when_the_block_raises() -> None:

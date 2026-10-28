@@ -1,0 +1,84 @@
+# The second knowledge snapshot for game build 180059 (T773, 2026-10-28): it models fifty-three
+# civilisations, every civilisation of the pack build 180059 is derived from
+# (`packages/knowledge/packs/aoe2techtree/`): the six of the first (`aoe2techtree-180059`, T644 to
+# T652) and the forty-seven more. A promoted snapshot is never edited (FR-025), so this one names the
+# digest it supersedes: resolution by build now answers this snapshot, and the first stays installed,
+# promoted and loadable by its full identity so that the analyses published under it still reproduce
+# their own bytes (SC-005). An analysis of a build 180059 recording published under the first names a
+# digest that is no longer the current one, so it is recomputed under this snapshot on the analyzer's
+# next pass, as the contract's staleness rule says.
+#
+# Same source, same pack revision as the first (aoe2techtree commit
+# b9d494df6921d4080df69b22f9dbb7a4d1dcd9f0). Four things are new: `rules.json` is derived again under
+# normaliser version 2 (T763; it adds each civilisation's own tree, so `available_to` answers
+# membership), `aliases.toml` (T761, FR-022d; read again for this pack), `disagreements.toml` (the
+# normaliser's own writer output over this pack, nothing recorded) and `effects.toml`, which follows
+# T773's carry rule: a row of `aoe2techtree-185872-civilisations-56` is carried only where its
+# bullet is byte-identical in both packs, its selectors resolve to the same identifiers here and the
+# build 185872 release notes name no change to it; every other row is transcribed from this pack.
+# The label states the build and how many civilisations the snapshot models.
+[snapshot]
+source = "aoe2techtree"
+source_version = "b9d494df6921d4080df69b22f9dbb7a4d1dcd9f0"
+describes_build = 180059
+digest = "sha256:0928814844ea8378029d228bebc0529bfe33eb1939ca98255c936d28be6bf060"
+promoted = true
+supersedes = "sha256:6167f0b69be56d7a33803d29a060b9f29f34c917073eb970ccccc1c206c6b81a"
+normaliser_version = 2
+civilisations_modelled = ["Franks", "Teutons", "Persians", "Saracens", "Malians", "Tatars", "Slavs", "Sicilians", "Britons", "Goths", "Japanese", "Chinese", "Byzantines", "Turks", "Vikings", "Mongols", "Celts", "Spanish", "Aztecs", "Mayans", "Huns", "Koreans", "Italians", "Hindustanis", "Incas", "Magyars", "Portuguese", "Ethiopians", "Berbers", "Khmer", "Malay", "Burmese", "Vietnamese", "Bulgarians", "Cumans", "Lithuanians", "Burgundians", "Poles", "Bohemians", "Dravidians", "Bengalis", "Gurjaras", "Romans", "Armenians", "Georgians", "Shu", "Wu", "Wei", "Jurchens", "Khitans", "Muisca", "Mapuche", "Tupi"]
+
+# FR-030's validation record: what this snapshot's own derivation and readings were checked
+# against. The carried rows are validated as the source snapshot's record says, plus the three
+# conditions of the carry rule.
+[validation]
+method = "second-reading-checked-against-release-notes"
+checked_against = """\
+the vendored pack's own English strings, \
+packages/knowledge/packs/aoe2techtree/strings.en.json (the help_string_id text of each of the \
+fifty-three civilisations, compared bullet by bullet with the same key in \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, and the help strings of the units, \
+buildings and technologies a class name was resolved from), read twice: once to carry or transcribe \
+each bonus, once to resolve each selector against rules.json and to check every bullet is accounted \
+for; the two packs' rules.json compared entity by entity (name, age, cost, time, producing \
+building); and the publisher's release notes for build 185872, \
+https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/ \
+(datePublished 2026-09-22T10:16:33-07:00, dateModified 2026-09-23T08:59:03-07:00), fetched and \
+read on 2026-10-28 (the Balance Changes section in full, line by line against the selected \
+entities of every carried row). The aliases and the raw-id table were read from SiegeEngineers \
+aoc-reference-data, data/datasets/100.json (objects and civilizations), on 2026-10-28, repository \
+head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12 (2026-10-26)\
+"""
+performed_by = "the T773 implementer (an AI agent working for the repository owner), by direct reading; no person has reviewed it yet"
+performed_at = "2026-10-28"
+not_checked = """\
+No value was compared with the game or with any second source that is independent of the pack: \
+the bonuses, the baseline costs, times and ages in rules.json and the strings they are read from \
+all come from the one vendored pack (research.md D3: no second source is lawful to vendor), so \
+this is a second reading of one source and not independent validation. A carried row is a \
+claim about two packs and one set of release notes: the notes can only show a change the \
+publisher chose to write down, and a bonus change they omit cannot be detected from them (the \
+strings of the two packs are compared, which catches a reworded bonus, and the two rules.json \
+files are compared, which catches a changed baseline). The release notes read are build 185872's \
+alone: any build between 180059 and 185872 has no notes read here, so a change made and \
+reverted in between would not show. A note that only grants or removes a civilisation's access \
+to an entity is not counted as a change to the entity. The open values of build 185872 \
+(specs/006-replay-analysis-foundations/owner-readings.md) are open here for the bonuses this \
+snapshot carries; T774 carries the owner's readings back under the same three conditions. The \
+class readings of the carried rows (Infantry, Warships, Military Units and the others the \
+source snapshot lists) are the source snapshot's, re-checked here only by the production \
+sites and the entity data of this pack, not by a definition: where the source snapshot flags \
+a reading as an inference no source states (Shu's Archery Unit technologies, Tupi's and Danes' \
+upgrades, the Persians' Kamandaran total, the Cumans' count table, the Khitans' Imperial \
+Skirmisher and Heavy Cavalry Archer age, the Butalmapu selector), that flag is carried in the row \
+or in the source snapshot's record and is not resolved here. Changes to which technologies and \
+units a civilisation can reach are not bonuses and are not rows; the tree in rules.json \
+(normaliser version 2) answers them. The transcription was not blind: the implementer had read \
+the source snapshot's effects.toml to learn the file's shape and compared every transcribed \
+row with it.\
+"""
+
+[validation.release_notes]
+url = "https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/"
+published = "2026-09-22T10:16:33-07:00"
+modified = "2026-09-23T08:59:03-07:00"
+read_on = "2026-10-28"
