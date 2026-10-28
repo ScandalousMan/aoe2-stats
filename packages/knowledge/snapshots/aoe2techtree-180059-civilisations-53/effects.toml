@@ -29,18 +29,30 @@
 # changes neither, which entities a civilisation reaches being `rules.json`'s question, never a
 # bonus's. "Docks +5 garrison capacity civilization bonus removed" removes a Gurjaras bonus and does
 # not change the Dock, and the Vietnamese's and the Teutons' bonus rewords change unit bonuses and
-# not the buildings they name, so none of the three puts a building in the notes set. The third
-# condition was also checked the other way, by comparing the two packs' `rules.json` entity by
-# entity: the only shared entities that differ are the ones the notes name (a cost, a time, a name),
-# and no carried row selects one of them.
+# not the buildings they name, so none of the three puts a building in the notes set. Three more
+# readings of the same sentence: a "-line" note changes every tier of the line unless it excludes
+# one itself (the Battering Ram-line is the Battering Ram, the Capped Ram and the Siege Ram; the
+# Armored Elephant-line is the Armored Elephant and the Siege Elephant; the Hulk-line note gives
+# three values, 4/5/6, and is the Hulk, the War Hulk and the Carrack); "(Elite unchanged)" leaves
+# the Elite unit out, and "(Elite)" puts it in; a note that changes a unit does not change the
+# technology that upgrades to it, and a note that changes an upgrade's cost or time (the
+# Demolition Ship's, the Elite Rattan Archer's) changes the technology and not the unit. The
+# notes are tabulated line by line, each with the entities it changes, in
+# `packages/knowledge/tests/test_effects_180059_civilisations_53.py`, and the set the carry rule
+# reads is derived from that table. The third condition was also checked the other way, by
+# comparing the two packs' `rules.json` entity by entity: the shared entities that differ are the
+# ones the notes name (a cost, a time), the three the packs name differently (the Longboat, the
+# Elite Longboat and its upgrade) and two units no pack names (identifiers 1738 and 1980, whose
+# figures changed as the Ratha's and the War Chariot's did), and no carried row selects one of
+# them.
 # Each carried row's `validated_by` says so and names the source snapshot's digest. Every other row
 # is transcribed from this pack's strings, its `validated_by` naming the condition that row failed
 # and only the identifiers that row selects or conditions on.
 #
-# **What this file holds.** 226 rows carried, 69 transcribed again because a condition
-# failed (a bonus being the rows that share one bullet: 185 bonuses have only carried rows, 61 only
-# transcribed rows and 3 both, the Chinese's technology discount, the Cumans' Siege Workshop and
-# Battering Ram and the Jurchens' Siege and Fortification upgrades), two rows carried byte for byte from `aoe2techtree-180059` itself (Franks' Bearded Axe
+# **What this file holds.** 232 rows carried, 63 transcribed again because a condition
+# failed (a bonus being the rows that share one bullet: 190 bonuses have only carried rows, 58 only
+# transcribed rows and 1 both, the Chinese's technology discount), two rows carried byte for byte
+# from `aoe2techtree-180059` itself (Franks' Bearded Axe
 # and Teutons' Barracks and Stable armour, bullets this pack has and the build 185872 pack does not;
 # the earlier snapshot of the same build and pack revision read the same strings), and one row written
 # new (Gurjaras' Docks garrison capacity, a bullet the build 185872 notes remove). The forty-seven
@@ -59,9 +71,11 @@
 #   - the Longship is the Longboat in this pack: the same identifiers under another name;
 #   - the entities a class resolves to by where they are produced are not the same set;
 #   - build 185872's release notes name a change to a selected entity (the Onager, the Lou Chuan, the
-#     Hussite Wagon, the Grenadier, the Organ Gun, the Conquistador, the Missionary, the Turtle
-#     Ship, the Ratha, the Man-at-Arms and Champion damage, the Rattan Archer, the Demolition Ship and
-#     the Fortified Church);
+#     Fire Galley, the Hulk-line, the Hussite Wagon, the Grenadier, the Organ Gun, the Conquistador,
+#     the Missionary, the Turtle Ship, the Ratha, the Battering Ram-line, the Armored Elephant-line,
+#     the Man-at-Arms to Champion damage, the Rattan Archer and its Elite upgrade, the Demolition
+#     Ship upgrade and the Fortified Church, for instance; the table in the test file lists them
+#     all);
 #   - this pack's `rules.json` differs from the other's for a selected entity (the same changes, seen
 #     in the data: a cost, a time or a name);
 #   - the civilisation is not in this pack (Saxons, Varangians, Danes): no row.
@@ -690,13 +704,12 @@ sha256:b247190134e69b46e5111487db0ff98514df9ceb41bcd4f926a7278fbedd952f) because
 named differently in this pack ('Elite Longboat' for the build 185872 pack's 'Elite Longship'); \
 unit 250 is named differently in this pack ('Longboat' for the build 185872 pack's 'Longship'); \
 unit 533 is named differently in this pack ('Elite Longboat' for the build 185872 pack's 'Elite \
-Longship'); build 185872's release notes name entities the row selects (technology 34 War Hulk, \
-technology 448 Elite Turtle Ship, technology 905 Demolition Ship, unit 1103 Fire Galley, unit 1948 \
-Lou Chuan, unit 2626 Hulk, unit 2627 War Hulk, unit 527 Demolition Ship, unit 831 Turtle Ship, \
-unit 832 Elite Turtle Ship); this pack's rules.json differs from build 185872's (name, age, cost, \
-time or producing building) for Elite Longboat (technology 372), Demolition Ship (technology 905), \
-Longboat (unit 250), Elite Longboat (unit 533). Every identifier the row selects that is not named \
-above was compared with the build 185872 rules.json field by field (name, age, cost, time, \
+Longship'); build 185872's release notes name entities the row selects (technology 905 Demolition \
+Ship, unit 1103 Fire Galley, unit 1948 Lou Chuan, unit 2626 Hulk, unit 2627 War Hulk, unit 831 \
+Turtle Ship, unit 2628 Carrack); this pack's rules.json differs from build 185872's (name, age, \
+cost, time or producing building) for Elite Longboat (technology 372), Demolition Ship (technology \
+905), Longboat (unit 250), Elite Longboat (unit 533). Every identifier the row selects that is not \
+named above was compared with the build 185872 rules.json field by field (name, age, cost, time, \
 producing building). Operation and operand follow the bullet's figures, which this pack's string \
 states in the same words, as the build 185872 row read them. That row's validated_by, for the \
 class and amount readings it records: [Weak form (FR-030): a second reading of the same vendored \
@@ -710,8 +723,7 @@ does not name the Persians anywhere on the page. Selector and operand: resolved 
 Docks' to every unit and technology rules.json lists as produced_at building 109 (Town Center) or \
 45 (Dock), 47 entities. The operand is an age table, 1 Dark to 4 Imperial: 'works X% faster' \
 divides the baseline time by 1 + X. The +100% HP half of the bullet touches a field this knowledge \
-base does not carry and is not modelled.]\
-"""
+base does not carry and is not modelled.]"""
 
 [[effect]]
 civilisation = "Persians"
@@ -1206,24 +1218,23 @@ row selects or conditions on identifiers absent from this pack's rules.json (uni
 2704); the row selects all of the units the build 185872 pack produces at producing-building \
 identifier 12 (Barracks), and the units this pack produces there are not the same set; build \
 185872's release notes name entities the row selects (unit 1699 Flemish Militia, unit 2586 Temple \
-Guard, unit 2587 Elite Temple Guard, unit 473 Two-Handed Swordsman, unit 567 Champion, unit 75 \
-Man-at-Arms, unit 751 Eagle Scout, unit 77 Long Swordsman); this pack's rules.json differs from \
-build 185872's (name, age, cost, time or producing building) for Flemish Militia (unit 1699), \
-Eagle Scout (unit 751). Removed from the selector, absent from this pack: Varangian Guard (unit \
-2703), E. Varangian Guard (unit 2704). Every identifier the row selects that is not named above \
-was compared with the build 185872 rules.json field by field (name, age, cost, time, producing \
-building). Operation and operand follow the bullet's figures, which this pack's string states in \
-the same words, as the build 185872 row read them. That row's validated_by, for the class and \
-amount readings it records: [Weak form (FR-030): a second reading of the same vendored source, not \
-an independent one (research.md D3: the two community datasets are one generation pipeline run \
-twice, and the game's own data file is barred by the publisher's usage rules). First reading: \
+Guard, unit 473 Two-Handed Swordsman, unit 567 Champion, unit 75 Man-at-Arms, unit 751 Eagle \
+Scout, unit 77 Long Swordsman); this pack's rules.json differs from build 185872's (name, age, \
+cost, time or producing building) for Flemish Militia (unit 1699), Eagle Scout (unit 751). Removed \
+from the selector, absent from this pack: Varangian Guard (unit 2703), E. Varangian Guard (unit \
+2704). Every identifier the row selects that is not named above was compared with the build 185872 \
+rules.json field by field (name, age, cost, time, producing building). Operation and operand \
+follow the bullet's figures, which this pack's string states in the same words, as the build \
+185872 row read them. That row's validated_by, for the class and amount readings it records: [Weak \
+form (FR-030): a second reading of the same vendored source, not an independent one (research.md \
+D3: the two community datasets are one generation pipeline run twice, and the game's own data file \
+is barred by the publisher's usage rules). First reading: \
 packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120175. Second \
 reading (T746, 2026-10-18, by the T746 implementer): the same string re-read in full, then checked \
 against the build 185872 release notes \
 (https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), which \
 does not name the Malians anywhere on the page. Selector and operand: resolved 'Barracks Units' to \
-every unit rules.json lists as produced_at building 12 (Barracks), 29 units.]\
-"""
+every unit rules.json lists as produced_at building 12 (Barracks), 29 units.]"""
 
 [[effect]]
 civilisation = "Malians"
@@ -1603,24 +1614,23 @@ re-resolved against this snapshot's rules.json. Not carried from the build 18587
 (aoe2techtree-185872-civilisations-56, digest \
 sha256:b247190134e69b46e5111487db0ff98514df9ceb41bcd4f926a7278fbedd952f) because build 185872's \
 release notes name entities the row selects (unit 1105 Siege Tower, unit 1258 Battering Ram, unit \
-1744 Armored Elephant, unit 1962 War Chariot, unit 550 Onager); this pack's rules.json differs \
-from build 185872's (name, age, cost, time or producing building) for War Chariot (unit 1962). \
-Every identifier the row selects that is not named above was compared with the build 185872 \
-rules.json field by field (name, age, cost, time, producing building). Operation and operand \
-follow the bullet's figures, which this pack's string states in the same words, as the build \
-185872 row read them. That row's validated_by, for the class and amount readings it records: [Weak \
-form (FR-030): a second reading of the same vendored source, not an independent one (research.md \
-D3: the two community datasets are one generation pipeline run twice, and the game's own data file \
-is barred by the publisher's usage rules). First reading: \
-packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120172. Second \
-reading (T746, 2026-10-18, by the T746 implementer): the same string re-read in full, then checked \
-against the build 185872 release notes \
+1744 Armored Elephant, unit 1962 War Chariot, unit 550 Onager, unit 1746 Siege Elephant, unit 422 \
+Capped Ram, unit 548 Siege Ram); this pack's rules.json differs from build 185872's (name, age, \
+cost, time or producing building) for War Chariot (unit 1962). Every identifier the row selects \
+that is not named above was compared with the build 185872 rules.json field by field (name, age, \
+cost, time, producing building). Operation and operand follow the bullet's figures, which this \
+pack's string states in the same words, as the build 185872 row read them. That row's \
+validated_by, for the class and amount readings it records: [Weak form (FR-030): a second reading \
+of the same vendored source, not an independent one (research.md D3: the two community datasets \
+are one generation pipeline run twice, and the game's own data file is barred by the publisher's \
+usage rules). First reading: packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, \
+help_string_id 120172. Second reading (T746, 2026-10-18, by the T746 implementer): the same string \
+re-read in full, then checked against the build 185872 release notes \
 (https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), which \
 does not name the Slavs anywhere on the page. Selector and operand: resolved 'Siege Workshop \
 Units' to every unit rules.json lists as produced_at building 49 (Siege Workshop), 19 units, not \
 the upgrade technologies the same building produces; a factor of 0.85 on every resource, a \
-resource a unit does not carry being left untouched.]\
-"""
+resource a unit does not carry being left untouched.]"""
 
 [[effect]]
 civilisation = "Slavs"
@@ -2222,19 +2232,19 @@ technology 1452, unit 2700, unit 2701); the row selects all of the technologies 
 pack produces at producing-building identifier 87 (Archery Range), and the technologies this pack \
 produces there are not the same set; the row selects all of the units the build 185872 pack \
 produces at producing-building identifier 87 (Archery Range), and the units this pack produces \
-there are not the same set; build 185872's release notes name entities the row selects (technology \
-1378 Elite Bolas Rider, unit 1911 Grenadier, unit 1952 Xianbei Raider, unit 2569 Bolas Rider, unit \
-2571 Elite Bolas Rider); this pack's rules.json differs from build 185872's (name, age, cost, time \
-or producing building) for Grenadier (unit 1911), Xianbei Raider (unit 1952), Bolas Rider (unit \
-2569), Elite Bolas Rider (unit 2571). Removed from the selector, absent from this pack: H. Mounted \
-Crossbowman (technology 1451), Cranequins (technology 1452), Mounted Crossbowman (unit 2700), H. \
-Mounted Crossbowman (unit 2701). Every identifier the row selects that is not named above was \
-compared with the build 185872 rules.json field by field (name, age, cost, time, producing \
-building). Operation and operand follow the bullet's figures, which this pack's string states in \
-the same words, as the build 185872 row read them. That row's validated_by, for the class and \
-amount readings it records: [Weak form (FR-030): a second reading of the same vendored source, not \
-an independent one (research.md D3: the two community datasets are one generation pipeline run \
-twice, and the game's own data file is barred by the publisher's usage rules). First reading: \
+there are not the same set; build 185872's release notes name entities the row selects (unit 1911 \
+Grenadier, unit 1952 Xianbei Raider, unit 2569 Bolas Rider, unit 2571 Elite Bolas Rider); this \
+pack's rules.json differs from build 185872's (name, age, cost, time or producing building) for \
+Grenadier (unit 1911), Xianbei Raider (unit 1952), Bolas Rider (unit 2569), Elite Bolas Rider \
+(unit 2571). Removed from the selector, absent from this pack: H. Mounted Crossbowman (technology \
+1451), Cranequins (technology 1452), Mounted Crossbowman (unit 2700), H. Mounted Crossbowman (unit \
+2701). Every identifier the row selects that is not named above was compared with the build 185872 \
+rules.json field by field (name, age, cost, time, producing building). Operation and operand \
+follow the bullet's figures, which this pack's string states in the same words, as the build \
+185872 row read them. That row's validated_by, for the class and amount readings it records: [Weak \
+form (FR-030): a second reading of the same vendored source, not an independent one (research.md \
+D3: the two community datasets are one generation pipeline run twice, and the game's own data file \
+is barred by the publisher's usage rules). First reading: \
 packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120150. Second \
 reading (T767, 2026-10-22, by the T767 implementer): the same string re-read in full, then checked \
 against the build 185872 release notes \
@@ -2244,8 +2254,7 @@ Britons entry names only access changes ((Heavy) Mounted Crossbowmen and Cranequ
 resolved 'Archery Ranges' to every unit and technology rules.json lists as produced_at building 87 \
 (Archery Range), with no filter by any civilisation's tree: a team effect reaches every ally, and \
 which of them an ally can train or research is available_to's question. 'Works +10% faster' \
-divides the baseline time by 1.10.]\
-"""
+divides the baseline time by 1.10.]"""
 
 # ---------------------------------------------------------------------- Goths
 
@@ -2381,23 +2390,22 @@ row selects or conditions on identifiers absent from this pack's rules.json (uni
 unit 2705, unit 2706, unit 2711, unit 2712); the row selects all of the units the build 185872 \
 pack produces at producing-building identifier 12 (Barracks), and the units this pack produces \
 there are not the same set; build 185872's release notes name entities the row selects (unit 1699 \
-Flemish Militia, unit 25 Teutonic Knight, unit 2586 Temple Guard, unit 2587 Elite Temple Guard, \
-unit 281 Throwing Axeman, unit 473 Two-Handed Swordsman, unit 531 Elite Throwing Axeman, unit 554 \
-Elite Teutonic Knight, unit 567 Champion, unit 75 Man-at-Arms, unit 751 Eagle Scout, unit 77 Long \
-Swordsman); this pack's rules.json differs from build 185872's (name, age, cost, time or producing \
-building) for Flemish Militia (unit 1699), Eagle Scout (unit 751). Removed from the selector, \
-absent from this pack: Varangian Guard (unit 2703), E. Varangian Guard (unit 2704), Hearth Troop \
-(unit 2705), Elite Hearth Troop (unit 2706), Jomsviking (unit 2711), Elite Jomsviking (unit 2712). \
-Every identifier the row selects that is not named above was compared with the build 185872 \
-rules.json field by field (name, age, cost, time, producing building). Operation and operand \
-follow the bullet's figures, which this pack's string states in the same words, as the build \
-185872 row read them. That row's validated_by, for the class and amount readings it records: [Weak \
-form (FR-030): a second reading of the same vendored source, not an independent one (research.md \
-D3: the two community datasets are one generation pipeline run twice, and the game's own data file \
-is barred by the publisher's usage rules). First reading: \
-packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120152. Second \
-reading (T767, 2026-10-22, by the T767 implementer): the same string re-read in full, then checked \
-against the build 185872 release notes \
+Flemish Militia, unit 2586 Temple Guard, unit 281 Throwing Axeman, unit 473 Two-Handed Swordsman, \
+unit 531 Elite Throwing Axeman, unit 554 Elite Teutonic Knight, unit 567 Champion, unit 75 \
+Man-at-Arms, unit 751 Eagle Scout, unit 77 Long Swordsman); this pack's rules.json differs from \
+build 185872's (name, age, cost, time or producing building) for Flemish Militia (unit 1699), \
+Eagle Scout (unit 751). Removed from the selector, absent from this pack: Varangian Guard (unit \
+2703), E. Varangian Guard (unit 2704), Hearth Troop (unit 2705), Elite Hearth Troop (unit 2706), \
+Jomsviking (unit 2711), Elite Jomsviking (unit 2712). Every identifier the row selects that is not \
+named above was compared with the build 185872 rules.json field by field (name, age, cost, time, \
+producing building). Operation and operand follow the bullet's figures, which this pack's string \
+states in the same words, as the build 185872 row read them. That row's validated_by, for the \
+class and amount readings it records: [Weak form (FR-030): a second reading of the same vendored \
+source, not an independent one (research.md D3: the two community datasets are one generation \
+pipeline run twice, and the game's own data file is barred by the publisher's usage rules). First \
+reading: packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120152. \
+Second reading (T767, 2026-10-22, by the T767 implementer): the same string re-read in full, then \
+checked against the build 185872 release notes \
 (https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), whose \
 Goths entry names only that Treadmill Crane was gained and names no change to a Goths bonus. \
 Selector and operand: 'Infantry' is not a key of rules.json. Resolved from what the pack states of \
@@ -2425,8 +2433,7 @@ Troop), 2706 (Elite Hearth Troop), 2711 (Jomsviking), 2712 (Elite Jomsviking). S
 'Skirmisher' in the pack's words and are not listed. A unit the pack gives no description (Ratha \
 1759 and 1761, which the Goths cannot train) is not stated to be Infantry and is not listed. The \
 operand is an age table keyed by the pack's age numbering, 1 Dark to 4 Imperial: a factor of 0.85, \
-0.80, 0.75 and 0.70 on every resource.]\
-"""
+0.80, 0.75 and 0.70 on every resource.]"""
 
 [[effect]]
 civilisation = "Goths"
@@ -2538,11 +2545,9 @@ row selects or conditions on identifiers absent from this pack's rules.json (tec
 producing-building identifier 12 (Barracks), and the technologies this pack produces there are not \
 the same set; the row selects all of the units the build 185872 pack produces at \
 producing-building identifier 12 (Barracks), and the units this pack produces there are not the \
-same set; build 185872's release notes name entities the row selects (technology 1401 Elite Temple \
-Guard, technology 207 Long Swordsman, technology 217 Two-Handed Swordsman, technology 222 \
-Man-at-Arms, technology 264 Champion, unit 1699 Flemish Militia, unit 2586 Temple Guard, unit 2587 \
-Elite Temple Guard, unit 473 Two-Handed Swordsman, unit 567 Champion, unit 75 Man-at-Arms, unit \
-751 Eagle Scout, unit 77 Long Swordsman); this pack's rules.json differs from build 185872's \
+same set; build 185872's release notes name entities the row selects (unit 1699 Flemish Militia, \
+unit 2586 Temple Guard, unit 473 Two-Handed Swordsman, unit 567 Champion, unit 75 Man-at-Arms, \
+unit 751 Eagle Scout, unit 77 Long Swordsman); this pack's rules.json differs from build 185872's \
 (name, age, cost, time or producing building) for Flemish Militia (unit 1699), Eagle Scout (unit \
 751). Removed from the selector, absent from this pack: E. Varangian Guard (technology 1454), \
 Varangian Guard (unit 2703), E. Varangian Guard (unit 2704). Every identifier the row selects that \
@@ -2560,8 +2565,7 @@ Goths entry names only that Treadmill Crane was gained and names no change to a 
 Selector and operand: resolved 'Barracks' to every unit and technology rules.json lists as \
 produced_at building 12 (Barracks). Condition: technology 457 (Perfusion) researched. 'Works +100% \
 faster' divides the baseline time by 2.0; the Goths' team bonus on the same building is its own \
-row, and the two apply in file order, one after the other.]\
-"""
+row, and the two apply in file order, one after the other.]"""
 
 [[effect]]
 civilisation = "Goths"
@@ -2633,11 +2637,9 @@ row selects or conditions on identifiers absent from this pack's rules.json (tec
 producing-building identifier 12 (Barracks), and the technologies this pack produces there are not \
 the same set; the row selects all of the units the build 185872 pack produces at \
 producing-building identifier 12 (Barracks), and the units this pack produces there are not the \
-same set; build 185872's release notes name entities the row selects (technology 1401 Elite Temple \
-Guard, technology 207 Long Swordsman, technology 217 Two-Handed Swordsman, technology 222 \
-Man-at-Arms, technology 264 Champion, unit 1699 Flemish Militia, unit 2586 Temple Guard, unit 2587 \
-Elite Temple Guard, unit 473 Two-Handed Swordsman, unit 567 Champion, unit 75 Man-at-Arms, unit \
-751 Eagle Scout, unit 77 Long Swordsman); this pack's rules.json differs from build 185872's \
+same set; build 185872's release notes name entities the row selects (unit 1699 Flemish Militia, \
+unit 2586 Temple Guard, unit 473 Two-Handed Swordsman, unit 567 Champion, unit 75 Man-at-Arms, \
+unit 751 Eagle Scout, unit 77 Long Swordsman); this pack's rules.json differs from build 185872's \
 (name, age, cost, time or producing building) for Flemish Militia (unit 1699), Eagle Scout (unit \
 751). Removed from the selector, absent from this pack: E. Varangian Guard (technology 1454), \
 Varangian Guard (unit 2703), E. Varangian Guard (unit 2704). Every identifier the row selects that \
@@ -2654,8 +2656,7 @@ re-read in full, then checked against the build 185872 release notes \
 Goths entry names only that Treadmill Crane was gained and names no change to a Goths bonus. \
 Selector and operand: resolved 'Barracks' to every unit and technology rules.json lists as \
 produced_at building 12 (Barracks), with no filter by any civilisation's tree: a team effect \
-reaches every ally. 'Works +20% faster' divides the baseline time by 1.20.]\
-"""
+reaches every ally. 'Works +20% faster' divides the baseline time by 1.20.]"""
 
 # ---------------------------------------------------------------------- Japanese
 
@@ -3198,29 +3199,23 @@ there are not the same set; the row selects all of the technologies the build 18
 at producing-building identifier 82 (Castle), and the technologies this pack produces there are \
 not the same set; the row selects all of the technologies the build 185872 pack produces at \
 producing-building identifier 87 (Archery Range), and the technologies this pack produces there \
-are not the same set; build 185872's release notes name entities the row selects (technology 1378 \
-Elite Bolas Rider, technology 1389 Elite Blackwood Archer, technology 1401 Elite Temple Guard, \
-technology 207 Long Swordsman, technology 21 Atheism, technology 217 Two-Handed Swordsman, \
-technology 222 Man-at-Arms, technology 257 Onager, technology 264 Champion, technology 34 War \
-Hulk, technology 361 Elite Cataphract, technology 363 Elite Throwing Axeman, technology 364 Elite \
-Teutonic Knight, technology 448 Elite Turtle Ship, technology 463 Chieftains, technology 472 Elite \
-Magyar Huszar, technology 563 Elite Organ Gun, technology 60 Elite Conquistador, technology 61 \
-Logistica, technology 621 Elite Rattan Archer, technology 781 Elite Hussite Wagon, technology 784 \
-Wagenburg Tactics, technology 828 Elite Ratha, technology 905 Demolition Ship); this pack's \
-rules.json differs from build 185872's (name, age, cost, time or producing building) for Elite \
-Longboat (technology 372), Elite Rattan Archer (technology 621), Demolition Ship (technology 905). \
-Removed from the selector, absent from this pack: H. Mounted Crossbowman (technology 1451), \
-Cranequins (technology 1452), E. Varangian Guard (technology 1454), Elite Hearth Troop (technology \
-1462), Shield Wall (technology 1464), Elite Jarl (technology 1472), Vendel Legacy (technology \
-1473), Gothikon (technology 1474), Elite Jomsviking (technology 1482), Northmen's Fury (technology \
-1483), Hamask (technology 1484), Clerical Recruitment (technology 1491), Ordonnance Companies \
-(technology 1496). Every identifier the row selects that is not named above was compared with the \
-build 185872 rules.json field by field (name, age, cost, time, producing building). Operation and \
-operand follow the bullet's figures, which this pack's string states in the same words, as the \
-build 185872 row read them. That row's validated_by, for the class and amount readings it records: \
-[Weak form (FR-030): a second reading of the same vendored source, not an independent one \
-(research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
-own data file is barred by the publisher's usage rules). First reading: \
+are not the same set; build 185872's release notes name entities the row selects (technology 21 \
+Atheism, technology 463 Chieftains, technology 61 Logistica, technology 621 Elite Rattan Archer, \
+technology 784 Wagenburg Tactics, technology 905 Demolition Ship); this pack's rules.json differs \
+from build 185872's (name, age, cost, time or producing building) for Elite Longboat (technology \
+372), Elite Rattan Archer (technology 621), Demolition Ship (technology 905). Removed from the \
+selector, absent from this pack: H. Mounted Crossbowman (technology 1451), Cranequins (technology \
+1452), E. Varangian Guard (technology 1454), Elite Hearth Troop (technology 1462), Shield Wall \
+(technology 1464), Elite Jarl (technology 1472), Vendel Legacy (technology 1473), Gothikon \
+(technology 1474), Elite Jomsviking (technology 1482), Northmen's Fury (technology 1483), Hamask \
+(technology 1484), Clerical Recruitment (technology 1491), Ordonnance Companies (technology 1496). \
+Every identifier the row selects that is not named above was compared with the build 185872 \
+rules.json field by field (name, age, cost, time, producing building). Operation and operand \
+follow the bullet's figures, which this pack's string states in the same words, as the build \
+185872 row read them. That row's validated_by, for the class and amount readings it records: [Weak \
+form (FR-030): a second reading of the same vendored source, not an independent one (research.md \
+D3: the two community datasets are one generation pipeline run twice, and the game's own data file \
+is barred by the publisher's usage rules). First reading: \
 packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120155. Second \
 reading (T767, 2026-10-22, by the T767 implementer): the same string re-read in full, then checked \
 against the build 185872 release notes \
@@ -3233,8 +3228,7 @@ left to the next row. The Feudal Age advance (101) stays: it is researched in th
 the age table has no entry for, so it is the baseline whether or not the bonus reaches it. The \
 operand is an age table keyed by the pack's age numbering: a factor of 0.95, 0.90 and 0.85 on \
 every resource in the Feudal, Castle and Imperial Age; no entry for the Dark Age means the plain \
-baseline there.]\
-"""
+baseline there.]"""
 
 [[effect]]
 civilisation = "Chinese"
@@ -4113,20 +4107,19 @@ packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120159 (th
 re-resolved against this snapshot's rules.json. Not carried from the build 185872 snapshot \
 (aoe2techtree-185872-civilisations-56, digest \
 sha256:b247190134e69b46e5111487db0ff98514df9ceb41bcd4f926a7278fbedd952f) because build 185872's \
-release notes name entities the row selects (unit 1001 Organ Gun, unit 1003 Elite Organ Gun, unit \
-1704 Hussite Wagon, unit 1706 Elite Hussite Wagon, unit 1911 Grenadier); this pack's rules.json \
-differs from build 185872's (name, age, cost, time or producing building) for Organ Gun (unit \
-1001), Hussite Wagon (unit 1704), Elite Hussite Wagon (unit 1706), Grenadier (unit 1911). Every \
-identifier the row selects that is not named above was compared with the build 185872 rules.json \
-field by field (name, age, cost, time, producing building). Operation and operand follow the \
-bullet's figures, which this pack's string states in the same words, as the build 185872 row read \
-them. That row's validated_by, for the class and amount readings it records: [Weak form (FR-030): \
-a second reading of the same vendored source, not an independent one (research.md D3: the two \
-community datasets are one generation pipeline run twice, and the game's own data file is barred \
-by the publisher's usage rules). First reading: \
-packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120159. Second \
-reading (T767, 2026-10-22, by the T767 implementer): the same string re-read in full, then checked \
-against the build 185872 release notes \
+release notes name entities the row selects (unit 1001 Organ Gun, unit 1704 Hussite Wagon, unit \
+1706 Elite Hussite Wagon, unit 1911 Grenadier); this pack's rules.json differs from build 185872's \
+(name, age, cost, time or producing building) for Organ Gun (unit 1001), Hussite Wagon (unit \
+1704), Elite Hussite Wagon (unit 1706), Grenadier (unit 1911). Every identifier the row selects \
+that is not named above was compared with the build 185872 rules.json field by field (name, age, \
+cost, time, producing building). Operation and operand follow the bullet's figures, which this \
+pack's string states in the same words, as the build 185872 row read them. That row's \
+validated_by, for the class and amount readings it records: [Weak form (FR-030): a second reading \
+of the same vendored source, not an independent one (research.md D3: the two community datasets \
+are one generation pipeline run twice, and the game's own data file is barred by the publisher's \
+usage rules). First reading: packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, \
+help_string_id 120159. Second reading (T767, 2026-10-22, by the T767 implementer): the same string \
+re-read in full, then checked against the build 185872 release notes \
 (https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), which \
 does not name the Turks anywhere on the page. Selector and operand: 'Gunpowder Units' is not a key \
 of rules.json. Resolved from what the pack states: Chemistry's string names Hand Cannoneer, Cannon \
@@ -4137,8 +4130,7 @@ Gunpowder Unit', 'Gunpowder Unit', 'Gunpowder Shock Infantry', 'Siege Gunpowder 
 (Organ Gun), 1003 (Elite Organ Gun), 1704 (Hussite Wagon), 1706 (Elite Hussite Wagon), 1709 \
 (Houfnice), 1901 (Fire Lancer), 1903 (Elite Fire Lancer), 1904 (Rocket Cart), 1907 (Heavy Rocket \
 Cart), 1911 (Grenadier). The units the pack calls a Foot Gunner or a Mounted Gunner are the next \
-row. 'Train +25% faster' divides the baseline time by 1.25.]\
-"""
+row. 'Train +25% faster' divides the baseline time by 1.25.]"""
 
 [[effect]]
 civilisation = "Turks"
@@ -4314,18 +4306,18 @@ sha256:b247190134e69b46e5111487db0ff98514df9ceb41bcd4f926a7278fbedd952f) because
 differently in this pack ('Longboat' for the build 185872 pack's 'Longship'); unit 533 is named \
 differently in this pack ('Elite Longboat' for the build 185872 pack's 'Elite Longship'); build \
 185872's release notes name entities the row selects (unit 1103 Fire Galley, unit 1948 Lou Chuan, \
-unit 2626 Hulk, unit 2627 War Hulk, unit 527 Demolition Ship, unit 831 Turtle Ship, unit 832 Elite \
-Turtle Ship); this pack's rules.json differs from build 185872's (name, age, cost, time or \
-producing building) for Longboat (unit 250), Elite Longboat (unit 533). Every identifier the row \
-selects that is not named above was compared with the build 185872 rules.json field by field \
-(name, age, cost, time, producing building). Operation and operand follow the bullet's figures, \
-which this pack's string states in the same words, as the build 185872 row read them. That row's \
-validated_by, for the class and amount readings it records: [Weak form (FR-030): a second reading \
-of the same vendored source, not an independent one (research.md D3: the two community datasets \
-are one generation pipeline run twice, and the game's own data file is barred by the publisher's \
-usage rules). First reading: packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, \
-help_string_id 120160. Second reading (T767, 2026-10-22, by the T767 implementer): the same string \
-re-read in full, then checked against the build 185872 release notes \
+unit 2626 Hulk, unit 2627 War Hulk, unit 831 Turtle Ship, unit 2628 Carrack); this pack's \
+rules.json differs from build 185872's (name, age, cost, time or producing building) for Longboat \
+(unit 250), Elite Longboat (unit 533). Every identifier the row selects that is not named above \
+was compared with the build 185872 rules.json field by field (name, age, cost, time, producing \
+building). Operation and operand follow the bullet's figures, which this pack's string states in \
+the same words, as the build 185872 row read them. That row's validated_by, for the class and \
+amount readings it records: [Weak form (FR-030): a second reading of the same vendored source, not \
+an independent one (research.md D3: the two community datasets are one generation pipeline run \
+twice, and the game's own data file is barred by the publisher's usage rules). First reading: \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120160. Second \
+reading (T767, 2026-10-22, by the T767 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
 (https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), whose \
 Vikings entry reworks Chieftains (it no longer generates gold when Infantry defeat Villagers, \
 Trade Units and Monks; the pack's string no longer mentions the gold), loses Gambesons, gains \
@@ -4341,8 +4333,7 @@ Ship), 832 (Elite Turtle Ship), 1004 (Caravel), 1006 (Elite Caravel), 1103 (Fire
 (Hulk), 2627 (War Hulk), 2628 (Carrack), 2633 (Catapult Galleon). The Fishing Ship, Trade Cog and \
 Transport Ship are not called Warships in the pack's words and are not listed. The operand is an \
 age table keyed by the pack's age numbering: a factor of 0.90, 0.85 and 0.80 on every resource in \
-the Feudal, Castle and Imperial Age; no entry for the Dark Age means the plain baseline there.]\
-"""
+the Feudal, Castle and Imperial Age; no entry for the Dark Age means the plain baseline there.]"""
 
 [[effect]]
 civilisation = "Vikings"
@@ -4552,22 +4543,21 @@ re-resolved against this snapshot's rules.json. Not carried from the build 18587
 (aoe2techtree-185872-civilisations-56, digest \
 sha256:b247190134e69b46e5111487db0ff98514df9ceb41bcd4f926a7278fbedd952f) because build 185872's \
 release notes name entities the row selects (unit 1105 Siege Tower, unit 1258 Battering Ram, unit \
-1744 Armored Elephant, unit 1962 War Chariot, unit 550 Onager); this pack's rules.json differs \
-from build 185872's (name, age, cost, time or producing building) for War Chariot (unit 1962). \
-Every identifier the row selects that is not named above was compared with the build 185872 \
-rules.json field by field (name, age, cost, time, producing building). Operation and operand \
-follow the bullet's figures, which this pack's string states in the same words, as the build \
-185872 row read them. That row's validated_by, for the class and amount readings it records: [Weak \
-form (FR-030): a second reading of the same vendored source, not an independent one (research.md \
-D3: the two community datasets are one generation pipeline run twice, and the game's own data file \
-is barred by the publisher's usage rules). First reading: \
-packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120161. Second \
-reading (T767, 2026-10-22, by the T767 implementer): the same string re-read in full, then checked \
-against the build 185872 release notes \
+1744 Armored Elephant, unit 1962 War Chariot, unit 550 Onager, unit 1746 Siege Elephant, unit 422 \
+Capped Ram, unit 548 Siege Ram); this pack's rules.json differs from build 185872's (name, age, \
+cost, time or producing building) for War Chariot (unit 1962). Every identifier the row selects \
+that is not named above was compared with the build 185872 rules.json field by field (name, age, \
+cost, time, producing building). Operation and operand follow the bullet's figures, which this \
+pack's string states in the same words, as the build 185872 row read them. That row's \
+validated_by, for the class and amount readings it records: [Weak form (FR-030): a second reading \
+of the same vendored source, not an independent one (research.md D3: the two community datasets \
+are one generation pipeline run twice, and the game's own data file is barred by the publisher's \
+usage rules). First reading: packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, \
+help_string_id 120161. Second reading (T767, 2026-10-22, by the T767 implementer): the same string \
+re-read in full, then checked against the build 185872 release notes \
 (https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), which \
 does not name the Mongols anywhere on the page. Selector and operand: resolved 'Siege Workshop \
-Units' to every unit rules.json lists as produced_at building 49 (Siege Workshop).]\
-"""
+Units' to every unit rules.json lists as produced_at building 49 (Siege Workshop).]"""
 
 [[effect]]
 civilisation = "Mongols"
@@ -4694,26 +4684,25 @@ packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120162 (th
 re-resolved against this snapshot's rules.json. Not carried from the build 185872 snapshot \
 (aoe2techtree-185872-civilisations-56, digest \
 sha256:b247190134e69b46e5111487db0ff98514df9ceb41bcd4f926a7278fbedd952f) because build 185872's \
-release notes name entities the row selects (technology 257 Onager, unit 1105 Siege Tower, unit \
-1258 Battering Ram, unit 1744 Armored Elephant, unit 1962 War Chariot, unit 550 Onager); this \
-pack's rules.json differs from build 185872's (name, age, cost, time or producing building) for \
-War Chariot (unit 1962). Every identifier the row selects that is not named above was compared \
-with the build 185872 rules.json field by field (name, age, cost, time, producing building). \
-Operation and operand follow the bullet's figures, which this pack's string states in the same \
-words, as the build 185872 row read them. That row's validated_by, for the class and amount \
-readings it records: [Weak form (FR-030): a second reading of the same vendored source, not an \
-independent one (research.md D3: the two community datasets are one generation pipeline run twice, \
-and the game's own data file is barred by the publisher's usage rules). First reading: \
-packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120162. Second \
-reading (T767, 2026-10-22, by the T767 implementer): the same string re-read in full, then checked \
-against the build 185872 release notes \
+release notes name entities the row selects (unit 1105 Siege Tower, unit 1258 Battering Ram, unit \
+1744 Armored Elephant, unit 1962 War Chariot, unit 550 Onager, unit 1746 Siege Elephant, unit 422 \
+Capped Ram, unit 548 Siege Ram); this pack's rules.json differs from build 185872's (name, age, \
+cost, time or producing building) for War Chariot (unit 1962). Every identifier the row selects \
+that is not named above was compared with the build 185872 rules.json field by field (name, age, \
+cost, time, producing building). Operation and operand follow the bullet's figures, which this \
+pack's string states in the same words, as the build 185872 row read them. That row's \
+validated_by, for the class and amount readings it records: [Weak form (FR-030): a second reading \
+of the same vendored source, not an independent one (research.md D3: the two community datasets \
+are one generation pipeline run twice, and the game's own data file is barred by the publisher's \
+usage rules). First reading: packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, \
+help_string_id 120162. Second reading (T767, 2026-10-22, by the T767 implementer): the same string \
+re-read in full, then checked against the build 185872 release notes \
 (https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), whose \
 Celts entry names only access changes ((Heavy) Mounted Crossbowmen gained, (Heavy) Cavalry Archers \
 and Treadmill Crane lost) and names no change to a Celts bonus. Selector and operand: resolved \
 'Siege Workshops' to every unit and technology rules.json lists as produced_at building 49 (Siege \
 Workshop), with no filter by any civilisation's tree: a team effect reaches every ally. 'Works \
-+20% faster' divides the baseline time by 1.20.]\
-"""
++20% faster' divides the baseline time by 1.20.]"""
 
 # ---------------------------------------------------------------------- Spanish
 
@@ -5198,20 +5187,19 @@ the units the build 185872 pack produces at producing-building identifier 82 (Ca
 units this pack produces there are not the same set; the row selects all of the units the build \
 185872 pack produces at producing-building identifier 87 (Archery Range), and the units this pack \
 produces there are not the same set; build 185872's release notes name entities the row selects \
-(unit 1001 Organ Gun, unit 1003 Elite Organ Gun, unit 1105 Siege Tower, unit 1129 Rattan Archer, \
-unit 1131 Elite Rattan Archer, unit 1258 Battering Ram, unit 1699 Flemish Militia, unit 1704 \
-Hussite Wagon, unit 1706 Elite Hussite Wagon, unit 1744 Armored Elephant, unit 1759 Ratha, unit \
-1761 Elite Ratha, unit 1911 Grenadier, unit 1952 Xianbei Raider, unit 1962 War Chariot, unit 25 \
-Teutonic Knight, unit 2569 Bolas Rider, unit 2571 Elite Bolas Rider, unit 2579 Blackwood Archer, \
-unit 2581 Elite Blackwood Archer, unit 2586 Temple Guard, unit 2587 Elite Temple Guard, unit 281 \
-Throwing Axeman, unit 40 Cataphract, unit 473 Two-Handed Swordsman, unit 531 Elite Throwing \
-Axeman, unit 550 Onager, unit 553 Elite Cataphract, unit 554 Elite Teutonic Knight, unit 567 \
-Champion, unit 75 Man-at-Arms, unit 751 Eagle Scout, unit 77 Long Swordsman, unit 771 \
-Conquistador, unit 773 Elite Conquistador, unit 869 Magyar Huszar, unit 871 Elite Magyar Huszar); \
-this pack's rules.json differs from build 185872's (name, age, cost, time or producing building) \
-for Organ Gun (unit 1001), Flemish Militia (unit 1699), Hussite Wagon (unit 1704), Elite Hussite \
-Wagon (unit 1706), Ratha (unit 1759), Grenadier (unit 1911), Xianbei Raider (unit 1952), War \
-Chariot (unit 1962), Bolas Rider (unit 2569), Elite Bolas Rider (unit 2571), Blackwood Archer \
+(unit 1001 Organ Gun, unit 1105 Siege Tower, unit 1129 Rattan Archer, unit 1131 Elite Rattan \
+Archer, unit 1258 Battering Ram, unit 1699 Flemish Militia, unit 1704 Hussite Wagon, unit 1706 \
+Elite Hussite Wagon, unit 1744 Armored Elephant, unit 1759 Ratha, unit 1911 Grenadier, unit 1952 \
+Xianbei Raider, unit 1962 War Chariot, unit 2569 Bolas Rider, unit 2571 Elite Bolas Rider, unit \
+2579 Blackwood Archer, unit 2581 Elite Blackwood Archer, unit 2586 Temple Guard, unit 281 Throwing \
+Axeman, unit 40 Cataphract, unit 473 Two-Handed Swordsman, unit 531 Elite Throwing Axeman, unit \
+550 Onager, unit 553 Elite Cataphract, unit 554 Elite Teutonic Knight, unit 567 Champion, unit 75 \
+Man-at-Arms, unit 751 Eagle Scout, unit 77 Long Swordsman, unit 771 Conquistador, unit 773 Elite \
+Conquistador, unit 869 Magyar Huszar, unit 1746 Siege Elephant, unit 422 Capped Ram, unit 548 \
+Siege Ram); this pack's rules.json differs from build 185872's (name, age, cost, time or producing \
+building) for Organ Gun (unit 1001), Flemish Militia (unit 1699), Hussite Wagon (unit 1704), Elite \
+Hussite Wagon (unit 1706), Ratha (unit 1759), Grenadier (unit 1911), Xianbei Raider (unit 1952), \
+War Chariot (unit 1962), Bolas Rider (unit 2569), Elite Bolas Rider (unit 2571), Blackwood Archer \
 (unit 2579), Elite Blackwood Archer (unit 2581), Eagle Scout (unit 751), Conquistador (unit 771), \
 Elite Conquistador (unit 773), Magyar Huszar (unit 869). Removed from the selector, absent from \
 this pack: Mounted Crossbowman (unit 2700), H. Mounted Crossbowman (unit 2701), Varangian Guard \
@@ -5235,8 +5223,7 @@ the buildings whose own help strings say they train Infantry (Barracks 12), Rang
 (Castle 82, Donjon 1665, Krepost 1251), 215 units. The Villager (Town Center), the Trade units, \
 the Fishing Ship and the Transport Ship are not trained at those buildings. The Dock's warships \
 and the Monastery's units are the next row. 'Train +15% faster' divides the baseline time by \
-1.15.]\
-"""
+1.15.]"""
 
 [[effect]]
 civilisation = "Aztecs"
@@ -5274,13 +5261,13 @@ re-resolved against this snapshot's rules.json. Not carried from the build 18587
 (aoe2techtree-185872-civilisations-56, digest \
 sha256:b247190134e69b46e5111487db0ff98514df9ceb41bcd4f926a7278fbedd952f) because build 185872's \
 release notes name entities the row selects (unit 1103 Fire Galley, unit 2626 Hulk, unit 2627 War \
-Hulk, unit 527 Demolition Ship). Every identifier the row selects that is not named above was \
-compared with the build 185872 rules.json field by field (name, age, cost, time, producing \
-building). Operation and operand follow the bullet's figures, which this pack's string states in \
-the same words, as the build 185872 row read them. That row's validated_by, for the class and \
-amount readings it records: [Weak form (FR-030): a second reading of the same vendored source, not \
-an independent one (research.md D3: the two community datasets are one generation pipeline run \
-twice, and the game's own data file is barred by the publisher's usage rules). First reading: \
+Hulk, unit 2628 Carrack). Every identifier the row selects that is not named above was compared \
+with the build 185872 rules.json field by field (name, age, cost, time, producing building). \
+Operation and operand follow the bullet's figures, which this pack's string states in the same \
+words, as the build 185872 row read them. That row's validated_by, for the class and amount \
+readings it records: [Weak form (FR-030): a second reading of the same vendored source, not an \
+independent one (research.md D3: the two community datasets are one generation pipeline run twice, \
+and the game's own data file is barred by the publisher's usage rules). First reading: \
 packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120164. Second \
 reading (T767, 2026-10-22, by the T767 implementer): the same string re-read in full, then checked \
 against the build 185872 release notes \
@@ -5291,8 +5278,7 @@ the pack has trained at the Dock (warships, named so by their help strings) or a
 (Galley), 1103 (Fire Galley), 1104 (Demolition Raft), 2626 (Hulk), 2627 (War Hulk), 2628 \
 (Carrack), 2633 (Catapult Galleon). The pack calls them Warships and Monks; whether either is a \
 'Military Unit' it does not say, and no release note settles it (update 125283 changes the \
-percentage only). A unit the Aztecs cannot train is not listed: a personal bonus cannot reach it.]\
-"""
+percentage only). A unit the Aztecs cannot train is not listed: a personal bonus cannot reach it.]"""
 
 [[effect]]
 civilisation = "Aztecs"
@@ -5905,26 +5891,25 @@ units the build 185872 pack produces at producing-building identifier 12 (Barrac
 this pack produces there are not the same set; the row selects all of the units the build 185872 \
 pack produces at producing-building identifier 87 (Archery Range), and the units this pack \
 produces there are not the same set; build 185872's release notes name entities the row selects \
-(unit 1699 Flemish Militia, unit 1911 Grenadier, unit 1952 Xianbei Raider, unit 25 Teutonic \
-Knight, unit 2569 Bolas Rider, unit 2571 Elite Bolas Rider, unit 2586 Temple Guard, unit 2587 \
-Elite Temple Guard, unit 281 Throwing Axeman, unit 473 Two-Handed Swordsman, unit 531 Elite \
-Throwing Axeman, unit 554 Elite Teutonic Knight, unit 567 Champion, unit 75 Man-at-Arms, unit 751 \
-Eagle Scout, unit 77 Long Swordsman); this pack's rules.json differs from build 185872's (name, \
-age, cost, time or producing building) for Flemish Militia (unit 1699), Grenadier (unit 1911), \
-Xianbei Raider (unit 1952), Bolas Rider (unit 2569), Elite Bolas Rider (unit 2571), Eagle Scout \
-(unit 751). Removed from the selector, absent from this pack: Mounted Crossbowman (unit 2700), H. \
-Mounted Crossbowman (unit 2701), Varangian Guard (unit 2703), E. Varangian Guard (unit 2704), \
-Hearth Troop (unit 2705), Elite Hearth Troop (unit 2706), Jomsviking (unit 2711), Elite Jomsviking \
-(unit 2712). Every identifier the row selects that is not named above was compared with the build \
-185872 rules.json field by field (name, age, cost, time, producing building). Operation and \
-operand follow the bullet's figures, which this pack's string states in the same words, as the \
-build 185872 row read them. That row's validated_by, for the class and amount readings it records: \
-[Weak form (FR-030): a second reading of the same vendored source, not an independent one \
-(research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
-own data file is barred by the publisher's usage rules). First reading: \
-packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120167. Second \
-reading (T768, 2026-10-22, by the T768 implementer): the same string re-read in full, then checked \
-against the build 185872 release notes \
+(unit 1699 Flemish Militia, unit 1911 Grenadier, unit 1952 Xianbei Raider, unit 2569 Bolas Rider, \
+unit 2571 Elite Bolas Rider, unit 2586 Temple Guard, unit 281 Throwing Axeman, unit 473 Two-Handed \
+Swordsman, unit 531 Elite Throwing Axeman, unit 554 Elite Teutonic Knight, unit 567 Champion, unit \
+75 Man-at-Arms, unit 751 Eagle Scout, unit 77 Long Swordsman); this pack's rules.json differs from \
+build 185872's (name, age, cost, time or producing building) for Flemish Militia (unit 1699), \
+Grenadier (unit 1911), Xianbei Raider (unit 1952), Bolas Rider (unit 2569), Elite Bolas Rider \
+(unit 2571), Eagle Scout (unit 751). Removed from the selector, absent from this pack: Mounted \
+Crossbowman (unit 2700), H. Mounted Crossbowman (unit 2701), Varangian Guard (unit 2703), E. \
+Varangian Guard (unit 2704), Hearth Troop (unit 2705), Elite Hearth Troop (unit 2706), Jomsviking \
+(unit 2711), Elite Jomsviking (unit 2712). Every identifier the row selects that is not named \
+above was compared with the build 185872 rules.json field by field (name, age, cost, time, \
+producing building). Operation and operand follow the bullet's figures, which this pack's string \
+states in the same words, as the build 185872 row read them. That row's validated_by, for the \
+class and amount readings it records: [Weak form (FR-030): a second reading of the same vendored \
+source, not an independent one (research.md D3: the two community datasets are one generation \
+pipeline run twice, and the game's own data file is barred by the publisher's usage rules). First \
+reading: packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120167. \
+Second reading (T768, 2026-10-22, by the T768 implementer): the same string re-read in full, then \
+checked against the build 185872 release notes \
 (https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), whose \
 Koreans entry names only that Gambesons were lost and the Turtle Ship's hit points reduced, and \
 names no change to a Koreans bonus. Selector and operand: 'Ranged Soldiers' and 'Infantry' are not \
@@ -5938,8 +5923,7 @@ unique Castle unit. 'Infantry' is the 80 units the Goths' Infantry row resolved 
 help strings (the first sentence of each unit's own text), listed again here. The unique Foot \
 Archers and Mounted Archers of other civilisations are not listed: the bonus is the Koreans' own \
 and their tree cannot field them. The operand is a factor of 0.5 on wood alone; a unit with no \
-wood in its cost is not touched.]\
-"""
+wood in its cost is not touched.]"""
 
 [[effect]]
 civilisation = "Koreans"
@@ -6073,25 +6057,24 @@ sha256:b247190134e69b46e5111487db0ff98514df9ceb41bcd4f926a7278fbedd952f) because
 differently in this pack ('Longboat' for the build 185872 pack's 'Longship'); unit 533 is named \
 differently in this pack ('Elite Longboat' for the build 185872 pack's 'Elite Longship'); build \
 185872's release notes name entities the row selects (unit 1103 Fire Galley, unit 1948 Lou Chuan, \
-unit 2626 Hulk, unit 2627 War Hulk, unit 527 Demolition Ship, unit 831 Turtle Ship, unit 832 Elite \
-Turtle Ship); this pack's rules.json differs from build 185872's (name, age, cost, time or \
-producing building) for Longboat (unit 250), Elite Longboat (unit 533). Every identifier the row \
-selects that is not named above was compared with the build 185872 rules.json field by field \
-(name, age, cost, time, producing building). Operation and operand follow the bullet's figures, \
-which this pack's string states in the same words, as the build 185872 row read them. That row's \
-validated_by, for the class and amount readings it records: [Weak form (FR-030): a second reading \
-of the same vendored source, not an independent one (research.md D3: the two community datasets \
-are one generation pipeline run twice, and the game's own data file is barred by the publisher's \
-usage rules). First reading: packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, \
-help_string_id 120167. Second reading (T768, 2026-10-22, by the T768 implementer): the same string \
-re-read in full, then checked against the build 185872 release notes \
+unit 2626 Hulk, unit 2627 War Hulk, unit 831 Turtle Ship, unit 2628 Carrack); this pack's \
+rules.json differs from build 185872's (name, age, cost, time or producing building) for Longboat \
+(unit 250), Elite Longboat (unit 533). Every identifier the row selects that is not named above \
+was compared with the build 185872 rules.json field by field (name, age, cost, time, producing \
+building). Operation and operand follow the bullet's figures, which this pack's string states in \
+the same words, as the build 185872 row read them. That row's validated_by, for the class and \
+amount readings it records: [Weak form (FR-030): a second reading of the same vendored source, not \
+an independent one (research.md D3: the two community datasets are one generation pipeline run \
+twice, and the game's own data file is barred by the publisher's usage rules). First reading: \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120167. Second \
+reading (T768, 2026-10-22, by the T768 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
 (https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), whose \
 Koreans entry names only that Gambesons were lost and the Turtle Ship's hit points reduced, and \
 names no change to a Koreans bonus. Selector and operand: 'Warships' is the 25 units the Vikings' \
 Warships row resolved from the pack's help strings, listed again here; the Fishing Ship, Trade Cog \
 and Transport Ship are not called Warships in the pack's words. A factor of 0.8 on wood alone: the \
-Turtle Ship's 190 wood becomes 152, the 152 wood update 169123 states.]\
-"""
+Turtle Ship's 190 wood becomes 152, the 152 wood update 169123 states.]"""
 
 [[effect]]
 civilisation = "Koreans"
@@ -6157,22 +6140,20 @@ packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120167 (th
 re-resolved against this snapshot's rules.json. Not carried from the build 185872 snapshot \
 (aoe2techtree-185872-civilisations-56, digest \
 sha256:b247190134e69b46e5111487db0ff98514df9ceb41bcd4f926a7278fbedd952f) because build 185872's \
-release notes name entities the row selects (unit 831 Turtle Ship, unit 832 Elite Turtle Ship). \
-Every identifier the row selects that is not named above was compared with the build 185872 \
-rules.json field by field (name, age, cost, time, producing building). Operation and operand \
-follow the bullet's figures, which this pack's string states in the same words, as the build \
-185872 row read them. That row's validated_by, for the class and amount readings it records: [Weak \
-form (FR-030): a second reading of the same vendored source, not an independent one (research.md \
-D3: the two community datasets are one generation pipeline run twice, and the game's own data file \
-is barred by the publisher's usage rules). First reading: \
-packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120167. Second \
-reading (T768, 2026-10-22, by the T768 implementer): the same string re-read in full, then checked \
-against the build 185872 release notes \
+release notes name entities the row selects (unit 831 Turtle Ship). Every identifier the row \
+selects that is not named above was compared with the build 185872 rules.json field by field \
+(name, age, cost, time, producing building). Operation and operand follow the bullet's figures, \
+which this pack's string states in the same words, as the build 185872 row read them. That row's \
+validated_by, for the class and amount readings it records: [Weak form (FR-030): a second reading \
+of the same vendored source, not an independent one (research.md D3: the two community datasets \
+are one generation pipeline run twice, and the game's own data file is barred by the publisher's \
+usage rules). First reading: packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, \
+help_string_id 120167. Second reading (T768, 2026-10-22, by the T768 implementer): the same string \
+re-read in full, then checked against the build 185872 release notes \
 (https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), whose \
 Koreans entry names only that Gambesons were lost and the Turtle Ship's hit points reduced, and \
 names no change to a Koreans bonus. Selector and operand: resolved 'Rocket Carts' to units 1904 \
-(Rocket Cart) and 1907 (Heavy Rocket Cart) and 'Turtle Ships' to 831 and 832.]\
-"""
+(Rocket Cart) and 1907 (Heavy Rocket Cart) and 'Turtle Ships' to 831 and 832.]"""
 
 [[effect]]
 civilisation = "Koreans"
@@ -6334,26 +6315,24 @@ re-resolved against this snapshot's rules.json. Not carried from the build 18587
 (aoe2techtree-185872-civilisations-56, digest \
 sha256:b247190134e69b46e5111487db0ff98514df9ceb41bcd4f926a7278fbedd952f) because technology 372 is \
 named differently in this pack ('Elite Longboat' for the build 185872 pack's 'Elite Longship'); \
-build 185872's release notes name entities the row selects (technology 34 War Hulk, technology 448 \
-Elite Turtle Ship, technology 905 Demolition Ship); this pack's rules.json differs from build \
-185872's (name, age, cost, time or producing building) for Elite Longboat (technology 372), \
-Demolition Ship (technology 905). Every identifier the row selects that is not named above was \
-compared with the build 185872 rules.json field by field (name, age, cost, time, producing \
-building). Operation and operand follow the bullet's figures, which this pack's string states in \
-the same words, as the build 185872 row read them. That row's validated_by, for the class and \
-amount readings it records: [Weak form (FR-030): a second reading of the same vendored source, not \
-an independent one (research.md D3: the two community datasets are one generation pipeline run \
-twice, and the game's own data file is barred by the publisher's usage rules). First reading: \
-packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120168. Second \
-reading (T768, 2026-10-22, by the T768 implementer): the same string re-read in full, then checked \
-against the build 185872 release notes \
+build 185872's release notes name entities the row selects (technology 905 Demolition Ship); this \
+pack's rules.json differs from build 185872's (name, age, cost, time or producing building) for \
+Elite Longboat (technology 372), Demolition Ship (technology 905). Every identifier the row \
+selects that is not named above was compared with the build 185872 rules.json field by field \
+(name, age, cost, time, producing building). Operation and operand follow the bullet's figures, \
+which this pack's string states in the same words, as the build 185872 row read them. That row's \
+validated_by, for the class and amount readings it records: [Weak form (FR-030): a second reading \
+of the same vendored source, not an independent one (research.md D3: the two community datasets \
+are one generation pipeline run twice, and the game's own data file is barred by the publisher's \
+usage rules). First reading: packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, \
+help_string_id 120168. Second reading (T768, 2026-10-22, by the T768 implementer): the same string \
+re-read in full, then checked against the build 185872 release notes \
 (https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), whose \
 Italians entry names only access changes (Mounted Crossbowmen gained, Cavalry Archers lost) and \
 names no change to an Italians bonus. Selector and operand: resolved 'Dock technologies' and \
 'University technologies' to every technology rules.json lists as produced_at building 45 (Dock) \
 or 209 (University), as the Spanish row resolves 'Blacksmith upgrades'. Update 169123 lowered the \
-discount from 33% to 25%, the pack's figure. A factor of 0.75 on every resource, rounded half up.]\
-"""
+discount from 33% to 25%, the pack's figure. A factor of 0.75 on every resource, rounded half up.]"""
 
 [[effect]]
 civilisation = "Italians"
@@ -6389,20 +6368,19 @@ packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120168 (th
 re-resolved against this snapshot's rules.json. Not carried from the build 185872 snapshot \
 (aoe2techtree-185872-civilisations-56, digest \
 sha256:b247190134e69b46e5111487db0ff98514df9ceb41bcd4f926a7278fbedd952f) because build 185872's \
-release notes name entities the row selects (unit 1001 Organ Gun, unit 1003 Elite Organ Gun, unit \
-1704 Hussite Wagon, unit 1706 Elite Hussite Wagon, unit 1911 Grenadier); this pack's rules.json \
-differs from build 185872's (name, age, cost, time or producing building) for Organ Gun (unit \
-1001), Hussite Wagon (unit 1704), Elite Hussite Wagon (unit 1706), Grenadier (unit 1911). Every \
-identifier the row selects that is not named above was compared with the build 185872 rules.json \
-field by field (name, age, cost, time, producing building). Operation and operand follow the \
-bullet's figures, which this pack's string states in the same words, as the build 185872 row read \
-them. That row's validated_by, for the class and amount readings it records: [Weak form (FR-030): \
-a second reading of the same vendored source, not an independent one (research.md D3: the two \
-community datasets are one generation pipeline run twice, and the game's own data file is barred \
-by the publisher's usage rules). First reading: \
-packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120168. Second \
-reading (T768, 2026-10-22, by the T768 implementer): the same string re-read in full, then checked \
-against the build 185872 release notes \
+release notes name entities the row selects (unit 1001 Organ Gun, unit 1704 Hussite Wagon, unit \
+1706 Elite Hussite Wagon, unit 1911 Grenadier); this pack's rules.json differs from build 185872's \
+(name, age, cost, time or producing building) for Organ Gun (unit 1001), Hussite Wagon (unit \
+1704), Elite Hussite Wagon (unit 1706), Grenadier (unit 1911). Every identifier the row selects \
+that is not named above was compared with the build 185872 rules.json field by field (name, age, \
+cost, time, producing building). Operation and operand follow the bullet's figures, which this \
+pack's string states in the same words, as the build 185872 row read them. That row's \
+validated_by, for the class and amount readings it records: [Weak form (FR-030): a second reading \
+of the same vendored source, not an independent one (research.md D3: the two community datasets \
+are one generation pipeline run twice, and the game's own data file is barred by the publisher's \
+usage rules). First reading: packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, \
+help_string_id 120168. Second reading (T768, 2026-10-22, by the T768 implementer): the same string \
+re-read in full, then checked against the build 185872 release notes \
 (https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), whose \
 Italians entry names only access changes (Mounted Crossbowmen gained, Cavalry Archers lost) and \
 names no change to an Italians bonus. Selector and operand: 'Gunpowder Units' is the 14 units the \
@@ -6410,8 +6388,7 @@ Turks' team row resolved (Chemistry's string names Hand Cannoneer, Cannon Galleo
 and Bombard Tower, and every unit whose own help string names a Gunpowder Unit as what it is), \
 listed again here. The units the pack calls a Foot Gunner or a Mounted Gunner (46, 557, 771, 773) \
 are not stated to be Gunpowder Units, and the Italians' tree has none of them, so no open row \
-follows. A factor of 0.8 on every resource.]\
-"""
+follows. A factor of 0.8 on every resource.]"""
 
 [[effect]]
 civilisation = "Italians"
@@ -7058,20 +7035,19 @@ the units the build 185872 pack produces at producing-building identifier 82 (Ca
 units this pack produces there are not the same set; the row selects all of the units the build \
 185872 pack produces at producing-building identifier 87 (Archery Range), and the units this pack \
 produces there are not the same set; build 185872's release notes name entities the row selects \
-(unit 1001 Organ Gun, unit 1003 Elite Organ Gun, unit 1105 Siege Tower, unit 1129 Rattan Archer, \
-unit 1131 Elite Rattan Archer, unit 1258 Battering Ram, unit 1699 Flemish Militia, unit 1704 \
-Hussite Wagon, unit 1706 Elite Hussite Wagon, unit 1744 Armored Elephant, unit 1759 Ratha, unit \
-1761 Elite Ratha, unit 1911 Grenadier, unit 1952 Xianbei Raider, unit 1962 War Chariot, unit 25 \
-Teutonic Knight, unit 2569 Bolas Rider, unit 2571 Elite Bolas Rider, unit 2579 Blackwood Archer, \
-unit 2581 Elite Blackwood Archer, unit 2586 Temple Guard, unit 2587 Elite Temple Guard, unit 281 \
-Throwing Axeman, unit 40 Cataphract, unit 473 Two-Handed Swordsman, unit 531 Elite Throwing \
-Axeman, unit 550 Onager, unit 553 Elite Cataphract, unit 554 Elite Teutonic Knight, unit 567 \
-Champion, unit 75 Man-at-Arms, unit 751 Eagle Scout, unit 77 Long Swordsman, unit 771 \
-Conquistador, unit 773 Elite Conquistador, unit 869 Magyar Huszar, unit 871 Elite Magyar Huszar); \
-this pack's rules.json differs from build 185872's (name, age, cost, time or producing building) \
-for Organ Gun (unit 1001), Flemish Militia (unit 1699), Hussite Wagon (unit 1704), Elite Hussite \
-Wagon (unit 1706), Ratha (unit 1759), Grenadier (unit 1911), Xianbei Raider (unit 1952), War \
-Chariot (unit 1962), Bolas Rider (unit 2569), Elite Bolas Rider (unit 2571), Blackwood Archer \
+(unit 1001 Organ Gun, unit 1105 Siege Tower, unit 1129 Rattan Archer, unit 1131 Elite Rattan \
+Archer, unit 1258 Battering Ram, unit 1699 Flemish Militia, unit 1704 Hussite Wagon, unit 1706 \
+Elite Hussite Wagon, unit 1744 Armored Elephant, unit 1759 Ratha, unit 1911 Grenadier, unit 1952 \
+Xianbei Raider, unit 1962 War Chariot, unit 2569 Bolas Rider, unit 2571 Elite Bolas Rider, unit \
+2579 Blackwood Archer, unit 2581 Elite Blackwood Archer, unit 2586 Temple Guard, unit 281 Throwing \
+Axeman, unit 40 Cataphract, unit 473 Two-Handed Swordsman, unit 531 Elite Throwing Axeman, unit \
+550 Onager, unit 553 Elite Cataphract, unit 554 Elite Teutonic Knight, unit 567 Champion, unit 75 \
+Man-at-Arms, unit 751 Eagle Scout, unit 77 Long Swordsman, unit 771 Conquistador, unit 773 Elite \
+Conquistador, unit 869 Magyar Huszar, unit 1746 Siege Elephant, unit 422 Capped Ram, unit 548 \
+Siege Ram); this pack's rules.json differs from build 185872's (name, age, cost, time or producing \
+building) for Organ Gun (unit 1001), Flemish Militia (unit 1699), Hussite Wagon (unit 1704), Elite \
+Hussite Wagon (unit 1706), Ratha (unit 1759), Grenadier (unit 1911), Xianbei Raider (unit 1952), \
+War Chariot (unit 1962), Bolas Rider (unit 2569), Elite Bolas Rider (unit 2571), Blackwood Archer \
 (unit 2579), Elite Blackwood Archer (unit 2581), Eagle Scout (unit 751), Conquistador (unit 771), \
 Elite Conquistador (unit 773), Magyar Huszar (unit 869). Removed from the selector, absent from \
 this pack: Mounted Crossbowman (unit 2700), H. Mounted Crossbowman (unit 2701), Varangian Guard \
@@ -7098,8 +7074,7 @@ the 215 (the Xolotl Warrior is not in the pack), and no page lists a unit that i
 177723 states the current figure, 15/20/25/30%. The warships and the Monk the Aztecs' row leaves \
 open cost no food, so the question cannot change a value here. The operand is an age table keyed \
 by the pack's age numbering (1 Dark to 4 Imperial): a factor of 0.85, 0.80, 0.75 and 0.70 on food \
-alone; a unit with no food in its cost is not touched.]\
-"""
+alone; a unit with no food in its cost is not touched.]"""
 
 [[effect]]
 civilisation = "Incas"
@@ -7387,15 +7362,15 @@ packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120171 (th
 re-resolved against this snapshot's rules.json. Not carried from the build 185872 snapshot \
 (aoe2techtree-185872-civilisations-56, digest \
 sha256:b247190134e69b46e5111487db0ff98514df9ceb41bcd4f926a7278fbedd952f) because build 185872's \
-release notes name entities the row selects (unit 869 Magyar Huszar, unit 871 Elite Magyar \
-Huszar); this pack's rules.json differs from build 185872's (name, age, cost, time or producing \
-building) for Magyar Huszar (unit 869). Every identifier the row selects that is not named above \
-was compared with the build 185872 rules.json field by field (name, age, cost, time, producing \
-building). Operation and operand follow the bullet's figures, which this pack's string states in \
-the same words, as the build 185872 row read them. That row's validated_by, for the class and \
-amount readings it records: [Weak form (FR-030): a second reading of the same vendored source, not \
-an independent one (research.md D3: the two community datasets are one generation pipeline run \
-twice, and the game's own data file is barred by the publisher's usage rules). First reading: \
+release notes name entities the row selects (unit 869 Magyar Huszar); this pack's rules.json \
+differs from build 185872's (name, age, cost, time or producing building) for Magyar Huszar (unit \
+869). Every identifier the row selects that is not named above was compared with the build 185872 \
+rules.json field by field (name, age, cost, time, producing building). Operation and operand \
+follow the bullet's figures, which this pack's string states in the same words, as the build \
+185872 row read them. That row's validated_by, for the class and amount readings it records: [Weak \
+form (FR-030): a second reading of the same vendored source, not an independent one (research.md \
+D3: the two community datasets are one generation pipeline run twice, and the game's own data file \
+is barred by the publisher's usage rules). First reading: \
 packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120171. Second \
 reading (T768, 2026-10-22, by the T768 implementer): the same string re-read in full, then checked \
 against the build 185872 release notes \
@@ -7406,8 +7381,7 @@ names no change to a Magyars bonus. Selector and operand: resolved 'Magyar Husza
 researched. Update 95810 is the one page that names the effect ('changed from Magyar Huszar cost \
 no gold to Magyar Huszar gold cost is replaced by additional food cost') and sets the unit's base \
 cost to 35 food 45 gold; no page states the food that replaces the gold, so a total of 80 food \
-would be an inference and is not transcribed.]\
-"""
+would be an inference and is not transcribed.]"""
 
 [[effect]]
 civilisation = "Magyars"
@@ -7728,46 +7702,44 @@ row selects or conditions on identifiers absent from this pack's rules.json (uni
 unit 2703, unit 2704, unit 2705, unit 2706, unit 2708, unit 2709, unit 2711, unit 2712); unit 250 \
 is named differently in this pack ('Longboat' for the build 185872 pack's 'Longship'); unit 533 is \
 named differently in this pack ('Elite Longboat' for the build 185872 pack's 'Elite Longship'); \
-build 185872's release notes name entities the row selects (unit 1001 Organ Gun, unit 1003 Elite \
-Organ Gun, unit 1103 Fire Galley, unit 1105 Siege Tower, unit 1129 Rattan Archer, unit 1131 Elite \
-Rattan Archer, unit 1258 Battering Ram, unit 1699 Flemish Militia, unit 1704 Hussite Wagon, unit \
-1706 Elite Hussite Wagon, unit 1744 Armored Elephant, unit 1759 Ratha, unit 1761 Elite Ratha, unit \
-1911 Grenadier, unit 1948 Lou Chuan, unit 1952 Xianbei Raider, unit 1962 War Chariot, unit 25 \
-Teutonic Knight, unit 2569 Bolas Rider, unit 2571 Elite Bolas Rider, unit 2579 Blackwood Archer, \
-unit 2581 Elite Blackwood Archer, unit 2586 Temple Guard, unit 2587 Elite Temple Guard, unit 2626 \
-Hulk, unit 2627 War Hulk, unit 281 Throwing Axeman, unit 40 Cataphract, unit 473 Two-Handed \
-Swordsman, unit 527 Demolition Ship, unit 531 Elite Throwing Axeman, unit 550 Onager, unit 553 \
-Elite Cataphract, unit 554 Elite Teutonic Knight, unit 567 Champion, unit 75 Man-at-Arms, unit 751 \
-Eagle Scout, unit 77 Long Swordsman, unit 771 Conquistador, unit 773 Elite Conquistador, unit 775 \
-Missionary, unit 831 Turtle Ship, unit 832 Elite Turtle Ship, unit 869 Magyar Huszar, unit 871 \
-Elite Magyar Huszar); this pack's rules.json differs from build 185872's (name, age, cost, time or \
-producing building) for Organ Gun (unit 1001), Flemish Militia (unit 1699), Hussite Wagon (unit \
-1704), Elite Hussite Wagon (unit 1706),  (unit 1738), Ratha (unit 1759), Grenadier (unit 1911), \
-Xianbei Raider (unit 1952), War Chariot (unit 1962),  (unit 1980), Longboat (unit 250), Bolas \
-Rider (unit 2569), Elite Bolas Rider (unit 2571), Blackwood Archer (unit 2579), Elite Blackwood \
-Archer (unit 2581), Elite Longboat (unit 533), Eagle Scout (unit 751), Conquistador (unit 771), \
-Elite Conquistador (unit 773), Missionary (unit 775), Magyar Huszar (unit 869). Removed from the \
-selector, absent from this pack: Mounted Crossbowman (unit 2700), H. Mounted Crossbowman (unit \
-2701), Varangian Guard (unit 2703), E. Varangian Guard (unit 2704), Hearth Troop (unit 2705), \
-Elite Hearth Troop (unit 2706), Jarl (unit 2708), Elite Jarl (unit 2709), Jomsviking (unit 2711), \
-Elite Jomsviking (unit 2712). Every identifier the row selects that is not named above was \
-compared with the build 185872 rules.json field by field (name, age, cost, time, producing \
-building). Operation and operand follow the bullet's figures, which this pack's string states in \
-the same words, as the build 185872 row read them. That row's validated_by, for the class and \
-amount readings it records: [Weak form (FR-030): a second reading of the same vendored source, not \
-an independent one (research.md D3: the two community datasets are one generation pipeline run \
-twice, and the game's own data file is barred by the publisher's usage rules). First reading: \
-packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120173. Second \
-reading (T768, 2026-10-22, by the T768 implementer): the same string re-read in full, then checked \
-against the build 185872 release notes \
+build 185872's release notes name entities the row selects (unit 1001 Organ Gun, unit 1103 Fire \
+Galley, unit 1105 Siege Tower, unit 1129 Rattan Archer, unit 1131 Elite Rattan Archer, unit 1258 \
+Battering Ram, unit 1699 Flemish Militia, unit 1704 Hussite Wagon, unit 1706 Elite Hussite Wagon, \
+unit 1744 Armored Elephant, unit 1759 Ratha, unit 1911 Grenadier, unit 1948 Lou Chuan, unit 1952 \
+Xianbei Raider, unit 1962 War Chariot, unit 2569 Bolas Rider, unit 2571 Elite Bolas Rider, unit \
+2579 Blackwood Archer, unit 2581 Elite Blackwood Archer, unit 2586 Temple Guard, unit 2626 Hulk, \
+unit 2627 War Hulk, unit 281 Throwing Axeman, unit 40 Cataphract, unit 473 Two-Handed Swordsman, \
+unit 531 Elite Throwing Axeman, unit 550 Onager, unit 553 Elite Cataphract, unit 554 Elite \
+Teutonic Knight, unit 567 Champion, unit 75 Man-at-Arms, unit 751 Eagle Scout, unit 77 Long \
+Swordsman, unit 771 Conquistador, unit 773 Elite Conquistador, unit 775 Missionary, unit 831 \
+Turtle Ship, unit 869 Magyar Huszar, unit 1746 Siege Elephant, unit 2628 Carrack, unit 422 Capped \
+Ram, unit 548 Siege Ram); this pack's rules.json differs from build 185872's (name, age, cost, \
+time or producing building) for Organ Gun (unit 1001), Flemish Militia (unit 1699), Hussite Wagon \
+(unit 1704), Elite Hussite Wagon (unit 1706),  (unit 1738), Ratha (unit 1759), Grenadier (unit \
+1911), Xianbei Raider (unit 1952), War Chariot (unit 1962),  (unit 1980), Longboat (unit 250), \
+Bolas Rider (unit 2569), Elite Bolas Rider (unit 2571), Blackwood Archer (unit 2579), Elite \
+Blackwood Archer (unit 2581), Elite Longboat (unit 533), Eagle Scout (unit 751), Conquistador \
+(unit 771), Elite Conquistador (unit 773), Missionary (unit 775), Magyar Huszar (unit 869). \
+Removed from the selector, absent from this pack: Mounted Crossbowman (unit 2700), H. Mounted \
+Crossbowman (unit 2701), Varangian Guard (unit 2703), E. Varangian Guard (unit 2704), Hearth Troop \
+(unit 2705), Elite Hearth Troop (unit 2706), Jarl (unit 2708), Elite Jarl (unit 2709), Jomsviking \
+(unit 2711), Elite Jomsviking (unit 2712). Every identifier the row selects that is not named \
+above was compared with the build 185872 rules.json field by field (name, age, cost, time, \
+producing building). Operation and operand follow the bullet's figures, which this pack's string \
+states in the same words, as the build 185872 row read them. That row's validated_by, for the \
+class and amount readings it records: [Weak form (FR-030): a second reading of the same vendored \
+source, not an independent one (research.md D3: the two community datasets are one generation \
+pipeline run twice, and the game's own data file is barred by the publisher's usage rules). First \
+reading: packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120173. \
+Second reading (T768, 2026-10-22, by the T768 implementer): the same string re-read in full, then \
+checked against the build 185872 release notes \
 (https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), whose \
 Portuguese entry names only access changes (Redemption lost, Mounted Crossbowmen gained, Cavalry \
 Archers lost) and the Organ Gun's train time, and names no change to a Portuguese bonus. Selector \
 and operand: resolved 'All units' to every unit rules.json lists with a gold component in its cost \
 (235 of its 255 units); a factor of 0.8 on gold only (update 39284 raised the discount to 20%). A \
 unit whose cost has no gold is not a match, and a unit the Portuguese cannot train is not a query \
-anyone makes.]\
-"""
+anyone makes.]"""
 
 [[effect]]
 civilisation = "Portuguese"
@@ -7822,18 +7794,18 @@ sha256:b247190134e69b46e5111487db0ff98514df9ceb41bcd4f926a7278fbedd952f) because
 differently in this pack ('Longboat' for the build 185872 pack's 'Longship'); unit 533 is named \
 differently in this pack ('Elite Longboat' for the build 185872 pack's 'Elite Longship'); build \
 185872's release notes name entities the row selects (unit 1103 Fire Galley, unit 1948 Lou Chuan, \
-unit 2626 Hulk, unit 2627 War Hulk, unit 527 Demolition Ship, unit 831 Turtle Ship, unit 832 Elite \
-Turtle Ship); this pack's rules.json differs from build 185872's (name, age, cost, time or \
-producing building) for Longboat (unit 250), Elite Longboat (unit 533). Every identifier the row \
-selects that is not named above was compared with the build 185872 rules.json field by field \
-(name, age, cost, time, producing building). Operation and operand follow the bullet's figures, \
-which this pack's string states in the same words, as the build 185872 row read them. That row's \
-validated_by, for the class and amount readings it records: [Weak form (FR-030): a second reading \
-of the same vendored source, not an independent one (research.md D3: the two community datasets \
-are one generation pipeline run twice, and the game's own data file is barred by the publisher's \
-usage rules). First reading: packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, \
-help_string_id 120173. Second reading (T768, 2026-10-22, by the T768 implementer): the same string \
-re-read in full, then checked against the build 185872 release notes \
+unit 2626 Hulk, unit 2627 War Hulk, unit 831 Turtle Ship, unit 2628 Carrack); this pack's \
+rules.json differs from build 185872's (name, age, cost, time or producing building) for Longboat \
+(unit 250), Elite Longboat (unit 533). Every identifier the row selects that is not named above \
+was compared with the build 185872 rules.json field by field (name, age, cost, time, producing \
+building). Operation and operand follow the bullet's figures, which this pack's string states in \
+the same words, as the build 185872 row read them. That row's validated_by, for the class and \
+amount readings it records: [Weak form (FR-030): a second reading of the same vendored source, not \
+an independent one (research.md D3: the two community datasets are one generation pipeline run \
+twice, and the game's own data file is barred by the publisher's usage rules). First reading: \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120173. Second \
+reading (T768, 2026-10-22, by the T768 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
 (https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), whose \
 Portuguese entry names only access changes (Redemption lost, Mounted Crossbowmen gained, Cavalry \
 Archers lost) and the Organ Gun's train time, and names no change to a Portuguese bonus. Selector \
@@ -7841,8 +7813,7 @@ and operand: resolved 'Ships' to every unit rules.json lists as produced_at buil
 units: the 25 Warships and the Fishing Ship, Trade Cog and Transport Ship. Condition: technology \
 1404 (Circumnavigation) researched (update 169123 introduced it with 'Ships train +33% faster'). \
 'Train +33% faster' divides the baseline time by 1.33. The map-exploration half touches no \
-entity.]\
-"""
+entity.]"""
 
 [[effect]]
 civilisation = "Portuguese"
@@ -8168,29 +8139,23 @@ there are not the same set; the row selects all of the technologies the build 18
 at producing-building identifier 82 (Castle), and the technologies this pack produces there are \
 not the same set; the row selects all of the technologies the build 185872 pack produces at \
 producing-building identifier 87 (Archery Range), and the technologies this pack produces there \
-are not the same set; build 185872's release notes name entities the row selects (technology 1378 \
-Elite Bolas Rider, technology 1389 Elite Blackwood Archer, technology 1401 Elite Temple Guard, \
-technology 207 Long Swordsman, technology 21 Atheism, technology 217 Two-Handed Swordsman, \
-technology 222 Man-at-Arms, technology 257 Onager, technology 264 Champion, technology 34 War \
-Hulk, technology 361 Elite Cataphract, technology 363 Elite Throwing Axeman, technology 364 Elite \
-Teutonic Knight, technology 448 Elite Turtle Ship, technology 463 Chieftains, technology 472 Elite \
-Magyar Huszar, technology 563 Elite Organ Gun, technology 60 Elite Conquistador, technology 61 \
-Logistica, technology 621 Elite Rattan Archer, technology 781 Elite Hussite Wagon, technology 784 \
-Wagenburg Tactics, technology 828 Elite Ratha, technology 905 Demolition Ship); this pack's \
-rules.json differs from build 185872's (name, age, cost, time or producing building) for Elite \
-Longboat (technology 372), Elite Rattan Archer (technology 621), Demolition Ship (technology 905). \
-Removed from the selector, absent from this pack: H. Mounted Crossbowman (technology 1451), \
-Cranequins (technology 1452), E. Varangian Guard (technology 1454), Elite Hearth Troop (technology \
-1462), Shield Wall (technology 1464), Elite Jarl (technology 1472), Vendel Legacy (technology \
-1473), Gothikon (technology 1474), Elite Jomsviking (technology 1482), Northmen's Fury (technology \
-1483), Hamask (technology 1484), Clerical Recruitment (technology 1491), Ordonnance Companies \
-(technology 1496). Every identifier the row selects that is not named above was compared with the \
-build 185872 rules.json field by field (name, age, cost, time, producing building). Operation and \
-operand follow the bullet's figures, which this pack's string states in the same words, as the \
-build 185872 row read them. That row's validated_by, for the class and amount readings it records: \
-[Weak form (FR-030): a second reading of the same vendored source, not an independent one \
-(research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
-own data file is barred by the publisher's usage rules). First reading: \
+are not the same set; build 185872's release notes name entities the row selects (technology 21 \
+Atheism, technology 463 Chieftains, technology 61 Logistica, technology 621 Elite Rattan Archer, \
+technology 784 Wagenburg Tactics, technology 905 Demolition Ship); this pack's rules.json differs \
+from build 185872's (name, age, cost, time or producing building) for Elite Longboat (technology \
+372), Elite Rattan Archer (technology 621), Demolition Ship (technology 905). Removed from the \
+selector, absent from this pack: H. Mounted Crossbowman (technology 1451), Cranequins (technology \
+1452), E. Varangian Guard (technology 1454), Elite Hearth Troop (technology 1462), Shield Wall \
+(technology 1464), Elite Jarl (technology 1472), Vendel Legacy (technology 1473), Gothikon \
+(technology 1474), Elite Jomsviking (technology 1482), Northmen's Fury (technology 1483), Hamask \
+(technology 1484), Clerical Recruitment (technology 1491), Ordonnance Companies (technology 1496). \
+Every identifier the row selects that is not named above was compared with the build 185872 \
+rules.json field by field (name, age, cost, time, producing building). Operation and operand \
+follow the bullet's figures, which this pack's string states in the same words, as the build \
+185872 row read them. That row's validated_by, for the class and amount readings it records: [Weak \
+form (FR-030): a second reading of the same vendored source, not an independent one (research.md \
+D3: the two community datasets are one generation pipeline run twice, and the game's own data file \
+is barred by the publisher's usage rules). First reading: \
 packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120173. Second \
 reading (T768, 2026-10-22, by the T768 implementer): the same string re-read in full, then checked \
 against the build 185872 release notes \
@@ -8202,8 +8167,7 @@ advances (101, 102 and 103), 305 of its 308, with no filter by any civilisation'
 effect reaches every ally, and which of them an ally can research is available_to's question. The \
 Age advances are excluded on the publisher's word: update 73855 introduced the bonus as \
 'Technologies Research 25% faster (excluding Age Up)', and no later page changes it. 'Research \
-+25% faster' divides the baseline time by 1.25.]\
-"""
++25% faster' divides the baseline time by 1.25.]"""
 
 # ---------------------------------------------------------------------- Ethiopians
 
@@ -8354,22 +8318,21 @@ re-resolved against this snapshot's rules.json. Not carried from the build 18587
 (aoe2techtree-185872-civilisations-56, digest \
 sha256:b247190134e69b46e5111487db0ff98514df9ceb41bcd4f926a7278fbedd952f) because build 185872's \
 release notes name entities the row selects (unit 1105 Siege Tower, unit 1258 Battering Ram, unit \
-1744 Armored Elephant, unit 1962 War Chariot, unit 550 Onager); this pack's rules.json differs \
-from build 185872's (name, age, cost, time or producing building) for War Chariot (unit 1962). \
-Every identifier the row selects that is not named above was compared with the build 185872 \
-rules.json field by field (name, age, cost, time, producing building). Operation and operand \
-follow the bullet's figures, which this pack's string states in the same words, as the build \
-185872 row read them. That row's validated_by, for the class and amount readings it records: [Weak \
-form (FR-030): a second reading of the same vendored source, not an independent one (research.md \
-D3: the two community datasets are one generation pipeline run twice, and the game's own data file \
-is barred by the publisher's usage rules). First reading: \
-packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120174. Second \
-reading (T768, 2026-10-22, by the T768 implementer): the same string re-read in full, then checked \
-against the build 185872 release notes \
+1744 Armored Elephant, unit 1962 War Chariot, unit 550 Onager, unit 1746 Siege Elephant, unit 422 \
+Capped Ram, unit 548 Siege Ram); this pack's rules.json differs from build 185872's (name, age, \
+cost, time or producing building) for War Chariot (unit 1962). Every identifier the row selects \
+that is not named above was compared with the build 185872 rules.json field by field (name, age, \
+cost, time, producing building). Operation and operand follow the bullet's figures, which this \
+pack's string states in the same words, as the build 185872 row read them. That row's \
+validated_by, for the class and amount readings it records: [Weak form (FR-030): a second reading \
+of the same vendored source, not an independent one (research.md D3: the two community datasets \
+are one generation pipeline run twice, and the game's own data file is barred by the publisher's \
+usage rules). First reading: packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, \
+help_string_id 120174. Second reading (T768, 2026-10-22, by the T768 implementer): the same string \
+re-read in full, then checked against the build 185872 release notes \
 (https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), which \
 does not name the Ethiopians anywhere on the page. Selector and operand: resolved 'Siege Workshop \
-Units' to every unit rules.json lists as produced_at building 49 (Siege Workshop).]\
-"""
+Units' to every unit rules.json lists as produced_at building 49 (Siege Workshop).]"""
 
 [[effect]]
 civilisation = "Ethiopians"
@@ -8833,34 +8796,29 @@ technology 1464, technology 1472, technology 1473, technology 1474, technology 1
 produces at producing-building identifier 82 (Castle), and the technologies this pack produces \
 there are not the same set; the row selects all of the units the build 185872 pack produces at \
 producing-building identifier 82 (Castle), and the units this pack produces there are not the same \
-set; build 185872's release notes name entities the row selects (technology 1389 Elite Blackwood \
-Archer, technology 21 Atheism, technology 361 Elite Cataphract, technology 363 Elite Throwing \
-Axeman, technology 364 Elite Teutonic Knight, technology 463 Chieftains, technology 472 Elite \
-Magyar Huszar, technology 563 Elite Organ Gun, technology 60 Elite Conquistador, technology 61 \
-Logistica, technology 621 Elite Rattan Archer, technology 781 Elite Hussite Wagon, technology 784 \
-Wagenburg Tactics, technology 828 Elite Ratha, unit 1001 Organ Gun, unit 1003 Elite Organ Gun, \
-unit 1129 Rattan Archer, unit 1131 Elite Rattan Archer, unit 1704 Hussite Wagon, unit 1706 Elite \
-Hussite Wagon, unit 1759 Ratha, unit 1761 Elite Ratha, unit 25 Teutonic Knight, unit 2579 \
-Blackwood Archer, unit 2581 Elite Blackwood Archer, unit 281 Throwing Axeman, unit 40 Cataphract, \
-unit 531 Elite Throwing Axeman, unit 553 Elite Cataphract, unit 554 Elite Teutonic Knight, unit \
-771 Conquistador, unit 773 Elite Conquistador, unit 869 Magyar Huszar, unit 871 Elite Magyar \
-Huszar); this pack's rules.json differs from build 185872's (name, age, cost, time or producing \
-building) for Elite Rattan Archer (technology 621), Organ Gun (unit 1001), Hussite Wagon (unit \
-1704), Elite Hussite Wagon (unit 1706), Ratha (unit 1759), Blackwood Archer (unit 2579), Elite \
-Blackwood Archer (unit 2581), Conquistador (unit 771), Elite Conquistador (unit 773), Magyar \
-Huszar (unit 869). Removed from the selector, absent from this pack: Elite Hearth Troop \
-(technology 1462), Shield Wall (technology 1464), Elite Jarl (technology 1472), Vendel Legacy \
-(technology 1473), Gothikon (technology 1474), Elite Jomsviking (technology 1482), Northmen's Fury \
-(technology 1483), Hamask (technology 1484), Clerical Recruitment (technology 1491), Ordonnance \
-Companies (technology 1496), Hearth Troop (unit 2705), Elite Hearth Troop (unit 2706), Jarl (unit \
-2708), Elite Jarl (unit 2709), Jomsviking (unit 2711), Elite Jomsviking (unit 2712). Every \
-identifier the row selects that is not named above was compared with the build 185872 rules.json \
-field by field (name, age, cost, time, producing building). Operation and operand follow the \
-bullet's figures, which this pack's string states in the same words, as the build 185872 row read \
-them. That row's validated_by, for the class and amount readings it records: [Weak form (FR-030): \
-a second reading of the same vendored source, not an independent one (research.md D3: the two \
-community datasets are one generation pipeline run twice, and the game's own data file is barred \
-by the publisher's usage rules). First reading: \
+set; build 185872's release notes name entities the row selects (technology 21 Atheism, technology \
+463 Chieftains, technology 61 Logistica, technology 621 Elite Rattan Archer, technology 784 \
+Wagenburg Tactics, unit 1001 Organ Gun, unit 1129 Rattan Archer, unit 1131 Elite Rattan Archer, \
+unit 1704 Hussite Wagon, unit 1706 Elite Hussite Wagon, unit 1759 Ratha, unit 2579 Blackwood \
+Archer, unit 2581 Elite Blackwood Archer, unit 281 Throwing Axeman, unit 40 Cataphract, unit 531 \
+Elite Throwing Axeman, unit 553 Elite Cataphract, unit 554 Elite Teutonic Knight, unit 771 \
+Conquistador, unit 773 Elite Conquistador, unit 869 Magyar Huszar); this pack's rules.json differs \
+from build 185872's (name, age, cost, time or producing building) for Elite Rattan Archer \
+(technology 621), Organ Gun (unit 1001), Hussite Wagon (unit 1704), Elite Hussite Wagon (unit \
+1706), Ratha (unit 1759), Blackwood Archer (unit 2579), Elite Blackwood Archer (unit 2581), \
+Conquistador (unit 771), Elite Conquistador (unit 773), Magyar Huszar (unit 869). Removed from the \
+selector, absent from this pack: Elite Hearth Troop (technology 1462), Shield Wall (technology \
+1464), Elite Jarl (technology 1472), Vendel Legacy (technology 1473), Gothikon (technology 1474), \
+Elite Jomsviking (technology 1482), Northmen's Fury (technology 1483), Hamask (technology 1484), \
+Clerical Recruitment (technology 1491), Ordonnance Companies (technology 1496), Hearth Troop (unit \
+2705), Elite Hearth Troop (unit 2706), Jarl (unit 2708), Elite Jarl (unit 2709), Jomsviking (unit \
+2711), Elite Jomsviking (unit 2712). Every identifier the row selects that is not named above was \
+compared with the build 185872 rules.json field by field (name, age, cost, time, producing \
+building). Operation and operand follow the bullet's figures, which this pack's string states in \
+the same words, as the build 185872 row read them. That row's validated_by, for the class and \
+amount readings it records: [Weak form (FR-030): a second reading of the same vendored source, not \
+an independent one (research.md D3: the two community datasets are one generation pipeline run \
+twice, and the game's own data file is barred by the publisher's usage rules). First reading: \
 packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120176. Second \
 reading (T770, 2026-10-26, by the T770 implementer): the same string re-read in full, then checked \
 against the build 185872 release notes \
@@ -8872,8 +8830,7 @@ because a team row reaches an ally's Castle, whatever its civilisation. Conditio
 (Kasbah) researched by the owner and the owner's team together (T781), read through \
 Context.team_researched. '+25% faster' divides the time by 1.25. The publisher's notes say only \
 that the technology 'affects other players' (the 185872 page, in a note on notifications) and \
-state no figure that disagrees with the pack.]\
-"""
+state no figure that disagrees with the pack.]"""
 
 [[effect]]
 civilisation = "Berbers"
@@ -10027,29 +9984,23 @@ validated_by = """\
 Weak form (FR-030): a second reading of the same vendored source, not an independent one \
 (research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
 own data file is barred by the publisher's usage rules). First reading: \
-packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120181 (the pack build \
-180059 derives from, commit b9d494df6921d4080df69b22f9dbb7a4d1dcd9f0). Second reading (T773, \
-2026-10-28, by the T773 implementer): the bullet re-read in that string and its selector \
-re-resolved against this snapshot's rules.json. Not carried from the build 185872 snapshot \
-(aoe2techtree-185872-civilisations-56, digest \
-sha256:b247190134e69b46e5111487db0ff98514df9ceb41bcd4f926a7278fbedd952f) because build 185872's \
-release notes name entities the row selects (technology 207 Long Swordsman, technology 217 \
-Two-Handed Swordsman, technology 222 Man-at-Arms, technology 264 Champion). Every identifier the \
-row selects that is not named above was compared with the build 185872 rules.json field by field \
-(name, age, cost, time, producing building). Operation and operand follow the bullet's figures, \
-which this pack's string states in the same words, as the build 185872 row read them. That row's \
-validated_by, for the class and amount readings it records: [Weak form (FR-030): a second reading \
-of the same vendored source, not an independent one (research.md D3: the two community datasets \
-are one generation pipeline run twice, and the game's own data file is barred by the publisher's \
-usage rules). First reading: packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, \
-help_string_id 120181. Second reading (T769, 2026-10-23, by the T769 implementer): the same string \
-re-read in full, then checked against the build 185872 release notes \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120181. Second \
+reading (T769, 2026-10-23, by the T769 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
 (https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), which \
 does not name the Bulgarians anywhere on the page. Selector and operand: resolved 'Militia-line \
 upgrades' to the four technologies rules.json lists as the line's upgrades at the Barracks: \
 Man-at-Arms 222, Long Swordsman 207, Two-Handed Swordsman 217 and Champion 264. Squires, Gambesons \
-and Arson change a unit's stats, not its line, and are not upgrades of it.]\
-"""
+and Arson change a unit's stats, not its line, and are not upgrades of it. Carried to build 180059 \
+by T773 (2026-10-28) from aoe2techtree-185872-civilisations-56 (digest \
+sha256:b247190134e69b46e5111487db0ff98514df9ceb41bcd4f926a7278fbedd952f), under the carry rule: \
+the bullet is byte-identical under key 120181 in \
+packages/knowledge/packs/aoe2techtree/strings.en.json and in \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json; every selector and condition \
+identifier resolves to the same identifier, with the same name, in this snapshot's rules.json, and \
+a class defined by where a building produces it has the same members in both; and the build 185872 \
+release notes (read in full, Balance Changes) name no change to the bonus or to an entity it \
+selects. The reading above is the source row's, kept as it was written."""
 
 [[effect]]
 civilisation = "Bulgarians"
@@ -10069,28 +10020,22 @@ validated_by = """\
 Weak form (FR-030): a second reading of the same vendored source, not an independent one \
 (research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
 own data file is barred by the publisher's usage rules). First reading: \
-packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120181 (the pack build \
-180059 derives from, commit b9d494df6921d4080df69b22f9dbb7a4d1dcd9f0). Second reading (T773, \
-2026-10-28, by the T773 implementer): the bullet re-read in that string and its selector \
-re-resolved against this snapshot's rules.json. Not carried from the build 185872 snapshot \
-(aoe2techtree-185872-civilisations-56, digest \
-sha256:b247190134e69b46e5111487db0ff98514df9ceb41bcd4f926a7278fbedd952f) because build 185872's \
-release notes name entities the row selects (technology 207 Long Swordsman, technology 217 \
-Two-Handed Swordsman, technology 222 Man-at-Arms, technology 264 Champion). Every identifier the \
-row selects that is not named above was compared with the build 185872 rules.json field by field \
-(name, age, cost, time, producing building). Operation and operand follow the bullet's figures, \
-which this pack's string states in the same words, as the build 185872 row read them. That row's \
-validated_by, for the class and amount readings it records: [Weak form (FR-030): a second reading \
-of the same vendored source, not an independent one (research.md D3: the two community datasets \
-are one generation pipeline run twice, and the game's own data file is barred by the publisher's \
-usage rules). First reading: packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, \
-help_string_id 120181. Second reading (T769, 2026-10-23, by the T769 implementer): the same string \
-re-read in full, then checked against the build 185872 release notes \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120181. Second \
+reading (T769, 2026-10-23, by the T769 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
 (https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), which \
 does not name the Bulgarians anywhere on the page. Selector and operand: the second half of one \
 bullet: a technology the bonus makes free is granted on reaching its age and is never researched, \
-so its research time is 0 as well as its cost.]\
-"""
+so its research time is 0 as well as its cost. Carried to build 180059 by T773 (2026-10-28) from \
+aoe2techtree-185872-civilisations-56 (digest \
+sha256:b247190134e69b46e5111487db0ff98514df9ceb41bcd4f926a7278fbedd952f), under the carry rule: \
+the bullet is byte-identical under key 120181 in \
+packages/knowledge/packs/aoe2techtree/strings.en.json and in \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json; every selector and condition \
+identifier resolves to the same identifier, with the same name, in this snapshot's rules.json, and \
+a class defined by where a building produces it has the same members in both; and the build 185872 \
+release notes (read in full, Balance Changes) name no change to the bonus or to an entity it \
+selects. The reading above is the source row's, kept as it was written."""
 
 [[effect]]
 civilisation = "Bulgarians"
@@ -10129,28 +10074,23 @@ validated_by = """\
 Weak form (FR-030): a second reading of the same vendored source, not an independent one \
 (research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
 own data file is barred by the publisher's usage rules). First reading: \
-packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120181 (the pack build \
-180059 derives from, commit b9d494df6921d4080df69b22f9dbb7a4d1dcd9f0). Second reading (T773, \
-2026-10-28, by the T773 implementer): the bullet re-read in that string and its selector \
-re-resolved against this snapshot's rules.json. Not carried from the build 185872 snapshot \
-(aoe2techtree-185872-civilisations-56, digest \
-sha256:b247190134e69b46e5111487db0ff98514df9ceb41bcd4f926a7278fbedd952f) because build 185872's \
-release notes name entities the row selects (technology 257 Onager). Every identifier the row \
-selects that is not named above was compared with the build 185872 rules.json field by field \
-(name, age, cost, time, producing building). Operation and operand follow the bullet's figures, \
-which this pack's string states in the same words, as the build 185872 row read them. That row's \
-validated_by, for the class and amount readings it records: [Weak form (FR-030): a second reading \
-of the same vendored source, not an independent one (research.md D3: the two community datasets \
-are one generation pipeline run twice, and the game's own data file is barred by the publisher's \
-usage rules). First reading: packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, \
-help_string_id 120181. Second reading (T769, 2026-10-23, by the T769 implementer): the same string \
-re-read in full, then checked against the build 185872 release notes \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120181. Second \
+reading (T769, 2026-10-23, by the T769 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
 (https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), which \
 does not name the Bulgarians anywhere on the page. Selector and operand: resolved 'Blacksmith and \
 Siege Workshop technologies' to every technology rules.json lists as produced_at building 103 \
 (Blacksmith) or 49 (Siege Workshop), 15 and 8, with no filter by the Bulgarians' tree. The operand \
-is a factor of 0.50 on food alone; a technology with no food is not touched.]\
-"""
+is a factor of 0.50 on food alone; a technology with no food is not touched. Carried to build \
+180059 by T773 (2026-10-28) from aoe2techtree-185872-civilisations-56 (digest \
+sha256:b247190134e69b46e5111487db0ff98514df9ceb41bcd4f926a7278fbedd952f), under the carry rule: \
+the bullet is byte-identical under key 120181 in \
+packages/knowledge/packs/aoe2techtree/strings.en.json and in \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json; every selector and condition \
+identifier resolves to the same identifier, with the same name, in this snapshot's rules.json, and \
+a class defined by where a building produces it has the same members in both; and the build 185872 \
+release notes (read in full, Balance Changes) name no change to the bonus or to an entity it \
+selects. The reading above is the source row's, kept as it was written."""
 
 [[effect]]
 civilisation = "Bulgarians"
@@ -10418,24 +10358,27 @@ validated_by = """\
 Weak form (FR-030): a second reading of the same vendored source, not an independent one \
 (research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
 own data file is barred by the publisher's usage rules). First reading: \
-packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120183. Second \
-reading (T769, 2026-10-23, by the T769 implementer): the same string re-read in full, then \
-checked against the build 185872 release notes \
+packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120183 (the pack build \
+180059 derives from, commit b9d494df6921d4080df69b22f9dbb7a4d1dcd9f0). Second reading (T773, \
+2026-10-28, by the T773 implementer): the bullet re-read in that string and its selector \
+re-resolved against this snapshot's rules.json. Not carried from the build 185872 snapshot \
+(aoe2techtree-185872-civilisations-56, digest \
+sha256:b247190134e69b46e5111487db0ff98514df9ceb41bcd4f926a7278fbedd952f) because build 185872's \
+release notes name entities the row selects (unit 422 Capped Ram). Every identifier the row \
+selects that is not named above was compared with the build 185872 rules.json field by field \
+(name, age, cost, time, producing building). Operation and operand follow the bullet's figures, \
+which this pack's string states in the same words, as the build 185872 row read them. That row's \
+validated_by, for the class and amount readings it records: [Weak form (FR-030): a second reading \
+of the same vendored source, not an independent one (research.md D3: the two community datasets \
+are one generation pipeline run twice, and the game's own data file is barred by the publisher's \
+usage rules). First reading: packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, \
+help_string_id 120183. Second reading (T769, 2026-10-23, by the T769 implementer): the same string \
+re-read in full, then checked against the build 185872 release notes \
 (https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), which \
 names the Cumans only through their Cuman Mercenaries technology (one of six that now display a \
 notification) and no change to a Cuman bonus. Selector and operand: resolved 'Capped Ram' to \
 technology 96 (the upgrade) and unit 422 (the unit it makes available), both age 4 in rules.json, \
-and set to the Castle Age (3). The Siege Ram (548) is a different unit and stays Imperial. \
-Carried to build 180059 by T773 (2026-10-28) from aoe2techtree-185872-civilisations-56 (digest \
-sha256:b247190134e69b46e5111487db0ff98514df9ceb41bcd4f926a7278fbedd952f), under the carry rule: \
-the bullet is byte-identical under key 120183 in \
-packages/knowledge/packs/aoe2techtree/strings.en.json and in \
-packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json; every selector and condition \
-identifier resolves to the same identifier, with the same name, in this snapshot's rules.json, and \
-a class defined by where a building produces it has the same members in both; and the build 185872 \
-release notes (read in full, Balance Changes) name no change to the bonus or to an entity it \
-selects. The reading above is the source row's, kept as it was written.\
-"""
+and set to the Castle Age (3). The Siege Ram (548) is a different unit and stays Imperial.]"""
 
 [[effect]]
 civilisation = "Cumans"
@@ -11920,17 +11863,15 @@ re-resolved against this snapshot's rules.json. Not carried from the build 18587
 sha256:b247190134e69b46e5111487db0ff98514df9ceb41bcd4f926a7278fbedd952f) because the build 185872 \
 row selects or conditions on identifiers absent from this pack's rules.json (technology 1454); the \
 row selects all of the technologies the build 185872 pack produces at producing-building \
-identifier 12 (Barracks), and the technologies this pack produces there are not the same set; \
-build 185872's release notes name entities the row selects (technology 1401 Elite Temple Guard, \
-technology 207 Long Swordsman, technology 217 Two-Handed Swordsman, technology 222 Man-at-Arms, \
-technology 264 Champion). Removed from the selector, absent from this pack: E. Varangian Guard \
-(technology 1454). Every identifier the row selects that is not named above was compared with the \
-build 185872 rules.json field by field (name, age, cost, time, producing building). Operation and \
-operand follow the bullet's figures, which this pack's string states in the same words, as the \
-build 185872 row read them. That row's validated_by, for the class and amount readings it records: \
-[Weak form (FR-030): a second reading of the same vendored source, not an independent one \
-(research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
-own data file is barred by the publisher's usage rules). First reading: \
+identifier 12 (Barracks), and the technologies this pack produces there are not the same set. \
+Removed from the selector, absent from this pack: E. Varangian Guard (technology 1454). Every \
+identifier the row selects that is not named above was compared with the build 185872 rules.json \
+field by field (name, age, cost, time, producing building). Operation and operand follow the \
+bullet's figures, which this pack's string states in the same words, as the build 185872 row read \
+them. That row's validated_by, for the class and amount readings it records: [Weak form (FR-030): \
+a second reading of the same vendored source, not an independent one (research.md D3: the two \
+community datasets are one generation pipeline run twice, and the game's own data file is barred \
+by the publisher's usage rules). First reading: \
 packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120189. Second \
 reading (T769, 2026-10-23, by the T769 implementer): the same string re-read in full, then checked \
 against the build 185872 release notes \
@@ -11938,8 +11879,7 @@ against the build 185872 release notes \
 names the Dravidians only to fix the Thirisadai's Naval Quick Find selection and names no change \
 to a Dravidian bonus. Selector and operand: resolved 'Barracks technologies' to every technology \
 rules.json lists as produced_at building 12 (Barracks), 18, with no filter by the Dravidians' \
-tree. A factor of 0.50 on every resource.]\
-"""
+tree. A factor of 0.50 on every resource.]"""
 
 [[effect]]
 civilisation = "Dravidians"
@@ -11983,18 +11923,18 @@ re-resolved against this snapshot's rules.json. Not carried from the build 18587
 (aoe2techtree-185872-civilisations-56, digest \
 sha256:b247190134e69b46e5111487db0ff98514df9ceb41bcd4f926a7278fbedd952f) because build 185872's \
 release notes name entities the row selects (unit 1105 Siege Tower, unit 1258 Battering Ram, unit \
-1744 Armored Elephant, unit 1962 War Chariot, unit 550 Onager); this pack's rules.json differs \
-from build 185872's (name, age, cost, time or producing building) for War Chariot (unit 1962). \
-Every identifier the row selects that is not named above was compared with the build 185872 \
-rules.json field by field (name, age, cost, time, producing building). Operation and operand \
-follow the bullet's figures, which this pack's string states in the same words, as the build \
-185872 row read them. That row's validated_by, for the class and amount readings it records: [Weak \
-form (FR-030): a second reading of the same vendored source, not an independent one (research.md \
-D3: the two community datasets are one generation pipeline run twice, and the game's own data file \
-is barred by the publisher's usage rules). First reading: \
-packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120189. Second \
-reading (T769, 2026-10-23, by the T769 implementer): the same string re-read in full, then checked \
-against the build 185872 release notes \
+1744 Armored Elephant, unit 1962 War Chariot, unit 550 Onager, unit 1746 Siege Elephant, unit 422 \
+Capped Ram, unit 548 Siege Ram); this pack's rules.json differs from build 185872's (name, age, \
+cost, time or producing building) for War Chariot (unit 1962). Every identifier the row selects \
+that is not named above was compared with the build 185872 rules.json field by field (name, age, \
+cost, time, producing building). Operation and operand follow the bullet's figures, which this \
+pack's string states in the same words, as the build 185872 row read them. That row's \
+validated_by, for the class and amount readings it records: [Weak form (FR-030): a second reading \
+of the same vendored source, not an independent one (research.md D3: the two community datasets \
+are one generation pipeline run twice, and the game's own data file is barred by the publisher's \
+usage rules). First reading: packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, \
+help_string_id 120189. Second reading (T769, 2026-10-23, by the T769 implementer): the same string \
+re-read in full, then checked against the build 185872 release notes \
 (https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), which \
 names the Dravidians only to fix the Thirisadai's Naval Quick Find selection and names no change \
 to a Dravidian bonus. Selector and operand: 'Siege Weapons' is not a key of rules.json. Resolved \
@@ -12002,8 +11942,7 @@ from what the pack states: the Siege Workshop's help string says it trains Siege
 19 units rules.json lists as produced_at building 49 are Siege Weapons; and the Trebuchet's (331) \
 and the Petard's (440) own help strings call each a Siege Weapon, both produced at the Castle. The \
 units the pack calls 'Siege Gunpowder Unit' or 'Siege Cavalry' outside the Siege Workshop are not \
-in the Dravidians' tree. A factor of 0.67 on wood alone.]\
-"""
+in the Dravidians' tree. A factor of 0.67 on wood alone.]"""
 
 [[effect]]
 civilisation = "Dravidians"
@@ -12138,15 +12077,15 @@ packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120190 (th
 re-resolved against this snapshot's rules.json. Not carried from the build 185872 snapshot \
 (aoe2techtree-185872-civilisations-56, digest \
 sha256:b247190134e69b46e5111487db0ff98514df9ceb41bcd4f926a7278fbedd952f) because build 185872's \
-release notes name entities the row selects (unit 1759 Ratha, unit 1761 Elite Ratha); this pack's \
-rules.json differs from build 185872's (name, age, cost, time or producing building) for Ratha \
-(unit 1759). Every identifier the row selects that is not named above was compared with the build \
-185872 rules.json field by field (name, age, cost, time, producing building). Operation and \
-operand follow the bullet's figures, which this pack's string states in the same words, as the \
-build 185872 row read them. That row's validated_by, for the class and amount readings it records: \
-[Weak form (FR-030): a second reading of the same vendored source, not an independent one \
-(research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
-own data file is barred by the publisher's usage rules). First reading: \
+release notes name entities the row selects (unit 1759 Ratha); this pack's rules.json differs from \
+build 185872's (name, age, cost, time or producing building) for Ratha (unit 1759). Every \
+identifier the row selects that is not named above was compared with the build 185872 rules.json \
+field by field (name, age, cost, time, producing building). Operation and operand follow the \
+bullet's figures, which this pack's string states in the same words, as the build 185872 row read \
+them. That row's validated_by, for the class and amount readings it records: [Weak form (FR-030): \
+a second reading of the same vendored source, not an independent one (research.md D3: the two \
+community datasets are one generation pipeline run twice, and the game's own data file is barred \
+by the publisher's usage rules). First reading: \
 packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120190. Second \
 reading (T769, 2026-10-23, by the T769 implementer): the same string re-read in full, then checked \
 against the build 185872 release notes \
@@ -12154,8 +12093,7 @@ against the build 185872 release notes \
 Bengalis entry raises the Ratha's train time from 20 to 24 seconds (Elite unchanged) and takes \
 away the Treadmill Crane; it names no change to a Bengali bonus. Selector and operand: resolved \
 'Rathas' to units 1759 and 1761. The 'Elephant Units' half names a class the pack does not \
-enumerate and is not listed.]\
-"""
+enumerate and is not listed.]"""
 
 [[effect]]
 civilisation = "Bengalis"
@@ -12527,20 +12465,19 @@ the units the build 185872 pack produces at producing-building identifier 82 (Ca
 units this pack produces there are not the same set; the row selects all of the units the build \
 185872 pack produces at producing-building identifier 87 (Archery Range), and the units this pack \
 produces there are not the same set; build 185872's release notes name entities the row selects \
-(unit 1001 Organ Gun, unit 1003 Elite Organ Gun, unit 1105 Siege Tower, unit 1129 Rattan Archer, \
-unit 1131 Elite Rattan Archer, unit 1258 Battering Ram, unit 1699 Flemish Militia, unit 1704 \
-Hussite Wagon, unit 1706 Elite Hussite Wagon, unit 1744 Armored Elephant, unit 1759 Ratha, unit \
-1761 Elite Ratha, unit 1911 Grenadier, unit 1952 Xianbei Raider, unit 1962 War Chariot, unit 25 \
-Teutonic Knight, unit 2569 Bolas Rider, unit 2571 Elite Bolas Rider, unit 2579 Blackwood Archer, \
-unit 2581 Elite Blackwood Archer, unit 2586 Temple Guard, unit 2587 Elite Temple Guard, unit 281 \
-Throwing Axeman, unit 40 Cataphract, unit 473 Two-Handed Swordsman, unit 531 Elite Throwing \
-Axeman, unit 550 Onager, unit 553 Elite Cataphract, unit 554 Elite Teutonic Knight, unit 567 \
-Champion, unit 75 Man-at-Arms, unit 751 Eagle Scout, unit 77 Long Swordsman, unit 771 \
-Conquistador, unit 773 Elite Conquistador, unit 869 Magyar Huszar, unit 871 Elite Magyar Huszar); \
-this pack's rules.json differs from build 185872's (name, age, cost, time or producing building) \
-for Organ Gun (unit 1001), Flemish Militia (unit 1699), Hussite Wagon (unit 1704), Elite Hussite \
-Wagon (unit 1706), Ratha (unit 1759), Grenadier (unit 1911), Xianbei Raider (unit 1952), War \
-Chariot (unit 1962), Bolas Rider (unit 2569), Elite Bolas Rider (unit 2571), Blackwood Archer \
+(unit 1001 Organ Gun, unit 1105 Siege Tower, unit 1129 Rattan Archer, unit 1131 Elite Rattan \
+Archer, unit 1258 Battering Ram, unit 1699 Flemish Militia, unit 1704 Hussite Wagon, unit 1706 \
+Elite Hussite Wagon, unit 1744 Armored Elephant, unit 1759 Ratha, unit 1911 Grenadier, unit 1952 \
+Xianbei Raider, unit 1962 War Chariot, unit 2569 Bolas Rider, unit 2571 Elite Bolas Rider, unit \
+2579 Blackwood Archer, unit 2581 Elite Blackwood Archer, unit 2586 Temple Guard, unit 281 Throwing \
+Axeman, unit 40 Cataphract, unit 473 Two-Handed Swordsman, unit 531 Elite Throwing Axeman, unit \
+550 Onager, unit 553 Elite Cataphract, unit 554 Elite Teutonic Knight, unit 567 Champion, unit 75 \
+Man-at-Arms, unit 751 Eagle Scout, unit 77 Long Swordsman, unit 771 Conquistador, unit 773 Elite \
+Conquistador, unit 869 Magyar Huszar, unit 1746 Siege Elephant, unit 422 Capped Ram, unit 548 \
+Siege Ram); this pack's rules.json differs from build 185872's (name, age, cost, time or producing \
+building) for Organ Gun (unit 1001), Flemish Militia (unit 1699), Hussite Wagon (unit 1704), Elite \
+Hussite Wagon (unit 1706), Ratha (unit 1759), Grenadier (unit 1911), Xianbei Raider (unit 1952), \
+War Chariot (unit 1962), Bolas Rider (unit 2569), Elite Bolas Rider (unit 2571), Blackwood Archer \
 (unit 2579), Elite Blackwood Archer (unit 2581), Eagle Scout (unit 751), Conquistador (unit 771), \
 Elite Conquistador (unit 773), Magyar Huszar (unit 869). Removed from the selector, absent from \
 this pack: Mounted Crossbowman (unit 2700), H. Mounted Crossbowman (unit 2701), Varangian Guard \
@@ -12563,8 +12500,7 @@ operand: 'Military Units' is the 215 units the Aztecs' Military Units row resolv
 pack says units are produced (Barracks, Archery Range, Stable, Siege Workshop, Castle, Donjon and \
 Krepost), listed again as the Incas' row lists them. The warships and the Monk the Aztecs' row \
 leaves open cost no food, so the question cannot change a value here. Condition: technology 835 \
-(Kshatriyas) researched. A factor of 0.75 on food alone.]\
-"""
+(Kshatriyas) researched. A factor of 0.75 on food alone.]"""
 
 [[effect]]
 civilisation = "Gurjaras"
@@ -12638,16 +12574,17 @@ packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120191 (th
 re-resolved against this snapshot's rules.json. Not carried from the build 185872 snapshot \
 (aoe2techtree-185872-civilisations-56, digest \
 sha256:b247190134e69b46e5111487db0ff98514df9ceb41bcd4f926a7278fbedd952f) because build 185872's \
-release notes name entities the row selects (unit 1744 Armored Elephant). Every identifier the row \
-selects that is not named above was compared with the build 185872 rules.json field by field \
-(name, age, cost, time, producing building). Operation and operand follow the bullet's figures, \
-which this pack's string states in the same words, as the build 185872 row read them. That row's \
-validated_by, for the class and amount readings it records: [Weak form (FR-030): a second reading \
-of the same vendored source, not an independent one (research.md D3: the two community datasets \
-are one generation pipeline run twice, and the game's own data file is barred by the publisher's \
-usage rules). First reading: packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, \
-help_string_id 120191. Second reading (T769, 2026-10-23, by the T769 implementer): the same string \
-re-read in full, then checked against the build 185872 release notes \
+release notes name entities the row selects (unit 1744 Armored Elephant, unit 1746 Siege \
+Elephant). Every identifier the row selects that is not named above was compared with the build \
+185872 rules.json field by field (name, age, cost, time, producing building). Operation and \
+operand follow the bullet's figures, which this pack's string states in the same words, as the \
+build 185872 row read them. That row's validated_by, for the class and amount readings it records: \
+[Weak form (FR-030): a second reading of the same vendored source, not an independent one \
+(research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
+own data file is barred by the publisher's usage rules). First reading: \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120191. Second \
+reading (T769, 2026-10-23, by the T769 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
 (https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), whose \
 Gurjaras entry removes the 'Docks +5 garrison capacity' civilization bonus, which the string this \
 row is read from no longer carries; it names no change to any other Gurjara bonus. Selector and \
@@ -12660,8 +12597,7 @@ Rider 330, Camel Scout 1755, Shrivamsha Rider 1751 and Elite 1753 (no class word
 listed so the owner can rule on it), Elephant Archer 873 and Elite 875, Armored Elephant 1744 and \
 Siege Elephant 1746. The model scopes a modelled=no row to its own civilisation, so this refusal \
 gaps the Gurjaras' own query and does not reach an ally's: that is a limit of the effect model, \
-recorded here and in the owner's sheet, not widened.]\
-"""
+recorded here and in the owner's sheet, not widened.]"""
 
 # ---------------------------------------------------------------- Romans
 
@@ -13028,17 +12964,16 @@ packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120193 (th
 re-resolved against this snapshot's rules.json. Not carried from the build 185872 snapshot \
 (aoe2techtree-185872-civilisations-56, digest \
 sha256:b247190134e69b46e5111487db0ff98514df9ceb41bcd4f926a7278fbedd952f) because build 185872's \
-release notes name entities the row selects (technology 207 Long Swordsman, unit 77 Long \
-Swordsman). Every identifier the row selects that is not named above was compared with the build \
-185872 rules.json field by field (name, age, cost, time, producing building). Operation and \
-operand follow the bullet's figures, which this pack's string states in the same words, as the \
-build 185872 row read them. That row's validated_by, for the class and amount readings it records: \
-[Weak form (FR-030): a second reading of the same vendored source, not an independent one \
-(research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
-own data file is barred by the publisher's usage rules). First reading: \
-packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120193. Second \
-reading (T769, 2026-10-23, by the T769 implementer): the same string re-read in full, then checked \
-against the build 185872 release notes \
+release notes name entities the row selects (unit 77 Long Swordsman). Every identifier the row \
+selects that is not named above was compared with the build 185872 rules.json field by field \
+(name, age, cost, time, producing building). Operation and operand follow the bullet's figures, \
+which this pack's string states in the same words, as the build 185872 row read them. That row's \
+validated_by, for the class and amount readings it records: [Weak form (FR-030): a second reading \
+of the same vendored source, not an independent one (research.md D3: the two community datasets \
+are one generation pipeline run twice, and the game's own data file is barred by the publisher's \
+usage rules). First reading: packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, \
+help_string_id 120193. Second reading (T769, 2026-10-23, by the T769 implementer): the same string \
+re-read in full, then checked against the build 185872 release notes \
 (https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), whose \
 Armenians entry gives them the Treadmill Crane, and which fixes training Warrior Priests by hotkey \
 with a Villager garrisoned in a Fortified Church; it names no change to an Armenian bonus. \
@@ -13046,8 +12981,7 @@ Selector and operand: an age_requirement row, never a reading of the tree's disp
 (research.md D3). 'Spearman-line upgrades' resolved to Pikeman 197 and Halberdier 429, and \
 'Militia-line upgrades' to Long Swordsman 207, Two-Handed Swordsman 217 and Champion 264, each \
 with the unit it makes available (358, 359, 77, 473, 567); Man-at-Arms (222 and 75) is excepted by \
-the bullet. Those whose rules.json age is 3 are set to 2.]\
-"""
+the bullet. Those whose rules.json age is 3 are set to 2.]"""
 
 [[effect]]
 civilisation = "Armenians"
@@ -13075,17 +13009,17 @@ packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120193 (th
 re-resolved against this snapshot's rules.json. Not carried from the build 185872 snapshot \
 (aoe2techtree-185872-civilisations-56, digest \
 sha256:b247190134e69b46e5111487db0ff98514df9ceb41bcd4f926a7278fbedd952f) because build 185872's \
-release notes name entities the row selects (technology 217 Two-Handed Swordsman, technology 264 \
-Champion, unit 473 Two-Handed Swordsman, unit 567 Champion). Every identifier the row selects that \
-is not named above was compared with the build 185872 rules.json field by field (name, age, cost, \
-time, producing building). Operation and operand follow the bullet's figures, which this pack's \
-string states in the same words, as the build 185872 row read them. That row's validated_by, for \
-the class and amount readings it records: [Weak form (FR-030): a second reading of the same \
-vendored source, not an independent one (research.md D3: the two community datasets are one \
-generation pipeline run twice, and the game's own data file is barred by the publisher's usage \
-rules). First reading: packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, \
-help_string_id 120193. Second reading (T769, 2026-10-23, by the T769 implementer): the same string \
-re-read in full, then checked against the build 185872 release notes \
+release notes name entities the row selects (unit 473 Two-Handed Swordsman, unit 567 Champion). \
+Every identifier the row selects that is not named above was compared with the build 185872 \
+rules.json field by field (name, age, cost, time, producing building). Operation and operand \
+follow the bullet's figures, which this pack's string states in the same words, as the build \
+185872 row read them. That row's validated_by, for the class and amount readings it records: [Weak \
+form (FR-030): a second reading of the same vendored source, not an independent one (research.md \
+D3: the two community datasets are one generation pipeline run twice, and the game's own data file \
+is barred by the publisher's usage rules). First reading: \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120193. Second \
+reading (T769, 2026-10-23, by the T769 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
 (https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), whose \
 Armenians entry gives them the Treadmill Crane, and which fixes training Warrior Priests by hotkey \
 with a Villager garrisoned in a Fortified Church; it names no change to an Armenian bonus. \
@@ -13093,8 +13027,7 @@ Selector and operand: an age_requirement row, never a reading of the tree's disp
 (research.md D3). 'Spearman-line upgrades' resolved to Pikeman 197 and Halberdier 429, and \
 'Militia-line upgrades' to Long Swordsman 207, Two-Handed Swordsman 217 and Champion 264, each \
 with the unit it makes available (358, 359, 77, 473, 567); Man-at-Arms (222 and 75) is excepted by \
-the bullet. Those whose rules.json age is 4 are set to 3.]\
-"""
+the bullet. Those whose rules.json age is 4 are set to 3.]"""
 
 [[effect]]
 civilisation = "Armenians"
@@ -13198,28 +13131,23 @@ validated_by = """\
 Weak form (FR-030): a second reading of the same vendored source, not an independent one \
 (research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
 own data file is barred by the publisher's usage rules). First reading: \
-packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120193 (the pack build \
-180059 derives from, commit b9d494df6921d4080df69b22f9dbb7a4d1dcd9f0). Second reading (T773, \
-2026-10-28, by the T773 implementer): the bullet re-read in that string and its selector \
-re-resolved against this snapshot's rules.json. Not carried from the build 185872 snapshot \
-(aoe2techtree-185872-civilisations-56, digest \
-sha256:b247190134e69b46e5111487db0ff98514df9ceb41bcd4f926a7278fbedd952f) because build 185872's \
-release notes name entities the row selects (unit 527 Demolition Ship). Every identifier the row \
-selects that is not named above was compared with the build 185872 rules.json field by field \
-(name, age, cost, time, producing building). Operation and operand follow the bullet's figures, \
-which this pack's string states in the same words, as the build 185872 row read them. That row's \
-validated_by, for the class and amount readings it records: [Weak form (FR-030): a second reading \
-of the same vendored source, not an independent one (research.md D3: the two community datasets \
-are one generation pipeline run twice, and the game's own data file is barred by the publisher's \
-usage rules). First reading: packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, \
-help_string_id 120193. Second reading (T769, 2026-10-23, by the T769 implementer): the same string \
-re-read in full, then checked against the build 185872 release notes \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120193. Second \
+reading (T769, 2026-10-23, by the T769 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
 (https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), whose \
 Armenians entry gives them the Treadmill Crane, and which fixes training Warrior Priests by hotkey \
 with a Villager garrisoned in a Fortified Church; it names no change to an Armenian bonus. \
 Selector and operand: resolved 'Demolition Ships' to units 1104, 527 and 528, 'Galley-line' to \
-539, 21 and 442 and 'Dromons' to 1795.]\
-"""
+539, 21 and 442 and 'Dromons' to 1795. Carried to build 180059 by T773 (2026-10-28) from \
+aoe2techtree-185872-civilisations-56 (digest \
+sha256:b247190134e69b46e5111487db0ff98514df9ceb41bcd4f926a7278fbedd952f), under the carry rule: \
+the bullet is byte-identical under key 120193 in \
+packages/knowledge/packs/aoe2techtree/strings.en.json and in \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json; every selector and condition \
+identifier resolves to the same identifier, with the same name, in this snapshot's rules.json, and \
+a class defined by where a building produces it has the same members in both; and the build 185872 \
+release notes (read in full, Balance Changes) name no change to the bonus or to an entity it \
+selects. The reading above is the source row's, kept as it was written."""
 
 [[effect]]
 civilisation = "Armenians"
@@ -13340,8 +13268,7 @@ sha256:b247190134e69b46e5111487db0ff98514df9ceb41bcd4f926a7278fbedd952f) because
 row selects or conditions on identifiers absent from this pack's rules.json (technology 1451, \
 technology 1452); the row selects all of the technologies the build 185872 pack produces at \
 producing-building identifier 87 (Archery Range), and the technologies this pack produces there \
-are not the same set; build 185872's release notes name entities the row selects (technology 1378 \
-Elite Bolas Rider). Removed from the selector, absent from this pack: H. Mounted Crossbowman \
+are not the same set. Removed from the selector, absent from this pack: H. Mounted Crossbowman \
 (technology 1451), Cranequins (technology 1452). Every identifier the row selects that is not \
 named above was compared with the build 185872 rules.json field by field (name, age, cost, time, \
 producing building). Operation and operand follow the bullet's figures, which this pack's string \
@@ -13363,8 +13290,7 @@ Archery Units, and 211 (Padded Archer Armor), 212 (Leather Archer Armor) and 219
 Armor), whose names say Archer and whose strings say Ranged Soldiers; reading the armour \
 technologies as 'Archery Unit technologies' is an inference no source states, and the validation \
 sample reads it. The Blacksmith's infantry, cavalry and Hulk-line technologies are not archery. A \
-factor of 0.75 on every resource.]\
-"""
+factor of 0.75 on every resource.]"""
 
 [[effect]]
 civilisation = "Shu"
@@ -13581,26 +13507,21 @@ validated_by = """\
 Weak form (FR-030): a second reading of the same vendored source, not an independent one \
 (research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
 own data file is barred by the publisher's usage rules). First reading: \
-packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120199 (the pack build \
-180059 derives from, commit b9d494df6921d4080df69b22f9dbb7a4d1dcd9f0). Second reading (T773, \
-2026-10-28, by the T773 implementer): the bullet re-read in that string and its selector \
-re-resolved against this snapshot's rules.json. Not carried from the build 185872 snapshot \
-(aoe2techtree-185872-civilisations-56, digest \
-sha256:b247190134e69b46e5111487db0ff98514df9ceb41bcd4f926a7278fbedd952f) because build 185872's \
-release notes name entities the row selects (unit 527 Demolition Ship). Every identifier the row \
-selects that is not named above was compared with the build 185872 rules.json field by field \
-(name, age, cost, time, producing building). Operation and operand follow the bullet's figures, \
-which this pack's string states in the same words, as the build 185872 row read them. That row's \
-validated_by, for the class and amount readings it records: [Weak form (FR-030): a second reading \
-of the same vendored source, not an independent one (research.md D3: the two community datasets \
-are one generation pipeline run twice, and the game's own data file is barred by the publisher's \
-usage rules). First reading: packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, \
-help_string_id 120199. Second reading (T770, 2026-10-26, by the T770 implementer): the same string \
-re-read in full, then checked against the build 185872 release notes \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120199. Second \
+reading (T770, 2026-10-26, by the T770 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
 (https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), which \
 does not name the Wu anywhere on the page. Selector and operand: resolved 'Demolition Ships' to \
-units 527, 528 and 1104 and 'Fire Archers' to 1968 and 1970.]\
-"""
+units 527, 528 and 1104 and 'Fire Archers' to 1968 and 1970. Carried to build 180059 by T773 \
+(2026-10-28) from aoe2techtree-185872-civilisations-56 (digest \
+sha256:b247190134e69b46e5111487db0ff98514df9ceb41bcd4f926a7278fbedd952f), under the carry rule: \
+the bullet is byte-identical under key 120199 in \
+packages/knowledge/packs/aoe2techtree/strings.en.json and in \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json; every selector and condition \
+identifier resolves to the same identifier, with the same name, in this snapshot's rules.json, and \
+a class defined by where a building produces it has the same members in both; and the build 185872 \
+release notes (read in full, Balance Changes) name no change to the bonus or to an entity it \
+selects. The reading above is the source row's, kept as it was written."""
 
 [[effect]]
 civilisation = "Wu"
@@ -13820,22 +13741,9 @@ validated_by = """\
 Weak form (FR-030): a second reading of the same vendored source, not an independent one \
 (research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
 own data file is barred by the publisher's usage rules). First reading: \
-packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120201 (the pack build \
-180059 derives from, commit b9d494df6921d4080df69b22f9dbb7a4d1dcd9f0). Second reading (T773, \
-2026-10-28, by the T773 implementer): the bullet re-read in that string and its selector \
-re-resolved against this snapshot's rules.json. Not carried from the build 185872 snapshot \
-(aoe2techtree-185872-civilisations-56, digest \
-sha256:b247190134e69b46e5111487db0ff98514df9ceb41bcd4f926a7278fbedd952f) because build 185872's \
-release notes name entities the row selects (technology 257 Onager). Every identifier the row \
-selects that is not named above was compared with the build 185872 rules.json field by field \
-(name, age, cost, time, producing building). Operation and operand follow the bullet's figures, \
-which this pack's string states in the same words, as the build 185872 row read them. That row's \
-validated_by, for the class and amount readings it records: [Weak form (FR-030): a second reading \
-of the same vendored source, not an independent one (research.md D3: the two community datasets \
-are one generation pipeline run twice, and the game's own data file is barred by the publisher's \
-usage rules). First reading: packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, \
-help_string_id 120201. Second reading (T770, 2026-10-26, by the T770 implementer): the same string \
-re-read in full, then checked against the build 185872 release notes \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120201. Second \
+reading (T770, 2026-10-26, by the T770 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
 (https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), whose \
 Jurchens entry changes the Grenadier's cost from 35 food 65 gold to 55 food 50 gold and names no \
 change to a Jurchens bonus. Selector and operand: 'Siege and Fortification upgrades' is not a key \
@@ -13846,8 +13754,16 @@ which update 177723 states the bonus applies to ('Fixed Jurchens Civilization bo
 fortification technologies cost -75% wood and are researched 100% faster not applying to Murder \
 Holes'). The criterion is applied to the whole of the Jurchens' tree (this file's header): it \
 matches seventeen technologies, and the nine this row does not take are refused in the rows below \
-and are open rows of the owner's sheet. A factor of 0.25 on wood alone.]\
-"""
+and are open rows of the owner's sheet. A factor of 0.25 on wood alone. Carried to build 180059 by \
+T773 (2026-10-28) from aoe2techtree-185872-civilisations-56 (digest \
+sha256:b247190134e69b46e5111487db0ff98514df9ceb41bcd4f926a7278fbedd952f), under the carry rule: \
+the bullet is byte-identical under key 120201 in \
+packages/knowledge/packs/aoe2techtree/strings.en.json and in \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json; every selector and condition \
+identifier resolves to the same identifier, with the same name, in this snapshot's rules.json, and \
+a class defined by where a building produces it has the same members in both; and the build 185872 \
+release notes (read in full, Balance Changes) name no change to the bonus or to an entity it \
+selects. The reading above is the source row's, kept as it was written."""
 
 [[effect]]
 civilisation = "Jurchens"
@@ -13875,22 +13791,9 @@ validated_by = """\
 Weak form (FR-030): a second reading of the same vendored source, not an independent one \
 (research.md D3: the two community datasets are one generation pipeline run twice, and the game's \
 own data file is barred by the publisher's usage rules). First reading: \
-packages/knowledge/packs/aoe2techtree/strings.en.json, help_string_id 120201 (the pack build \
-180059 derives from, commit b9d494df6921d4080df69b22f9dbb7a4d1dcd9f0). Second reading (T773, \
-2026-10-28, by the T773 implementer): the bullet re-read in that string and its selector \
-re-resolved against this snapshot's rules.json. Not carried from the build 185872 snapshot \
-(aoe2techtree-185872-civilisations-56, digest \
-sha256:b247190134e69b46e5111487db0ff98514df9ceb41bcd4f926a7278fbedd952f) because build 185872's \
-release notes name entities the row selects (technology 257 Onager). Every identifier the row \
-selects that is not named above was compared with the build 185872 rules.json field by field \
-(name, age, cost, time, producing building). Operation and operand follow the bullet's figures, \
-which this pack's string states in the same words, as the build 185872 row read them. That row's \
-validated_by, for the class and amount readings it records: [Weak form (FR-030): a second reading \
-of the same vendored source, not an independent one (research.md D3: the two community datasets \
-are one generation pipeline run twice, and the game's own data file is barred by the publisher's \
-usage rules). First reading: packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, \
-help_string_id 120201. Second reading (T770, 2026-10-26, by the T770 implementer): the same string \
-re-read in full, then checked against the build 185872 release notes \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120201. Second \
+reading (T770, 2026-10-26, by the T770 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
 (https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), whose \
 Jurchens entry changes the Grenadier's cost from 35 food 65 gold to 55 food 50 gold and names no \
 change to a Jurchens bonus. Selector and operand: 'Siege and Fortification upgrades' is not a key \
@@ -13901,8 +13804,16 @@ which update 177723 states the bonus applies to ('Fixed Jurchens Civilization bo
 fortification technologies cost -75% wood and are researched 100% faster not applying to Murder \
 Holes'). The criterion is applied to the whole of the Jurchens' tree (this file's header): it \
 matches seventeen technologies, and the nine this row does not take are refused in the rows below \
-and are open rows of the owner's sheet. 'Research +100% faster' divides the research time by 2.]\
-"""
+and are open rows of the owner's sheet. 'Research +100% faster' divides the research time by 2. \
+Carried to build 180059 by T773 (2026-10-28) from aoe2techtree-185872-civilisations-56 (digest \
+sha256:b247190134e69b46e5111487db0ff98514df9ceb41bcd4f926a7278fbedd952f), under the carry rule: \
+the bullet is byte-identical under key 120201 in \
+packages/knowledge/packs/aoe2techtree/strings.en.json and in \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json; every selector and condition \
+identifier resolves to the same identifier, with the same name, in this snapshot's rules.json, and \
+a class defined by where a building produces it has the same members in both; and the build 185872 \
+release notes (read in full, Balance Changes) name no change to the bonus or to an entity it \
+selects. The reading above is the source row's, kept as it was written."""
 
 [[effect]]
 civilisation = "Jurchens"
@@ -14711,28 +14622,27 @@ re-resolved against this snapshot's rules.json. Not carried from the build 18587
 sha256:b247190134e69b46e5111487db0ff98514df9ceb41bcd4f926a7278fbedd952f) because the build 185872 \
 row selects or conditions on identifiers absent from this pack's rules.json (unit 2705, unit 2706, \
 unit 2708, unit 2709, unit 2711, unit 2712); build 185872's release notes name entities the row \
-selects (unit 1001 Organ Gun, unit 1003 Elite Organ Gun, unit 1129 Rattan Archer, unit 1131 Elite \
-Rattan Archer, unit 1704 Hussite Wagon, unit 1706 Elite Hussite Wagon, unit 1759 Ratha, unit 1761 \
-Elite Ratha, unit 25 Teutonic Knight, unit 2569 Bolas Rider, unit 2571 Elite Bolas Rider, unit \
-2579 Blackwood Archer, unit 2581 Elite Blackwood Archer, unit 281 Throwing Axeman, unit 40 \
-Cataphract, unit 531 Elite Throwing Axeman, unit 553 Elite Cataphract, unit 554 Elite Teutonic \
-Knight, unit 771 Conquistador, unit 773 Elite Conquistador, unit 869 Magyar Huszar, unit 871 Elite \
-Magyar Huszar); this pack's rules.json differs from build 185872's (name, age, cost, time or \
-producing building) for Organ Gun (unit 1001), Hussite Wagon (unit 1704), Elite Hussite Wagon \
-(unit 1706), Ratha (unit 1759), Bolas Rider (unit 2569), Elite Bolas Rider (unit 2571), Blackwood \
-Archer (unit 2579), Elite Blackwood Archer (unit 2581), Conquistador (unit 771), Elite \
-Conquistador (unit 773), Magyar Huszar (unit 869). Removed from the selector, absent from this \
-pack: Hearth Troop (unit 2705), Elite Hearth Troop (unit 2706), Jarl (unit 2708), Elite Jarl (unit \
-2709), Jomsviking (unit 2711), Elite Jomsviking (unit 2712). Every identifier the row selects that \
-is not named above was compared with the build 185872 rules.json field by field (name, age, cost, \
-time, producing building). Operation and operand follow the bullet's figures, which this pack's \
-string states in the same words, as the build 185872 row read them. That row's validated_by, for \
-the class and amount readings it records: [Weak form (FR-030): a second reading of the same \
-vendored source, not an independent one (research.md D3: the two community datasets are one \
-generation pipeline run twice, and the game's own data file is barred by the publisher's usage \
-rules). First reading: packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, \
-help_string_id 120207. Second reading (T770, 2026-10-26, by the T770 implementer): the same string \
-re-read in full, then checked against the build 185872 release notes \
+selects (unit 1001 Organ Gun, unit 1129 Rattan Archer, unit 1131 Elite Rattan Archer, unit 1704 \
+Hussite Wagon, unit 1706 Elite Hussite Wagon, unit 1759 Ratha, unit 2569 Bolas Rider, unit 2571 \
+Elite Bolas Rider, unit 2579 Blackwood Archer, unit 2581 Elite Blackwood Archer, unit 281 Throwing \
+Axeman, unit 40 Cataphract, unit 531 Elite Throwing Axeman, unit 553 Elite Cataphract, unit 554 \
+Elite Teutonic Knight, unit 771 Conquistador, unit 773 Elite Conquistador, unit 869 Magyar \
+Huszar); this pack's rules.json differs from build 185872's (name, age, cost, time or producing \
+building) for Organ Gun (unit 1001), Hussite Wagon (unit 1704), Elite Hussite Wagon (unit 1706), \
+Ratha (unit 1759), Bolas Rider (unit 2569), Elite Bolas Rider (unit 2571), Blackwood Archer (unit \
+2579), Elite Blackwood Archer (unit 2581), Conquistador (unit 771), Elite Conquistador (unit 773), \
+Magyar Huszar (unit 869). Removed from the selector, absent from this pack: Hearth Troop (unit \
+2705), Elite Hearth Troop (unit 2706), Jarl (unit 2708), Elite Jarl (unit 2709), Jomsviking (unit \
+2711), Elite Jomsviking (unit 2712). Every identifier the row selects that is not named above was \
+compared with the build 185872 rules.json field by field (name, age, cost, time, producing \
+building). Operation and operand follow the bullet's figures, which this pack's string states in \
+the same words, as the build 185872 row read them. That row's validated_by, for the class and \
+amount readings it records: [Weak form (FR-030): a second reading of the same vendored source, not \
+an independent one (research.md D3: the two community datasets are one generation pipeline run \
+twice, and the game's own data file is barred by the publisher's usage rules). First reading: \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120207. Second \
+reading (T770, 2026-10-26, by the T770 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
 (https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), whose \
 Mapuche entry raises the (Elite) Bolas Rider's cost from 45 wood 50 gold to 50 wood 55 gold, and \
 which fixes the display of Architecture in their technology tree and improves the Settlements' \
@@ -14744,8 +14654,7 @@ included) or, for the Ratha, a civilisation string that lists it as the Bengalis
 Krepost's Konnik (1254, 1255) and the Donjon's Serjeant (1660, 1661) are not produced at the \
 Castle and are not listed. 'Bolas Riders' is units 2569 and 2571. Condition: technology 1380 \
 (Butalmapu) researched by the owner and the owner's team together (T781): a unit of an ally's \
-Castle is discounted once the Mapuche have researched it. A factor of 0.85 on every resource.]\
-"""
+Castle is discounted once the Mapuche have researched it. A factor of 0.85 on every resource.]"""
 
 # ------------------------------------------------------------------ Tupi
 
@@ -14838,20 +14747,18 @@ technology 1452, technology 1454); the row selects all of the technologies the b
 produces at producing-building identifier 12 (Barracks), and the technologies this pack produces \
 there are not the same set; the row selects all of the technologies the build 185872 pack produces \
 at producing-building identifier 87 (Archery Range), and the technologies this pack produces there \
-are not the same set; build 185872's release notes name entities the row selects (technology 1378 \
-Elite Bolas Rider, technology 1401 Elite Temple Guard, technology 207 Long Swordsman, technology \
-217 Two-Handed Swordsman, technology 222 Man-at-Arms, technology 264 Champion). Removed from the \
-selector, absent from this pack: H. Mounted Crossbowman (technology 1451), Cranequins (technology \
-1452), E. Varangian Guard (technology 1454). Every identifier the row selects that is not named \
-above was compared with the build 185872 rules.json field by field (name, age, cost, time, \
-producing building). Operation and operand follow the bullet's figures, which this pack's string \
-states in the same words, as the build 185872 row read them. That row's validated_by, for the \
-class and amount readings it records: [Weak form (FR-030): a second reading of the same vendored \
-source, not an independent one (research.md D3: the two community datasets are one generation \
-pipeline run twice, and the game's own data file is barred by the publisher's usage rules). First \
-reading: packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120208. \
-Second reading (T770, 2026-10-26, by the T770 implementer): the same string re-read in full, then \
-checked against the build 185872 release notes \
+are not the same set. Removed from the selector, absent from this pack: H. Mounted Crossbowman \
+(technology 1451), Cranequins (technology 1452), E. Varangian Guard (technology 1454). Every \
+identifier the row selects that is not named above was compared with the build 185872 rules.json \
+field by field (name, age, cost, time, producing building). Operation and operand follow the \
+bullet's figures, which this pack's string states in the same words, as the build 185872 row read \
+them. That row's validated_by, for the class and amount readings it records: [Weak form (FR-030): \
+a second reading of the same vendored source, not an independent one (research.md D3: the two \
+community datasets are one generation pipeline run twice, and the game's own data file is barred \
+by the publisher's usage rules). First reading: \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, help_string_id 120208. Second \
+reading (T770, 2026-10-26, by the T770 implementer): the same string re-read in full, then checked \
+against the build 185872 release notes \
 (https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), whose \
 Tupi entry raises the (Elite) Blackwood Archer's cost from 35 wood 45 gold to 40 wood 45 gold, and \
 which fixes Arrowslits missing from the University's future items display for them; it names no \
@@ -14860,8 +14767,7 @@ every technology rules.json lists as produced_at building 87 (Archery Range) or 
 the Spanish row reads 'Blacksmith upgrades': 98, 100, 207, 215, 217, 218, 222, 237, 264, 365, 384, \
 434, 436, 437, 481, 599, 602, 655, 875, 885, 982, 1351, 1352, 1378, 1391, 1401, 1402, 1451, 1452, \
 1454. Reading a Squires or an Arson as an upgrade is an inference, and the validation sample reads \
-it. A factor of 0.50 on food alone.]\
-"""
+it. A factor of 0.50 on food alone.]"""
 
 [[effect]]
 civilisation = "Tupi"

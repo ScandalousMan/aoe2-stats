@@ -21,7 +21,7 @@
 source = "aoe2techtree"
 source_version = "b9d494df6921d4080df69b22f9dbb7a4d1dcd9f0"
 describes_build = 180059
-digest = "sha256:86cc92218fae4e04f6538e51a5fdfae475c3a5c533cdb81abfe544fd7a854171"
+digest = "sha256:635d831aaf658e2666b33d6defb915db0b07d34566d70cc725821f08e462f8f9"
 promoted = true
 supersedes = "sha256:6167f0b69be56d7a33803d29a060b9f29f34c917073eb970ccccc1c206c6b81a"
 normaliser_version = 2

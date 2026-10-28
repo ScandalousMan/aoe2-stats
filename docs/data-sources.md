@@ -696,8 +696,9 @@ against keeping one measurement in two homes.
   185872 added). A row of the sixth snapshot is carried to it only where that row's bullet is
   byte-identical in the two packs, every selector of that row resolves to the same identifiers in
   the older pack's `rules.json`, and build 185872's release notes name no change to the row's bonus
-  or to an entity the row selects; each row is decided on its own, so one bullet's rows can be
-  carried and transcribed both. Every other row is transcribed from the older pack's strings. Its
+  or to an entity the row selects (a note line changes an entity only if it changes that entity's
+  own data or a bonus that selects it, and a "-line" note changes every tier of its line); each
+  row is decided on its own, so one bullet's rows can be carried and transcribed both. Every other row is transcribed from the older pack's strings. Its
   `aliases.toml` closes the second committed recording's buildings 490 and 673 (both "Gate"), read
   again 2026-10-28 at repository head commit `9ee0fe29fa05`.
 - **Known limitations**: no civilisation-specific bonus data as structured values, no build/version

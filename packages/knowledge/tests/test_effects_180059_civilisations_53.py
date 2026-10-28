@@ -323,90 +323,244 @@ _NO_ROW_BULLETS: Mapping[str, tuple[str, ...]] = {
     ),
 }
 
-#: The entities build 185872's release notes name as the subject of a balance line (the Balance
-#: Changes section, read in full 2026-10-28), restricted to the entities this pack also names. A
-#: line counts as a change to an entity only if it changes that entity's own data or a bonus that
-#: selects it, and each is read that way: a line that only grants or removes a civilisation's access
-#: to an entity names none; "Docks +5 garrison capacity civilization bonus removed" removes a
-#: Gurjaras bonus and does not change the Dock (building 45); the Vietnamese's and the Teutons'
-#: bonus rewords ("Archery Range units", "Stable and Barracks units") change unit bonuses and do not
-#: change buildings 87, 101 and 12. A row that selects one of these is not carried. The entities
-#: whose cost or time differs between the two packs' `rules.json` are in it, but for the three the
-#: pack renames and two units the notes name through their parents; a row selecting those is not
-#: carried either (the carry test compares the data itself).
+#: One line of build 185872's release notes (the Balance Changes section, fetched and read line by
+#: line on 2026-10-28), the entities whose own data that line changes, and, for a "-line" note, the
+#: tiers of the line. An entity is `(kind, identifier, name)`, the name checked against whichever
+#: pack's `rules.json` has the entity.
+#:
+#: A line is a change to an entity only if it changes that entity's own data, or a bonus that
+#: selects it. Read that way:
+#:   - a "-line" note names every tier of the line, unless the note itself excludes one;
+#:   - "(Elite)" before a unit, or "Elite" after its figures, puts the Elite unit in the entry;
+#:     "(Elite unchanged)" leaves it out; a note that names a unit and says neither names the unit
+#:     alone;
+#:   - a note that changes a unit changes the unit, never the technology that upgrades to it, and a
+#:     note that changes an upgrade's cost or time changes the technology, never the unit it makes;
+#:   - a note that only grants or removes a civilisation's access to an entity changes none, and has
+#:     no entry;
+#:   - "Docks +5 garrison capacity civilization bonus removed" removes a Gurjaras bonus and does not
+#:     change the Dock (building 45); the Vietnamese's and the Teutons' bonus rewords change unit
+#:     bonuses and not buildings 87, 101 and 12: their entries are empty.
+#: A row that selects one of the entities is not carried. The entities whose cost or time differs
+#: between the two packs' `rules.json` are all here, but for the three the pack renames and two
+#: units the notes name through their parents; a row selecting those is not carried either (the
+#: carry test compares the data itself).
+_Entity = tuple[str, str, str]
+
+
+@dataclasses.dataclass(frozen=True)
+class _Note:
+    text: str
+    entities: tuple[_Entity, ...]
+    #: For a "-line" note, the line's tiers as written by hand from `rules.json`; empty otherwise.
+    tiers: tuple[_Entity, ...] = ()
+
+
+_RAMS: tuple[_Entity, ...] = (
+    ("unit", "1258", "Battering Ram"),
+    ("unit", "422", "Capped Ram"),
+    ("unit", "548", "Siege Ram"),
+)
+_ARMORED_ELEPHANTS: tuple[_Entity, ...] = (
+    ("unit", "1744", "Armored Elephant"),
+    ("unit", "1746", "Siege Elephant"),
+)
+#: The note gives three values, 4/5/6 → 3/4/5, one for each of these three tiers.
+_HULKS: tuple[_Entity, ...] = (
+    ("unit", "2626", "Hulk"),
+    ("unit", "2627", "War Hulk"),
+    ("unit", "2628", "Carrack"),
+)
+
+_NOTES: tuple[_Note, ...] = (
+    _Note(
+        "Man-at-Arms bonus damage vs. Shock Infantry increased from +2 → +3.",
+        (("unit", "75", "Man-at-Arms"),),
+    ),
+    _Note(
+        "Long Swordsman bonus damage vs. Shock Infantry increased from +6 → +8.",
+        (("unit", "77", "Long Swordsman"),),
+    ),
+    _Note(
+        "Two-handed Swordsman bonus damage vs. Shock Infantry increased from +8 → +9.",
+        (("unit", "473", "Two-Handed Swordsman"),),
+    ),
+    _Note(
+        "Champion bonus damage vs. Shock Infantry increased from +8 → +9.",
+        (("unit", "567", "Champion"),),
+    ),
+    _Note(
+        "Eagle Scout train time reduced from 50 seconds → 46 seconds.",
+        (("unit", "751", "Eagle Scout"),),
+    ),
+    _Note("Battering Ram-line line of sight increased from 3 → 5.", _RAMS, tiers=_RAMS),
+    _Note(
+        "Armored Elephant-line line of sight increased from 4 → 6.",
+        _ARMORED_ELEPHANTS,
+        tiers=_ARMORED_ELEPHANTS,
+    ),
+    _Note("Siege Tower line of sight reduced from 8 → 6.", (("unit", "1105", "Siege Tower"),)),
+    _Note("Onager attack increased from 50 → 55.", (("unit", "550", "Onager"),)),
+    _Note("Onager pierce armor increased from 7 → 8.", (("unit", "550", "Onager"),)),
+    _Note(
+        "Demolition Ship upgrade cost reduced from 50 wood 100 gold, 50 seconds → 25 wood 75 "
+        "gold, 20 seconds.",
+        (("technology", "905", "Demolition Ship"),),
+    ),
+    _Note("Hulk-line melee armor reduced from 4/5/6 → 3/4/5", _HULKS, tiers=_HULKS),
+    _Note("Hulk HP reduced from 90 → 85.", (("unit", "2626", "Hulk"),)),
+    _Note("War Hulk HP reduced from 115 → 110.", (("unit", "2627", "War Hulk"),)),
+    _Note(
+        "Lou Chuan bonus damage vs. Buildings reduced from +230 → +180.",
+        (("unit", "1948", "Lou Chuan"),),
+    ),
+    _Note(
+        "Fire Galley bonus damage vs. Buildings reduced from 1 → 0.",
+        (("unit", "1103", "Fire Galley"),),
+    ),
+    _Note(
+        "Fortified Church build time increased from 40 seconds → 50 seconds.",
+        (("building", "1806", "Fortified Church"),),
+    ),
+    _Note(
+        "Ratha train time increased from 20 seconds → 24 seconds (Elite unchanged).",
+        (("unit", "1759", "Ratha"),),
+    ),
+    _Note(
+        "(Elite) Hussite Wagon cost increased from 110 wood 70g → 110 wood 80 gold.",
+        (("unit", "1704", "Hussite Wagon"), ("unit", "1706", "Elite Hussite Wagon")),
+    ),
+    _Note(
+        "Wagenburg Tactics movement speed for Gunpowder Units effect reduced from 15% → 10%.",
+        (("technology", "784", "Wagenburg Tactics"),),
+    ),
+    _Note(
+        "Flemish Militia cost increased from 30 food 25 gold → 35 food 25 gold.",
+        (("unit", "1699", "Flemish Militia"),),
+    ),
+    _Note(
+        "Feudal Age Flemish Militia train time increased from 14 seconds → 16 seconds.",
+        (("unit", "1699", "Flemish Militia"),),
+    ),
+    _Note(
+        "(Elite) Cataphract bonus damage vs. Infantry increased from 9 → 13, Elite 12 → 18.",
+        (("unit", "40", "Cataphract"), ("unit", "553", "Elite Cataphract")),
+    ),
+    _Note(
+        "Logistica effect changed from Cataphracts deal trample damage, +6 vs. Infantry → "
+        "Cataphracts and Varangian guards deal trample damage.",
+        (("technology", "61", "Logistica"),),
+    ),
+    _Note(
+        "(Elite) Throwing Axeman range increased from 3 → 5, Elite 4 → 6.",
+        (("unit", "281", "Throwing Axeman"), ("unit", "531", "Elite Throwing Axeman")),
+    ),
+    _Note("Bearded Axe unique technology removed.", (("technology", "83", "Bearded Axe"),)),
+    _Note(
+        "NEW: Ordonnance Companies (Castle Age):",
+        (("technology", "1496", "Ordonnance Companies"),),
+    ),
+    _Note("Docks +5 garrison capacity civilization bonus removed.", ()),
+    _Note(
+        "Atheism now applies Wonder and Relic victory timer increase only to enemy and neutral "
+        "players.",
+        (("technology", "21", "Atheism"),),
+    ),
+    _Note(
+        "Atheism victory timer increase can now stack if the technology was researched more than "
+        "once in the game.",
+        (("technology", "21", "Atheism"),),
+    ),
+    _Note(
+        "Atheism now applies the Relic income reduction effect also to the players neutral to the "
+        "Hun player.",
+        (("technology", "21", "Atheism"),),
+    ),
+    _Note(
+        "Grenadier cost changed from 35 food 65 gold → 55 food 50 gold.",
+        (("unit", "1911", "Grenadier"),),
+    ),
+    _Note(
+        "Turtle Ship HP reduced from 275 → 260.",
+        (("unit", "831", "Turtle Ship"),),
+    ),
+    _Note(
+        "Magyar Huszar train time increased from 12 seconds → 18 seconds (Elite unchanged).",
+        (("unit", "869", "Magyar Huszar"),),
+    ),
+    _Note(
+        "(Elite) Bolas Rider cost increased from 45 wood 50 gold → 50 wood 55 gold.",
+        (("unit", "2569", "Bolas Rider"), ("unit", "2571", "Elite Bolas Rider")),
+    ),
+    _Note(
+        "Temple Guard attack reduced from 12 → 11 (Elite unchanged).",
+        (("unit", "2586", "Temple Guard"),),
+    ),
+    _Note(
+        "Organ Gun train time increased from 25 seconds → 28 seconds (Elite unchanged).",
+        (("unit", "1001", "Organ Gun"),),
+    ),
+    _Note(
+        "War Chariot cost increased from 65 food 90 gold → 75 food 90 gold.",
+        (("unit", "1962", "War Chariot"),),
+    ),
+    _Note(
+        "War Chariot train time increased from 28 → 32 seconds.",
+        (("unit", "1962", "War Chariot"),),
+    ),
+    _Note(
+        "(Elite) Conquistador cost increased from 70 food 60 gold → 75 food 60 gold.",
+        (("unit", "771", "Conquistador"), ("unit", "773", "Elite Conquistador")),
+    ),
+    _Note(
+        "Conquistador train time increased from 24 → 26 seconds (Elite unchanged).",
+        (("unit", "771", "Conquistador"),),
+    ),
+    _Note(
+        "Missionary cost increased from 100 gold → 30 food 100 gold.",
+        (("unit", "775", "Missionary"),),
+    ),
+    _Note(
+        "Stable and Barracks units +1/+2 melee armor in Castle/Imperial Age civilization bonus "
+        "changed → Infantry and Mounted Units +1/+2 melee armor in Castle/Imperial Age.",
+        (),
+    ),
+    _Note(
+        "Elite Teutonic Knight melee armor reduced from 10 → 8 (unchanged with civilization "
+        "bonus).",
+        (("unit", "554", "Elite Teutonic Knight"),),
+    ),
+    _Note(
+        "(Elite) Blackwood Archer cost increased from 35 wood 45 gold → 40 wood 45 gold.",
+        (("unit", "2579", "Blackwood Archer"), ("unit", "2581", "Elite Blackwood Archer")),
+    ),
+    _Note(
+        "Archery Range units and Fire Lancers +20% HP civilization bonus changed → Foot-Archers "
+        "and Skirmishers +20% HP.",
+        (),
+    ),
+    _Note(
+        "(Elite) Rattan Archer base HP reduced from 40 → 35, Elite 45 → 40.",
+        (("unit", "1129", "Rattan Archer"), ("unit", "1131", "Elite Rattan Archer")),
+    ),
+    _Note(
+        "Elite Rattan upgrade reduced from 1000 food 750 gold → 800 food 750 gold",
+        (("technology", "621", "Elite Rattan Archer"),),
+    ),
+    _Note(
+        "Chieftains effect no longer generates gold when Infantry units defeat Villagers, Trade "
+        "Units, and Monks.",
+        (("technology", "463", "Chieftains"),),
+    ),
+    _Note(
+        "Xianbei Raider cost increased from 65 wood 25 gold → 65 wood 35 gold.",
+        (("unit", "1952", "Xianbei Raider"),),
+    ),
+)
+
+#: What the notes' entries name, as the carry rule reads it.
 _NAMED_BY_THE_NOTES: frozenset[tuple[str, str]] = frozenset(
-    {
-        ("building", "1806"),
-        ("technology", "1378"),
-        ("technology", "1389"),
-        ("technology", "1401"),
-        ("technology", "207"),
-        ("technology", "21"),
-        ("technology", "217"),
-        ("technology", "222"),
-        ("technology", "257"),
-        ("technology", "264"),
-        ("technology", "34"),
-        ("technology", "361"),
-        ("technology", "363"),
-        ("technology", "364"),
-        ("technology", "448"),
-        ("technology", "463"),
-        ("technology", "472"),
-        ("technology", "563"),
-        ("technology", "60"),
-        ("technology", "61"),
-        ("technology", "621"),
-        ("technology", "781"),
-        ("technology", "784"),
-        ("technology", "828"),
-        ("technology", "905"),
-        ("unit", "1001"),
-        ("unit", "1003"),
-        ("unit", "1103"),
-        ("unit", "1105"),
-        ("unit", "1129"),
-        ("unit", "1131"),
-        ("unit", "1258"),
-        ("unit", "1699"),
-        ("unit", "1704"),
-        ("unit", "1706"),
-        ("unit", "1744"),
-        ("unit", "1759"),
-        ("unit", "1761"),
-        ("unit", "1911"),
-        ("unit", "1948"),
-        ("unit", "1952"),
-        ("unit", "1962"),
-        ("unit", "25"),
-        ("unit", "2569"),
-        ("unit", "2571"),
-        ("unit", "2579"),
-        ("unit", "2581"),
-        ("unit", "2586"),
-        ("unit", "2587"),
-        ("unit", "2626"),
-        ("unit", "2627"),
-        ("unit", "281"),
-        ("unit", "40"),
-        ("unit", "473"),
-        ("unit", "527"),
-        ("unit", "531"),
-        ("unit", "550"),
-        ("unit", "553"),
-        ("unit", "554"),
-        ("unit", "567"),
-        ("unit", "75"),
-        ("unit", "751"),
-        ("unit", "77"),
-        ("unit", "771"),
-        ("unit", "773"),
-        ("unit", "775"),
-        ("unit", "831"),
-        ("unit", "832"),
-        ("unit", "869"),
-        ("unit", "871"),
-    }
+    (kind, identifier) for note in _NOTES for kind, identifier, _ in note.entities
 )
 
 
@@ -631,8 +785,8 @@ _FROM_THE_FIRST_SNAPSHOT = (
 _NEW_ROW = ("Gurjaras", "Docks +5 garrison capacity")
 
 #: Rows by fate, set by `_row_failures` (the data under test is not consulted).
-CARRIED_ROWS = 226
-TRANSCRIBED_ROWS = 69
+CARRIED_ROWS = 232
+TRANSCRIBED_ROWS = 63
 
 
 # ----------------------------------------------------------------------- nothing is dropped
@@ -919,6 +1073,9 @@ def test_every_transcribed_row_names_its_own_failure_and_only_ids_the_row_select
             assert stated == failed, (label, name, reason)
         cited = {(k, i) for k, i in _ID_CITATION.findall(reason)}
         assert failures.ids <= cited, (label, failures.ids - cited)
+        # Nothing is cited that is not a failure of this row: a note that names a neighbour of a
+        # selected entity (its upgrade, its Elite unit) is not a reason to cite the entity.
+        assert cited == failures.ids, (label, cited - failures.ids)
         assert cited <= set(_refs(source)) | set(_refs(mine)), (label, cited)
         for kind, identifier in cited:
             if identifier in _rules()[kind]:
@@ -959,6 +1116,103 @@ def test_the_notes_set_contains_every_entity_whose_data_differs_between_the_pack
     renamed_only = {("technology", "372"), ("unit", "250"), ("unit", "533")}
     assert len(differing) == 25
     assert differing - _NAMED_BY_THE_NOTES == renamed_only | {("unit", "1738"), ("unit", "1980")}
+
+
+def _pack_entity_name(kind: str, identifier: str) -> str | None:
+    """The name either pack's `rules.json` gives an entity, or `None` where neither has it."""
+    for directory in (_DIRECTORY, _SOURCE_DIRECTORY):
+        if identifier in _rules(directory)[kind]:
+            return _entity_name(directory, kind, identifier).strip()
+    return None
+
+
+def test_every_entity_of_the_notes_table_is_a_real_entity_under_the_name_the_table_gives() -> None:
+    for note in _NOTES:
+        for kind, identifier, name in note.entities:
+            assert _pack_entity_name(kind, identifier) == name, (note.text, kind, identifier)
+    assert len({note.text for note in _NOTES}) == len(_NOTES)
+
+
+def test_the_notes_that_change_no_entity_are_the_three_that_only_change_a_bonus_or_a_grant() -> (
+    None
+):
+    assert [note.text for note in _NOTES if not note.entities] == [
+        "Docks +5 garrison capacity civilization bonus removed.",
+        "Stable and Barracks units +1/+2 melee armor in Castle/Imperial Age civilization bonus "
+        "changed → Infantry and Mounted Units +1/+2 melee armor in Castle/Imperial Age.",
+        "Archery Range units and Fire Lancers +20% HP civilization bonus changed → Foot-Archers "
+        "and Skirmishers +20% HP.",
+    ]
+
+
+def test_every_line_note_names_every_tier_of_its_line() -> None:
+    """A "-line" note changes every tier of the line, unless the note itself excludes one. The
+    tiers are written by hand beside the entry, never found by name, and each is a real entity of
+    a pack; the entry includes all of them. The Hulk-line note gives three values, one for each of
+    the three tiers listed."""
+    line_notes = [note for note in _NOTES if re.search(r"-line\b", note.text)]
+    assert {note.text.split(" ")[0] for note in line_notes} == {"Battering", "Armored", "Hulk-line"}
+    for note in _NOTES:
+        assert bool(note.tiers) == (note in line_notes), note.text
+    for note in line_notes:
+        assert len(note.tiers) >= 2, note.text
+        assert set(note.tiers) <= set(note.entities), note.text
+        for kind, identifier, name in note.tiers:
+            assert _pack_entity_name(kind, identifier) == name, (note.text, identifier)
+            assert (kind, identifier) in _NAMED_BY_THE_NOTES, (note.text, identifier)
+    by_text = {note.text.split(" ")[0]: note for note in line_notes}
+    assert {i for _, i, _ in by_text["Battering"].tiers} == {"1258", "422", "548"}
+    assert {i for _, i, _ in by_text["Armored"].tiers} == {"1744", "1746"}
+    hulks = by_text["Hulk-line"]
+    values = re.search(r"(\d+(?:/\d+)+) →", hulks.text)
+    assert values is not None
+    assert len(values.group(1).split("/")) == len(hulks.tiers) == 3
+    assert {i for _, i, _ in hulks.tiers} == {"2626", "2627", "2628"}
+
+
+def test_an_entity_named_only_as_an_upgrade_target_or_as_unchanged_is_not_in_the_set() -> None:
+    """The contrast case: each pair is an entity a note names beside the entity it changes. The
+    first is not in the set, the second is. Unit 527 is the unit the Demolition Ship upgrade (905)
+    makes; technology 257 upgrades to the Onager (550) whose stats change; the militia upgrades
+    (207, 217, 222, 264) are the technologies whose units (77, 473, 75, 567) deal more bonus
+    damage; units 1003, 1761, 871, 2587 are Elite units a note says are unchanged; the other
+    technologies are the upgrades of units whose stats or costs change, and none of the notes
+    changes the upgrade itself (technology 621 and 905 are the two it does)."""
+    contrast = {
+        ("unit", "527"): ("technology", "905"),
+        ("technology", "257"): ("unit", "550"),
+        ("technology", "207"): ("unit", "77"),
+        ("technology", "217"): ("unit", "473"),
+        ("technology", "222"): ("unit", "75"),
+        ("technology", "264"): ("unit", "567"),
+        ("unit", "1003"): ("unit", "1001"),
+        ("unit", "1761"): ("unit", "1759"),
+        ("unit", "871"): ("unit", "869"),
+        ("unit", "2587"): ("unit", "2586"),
+        ("unit", "25"): ("unit", "554"),
+        ("technology", "34"): ("unit", "2627"),
+        ("technology", "361"): ("unit", "553"),
+        ("technology", "363"): ("unit", "531"),
+        ("technology", "364"): ("unit", "554"),
+        ("technology", "448"): ("unit", "831"),
+        ("technology", "472"): ("unit", "869"),
+        ("technology", "563"): ("unit", "1001"),
+        ("technology", "60"): ("unit", "773"),
+        ("technology", "781"): ("unit", "1706"),
+        ("technology", "828"): ("unit", "1759"),
+        ("technology", "1378"): ("unit", "2571"),
+        ("technology", "1389"): ("unit", "2581"),
+        ("technology", "1401"): ("unit", "2586"),
+        ("unit", "832"): ("unit", "831"),
+    }
+    for unchanged, changed in contrast.items():
+        assert unchanged not in _NAMED_BY_THE_NOTES, unchanged
+        assert changed in _NAMED_BY_THE_NOTES, changed
+    for changed_technology in (("technology", "905"), ("technology", "621")):
+        assert changed_technology in _NAMED_BY_THE_NOTES
+    # The bonus technologies whose own effect a note rewrites are in.
+    for kind_and_id in (("technology", i) for i in ("21", "61", "463", "784")):
+        assert kind_and_id in _NAMED_BY_THE_NOTES
 
 
 # ----------------------------------------------------------------------- the aliases
