@@ -666,12 +666,17 @@ class _Failures:
     classes: tuple[tuple[str, str], ...]
     named: tuple[tuple[str, str], ...]
     differing: tuple[tuple[str, str], ...]
+    #: Identifiers this pack's row selects that the build 185872 row does not: the pack has them
+    #: (and the other does not), and a class the row selects takes them.
+    added: tuple[tuple[str, str], ...] = ()
 
     @property
     def conditions(self) -> dict[str, bool]:
         return {
             "bullet is byte-identical": not self.string_differs,
-            "identifiers resolve to the same": not (self.absent or self.renamed or self.classes),
+            "identifiers resolve to the same": not (
+                self.absent or self.renamed or self.classes or self.added
+            ),
             "release notes name no change": not (self.named or self.differing),
         }
 
@@ -681,26 +686,41 @@ class _Failures:
 
     @property
     def ids(self) -> set[tuple[str, str]]:
-        return set(self.absent) | set(self.renamed) | set(self.named) | set(self.differing)
+        return (
+            set(self.absent)
+            | set(self.renamed)
+            | set(self.named)
+            | set(self.differing)
+            | set(self.added)
+        )
 
 
-def _row_failures(row: Mapping[str, object]) -> _Failures:
+def _row_failures(row: Mapping[str, object], mine: Mapping[str, object] | None = None) -> _Failures:
     """The three conditions of the carry rule for one row of the source snapshot, recomputed from
     both packs' strings and `rules.json` and from the notes set. Never read from the snapshot under
-    test."""
+    test, but for the identifiers `mine`, the row of this snapshot that answers it, selects: the
+    failures are computed over the union of what the two rows select, so an identifier only this
+    pack's row selects is seen too."""
     civilisation = str(row["civilisation"])
     text = str(row["source_text"])
     key = _HELP_STRING_ID[civilisation]
     string_differs = not (
         text in _bullets_for(_PACK, key) and text in _bullets_for(_OTHER_PACK, key)
     )
-    refs = sorted(set(_refs(row)))
+    source_refs = set(_refs(row))
+    refs = sorted(source_refs | (set(_refs(mine)) if mine is not None else set()))
+    added = tuple(
+        (k, i)
+        for k, i in refs
+        if (k, i) not in source_refs and i in _rules()[k] and i not in _rules(_SOURCE_DIRECTORY)[k]
+    )
     absent = tuple((k, i) for k, i in refs if i not in _rules()[k])
     present = [(k, i) for k, i in refs if i in _rules()[k]]
     renamed = tuple(
         (k, i)
         for k, i in present
-        if _entity_name(_DIRECTORY, k, i) != _entity_name(_SOURCE_DIRECTORY, k, i)
+        if i in _rules(_SOURCE_DIRECTORY)[k]
+        and _entity_name(_DIRECTORY, k, i) != _entity_name(_SOURCE_DIRECTORY, k, i)
     )
     differing = tuple((k, i) for k, i in present if _data_differs(k, i))
     named = tuple((k, i) for k, i in present if (k, i) in _NAMED_BY_THE_NOTES)
@@ -722,6 +742,7 @@ def _row_failures(row: Mapping[str, object]) -> _Failures:
         classes=tuple(sorted(changed_classes)),
         named=named,
         differing=differing,
+        added=added,
     )
 
 
@@ -929,7 +950,7 @@ def test_a_row_is_carried_exactly_when_the_three_conditions_hold_for_that_row() 
     one whose data differs. The decision is recomputed from both packs and the notes set."""
     carried = transcribed = 0
     for source, mine in _pairs():
-        failures = _row_failures(source)
+        failures = _row_failures(source, mine)
         label = (source["civilisation"], source["source_text"], source["field"])
         if mine is None:
             # Dropped: the bullet is not in this pack (Franks' Ordonnance Companies).
@@ -1043,7 +1064,15 @@ _REASON_MARKS = {
     "classes": "produces there are not the same set",
     "named": "release notes name",
     "differing": "this pack's rules.json differs from build 185872's",
+    "added": "is selected by this row and not by the build 185872 row",
 }
+#: The sentence that ends a transcribed row's reason, true by construction: it covers the
+#: identifiers both packs name, and no other.
+_COMPARED_SENTENCE = (
+    "Every identifier both packs name that the row selects and that is not named above was "
+    "compared with the build 185872 rules.json field by field (name, age, cost, time, producing "
+    "building)."
+)
 _ID_CITATION = re.compile(r"\b(unit|technology|building) (\d+)\b")
 
 
@@ -1051,7 +1080,7 @@ def _reason(validated_by: object) -> str:
     """The part of a transcribed row's `validated_by` that gives the reason it was not carried."""
     text = str(validated_by)
     start = text.index("Not carried from the build 185872 snapshot")
-    return text[start : text.index("Every identifier the row selects that is not named above")]
+    return text[start : text.index("Every identifier both packs name")]
 
 
 def test_every_transcribed_row_names_its_own_failure_and_only_ids_the_row_selects() -> None:
@@ -1064,9 +1093,11 @@ def test_every_transcribed_row_names_its_own_failure_and_only_ids_the_row_select
             continue
         checked += 1
         label = (mine["civilisation"], mine["source_text"], mine["field"])
-        failures = _row_failures(source)
+        failures = _row_failures(source, mine)
         assert not failures.carried, label
         reason = _reason(mine["validated_by"])
+        assert _COMPARED_SENTENCE in str(mine["validated_by"]), label
+        assert "Every identifier the row selects" not in str(mine["validated_by"]), label
         for name, mark in _REASON_MARKS.items():
             stated = mark in reason
             failed = bool(getattr(failures, name))
@@ -1081,6 +1112,40 @@ def test_every_transcribed_row_names_its_own_failure_and_only_ids_the_row_select
             if identifier in _rules()[kind]:
                 assert (kind, identifier) in _refs(mine), (label, kind, identifier)
     assert checked == TRANSCRIBED_ROWS
+
+
+def test_the_identifiers_only_this_packs_rows_select_are_technology_83_in_three_rows() -> None:
+    """Every identifier a row of this snapshot selects or conditions on that the build 185872 row
+    it answers does not: the Bearded Axe (technology 83), which only this pack has, in the three
+    rows whose class takes every technology the Castle produces. Each such row is transcribed, and
+    each such identifier is in the failures computed for it."""
+    found: dict[tuple[str, str, str], set[tuple[str, str]]] = {}
+    for source, mine in _pairs():
+        if mine is None:
+            continue
+        extra = set(_refs(mine)) - set(_refs(source))
+        assert set(_row_failures(source, mine).added) == extra, (mine["civilisation"], extra)
+        if extra:
+            assert _transcribed(mine)
+            for kind, identifier in extra:
+                assert identifier in _rules()[kind]
+                assert identifier not in _rules(_SOURCE_DIRECTORY)[kind]
+            found[(str(mine["civilisation"]), str(mine["source_text"]), str(mine["field"]))] = extra
+    assert found == {
+        (
+            "Chinese",
+            "Technologies cost -5/10/15% in Feudal/Castle/Imperial Age",
+            "cost",
+        ): {("technology", "83")},
+        (
+            "Portuguese",
+            "Team Bonus: Technologies research +25% faster",
+            "production_time",
+        ): {("technology", "83")},
+        ("Berbers", "Kasbah (Team Castles work +25% faster)", "production_time"): {
+            ("technology", "83")
+        },
+    }
 
 
 def test_the_two_rows_of_the_first_snapshot_are_carried_byte_for_byte() -> None:
