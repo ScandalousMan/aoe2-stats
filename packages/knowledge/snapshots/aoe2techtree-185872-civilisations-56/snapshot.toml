@@ -18,7 +18,7 @@
 source = "aoe2techtree"
 source_version = "3bb43b1439eef88dfe7fe892d7f7dc41ac9dd76f"
 describes_build = 185872
-digest = "sha256:8bea46550f09335efbcd60a1ead5be33b38bcaae66cf771896b47a2354b36fd7"
+digest = "sha256:659634976bdde12bb848841e11fc4304d85d39bc6e4239510365b2fc5034e404"
 promoted = true
 supersedes = "sha256:93d084ea8886b4c2d98f67a7f02524f107ffab3c3bcb29142389ceac226dc263"
 normaliser_version = 2
@@ -48,7 +48,9 @@ Murder Holes, that the Muisca's Settlement discount is 33% and Huaracas' train b
 deep dive that the Saxons' Foot Soldiers and Varangian Guards cost less per Town Center or Castle \
 controlled. The values no page states are open rows of \
 specs/006-replay-analysis-foundations/owner-readings.md: whether the Saxons' ranged foot units \
-are Foot Soldiers, and whether Siege Engineers, Arrowslits and Hoardings are Siege or \
+are Foot Soldiers, and whether nine technologies of the Jurchens' tree (Chemistry, Ballistics, \
+Fletching, Bodkin Arrow, Bracer, Siege Engineers, Hoardings, Arrowslits, Fortified Bastions), the \
+ones the criterion in the header of effects.toml matches and no source classes, are Siege or \
 Fortification upgrades for the Jurchens\
 """
 performed_by = "the T770 implementer (an AI agent working for the repository owner), by direct reading; no person has reviewed it yet"
@@ -66,17 +68,23 @@ Jurchens (Grenadier cost), Mapuche ((Elite) Bolas Rider cost), Muisca (Temple Gu
 ((Elite) Blackwood Archer cost) and, for the technology tree display, the Khitans; the Georgians \
 and the Wu are not named anywhere on the page, and the Saxons, Varangians and Danes are added by \
 it. Classes were resolved from the pack's help strings or production sites, not from a \
-definition. Four readings are inferences no source states, flagged in their rows: Shu's \
-'Archery Unit technologies at the Blacksmith' are the six archer technologies; Tupi's and the \
-Danes' 'upgrades' are every technology the pack places at the named buildings; the Saxons' Foot \
-Soldiers include every Infantry unit; the Khitans' bonus reaches the Imperial Skirmisher and the \
-Heavy Cavalry Archer's age is set with its upgrade's. The Mapuche Settlements' own training \
+definition. Six readings are inferences no source states, flagged in their rows: Shu's \
+'Archery Unit technologies at the Blacksmith' are the six archer technologies; Tupi's 'upgrades' \
+and the Danes' 'upgrades' are each every technology the pack places at the named buildings; the \
+Saxons' Foot Soldiers include every Infantry unit, and the Petard (440), which the pack calls a \
+Demolition Siege Weapon, is outside the class and is not refused; the Khitans' bonus reaches the \
+Imperial Skirmisher, which the Khitans' tree does not offer, so no game reading can reach it; and \
+the Heavy Cavalry Archer's age is set with its upgrade's. Two more readings are \
+unvalidated, flagged in their rows: the Persians' Kamandaran, read as a cost of 50 wood and no gold \
+in total, and the Cumans' count table for the additional Town Center (two or more Town Centers \
+controlled put the next one in the Castle Age). No source states either, and no game reading \
+checks them. The Mapuche Settlements' own training \
 times (update 170934) are not carried, since production_time holds one time per unit. The \
 Butalmapu row discounts every unit the pack produces at the Castle but the Trebuchet and the \
 Petard; whether the game also discounts the Krepost's Konnik and the Donjon's Serjeant is not \
 stated by any source and is not modelled. The Cumans' Town Center count covers the three \
-identifiers rules.json names; seventeen more that aoc-reference-data calls 'Town Center' are in \
-no pack. Changes to which technologies and units a civilisation can reach are not bonuses and are \
+identifiers rules.json names; the others that aoc-reference-data calls 'Town Center' (measured in \
+docs/data-sources.md) are in no pack. Changes to which technologies and units a civilisation can reach are not bonuses and are \
 not rows; the tree in rules.json (normaliser version 2) answers them. The transcription was not \
 blind: the implementer had read the fifth snapshot's effects.toml to learn the file's shape and \
 carried its forty-four civilisations from it; the twelve new civilisations were transcribed from \

@@ -43,15 +43,35 @@
 #     Infantry are taken as Foot Soldiers (the Varangian Guard, Infantry, is named by the deep dive);
 #     the Saxons' ranged foot units (Archer, Crossbowman, Arbalester, Skirmisher, Elite Skirmisher)
 #     are refused for the Saxons.
-#   - Jurchens' "Siege and Fortification upgrades": the Siege Workshop's technologies, the
-#     "Upgrade to" Fortification technologies and Murder Holes are taken (the last from update
-#     177723); Siege Engineers, Arrowslits and Hoardings, which the Jurchens' tree offers and no
-#     source classes, are refused for the Jurchens, cost and research time.
+#   - Jurchens' "Siege and Fortification upgrades": one criterion, applied to the Jurchens' tree
+#     for both halves of the bullet. A technology is a candidate when `rules.json` produces it at
+#     the Siege Workshop (building 49), or when its help string (the text at the language name id
+#     + 21000 in the pack's `data.json`) contains "Siege Weapons", "Siege Warships",
+#     "Fortification", "Tower", "Castle", "Donjon", "Krepost" or "Wall"; the three Age advances
+#     (101 to 103) are not candidates, their help strings naming the Castle, the Krepost and the
+#     Siege Workshop only as buildings needed to advance. Seventeen technologies of the tree
+#     match: 47, 63, 93, 96, 140, 194, 199, 200, 201, 239, 255, 322, 377, 379, 608, 980, 996.
+#     A match is modelled where a source classes it: the Siege Workshop's technologies (96, 239,
+#     255, 980; the pack's own string says the Siege Workshop trains Siege Weapons), the three
+#     technologies headed "Upgrade to" that upgrade a Fortification (63, 140, 194) and Murder
+#     Holes (322, from update 177723). The other nine are refused for the Jurchens and are open
+#     rows of the owner's sheet: for the research-time half all nine (47, 93, 199, 200, 201, 377,
+#     379, 608, 996); for the wood-cost half only those that cost wood (93, 377, 379, 608, 996),
+#     because a discount on wood leaves any other cost as it is, whatever the game decides.
+#     `test_effects_185872_civilisations_56.py` recomputes the matches from the pack's strings and
+#     fails when one is neither modelled nor refused for its field.
 #
 # **Inferences flagged in their rows and read by the validation sample:** Shu's "Archery Unit
-# technologies at the Blacksmith" (the six archer technologies); Tupi's and Danes' "upgrades" (every
-# technology the pack places at the named buildings, as the Spanish row reads "Blacksmith upgrades");
-# Khitans' inclusion of the Imperial Skirmisher; the unit age of the Heavy Cavalry Archer.
+# technologies at the Blacksmith" (the six archer technologies; the sample reads Padded Archer
+# Armor); Tupi's and Danes' "upgrades" (every technology the pack places at the named buildings, as
+# the Spanish row reads "Blacksmith upgrades"; the sample reads Squires for the Tupi and Arson for
+# the Danes). Each sample row is inside the inference, and a test asserts it.
+#
+# **Inferences no sample row reads, listed in the snapshot's `not_checked`:** the Khitans' inclusion
+# of the Imperial Skirmisher (the Khitans' tree has none, so no game reading can reach it) and the
+# unit age of their Heavy Cavalry Archer, which the sample does not choose; the Saxons' reading of
+# every Infantry unit as a Foot Soldier (and the Petard's absence from it); the Persians' Kamandaran
+# total; the Cumans' count table; the Butalmapu selector beyond the units the sample names.
 #
 # **Butalmapu** (Mapuche): "Team Castle Unique Units" is every unit the pack produces at the Castle
 # except the Trebuchet and the Petard (116 units), plus the Bolas Riders. The Krepost's Konnik and the
@@ -647,8 +667,8 @@ unit strings state. Read as the cost the line has once the technology is researc
 no gold, so gold is set to 0 and wood to 50. This reading is the weakest link of the row: the \
 notes say 'costs 50 wood' and the pack says 'additional wood cost'; a total of 50 wood (against \
 25 wood and 45 gold) makes the change an 'improvement' where 25 wood plus 50 more would be a \
-price rise. No person has read the Archer's cost in the game after Kamandaran yet; the owner's \
-validation sample (T770) should.\
+price rise. No person has read the Archer's cost in the game after Kamandaran yet, and the owner's \
+sheet asks no row for it; the snapshot's not_checked lists it.\
 """
 
 [[effect]]
@@ -8182,17 +8202,16 @@ notification) and no change to a Cuman bonus. Selector and operand: resolved 'To
 building 621, the Town Center a player builds after the first (age 3 in rules.json; buildings 71 \
 and 109 are the starting ones). The counted set is buildings 71, 109 and 621: the three buildings \
 the pack's data gives the Town Center's language name (the Sicilians' row resolves it the same \
-way), and the three of the twenty identifiers that SiegeEngineers aoc-reference-data's objects \
-table (data/datasets/100.json, read 2026-10-26, repository head commit \
-9ee0fe29fa05f176575ce6e3befd21a116d27e12) names exactly 'Town Center' that rules.json names. The \
-other seventeen (141, 142, 481 to 484, 597 and 611 to 620) are in no pack and no alias, so they \
-cannot be counted here; a recording that places one carries an identifier this snapshot does not \
-resolve. The publisher's pages state no figure (update 61321 says only that Cuman Town Centers can \
+way). SiegeEngineers aoc-reference-data names further identifiers 'Town Center' (measured in \
+docs/data-sources.md, the aoc-reference-data entry, "Reliability", read 2026-10-26); none is in a \
+pack or an alias, so they cannot be counted here, and a recording that places one carries an \
+identifier this snapshot does not resolve. The publisher's pages state no figure (update 61321 says only that Cuman Town Centers can \
 be repaired in the Feudal Age even if the player has more than two). The table is keyed by the \
 count of Town Centers controlled: with none or one (the starting one) the next Town Center is \
 available in the Feudal Age (2), as the bullet says ('one additional'); with two or more it is the \
-Castle Age (3), the pack's own age. T780 lets age_requirement take the count; the caller decides \
-which Town Centers it controls.\
+Castle Age (3), the pack's own age. This count table is an unvalidated reading: no source states \
+it, no owner row asks for it, and the snapshot's not_checked lists it. T780 lets age_requirement \
+take the count; the caller decides which Town Centers it controls.\
 """
 
 [[effect]]
@@ -10859,9 +10878,9 @@ Workshop), 96, 239, 255, 257, 320, 787, 838, 980. Fortification: 194 (Fortified 
 Tower) and 63 (Keep), each of whose own help string begins 'Upgrade to', and 322 (Murder Holes), \
 which update 177723 states the bonus applies to ('Fixed Jurchens Civilization bonus Siege and \
 fortification technologies cost -75% wood and are researched 100% faster not applying to Murder \
-Holes'). Siege Engineers (377), Arrowslits (608) and Hoardings (379), which the Jurchens' tree \
-offers and no source classes, are refused in the rows below and are open rows of the owner's \
-sheet. A factor of 0.25 on wood alone.\
+Holes'). The criterion is applied to the whole of the Jurchens' tree (this file's header): it \
+matches seventeen technologies, and the nine this row does not take are refused in the rows below \
+and are open rows of the owner's sheet. A factor of 0.25 on wood alone.\
 """
 
 [[effect]]
@@ -10901,9 +10920,9 @@ Workshop), 96, 239, 255, 257, 320, 787, 838, 980. Fortification: 194 (Fortified 
 Tower) and 63 (Keep), each of whose own help string begins 'Upgrade to', and 322 (Murder Holes), \
 which update 177723 states the bonus applies to ('Fixed Jurchens Civilization bonus Siege and \
 fortification technologies cost -75% wood and are researched 100% faster not applying to Murder \
-Holes'). Siege Engineers (377), Arrowslits (608) and Hoardings (379), which the Jurchens' tree \
-offers and no source classes, are refused in the rows below and are open rows of the owner's \
-sheet. 'Research +100% faster' divides the research time by 2.\
+Holes'). The criterion is applied to the whole of the Jurchens' tree (this file's header): it \
+matches seventeen technologies, and the nine this row does not take are refused in the rows below \
+and are open rows of the owner's sheet. 'Research +100% faster' divides the research time by 2.\
 """
 
 [[effect]]
@@ -10913,14 +10932,17 @@ source_text = "Siege and Fortification upgrades cost -75% wood and research +100
 modelled = "no"
 field = "cost"
 reason = """\
-Whether these technologies are Siege or Fortification upgrades is a field this knowledge base does \
-not carry, so the bonus touches no value it answers; recorded so the bullet is accounted for, not \
-silently dropped\
+the bonus takes 75% off the wood cost of 'Siege and Fortification upgrades', and neither the \
+pack nor the publisher's notes say whether the game counts Ballistics, Siege Engineers, \
+Hoardings, Arrowslits and Fortified Bastions as such, so their adjusted cost is not knowledge \
+this snapshot has; it stays gapped until the owner has read it in the game\
 """
 selector = [
+  { kind = "technology", id = "93" },
   { kind = "technology", id = "377" },
   { kind = "technology", id = "379" },
   { kind = "technology", id = "608" },
+  { kind = "technology", id = "996" },
 ]
 validated_by = """\
 Weak form (FR-030): a second reading of the same vendored source, not an independent one \
@@ -10931,10 +10953,14 @@ reading (T770, 2026-10-26, by the T770 implementer): the same string re-read in 
 against the build 185872 release notes \
 (https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), whose \
 Jurchens entry changes the Grenadier's cost from 35 food 65 gold to 55 food 50 gold and names no \
-change to a Jurchens bonus. Selector and operand: the three technologies of the Jurchens' tree \
-whose own help strings name Siege Weapons, Towers or Castles and Donjons and that are not 'Upgrade \
-to' technologies: 377 (Siege Engineers), 608 (Arrowslits) and 379 (Hoardings). No source says \
-whether the game applies the bonus to them; the owner is asked.\
+change to a Jurchens bonus. Selector and operand: the matches of the criterion in this file's \
+header (every technology of the Jurchens' tree produced at the Siege Workshop or whose help string \
+names a Siege Weapon, a Siege Warship, a Fortification, a Tower, a Castle, a Donjon, a Krepost or \
+a Wall) that cost wood and that no source classes: 93 (Ballistics), 377 (Siege Engineers), 379 \
+(Hoardings), 608 (Arrowslits) and 996 (Fortified Bastions). The four other matches that no source \
+classes (47 Chemistry, 199 Fletching, 200 Bodkin Arrow, 201 Bracer) cost no wood, so a wood \
+discount leaves their cost as it is and they need no cost row. No source says whether the game \
+applies the bonus to the five; the owner is asked.\
 """
 
 [[effect]]
@@ -10944,14 +10970,21 @@ source_text = "Siege and Fortification upgrades cost -75% wood and research +100
 modelled = "no"
 field = "production_time"
 reason = """\
-Whether these technologies are Siege or Fortification upgrades is a field this knowledge base does \
-not carry, so the bonus touches no value it answers; recorded so the bullet is accounted for, not \
-silently dropped\
+the bonus researches 'Siege and Fortification upgrades' 100% faster, and neither the pack nor the \
+publisher's notes say whether the game counts Chemistry, Ballistics, Fletching, Bodkin Arrow, \
+Bracer, Siege Engineers, Hoardings, Arrowslits and Fortified Bastions as such, so their research \
+time is not knowledge this snapshot has; it stays gapped until the owner has read it in the game\
 """
 selector = [
+  { kind = "technology", id = "47" },
+  { kind = "technology", id = "93" },
+  { kind = "technology", id = "199" },
+  { kind = "technology", id = "200" },
+  { kind = "technology", id = "201" },
   { kind = "technology", id = "377" },
   { kind = "technology", id = "379" },
   { kind = "technology", id = "608" },
+  { kind = "technology", id = "996" },
 ]
 validated_by = """\
 Weak form (FR-030): a second reading of the same vendored source, not an independent one \
@@ -10962,9 +10995,12 @@ reading (T770, 2026-10-26, by the T770 implementer): the same string re-read in 
 against the build 185872 release notes \
 (https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/), whose \
 Jurchens entry changes the Grenadier's cost from 35 food 65 gold to 55 food 50 gold and names no \
-change to a Jurchens bonus. Selector and operand: the three technologies of the Jurchens' tree \
-whose own help strings name Siege Weapons, Towers or Castles and Donjons and that are not 'Upgrade \
-to' technologies: 377 (Siege Engineers), 608 (Arrowslits) and 379 (Hoardings). No source says \
+change to a Jurchens bonus. Selector and operand: the matches of the criterion in this file's \
+header (every technology of the Jurchens' tree produced at the Siege Workshop or whose help string \
+names a Siege Weapon, a Siege Warship, a Fortification, a Tower, a Castle, a Donjon, a Krepost or \
+a Wall) that no source classes, every one of which needs a research-time row whatever it costs: \
+47 (Chemistry), 93 (Ballistics), 199 (Fletching), 200 (Bodkin Arrow), 201 (Bracer), 377 (Siege \
+Engineers), 379 (Hoardings), 608 (Arrowslits) and 996 (Fortified Bastions). No source says \
 whether the game applies the bonus to them; the owner is asked.\
 """
 
@@ -11810,7 +11846,10 @@ it. Resolved to the 80 units the Goths' Infantry row resolved from each unit's o
 (2026-08-31) says 'Foot soldiers cost less per Town Center or Castle controlled' and 'Saxon \
 Varangian Guards are less expensive per Town Center and Castle controlled', and the Varangian \
 Guard (2703, 2704) is Infantry there; that every Infantry unit is a Foot Soldier is an inference. \
-The Saxons' ranged foot units (Archer 4, Crossbowman 24, Arbalester 492, Skirmisher 7, Elite \
+The Petard (440) is not among the 80: its own help string calls it a 'Demolition Siege Weapon', \
+not Infantry, and the deep dive names no siege unit among the Foot Soldiers; no source says the \
+game counts it, so it is neither modelled nor refused here and the snapshot's not_checked lists \
+it. The Saxons' ranged foot units (Archer 4, Crossbowman 24, Arbalester 492, Skirmisher 7, Elite \
 Skirmisher 6) are refused in the next row. 'Town Center or Castle controlled' is one count over \
 buildings 71, 109 and 621 (the three buildings the pack's data gives the Town Center's language \
 name) and building 82 (Castle). Each count of 1 to 4 takes 5% more off every resource, 0.95 to \
@@ -11824,8 +11863,10 @@ source_text = "Foot Soldiers cost -5% per Town Center or Castle controlled (maxi
 modelled = "no"
 field = "cost"
 reason = """\
-Whether these units are Foot Soldiers is a field this knowledge base does not carry, so the bonus \
-touches no value it answers; recorded so the bullet is accounted for, not silently dropped\
+the bonus discounts 'Foot Soldiers', and no string or release note says whether the Saxons' \
+ranged foot units (Archer, Crossbowman, Arbalester, Skirmisher, Elite Skirmisher) are Foot \
+Soldiers, so their adjusted cost is not knowledge this snapshot has; it stays gapped until the \
+owner has read it in the game\
 """
 selector = [
   { kind = "unit", id = "4" },

@@ -57,7 +57,7 @@ are not ones a register datum requires, so their gaps are informational and not 
 **Batch D (T770)** models the last twelve in `aoe2techtree-185872-civilisations-56`, so every
 civilisation of build 185872 is modelled and no `xfail` is left for it. Two of the twelve keep open
 rows: Saxons (no source says whether the ranged foot units are Foot Soldiers) and Jurchens (no
-source classes Siege Engineers, Arrowslits and Hoardings as Siege or Fortification upgrades). The
+source classes nine of the Jurchens' technologies as Siege or Fortification upgrades). The
 Berbers lost theirs: the Kasbah is a `researched` and `team` row now (T781), as the Cumans'
 additional Town Center and Cuman Mercenaries are rows (T780, T781).
 
@@ -296,17 +296,30 @@ _OPEN_ROWS: dict[int, dict[str, tuple[OpenRow, ...]]] = {
             ("unit", "1753", "production_time", "effect-not-modelled"),
             ("unit", "1755", "production_time", "effect-not-modelled"),
         ),
-        # Row: Jurchens / Siege Engineers (377), Arrowslits (608) and Hoardings (379) / cost and
-        # production_time / "Siege and Fortification upgrades cost -75% wood and research +100%
-        # faster": no source says whether the game applies the bonus to the three technologies the
-        # Jurchens' tree offers and whose strings name Siege Weapons, Towers, Castles and Donjons.
+        # Row: Jurchens / the technologies of the Jurchens' tree that one criterion matches and no
+        # source classes / cost and production_time / "Siege and Fortification upgrades cost -75%
+        # wood and research +100% faster": no source says whether the game applies the bonus to
+        # them. The criterion (the header of the snapshot's effects.toml): produced at the Siege
+        # Workshop, or a help string naming a Siege Weapon, a Siege Warship, a Fortification, a
+        # Tower, a Castle, a Donjon, a Krepost or a Wall. Research time: Chemistry (47), Ballistics
+        # (93), Fletching (199), Bodkin Arrow (200), Bracer (201), Siege Engineers (377), Hoardings
+        # (379), Arrowslits (608), Fortified Bastions (996). Cost: those of them that cost wood
+        # (93, 377, 379, 608, 996).
         "Jurchens": (
+            ("technology", "47", "production_time", "effect-not-modelled"),
+            ("technology", "93", "cost", "effect-not-modelled"),
+            ("technology", "93", "production_time", "effect-not-modelled"),
+            ("technology", "199", "production_time", "effect-not-modelled"),
+            ("technology", "200", "production_time", "effect-not-modelled"),
+            ("technology", "201", "production_time", "effect-not-modelled"),
             ("technology", "377", "cost", "effect-not-modelled"),
             ("technology", "377", "production_time", "effect-not-modelled"),
             ("technology", "379", "cost", "effect-not-modelled"),
             ("technology", "379", "production_time", "effect-not-modelled"),
             ("technology", "608", "cost", "effect-not-modelled"),
             ("technology", "608", "production_time", "effect-not-modelled"),
+            ("technology", "996", "cost", "effect-not-modelled"),
+            ("technology", "996", "production_time", "effect-not-modelled"),
         ),
         # Row: Magyars / Magyar Huszar (units 869, 871) / cost / Corvinian Army researched /
         # "Magyar Huszar gold cost is replaced by additional food cost": update 95810 names the

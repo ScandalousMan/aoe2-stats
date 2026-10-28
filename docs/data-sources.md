@@ -767,8 +767,7 @@ against keeping one measurement in two homes.
   named gates are not aliased). Only the eight raw ids of T746 are corroborated by a committed
   recording; the other 48 rest on the dataset alone, plus the inner `id` agreement. Read again 2026-10-26 (T770), repository head commit
   `9ee0fe29fa05` (2026-10-26): `objects` names twenty identifiers exactly
-  "Town Center" (71, 109, 141, 142, 481 to 484, 597, 611 to 621), of which the vendored pack names
-  three (71, 109, 621); the Cumans' additional Town Center counts those three. The dataset's
+  "Town Center" (71, 109, 141, 142, 481 to 484, 597, 611 to 621). The dataset's
   **keys** do not corroborate
   `apps/api/src/aoe2stats_api/civilizations.py` (Relic's space): reading them as doing so was
   T070i's error, corrected 2026-09-27 (T652n). Each entry's inner `id` is a separate field. Measured

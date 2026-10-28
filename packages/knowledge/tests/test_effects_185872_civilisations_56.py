@@ -30,6 +30,8 @@ claims, pinned to them):
 
 from __future__ import annotations
 
+import dataclasses
+import functools
 import json
 import math
 import re
@@ -129,6 +131,13 @@ _BATCH_D = (
     "Saxons",
     "Varangians",
     "Danes",
+)
+
+#: The Persians' Kamandaran, the one row carried with its `validated_by` amended (the fifth's
+#: promised that the validation sample reads the Archer's cost after it; the sample does not).
+_AMENDED = (
+    "Persians",
+    "Kamandaran (Archer-line gold cost replaced by additional wood cost)",
 )
 
 #: The three rows of the fifth snapshot this one replaces, by (civilisation, field).
@@ -444,6 +453,11 @@ def test_every_row_of_the_fifth_snapshot_is_carried_unchanged_but_the_three_repl
                 row.source_text,
                 row.field,
             )
+        elif (row.civilisation, row.source_text) == _AMENDED:
+            # The one carried row whose text was amended: it promised a reading the sample does
+            # not make. Every parsed field but `validated_by` is the fifth's.
+            assert dataclasses.replace(new[index], validated_by=row.validated_by) == row
+            assert new[index].validated_by != row.validated_by
         else:
             assert new[index] == row, ("changed", row.civilisation, row.source_text)
 
@@ -968,43 +982,61 @@ def test_the_validation_sample_has_one_row_per_civilisation_of_the_pack() -> Non
         assert row[5] == "" and row[6] == "", "the owner fills the last two columns"
 
 
+def _sample_context(
+    civilisation: str, entity: str, technologies: str, age: int | None
+) -> effects.Context:
+    """The context a sample row states: the technologies researched (by the owner and, for a team
+    row, by the team), the owner alone on the team, the age when the row has one, and the count
+    when the entity names it."""
+    counted = re.search(r"with (\d+) Town Centers", entity)
+    researched = frozenset(re.findall(r"\(technology (\d+)\)", technologies))
+    fields: dict[str, object] = {
+        "researched": researched,
+        "team": frozenset({civilisation}),
+        "team_researched": researched,
+    }
+    if counted:
+        members = ("71", "109", "621", "82") if "Castles" in entity else ("71", "109", "621")
+        fields["controlled"] = {
+            frozenset(effects.SelectorEntry("building", i) for i in members): int(counted.group(1))
+        }
+    elif age is not None:
+        fields["age"] = age
+    return effects.Context(**fields)  # type: ignore[arg-type]
+
+
+def _sample_answer(
+    civilisation: str, kind: str, ident: str, field: str, context: effects.Context
+) -> object:
+    answer = _FUNCS[field](_entity(kind, ident), civilisation=civilisation, context=context)
+    assert not isinstance(answer, gaps.KnowledgeGap), (civilisation, answer)
+    got = answer.value
+    if field == "produced_at":
+        got = [b.id for b in got]  # type: ignore[attr-defined]
+    return got
+
+
 def test_every_row_of_the_validation_sample_is_what_the_snapshot_answers() -> None:
     for civilisation, entity, age, technologies, value, *_ in _sample_rows():
         match = re.search(r"\((unit|building|technology) (\d+)\)", entity)
         assert match, entity
         kind, ident = match.groups()
-        counted = re.search(r"with (\d+) Town Centers", entity)
-        researched = frozenset(re.findall(r"\(technology (\d+)\)", technologies))
-        fields = {
-            "researched": researched,
-            "team": frozenset({civilisation}),
-            "team_researched": researched,
-        }
-        if age != "any":
-            fields["age"] = _AGE_NUMBERS[age]
-        if counted:
-            castle = "Castles" in entity
-            members = ("71", "109", "621", "82") if castle else ("71", "109", "621")
-            fields["controlled"] = {
-                frozenset(effects.SelectorEntry("building", i) for i in members): int(
-                    counted.group(1)
-                )
-            }
-        else:
-            fields["age"] = fields.get("age", 4)
-        context = effects.Context(**fields)  # type: ignore[arg-type]
         field, rest = value.split(" ", 1)
         stated, _, remainder = rest.partition("; pack baseline ")
-        answer = _FUNCS[field](_entity(kind, ident), civilisation=civilisation, context=context)
-        assert not isinstance(answer, gaps.KnowledgeGap), (civilisation, answer)
-        got = answer.value
-        if field == "produced_at":
-            got = [b.id for b in got]  # type: ignore[attr-defined]
         expected = json.loads(stated)
-        if field == "production_time":
-            assert got == pytest.approx(expected, abs=0.005), (civilisation, entity)
+        if age == "any":
+            # "any" is a claim: the answer must be the same in each of the four ages.
+            contexts = [
+                _sample_context(civilisation, entity, technologies, a) for a in (1, 2, 3, 4)
+            ]
         else:
-            assert got == expected, (civilisation, entity)
+            contexts = [_sample_context(civilisation, entity, technologies, _AGE_NUMBERS[age])]
+        for context in contexts:
+            got = _sample_answer(civilisation, kind, ident, field, context)
+            if field == "production_time":
+                assert got == pytest.approx(expected, abs=0.005), (civilisation, entity, context)
+            else:
+                assert got == expected, (civilisation, entity, context)
         baseline_text = remainder.split("; ")[0]
         rec = _rules()[kind][ident]
         if field == "cost":
@@ -1014,6 +1046,282 @@ def test_every_row_of_the_validation_sample_is_what_the_snapshot_answers() -> No
         elif field == "production_time":
             time = rec.get("training_time", rec.get("research_time", rec.get("construction_time")))
             assert json.loads(baseline_text) == time
-        if "no non-team bonus" not in value:
+        if "no modelled bonus" in value:
+            assert not _value_rows(civilisation), civilisation
+        else:
             # The row is a bonus: the value differs from the pack's own.
             assert json.loads(baseline_text) != expected, (civilisation, entity)
+
+
+# ------------------------------------------------------ the selection rule of the validation sample
+
+
+def _value_rows(civilisation: str) -> list[effects.Effect]:
+    """The civilisation's effects that can change a value this knowledge base carries: the modelled
+    rows on a carried field, team rows included (a team bonus applies to its owner too)."""
+    return [
+        e
+        for e in _effects()
+        if e.civilisation == civilisation and e.modelled == "yes" and e.field in _FUNCS
+    ]
+
+
+def _sample_entity(entity: str) -> tuple[str, str]:
+    match = re.search(r"\((unit|building|technology) (\d+)\)", entity)
+    assert match, entity
+    return match.group(1), match.group(2)
+
+
+def test_every_sample_row_is_the_effect_that_changes_the_most_entities_team_rows_included() -> None:
+    """T770: "each the effect that changes the most entities". An effect is one modelled row on a
+    carried field; the entities it changes are its distinct selector entries. The sampled entity is
+    inside the selector of a row whose field is the one the sample states, and no row of the
+    civilisation has a larger selector. A civilisation with no such row is sampled at its baseline
+    and says so."""
+    tree = json.loads(_snapshot_root().joinpath("rules.json").read_text("utf-8"))
+    problems: list[str] = []
+    for civilisation, entity, _, _, value, *_ in _sample_rows():
+        rows = _value_rows(civilisation)
+        kind, ident = _sample_entity(entity)
+        field = value.split(" ", 1)[0]
+        if not rows:
+            if "no modelled bonus" not in value:
+                problems.append(f"{civilisation}: has no value-changing row and does not say so")
+            continue
+        if "no modelled bonus" in value:
+            problems.append(f"{civilisation}: says it has no value-changing row but has some")
+            continue
+        largest = max(len(set(e.selector)) for e in rows)
+        chosen = [
+            e
+            for e in rows
+            if e.field == field
+            and len(set(e.selector)) == largest
+            and effects.SelectorEntry(kind, ident) in e.selector
+        ]
+        if not chosen:
+            problems.append(f"{civilisation}: {entity} {field} is not in a selector of {largest}")
+        # The player can read what the sample states: the entity is in the civilisation's tree.
+        if ident not in tree["civilisations"][civilisation][kind]:
+            problems.append(f"{civilisation}: {entity} is not in its tree")
+    assert problems == []
+
+
+def test_the_sample_text_states_no_exclusion_the_task_does_not() -> None:
+    sheet = _OWNER_READINGS.read_text(encoding="utf-8")
+    section = sheet[sheet.index("## Validation sample") : sheet.index("## Production")]
+    assert "is not chosen" not in section
+    assert "non-team" not in section
+
+
+#: Where a row's text says the validation sample reads one of its inferences, the selector entries
+#: that carry the inference. Reading any other entry of the selector reads the bonus, not the
+#: inference.
+_INFERENCE_ENTITIES: Mapping[tuple[str, str], frozenset[tuple[str, str]]] = {
+    ("Shu", "Archery Unit technologies at the Archery Range and Blacksmith cost -25%"): frozenset(
+        {("technology", "211"), ("technology", "212"), ("technology", "219")}
+    ),
+    ("Tupi", "Archery Range and Barracks upgrades cost -50% food"): frozenset(
+        {("technology", "215"), ("technology", "602")}
+    ),
+    ("Danes", "Barracks and Siege Workshop upgrades cost -66% gold"): frozenset(
+        {("technology", "215"), ("technology", "602")}
+    ),
+}
+
+_EFFECTS_TOML = Path(__file__).resolve().parents[1] / "snapshots" / _DIRECTORY / "effects.toml"
+
+
+def test_every_row_that_claims_the_sample_reads_it_has_a_sample_row_inside_the_inference() -> None:
+    claimed = set()
+    sample = [(row[0], _sample_entity(row[1])) for row in _sample_rows()]
+    for effect in _effects():
+        if not re.search(r"validation sample", effect.validated_by, re.IGNORECASE):
+            continue
+        key = (effect.civilisation, effect.source_text)
+        claimed.add(key)
+        assert key in _INFERENCE_ENTITIES, ("claims the sample reads it", key)
+        assert any(
+            civilisation == effect.civilisation
+            and entity in _INFERENCE_ENTITIES[key]
+            and effects.SelectorEntry(*entity) in effect.selector
+            for civilisation, entity in sample
+        ), ("no sample row reads the inference", key)
+    # The registry is not stale: each of its rows still makes the claim it answers for.
+    assert claimed == set(_INFERENCE_ENTITIES)
+
+
+def test_the_header_lists_as_read_by_the_sample_only_inferences_a_sample_row_reads() -> None:
+    header = "\n".join(
+        line[1:].strip()
+        for line in _EFFECTS_TOML.read_text("utf-8").splitlines()
+        if line.startswith("#")
+    )
+    marker = "Inferences flagged in their rows and read by the validation sample:"
+    assert marker in header
+    paragraph = header[header.index(marker) :].split("\n\n")[0]
+    named = {civilisation for civilisation in _BATCH_D if civilisation in paragraph}
+    assert named == {civilisation for civilisation, _ in _INFERENCE_ENTITIES}, named
+    # And the snapshot's own record makes no such claim.
+    record = _snapshot_root().joinpath("snapshot.toml").read_text(encoding="utf-8")
+    assert "validation sample" not in record
+
+
+# ------------------------------------------------------------------------- the Jurchens' criterion
+
+#: The one criterion that decides which technologies of the Jurchens' tree are "Siege and
+#: Fortification upgrades" candidates, stated in the header of `effects.toml`: a technology the
+#: Siege Workshop produces, or one whose help string (`LanguageNameId` + 21000 in `data.json`,
+#: read from `strings.en.json`) names one of these words. The three Age advances are not
+#: candidates: their help strings name the Castle and the Siege Workshop only as buildings the
+#: player needs to advance.
+_JURCHENS_WORDS = (
+    "Siege Weapons",
+    "Siege Warships",
+    "Fortification",
+    "Tower",
+    "Castle",
+    "Donjon",
+    "Krepost",
+    "Wall",
+)
+_AGE_ADVANCES = frozenset({"101", "102", "103"})
+_SIEGE_WORKSHOP = "49"
+_JURCHENS_BULLET = "Siege and Fortification upgrades cost -75% wood and research +100% faster"
+
+
+@functools.cache
+def _pack_data() -> dict[str, dict[str, dict[str, object]]]:
+    parsed: dict[str, dict[str, dict[str, object]]] = json.loads(
+        _pack_root().joinpath("data.json").read_text(encoding="utf-8")
+    )["data"]
+    return parsed
+
+
+def _help_string(technology: str) -> str:
+    data = _pack_data()
+    record = data["Tech"].get(technology)
+    if record is None:
+        return ""  # a unit upgrade: the pack carries no help string of its own for it
+    return _strings().get(str(record["LanguageNameId"] + 21000), "")  # type: ignore[call-overload]
+
+
+def _jurchens_candidates() -> frozenset[str]:
+    rules = _rules()
+    document = json.loads(_snapshot_root().joinpath("rules.json").read_text("utf-8"))
+    tree = document["civilisations"]["Jurchens"]["technology"]
+    return frozenset(
+        technology
+        for technology in tree
+        if technology not in _AGE_ADVANCES
+        and (
+            (rules["technology"][technology].get("produced_at") or {}).get("id") == _SIEGE_WORKSHOP  # type: ignore[attr-defined]
+            or any(word in _help_string(technology) for word in _JURCHENS_WORDS)
+        )
+    )
+
+
+def test_every_technology_the_jurchens_criterion_matches_is_modelled_or_refused_for_its_field() -> (
+    None
+):
+    rules = _rules()["technology"]
+    candidates = _jurchens_candidates()
+    assert {"47", "93", "199", "322", "377", "996"} <= candidates, "the reader is broken"
+    rows = [
+        e for e in _effects() if e.civilisation == "Jurchens" and e.source_text == _JURCHENS_BULLET
+    ]
+    for field in ("cost", "production_time"):
+        modelled = {
+            s.id for e in rows if e.field == field and e.modelled == "yes" for s in e.selector
+        }
+        refused = {
+            s.id for e in rows if e.field == field and e.modelled == "no" for s in e.selector
+        }
+        assert not modelled & refused, field
+        # A cost row is needed only for a technology that costs wood: -75% wood leaves any other
+        # cost as it is, whatever the game decides. A research-time row is needed for every match.
+        required = {
+            t
+            for t in candidates
+            if field == "production_time" or "wood" in rules[t]["cost"]  # type: ignore[operator]
+        }
+        assert required <= modelled | refused, (field, sorted(required - (modelled | refused)))
+        # Nothing is refused that the criterion does not match or that the field does not need.
+        assert refused <= required, (field, sorted(refused - required))
+        assert (modelled & _jurchens_tree()) <= candidates, field
+
+
+def _jurchens_tree() -> frozenset[str]:
+    document = json.loads(_snapshot_root().joinpath("rules.json").read_text("utf-8"))
+    return frozenset(document["civilisations"]["Jurchens"]["technology"])
+
+
+def test_every_refused_jurchens_technology_is_an_open_owner_row_for_its_field() -> None:
+    sheet = _OWNER_READINGS.read_text(encoding="utf-8")
+    open_values = sheet[sheet.index("## Open values") : sheet.index("## Validation sample")]
+    rows = [line for line in open_values.splitlines() if line.startswith("| 185872 | Jurchens |")]
+    for effect in _effects():
+        if effect.civilisation == "Jurchens" and effect.modelled == "no" and effect.field in _FUNCS:
+            for entry in effect.selector:
+                assert any(
+                    f"| {effect.field} |" in row and f"({entry.id})" in row for row in rows
+                ), (effect.field, entry.id)
+
+
+# ----------------------------------------------------------- the wording of a refusal's reason
+
+#: The sentence a refusal on a field this knowledge base does not carry uses: true of "heal rate",
+#: false of a cost.
+_UNCARRIED_TEMPLATE = "is a field this knowledge base does not carry"
+
+
+def test_no_refusal_on_a_carried_field_says_the_field_is_not_carried() -> None:
+    carried_refusals = [e for e in _effects() if e.modelled == "no" and e.field in _FUNCS]
+    uncarried_refusals = [e for e in _effects() if e.modelled == "no" and e.field not in _FUNCS]
+    assert carried_refusals and uncarried_refusals
+    for effect in carried_refusals:
+        assert _UNCARRIED_TEMPLATE not in (effect.reason or ""), (
+            effect.civilisation,
+            effect.field,
+        )
+        # It states the real unknown, and who can settle it (batch D's own rows).
+        if effect.civilisation in _BATCH_D:
+            assert "owner" in (effect.reason or ""), (effect.civilisation, effect.field)
+    # Contrast: the wording is the one the uncarried fields use, so the check above is not empty.
+    assert any(_UNCARRIED_TEMPLATE in (e.reason or "") for e in uncarried_refusals)
+
+
+def test_the_gap_a_carried_field_refusal_raises_carries_its_real_reason() -> None:
+    for technology in ("377", "93"):
+        gap = query.cost(_entity("technology", technology), civilisation="Jurchens")
+        assert isinstance(gap, gaps.KnowledgeGap)
+        assert _UNCARRIED_TEMPLATE not in gap.detail
+    gap = query.cost(_entity("unit", 4), civilisation="Saxons")
+    assert isinstance(gap, gaps.KnowledgeGap)
+    assert _UNCARRIED_TEMPLATE not in gap.detail
+
+
+# --------------------------------------------------------- what the snapshot says of the Cumans
+
+
+def test_the_cumans_town_center_count_is_not_restated_and_its_table_is_called_unvalidated() -> None:
+    row = next(
+        e
+        for e in _effects()
+        if e.civilisation == "Cumans"
+        and e.field == "age_requirement"
+        and e.source_text.startswith("One additional")
+    )
+    record = _snapshot_root().joinpath("snapshot.toml").read_text(encoding="utf-8")
+    for text in (row.validated_by, record):
+        # The measurement of the outside world lives in docs/data-sources.md, not here.
+        assert not re.search(r"\b(seventeen|twenty)\b", text), text[:80]
+        assert "data-sources.md" in text
+    assert "unvalidated" in row.validated_by
+    assert "unvalidated" in record
+    # The outside-world measurement carries no claim about this repository's snapshot (CLAUDE.md:
+    # never copy a measurement between homes, and never let it describe the code that reads it).
+    docs = (Path(__file__).resolve().parents[3] / "docs" / "data-sources.md").read_text("utf-8")
+    measured = docs[docs.index("names twenty identifiers exactly") :].split("\n\n")[0]
+    assert "Cumans" not in measured
+    assert "vendored pack" not in measured
