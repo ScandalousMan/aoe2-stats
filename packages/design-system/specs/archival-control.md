@@ -146,8 +146,8 @@ different wording here, it is a deliberate edit to this file, not a side effect 
 
 1. This runs on our legitimate interest in saving your matches before Microsoft deletes them, not
    on your consent (GDPR Art. 6-1-f). Nothing is asked of you before it starts.
-2. Age of Empires II deletes your replay files some weeks after the match — for some players, in less
-   than a month. After that nobody can get them back — not you, not us, not Microsoft.
+2. Age of Empires II deletes your replay files some weeks after the match. After that nobody can get
+   them back — not you, not us, not Microsoft.
 3. We download the recording of each of your matches from your own point of view and keep the
    original file, unchanged.
 4. We only ever take your own point of view, never another player's.

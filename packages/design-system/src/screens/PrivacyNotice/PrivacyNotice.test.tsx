@@ -373,8 +373,7 @@ describe('PrivacyNotice — the retention window names no number of days', () =>
     // days that is the product's own commitment (the 30-day response to an objection).
     const paragraph = screen.getByText(/deletes your replay files some weeks after the match/)
     expect(paragraph.textContent).not.toMatch(/\b\d+[\s-]*days?\b/i)
-    // The word "month" appears only in "less than a month", which claims no figure.
-    expect((paragraph.textContent ?? '').replace(/less than a month/gi, '')).not.toMatch(/months?/i)
+    expect(paragraph.textContent ?? '').not.toMatch(/months?/i)
   })
 
   it('states the retained recording\'s deletion without "about a month"', () => {
@@ -383,7 +382,6 @@ describe('PrivacyNotice — the retention window names no number of days', () =>
     expect(paragraph.textContent).toContain('deletes its own copy some weeks after the match')
     expect(paragraph.textContent).not.toMatch(/about a month/i)
     expect(paragraph.textContent).not.toMatch(/\b\d+[\s-]*days?\b/i)
-    // The word "month" appears only in "less than a month", which claims no figure.
-    expect((paragraph.textContent ?? '').replace(/less than a month/gi, '')).not.toMatch(/months?/i)
+    expect(paragraph.textContent ?? '').not.toMatch(/months?/i)
   })
 })

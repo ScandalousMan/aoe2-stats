@@ -5,10 +5,10 @@ AoE2 profile, browse your rating history and matches, and have your replays arch
 
 ## Why automatic archival
 
-Replays are only kept on the official servers for **some weeks** after the match — for some players,
-less than a month. After that they are gone permanently. This project captures them while they still
-exist so that analysis can happen later, whenever the tooling is ready. That ordering — capture
-first, analyse later — is the core design constraint of the whole codebase.
+Replays are only kept on the official servers for **some weeks** after the match. After that they
+are gone permanently. This project captures them while they still exist so that analysis can happen
+later, whenever the tooling is ready. That ordering — capture first, analyse later — is the core
+design constraint of the whole codebase.
 
 ## Status
 

@@ -122,7 +122,7 @@ const CATEGORY_ENTRIES: readonly CategoryEntryData[] = [
     basis:
       'our legitimate interest in saving them before that happens (GDPR Art. 6-1-f). You can object at any time — see "Your rights".',
     howLong: 'until you erase your account. There is no other expiry.',
-    body: 'Age of Empires II deletes your replay files some weeks after the match — for some players, in less than a month. After that nobody can get them back — not you, not us, not Microsoft. So we download the recording of each of your matches, from your own point of view, and keep the original file unchanged. A recording contains your actions, your alias, and whatever was typed in the in-game chat during that match. We only ever take your own point of view, never another player’s. If you object to this, we also keep the date you objected.',
+    body: 'Age of Empires II deletes your replay files some weeks after the match. After that nobody can get them back — not you, not us, not Microsoft. So we download the recording of each of your matches, from your own point of view, and keep the original file unchanged. A recording contains your actions, your alias, and whatever was typed in the in-game chat during that match. We only ever take your own point of view, never another player’s. If you object to this, we also keep the date you objected.',
   },
   {
     id: 'category-other-players',

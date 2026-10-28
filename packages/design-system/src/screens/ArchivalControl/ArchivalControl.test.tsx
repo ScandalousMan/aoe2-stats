@@ -230,7 +230,6 @@ describe('ArchivalControl — the retention window names no number of days', () 
     const text = document.body.textContent ?? ''
     expect(text).toContain('deletes your replay files some weeks after the match')
     expect(text).not.toMatch(/\b\d+[\s-]*days?\b/i)
-    // The word "month" appears only in "less than a month", which claims no figure.
-    expect(text.replace(/less than a month/gi, '')).not.toMatch(/months?/i)
+    expect(text).not.toMatch(/months?/i)
   })
 })

@@ -52,7 +52,7 @@ const rationaleLine =
 // §4.2 — mechanism (1-6), then the objection boundary (7), both directions stated.
 const basisParagraphs = [
   'This runs on our legitimate interest in saving your matches before Microsoft deletes them, not on your consent (GDPR Art. 6-1-f). Nothing is asked of you before it starts.',
-  'Age of Empires II deletes your replay files some weeks after the match — for some players, in less than a month. After that nobody can get them back — not you, not us, not Microsoft.',
+  'Age of Empires II deletes your replay files some weeks after the match. After that nobody can get them back — not you, not us, not Microsoft.',
   'We download the recording of each of your matches from your own point of view and keep the original file, unchanged.',
   'We only ever take your own point of view, never another player’s.',
   'This runs by itself. You never have to remember to do anything.',
