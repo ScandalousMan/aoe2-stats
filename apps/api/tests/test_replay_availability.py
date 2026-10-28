@@ -26,19 +26,18 @@ already fetched the one row that matters, already knows whether a 404 was seen, 
 its own configured budget.
 
 **No window-length constant is asserted against `derive_availability`'s own arithmetic anywhere
-below**, only against the parameter it is given. R8's 2026-08-29 amendment leaves the true
-retention window rolling and different per profile (`docs/data-sources.md` §2), and states only
-(History, 2026-08-29, when the window was recorded as contradicted) that "the derivation stays
-conservative and unchanged: a match older than the shortest credible window renders expired" —
-without giving that window a length, and the module this fix landed in no longer owns a constant
-claiming to. Most `completed_at` values below are therefore chosen to
-be unambiguous regardless of `capture_budget_days`: days for "obviously still inside whatever
-budget the caller supplies" and well over a year for "obviously outside it". The one exception is
-the dedicated `capture_budget_days` section below, where `_CAPTURE_BUDGET_DAYS` mirrors
-`.env.example`'s own `CAPTURE_BUDGET_DAYS=18` — supplied as any caller would, through the
-parameter, never restated as an assertion about what `derive_availability` computes internally.
-That restraint is the same one `research.md`'s own header states for itself: a number that exists
-in two files is wrong in one of them.
+below**, only against the parameter it is given. `docs/data-sources.md` §2 records the retention
+window as rolling and different per profile, and gives no length that holds for every profile.
+(History, 2026-08-29: R8's amendment, written while the window was recorded as contradicted, kept
+the expired split conservative without giving the window a length.) The module this fix landed in
+owns no constant claiming one. Most `completed_at` values below are therefore chosen to be
+unambiguous regardless of `capture_budget_days`: days for "obviously still inside whatever budget
+the caller supplies" and well over a year for "obviously outside it". The one exception is the
+dedicated `capture_budget_days` section below, where `_CAPTURE_BUDGET_DAYS` mirrors `.env.example`'s
+own `CAPTURE_BUDGET_DAYS=18` — supplied as any caller would, through the parameter, never restated
+as an assertion about what `derive_availability` computes internally. That restraint is the same one
+`research.md`'s own header states for itself: a number that exists in two files is wrong in one of
+them.
 
 **`obtainable_until` is asserted `None` in every state**, not just the two FR-025 already required
 it null for. FR-024, re-derived 2026-10-27 (T823), gives the reason: the window belongs to each

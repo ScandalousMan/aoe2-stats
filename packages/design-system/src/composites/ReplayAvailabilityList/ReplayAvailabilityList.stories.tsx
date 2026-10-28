@@ -77,9 +77,9 @@ export const ObtainableHoursFromBoundary: Story = {
   },
 }
 
-// §3.2, FR-024 (amended 2026-08-29, re-derived 2026-10-27): `obtainableUntil: null` is an ordinary shape, not a degraded
-// one — the badge and tone read identically to the dated story above, with no `SecondaryLine` and
-// no invented date.
+// §3.2, FR-024 (amended 2026-08-29, re-derived 2026-10-27): `obtainableUntil: null` is an
+// ordinary shape, not a degraded one — the badge and tone read identically to the dated story
+// above, with no `SecondaryLine` and no invented date.
 export const ObtainableNoDate: Story = {
   name: 'Obtainable — obtainable_until is null (FR-024)',
   args: {
