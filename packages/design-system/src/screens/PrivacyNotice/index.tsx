@@ -122,7 +122,7 @@ const CATEGORY_ENTRIES: readonly CategoryEntryData[] = [
     basis:
       'our legitimate interest in saving them before that happens (GDPR Art. 6-1-f). You can object at any time — see "Your rights".',
     howLong: 'until you erase your account. There is no other expiry.',
-    body: 'Age of Empires II deletes your replay files about 31 days after the match. After that nobody can get them back — not you, not us, not Microsoft. So we download the recording of each of your matches, from your own point of view, and keep the original file unchanged. A recording contains your actions, your alias, and whatever was typed in the in-game chat during that match. We only ever take your own point of view, never another player’s. If you object to this, we also keep the date you objected.',
+    body: 'Age of Empires II deletes your replay files some weeks after the match. After that nobody can get them back — not you, not us, not Microsoft. So we download the recording of each of your matches, from your own point of view, and keep the original file unchanged. A recording contains your actions, your alias, and whatever was typed in the in-game chat during that match. We only ever take your own point of view, never another player’s. If you object to this, we also keep the date you objected.',
   },
   {
     id: 'category-other-players',
@@ -175,7 +175,7 @@ const ANALYSIS_CATEGORY_ENTRY: CategoryEntryData = {
     'our legitimate interest, over a recording already public at its source (GDPR Art. 6-1-f).',
   howLong:
     'indefinitely. This one is not deleted by erasing your account, and not by a third-party objection.',
-  body: 'If you ask us to analyse a match, we keep the recording the analysis was computed from. The game deletes its own copy after about a month, so throwing ours away would mean publishing a conclusion nobody could ever check or correct again. Erasing your account removes the record that you were the one who asked; it does not delete the recording, and the recording is never modified, because modifying it would break both its checksum and the reason for keeping it. We are stating this as the decision it is, not claiming the file stops being about anyone.',
+  body: 'If you ask us to analyse a match, we keep the recording the analysis was computed from. The game deletes its own copy some weeks after the match, so throwing ours away would mean publishing a conclusion nobody could ever check or correct again. Erasing your account removes the record that you were the one who asked; it does not delete the recording, and the recording is never modified, because modifying it would break both its checksum and the reason for keeping it. We are stating this as the decision it is, not claiming the file stops being about anyone.',
 }
 
 const SECTIONS_TOC: readonly { id: string; label: string }[] = [

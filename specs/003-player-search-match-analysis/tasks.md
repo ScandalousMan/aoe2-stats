@@ -649,3 +649,67 @@ data fault, not a nitpick.
   `packages/design-system/specs/match-history.md` §1, which currently says the detail route carries a
   `ProfileSummary` header, to record that it does not. Update the container/route tests and any
   affected Playwright full-page baseline (captured from CI, never locally).
+
+## Phase 15: Constitution I 5.0.1 alignment
+
+Added 2026-10-27. Constitution I was amended to 5.0.1 (PR #195): the retention window that 003
+recorded as "contradicted and unresolved" on 2026-08-28 is settled as rolling, not a fixed epoch,
+and it differs per profile and moves from day to day, with nothing known that sets it
+(`docs/data-sources.md` §2). 003's artifacts and `availability.py` still give "the question is
+open" as the reason `obtainable_until` is null.
+
+- [x] T823 Re-derive why `obtainable_until` is null, in `apps/api/src/aoe2stats_api/availability.py`'s
+  module docstring, and in `specs/003-player-search-match-analysis/research.md` R8,
+  `specs/003-player-search-match-analysis/spec.md` (the FR-024 amendment and the other "contradicted
+  and unresolved" mentions), `specs/003-player-search-match-analysis/contracts/http-api.md` and
+  `specs/003-player-search-match-analysis/quickstart.md`, and in
+  `packages/design-system/specs/replay-availability.md` if it gives the same reason. **Behaviour does
+  not change**: `obtainable_until` stays null in every state, and the `obtainable`/`expired` split
+  stays on `capture_budget_days`. Only the reason changes. A date would be a promise about how long
+  the source keeps one point of view. That length is the window of that profile, and §2 records it
+  as different per profile, moving from day to day, and set by nothing known, so no date can be
+  derived that the source will honour. `capture_budget_days` is a capture setting this project
+  chose, not the source's deadline; publishing it as a date would present the setting as the
+  source's promise. R8's condition for showing a date becomes the one constitution I sets for
+  widening the budget: `docs/data-sources.md` records as settled what sets a profile's window. R8's
+  stated cost is restated against the new reading: for a profile whose window is longer than the
+  budget, the service says `expired` for a recording the source would still serve, so SC-004 still
+  cannot be claimed. The epoch reading is no longer the cause, and is named only as history. Each
+  amended artifact keeps a dated amendment note in the style of the 2026-08-29 one, and restates no
+  measurement from `docs/data-sources.md`. Remove the constitution's follow-up entry for
+  `availability.py`. **Done**: no live sentence in 003's artifacts or `availability.py` gives an
+  unresolved or epoch window as the reason for the null date; the whole suite and spec_lint on
+  every feature are green.
+
+- [x] T824 Remediate PR #196's review of T822 and T823, in `apps/api/src/aoe2stats_api/availability.py`,
+  `apps/api/src/aoe2stats_api/settings.py`, `apps/ingester/src/aoe2stats_ingester/run.py`,
+  `apps/ingester/tests/test_deadline_alert.py`, `apps/api/tests/test_replay_availability.py`,
+  `apps/api/tests/test_replay_download.py`, `scripts/checks/contract_sources.py`,
+  `specs/003-player-search-match-analysis/research.md`, `specs/003-player-search-match-analysis/spec.md`,
+  `specs/003-player-search-match-analysis/quickstart.md`,
+  `packages/design-system/src/screens/ArchivalControl/ArchivalControl.test.tsx` and
+  `packages/design-system/src/screens/PrivacyNotice/PrivacyNotice.test.tsx`, and, for (2)'s sentence class,
+  `apps/web/src/features/matches/api.ts`, `apps/web/src/features/replays/availability.test.ts` and
+  `packages/design-system/src/composites/ReplayAvailabilityList/ReplayAvailabilityList.stories.tsx`. (1) The claim that the
+  derivation errs only toward `expired`, "never the reverse", rested on the budget being below every
+  reading of one window; `docs/data-sources.md` §2 now records a window per profile and says a profile
+  more active than any measured may have a shorter one, so the claim holds for every profile measured
+  and not beyond. Every sentence making it (`availability.py`'s docstring, R8's new text, FR-025's
+  amendment, and the budget comments in `settings.py`, `run.py` and `test_deadline_alert.py`) states
+  that bound: a profile whose window is shorter than the budget, if one exists, would see `obtainable`
+  for a purged recording. (2) The two test modules that pin the null date still quote the FR-024
+  wording T823 replaced and give the unresolved window as its reason; their docstrings and comments
+  are rewritten against T823's reason, the 2026-08-29 wording is kept only where marked as history,
+  and `test_obtainable_until_is_null_in_every_state_while_the_window_is_unresolved` is renamed to
+  name the current reason. (3) `test_the_configured_budget_leaves_real_margin_under_the_shortest_measured_reading`
+  guards with `_CAPTURE_BUDGET_DAYS < 31`, a copied measurement; it guards instead the condition the
+  test itself needs, that the budget is shorter than the test's own 25-day match age. (4)
+  `contract_sources.py`'s comment calling rolling-against-epoch the open question is restated as
+  settled. (5) R8's heading "The retention window is not settled" is marked as history; the
+  quickstart paragraph T823 edited names `CAPTURE_BUDGET_DAYS` instead of a 21-day value. (6) The
+  absence tests T822 added match `\d+ days` only; they also reject a hyphenated day count and, on
+  the deletion paragraphs, the word "month" other than in "less than a month". No measurement from
+  `docs/data-sources.md` is copied. **Done**: no live sentence claims the derivation never offers an
+  unobtainable download without the measured-profile bound; neither test module cites the replaced
+  FR-024 wording as current; the widened absence tests fail against a "31-day" and an "about a
+  month" phrasing; the whole suite, the design-system tests and spec_lint on every feature are green.

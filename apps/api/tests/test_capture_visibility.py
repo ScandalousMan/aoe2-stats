@@ -1,9 +1,9 @@
 """Integration test for T065 — the capture state shown to a user per match (FR-027, SC-010).
 
 FR-027: "System MUST show the user, per match, the archival state and the time remaining before
-the capture window closes" — the **capture deadline** (day 18), never the source's ~31-day
-retention (the system commits to the deadline it controls, never to the one it refuses to rely
-on). SC-010: "A user can tell, for any match, whether its replay is safe, still catchable, or
+the capture window closes" — the **capture deadline** (day 18), never the source's own
+retention window (the system commits to the deadline it controls, never to the one it refuses to
+rely on). SC-010: "A user can tell, for any match, whether its replay is safe, still catchable, or
 lost, without contacting support." T073's badge spec collapses `replay_captures`'s eight raw
 `CaptureStatus` values into exactly **five** user-facing states:
 
@@ -33,7 +33,7 @@ real, against the real router and the real throwaway database, exactly as `test_
 already does for T062's other scenarios. Nothing below duplicates that file's assertions; this one
 is scoped to the two things FR-026/FR-027 make load-bearing at the aggregate level — that
 `quarantined` counts on its own, neither with `stored` nor folded into anything else, and that the
-deadline reported is the day-18 capture deadline, never a value derived from the 31-day retention
+deadline reported is the day-18 capture deadline, never a value derived from the source's retention
 window.
 
 The **per-match** capture-state visibility — the four states read off one row of `GET /api/
@@ -276,8 +276,8 @@ async def test_replays_status_nearest_deadline_is_the_21_day_capture_deadline_no
     client: TestClient, db_session: AsyncSession
 ) -> None:
     """FR-027: "time remaining" means time to the capture deadline the system commits to, never
-    to the source's ~31-day retention window it deliberately refuses to rely on. The seeded
-    deadline sits well inside 31 days from now and is not derived from `completed_at + 31d` by
+    to the source's retention window it deliberately refuses to rely on. The seeded
+    deadline sits well inside that window and is not derived from `completed_at` plus a window by
     this test — it is asserted to come back byte-for-byte as stored, which is what proves the
     endpoint reports the deadline column and not some other computation."""
     user = await _seed_linked_profile(db_session)
@@ -304,7 +304,7 @@ async def test_replays_status_nearest_deadline_is_the_21_day_capture_deadline_no
     assert body["nearest_deadline"]["game_id"] == 42
     assert body["nearest_deadline"]["capture_deadline_at"] == capture_deadline_at.isoformat(), (
         "the deadline shown must be the day-18 capture deadline column itself, never a value "
-        "re-derived from the ~31-day source retention window (FR-027)"
+        "re-derived from the source retention window (FR-027)"
     )
 
 

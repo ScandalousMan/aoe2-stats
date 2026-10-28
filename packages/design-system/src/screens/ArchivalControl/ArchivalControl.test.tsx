@@ -215,3 +215,21 @@ describe('ArchivalControl — loading', () => {
     expect(container.querySelectorAll('[aria-busy="true"]')).toHaveLength(1)
   })
 })
+
+// docs/data-sources.md §2: the source's retention window is rolling and differs per profile, so a
+// number of days written into the copy would be a copied measurement that goes stale.
+describe('ArchivalControl — the retention window names no number of days', () => {
+  it.each(['archiving', 'objected'] as const)('in the %s state', (state) => {
+    render(
+      state === 'objected' ? (
+        <ArchivalControl state="objected" objectedAt="on 1 January 2026" />
+      ) : (
+        <ArchivalControl state={state} />
+      ),
+    )
+    const text = document.body.textContent ?? ''
+    expect(text).toContain('deletes your replay files some weeks after the match')
+    expect(text).not.toMatch(/\b\d+[\s-]*days?\b/i)
+    expect(text).not.toMatch(/months?/i)
+  })
+})

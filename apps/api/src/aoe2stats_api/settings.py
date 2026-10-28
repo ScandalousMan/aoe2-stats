@@ -141,7 +141,9 @@ class Settings(BaseSettings):
         return value
 
     # --- Ingestion tuning ------------------------------------------------------------------------
-    # Retention measured at ~31 days; a capture is never let get closer than this.
+    # Shorter than every profile's window measured so far (docs/data-sources.md §2); a capture is
+    # never let get closer than this. A profile whose window is shorter than this budget, if one
+    # exists, is not covered by that: it would see a purged recording read as obtainable.
     capture_budget_days: int = Field(alias="CAPTURE_BUDGET_DAYS")
     # Window inside which an identical 404 is read as "not yet" rather than "never".
     replay_publication_grace_hours: int = Field(alias="REPLAY_PUBLICATION_GRACE_HOURS")

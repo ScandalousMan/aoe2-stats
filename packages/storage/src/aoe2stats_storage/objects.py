@@ -365,8 +365,9 @@ class ObjectStore:
 
         The one caller allowed to reach for this is GDPR erasure (T091, constitution IX): the
         original zip is otherwise never modified and never deleted (constitution IV). A
-        capture that turns out to be unparsable is quarantined, not deleted — after ~31 days
-        the source holds no replacement, so an unreadable blob is evidence, not garbage.
+        capture that turns out to be unparsable is quarantined, not deleted — once the source's
+        retention window has passed it holds no replacement, so an unreadable blob is evidence,
+        not garbage.
         """
         await asyncio.to_thread(self._client.delete_object, Bucket=self._bucket, Key=key)
 

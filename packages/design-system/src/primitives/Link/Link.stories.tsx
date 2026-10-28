@@ -173,8 +173,8 @@ export const ActiveInline: Story = {
 export const DisabledNotApplicable: Story = {
   render: () => (
     <p className="type-body text-md text-text-primary">
-      This replay is past Microsoft's 31-day retention window, so nothing can retrieve it — a
-      greyed-out link would be a promise this product could not keep.
+      This replay is past Microsoft's retention window, so nothing can retrieve it — a greyed-out
+      link would be a promise this product could not keep.
     </p>
   ),
 }

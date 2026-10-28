@@ -33,9 +33,10 @@ path that does.
 **Why three hours / four days / forty days, and not values nearer the real thresholds**: this test
 deliberately avoids asserting which exact number decides "past the retention window" — nothing in
 `data-model.md` or `.env.example` names that value; only `CAPTURE_BUDGET_DAYS` (18, the internal
-deadline) and the measured ~31-day source retention exist, and T056 is free to compare against
-either. Forty days safely exceeds both, four days safely exceeds `REPLAY_PUBLICATION_GRACE_HOURS`
-(72 h) while staying under either 21 or 31, and three hours stays under all three — so every
+deadline) and the source's rolling retention window (`docs/data-sources.md` §2) exist, and T056
+is free to compare against either. Forty days safely exceeds both, four days safely exceeds
+`REPLAY_PUBLICATION_GRACE_HOURS` (72 h) while staying under either, and three hours stays under
+all three — so every
 assertion below holds regardless of which of those two candidate thresholds T056 picks.
 
 **Why the 429 scenario scripts *both* captures to raise `ProviderRateLimited`**: which of two
