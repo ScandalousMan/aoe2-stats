@@ -1,6 +1,14 @@
 """T769: the civilisation effects of `aoe2techtree-185872-civilisations-44`, the fifth build 185872
 snapshot, which supersedes the fourth (`-32`) and models forty-four civilisations.
 
+**Since T770 this snapshot is no longer the one the build resolves to**: the sixth,
+`aoe2techtree-185872-civilisations-56`, supersedes it (`test_effects_185872_civilisations_56.py`).
+This file keeps the fifth snapshot's own record, so every query below runs with that snapshot
+pinned (`snapshot.pinned_snapshot`, SC-005): what it answered when it was current is what it still
+answers. The one claim about the owner's sheet that described this snapshot's refusals (the two
+Cuman bonuses named under the table) is dropped, because T770 removed that paragraph with the
+refusals themselves; nothing the snapshot answers changed.
+
 Six kinds of claim, none of them a restatement of `test_effects.py`, `test_bullet_coverage.py` or
 the earlier snapshots' records (`test_effects_185872_civilisations*.py`, which keep those snapshots'
 claims, pinned to them):
@@ -35,7 +43,7 @@ from __future__ import annotations
 import json
 import math
 import tomllib
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from importlib import resources
 from pathlib import Path
 
@@ -184,6 +192,15 @@ _MONASTERY_TECHNOLOGIES = (
     "439",
     "441",
 )
+
+
+@pytest.fixture(autouse=True)
+def _pin_the_fifth_snapshot() -> Iterator[None]:
+    """The build resolves to a newer snapshot now; this file is about the fifth, found by its
+    directory, which is a label and so only ever used to find the identity to pin."""
+    (fifth,) = (s for s in snapshot.load_all_snapshots() if s.directory == _DIRECTORY)
+    with snapshot.pinned_snapshot(fifth):
+        yield
 
 
 def _pack_root() -> resources.abc.Traversable:
@@ -1099,6 +1116,3 @@ def test_the_blocking_refusals_of_batch_c_are_open_owner_rows_and_the_rest_are_i
     # One row per entity for Hussite Reforms, as tasks.md T769 asks: the Monk and 11 technologies.
     assert sheet.count("| 185872 | Bohemians |") == 12
     assert "Hussite Reforms" in sheet
-    # The two limits of the effect model are explained where the sheet explains what it leaves out.
-    assert "Cuman Mercenaries" in sheet
-    assert "One additional Town Center" in sheet

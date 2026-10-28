@@ -63,10 +63,14 @@ _SECOND_DIGEST = "sha256:becd35a158dafb72c304aeb07bae66347b4442f62d209d8cedb23d0
 _THIRD_DIGEST = "sha256:a4f213b6e84f90ee88a916929a136165c3979f214a191556877669dd0a92b4db"
 
 #: The fourth snapshot's digest (`aoe2techtree-185872-civilisations-32/snapshot.toml`, T768), which
-#: the fifth, `aoe2techtree-185872-civilisations-44`, names as the one it supersedes (T769). Build
-#: 185872 now has a chain of five: resolution answers the last, and the first four stay loadable
-#: by identity.
+#: the fifth, `aoe2techtree-185872-civilisations-44`, names as the one it supersedes (T769).
 _FOURTH_DIGEST = "sha256:c24448836cade9ff724ac32935a52280a447df7278cb8cfe3f7cecd58dbf37ae"
+
+#: The fifth snapshot's digest (`aoe2techtree-185872-civilisations-44/snapshot.toml`, T769), which
+#: the sixth, `aoe2techtree-185872-civilisations-56`, names as the one it supersedes (T770). Build
+#: 185872 now has a chain of six: resolution answers the last, and the first five stay loadable
+#: by identity.
+_FIFTH_DIGEST = "sha256:93d084ea8886b4c2d98f67a7f02524f107ffab3c3bcb29142389ceac226dc263"
 
 #: Every replay-space civilisation id of `aoc-reference-data`'s `civilizations` table (read again
 #: 2026-10-22, T767) whose name is a civilisation of the vendored pack: 56 of the dataset's 62
@@ -132,8 +136,8 @@ _RAW_IDS = {
     62: "Danes",
 }
 
-#: The forty-four civilisations batch C models (T769): the thirty-two of the fourth snapshot (T746's
-#: eight, batch A's twelve and batch B's twelve) and the twelve it adds.
+#: The fifty-six civilisations batch D models (T770), every civilisation of the pack: the forty-four
+#: of the fifth snapshot (T746's eight and batches A to C) and the twelve it adds.
 _MODELLED = sorted(
     [
         "Franks",
@@ -180,6 +184,18 @@ _MODELLED = sorted(
         "Gurjaras",
         "Romans",
         "Armenians",
+        "Georgians",
+        "Shu",
+        "Wu",
+        "Wei",
+        "Jurchens",
+        "Khitans",
+        "Muisca",
+        "Mapuche",
+        "Tupi",
+        "Saxons",
+        "Varangians",
+        "Danes",
     ]
 )
 
@@ -189,18 +205,19 @@ def _snapshot_by_digest(digest: str) -> snapshot.Snapshot:
     return found
 
 
-def test_the_build_resolves_to_the_fifth_snapshot_of_its_chain() -> None:
+def test_the_build_resolves_to_the_sixth_snapshot_of_its_chain() -> None:
     resolved = snapshot.snapshot_for(_BUILD)
 
     assert isinstance(resolved, snapshot.Snapshot)
     assert resolved.promoted
-    assert resolved.directory == "aoe2techtree-185872-civilisations-44"
-    assert resolved.supersedes == _FOURTH_DIGEST
+    assert resolved.directory == "aoe2techtree-185872-civilisations-56"
+    assert resolved.supersedes == _FIFTH_DIGEST
     assert resolved.identity.digest not in (
         _FIRST_DIGEST,
         _SECOND_DIGEST,
         _THIRD_DIGEST,
         _FOURTH_DIGEST,
+        _FIFTH_DIGEST,
     )
     assert resolved.identity.describes_build == _BUILD
     assert resolved.identity.source_version == _SOURCE_COMMIT
@@ -211,7 +228,10 @@ def test_the_build_resolves_to_the_fifth_snapshot_of_its_chain() -> None:
     fourth = _snapshot_by_digest(_FOURTH_DIGEST)
     assert fourth.supersedes == _THIRD_DIGEST
     assert fourth.directory == "aoe2techtree-185872-civilisations-32"
-    assert resolved.directory != fourth.directory
+    fifth = _snapshot_by_digest(_FIFTH_DIGEST)
+    assert fifth.supersedes == _FOURTH_DIGEST
+    assert fifth.directory == "aoe2techtree-185872-civilisations-44"
+    assert resolved.directory != fifth.directory
 
 
 def test_the_first_snapshot_stays_loadable_by_identity_and_models_no_civilisation() -> None:
@@ -290,11 +310,31 @@ def test_the_fourth_snapshot_stays_loadable_by_identity_and_models_thirty_two_ci
     assert unmodelled.cause == "civilisation-not-modelled"
 
 
-def test_the_current_snapshot_models_forty_four_civilisations_and_names_every_pack_one() -> None:
-    """T769: batch C models forty-four civilisations; its `[[civilisation_id]]` table (T767's,
-    carried) names all 56 of the pack, from `aoc-reference-data`'s keys, so a raw id of a
-    civilisation not yet modelled resolves to its name and gaps as `civilisation-not-modelled`,
-    not as an unknown id."""
+def test_the_fifth_snapshot_stays_loadable_by_identity_and_models_forty_four_civilisations() -> (
+    None
+):
+    """SC-005 for the link T770 superseded: pinned by identity, it still models the forty-four
+    civilisations of T746 and batches A to C and nothing else, and answers its own bytes."""
+    fifth = _snapshot_by_digest(_FIFTH_DIGEST)
+    assert fifth.promoted
+    assert fifth.directory == "aoe2techtree-185872-civilisations-44"
+    assert fifth.identity.describes_build == _BUILD
+
+    entity = query.EntityRef(kind="building", id="84", build=_BUILD)
+    with snapshot.pinned_snapshot(fifth):
+        modelled = query.cost(entity, civilisation="Vietnamese")
+        unmodelled = query.cost(entity, civilisation="Georgians")
+
+    assert not isinstance(modelled, gaps.KnowledgeGap), f"gap: {modelled!r}"
+    assert modelled.snapshot_identity.digest == _FIFTH_DIGEST
+    assert isinstance(unmodelled, gaps.KnowledgeGap)
+    assert unmodelled.cause == "civilisation-not-modelled"
+
+
+def test_the_current_snapshot_models_fifty_six_civilisations_and_names_every_pack_one() -> None:
+    """T770: batch D models fifty-six civilisations, the whole pack; its `[[civilisation_id]]`
+    table (T767's, carried) names all 56 of the pack, from `aoc-reference-data`'s keys, so every raw
+    id of the pack resolves to its name, and a Chronicles civilisation's is not in it."""
     from aoe2stats_knowledge import effects
 
     current = snapshot.snapshot_for(_BUILD)
@@ -310,8 +350,9 @@ def test_a_modelled_civilisation_answers_and_an_unmodelled_one_still_refuses() -
     entity = query.EntityRef(kind="building", id="84", build=_BUILD)
 
     modelled = query.cost(entity, civilisation="Saracens")
-    newly_modelled = query.cost(entity, civilisation="Vietnamese")
-    unmodelled = query.cost(entity, civilisation="Georgians")
+    newly_modelled = query.cost(entity, civilisation="Georgians")
+    # Every civilisation of the pack is modelled now; a Chronicles civilisation is in no pack.
+    unmodelled = query.cost(entity, civilisation="Achaemenids")
 
     assert not isinstance(modelled, gaps.KnowledgeGap), f"gap: {modelled!r}"
     assert modelled.value == {"wood": 75}
