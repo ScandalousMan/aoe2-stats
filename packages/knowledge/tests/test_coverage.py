@@ -48,7 +48,7 @@ new, unenumerated blocker.
 `production_time`, `produced_at`, `age_requirement`, `prerequisites`, `available_to`,
 `line_of_sight` and `name` (T709a, never gapped: it is the query that degrades to the bare
 identifier). `line_of_sight` belongs to a different reconstruction domain (map control /
-exploration, blocked on the unread starting state — feature 007's territory, research.md D1) and is
+exploration, blocked on the unread starting state — feature 008's territory, research.md D1) and is
 not one of `query.py`'s six query-surface fields (`cost`, `production_time`, `age_requirement`,
 `prerequisites`, `produced_at`, `available_to`). The coverage pass over *this* package's knowledge
 base only asks the latter six; a `line_of_sight` gap is `gaps.py`'s own concern (already proven by

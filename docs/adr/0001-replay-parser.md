@@ -139,6 +139,6 @@ pin, and the fix was a version bump, not a source build.
   upstream pull requests fixes the initial-state section, so this would not have delivered it.
 - **`AoEInsights/mgz-fast`.** Not a fallback: 006 D1 found from its source that it gates on save
   versions below this build's and skips the attribute block the starting state needs. It has not been
-  run against the fixture; that check is deferred to feature 007.
+  run against the fixture; that check is deferred to feature 008.
 - **Call the `aoe2rec` Rust CLI as a subprocess.** Rejected: `aoe2rec-py` gives the same parser
   in-process with no serialization boundary and no binary to ship.

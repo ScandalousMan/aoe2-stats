@@ -133,7 +133,7 @@ _BUILD_ID_STRUCT = struct.Struct("<I")
 #   a resource quantity, and is published unmultiplied as `MarketTransactionPayload.steps`: the
 #   step's size in resource units (100) is the game's fixed constant, not carried by any
 #   recording, so multiplying it is not this decoder's job (FR-014, FR-012). That multiplication
-#   belongs to 007's reconstruction layer, behind a versioned constant that can gap.
+#   belongs to 008's reconstruction layer, behind a versioned constant that can gap.
 #
 # A payload that does not fit (length, unknown resource code, non-positive step count) is emitted
 # as `undecoded`, never decoded from a guess.

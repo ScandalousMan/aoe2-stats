@@ -32,7 +32,7 @@ This is that feature, and its first half. It builds the **foundations** on which
 stand: what is knowable at all, a vocabulary for saying so, versioned game rules to reason with, and
 a provenance spine that keeps a reconstruction from ever being mistaken for an observation. The
 reconstruction engine itself — the time-indexed state, the invariants, the golden fixtures — is
-feature 007, specified separately once this is clarified.
+feature 008, specified separately once this is clarified.
 
 These foundations ship as **working, tested code, not as documents alone**: the register, the
 truth-tier and provenance types, the canonical event vocabulary with an adapter that produces it, the
@@ -114,12 +114,12 @@ the **inferred** tier under an honest name, as an engagement signal, carrying an
   below.
 - Q: How should the mission be cut into features? → A: Two. This feature is the versioned knowledge
   base, the canonical event model and the truth-tier and provenance spine. Feature 007 is the
-  deterministic reconstruction, its invariants and its golden fixtures.
+  deterministic reconstruction, its invariants and its golden fixtures. [2026-10-28: the reconstruction is now feature 008; 007 is the deployment-storage feature.]
 - Q: When this feature is merged, what has shipped — written artifacts only, or running code that
   enforces the rules? → A: Foundations in code. The register, the truth-tier and provenance types, the
   canonical event vocabulary with a working adapter, a queryable versioned knowledge base, the gap
   machinery and the validators that reject a mis-tiered value all ship as working, tested code. The
-  code stops at the reconstruction boundary, which is feature 007.
+  code stops at the reconstruction boundary, which is feature 007. [2026-10-28: the reconstruction is now feature 008; 007 is the deployment-storage feature.]
 - Q: Should the determinability register be a machine-readable file, a human-written document, or
   both? → A: A machine-readable register is the single source of truth, living with the package that
   enforces it. The human-readable view is generated from it, and a test asserts the two never diverge.
@@ -386,7 +386,7 @@ new snapshot, reproduce the analysis from the original identity, and confirm the
   or death event and the absence of a post-game statistics block in both measured recordings
   (`docs/data-sources.md` §2, session 2026-09-19), and MUST name the single condition that would
   change the answer.
-- **FR-005**: The register MUST cover every datum this feature and feature 007 intend to publish, and
+- **FR-005**: The register MUST cover every datum this feature and feature 008 intend to publish, and
   MUST mark as blocked — not as approximate — every datum that depends on the unreadable starting
   state.
 - **FR-006**: A datum MUST NOT be published by any part of the system unless it has a register entry,
@@ -672,7 +672,7 @@ new snapshot, reproduce the analysis from the original identity, and confirm the
 ## Out of Scope
 
 - The deterministic reconstruction itself — the time-indexed state, the resource decomposition, the
-  age-up model, the reconstruction invariants and the golden fixtures. That is feature 007.
+  age-up model, the reconstruction invariants and the golden fixtures. That is feature 008.
 - Every analytics layer: economy, military, exploration, information, map control, advantage timeline.
 - Strategic inference: phases, transitions, pressure models, opportunity detection.
 - Coaching: expected trajectory, actual versus expected, empirical calibration, recommendations.
@@ -688,7 +688,7 @@ new snapshot, reproduce the analysis from the original identity, and confirm the
 
 **Whether the starting state can be read at all.** Everything in the income side of economy, and all
 of exploration, vision, information and map control, depends on it. Three routes exist and exactly one
-question needs answering before feature 007 can be scoped honestly:
+question needs answering before feature 008 can be scoped honestly:
 
 1. A community fork of the secondary engine carrying the unmerged fixes named in ADR-0001.
 2. The alternative fast implementation ADR-0001 already lists as a fallback.
@@ -697,14 +697,14 @@ question needs answering before feature 007 can be scoped honestly:
 
 This is a time-boxed research task, resolved at `/speckit-plan` and reported in `research.md`. Until it
 reports, nothing that depends on the starting state is specified, approximated or promised. Its
-outcome decides whether feature 007 covers the spatial and income tier or stops at the spending side.
+outcome decides whether feature 008 covers the spatial and income tier or stops at the spending side.
 
 **Resolved 2026-09-19 — [research.md](./research.md) D1.** The starting state is unreadable by every
 working parser and present in the file: per-player starting attributes are reachable by a
 repository-local decoder without a grammar, and the map's object table is reachable behind one.
 Route 3 is chosen, with route 1's open grammar as reference and not as a dependency; route 2 cannot
 deliver objects. The affected data are therefore registered as _decoded and blocked on a named
-decoder_ — not as non-determinable — and the decoder is feature 007's first work item. Feature 007
+decoder_ — not as non-determinable — and the decoder is feature 008's first work item. Feature 008
 covers the income side; the map's resource geometry, exploration, vision and map control stay
 deferred at a stated cost. Nothing in this feature's requirements changes: FR-005 and FR-020 were
 written for exactly this outcome.
@@ -734,9 +734,9 @@ the question marked corroborated and not settled.
   in the risk register. The canonical event model is the insulation; its value is only realised if
   nothing above the adapter reaches around it.
 - **The memory envelope.** Parsing a single recording already consumes a large fraction of the
-  available headroom, and feature 007's reconstruction sits on top of that, not beside it. The
+  available headroom, and feature 008's reconstruction sits on top of that, not beside it. The
   existing raw-size refusal is a memory bound, not a zip-bomb guard, and it was sized against parsing
-  alone. Feature 007 must re-derive it rather than inherit it.
+  alone. Feature 008 must re-derive it rather than inherit it.
 - **The knowledge sources are community-maintained and may stop.** One source this project counted on
   has already gone silent. Mitigated by vendoring what the licence permits, so a snapshot survives its
   source's disappearance.
