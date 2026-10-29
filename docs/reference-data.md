@@ -136,7 +136,27 @@ it.
 
 ## Renames
 
-<!-- A rename changes the displayed name and never the numeric id. Filled by T208. -->
+A rename changes the displayed name and never the numeric id. An id also keeps the position the
+**original** spelling sorted into. Re-deriving the ordering from current names alone would silently
+shift ids that were previously correct: a regression disguised as a tidy-up.
+
+The worked example is the civilisation first called `Indians` and now called `Hindustanis`. Its
+entry in `apps/api/src/aoe2stats_api/civilizations.py` takes its position from the old spelling and
+its label from the new one. That apparent mismatch is the derivation working, not a leftover typo,
+so do not "fix" it. The reasoning lives in the module docstring of that file
+(the passage on the alphabetical ordering rule,
+and the one on the entry whose position and label come from different names) and in the comment on the entry itself. This file does not restate them.
+
+Two tests in `apps/api/tests/test_civilizations.py` guard the arrangement:
+
+- `test_table_matches_the_alphabetical_ordering_rule` derives the table from a roster kept at its
+  original spelling (`_ROSTER_AT_ORIGINAL_SPELLING`), with the rename recorded in
+  `_DISPLAY_NAME_OVERRIDES`.
+- `test_id_twenty_one_displays_the_current_name_not_the_one_it_was_derived_from` asserts that the
+  current name is the one displayed.
+
+A future rename follows the same shape: keep the roster at the original spelling, record the
+current name as an override, and leave the id where it is.
 
 ## Precedence
 

@@ -117,7 +117,7 @@ case without any of the later stories being written.
 **Independent Test**: describe a hypothetical rename and confirm they change the label without
 changing an id or a sort position. T215 asks exactly this as its trap question.
 
-- [ ] T208 [US2] Write the rename section of `docs/reference-data.md` (FR-005, SC-004): a rename changes the displayed name and never the numeric id, and an id keeps the position the **original** spelling sorted into — re-deriving the ordering from current names alone silently shifts ids that were previously correct, which is a regression disguised as a tidy-up. Use the Indians-to-Hindustanis case as the worked example and point at the entry it produced rather than restating the entry, so a maintainer who meets that apparent mismatch understands it is the derivation working and does not "fix" it
+- [x] T208 [US2] Write the rename section of `docs/reference-data.md` (FR-005, SC-004): a rename changes the displayed name and never the numeric id, and an id keeps the position the **original** spelling sorted into — re-deriving the ordering from current names alone silently shifts ids that were previously correct, which is a regression disguised as a tidy-up. Use the Indians-to-Hindustanis case as the worked example and point at the entry it produced rather than restating the entry, so a maintainer who meets that apparent mismatch understands it is the derivation working and does not "fix" it
 
 **Checkpoint**: the trap that cost feature 001 a full round of rework is written down.
 
