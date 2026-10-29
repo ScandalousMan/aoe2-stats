@@ -125,11 +125,9 @@ GET /community/leaderboard/getLeaderBoard2?title=age2&leaderboard_id=3&start=1&c
   T766 added them; the dataset's inner `id` carries the same three, with the same names, on
   2026-10-18. Unlike aoe2techtree, `aoc-reference-data` carries **no licence at all** (no
   `LICENSE` file, GitHub reports `license: None`), the same defect recorded above for
-  aoe2companion, so it is read, not vendored: the fourteen pairs are transcribed by hand into
-  `apps/api/src/aoe2stats_api/civilizations.py` as the facts they are, the JSON file itself is
-  never copied into this repository, and nothing fetches it at build or test time. The table
-  itself, not this file, is the one place those pairs are recorded — see the module docstring for
-  the full derivation and `apps/api/tests/test_civilizations.py` for the transcription check.
+  aoe2companion; the ruling that follows is in `docs/reference-data.md` "Source inventory". The
+  table itself, not this file, is the one place those pairs are recorded — see the module docstring
+  for the full derivation and `apps/api/tests/test_civilizations.py` for the transcription check.
 - **Player colour: `slotinfo[].metaData.ScenarioPlayerIndex`.** Measured **2026-09-04**, correcting
   004's D2 (2026-08-30), which decoded this very record and read the field as a seat number.
   `slotinfo` is base64 of a zlib stream; inflated, it is a leading integer, a comma, a JSON array
@@ -805,9 +803,8 @@ against keeping one measurement in two homes.
   Relic's `civilization_id`; its inner `id` agrees with that space (Scope, above), and §1 records
   what the Relic table rests on.
 - **Known limitations**: **no licence** — GitHub reports `license: None`, and there is no `LICENSE`
-  file in the repository. This is why it is read-and-transcribe-only rather than vendored: FR-031
-  forbids vendoring a source with no licence and permits only a human's transcription, recorded with
-  its provenance. The ruling's living home is `docs/reference-data.md` "Source inventory".
+  file in the repository. The ruling that follows from it is in `docs/reference-data.md` "Source
+  inventory".
 - **Assessed**: 2026-08-30 (`docs/asset-packs.md` "Rejected sources": licence `None found`, ruling
   **READ ONLY**); re-verified for this feature 2026-09-19 (research.md D3: "002's ruling,
   re-verified").
