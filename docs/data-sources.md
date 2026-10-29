@@ -8,6 +8,9 @@ restates them — `.claude/skills/aoe2-data-sources/SKILL.md` carries the rules 
 every number, so there is nothing to keep in sync. When a nightly contract test fails, correct this
 file first: it is what the next person will trust.
 
+Looking for what a human reads rather than what the product calls? This file records what the
+product calls; [`docs/reference-data.md`](reference-data.md) records what a human reads.
+
 One measurement accumulates rather than being taken once: §2's publication-delay distribution. Its
 raw samples are **not** kept in this repository — a repository file only changes by a commit, and
 the nightly job that takes the sample (the `contracts` job in `.github/workflows/nightly.yml`)
@@ -122,11 +125,9 @@ GET /community/leaderboard/getLeaderBoard2?title=age2&leaderboard_id=3&start=1&c
   T766 added them; the dataset's inner `id` carries the same three, with the same names, on
   2026-10-18. Unlike aoe2techtree, `aoc-reference-data` carries **no licence at all** (no
   `LICENSE` file, GitHub reports `license: None`), the same defect recorded above for
-  aoe2companion, so it is read, not vendored: the fourteen pairs are transcribed by hand into
-  `apps/api/src/aoe2stats_api/civilizations.py` as the facts they are, the JSON file itself is
-  never copied into this repository, and nothing fetches it at build or test time. The table
-  itself, not this file, is the one place those pairs are recorded — see the module docstring for
-  the full derivation and `apps/api/tests/test_civilizations.py` for the transcription check.
+  aoe2companion; the ruling that follows is in `docs/reference-data.md` "Source inventory". The
+  table itself, not this file, is the one place those pairs are recorded — see the module docstring
+  for the full derivation and `apps/api/tests/test_civilizations.py` for the transcription check.
 - **Player colour: `slotinfo[].metaData.ScenarioPlayerIndex`.** Measured **2026-09-04**, correcting
   004's D2 (2026-08-30), which decoded this very record and read the field as a seat number.
   `slotinfo` is base64 of a zlib stream; inflated, it is a leading integer, a comma, a JSON array
@@ -802,18 +803,8 @@ against keeping one measurement in two homes.
   Relic's `civilization_id`; its inner `id` agrees with that space (Scope, above), and §1 records
   what the Relic table rests on.
 - **Known limitations**: **no licence** — GitHub reports `license: None`, and there is no `LICENSE`
-  file in the repository. This is why it is read-and-transcribe-only rather than vendored: FR-031
-  forbids vendoring a source with no licence and permits only a human's transcription, recorded with
-  its provenance. **This is feature 002's ruling, given a living home here for the first time.**
-  002's own `specs/002-reference-data-sources/tasks.md` T205 states it — "`aoc-reference-data`
-  carries no licence at all and is the reason this distinction is in the spec: record it as
-  read-and-transcribe-only, and record that the transcription that has already happened put the
-  pairs into `apps/api/src/aoe2stats_api/civilizations.py` as facts while the source file itself was
-  never copied here" — but 002 never wrote the source-inventory document (`docs/reference-data.md`)
-  that same task describes, so until now the ruling survived only in that frozen, unchecked task and
-  in `civilizations.py`'s module docstring, which independently records the same transcription
-  (T070i) in the course of documenting the civilisation id table. Both remain the historical account
-  of how the ruling was reached; this entry is its one living record and restates neither in full.
+  file in the repository. The ruling that follows from it is in `docs/reference-data.md` "Source
+  inventory".
 - **Assessed**: 2026-08-30 (`docs/asset-packs.md` "Rejected sources": licence `None found`, ruling
   **READ ONLY**); re-verified for this feature 2026-09-19 (research.md D3: "002's ruling,
   re-verified").
