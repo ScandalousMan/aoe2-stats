@@ -2286,16 +2286,17 @@ def test_a_count_for_other_entities_does_not_answer_a_controlled_age_requirement
 def test_an_unmodelled_teammate_refuses_age_requirement_and_is_named() -> None:
     """Step 1 of "Civilisation qualification" reaches `age_requirement` as it reaches `cost`: an
     unmodelled civilisation in `context.team` makes the answer unknown, whatever effect touches the
-    entity, and the gap names the teammate. Britons is not modelled in that snapshot."""
+    entity, and the gap names the teammate. The Saxons are in no build 180059 pack, so that
+    snapshot (T773 models all 53 of it, Britons included) does not model them."""
     answer = query.age_requirement(
         _pikeman(),
         civilisation="Franks",
-        context=query.Context(team=frozenset({"Franks", "Britons"})),
+        context=query.Context(team=frozenset({"Franks", "Saxons"})),
     )
     assert isinstance(answer, KnowledgeGap)
     assert answer.cause == "civilisation-not-modelled"
     assert answer.field == "age_requirement"
-    assert answer.civilisation == "Britons"
+    assert answer.civilisation == "Saxons"
 
 
 def test_age_requirement_answers_as_before_where_no_conditional_effect_applies() -> None:

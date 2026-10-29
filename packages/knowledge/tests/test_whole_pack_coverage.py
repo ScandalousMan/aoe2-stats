@@ -61,13 +61,17 @@ source classes nine of the Jurchens' technologies as Siege or Fortification upgr
 Berbers lost theirs: the Kasbah is a `researched` and `team` row now (T781), as the Cumans'
 additional Town Center and Cuman Mercenaries are rows (T780, T781).
 
+**Batch T773** models the fifty-three civilisations of build 180059's pack in
+`aoe2techtree-180059-civilisations-53`, so no `xfail` is left for build 180059 either. It keeps
+the open rows of build 185872 for the bonuses it carries (the Saxons, who are in no build 180059
+pack, are not among them); the Persians' Kamandaran is modelled, as in build 185872.
+
 **Builds.** `test_the_current_snapshots_are_the_builds_this_module_covers` fails when the library
 resolves a current build this module does not cover, so a new build cannot be added without being
 covered. Three builds are covered: 185872, 180059 and 177723. Build 177723's snapshot is the test
 infrastructure T646 added (`aoe2techtree-177723-test`, promoted, with `rules.json` and
-`effects.toml` byte for byte those of build 180059's), so it models the same six civilisations with
-the same open row, and no Phase 8 task models the other 47 (T773 supersedes build 180059's snapshot
-only).
+`effects.toml` byte for byte those of build 180059's first snapshot), so it models the same six
+civilisations with the same open row, and no Phase 8 task models the other 47.
 
 **Runtime.** Every case reads `rules.json` through `query._rules`, which is `functools.cache`d per
 snapshot directory for the whole session, so the pack is parsed once per build and no fixture is
@@ -96,58 +100,6 @@ type OpenRow = tuple[str, str, str, str]
 # Batch C (T769) is gone: `aoe2techtree-185872-civilisations-44` models its twelve.
 # Batch D (T770) is gone: `aoe2techtree-185872-civilisations-56` models its twelve, and with them
 # every civilisation of the pack: no civilisation of build 185872 is left to `xfail`.
-
-# Build 180059: T773 models every civilisation of that build's pack in one snapshot. Six are
-# modelled today (Franks, Malians, Persians, Saracens, Tatars, Teutons); the other 47 wait for it.
-_BUILD_180059_T773 = (
-    "Armenians",
-    "Aztecs",
-    "Bengalis",
-    "Berbers",
-    "Bohemians",
-    "Britons",
-    "Bulgarians",
-    "Burgundians",
-    "Burmese",
-    "Byzantines",
-    "Celts",
-    "Chinese",
-    "Cumans",
-    "Dravidians",
-    "Ethiopians",
-    "Georgians",
-    "Goths",
-    "Gurjaras",
-    "Hindustanis",
-    "Huns",
-    "Incas",
-    "Italians",
-    "Japanese",
-    "Jurchens",
-    "Khitans",
-    "Khmer",
-    "Koreans",
-    "Lithuanians",
-    "Magyars",
-    "Malay",
-    "Mapuche",
-    "Mayans",
-    "Mongols",
-    "Muisca",
-    "Poles",
-    "Portuguese",
-    "Romans",
-    "Shu",
-    "Sicilians",
-    "Slavs",
-    "Spanish",
-    "Tupi",
-    "Turks",
-    "Vietnamese",
-    "Vikings",
-    "Wei",
-    "Wu",
-)
 
 # Build 177723 (`aoe2techtree-177723-test`, T646 test infrastructure): promoted, with the same six
 # civilisations modelled as build 180059's snapshot, and the other 47 modelled by no task.
@@ -209,7 +161,7 @@ def _reasons(civilisations: tuple[str, ...], reason: str) -> dict[str, str]:
 #: build -> civilisation -> the reason it is expected to fail today, naming the task that models it.
 _NOT_YET_MODELLED: dict[int, dict[str, str]] = {
     185872: {},
-    180059: _reasons(_BUILD_180059_T773, "T773 models every civilisation of build 180059"),
+    180059: {},
     177723: _reasons(
         _BUILD_177723_UNMODELLED,
         "no Phase 8 task models build 177723 (T646 test infrastructure)",
@@ -410,12 +362,127 @@ _OPEN_ROWS: dict[int, dict[str, tuple[OpenRow, ...]]] = {
         ),
     },
     180059: {
-        # Row: Persians / Archer line / cost / Kamandaran researched / "the replacement amount is
-        # never stated". The same bonus and the same members as build 185872's row.
-        "Persians": (
-            ("unit", "4", "cost", "effect-not-modelled"),
-            ("unit", "24", "cost", "effect-not-modelled"),
-            ("unit", "492", "cost", "effect-not-modelled"),
+        # T773: the open rows of build 185872 that the carried bonuses keep, with the same members:
+        # every entity they name is in the build 180059 pack. Measured on the snapshot, not copied.
+        # Persians' Kamandaran is modelled here as in build 185872 (carried row); Saxons are in no
+        # build 180059 pack.
+        "Aztecs": (
+            ("unit", "21", "production_time", "effect-not-modelled"),
+            ("unit", "125", "production_time", "effect-not-modelled"),
+            ("unit", "527", "production_time", "effect-not-modelled"),
+            ("unit", "529", "production_time", "effect-not-modelled"),
+            ("unit", "532", "production_time", "effect-not-modelled"),
+            ("unit", "539", "production_time", "effect-not-modelled"),
+            ("unit", "1103", "production_time", "effect-not-modelled"),
+            ("unit", "1104", "production_time", "effect-not-modelled"),
+            ("unit", "2626", "production_time", "effect-not-modelled"),
+            ("unit", "2627", "production_time", "effect-not-modelled"),
+            ("unit", "2628", "production_time", "effect-not-modelled"),
+            ("unit", "2633", "production_time", "effect-not-modelled"),
+        ),
+        "Bohemians": (
+            ("technology", "45", "cost", "effect-not-modelled"),
+            ("technology", "46", "cost", "effect-not-modelled"),
+            ("technology", "230", "cost", "effect-not-modelled"),
+            ("technology", "231", "cost", "effect-not-modelled"),
+            ("technology", "233", "cost", "effect-not-modelled"),
+            ("technology", "252", "cost", "effect-not-modelled"),
+            ("technology", "316", "cost", "effect-not-modelled"),
+            ("technology", "319", "cost", "effect-not-modelled"),
+            ("technology", "438", "cost", "effect-not-modelled"),
+            ("technology", "439", "cost", "effect-not-modelled"),
+            ("technology", "441", "cost", "effect-not-modelled"),
+            ("unit", "125", "cost", "effect-not-modelled"),
+        ),
+        "Burgundians": (
+            ("technology", "15", "cost", "effect-not-modelled"),
+            ("technology", "17", "cost", "effect-not-modelled"),
+            ("technology", "23", "cost", "effect-not-modelled"),
+            ("technology", "48", "cost", "effect-not-modelled"),
+            ("technology", "65", "cost", "effect-not-modelled"),
+            ("technology", "213", "cost", "effect-not-modelled"),
+            ("technology", "249", "cost", "effect-not-modelled"),
+            ("technology", "906", "cost", "effect-not-modelled"),
+        ),
+        "Chinese": (
+            ("technology", "102", "cost", "effect-not-modelled"),
+            ("technology", "103", "cost", "effect-not-modelled"),
+        ),
+        "Gurjaras": (
+            ("unit", "329", "production_time", "effect-not-modelled"),
+            ("unit", "330", "production_time", "effect-not-modelled"),
+            ("unit", "873", "production_time", "effect-not-modelled"),
+            ("unit", "875", "production_time", "effect-not-modelled"),
+            ("unit", "1744", "production_time", "effect-not-modelled"),
+            ("unit", "1746", "production_time", "effect-not-modelled"),
+            ("unit", "1751", "production_time", "effect-not-modelled"),
+            ("unit", "1753", "production_time", "effect-not-modelled"),
+            ("unit", "1755", "production_time", "effect-not-modelled"),
+        ),
+        "Jurchens": (
+            ("technology", "47", "production_time", "effect-not-modelled"),
+            ("technology", "93", "cost", "effect-not-modelled"),
+            ("technology", "93", "production_time", "effect-not-modelled"),
+            ("technology", "199", "production_time", "effect-not-modelled"),
+            ("technology", "200", "production_time", "effect-not-modelled"),
+            ("technology", "201", "production_time", "effect-not-modelled"),
+            ("technology", "377", "cost", "effect-not-modelled"),
+            ("technology", "377", "production_time", "effect-not-modelled"),
+            ("technology", "379", "cost", "effect-not-modelled"),
+            ("technology", "379", "production_time", "effect-not-modelled"),
+            ("technology", "608", "cost", "effect-not-modelled"),
+            ("technology", "608", "production_time", "effect-not-modelled"),
+            ("technology", "996", "cost", "effect-not-modelled"),
+            ("technology", "996", "production_time", "effect-not-modelled"),
+        ),
+        "Magyars": (
+            ("unit", "869", "cost", "effect-not-modelled"),
+            ("unit", "871", "cost", "effect-not-modelled"),
+        ),
+        "Malay": (
+            ("unit", "74", "cost", "effect-not-modelled"),
+            ("unit", "75", "cost", "effect-not-modelled"),
+            ("unit", "77", "cost", "effect-not-modelled"),
+            ("unit", "473", "cost", "effect-not-modelled"),
+            ("unit", "567", "cost", "effect-not-modelled"),
+        ),
+        "Sicilians": (
+            ("building", "79", "production_time", "effect-not-modelled"),
+            ("building", "234", "production_time", "effect-not-modelled"),
+            ("building", "235", "production_time", "effect-not-modelled"),
+            ("building", "236", "production_time", "effect-not-modelled"),
+            ("building", "1251", "production_time", "effect-not-modelled"),
+        ),
+        "Slavs": (
+            ("building", "79", "cost", "effect-not-modelled"),
+            ("building", "82", "cost", "effect-not-modelled"),
+            ("building", "234", "cost", "effect-not-modelled"),
+            ("building", "235", "cost", "effect-not-modelled"),
+        ),
+        "Turks": (
+            ("technology", "10", "cost", "effect-not-modelled"),
+            ("technology", "64", "cost", "effect-not-modelled"),
+            ("technology", "369", "cost", "effect-not-modelled"),
+            ("technology", "376", "cost", "effect-not-modelled"),
+            ("unit", "46", "production_time", "effect-not-modelled"),
+            ("unit", "557", "production_time", "effect-not-modelled"),
+            ("unit", "771", "production_time", "effect-not-modelled"),
+            ("unit", "773", "production_time", "effect-not-modelled"),
+        ),
+        "Vietnamese": (
+            ("technology", "15", "production_time", "effect-not-modelled"),
+            ("technology", "17", "production_time", "effect-not-modelled"),
+            ("technology", "22", "production_time", "effect-not-modelled"),
+            ("technology", "23", "production_time", "effect-not-modelled"),
+            ("technology", "48", "production_time", "effect-not-modelled"),
+            ("technology", "65", "cost", "effect-not-modelled"),
+            ("technology", "65", "production_time", "effect-not-modelled"),
+            ("technology", "213", "cost", "effect-not-modelled"),
+            ("technology", "213", "production_time", "effect-not-modelled"),
+            ("technology", "249", "cost", "effect-not-modelled"),
+            ("technology", "249", "production_time", "effect-not-modelled"),
+            ("technology", "906", "cost", "effect-not-modelled"),
+            ("technology", "906", "production_time", "effect-not-modelled"),
         ),
     },
     177723: {

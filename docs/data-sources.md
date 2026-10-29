@@ -634,7 +634,8 @@ against keeping one measurement in two homes.
   identifier".
 - **Version identifier**: two pinned commits, each recorded in its own pack's `MANIFEST.json` and
   `LICENCE.md` under `packages/knowledge/packs/`. The first, `b9d494df6921d4080df69b22f9dbb7a4d1dcd9f0`
-  (2026-06-21, pack `aoe2techtree`), is the one `aoe2techtree-180059` is derived from. The second,
+  (2026-06-21, pack `aoe2techtree`), is the one `aoe2techtree-180059` and
+  `aoe2techtree-180059-civilisations-53` are derived from. The second,
   `3bb43b1439eef88dfe7fe892d7f7dc41ac9dd76f` (pack `aoe2techtree-3bb43b1`; authored 2026-09-11,
   committed 2026-09-22, assessed 2026-10-08), is the one `aoe2techtree-185872`, `aoe2techtree-185872-civilisations`,
   `aoe2techtree-185872-civilisations-20`, `aoe2techtree-185872-civilisations-32`,
@@ -689,6 +690,17 @@ against keeping one measurement in two homes.
   five stay installed so that the analyses published under them still reproduce; resolution by
   build answers the sixth. Its open values are in
   `specs/006-replay-analysis-foundations/owner-readings.md`.
+  Build 180059 has a second snapshot since 2026-10-28 (T773),
+  `aoe2techtree-180059-civilisations-53`, which supersedes the first and models fifty-three, every
+  civilisation of the first pack (the sixth's, but the Saxons, Varangians and Danes, which build
+  185872 added). A row of the sixth snapshot is carried to it only where that row's bullet is
+  byte-identical in the two packs, every selector of that row resolves to the same identifiers in
+  the older pack's `rules.json`, and build 185872's release notes name no change to the row's bonus
+  or to an entity the row selects (a note line changes an entity only if it changes that entity's
+  own data or a bonus that selects it, and a "-line" note changes every tier of its line); each
+  row is decided on its own, so one bullet's rows can be carried and transcribed both. Every other row is transcribed from the older pack's strings. Its
+  `aliases.toml` closes the second committed recording's buildings 490 and 673 (both "Gate"), read
+  again 2026-10-28 at repository head commit `9ee0fe29fa05`.
 - **Known limitations**: no civilisation-specific bonus data as structured values, no build/version
   field of its own, no combat attributes (attack, armour, hit points, range) — halfon carries those
   (below). Three builds (178524, 179158, 180059) unimplemented by the first pinned commit as of this

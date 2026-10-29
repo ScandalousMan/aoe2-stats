@@ -27,8 +27,9 @@ import pytest
 
 from aoe2stats_knowledge import effects, query, snapshot
 
-#: The packaged snapshot the fixture recording's build (180059) resolves against.
-REAL_SNAPSHOT_DIRECTORY = "aoe2techtree-180059"
+#: The packaged snapshot the fixture recording's build (180059) resolves against (T773's, the
+#: second of the build, which carries an `aliases.toml`).
+REAL_SNAPSHOT_DIRECTORY = "aoe2techtree-180059-civilisations-53"
 REFRESHED_SNAPSHOT_DIRECTORY = "aoe2techtree-180059-refresh"
 
 
@@ -51,15 +52,30 @@ def clear_snapshot_resolution_caches() -> None:
     snapshot.snapshot_for.cache_clear()
 
 
+def copy_real_snapshot(root: Path) -> Path:
+    """Copy the snapshot the fixture recording resolves against into `root`, and return its
+    directory. It is the second snapshot of its build (T773), which supersedes the first; a copy
+    alone in a throwaway root has nothing to supersede, so its `supersedes` line is dropped. That
+    line is not part of the digest (`rules.json`, `effects.toml` and `aliases.toml` are), so the
+    copy keeps the identity the committed snapshot has."""
+    copy = root / REAL_SNAPSHOT_DIRECTORY
+    shutil.copytree(Path(str(snapshot._snapshots_root())) / REAL_SNAPSHOT_DIRECTORY, copy)
+    identity_file = copy / snapshot.IDENTITY_FILENAME
+    text, dropped = re.subn(
+        r"^supersedes = .*\n", "", identity_file.read_text(encoding="utf-8"), flags=re.MULTILINE
+    )
+    assert dropped == 1
+    identity_file.write_text(text, encoding="utf-8")
+    return copy
+
+
 def isolate_snapshot_root(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
-    """A throwaway snapshot root holding a byte-for-byte copy of the one snapshot the fixture
-    recording resolves against, so promoting a second snapshot never touches the committed tree."""
+    """A throwaway snapshot root holding a copy of the one snapshot the fixture recording resolves
+    against (see `copy_real_snapshot`), so promoting a second snapshot never touches the committed
+    tree."""
     package_root = tmp_path / "knowledge-package"
     root = package_root / "snapshots"
-    shutil.copytree(
-        Path(str(snapshot._snapshots_root())) / REAL_SNAPSHOT_DIRECTORY,
-        root / REAL_SNAPSHOT_DIRECTORY,
-    )
+    copy_real_snapshot(root)
     shim = ResourcesShim(package_root)
     for module in (snapshot, query, effects):
         monkeypatch.setattr(module, "resources", shim)
@@ -93,8 +109,11 @@ def promote_a_refreshed_snapshot(
         rules = json.loads(rules_file.read_text(encoding="utf-8"))
         del rules["entities"][kind][entity_id]
         rules_file.write_text(json.dumps(rules, indent=2, sort_keys=True), encoding="utf-8")
+    aliases_file = refreshed / snapshot.ALIASES_FILENAME
     new_digest = snapshot.compute_digest(
-        (refreshed / "rules.json").read_bytes(), effects_file.read_bytes()
+        (refreshed / "rules.json").read_bytes(),
+        effects_file.read_bytes(),
+        aliases_file.read_bytes() if aliases_file.is_file() else None,
     )
 
     identity_file = refreshed / snapshot.IDENTITY_FILENAME

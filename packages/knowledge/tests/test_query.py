@@ -199,7 +199,11 @@ def test_a_second_discounted_building_for_a_second_modelled_civilisation_is_also
 
     entity = query.EntityRef(kind="building", id=_DOCK_ID, build=_CARRY_FORWARD_BUILD)
 
-    answer = query.cost(entity, civilisation="Malians")
+    # The Dock is also a team-bonus entity since T773 (the Vikings' "Docks cost -15%" is modelled
+    # for build 180059 now), so the team the player is on is stated: Malians alone.
+    answer = query.cost(
+        entity, civilisation="Malians", context=query.Context(team=frozenset({"Malians"}))
+    )
 
     assert hasattr(answer, "value")
     assert answer.value == {"wood": 128}
@@ -226,7 +230,11 @@ def test_malians_bombard_tower_cost_is_never_discounted() -> None:
 
     entity = query.EntityRef(kind="building", id="236", build=_CARRY_FORWARD_BUILD)
 
-    answer = query.cost(entity, civilisation="Malians")
+    # The claim is about the first snapshot's selector (T652p), which T773's snapshot does not
+    # keep: its rows follow the build 185872 chain's, where the selector is every building and
+    # `available_to` answers what a tree offers. The first stays loadable by identity (SC-005).
+    with snapshot.pinned_snapshot(snapshot.load_snapshot("aoe2techtree-180059")):
+        answer = query.cost(entity, civilisation="Malians")
 
     assert hasattr(answer, "value"), "Malians is a modelled civilisation — must answer, not gap"
     assert answer.value == {"gold": 100, "stone": 125, "wood": 0}
@@ -257,16 +265,18 @@ def test_franks_pikeman_cost_is_the_plain_unmodified_baseline() -> None:
 
 
 def test_the_same_unit_for_an_unmodelled_civilisation_gaps_and_never_returns_the_baseline() -> None:
-    """Britons has no bonus touching Pikeman's cost (module docstring), so Britons' *true* Pikeman
-    cost genuinely is the baseline `{food: 35, wood: 25}` — and the conservative rule (research D5)
-    must still refuse, because which fields an unmodelled civilisation's bonuses touch is exactly
-    what is not known. This is the case the task text calls out by name: never the baseline, even
-    when the baseline would coincidentally have been correct."""
+    """Saxons is no civilisation of build 180059's pack (T773 models all 53 of it, Britons
+    included), so the Saxons' Pikeman cost is not knowledge this snapshot has, and had they no
+    bonus touching it the value would be the baseline `{food: 35, wood: 25}` — and the
+    conservative rule (research D5) must still refuse, because which fields an unmodelled
+    civilisation's bonuses touch is exactly what is not known. This is the case the task text calls
+    out by name: never the baseline, even when the baseline would coincidentally have been
+    correct."""
     from aoe2stats_knowledge import query
 
     entity = query.EntityRef(kind="unit", id=_PIKEMAN_ID, build=_CARRY_FORWARD_BUILD)
 
-    result = query.cost(entity, civilisation="Britons")
+    result = query.cost(entity, civilisation="Saxons")
 
     assert not hasattr(result, "value"), (
         "an unmodelled civilisation must gap, never answer — even with a value equal to the "
@@ -283,7 +293,7 @@ def test_the_same_unit_for_an_unmodelled_civilisation_gaps_and_never_returns_the
     assert result.entity_kind == "unit"
     assert result.entity_id == _PIKEMAN_ID
     assert result.field == "cost"
-    assert result.civilisation == "Britons"
+    assert result.civilisation == "Saxons"
     assert result.severity in gaps.SEVERITIES
 
 
@@ -294,11 +304,11 @@ def test_a_teammate_outside_civilisations_modelled_gaps_naming_that_teammate() -
     """T652u remediation, defect 2 (coordinator, measured against the working tree): "a teammate
     whose civilisation is not modelled makes the answer unknown." Franks is modelled and Pikeman's
     cost is untouched by any Franks effect (module docstring) — the query's *own* civilisation is
-    never the issue here. Britons is not in `civilisations_modelled`, so which fields *its* bonuses
+    never the issue here. Saxons is not in `civilisations_modelled`, so which fields *its* bonuses
     touch is exactly what research.md D5's conservative rule says is unknown — and that rule
     applies to a teammate exactly as it does to the queried civilisation itself, because a team
-    bonus of Britons' own could touch this same field and this package has no way to know.
-    `context.team` naming Britons at all, regardless of whether any *known* effect touches this
+    bonus of Saxons' own could touch this same field and this package has no way to know.
+    `context.team` naming Saxons at all, regardless of whether any *known* effect touches this
     entity/field, is what must gap — the existing `civilisation-not-modelled` cause, naming the
     teammate, not a new cause."""
     from aoe2stats_knowledge import gaps, query
@@ -306,7 +316,7 @@ def test_a_teammate_outside_civilisations_modelled_gaps_naming_that_teammate() -
     entity = query.EntityRef(kind="unit", id=_PIKEMAN_ID, build=_CARRY_FORWARD_BUILD)
 
     result = query.cost(
-        entity, civilisation="Franks", context=query.Context(team=frozenset({"Franks", "Britons"}))
+        entity, civilisation="Franks", context=query.Context(team=frozenset({"Franks", "Saxons"}))
     )
 
     assert not hasattr(result, "value"), (
@@ -317,7 +327,7 @@ def test_a_teammate_outside_civilisations_modelled_gaps_naming_that_teammate() -
     assert result.cause == "civilisation-not-modelled", (
         f"no new cause — the existing one research.md D5 already defines, got {result.cause!r}"
     )
-    assert result.civilisation == "Britons", (
+    assert result.civilisation == "Saxons", (
         "the gap must name the unmodelled teammate, not the queried civilisation (Franks, which "
         f"is modelled) — got {result.civilisation!r}"
     )
@@ -862,9 +872,12 @@ def test_an_effect_still_applies_over_a_first_version_snapshots_baseline(
 def test_the_installed_snapshots_answer_true_for_an_entity_outside_the_tree() -> None:
     """Nothing green on an installed snapshot flips: Franks cannot train the Huskarl (41) in the
     pack's tree, and the installed (first-version) snapshot still answers true."""
-    answer = query.available_to(
-        query.EntityRef(kind="unit", id="41", build=180059), civilisation="Franks"
-    )
+    # Build 180059 resolves to a second-version snapshot since T773; the first is pinned here, it
+    # being the installed first-version snapshot this claim is about.
+    with snapshot.pinned_snapshot(snapshot.load_snapshot("aoe2techtree-180059")):
+        answer = query.available_to(
+            query.EntityRef(kind="unit", id="41", build=180059), civilisation="Franks"
+        )
 
     assert not isinstance(answer, KnowledgeGap)
     assert answer.value is True
@@ -1037,18 +1050,15 @@ _RECORDINGS = (
 #: (read 2026-10-18). A replay carries intent, never outcome: the order is one the game does not
 #: allow, so it is not a defect in membership.
 #:
-#: **Buildings 490 (Franks) and 673 (Teutons) are `entity-absent` in the build 180059 recording**:
-#: the pack names neither, and that build's snapshot carries no alias for them until T773's does.
-#: Building 490 for the Sicilians of the build 185872 recording answers true since T767: its
-#: snapshot
-#: carries the alias to the Gate. The expectation is strict, not skipped: when a snapshot carries
-#: the alias, the entry fails and is deleted (T767 deleted the 185872 one).
+#: **Buildings 490 (Franks) and 673 (Teutons) answer true in the build 180059 recording since
+#: T773**: the pack names neither, and the build's second snapshot carries the alias to the Gate for
+#: both. Building 490 for the Sicilians of the build 185872 recording answers true since T767 for
+#: the same reason. The expectation is strict, not skipped: when a snapshot carries the alias, the
+#: entry fails and is deleted (T767 deleted the 185872 one, T773 these two).
 _EXPECTED_NOT_TRUE: dict[str, dict[tuple[str, str, str], object]] = {
     "AgeIIDE_Replay_500546441": {},
     "AgeIIDE_Replay_504695319": {
         ("Persians", "unit", "1755"): False,
-        ("Franks", "building", "490"): "entity-absent",
-        ("Teutons", "building", "673"): "entity-absent",
     },
     "AgeIIDE_Replay_511523321": {},
 }

@@ -3156,7 +3156,7 @@ phase.
       arrives after promotion waits for the next snapshot. **Tests**: T765's tuples for build 185872
       equal the FR-022b entries, by set equality, and are empty when there are none; the same holds
       for the third committed recording's blocker set
-- [ ] T773 [US2] Model build 180059 in a snapshot that supersedes `aoe2techtree-180059`, every
+- [x] T773 [US2] Model build 180059 in a snapshot that supersedes `aoe2techtree-180059`, every
       civilisation of that build's pack, `rules.json` derived again under T763's normaliser. **The
       carry rule**: a row of T770's snapshot is carried to build 180059 only where the
       bullet's string is byte-identical under the same key in both packs, every selector resolves to
