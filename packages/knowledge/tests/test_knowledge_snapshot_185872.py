@@ -76,7 +76,7 @@ _FIFTH_DIGEST = "sha256:93d084ea8886b4c2d98f67a7f02524f107ffab3c3bcb29142389ceac
 #: 2026-10-22, T767) whose name is a civilisation of the vendored pack: 56 of the dataset's 62
 #: entries. The six it holds that the pack does not (46 Achaemenids, 47 Athenians, 48 Spartans,
 #: 54 Macedonians, 55 Thracians, 56 Puru) are the Chronicles civilisations, outside the pack and
-#: outside this snapshot (T776 decides them). The dataset spells id 16 "Maya", the pack "Mayans".
+#: outside this snapshot (out of scope, T776). The dataset spells id 16 "Maya", the pack "Mayans".
 _RAW_IDS = {
     1: "Britons",
     2: "Franks",
