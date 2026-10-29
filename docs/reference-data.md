@@ -65,7 +65,7 @@ them.
   client's own backend, live lobbies, aggregators, replay parsers and libraries, each with example
   requests and notes on what it can and cannot do (`README.md`, `apis.yaml`, `docs/`, `examples/`).
   It describes itself as unofficial: its README says almost everything it catalogues is
-  reverse-engineered, and it can change without notice.
+  reverse-engineered, and those interfaces can change without notice.
 - **Question it answers**: "which external API answers this question, and what is known about it?"
   It is a map for finding a source, not an identifier table.
 - **Licence status**: MIT. The repository's root `LICENSE` file reads "Copyright (c) 2026
@@ -124,13 +124,14 @@ was checked against. If the fixtures are replaced or re-captured and the join co
 is a red test to investigate, never a green one to keep (FR-006). That sentence is about the
 frozen-fixture check only.
 
-**Reaching a name for a new id is a different step.** The frozen fixtures cannot reach any id past
-the original roster, so they cannot name a new one. The route used for the last additions is
+**Reaching a name for a new id is a different step.** The join of the frozen fixtures names no id
+past the original roster, so it cannot name a new one. The route used for the last additions is
 recorded in the module docstring, "Ids 61-63 (T766)", and in `docs/data-sources.md` §1, "Ids 45-60
 (T070i)": a fresh join of Relic's match history against aoe2companion's matches on (match id,
 profile id), then corroboration by `aoc-reference-data`'s inner `id` (`docs/data-sources.md` §6,
 "aoc-reference-data"). That live join is not the fixture check above and is not committed as a
-fixture. It is done by hand through `packages/providers`.
+fixture. Any such capture goes through the Relic and
+aoe2companion providers in `packages/providers` (constitution III).
 
 **What remains uncovered.** Each of these is a decision, not an oversight (FR-008):
 
@@ -140,9 +141,9 @@ fixture. It is done by hand through `packages/providers`.
 - **Every id above the highest named id.** No source names them, so none is in the table.
 - **The civilisations the ordering rule cannot reach.** They were added after the roster the rule
   sorts, so the rule says nothing about them and is not extended to cover them. They are in the
-  table only as transcribed entries. No fixture reaches them; a live join reached some, recorded in
-  the module docstring ("Ids 61-63 (T766)" and "Ids 45-60 (T070i): transcribed, not derived") and
-  not committed as a fixture. The literal tests guard them
+  table only as transcribed entries. The join of the frozen fixtures names none of them; a live join
+  reached some, recorded in the module docstring ("Ids 61-63 (T766)" and "Ids 45-60 (T070i):
+  transcribed, not derived") and not committed as a fixture. The literal tests guard them
   (`test_table_matches_the_transcribed_ids_forty_five_to_sixty` and
   `test_names_the_three_civilisations_measured_after_sixty`), not the fixture join.
 
