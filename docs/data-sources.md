@@ -807,16 +807,7 @@ against keeping one measurement in two homes.
 - **Known limitations**: **no licence** — GitHub reports `license: None`, and there is no `LICENSE`
   file in the repository. This is why it is read-and-transcribe-only rather than vendored: FR-031
   forbids vendoring a source with no licence and permits only a human's transcription, recorded with
-  its provenance. **This is feature 002's ruling, given a living home here for the first time.**
-  002's own `specs/002-reference-data-sources/tasks.md` T205 states it — "`aoc-reference-data`
-  carries no licence at all and is the reason this distinction is in the spec: record it as
-  read-and-transcribe-only, and record that the transcription that has already happened put the
-  pairs into `apps/api/src/aoe2stats_api/civilizations.py` as facts while the source file itself was
-  never copied here" — but 002 never wrote the source-inventory document (`docs/reference-data.md`)
-  that same task describes, so until now the ruling survived only in that frozen, unchecked task and
-  in `civilizations.py`'s module docstring, which independently records the same transcription
-  (T070i) in the course of documenting the civilisation id table. Both remain the historical account
-  of how the ruling was reached; this entry is its one living record and restates neither in full.
+  its provenance. The ruling's living home is `docs/reference-data.md` "Source inventory".
 - **Assessed**: 2026-08-30 (`docs/asset-packs.md` "Rejected sources": licence `None found`, ruling
   **READ ONLY**); re-verified for this feature 2026-09-19 (research.md D3: "002's ruling,
   re-verified").
