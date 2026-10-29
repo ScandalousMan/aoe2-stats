@@ -81,11 +81,61 @@ hand; the source's files are never copied here and nothing fetches them.
        2. How a derivation is checked against captured fixtures.
        3. What remains uncovered, and the answer for an id no source names.
      Add a new identifier as a sibling `###` subsection beside the first; do not restructure the
-     others. Filled by T206. -->
+     others. -->
 
 ### Civilisation mapping
 
-<!-- Worked example. Filled by T206. -->
+Relic's match history carries a civilisation as a bare integer and never a name. The table that turns
+that integer into a name is derived from outside sources and checked against this repository's own
+captured fixtures.
+
+**Where it lives.** In exactly one place: `apps/api/src/aoe2stats_api/civilizations.py`. Its module
+docstring is the record of the table, the id ranges, the derivation rule and the evidence behind each
+range, and `docs/data-sources.md` §1 records the measurement and the two id spaces that must not be
+confused. This file does not repeat any of that and no other file may hold a second copy of the
+table; a front-end component, a seed script or a document that needs a name asks the module (FR-004).
+A fact stated in two places will be wrong in one of them.
+
+**How a derivation is checked.** A derivation is checked against two fixtures this repository
+captured and froze, never trusted because a source says so. Relic's match-history fixture numbers a
+civilisation, the enrichment source's matches fixture names the same real matches, and joining the two
+on match and profile yields id-to-name pairs that neither source gave alone. The executable form of
+that check is `apps/api/tests/test_civilizations.py`, and it does four things:
+
+- `test_table_matches_the_fixture_derived_join` re-runs the join and compares every pair it recovers
+  with the table. This is the measurement.
+- `test_table_matches_the_alphabetical_ordering_rule` compares the entries the join cannot reach with
+  what the ordering rule, established by the measured pairs, would produce. It adds no evidence; it
+  checks that unmeasured entries are consistent with the rule.
+- `test_table_matches_the_transcribed_ids_forty_five_to_sixty` and
+  `test_names_the_three_civilisations_measured_after_sixty` assert the entries that follow no rule as
+  literal facts, so editing one is a visible change.
+- `test_the_three_newest_ids_never_use_the_fallback` fails if a hole opens inside the named range or
+  a new id appears without a test.
+
+**A join that recovers nothing is a failure, not a pass.** An assertion over an empty set holds for
+any table. `test_table_matches_the_fixture_derived_join` therefore fails when the two fixtures share
+no match and profile pair, and again when the join recovers fewer distinct ids than the derivation was
+checked against. If the fixtures are replaced or re-captured and the join comes back thin, that is a
+red test to investigate, never a green one to keep (FR-006).
+
+**What remains uncovered.** Each of these is a decision, not an oversight (FR-008):
+
+- **Two ids inside the named range that no source names.** They are left out of the table on purpose
+  and stay on the fallback. They are listed in the module docstring and asserted by
+  `test_falls_back_for_the_deliberate_gap_and_beyond_sixty_three`.
+- **Every id above the highest named id.** No source names them, so none is in the table.
+- **The eight civilisations the ordering rule cannot reach.** They were added after the roster the
+  rule sorts, so the rule says nothing about them and is not extended to cover them. They are in the
+  table only as transcribed entries, and the fixture join reaches only some of them; the module
+  docstring records which, and the test file asserts them as literals.
+
+**The answer for an id no source names** is to leave it on the fallback, which renders as
+"Civilisation <id>", the same shape the leaderboard lookup uses. Never interpolate from its
+neighbours and never fill it with a plausible name or a plausible order; an earlier table did exactly
+that and was wrong in every entry it named. An id moves off the fallback only when a source names it
+and a fixture or a second source corroborates it, in the same change that adds the test that asserts
+it.
 
 ## Renames
 
