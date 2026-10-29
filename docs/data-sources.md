@@ -8,6 +8,9 @@ restates them — `.claude/skills/aoe2-data-sources/SKILL.md` carries the rules 
 every number, so there is nothing to keep in sync. When a nightly contract test fails, correct this
 file first: it is what the next person will trust.
 
+Looking for what a human reads rather than what the product calls? This file records what the
+product calls; [`docs/reference-data.md`](reference-data.md) records what a human reads.
+
 One measurement accumulates rather than being taken once: §2's publication-delay distribution. Its
 raw samples are **not** kept in this repository — a repository file only changes by a commit, and
 the nightly job that takes the sample (the `contracts` job in `.github/workflows/nightly.yml`)
