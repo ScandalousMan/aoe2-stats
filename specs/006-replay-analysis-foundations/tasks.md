@@ -3182,7 +3182,7 @@ phase.
       gaps per build. Once T772 and T774 are deployed, the count for
       builds 180059 and 185872 equals the FR-022b
       entries those builds keep, zero when there are none, for every analysis recomputed since
-- [ ] T776 [US2] **Owner task (arbitration).** Decide whether the six Chronicles civilisations
+- [x] T776 [US2] **Owner task (arbitration).** Decide whether the six Chronicles civilisations
       `apps/api/src/aoe2stats_api/civilizations.py` names are in scope. No vendored pack carries
       their trees, so including them means choosing a source for every entity they can build, under
       FR-022c. The decision is recorded in [spec.md](./spec.md), Clarifications, Session

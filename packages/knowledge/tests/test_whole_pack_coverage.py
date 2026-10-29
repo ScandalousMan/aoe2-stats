@@ -29,12 +29,13 @@ defect, which FR-022b says must be closed, never listed) leaves an observed tupl
 is modelled, which strict `xfail` turns into a failure: the batch that models the civilisation
 deletes its name from the tuple. No `skip`, no `importorskip`.
 
-**Outside the test until T776 decides.** The application's table
+**Outside the test, by the owner's arbitration (T776).** The application's table
 (`apps/api/src/aoe2stats_api/civilizations.py`) names six civilisations no vendored pack carries:
 Achaemenids, Athenians, Macedonians, Puru, Spartans and Thracians, the Chronicles civilisations.
 `test_the_civilisations_outside_this_test_are_the_six_chronicles_civilisations` measures that set
-(the table's names minus every current pack's) rather than trusting this paragraph. T776 is the
-owner's arbitration on whether they are in scope.
+(the table's names minus every current pack's) rather than trusting this paragraph. T776 ruled them
+out of scope (spec Clarifications, Session 2026-10-18), so a seventh civilisation appearing here is
+a pack the snapshots have not caught up with, not one more Chronicles civilisation.
 
 **Batch A (T767)** models twenty civilisations on build 185872 in
 `aoe2techtree-185872-civilisations-20`; the twelve it added lost their `xfail` and each is held to

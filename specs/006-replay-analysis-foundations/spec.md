@@ -196,6 +196,14 @@ record of what was decided then.
   newest civilisations are missing from that table (T766 adds them, from `aoc-reference-data`),
   and the table's six Chronicles civilisations appear in no pack; whether those six are in scope is
   the arbitration T776 asks for.
+- Q: Are the six Chronicles civilisations the application's table names (Achaemenids, Athenians,
+  Macedonians, Puru, Spartans, Thracians) in scope? → A: No (T776, answered 2026-10-29). "Every
+  civilisation the tool supports" means, for the knowledge base, every civilisation of a vendored
+  pack; the application's table keeps naming the six, so their matches still show a name. A
+  knowledge query for one of them records a `civilisation-not-modelled` gap, which is outside
+  FR-022a's bar and is reported under that cause in the aggregate gap report. No task is filed:
+  including them would have meant choosing a source for every entity they can build, and no
+  vendored pack carries their trees.
 
 ## User Scenarios & Testing _(mandatory)_
 
