@@ -49,7 +49,9 @@ green. See `docs/data-sources.md` §1 for where this derivation is recorded.
 **Ids 0-44 stop being reachable by the fixture join at 21 pairs and by the ordering rule at 44** —
 the eight civilisations added between the Three Kingdoms and Dynasties of India expansions
 (Jurchens, Khitans, Mapuche, Muisca, Shu, Tupi, Wei, Wu) sit outside the 45-name roster that rule
-sorts, and no captured match in this repository's evidence uses one either. Asserting a plausible
+sorts, and the join of the two frozen fixtures names none of them: the Relic match-history fixture
+does carry two of them (ids 58 and 60), but the aoe2companion fixture has no player to pair them
+with, so the join recovers no name for either. Asserting a plausible
 order for them was exactly T070c's original error, so this module still does not: it does not
 extend the ordering rule past id 44.
 
@@ -102,7 +104,8 @@ id 30 below, `aoc-reference-data` carries no licence at all (no `LICENSE` file, 
 enrichment source. Its JSON is not copied into this repository in any form, and nothing in this
 codebase fetches it at build or test time (constitution III forbids a network call outside
 `packages/providers` regardless of licence). Only the id-name pairs above, read by hand and
-transcribed as facts, live here. See `docs/data-sources.md` §1 for the same note in context.
+transcribed as facts, live here. The licence ruling itself now lives in `docs/reference-data.md`,
+"Source inventory"; this paragraph is the record of how the module applied it.
 
 An id of 64 or higher, and ids 56/57, still get a response, never a guess, rendered as
 "Civilisation <id>", identical in shape to `leaderboard_name`'s own fallback. Extending this table
