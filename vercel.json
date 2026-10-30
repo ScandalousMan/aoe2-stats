@@ -9,6 +9,7 @@
   },
   "buildCommand": "node scripts/checks/config-preflight.mjs && pnpm --filter web build",
   "outputDirectory": "apps/web/dist",
+  "ignoreCommand": "node scripts/deploy/ignore-build.mjs",
   "crons": [
     {
       "path": "/api/cron/ingest",

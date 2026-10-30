@@ -248,7 +248,7 @@ that ships still deploys; every doubt deploys.
       production slot, or the answer cannot be established, T811 does not land in this pull
       request**: Phase 5 moves to its own pull request, held until the answer is known. T810's
       module and test may still land, unwired
-- [ ] T811 [US2] **Wire the rule in.** Only after T810a found that a canceled deployment takes
+- [x] T811 [US2] **Wire the rule in.** Only after T810a found that a canceled deployment takes
       no retained production slot. Add `"ignoreCommand": "node scripts/deploy/ignore-build.mjs"`
       to `vercel.json` (research R3). In `.github/workflows/pr.yml`, add
       `node --test scripts/deploy/ignore-build.test.mjs` to the `web` job beside the other

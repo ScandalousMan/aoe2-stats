@@ -80,6 +80,9 @@ jobs:
               # `web` (see that job below), so listing these here is what makes both trigger.
               - 'scripts/checks/*.mjs'
               - 'scripts/visual/**'
+              # 007 T811: same gap as T510 above, for the build-skip rule: `scripts/**` maps only to
+              # `python`, so an edit to the rule or its test would otherwise run no Node job.
+              - 'scripts/deploy/**'
               - 'tests/visual/**'
               # Adversarial review finding S6, 2026-09-12: this workflow file defines the `web` job's
               # own steps — among them the `pnpm exec playwright test --list
@@ -394,6 +397,8 @@ jobs:
       - run: node scripts/checks/story-baselines-duplicates.mjs
       - run: node --test scripts/checks/story-baselines-duplicates.test.mjs
       - run: node --test scripts/checks/story-determinism.test.mjs
+      # 007 T811: offline test of the build-skip rule `vercel.json` runs as `ignoreCommand`.
+      - run: node --test scripts/deploy/ignore-build.test.mjs
       # Two fixture-only suites whose own checks cannot run here, gathered rather than paired with
       # them. `story-baselines.mjs` needs the built Storybook index and so runs in the `visual` job
       # below; `baseline-regeneration-diff.mjs` is a reporting tool, never a gate — a regeneration
