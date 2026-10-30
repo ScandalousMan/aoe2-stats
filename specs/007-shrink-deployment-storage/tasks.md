@@ -266,7 +266,7 @@ that ships still deploys; every doubt deploys.
 
 ## Phase 6: The record (plan phase 5, first half)
 
-- [ ] T812 [P] Close out `docs/adr/0002-hosting.md`'s "Function bundles and build skips" section
+- [x] T812 [P] Close out `docs/adr/0002-hosting.md`'s "Function bundles and build skips" section
       (research R10, **FR-011**, **FR-012**, **FR-017**): the `excludeFiles` rule and why it lists
       every top-level entry but `api`, with T808's two checks and their dates; why the layout
       stays at three functions — the parser never shares a function with the ingestion run
