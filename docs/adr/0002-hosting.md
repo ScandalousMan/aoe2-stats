@@ -108,6 +108,22 @@ and the analyzer's staleness check compares that record with the one stored for 
 Removing `pip` would fail every analysis, and recording it as skipped would make every published
 analysis read as stale.
 
+A canceled deployment does not evict a rollback target (read 2026-10-30 from the Vercel
+documentation page "Deployment Retention", https://vercel.com/docs/deployment-retention, marked
+last updated 2026-09-16). The page lists a Hobby default retention of 30 days for each of four
+states: canceled, errored, pre-production and production. A deployment older than its retention
+period is kept while any one of these holds: it is among the last 3 deployments created in the
+project, it is among the last 3 production deployments in state Ready, or it has a production alias
+assigned (the page adds alias cases that do not apply to production on `main`). A canceled
+deployment is never in state Ready, so it cannot occupy one of the three Ready-production places
+that keep this project's rollback targets. It can occupy one of the "last 3 created" places, but
+that exception only keeps deployments and removes none, and the Ready-production exception is
+evaluated independently of it. Skipping a build therefore does not evict a rollback target, and T811
+may land in the pull request for feature 007. The page does not say in words that a canceled
+deployment takes no retained place; the conclusion is derived from the exceptions being
+alternatives and from the Ready condition, and T817 and T819 confirm it in production after the
+first skip.
+
 ## The single-page fallback is a host requirement, not a Vercel setting
 
 Every route the client-side router owns must resolve to `index.html` on a direct request — a

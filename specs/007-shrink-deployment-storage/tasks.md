@@ -239,7 +239,7 @@ that ships still deploys; every doubt deploys.
       under `apps/web/src/` and a `*.stories.tsx` under `packages/design-system/src/` each skip. Run the test with
       `git config --global user.useConfigOnly true` set in a throwaway `HOME` to prove the identity
       point locally
-- [ ] T810a [US2] **Before the rule ships, settle how the host counts a canceled deployment**
+- [x] T810a [US2] **Before the rule ships, settle how the host counts a canceled deployment**
       against the retained production deployments (spec Edge Cases: "before relying on Story
       2"; the research did not settle it). Read the host's current documentation on deployment
       retention and on canceled deployments; if it does not say, the maintainer reads the
