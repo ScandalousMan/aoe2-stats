@@ -200,7 +200,7 @@ rollback target.
 **Story goal (US2)**: a docs-, spec-, test- or baseline-only push to `main` is canceled; anything
 that ships still deploys; every doubt deploys.
 
-- [ ] T810 [US2] **Write the rule and its test together** in `scripts/deploy/ignore-build.mjs` and
+- [x] T810 [US2] **Write the rule and its test together** in `scripts/deploy/ignore-build.mjs` and
       `scripts/deploy/ignore-build.test.mjs` (**FR-006**, **FR-007**, **FR-008**, **FR-009**,
       **FR-010**, **FR-011**, **SC-003**; [contracts/build-skip-rule.md](./contracts/build-skip-rule.md), `data-model.md` §2–§5,
       research R3 and R4). The module exports a pure decision over (target environment, base,
