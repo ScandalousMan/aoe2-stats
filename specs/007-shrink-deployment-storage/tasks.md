@@ -281,7 +281,7 @@ that ships still deploys; every doubt deploys.
       `.claude/skills/` for any statement this feature makes false — every push to `main`
       deploys, a function carries the repository — and correct
       each. No figure from research §0 is copied here
-- [ ] T813 Verify scope and the whole tree (**FR-016**). `git diff --stat main...HEAD`: every path
+- [x] T813 Verify scope and the whole tree (**FR-016**). `git diff --stat main...HEAD`: every path
       is a deployment file, `scripts/deploy/`, `scripts/checks/tests/test_vercel_bundle.py`,
       `tests/architecture/test_deployment_install.py`, `.github/workflows/pr.yml`, `docs/` or this
       feature's `specs/` directory. `git diff main...HEAD -- api apps packages` is empty. Then run, by exit code: `uv run pytest`, `uv run ruff format --check .`,
