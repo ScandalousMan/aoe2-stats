@@ -397,7 +397,7 @@ async def _seed_a_stale_looking_row_then_break_the_snapshot(
     root = isolate_snapshot_root(monkeypatch, tmp_path)
     stored = _digest(game_id, engine=_installed_engine("-superseded"))
     await _seed_published(db_session, game_id=game_id, seed=_Seed(digest=stored))
-    break_it(root / "aoe2techtree-180059")
+    break_it(root / "aoe2techtree-180059-civilisations-53")
     clear_snapshot_resolution_caches()
 
 

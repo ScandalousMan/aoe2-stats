@@ -1,4 +1,4 @@
-"""The civilisation id-to-name mapping for AoE2 DE (T070c, corrected T070g, extended T070i).
+"""The civilisation id-to-name mapping for AoE2 DE (T070c, corrected T070g, extended T070i, T766).
 
 `getRecentMatchHistory`'s per-player rows (`matchhistorymember[].civilization_id`,
 `docs/data-sources.md` §1) carry a bare integer, never a name — Relic does not return one from this
@@ -49,7 +49,9 @@ green. See `docs/data-sources.md` §1 for where this derivation is recorded.
 **Ids 0-44 stop being reachable by the fixture join at 21 pairs and by the ordering rule at 44** —
 the eight civilisations added between the Three Kingdoms and Dynasties of India expansions
 (Jurchens, Khitans, Mapuche, Muisca, Shu, Tupi, Wei, Wu) sit outside the 45-name roster that rule
-sorts, and no captured match in this repository's evidence uses one either. Asserting a plausible
+sorts, and the join of the two frozen fixtures names none of them: the Relic match-history fixture
+does carry two of them (ids 58 and 60), but the aoe2companion fixture has no player to pair them
+with, so the join recovers no name for either. Asserting a plausible
 order for them was exactly T070c's original error, so this module still does not: it does not
 extend the ordering rule past id 44.
 
@@ -60,13 +62,20 @@ community-maintained reference that states civilisation ids explicitly — but t
 to the game's own replay-space id (1-based, release order), not to this table's Relic
 `civilization_id` space (`docs/data-sources.md` §1, "Two civilisation id spaces exist"). Reading it
 as also confirming this table's ids 0-44 was wrong — a source keyed to a different space cannot
-corroborate this one at all — and was corrected 2026-09-27 (T652n). What actually corroborates the
-fourteen ids below instead: a fresh 2026-09-27 join of Relic's `getRecentMatchHistory` against
-aoe2companion's `/api/matches`, keyed on `(match id, profile id)`, which reached three of them —
-48 Shu, 52 Khitans, 59 Mapuche — and agreed with the values already here. **The other eleven rest
-on no measurement**: `100.json` read on 2026-09-27 does not match them either (46 Achaemenids where
-this table has 45, 57 Muisca where it has 58), so they are not a transcription of it as it stands.
-They are kept because the three measured ids agree with them, not because anything checked them:
+corroborate this one at all — and was corrected 2026-09-27 (T652n). That correction was itself
+too wide, and T766 narrows it. The dataset's *keys* are the replay space, and reading them was what
+disagreed (46 Achaemenids where this table has 45, 57 Muisca where it has 58). Each entry also
+carries an inner `id` field, which the source does not document and which this module does not
+claim to understand; it is only *measured*. What actually corroborates the fourteen ids below: a
+fresh 2026-09-27 join of Relic's `getRecentMatchHistory` against aoe2companion's `/api/matches`,
+keyed on `(match id, profile id)`, which reached three of them — 48 Shu, 52 Khitans, 59 Mapuche —
+and agreed with the values already here. **The other eleven were unmeasured on 2026-09-27**
+and are not a transcription of the dataset's keys; they were kept because the three measured ids
+agree with them. T766 read the dataset again on 2026-10-18 (Definitive Edition, `version` 33315,
+62 entries) and compared its inner `id` to every id of this table: 58 of 59 agree, and the one
+difference is spelling, Maya (dataset) against Mayans (here, deliberately; see id 30). The inner
+`id` therefore agrees with all fourteen ids below, the eleven that no join had reached included. It
+is a measured agreement between two sources, not a statement of what the field means.
 
 ```
 45 Achaemenids   48 Shu    51 Jurchens   54 Thracians   58 Muisca
@@ -80,15 +89,25 @@ than guessing what sits between Puru (55) and Muisca (58). Inventing that gap is
 of plausible-but-unchecked entry T070c already got wrong once; do not "complete" it later without
 new evidence.
 
+**Ids 61-63 (T766): measured, then corroborated.** 61 Saxons, 62 Varangians and 63 Danes were
+found by the same 2026-09-27 Relic and aoe2companion join that is recorded beside T070i's
+(`docs/data-sources.md` §1), which recorded them as known-absent and "filed separately"; they
+rendered as "Civilisation <id>" in production until this entry. `aoc-reference-data`'s
+`civilizations` inner `id` corroborates all three (FR-022c): read again 2026-10-18 by T766, the
+dataset's inner `id` 61, 62 and 63 are Saxons, Varangians and Danes, and they are the only inner
+ids of that dataset this table did not already hold. Inner ids 56 and 57 are absent from the
+dataset too, which is why the gap below stays a gap.
+
 **The reference dataset is read, never vendored.** Unlike the MIT-licensed tech-tree data cited for
 id 30 below, `aoc-reference-data` carries no licence at all (no `LICENSE` file, GitHub reports
 `license: None`) — the same defect `docs/data-sources.md` already records against the aoe2companion
 enrichment source. Its JSON is not copied into this repository in any form, and nothing in this
 codebase fetches it at build or test time (constitution III forbids a network call outside
-`packages/providers` regardless of licence). Only the fourteen id-name pairs above, read by hand and
-transcribed as facts, live here. See `docs/data-sources.md` §1 for the same note in context.
+`packages/providers` regardless of licence). Only the id-name pairs above, read by hand and
+transcribed as facts, live here. The licence ruling itself now lives in `docs/reference-data.md`,
+"Source inventory"; this paragraph is the record of how the module applied it.
 
-An id of 61 or higher, and ids 56/57, still get a response, never a guess, rendered as
+An id of 64 or higher, and ids 56/57, still get a response, never a guess, rendered as
 "Civilisation <id>", identical in shape to `leaderboard_name`'s own fallback. Extending this table
 further is future work gated on evidence, not on guesswork.
 """
@@ -170,6 +189,11 @@ KNOWN_CIVILISATION_NAMES: dict[int, str] = {
     58: "Muisca",
     59: "Mapuche",
     60: "Tupi",
+    # Ids 61-63 (T766) are measured, not transcribed from a guess: the 2026-09-27 Relic and
+    # aoe2companion join, corroborated by aoc-reference-data's inner `id`. See the module docstring.
+    61: "Saxons",
+    62: "Varangians",
+    63: "Danes",
 }
 
 

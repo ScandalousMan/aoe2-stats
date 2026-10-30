@@ -14,8 +14,8 @@ A ranked 1v1 played on **2026-08-19**, downloaded from
 | Point of view  | profile 196240                                                                         |
 | Operations     | 484 542 (`Sync` 236 649, `Viewlock` 236 649, `Action` 11 214, `Chat` 29, `PostGame` 1) |
 
-**Why it is committed.** Replays are purged from the official servers after about 31 days, so this
-file cannot be re-downloaded. It is the reference against which parser compatibility is verified:
+**Why it is committed.** Replays are purged from the official servers on a rolling window
+(`docs/data-sources.md` §2), so this file cannot be re-downloaded. It is the reference against which parser compatibility is verified:
 `aoe2rec-py` 0.1.21 parses it in 0.54 s, `aoc-mgz` 1.8.51 fails on it. See
 `docs/adr/0001-replay-parser.md`.
 
@@ -40,7 +40,7 @@ served.
 
 **Why it is committed.** It adds a second match size to the reference set: a team game with four
 participants, on the same game build as the first recording. Replays are purged from the official
-servers after about 31 days, so this file cannot be re-downloaded either.
+servers on a rolling window (`docs/data-sources.md` §2), so this file cannot be re-downloaded either.
 
 Do not modify it, do not re-zip it, do not commit an extracted `.aoe2record` beside it.
 
@@ -63,8 +63,8 @@ A ranked 1v1 on Arabian Desert played on **2026-10-05**, downloaded the same day
 
 **Why it is committed.** It is the first recording on a game build the pinned parser of the time,
 `aoe2rec-py` 0.1.21, could not read: that version panics on it, and 0.1.24 parses it in 0.22 s.
-Replays are purged from the official servers after about 31 days, so this file cannot be
-re-downloaded. It carries the 0.1.22+ result shape (one chapter, `Pregame` as the first operation)
+Replays are purged from the official servers on a rolling window (`docs/data-sources.md` §2), so
+this file cannot be re-downloaded. It carries the 0.1.22+ result shape (one chapter, `Pregame` as the first operation)
 and the first chat message on a channel other than 0 (one message, channel 1).
 
 **The point of view is `zheader.replay.rec_player`, not `Pregame.rec_owner`.** `rec_player` is a

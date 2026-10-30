@@ -13,11 +13,11 @@ explicitly: it is not civilisation-qualified at all.
 
 **Six civilisations are modelled today; every other one still gaps.** research.md D5's
 conservative rule: a civilisation whose bonus set is not modelled refuses every
-civilisation-qualified cost and time, because which fields its bonuses touch is exactly what is
-not known. T645 populated `civilisations_modelled` on both promoted fixtures
-(`aoe2techtree-180059`, `aoe2techtree-177723-test`); T652m (2026-09-23) corrected that table to
-the six civilisations actually in the two committed recordings — Franks, Teutons, Persians,
-Saracens, Malians, Tatars — so a query naming one of those six now proceeds past step 1
+civilisation-qualified query (every field, not only cost and time), because which fields its
+bonuses touch is exactly what is not known. T645 populated `civilisations_modelled` on both
+promoted fixtures (`aoe2techtree-180059`, `aoe2techtree-177723-test`); T652m (2026-09-23) corrected
+that table to the six civilisations actually in the two committed recordings — Franks, Teutons,
+Persians, Saracens, Malians, Tatars — so a query naming one of those six now proceeds past step 1
 into real effect application (T644, below). A civilisation outside that set still gaps at the same
 check, and that remains the correct, honest behaviour research.md D5 requires, not a shortcut:
 returning a baseline value for an unmodelled civilisation would be exactly the FR-038 substitution
@@ -83,6 +83,40 @@ imported internals, is what lets `coverage.coverage` call these six public funct
 (T652b) — the point being that SC-008's "by construction rather than by inspection" then actually
 governs the gap list `coverage.coverage` publishes, not only the seven functions
 `test_structure.py` sweeps directly.
+
+**T761 (FR-022d): an alias is followed, and the answer says so.** An identifier the pack does not
+name may be stated by a referenced source as the pack's entity under another identifier, and a
+snapshot transcribes that as `aliases.toml` (`snapshot.Alias`; the loader has already refused any
+alias whose target `rules.json` does not name, so a followed alias always lands). `_lookup` reads
+`rules.json` first and the snapshot's aliases only when the identifier is absent from it, so an
+identifier the pack names is never reported as aliased. The record that answers is the target's,
+and the effects selected for it are the target's too (an effect's selector names the pack's
+identifiers); a gap, by contrast, still names the identifier the caller asked for. `Answer.alias`
+carries the `Alias` that was followed, or `None`.
+
+**T763: `available_to` answers the civilisation's own tree.** A second-version `rules.json` carries
+per civilisation the units, buildings and technologies its tree offers; the baseline is membership,
+and an effect may set it. A first-version `rules.json` carries no tree and so makes no membership
+claim: it answers `True`, as it always has, because what a snapshot's identity pins includes what it
+answers (SC-005). `_tree_membership` tells the two apart by the shape of `civilisations`, which the
+snapshot loader checks against the `normaliser_version` `snapshot.toml` names.
+`available_to` takes `context` as `cost` does.
+
+**T764: `produced_at` answers a sequence, and an effect may extend it.** The pack places an entity
+at one building (`rules.json`'s `produced_at`, a `{kind, id}` table or `null`); a civilisation may
+place it at another (Goths' Anarchy: Huskarls at the Barracks). The answer is therefore an ordered
+sequence of `EntityRef`s of kind `"building"`: the pack's building first, then each building an
+effect adds, in file order, each once. `_baseline_producing_buildings` turns the stored table into
+the sequence's first element before `effects.apply` extends it, and `_civilisation_qualified` turns
+the identifiers back into `EntityRef`s after. `produced_at` takes `context` as `cost` does.
+
+**T780 (FR-022e): `age_requirement` takes `context` as `cost` does.** A civilisation bonus is a
+fact, and one that moves an age only while some match state holds (the Cumans' additional Town
+Center, whose row is T770's) can be a conditional effect on `age_requirement` like any other.
+The query therefore accepts the match state, reaches such an effect with it, raises
+`effects.ContextRequired` without the input that decides it, and refuses an unmodelled civilisation
+in `context.team` at step 1. Called without `context` on an entity no conditional effect touches it
+answers exactly as before.
 """
 
 from __future__ import annotations
@@ -98,15 +132,15 @@ from typing import Any, Final
 
 from aoe2stats_knowledge import effects, snapshot
 
-# T652u: re-exported so a caller building match state for `cost`/`production_time` names it as
-# `query.Context`, this module's own public surface (contracts/knowledge-base.md, "The query
+# T652u: re-exported so a caller building match state for a query that accepts `context` names it
+# as `query.Context`, this module's own public surface (contracts/knowledge-base.md, "The query
 # surface": "context is the match state a conditional effect needs"), rather than reaching into
 # `effects.py` for it. `Context` is a plain dataclass, not a function, so `test_structure.py`'s
 # `_public_module_functions` walk (which filters to functions defined in the sweeping module
 # itself) never mistakes it for an eighth query to check against the answer-or-gap union.
 from aoe2stats_knowledge.effects import Context
 from aoe2stats_knowledge.gaps import KnowledgeGap
-from aoe2stats_knowledge.snapshot import Snapshot, SnapshotIdentity
+from aoe2stats_knowledge.snapshot import Alias, Snapshot, SnapshotIdentity
 
 #: The package this module's data is anchored to — the same anchor `snapshot.py` and
 #: `normalise.py` use, so a snapshot is resolved identically from a wheel or an editable checkout.
@@ -142,12 +176,18 @@ class Answer[T]:
     it, in order (`effects.Effect`, T644) — empty when no effect touched this query: either the
     civilisation asked for is not one of the six T645 named as modelled, or it is one of the six
     but no effect in that snapshot's `effects.toml` matches this entity/field.
+
+    `alias` (T761, FR-022d) is the `snapshot.Alias` followed to reach the entity the value was read
+    from, or `None` when the identifier asked for is one `rules.json` names. `source` is then the
+    target's, and `alias.source_name`, `alias.source` and `alias.read_on` are the provenance of the
+    step from the asked identifier to it.
     """
 
     value: T
     snapshot_identity: SnapshotIdentity
     source: str
     effects: Sequence[Any] = field(default_factory=tuple)
+    alias: Alias | None = None
 
 
 @functools.cache
@@ -220,9 +260,9 @@ def _field_present(record: Mapping[str, Any], field_name: str) -> bool:
     field reads from at all — checked *before* `_raw_value_for_field` reads it, so a field a
     `rules_overrides` mutation genuinely deleted is reported as missing (`cause="field-absent"`)
     rather than silently read back as `_raw_value_for_field`'s own default (`{}`, `[]`, `None`).
-    `available_to` has no stored field of its own at all (`_raw_value_for_field`'s own docstring:
-    resolving the entity already proves the baseline pack carries it), so it is never reported
-    absent.
+    `available_to` has no stored field of its own at all (its baseline is the civilisation's tree,
+    read by `_tree_membership`, which reports a missing tree itself), so it is never reported
+    absent here.
     """
     if field_name == "cost":
         return "cost" in record
@@ -239,9 +279,30 @@ def _field_present(record: Mapping[str, Any], field_name: str) -> bool:
     raise AssertionError(f"unreachable: unknown field_name {field_name!r}")  # pragma: no cover
 
 
+def _lookup(
+    snap: Snapshot, rules: Mapping[str, Any], entity: EntityRef
+) -> tuple[Mapping[str, Any], Alias | None] | None:
+    """`entity`'s record in `rules` and the alias followed to reach it (T761): the identifier
+    itself when `rules.json` names it, else its target through the snapshot's alias, else `None`.
+    The direct lookup comes first and the alias is consulted only on a miss, so an identifier the
+    pack names is never reported as aliased."""
+    kind_table = rules.get("entities", {}).get(entity.kind, {})
+    record = kind_table.get(entity.id)
+    if record is not None:
+        return record, None
+    alias = snap.alias_for(entity.kind, entity.id)
+    if alias is None:
+        return None
+    target = kind_table.get(alias.target)
+    if target is None:
+        # Only reachable under `rules_overrides`, whose body is not the one the loader validated.
+        return None
+    return target, alias
+
+
 def _resolve_entity(
     entity: EntityRef, *, civilisation: str, field_name: str
-) -> tuple[Snapshot, Mapping[str, Any]] | KnowledgeGap:
+) -> tuple[Snapshot, Mapping[str, Any], Alias | None] | KnowledgeGap:
     """`entity.build` to a promoted snapshot (`snapshot.snapshot_for`, FR-027), then `entity.id`
     within that snapshot's `rules.json` under `entity.kind` — the two steps every query in this
     module shares, whether or not it goes on to be civilisation-qualified.
@@ -250,15 +311,15 @@ def _resolve_entity(
     through only so a `"entity-absent"` gap (data-model.md §7) can name the full FR-035 shape (the
     field the caller actually asked for, and the civilisation the query was qualified by), rather
     than the bare `kind`/`id`/`build` the interim `EntityAbsent` used to carry before T647.
+
+    An identifier `rules.json` does not name resolves through the snapshot's alias, if it has one
+    (T761); the third element of the result is that alias, or `None` for a directly named entity.
     """
     resolved = snapshot.snapshot_for(entity.build)
     if isinstance(resolved, KnowledgeGap):
         return resolved
-    kind_table = (
-        _rules_for(entity.build, resolved.directory).get("entities", {}).get(entity.kind, {})
-    )
-    record = kind_table.get(entity.id)
-    if record is None:
+    found = _lookup(resolved, _rules_for(entity.build, resolved.directory), entity)
+    if found is None:
         return KnowledgeGap(
             cause="entity-absent",
             build=entity.build,
@@ -267,7 +328,42 @@ def _resolve_entity(
             field=field_name,
             civilisation=civilisation,
         )
-    return resolved, record
+    record, alias = found
+    return resolved, record, alias
+
+
+def _baseline_producing_buildings(record: Mapping[str, Any]) -> tuple[str, ...]:
+    """T764: the pack's own producing building as the first (and only) element of the sequence a
+    civilisation effect may extend: `rules.json` carries `produced_at` as one `{kind, id}` table, or
+    `null` for an entity the pack places at no building, which starts the sequence empty. A table
+    that names anything but a building is a defect in the snapshot, not a value to pass on."""
+    stored = record.get("produced_at")
+    if stored is None:
+        return ()
+    if (
+        not isinstance(stored, Mapping)
+        or stored.get("kind") != "building"
+        or not isinstance(stored.get("id"), str)
+    ):
+        raise ValueError(f"rules.json produced_at must be null or a building reference: {stored!r}")
+    return (stored["id"],)
+
+
+def _tree_membership(
+    rules: Mapping[str, Any], civilisation: str, kind: str, entity_id: str
+) -> bool | None:
+    """T763: whether `entity_id` is in `civilisation`'s own tree, or `None` when a second-version
+    `rules.json` carries no tree for that civilisation. A first-version `rules.json` (its
+    `civilisations` is a list of names) carries no tree and so makes no membership claim: `True`,
+    the baseline it has always answered. The two versions are told apart by that shape, which the
+    snapshot loader has checked against the version `snapshot.toml` names."""
+    trees = rules.get("civilisations")
+    if not isinstance(trees, Mapping):
+        return True
+    tree = trees.get(civilisation)
+    if tree is None:
+        return None
+    return entity_id in tree.get(kind, ())
 
 
 def _raw_value_for_field(record: Mapping[str, Any], field_name: str) -> Any:
@@ -277,8 +373,8 @@ def _raw_value_for_field(record: Mapping[str, Any], field_name: str) -> Any:
     necessarily `rules.json`'s own field name, since `production_time` reads whichever of
     `_TIME_FIELDS` the entity actually carries (a unit's `training_time`, a building's
     `construction_time`, a technology's `research_time`) and `available_to` has no stored field of
-    its own at all: resolving the entity in the first place already proves the baseline pack
-    carries it, so the baseline answer is `True` pending an effect that says otherwise.
+    its own at all: its baseline is `True` here, and `_civilisation_qualified` replaces it with the
+    civilisation's tree membership (T763) before any effect is applied.
     """
     if field_name == "cost":
         return record.get("cost", {})
@@ -290,7 +386,7 @@ def _raw_value_for_field(record: Mapping[str, Any], field_name: str) -> Any:
     if field_name == "age_requirement":
         return record.get("age_requirement")
     if field_name == "produced_at":
-        return record.get("produced_at")
+        return _baseline_producing_buildings(record)
     if field_name == "available_to":
         return True
     raise AssertionError(f"unreachable: unknown field_name {field_name!r}")  # pragma: no cover
@@ -311,16 +407,18 @@ def _civilisation_qualified(
     step 1, which remains the correct, honest state research.md D5 requires, not a shortcut this
     function takes.
 
-    `context` (T652u) is threaded straight through to `effects.apply` unread — only `cost` and
-    `production_time` accept it from a caller (contracts/knowledge-base.md, "The query surface");
-    every other query in this module calls this with the default `None`, so a query naming a field
-    no committed effect ever conditions never has to think about it, and `effects.apply` itself is
-    what raises `effects.ContextRequired` if that ever stops being true.
+    `context` (T652u) is threaded straight through to `effects.apply` unread — only `cost`,
+    `production_time`, (T764) `produced_at`, (T763) `available_to` and (T780) `age_requirement`
+    accept it from a caller
+    (contracts/knowledge-base.md, "The query surface"); every other query in this module calls
+    this with the default `None`, so a query naming a field no committed effect ever conditions
+    never has to think about it, and `effects.apply` itself is what raises
+    `effects.ContextRequired` if that ever stops being true.
     """
     resolved = _resolve_entity(entity, civilisation=civilisation, field_name=field_name)
     if not isinstance(resolved, tuple):
         return resolved
-    snap, record = resolved
+    snap, record, alias = resolved
     modelled_civilisations = _civilisations_modelled(snap.directory)
     if civilisation not in modelled_civilisations:
         return KnowledgeGap(
@@ -362,11 +460,29 @@ def _civilisation_qualified(
             civilisation=civilisation,
         )
     baseline = _raw_value_for_field(record, field_name)
+    if field_name == "available_to":
+        member = _tree_membership(
+            _rules_for(entity.build, snap.directory),
+            civilisation,
+            entity.kind,
+            alias.target if alias is not None else entity.id,
+        )
+        if member is None:
+            return KnowledgeGap(
+                cause="field-absent",
+                build=entity.build,
+                entity_kind=entity.kind,
+                entity_id=entity.id,
+                field=field_name,
+                civilisation=civilisation,
+                detail="rules.json carries no tree for this civilisation",
+            )
+        baseline = member
     applied = effects.apply(
         snap.directory,
         civilisation=civilisation,
         kind=entity.kind,
-        id=entity.id,
+        id=alias.target if alias is not None else entity.id,
         field=field_name,
         value=baseline,
         context=context,
@@ -382,11 +498,15 @@ def _civilisation_qualified(
             detail=applied.reason,
         )
     value, applied_effects = applied
+    if field_name == "produced_at":
+        assert isinstance(value, tuple)  # `effects.apply` extends the tuple the baseline started
+        value = tuple(EntityRef(kind="building", id=b, build=entity.build) for b in value)
     return Answer(
         value=value,
         snapshot_identity=snap.identity,
         source=record["table_origin"],
         effects=applied_effects,
+        alias=alias,
     )
 
 
@@ -425,10 +545,23 @@ def production_time(
     )
 
 
-def age_requirement(entity: EntityRef, *, civilisation: str) -> Answer[int] | KnowledgeGap:
+def age_requirement(
+    entity: EntityRef, *, civilisation: str, context: Context | None = None
+) -> Answer[int] | KnowledgeGap:
     """The age id `entity` requires, adjusted for a civilisation whose bonus moves it (research.md
-    D5: e.g. Burgundians' and Armenians' early-technology bonuses)."""
-    return _civilisation_qualified(entity, civilisation=civilisation, field_name="age_requirement")
+    D5: e.g. Burgundians' and Armenians' early-technology bonuses).
+
+    `context` (T780, FR-022e) is the match state a **conditional** effect needs: an age requirement
+    a bonus moves only while some count of buildings is controlled (the Cumans' additional Town
+    Center), or only for a researched technology or an ally. A query on an entity no conditional
+    effect touches ignores it and answers as it did before it existed; one that reaches a
+    conditional effect without the input that decides it raises `effects.ContextRequired`, as
+    `cost` does. An unmodelled civilisation in `context.team` refuses the query, naming the
+    teammate (step 1 of "Civilisation qualification"). See `cost`'s own docstring.
+    """
+    return _civilisation_qualified(
+        entity, civilisation=civilisation, field_name="age_requirement", context=context
+    )
 
 
 def prerequisites(
@@ -444,21 +577,46 @@ def prerequisites(
     return _civilisation_qualified(entity, civilisation=civilisation, field_name="prerequisites")
 
 
-def produced_at(entity: EntityRef, *, civilisation: str) -> Answer[EntityRef] | KnowledgeGap:
-    """The building `entity` is trained or researched at."""
-    return _civilisation_qualified(entity, civilisation=civilisation, field_name="produced_at")
+def produced_at(
+    entity: EntityRef, *, civilisation: str, context: Context | None = None
+) -> Answer[Sequence[EntityRef]] | KnowledgeGap:
+    """Every building `entity` is trained or researched at, for `civilisation` (T764): the pack's
+    own building first, then each building a civilisation effect adds, in the order those effects
+    apply (file order), each building once. An entity the pack places at no building and that no
+    effect places answers the empty sequence. Each element is an `EntityRef` of kind `"building"`
+    in the entity's own build.
 
-
-def available_to(entity: EntityRef, *, civilisation: str) -> Answer[bool] | KnowledgeGap:
-    """Whether `civilisation` can build, train or research `entity` at all.
-
-    Civilisation-qualified for the same reason cost and time are (research.md D5): which units,
-    buildings and technologies a civilisation has access to is itself a per-civilisation fact that
-    `rules.json`'s flattened, cross-civilisation baseline does not carry on its own, so this
-    refuses under the identical conservative rule rather than guessing from the baseline entity's
-    mere presence.
+    `context` is the match state a **conditional** addition needs (Goths' Anarchy is conditional on
+    a researched technology); see `cost`'s own docstring for when it is ignored versus required.
     """
-    return _civilisation_qualified(entity, civilisation=civilisation, field_name="available_to")
+    return _civilisation_qualified(
+        entity, civilisation=civilisation, field_name="produced_at", context=context
+    )
+
+
+def available_to(
+    entity: EntityRef, *, civilisation: str, context: Context | None = None
+) -> Answer[bool] | KnowledgeGap:
+    """Whether `civilisation` can build, train or research `entity` at all (T763).
+
+    Civilisation-qualified for the same reason cost and time are (research.md D5), and a
+    civilisation not modelled refuses under the identical conservative rule. The baseline is
+    membership: whether the entity is in the civilisation's own tree, which a second-version
+    snapshot's `rules.json` carries (`normalise.py`). A civilisation effect then sets it, `true` or
+    `false`, under any condition `context` can decide, so a substitution, an unlock and a removal
+    are rows.
+
+    **A first-version snapshot makes no membership claim.** Its `rules.json` carries no tree, so
+    it answers `True` for any entity it resolves, exactly as it did before the tree existed: what an
+    installed snapshot's identity pins includes what it answers (SC-005), and a published analysis
+    must reproduce. A second-version snapshot whose tree does not name a modelled civilisation
+    gaps, `field-absent`; it never falls back to that `True`.
+
+    `context` is the match state a conditional effect needs; see `cost`'s own docstring.
+    """
+    return _civilisation_qualified(
+        entity, civilisation=civilisation, field_name="available_to", context=context
+    )
 
 
 def name(entity: EntityRef) -> Answer[str] | KnowledgeGap:
@@ -468,15 +626,16 @@ def name(entity: EntityRef) -> Answer[str] | KnowledgeGap:
     than a bare id") rather than gapping — contracts/knowledge-base.md, "Civilisation
     qualification": "it never gaps an analysis". A build with no promoted snapshot still gaps, with
     `cause="no-snapshot-for-build"` (the only cause this function can actually produce): there is
-    no snapshot to even attempt a lookup against.
+    no snapshot to even attempt a lookup against. An identifier the pack does not name but the
+    snapshot aliases (T761) answers the target's name, with `Answer.alias` set.
     """
     resolved = snapshot.snapshot_for(entity.build)
     if isinstance(resolved, KnowledgeGap):
         return resolved
-    kind_table = _rules(resolved.directory).get("entities", {}).get(entity.kind, {})
-    record = kind_table.get(entity.id)
+    found = _lookup(resolved, _rules(resolved.directory), entity)
+    record, alias = found if found is not None else (None, None)
     display_name = record.get("name") if record is not None else None
-    if not display_name:
+    if record is None or not display_name:
         return Answer(
             value=entity.id,
             snapshot_identity=resolved.identity,
@@ -488,4 +647,5 @@ def name(entity: EntityRef) -> Answer[str] | KnowledgeGap:
         snapshot_identity=resolved.identity,
         source=record["table_origin"],
         effects=(),
+        alias=alias,
     )

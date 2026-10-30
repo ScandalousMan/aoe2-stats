@@ -1,12 +1,14 @@
-"""T746 / SC-005: an analysis published under a superseded knowledge snapshot still reproduces.
+"""T746 / T767 / T768 / T769 / T770 / SC-005: an analysis published under a superseded knowledge
+snapshot still reproduces.
 
 A promoted snapshot is never edited (FR-025), so build 185872's civilisations were modelled in a
-second snapshot that names the digest it supersedes. Resolution by build now answers the second;
-the analyses published before it name the first, and `reproduce` must still rebuild exactly those
+second snapshot that names the digest it supersedes (T746), twelve more in a third (T767) and
+twelve more in a fourth (T768). Resolution by build now answers the fourth; the analyses published
+before it name the first, the second or the third, and `reproduce` must still rebuild exactly those
 bytes from the identity they recorded - not the current snapshot's answer (FR-038).
 
-The "published" analysis is built with the first snapshot pinned, which is what the build resolved
-to when it was published. The contrast cases prove the two snapshots genuinely differ for this
+The "published" analysis is built with the superseded snapshot pinned, which is what the build
+resolved to when it was published. The contrast cases prove the snapshots genuinely differ for this
 recording, so the equality below is not a vacuous one.
 """
 
@@ -36,6 +38,11 @@ _KEY = f"retained-recordings/{_GAME_ID}/5632575.zip"
 _BUILD = 185872
 _MAX_RAW_BYTES = 25_165_824  # `.env.example`'s ANALYSIS_MAX_RAW_BYTES
 _FIRST_DIGEST = "sha256:1c77d7cb5034b48dcb15641370512854a222d5f7d40baaa6129fb1b1c56fca5a"
+_SECOND_DIGEST = "sha256:becd35a158dafb72c304aeb07bae66347b4442f62d209d8cedb23d0c1f34f004"
+_THIRD_DIGEST = "sha256:a4f213b6e84f90ee88a916929a136165c3979f214a191556877669dd0a92b4db"
+_FOURTH_DIGEST = "sha256:c24448836cade9ff724ac32935a52280a447df7278cb8cfe3f7cecd58dbf37ae"
+_FIFTH_DIGEST = "sha256:93d084ea8886b4c2d98f67a7f02524f107ffab3c3bcb29142389ceac226dc263"
+_SUPERSEDED_DIGESTS = (_FIRST_DIGEST, _SECOND_DIGEST, _THIRD_DIGEST, _FOURTH_DIGEST, _FIFTH_DIGEST)
 
 
 @pytest.fixture(autouse=True)
@@ -76,9 +83,13 @@ def _build(extractor: Aoe2RecExtractor, zip_bytes: bytes) -> dict[str, Any]:
     )
 
 
+def _snapshot_by_digest(digest: str) -> snapshot.Snapshot:
+    (found,) = (s for s in snapshot.load_all_snapshots() if s.identity.digest == digest)
+    return found
+
+
 def _first_snapshot() -> snapshot.Snapshot:
-    (first,) = (s for s in snapshot.load_all_snapshots() if s.identity.digest == _FIRST_DIGEST)
-    return first
+    return _snapshot_by_digest(_FIRST_DIGEST)
 
 
 @pytest.fixture(scope="module")
@@ -91,16 +102,21 @@ def extractor() -> Aoe2RecExtractor:
     return Aoe2RecExtractor(max_raw_bytes=_MAX_RAW_BYTES)
 
 
-async def test_an_analysis_published_under_the_superseded_snapshot_reproduces_byte_for_byte(
-    zip_bytes: bytes, extractor: Aoe2RecExtractor
+@pytest.mark.parametrize(
+    "superseded_digest", _SUPERSEDED_DIGESTS, ids=["first", "second", "third", "fourth", "fifth"]
+)
+async def test_an_analysis_published_under_a_superseded_snapshot_reproduces_byte_for_byte(
+    superseded_digest: str, zip_bytes: bytes, extractor: Aoe2RecExtractor
 ) -> None:
-    with snapshot.pinned_snapshot(_first_snapshot()):
+    with snapshot.pinned_snapshot(_snapshot_by_digest(superseded_digest)):
         published = _build(extractor, zip_bytes)
     identity = AnalysisIdentity.from_block(published["identity"])
-    assert identity.knowledge["digest"] == _FIRST_DIGEST
+    assert identity.knowledge["digest"] == superseded_digest
     current = snapshot.snapshot_for(_BUILD)
     assert isinstance(current, snapshot.Snapshot)
-    assert current.identity.digest != _FIRST_DIGEST, "the build must have moved on to a newer one"
+    assert current.identity.digest not in _SUPERSEDED_DIGESTS, (
+        "the build must have moved on to a newer one"
+    )
 
     reproduced = await reproduce(
         identity, object_store=_Store({_KEY: zip_bytes}), extractor=extractor
@@ -126,6 +142,29 @@ async def test_the_build_now_resolves_to_another_snapshot_so_the_equality_is_not
     current_causes = [g["cause"] for g in current["knowledge_gaps"]]
     assert "civilisation-not-modelled" in first_causes
     assert "civilisation-not-modelled" not in current_causes
+
+
+async def test_the_second_snapshot_reported_a_gate_gap_the_third_closes(
+    zip_bytes: bytes, extractor: Aoe2RecExtractor
+) -> None:
+    """T767: the recording places building 490, which the pack does not name. Under the second
+    snapshot that is an `entity-absent` gap for the Sicilians; the third carries the alias
+    (FR-022d) that makes it the pack's Gate, so the same recording reports no `entity-absent` gap
+    for it."""
+    with snapshot.pinned_snapshot(_snapshot_by_digest(_SECOND_DIGEST)):
+        published = _build(extractor, zip_bytes)
+    current = _build(extractor, zip_bytes)
+
+    def gate_gaps(document: dict[str, Any]) -> list[dict[str, Any]]:
+        return [
+            gap
+            for gap in document["knowledge_gaps"]
+            if gap["entity"] == {"kind": "building", "id": "490"}
+        ]
+
+    assert gate_gaps(published), "the second snapshot must report building 490 as a gap"
+    assert {gap["cause"] for gap in gate_gaps(published)} == {"entity-absent"}
+    assert "entity-absent" not in {gap["cause"] for gap in gate_gaps(current)}
 
 
 async def test_an_identity_naming_neither_snapshot_is_still_refused(

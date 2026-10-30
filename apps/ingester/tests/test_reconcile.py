@@ -1,7 +1,7 @@
 """Integration test (T054a) for `aoe2stats_ingester.reconcile`'s 25-day reconciliation sweep — the
-mechanism the whole 21-day capture budget is sized around (research.md §6: "reconcile the last 25
+mechanism the whole 18-day capture budget is sized around (research.md §6: "reconcile the last 25
 days"), and the edge case spec.md names it to absorb: "the match discovery source is unreachable
-for several days: capture must catch up automatically, and the 21-day budget must absorb the outage
+for several days: capture must catch up automatically, and the 18-day budget must absorb the outage
 without loss" (FR-013, FR-014).
 
 T043 (`test_backfill.py`) covers the other half of T054, the 31-day backfill a fresh link asks for
@@ -71,10 +71,10 @@ if TYPE_CHECKING:
 
 XFAIL_REASON = "T054 not implemented yet"
 
-#: Mirrors `.env.example`'s `CAPTURE_BUDGET_DAYS=21`. Passed explicitly to the stage under test
+#: Mirrors `.env.example`'s `CAPTURE_BUDGET_DAYS=18`. Passed explicitly to the stage under test
 #: rather than read from `Settings` — see the module docstring on why `apps/ingester` takes its
 #: tuning knobs as plain parameters, the same way `run_once(budget_seconds)` does.
-CAPTURE_BUDGET_DAYS = 21
+CAPTURE_BUDGET_DAYS = 18
 
 
 class FakeMatchHistoryProvider:
@@ -191,7 +191,7 @@ async def test_reconciliation_sweep_recovers_every_match_missed_during_a_multi_d
     """`ProviderUnavailable` for three consecutive cycles, with matches completing throughout —
     the fourth, once the source is reachable again, must discover **every** one of them and
     enqueue a capture for each, none of them already past `capture_deadline_at` (FR-013, FR-014):
-    a three-day outage against a 21-day budget still leaves ~18 days of margin, which is the whole
+    a three-day outage against an 18-day budget still leaves ~15 days of margin, which is the whole
     point of sizing the budget the way it is.
     """
     now = datetime.now(UTC)
@@ -252,7 +252,7 @@ async def test_reconciliation_sweep_recovers_every_match_missed_during_a_multi_d
         assert capture.source == CaptureSource.AUTOMATIC
         expected_deadline = raw.completed_at + timedelta(days=CAPTURE_BUDGET_DAYS)
         assert abs((capture.capture_deadline_at - expected_deadline).total_seconds()) < 1
-        # The whole point of the 21-day budget against a 25-day sweep and a several-day outage:
+        # The whole point of the 18-day budget against a 25-day sweep and a several-day outage:
         # nothing the sweep recovers here has already breached its own capture deadline.
         assert capture.capture_deadline_at > datetime.now(UTC)
 

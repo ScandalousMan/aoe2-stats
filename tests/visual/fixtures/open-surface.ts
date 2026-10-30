@@ -8,7 +8,9 @@
 // - `Dialog` (`packages/design-system/src/primitives/Dialog`): focus moves into the dialog on open;
 //   Tab cycles through its focusable elements and wraps from the last back to the first, Shift+Tab
 //   from the first wraps to the last (FR-049's "a trap outside a modal surface that defines its own"
-//   — here the modal *defines* one, so it is asserted present rather than absent); Escape closes it.
+//   — here the modal *defines* one, so it is asserted present rather than absent); Escape closes it
+//   — except while its secondary action is unavailable (`disabled` or `loading`, a request in
+//   flight), when Escape does nothing and the dialog stays open (shared-primitives.md#Dialog, T750).
 // - `Menu` (`packages/design-system/src/primitives/Menu`): focus moves to an item on open; exactly
 //   one item is a Tab stop (roving tabindex); Home, ArrowDown and ArrowUp visit every item once, in
 //   order, wrapping at both ends; Escape closes the menu and returns focus to its trigger.
@@ -45,6 +47,11 @@ export interface SurfaceWalk {
   itemCount: number
   /** Whether focus was already inside the surface the moment it opened. */
   focusInsideOnOpen: boolean
+  /** `dialog` only: the `kbdId` of the item holding focus when the walk began, or `null` when focus
+   * was on the heading (or anywhere that is not one of the items). A dialog whose request is in
+   * flight starts on the control that was pressed (T751), so the walk cannot assume the heading.
+   * Always `null` for a menu, whose walk starts at its first item (Home). */
+  startId: string | null
   /** `menu` only: how many items carry `tabindex="0"` — the roving-tabindex contract says one. */
   rovingTabStops: number
   /** One stop per item, in the order the surface's own keys visited them. For a `dialog` this is
@@ -55,6 +62,13 @@ export interface SurfaceWalk {
   reverseStop: TabStop | null
   /** Whether the surface was gone after Escape. */
   closedByEscape: boolean
+  /** `dialog` only: whether the dialog's secondary action was unavailable when Escape was pressed
+   * — natively `disabled`, or `aria-disabled="true"` as a `loading` `Button` is. The secondary
+   * action is the dialog's second action-row button, found by DOM position: the last `button` in
+   * the dialog, when the `button` just before it is its sibling (`Dialog` renders the primary
+   * first). A dialog without such a pair, and every menu, reads `false`; a dialog that renders its
+   * actions in the other order reads its primary as the secondary. */
+  secondaryUnavailable: boolean
   /** `menu` only: whether focus is back on the surface's own trigger after Escape. */
   focusReturnedToTrigger: boolean
 }
@@ -95,7 +109,8 @@ async function isInside(page: Page, surface: string): Promise<boolean> {
 
 /** Walks the one `Menu` or `Dialog` currently open. The caller has already opened it *by keyboard*
  * (`tabTo` + Enter, see `app-routes-harness.ts`'s scenarios) and calls this with the surface on
- * screen; it leaves the surface closed, so it must be the last thing a test does with the page. */
+ * screen; it presses Escape last, which closes the surface — except a dialog whose secondary action
+ * is unavailable, which stays open — so it must be the last thing a test does with the page. */
 export async function walkOpenSurface(page: Page, kind: SurfaceKind): Promise<SurfaceWalk> {
   const surface = SURFACE_SELECTOR[kind]
   await page.locator(surface).waitFor({ state: 'visible' })
@@ -108,6 +123,12 @@ export async function walkOpenSurface(page: Page, kind: SurfaceKind): Promise<Su
   )
   const rovingTabStops =
     kind === 'menu' ? await page.locator(`${surface} ${MENU_ITEM}[tabindex="0"]`).count() : 0
+
+  // Where a dialog's focus is before the first Tab: an item's stamp, or null on the heading.
+  const startId =
+    kind === 'dialog'
+      ? await page.evaluate(() => document.activeElement?.getAttribute('data-kbd-walk-id') ?? null)
+      : null
 
   const steps: TabStop[] = []
   let reverseStop: TabStop | null = null
@@ -130,15 +151,22 @@ export async function walkOpenSurface(page: Page, kind: SurfaceKind): Promise<Su
     await pressAndSettle(page, 'ArrowUp')
     reverseStop = await readFocusedStop(page, surface)
   } else {
-    // The dialog opened with focus on its heading (not a candidate itself); N+1 Tab presses visit
-    // every focusable once and then wrap.
+    // N+1 Tab presses from wherever focus is (the heading, which is not a candidate itself, or an
+    // item): every focusable once, then the wrap. `assertSurfaceKeyboard` reads the order from
+    // `startId`.
     for (let i = 0; i < itemCount + 1; i += 1) {
       await page.keyboard.press('Tab')
       const stop = await readFocusedStop(page, surface)
       if (stop === null) break
       steps.push(stop)
     }
-    // Back to the first item (the wrap), then one step backwards must land on the last.
+    // Onto the first item (Tab on from wherever the walk ended, a no-op when it ended there: from a
+    // start other than the last item the walk's last stop is not item 0), then one step backwards
+    // must wrap to the last. The extra presses record nothing.
+    for (let i = 0; i < itemCount; i += 1) {
+      if ((await readFocusedStop(page, surface))?.kbdId === '0') break
+      await page.keyboard.press('Tab')
+    }
     await page.keyboard.press('Shift+Tab')
     reverseStop = await readFocusedStop(page, surface)
   }
@@ -153,6 +181,16 @@ export async function walkOpenSurface(page: Page, kind: SurfaceKind): Promise<Su
       trigger?.setAttribute('data-kbd-menu-trigger', '')
       return trigger !== null
     }))
+
+  const secondaryUnavailable =
+    kind === 'dialog' &&
+    (await page.evaluate((surfaceSelector) => {
+      const buttons = document.querySelectorAll<HTMLButtonElement>(`${surfaceSelector} button`)
+      const last = buttons.item(buttons.length - 1) as HTMLButtonElement | null
+      return last !== null && last.previousElementSibling instanceof HTMLButtonElement
+        ? last.disabled || last.getAttribute('aria-disabled') === 'true'
+        : false
+    }, surface))
 
   await page.keyboard.press('Escape')
   const closedByEscape = (await page.locator(surface).count()) === 0
@@ -171,10 +209,12 @@ export async function walkOpenSurface(page: Page, kind: SurfaceKind): Promise<Su
     kind,
     itemCount,
     focusInsideOnOpen,
+    startId,
     rovingTabStops,
     steps,
     reverseStop,
     closedByEscape,
+    secondaryUnavailable,
     focusReturnedToTrigger,
   }
 }
@@ -203,13 +243,18 @@ export function assertSurfaceKeyboard(walk: SurfaceWalk, context: string): void 
   ).toBe(0)
 
   const ids = steps.map((step) => step.kbdId)
-  const inOrder = Array.from({ length: itemCount }, (_, index) => String(index))
-  // Both surfaces end their walk on one extra stop: the wrap back to the first item.
-  const expected = [...inOrder, '0']
+  // The walk starts on the heading (`startId` null: before item 0) or on an item, and each key
+  // moves to the next item, wrapping at the end; N+1 keys visit every item once and then repeat the
+  // first stop reached. From the heading that is [0 .. N-1, 0].
+  const first = walk.startId === null ? 0 : (Number(walk.startId) + 1) % itemCount
+  const expected = Array.from({ length: itemCount + 1 }, (_, index) =>
+    String((first + index) % itemCount),
+  )
+  const from = walk.startId === null ? 'the heading' : `item #${walk.startId}`
   expect(
     ids,
     `${context}: the ${kind}'s keys visited [${ids.join(', ')}] but its contract is ` +
-      `[${expected.join(', ')}] — every item once, in order, then a wrap to the first`,
+      `[${expected.join(', ')}] — every item once, in order, then a wrap to the first, from ${from}`,
   ).toEqual(expected)
 
   expect(
@@ -228,7 +273,17 @@ export function assertSurfaceKeyboard(walk: SurfaceWalk, context: string): void 
       `${context}: Escape did not return focus to the menu's trigger`,
     ).toBe(true)
   }
-  expect(walk.closedByEscape, `${context}: Escape did not close the ${kind}`).toBe(true)
+  if (walk.secondaryUnavailable) {
+    // The decided behaviour (T750): the key bound to an unavailable action does nothing, so the
+    // dialog stays open until the caller makes it available again.
+    expect(
+      walk.closedByEscape,
+      `${context}: Escape closed the ${kind} while its secondary action was unavailable (disabled or ` +
+        `loading) — it must do nothing until the caller makes it available again`,
+    ).toBe(false)
+  } else {
+    expect(walk.closedByEscape, `${context}: Escape did not close the ${kind}`).toBe(true)
+  }
 }
 
 /** The surface walk's stops, minus the one extra wrap stop, for the focus-ring and touch-footprint

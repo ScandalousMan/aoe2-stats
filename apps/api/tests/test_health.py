@@ -34,7 +34,7 @@ from aoe2stats_storage.revision import EXPECTED_SCHEMA_REVISION
 
 pytestmark = pytest.mark.usefixtures("environment")
 
-#: Below this length, or purely numeric (`CAPTURE_BUDGET_DAYS=21`,
+#: Below this length, or purely numeric (`CAPTURE_BUDGET_DAYS=18`,
 #: `AOEMS_MAX_REQUESTS_PER_SECOND=1`, ...), a `required_env` value is common enough — a status
 #: code, a list length, a count — that asserting its absence from a JSON body would be asserting
 #: nothing in particular and would eventually fail on an unrelated coincidence. The values this

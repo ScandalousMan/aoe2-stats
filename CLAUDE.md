@@ -25,7 +25,8 @@ history, and automatic replay archival.
 
 ## Why the architecture looks like this
 
-The Microsoft replay retention window is about 31 days. An uncaptured replay is lost forever, so
+The Microsoft replay retention window is under a month, and it moves (`docs/data-sources.md` §2
+holds the current measurement). An uncaptured replay is lost forever, so
 ingestion and raw archival ship in the MVP while parsing and analysis wait for V2.
 
 - `docs/data-sources.md` — every external source, measured, with its traps
@@ -58,7 +59,7 @@ contract tests, and a package-local fact needs its own — the contrast table is
 
 **Never copy a measurement between them.** A number that exists in two files will be wrong in one of
 them. Skills and specs reference `docs/`; they do not restate it. Repeating a _constraint_ where it
-governs a decision — the 21-day capture budget appears wherever something depends on it — is
+governs a decision — the 18-day capture budget appears wherever something depends on it — is
 different and correct.
 
 ## Workflow

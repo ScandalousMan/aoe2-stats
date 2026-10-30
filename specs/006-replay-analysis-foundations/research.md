@@ -32,7 +32,7 @@ an existing analysis. D9 resolves it without touching 003's primary key.
 **Decision.** The starting state is re-classified from _unreadable_ to **decodable by a
 repository-local decoder, not yet built**. This feature records that in the register, reserves the
 vocabulary for it (FR-020), and corrects the documents that say otherwise. The decoder itself is the
-first work item of feature 007, where its only consumer lives.
+first work item of feature 008, where its only consumer lives.
 
 **What was measured**, against the committed fixture, with nothing installed:
 
@@ -69,9 +69,9 @@ be ported from an existing open grammar, not derived from zero.
 **Alternatives rejected.** Taking the fork as a runtime dependency trades a six-month outage risk
 for a smaller one carried by one person. Building Tier A inside this feature was rejected because a
 decoder with no consumer can only be golden-tested against the value everyone already expects, which
-proves the anchor and not the semantics; 007 consumes it on day one.
+proves the anchor and not the semantics; 008 consumes it on day one.
 
-**What this does to feature 007's scope.** The income side is in scope: its initial condition is
+**What this does to feature 008's scope.** The income side is in scope: its initial condition is
 Tier A plus the knowledge base. Start positions and the small starting object set are in scope at
 medium confidence. The map's resource geometry, and with it exploration, vision and map control,
 stay deferred — but as _decodable at a stated cost_, which is a different register entry from
@@ -80,7 +80,7 @@ _not determinable_, and the register is the one place that distinction has to be
 **Unsettled, and what settles it.** Whether the fork and the fast parser actually walk _this_
 fixture's object table was not run, because it needs a throwaway environment. It is one short
 script, and its assertion must be on object count and coordinate range, since the fast parser's scan
-returns an empty list rather than raising. It belongs to 007's Phase 0, not here.
+returns an empty list rather than raising. It belongs to 008's Phase 0, not here.
 
 ## D2 — The second reference recording is committed, as served
 
@@ -211,7 +211,7 @@ silent substitution FR-027 and FR-038 both prohibit, moved from a value to a ver
 by hand from the English strings that ship in the MIT pack, each carrying the verbatim sentence it
 was transcribed from, the transcriber's reading of its scope, and its validation. The first snapshot
 models every civilisation that appears in a committed reference recording. For any other
-civilisation, a civilisation-qualified cost or time query records a gap and returns nothing.
+civilisation, a civilisation-qualified query records a gap and returns nothing.
 
 **Why this is forced, not chosen.** No lawful, vendorable source carries civilisation-specific
 values: aoe2techtree exports the baseline civilisation only, and its per-civilisation metadata is
@@ -224,8 +224,8 @@ else surface as a gap.
 
 **The conservative rule, stated once.** For a civilisation whose bonus set is not modelled, the
 knowledge base cannot know _which_ fields a bonus touches, so it refuses **every**
-civilisation-qualified cost and time for that civilisation. Coverage therefore grows by whole
-civilisations, and the aggregate gap report (FR-039) is the backlog.
+civilisation-qualified query for that civilisation, whatever its field. Coverage therefore grows by
+whole civilisations, and the aggregate gap report (FR-039) is the backlog.
 
 **A conditional bonus is a rule, and is modelled.** A bonus whose magnitude depends on the age, on
 a technology the player has researched, or on being on the owner's team carries that condition, and
@@ -251,6 +251,14 @@ the caller supplies (FR-022e), as an age or a researched technology already is. 
 bonus ("Infantry", "Gunpowder Units") is still never a selector: its members are resolved from what
 the pack states and listed, and a member the pack does not settle goes to a person, not to a guess.
 
+_Amended 2026-10-23, at the repository owner's arbitration (T769's hand-back)._ A civilisation's
+bonus is a fact, and the effect model carries it. A bonus the model cannot express is never a
+`modelled: no` row for that reason: the model is widened (T780, T781) and the bonus is modelled.
+The Cumans' additional Town Center in the Feudal Age, Cuman Mercenaries and Berbers' Kasbah were
+refused because `age_requirement` took no context and an effect carried one condition; both limits
+go. What stays refused is unchanged: an amount or a scope no referenced source and no reading of the
+game settles (FR-022b), and a bonus on a field this knowledge base does not carry.
+
 ## D6 — The register is TOML inside the package that enforces it
 
 **Decision.** `packages/core/src/aoe2stats_core/truth/register.toml` is the single source. The
@@ -273,9 +281,9 @@ blocked or non-determinable declares, in its required knowledge, the field the g
 it is **informational**.
 
 **Why this needed deciding.** FR-037 defines blocking as "a publishable value depends on it". Nothing
-this feature publishes depends on a cost — reconstruction is 007. Read naively, every gap in 006
+this feature publishes depends on a cost — reconstruction is 008. Read naively, every gap in 006
 would be informational and SC-007a would pass vacuously. But FR-005 already requires the register to
-cover what 007 intends to publish, and FR-002 requires each entry to state the knowledge it needs. So
+cover what 008 intends to publish, and FR-002 requires each entry to state the knowledge it needs. So
 the dependency graph exists as data, and severity falls out of it mechanically. This also makes
 SC-007a a real test on day one: the coverage pass asks, for every entity and civilisation in the
 canonical stream, for every field some register entry requires.
@@ -308,7 +316,7 @@ the digest: today a published row is stale only when the parser changes, so with
 knowledge version would never trigger the recompute this decision exists to preserve.
 
 Reconstruction and analytics versions are part of the identity from the start and carry an explicit
-_not applicable_ marker until 007 ships, so the tuple's shape never changes (FR-040, and the reason
+_not applicable_ marker until 008 ships, so the tuple's shape never changes (FR-040, and the reason
 US6 is specified now).
 
 **The dependency record (FR-044)** is populated from installed distribution metadata for the engine
@@ -337,7 +345,7 @@ what FR-021 now says: no second copy, and nothing retained past the fold. **The 
 proves only that the new entry point refuses the same inputs. A real peak-memory measurement over
 both fixtures is added beside it, because this feature puts three accumulators on that path and the
 second recording's object-id space is several times the first's. Whether the stream is _persisted_ is settled here as **no**: it is recomputable from the
-retained recording by a versioned tool, which is principle IV's definition of disposable, and 007
+retained recording by a versioned tool, which is principle IV's definition of disposable, and 008
 consumes it in-process.
 
 **Collapse (FR-018).** Only research, age-up and resignation collapse, first occurrence over the
@@ -400,8 +408,8 @@ states what exists and leaves the open item where it is.
 
 ## What remains unknown
 
-- Whether either external parser walks this fixture's object table (D1) — 007's Phase 0.
-- The meaning of most indices in the per-player attribute array beyond the first four — 007.
+- Whether either external parser walks this fixture's object table (D1) — 008's Phase 0.
+- The meaning of most indices in the per-player attribute array beyond the first four — 008.
 - Whether the second recording can still be re-fetched as served (D2) — only the person who supplied
   it knows, and the source's window is closing.
 - Whether any current-patch recording from an unranked or custom game carries the post-game block.

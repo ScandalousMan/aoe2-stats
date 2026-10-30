@@ -58,9 +58,11 @@ _RECORDINGS = ((500_546_441, 180059), (511_523_321, 185872))
 
 _PROMOTED_BUILDS = (180059, 185872)
 
-#: Neither promoted snapshot carries this building (the 185872 recording builds it: an
-#: age-upgraded visual variant), so it must stay unresolved while its neighbours resolve.
-_ID_OUTSIDE_THE_SNAPSHOT = 490
+#: No promoted snapshot names or aliases this building, so it must stay unresolved while its
+#: neighbours resolve. (Building 490 was this id until T767 and T773: the current snapshots of
+#: builds 185872 and 180059 now alias it to the Gate, and `test_a_transcribed_alias_is_named` below
+#: says so.)
+_ID_OUTSIDE_THE_SNAPSHOT = 99_999
 
 
 def _knowledge_identity(build: int) -> dict[str, Any]:
@@ -132,6 +134,57 @@ def test_an_id_outside_the_snapshot_is_left_out_while_its_neighbour_resolves(bui
 
     assert str(_ID_OUTSIDE_THE_SNAPSHOT) not in names["building"]
     assert names["building"]["70"] == "House"
+
+
+#: The first snapshot of build 180059, which the current one (T773) supersedes: it carries no alias.
+_SUPERSEDED_180059_DIGEST = (
+    "sha256:6167f0b69be56d7a33803d29a060b9f29f34c917073eb970ccccc1c206c6b81a"
+)
+
+
+def _knowledge_identity_of_digest(digest: str, build: int) -> dict[str, Any]:
+    # Build 177723's snapshot repeats build 180059's content, so the digest alone names two.
+    (snapshot,) = (
+        s
+        for s in load_resolvable_snapshots()
+        if s.identity.digest == digest and s.identity.describes_build == build
+    )
+    identity = snapshot.identity
+    return {
+        "source": identity.source,
+        "source_version": identity.source_version,
+        "describes_build": identity.describes_build,
+        "digest": identity.digest,
+    }
+
+
+def _building_names_served_under(knowledge: dict[str, Any], building_id: int) -> dict[str, Any]:
+    document = _document(knowledge)
+    document["participants"][0]["builds"].append(
+        {"building_id": building_id, "world_time_ms": 4000}
+    )
+    names: dict[str, Any] = _served_names(with_names(_stored(document)))["building"]
+    return names
+
+
+def test_a_transcribed_alias_is_named_by_the_snapshot_that_carries_it_not_the_replaced_one() -> (
+    None
+):
+    """T767, T773 (FR-022d): building 490 is "Gate" in `aoc-reference-data`'s `objects`; the current
+    snapshots of builds 185872 (T767) and 180059 (T773) alias it to the pack's Gate, so the name
+    resolves under both. A document whose knowledge identity is the superseded first snapshot of
+    build 180059 (it carries no alias) is served no name for it."""
+    current_180059 = _knowledge_identity(180059)
+    assert current_180059["digest"] != _SUPERSEDED_180059_DIGEST
+
+    assert _building_names_served_under(_knowledge_identity(185872), 490).get("490") == "Gate"
+    assert _building_names_served_under(current_180059, 490).get("490") == "Gate"
+
+    superseded = _knowledge_identity_of_digest(_SUPERSEDED_180059_DIGEST, 180059)
+    assert superseded["describes_build"] == 180059
+    served = _building_names_served_under(superseded, 490)
+    assert "490" not in served
+    assert served["70"] == "House"
 
 
 @pytest.mark.parametrize("build", _PROMOTED_BUILDS)

@@ -363,3 +363,25 @@ describe('PrivacyNotice — the processing register link', () => {
     expect(link).toHaveClass('active:decoration-2')
   })
 })
+
+// docs/data-sources.md §2: the source's retention window is rolling and differs per profile, so a
+// number of days written into the copy would be a copied measurement that goes stale.
+describe('PrivacyNotice — the retention window names no number of days', () => {
+  it('states the deletion without a figure', () => {
+    render(<PrivacyNotice lastUpdated="2026-08-30" hrefs={hrefs} />)
+    // Scoped to the paragraph that states the deletion: the notice elsewhere names a number of
+    // days that is the product's own commitment (the 30-day response to an objection).
+    const paragraph = screen.getByText(/deletes your replay files some weeks after the match/)
+    expect(paragraph.textContent).not.toMatch(/\b\d+[\s-]*days?\b/i)
+    expect(paragraph.textContent ?? '').not.toMatch(/months?/i)
+  })
+
+  it('states the retained recording\'s deletion without "about a month"', () => {
+    render(<PrivacyNotice lastUpdated="2026-08-30" hrefs={hrefs} />)
+    const paragraph = screen.getByText(/we keep the recording the analysis was computed from/)
+    expect(paragraph.textContent).toContain('deletes its own copy some weeks after the match')
+    expect(paragraph.textContent).not.toMatch(/about a month/i)
+    expect(paragraph.textContent).not.toMatch(/\b\d+[\s-]*days?\b/i)
+    expect(paragraph.textContent ?? '').not.toMatch(/months?/i)
+  })
+})

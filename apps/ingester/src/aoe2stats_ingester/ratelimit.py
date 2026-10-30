@@ -26,7 +26,7 @@ budget is 21 days; there is always tomorrow."):
   `AlertSink.write` takes a plain `str`, `apps/ingester` needs no dependency on `aoe2stats_storage`
   merely to spell a string it hands to `raise_alert`, and `packages/core/tests/test_alerting.py`
   already establishes this as the pattern every alert producer follows). Severity 2 and not 1:
-  being throttled costs a cycle, and against a 21-day capture budget there is always tomorrow — the
+  being throttled costs a cycle, and against an 18-day capture budget there is always tomorrow — the
   nightly alert audit (T061) fails the build only on an unacknowledged severity-1 row, and a source
   that is merely being polite must not stop the CI that watches for actual loss.
 - `drain_with_rate_limit_guard` — the reusable shape of "stop the whole run, not just the one

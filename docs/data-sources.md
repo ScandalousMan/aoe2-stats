@@ -8,6 +8,9 @@ restates them — `.claude/skills/aoe2-data-sources/SKILL.md` carries the rules 
 every number, so there is nothing to keep in sync. When a nightly contract test fails, correct this
 file first: it is what the next person will trust.
 
+Looking for what a human reads rather than what the product calls? This file records what the
+product calls; [`docs/reference-data.md`](reference-data.md) records what a human reads.
+
 One measurement accumulates rather than being taken once: §2's publication-delay distribution. Its
 raw samples are **not** kept in this repository — a repository file only changes by a commit, and
 the nightly job that takes the sample (the `contracts` job in `.github/workflows/nightly.yml`)
@@ -38,7 +41,7 @@ obtained again later, not whether the request can be repeated.
 | Response                                      | Recoverable?                                                           | Raw kept                                                     |
 | --------------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------ |
 | Relic match history (`getRecentMatchHistory`) | **No** — a match leaves the "recent" window and cannot be fetched back | `matches.raw_payload`                                        |
-| `aoe.ms` replay zip                           | **No** — ~31-day retention, then gone for everyone                     | the object store, byte-for-byte                              |
+| `aoe.ms` replay zip                           | **No** — rolling, per profile; shortest measured ~27 days (§2)         | the object store, byte-for-byte                              |
 | Relic leaderboards and personal stats         | Yes — current standing, re-queryable at any time                       | not kept                                                     |
 | aoe2companion enrichment                      | Yes — re-queryable, and degradable by design                           | not kept                                                     |
 | aoestats parquet dumps                        | Yes — published artifacts, re-downloadable                             | not kept (V2)                                                |
@@ -104,25 +107,27 @@ GET /community/leaderboard/getLeaderBoard2?title=age2&leaderboard_id=3&start=1&c
 - **Ids 45-60 (T070i).** Not derived — no fixture here reaches them and the ordering rule above
   stops at 44 by construction. They were transcribed from SiegeEngineers/aoc-reference-data's
   `data/datasets/100.json`, then wrongly read as also confirming this table's Relic-space ids
-  0-44 — it cannot: that dataset is keyed to the replay space above, not to Relic's
-  `civilization_id`, so on its own it never corroborated this table at all (corrected 2026-09-27,
-  T652n). What actually corroborates ids 45-60 instead: a 2026-09-27 join of Relic's
+  0-44 — the dataset's keys cannot: they are the replay space above, not Relic's
+  `civilization_id` (corrected 2026-09-27, T652n). A 2026-09-27 join of Relic's
   `getRecentMatchHistory` (two profiles) against aoe2companion's `/api/matches`, keyed on
   `(match id, profile id)` — 88 rows, 37 distinct `civilization_id` values, zero conflicts —
-  reaching three of these fourteen ids (48 Shu, 52 Khitans, 59 Mapuche) and agreeing with the
-  table. **The other eleven rest on no measurement**: they do not match `100.json` either, which on
-  2026-09-27 has 46 Achaemenids where the table has 45, and 57 Muisca where the table has 58. Whether the dataset changed after T070i or the
-  transcription re-mapped it is not recorded. Ids 56 and 57 stay on the fallback. The same
-  2026-09-27 join also found three ids this table lacks —
-  61 Saxons, 62 Varangians, 63 Danes — which fall back to "Civilisation <id>" in production;
-  recorded here as known-absent, not added (that addition is outside feature 006, filed
-  separately). Unlike aoe2techtree, `aoc-reference-data` carries **no licence at all** (no
+  reached three of these fourteen ids (48 Shu, 52 Khitans, 59 Mapuche) and agreed with the
+  table. That day's comparison against `100.json` ("46 Achaemenids where the table has 45, and 57
+  Muisca where the table has 58") read the dataset's **keys**, which are the replay space, and so
+  could not agree. Each `civilizations` entry also carries an inner `id`; measured 2026-10-18, it
+  equals this table's id for every one of the fourteen, ids 45-55 and 58-60, with the same name
+  (§6, "aoc-reference-data"). That corroborates the **eleven** ids no join reached — 45, 46, 47, 49,
+  50, 51, 53, 54, 55, 58 and 60 — by the source they were first transcribed from, so the
+  agreement is that source's with itself, not a second reading. No entry of the dataset carries 56
+  or 57 as its inner `id` either, and they stay on the fallback. The same
+  2026-09-27 join also found three ids the table then lacked —
+  61 Saxons, 62 Varangians, 63 Danes — which fell back to "Civilisation <id>" in production until
+  T766 added them; the dataset's inner `id` carries the same three, with the same names, on
+  2026-10-18. Unlike aoe2techtree, `aoc-reference-data` carries **no licence at all** (no
   `LICENSE` file, GitHub reports `license: None`), the same defect recorded above for
-  aoe2companion, so it is read, not vendored: the fourteen pairs are transcribed by hand into
-  `apps/api/src/aoe2stats_api/civilizations.py` as the facts they are, the JSON file itself is
-  never copied into this repository, and nothing fetches it at build or test time. The table
-  itself, not this file, is the one place those pairs are recorded — see the module docstring for
-  the full derivation and `apps/api/tests/test_civilizations.py` for the transcription check.
+  aoe2companion; the ruling that follows is in `docs/reference-data.md` "Source inventory". The
+  table itself, not this file, is the one place those pairs are recorded — see the module docstring
+  for the full derivation and `apps/api/tests/test_civilizations.py` for the transcription check.
 - **Player colour: `slotinfo[].metaData.ScenarioPlayerIndex`.** Measured **2026-09-04**, correcting
   004's D2 (2026-08-30), which decoded this very record and read the field as a seat number.
   `slotinfo` is base64 of a zlib stream; inflated, it is a leading integer, a comma, a JSON array
@@ -214,7 +219,13 @@ the one shared client every provider here is built from for exactly this reason.
 | Availability   | see "Publication delay: distribution" below                               |
 | Rate limits    | undocumented; ~25 requests in 30 min saw no throttling                    |
 
-### Retention: approximately 31 days
+### Retention: a rolling window per profile, shortest measured ~27 days
+
+**Current reading (2026-10-23, widened 2026-10-26): rolling, about 26.75 days from match end, for
+the shortest-window profile measured; other profiles keep far longer (2026-10-26 subsection).** It was about 31 days on 2026-08-19, on the same profile. The window is not a constant
+of the source: it has shrunk by about four days in two months, and nothing announced it. The
+sections below keep each sample in the order it was taken; the 2026-10-23 one settles what the
+2026-08-28 one left open.
 
 Bisection against profile 196240, reference time `2026-08-19T16:09Z`:
 
@@ -234,9 +245,12 @@ Bisection against profile 196240, reference time `2026-08-19T16:09Z`:
 The boundary is sharp, inside a ~4 h interval, and is not patch-scoped: replays from patch 1800 sit
 on both sides of it. It is a rolling, time-based purge.
 
-**Internal capture budget: 21 days**, leaving 10 days of slack for an outage or a migration.
+**Internal capture budget: 18 days.** Against the 2026-10-23 reading that leaves about 8.75 days of
+slack for an outage or a migration, not the 10 days this line first recorded. The budget was 21 days
+until the owner tightened it on 2026-10-26 (T820); captures enqueued before the deployed setting
+changed keep the 21-day deadline computed at insert (`discover.py`).
 
-#### Contradicted 2026-08-28, and not yet resolved — do not rely on the 31 days alone
+#### Contradicted 2026-08-28 — resolved 2026-10-23, below
 
 A second, larger sample disagrees with the reading above, and the disagreement is not marginal.
 Draining 78 captures for profile 2322168 on 2026-08-28 produced a boundary just as sharp — inside a
@@ -265,6 +279,69 @@ constitution I resolves the ambiguity the same way it resolves every other: capt
 _not_ happen is the opposite inference — that replays are now safe for six months and capture can
 relax. This sample cannot support that, and 56 recordings were permanently lost while it was being
 taken.
+
+#### Re-measured 2026-10-23: rolling, about 26.75 days, with per-point-of-view survivors
+
+Both conditions above are met: a profile other than 2322168, eight weeks after 2026-08-28. Profile
+196240 again, match list from `data.aoe2companion.com` (§3), each replay fetched in full (`HEAD` and
+`Range` are unusable, see the table above), first pass at `2026-10-23T12:02Z`:
+
+| gameId        | match end (UTC)      | result at 12:02Z                    |
+| ------------- | -------------------- | ----------------------------------- |
+| 515424817     | 2026-10-22 08:14     | 200 (0.61 MB)                       |
+| 511751559     | 2026-10-06 14:43     | 200 (2.57 MB)                       |
+| 509862159     | 2026-09-28 13:36     | 200 (1.40 MB)                       |
+| 509606039     | 2026-09-27 12:41     | 200 (0.71 MB)                       |
+| **509409788** | **2026-09-26 18:18** | **200 (0.75 MB)** — last available  |
+| **509406408** | **2026-09-26 17:50** | **404** — first missing             |
+| 509403317     | 2026-09-26 17:35     | 404                                 |
+| 508495143     | 2026-09-22 20:08     | 404                                 |
+| 506610620     | 2026-09-14 11:11     | 404                                 |
+| 459906922     | 2026-03-01 10:14     | 404                                 |
+| 458240475     | 2026-02-22 15:54     | 404                                 |
+
+**It is rolling, and it moves in real time.** At `12:42Z` the same day, 509409788 — a 200 forty
+minutes earlier — answered 404. The boundary advanced past it inside the hour, which a fixed epoch
+cannot do, and it puts the window between 26 d 17 h 44 min and 26 d 18 h 12 min after match end.
+That second probe also shows that **fetching a replay does not keep it**: it had been downloaded in
+full at 12:02Z and was purged on schedule all the same. Matches after 2026-02-22 are gone for this
+profile, so the 2026-02-22 boundary is not an epoch that applies to everyone.
+
+**But some points of view outlive the window, and the reason is not known.** On the same day,
+profile 2322168's own point of view of matches from 2026-04-28 to 2026-05-02 — 174 days old —
+still answered 200, which is consistent with the 2026-08-28 sample. Other participants of those
+same matches mostly answered 404 for the same `gameId`: three of four did. The survivor and the
+three that did not are not separated by how many matches each profile has played since (97 newer
+matches purged, 197 newer kept), so retention is not a per-profile match count either. What makes
+one `(gameId, profileId)` pair survive is unmeasured. It explains why the 2026-08-28 sample read
+like an epoch, and it is not something capture may rely on.
+
+#### 2026-10-26: the window differs per profile, by more than a factor of two
+
+Measured while building `scripts/checks/retention_sentinel.py` (T821), at about `20:05Z`:
+
+| profile | oldest pair probed still `200` | first `404` probed | reading                                    |
+| ------- | ------------------------------ | ------------------ | ------------------------------------------ |
+| 196240  | 28.23 days                     | 28.26 days         | ~28.25 days, up from ~26.75 on 2026-10-23  |
+| 377935  | 66.1 days (every pair 25–66 d) | 1529 days          | window at least 66 days                    |
+| 9958277 | 26.0 days (Relic history ends) | none in range      | not bracketed                              |
+
+So "the window" is a per-profile property, not a constant of the source, and it moves for one profile
+from day to day: 196240's grew by about a day and a half in three days. 196240 — a very active
+player, about 160 matches in its last 27 days — has the shortest window measured; 377935 keeps more
+than two months. What sets a profile's window is not known. It is not the match count alone: a
+pair with 97 newer matches on its profile was already gone while one with 176 newer matches
+survived, and an estimate by recording size (team size as proxy) does not separate them either.
+Until it is known, the budget is sized against the shortest window measured on any profile, and a
+profile more active than any measured may have a shorter one still.
+
+**What this settles for R1** (`docs/risks.md`): the purge is a rolling window and not an epoch that
+can be dropped wholesale, so the second loss mode R1 named is not observed. Its length is what
+changed: ~27 days, and shrinking. The 21-day budget still sat inside it. Constitution I
+allows tightening the budget on this reading and forbids widening it. The owner tightened it to 18
+days on 2026-10-26 (T820). Re-measure whenever a capture expires
+earlier than its deadline predicts, and at least every quarter: the window moved four days between
+two samples without notice.
 
 ### Settled: no current-patch ranked recording carries a post-game statistics block
 
@@ -558,10 +635,12 @@ against keeping one measurement in two homes.
   identifier".
 - **Version identifier**: two pinned commits, each recorded in its own pack's `MANIFEST.json` and
   `LICENCE.md` under `packages/knowledge/packs/`. The first, `b9d494df6921d4080df69b22f9dbb7a4d1dcd9f0`
-  (2026-06-21, pack `aoe2techtree`), is the one `aoe2techtree-180059` is derived from. The second,
+  (2026-06-21, pack `aoe2techtree`), is the one `aoe2techtree-180059` and
+  `aoe2techtree-180059-civilisations-53` are derived from. The second,
   `3bb43b1439eef88dfe7fe892d7f7dc41ac9dd76f` (pack `aoe2techtree-3bb43b1`; authored 2026-09-11,
-  committed 2026-09-22, assessed 2026-10-08), is the one `aoe2techtree-185872` and `aoe2techtree-185872-civilisations` are
-  derived from; it is vendored beside the first because a snapshot must stay re-derivable from its own source revision.
+  committed 2026-09-22, assessed 2026-10-08), is the one `aoe2techtree-185872`, `aoe2techtree-185872-civilisations`,
+  `aoe2techtree-185872-civilisations-20`, `aoe2techtree-185872-civilisations-32`,
+  `aoe2techtree-185872-civilisations-44` and `aoe2techtree-185872-civilisations-56` are derived from; it is vendored beside the first because a snapshot must stay re-derivable from its own source revision.
   The source carries no explicit build tag; the game build a commit implements is read from that
   commit's own message, a derived reading, not a field (research.md D3, D4). The first pinned
   commit's own newest "Implement DE Update" commit is `daf5fa18de` (2026-06-03), implementing build
@@ -589,9 +668,40 @@ against keeping one measurement in two homes.
   analysis document, from the snapshot its identity names, at the moment it is read. Since
   2026-10-18 (T746) a second build 185872 snapshot, which supersedes the first, models eight
   civilisations: Franks, Teutons, Persians, Saracens, Malians, Tatars, Slavs and Sicilians,
-  transcribed from the second pack's strings and checked against the build's release notes. The
-  first stays installed so that the analyses published under it still reproduce; resolution by
-  build answers the second.
+  transcribed from the second pack's strings and checked against the build's release notes. Since
+  2026-10-22 (T767) a third, `aoe2techtree-185872-civilisations-20`, supersedes the second and
+  models twenty: those eight, carried unchanged except where the publisher's notes settled a value
+  T746 had refused (Persians' Kamandaran, the Castle and the Donjon of the Sicilians'
+  "Fortifications"), and Britons, Goths, Japanese, Chinese, Byzantines, Turks, Vikings, Mongols,
+  Celts, Spanish, Aztecs and Mayans; it carries the first `aliases.toml`. Since 2026-10-22 (T768)
+  a fourth, `aoe2techtree-185872-civilisations-32`, supersedes the third and models thirty-two:
+  those twenty, carried unchanged, and Huns, Koreans, Italians, Hindustanis, Incas, Magyars,
+  Portuguese, Ethiopians, Berbers, Khmer, Malay and Burmese; its `rules.json`, `aliases.toml` and
+  raw-id table are the third's. Since 2026-10-23 (T769) a fifth,
+  `aoe2techtree-185872-civilisations-44`, supersedes the fourth and models forty-four: those
+  thirty-two, carried unchanged, and Vietnamese, Bulgarians, Cumans, Lithuanians, Burgundians,
+  Poles, Bohemians, Dravidians, Bengalis, Gurjaras, Romans and Armenians; its `rules.json`,
+  `aliases.toml` and raw-id table are the fourth's. The first four stay installed so that the
+  analyses published under them still reproduce; resolution by build answers the fifth. Since
+  2026-10-26 (T770) a sixth, `aoe2techtree-185872-civilisations-56`, supersedes the fifth and models
+  fifty-six, every civilisation of the pack: those forty-four, carried unchanged but for the rows replaced (the
+  Cumans' additional Town Center, Cuman Mercenaries and the Berbers' Kasbah, which the effect model
+  now expresses) and one amended `validated_by` (the Persians' Kamandaran), and Georgians, Shu, Wu, Wei, Jurchens, Khitans, Muisca, Mapuche, Tupi, Saxons,
+  Varangians and Danes; its `rules.json`, `aliases.toml` and raw-id table are the fifth's. The first
+  five stay installed so that the analyses published under them still reproduce; resolution by
+  build answers the sixth. Its open values are in
+  `specs/006-replay-analysis-foundations/owner-readings.md`.
+  Build 180059 has a second snapshot since 2026-10-28 (T773),
+  `aoe2techtree-180059-civilisations-53`, which supersedes the first and models fifty-three, every
+  civilisation of the first pack (the sixth's, but the Saxons, Varangians and Danes, which build
+  185872 added). A row of the sixth snapshot is carried to it only where that row's bullet is
+  byte-identical in the two packs, every selector of that row resolves to the same identifiers in
+  the older pack's `rules.json`, and build 185872's release notes name no change to the row's bonus
+  or to an entity the row selects (a note line changes an entity only if it changes that entity's
+  own data or a bonus that selects it, and a "-line" note changes every tier of its line); each
+  row is decided on its own, so one bullet's rows can be carried and transcribed both. Every other row is transcribed from the older pack's strings. Its
+  `aliases.toml` closes the second committed recording's buildings 490 and 673 (both "Gate"), read
+  again 2026-10-28 at repository head commit `9ee0fe29fa05`.
 - **Known limitations**: no civilisation-specific bonus data as structured values, no build/version
   field of its own, no combat attributes (attack, armour, hit points, range) — halfon carries those
   (below). Three builds (178524, 179158, 180059) unimplemented by the first pinned commit as of this
@@ -605,7 +715,15 @@ against keeping one measurement in two homes.
   the build 185872 snapshot promoted 2026-10-08
   (`packages/knowledge/snapshots/aoe2techtree-185872/snapshot.toml`) and superseded by a
   second one 2026-10-18
-  (`packages/knowledge/snapshots/aoe2techtree-185872-civilisations/snapshot.toml`). Licence: MIT,
+  (`packages/knowledge/snapshots/aoe2techtree-185872-civilisations/snapshot.toml`) and by a third
+  2026-10-22
+  (`packages/knowledge/snapshots/aoe2techtree-185872-civilisations-20/snapshot.toml`) and by a
+  fourth 2026-10-22
+  (`packages/knowledge/snapshots/aoe2techtree-185872-civilisations-32/snapshot.toml`) and by a
+  fifth 2026-10-23
+  (`packages/knowledge/snapshots/aoe2techtree-185872-civilisations-44/snapshot.toml`) and by a
+  sixth 2026-10-26
+  (`packages/knowledge/snapshots/aoe2techtree-185872-civilisations-56/snapshot.toml`). Licence: MIT,
   **copy in** — `docs/asset-packs.md` "Knowledge packs".
 
 ### halfon
@@ -632,13 +750,19 @@ against keeping one measurement in two homes.
   omits, to be vendored by the task that first needs it — not vendored now, and never paired with
   aoe2techtree as a second source, because that would satisfy FR-028 and FR-030 on paper while
   deceiving the next reader about how validated the values actually are (research.md D3; plan.md
-  Complexity Tracking).
+  Complexity Tracking). Buildings 490 and 673 did not make it needed: a referenced source names
+  both ("Gate" in `aoc-reference-data`'s `objects`, read 2026-10-18), and halfon would read the same
+  file the pack does (research.md D3, amended 2026-10-18).
 - **Assessed**: 2026-09-19 (research.md D3).
 
 ### aoc-reference-data (`SiegeEngineers/aoc-reference-data`)
 
 - **Scope**: names only — identifiers to display names for civilisations and other constants. No
-  costs, times, ages, prerequisites or bonuses (research.md D3).
+  costs, times, ages, prerequisites or bonuses (research.md D3). Read 2026-10-18, its Definitive
+  Edition dataset (`data/datasets/100.json`) holds, beside a `dataset` header, five tables:
+  `civilizations` (62 entries, each a `name` and an inner `id`), `maps`, `technologies`,
+  `terrain`, and `objects` — identifier to display name, a string, for 1063 units and buildings,
+  first read for the gate family (`objects` 490 and 673 are both "Gate").
 - **Reliability**: community-maintained, with explicit identifiers — but keyed to the replay's own
   civilisation id space (1-based, release order), not to Relic's `civilization_id` (§1, "Two
   civilisation id spaces exist"). Read 2026-09-27: 9 Saracens, 26 Malians, 46 Achaemenids. It is the
@@ -647,28 +771,40 @@ against keeping one measurement in two homes.
   cannot also corroborate them. Read again 2026-10-18 (T746) for the build 185872 snapshot's table
   of eight ids (2 Franks, 4 Teutons, 8 Persians, 9 Saracens, 23 Slavs, 26 Malians, 33 Tatars,
   37 Sicilians, in `packages/knowledge/snapshots/aoe2techtree-185872-civilisations/effects.toml`),
-  where each entry records what else corroborates it. It does **not** corroborate `apps/api/src/aoe2stats_api/civilizations.py`
-  (Relic's space): reading it as doing so was T070i's error, corrected 2026-09-27 (T652n) — see §1
-  above, "Ids 45-60 (T070i)", for what actually established that table's ids 45-60.
-- **Update mechanism**: read by a human, by hand, against a checkout of the repository. Never
-  fetched at build, test or run time (FR-031, FR-032).
-- **Version identifier**: none — the source carries no release, tag or version field. Whichever
-  commit a maintainer happened to read is not recorded, because the source is never vendored (see
-  "Known limitations") and there is nothing to pin a digest to.
-- **Coverage**: it carries no Relic ids at all; §1 records what the Relic table rests on instead.
+  where each entry records what else corroborates it. Read again 2026-10-22 (T767), repository head
+  commit `5c59f163b41f` (abbreviated; 2026-10-19): the `civilizations` keys for all 56
+  civilisations of the vendored pack (`aoe2techtree-185872-civilisations-20`'s raw-id table; the six
+  Chronicles civilisations the dataset also keys are not in any pack) and, from `objects`, the 73
+  identifiers that name a pack unit or building exactly, with or without an orientation qualifier
+  (`aliases.toml`: each "Gate" to the pack's Gate, each "Palisade Gate" to its own; the differently
+  named gates are not aliased). Only the eight raw ids of T746 are corroborated by a committed
+  recording; the other 48 rest on the dataset alone, plus the inner `id` agreement. Read again 2026-10-26 (T770), repository head commit
+  `9ee0fe29fa05` (2026-10-26): `objects` names twenty identifiers exactly
+  "Town Center" (71, 109, 141, 142, 481 to 484, 597, 611 to 621). The dataset's
+  **keys** do not corroborate
+  `apps/api/src/aoe2stats_api/civilizations.py` (Relic's space): reading them as doing so was
+  T070i's error, corrected 2026-09-27 (T652n). Each entry's inner `id` is a separate field. Measured
+  2026-10-18: each of the 59 ids `civilizations.py` holds is the inner `id` of one entry, 58 with the
+  same name and id 30 spelled "Maya" where the table has "Mayans"; the other three inner ids
+  (61 Saxons, 62 Varangians, 63 Danes) were ones the table did not yet hold, and no entry carries
+  56 or 57. The source does not document what the field means, and this records
+  an agreement, not a statement of meaning. See §1, "Ids 45-60 (T070i)", for what that does to the
+  table's ids 45-60.
+- **Update mechanism**: read by a person, or by an agent working for the owner, by hand, against
+  a checkout of the repository; each transcription is recorded with its provenance. Never fetched
+  at build, test or run time (FR-031, FR-032).
+- **Version identifier**: none — the source carries no release or tag. Its dataset file carries a
+  `dataset.version` of "33315" (read 2026-10-18), which is not a game build number and is not
+  documented. Whichever commit a maintainer happened to read is not recorded, because the source
+  is never vendored (see "Known limitations") and there is nothing to pin a digest to; the
+  2026-10-18 measurements above were made against the default branch's head, whose last commit was
+  made 2026-10-11.
+- **Coverage**: 62 civilisations and 1063 objects in the one dataset read. It does not key by
+  Relic's `civilization_id`; its inner `id` agrees with that space (Scope, above), and §1 records
+  what the Relic table rests on.
 - **Known limitations**: **no licence** — GitHub reports `license: None`, and there is no `LICENSE`
-  file in the repository. This is why it is read-and-transcribe-only rather than vendored: FR-031
-  forbids vendoring a source with no licence and permits only a human's transcription, recorded with
-  its provenance. **This is feature 002's ruling, given a living home here for the first time.**
-  002's own `specs/002-reference-data-sources/tasks.md` T205 states it — "`aoc-reference-data`
-  carries no licence at all and is the reason this distinction is in the spec: record it as
-  read-and-transcribe-only, and record that the transcription that has already happened put the
-  pairs into `apps/api/src/aoe2stats_api/civilizations.py` as facts while the source file itself was
-  never copied here" — but 002 never wrote the source-inventory document (`docs/reference-data.md`)
-  that same task describes, so until now the ruling survived only in that frozen, unchecked task and
-  in `civilizations.py`'s module docstring, which independently records the same transcription
-  (T070i) in the course of documenting the civilisation id table. Both remain the historical account
-  of how the ruling was reached; this entry is its one living record and restates neither in full.
+  file in the repository. The ruling that follows from it is in `docs/reference-data.md` "Source
+  inventory".
 - **Assessed**: 2026-08-30 (`docs/asset-packs.md` "Rejected sources": licence `None found`, ruling
   **READ ONLY**); re-verified for this feature 2026-09-19 (research.md D3: "002's ruling,
   re-verified").
@@ -733,8 +869,23 @@ against keeping one measurement in two homes.
   bulk import would breach the terms even where CC BY-SA would otherwise permit copying the text.
 - **Ruling**: **one human, one number, with provenance** — consulted only to settle a single
   contested value, by a person reading the page, with the reading recorded against the value it
-  supports. Never bulk-imported, never scraped.
+  supports. Never bulk-imported, never scraped. An agent may not read it at all: its terms forbid
+  automated access, so the reading is the owner's.
 - **Assessed**: 2026-09-19 (research.md D3).
+
+### The running game, read by a person
+
+- **Scope**: the cost or time a tooltip shows, in the running game, for a stated civilisation.
+- **Reliability**: the strong form of FR-030's validation — the game itself showing a value to a
+  person, not another tool's reading of a file.
+- **Update mechanism**: a person, after each patch; nothing is scripted and nothing is extracted
+  from the game's files.
+- **Version identifier**: the build the game reports.
+- **Coverage**: the current build only; a value read here says nothing about an earlier build.
+- **Known limitations**: one value at a time, no history, and read by the owner — an agent cannot
+  run the game.
+- **Ruling**: **read and transcribe**, recording who read it, when, and where in the game.
+- **Assessed**: 2026-10-18 (research.md D3, amended).
 
 ### Publisher patch notes
 
@@ -753,6 +904,32 @@ against keeping one measurement in two homes.
 - **Coverage**: whichever builds a human has actually read; for this feature, builds 178524, 179158
   and 180059 against the pinned aoe2techtree commit's last-implemented build 177723, read and
   recorded 2026-09-20.
+  Read again 2026-10-18 (T746) and 2026-10-22 (T767) for build 185872, and, for T767's retaken
+  rows, every Definitive Edition update page the site's sitemap lists (fetched 2026-10-22): they
+  state Kamandaran's cost (update 162286), the Donjon's construction time under the Sicilians'
+  bonus (update 111772) and that Detinets' wood amount is never given (update 61321). T768 searched the same
+  pages (77, with the build's own) for the twelve civilisations of batch B: they state that the
+  Portuguese team bonus excludes Age Up (update 73855), that the Ethiopians' Outposts lose their stone
+  cost (update 81058), that the Koreans' wood discount reaches the War Wagon (update 87863) and which
+  units the Incas' food discount affects (update 81058); they do not size the food that replaces a
+  gold cost in the Magyars' Corvinian Army (update 95810 names the effect) or the Malay's Forced Levy
+  (named by no page). T769 searched 130 pages (fetched 2026-10-23: every Definitive Edition update,
+  hotfix and preview page the sitemap lists, and other posts about the game, with the build's own)
+  for the twelve civilisations of batch C: they state the Burgundians' economic discount (updates
+  47820, 78174 and 177723: 40%), that the Romans' Legionary replaces the Two-Handed Swordsman and the
+  Champion at the Barracks (update 83607), that their Scorpion discount is 50% (update 153015) and
+  that the Vietnamese economic upgrades cost no wood (update 35584); they do not define "economic
+  upgrades" or list the Camel and Elephant Units, and they do not size the food that replaces the
+  gold under the Bohemians' Hussite Reforms (update 81058 changes only the technology's own cost).
+  T770 searched 171 pages (fetched 2026-10-26: the post sitemaps' Age of Empires II Definitive
+  Edition updates, hotfixes and previews, the build's own, and the Saxons, Varangians and Danes deep
+  dives) for the twelve civilisations of batch D: update 177723 states that the Jurchens' bonus
+  applies to Murder Holes, that the Muisca's Settlement discount is 33% and Huaracas' train bonus
+  50%; update 169123 that the Khitans' bonus is 15% and that the Wu's Careening and Dry Dock are
+  free; the Saxons deep dive that Foot Soldiers cost less per Town Center or Castle controlled. They
+  do not define "Foot Soldiers" or the Jurchens' "Siege and Fortification upgrades" beyond Murder
+  Holes. Update 61321 says only that Cuman Town Centers can be repaired in the Feudal Age even if the
+  player has more than two.
 - **Known limitations**: all rights reserved — read and transcribed only, never copied in; and, as
   above, minor-update sections carry no independent dated timestamp of their own, a stated weakness
   of the validation rather than a hidden one (research.md D4).

@@ -12,13 +12,14 @@
 // removed), not through containment. `assertStopsInsideChrome`, asserted separately below, checks
 // the containment `tests/visual/focus-ring.spec.ts` assumes implicitly: every stop stays inside the
 // route's one `main` landmark or its `header`/`footer` chrome.
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 import { createAppServerHarness, hasBuild } from './fixtures/app-routes-harness'
 import {
   assertFullTabCoverage,
   assertStopsInsideChrome,
   walkTabOrder,
 } from './fixtures/keyboard-walk'
+import { expectKnownDefect } from './fixtures/known-defect'
 import { assertSurfaceKeyboard, walkOpenSurface } from './fixtures/open-surface'
 import { enterScenario, SUITE_SCENARIOS, TOOLTIP_SCENARIOS } from './fixtures/suite-scenarios'
 import { assertTooltipKeyboard, walkOpenTooltip } from './fixtures/tooltip-open'
@@ -61,6 +62,9 @@ test.describe('keyboard operation, every route, both themes', () => {
     // keyboard contract (`fixtures/open-surface.ts`) instead — Tab cycling inside a `Dialog`,
     // roving-tabindex arrows through a `Menu` — because a Tab walk over the page behind an open
     // modal measures the wrong thing.
+    // T744: `SUITE_SCENARIOS` also holds `BRANCH_SCENARIOS` (`fixtures/suite-scenarios.ts`) — each route's
+    // error, transient and unrendered-empty branches, and the two held loading states — so this loop runs
+    // them too, and `enterScenario` has asserted the branch is on screen before anything below measures it.
     for (const scenario of SUITE_SCENARIOS) {
       for (const theme of ['light', 'dark'] as const) {
         const claim = scenario.surface
@@ -70,21 +74,40 @@ test.describe('keyboard operation, every route, both themes', () => {
           const external = await enterScenario(page, scenario, harness.baseUrl, theme)
           const context = `${scenario.label} (${theme})`
 
-          if (scenario.surface) {
-            assertSurfaceKeyboard(await walkOpenSurface(page, scenario.surface), context)
-          } else {
-            const result = await walkTabOrder(page)
+          const walk = async () => {
+            if (scenario.surface) {
+              const surfaceWalk = await walkOpenSurface(page, scenario.surface)
+              // T750: which branch of Escape this walk judged is declared on the scenario, not
+              // inferred: a walk that read the other one passes `assertSurfaceKeyboard` for the
+              // wrong reason (or not at all), so it is asserted before the contract is.
+              expect(
+                surfaceWalk.secondaryUnavailable,
+                `${context}: the walk read the dialog's secondary action as ` +
+                  `${surfaceWalk.secondaryUnavailable ? 'unavailable' : 'available'}, but the ` +
+                  `scenario declares it ${scenario.secondaryUnavailable ? 'unavailable' : 'available'}`,
+              ).toBe(scenario.secondaryUnavailable === true)
+              assertSurfaceKeyboard(surfaceWalk, context)
+            } else {
+              const result = await walkTabOrder(page)
 
-            // FR-049's "no trap": every stop the walk actually reaches sits inside the route's one
-            // main landmark or its header/footer chrome — never off in a detached or hidden branch
-            // of the DOM a real keyboard user could not have reached either.
-            assertStopsInsideChrome(result.steps, context)
+              // FR-049's "no trap": every stop the walk actually reaches sits inside the route's
+              // one main landmark or its header/footer chrome — never off in a detached or hidden
+              // branch of the DOM a real keyboard user could not have reached either.
+              assertStopsInsideChrome(result.steps, context)
 
-            // FR-049's "reachable, in order, with no trap": every candidate is reached exactly
-            // once, in DOM order. See `assertFullTabCoverage` for what each guard catches on its
-            // own.
-            assertFullTabCoverage(result, context)
+              // FR-049's "reachable, in order, with no trap": every candidate is reached exactly
+              // once, in DOM order. See `assertFullTabCoverage` for what each guard catches on its
+              // own.
+              assertFullTabCoverage(result, context)
+            }
           }
+
+          // T744: a scenario with a known keyboard defect must fail the walk with that defect's
+          // message and no other, and must fail the test when the walk passes (`expectKnownDefect`);
+          // the assertions after the walk run either way.
+          const defect = scenario.knownDefects?.keyboard
+          if (defect) await expectKnownDefect(walk, defect, context)
+          else await walk()
 
           external.assertNone(context)
         })
@@ -120,6 +143,48 @@ test.describe('keyboard operation, every route, both themes', () => {
         external.assertNone(context)
       })
     }
+
+    // T751: an activation that leaves focus on the control that held it (`element.click()`, which
+    // moves none) while the run disables that control. Chromium drops a
+    // focused control to `body` the moment it becomes `:disabled`, so the panel has to move focus to
+    // the busy confirm button itself. Entered through `/privacy (erasure in flight)`, whose marks
+    // include "busy confirm button holding focus": `enterScenario` fails if focus is anywhere else.
+    const erasureInFlight = SUITE_SCENARIOS.find(
+      (scenario) => scenario.label === '/privacy (erasure in flight)',
+    )
+    if (!erasureInFlight) throw new Error("SUITE_SCENARIOS has no '/privacy (erasure in flight)'")
+    test('/privacy (erasure in flight) — a press that leaves focus on the ticked checkbox ends with focus on the busy confirm button, never the body', async ({
+      page,
+    }) => {
+      const scenario = {
+        ...erasureInFlight,
+        label: '/privacy (erasure in flight, focus left on the checkbox)',
+        prepare: async (target: Page) => {
+          await target.getByRole('button', { name: 'Erase my account' }).focus()
+          await target.keyboard.press('Enter')
+          await target.getByRole('dialog').waitFor({ state: 'visible' })
+          await target.keyboard.press('Tab')
+          await target.keyboard.press('Space')
+          await expect(target.getByRole('checkbox')).toBeFocused()
+          await target
+            .getByRole('button', { name: 'Erase my account permanently' })
+            .evaluate((button) => (button as HTMLButtonElement).click())
+          await target.locator('[role="dialog"] button[aria-busy="true"]').waitFor()
+        },
+      }
+      const external = await enterScenario(page, scenario, harness.baseUrl, 'light')
+      const context = scenario.label
+
+      const bodyHoldsFocus = await page.evaluate(() => document.activeElement === document.body)
+      expect(bodyHoldsFocus, `${context}: focus fell to document.body`).toBe(false)
+      await expect(
+        page.getByRole('button', { name: /Erasing your account/ }),
+        `${context}: focus is not on the busy confirm button`,
+      ).toBeFocused()
+      await expect(page.getByRole('checkbox')).toBeDisabled()
+
+      external.assertNone(context)
+    })
 
     // T681: the `Tooltip` is no `Menu` or `Dialog`, so the loop above never opens it. Each route
     // that renders one is entered, the tooltip opened by Tab to its trigger (`:focus-visible` opens

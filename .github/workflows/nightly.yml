@@ -71,6 +71,22 @@ jobs:
           retention-days: 90
           if-no-files-found: error
 
+  retention-sentinel:
+    name: Retention window sentinel (R1, T821)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      # A failing estimate must turn this run red: no `continue-on-error`. Both values come from
+      # repository variables with no default here; unset, the check prints a note and exits 0.
+      - name: Fail if the observed retention window is shorter than the capture budget plus its margin
+        run: uv run --with requests scripts/checks/retention_sentinel.py
+        env:
+          CAPTURE_BUDGET_DAYS: ${{ vars.CAPTURE_BUDGET_DAYS }}
+          AOEMS_MAX_REQUESTS_PER_SECOND: ${{ vars.AOEMS_MAX_REQUESTS_PER_SECOND }}
+
   parser-canary:
     name: Parser canary
     runs-on: ubuntu-latest
@@ -324,6 +340,7 @@ jobs:
     needs:
       [
         contracts,
+        retention-sentinel,
         parser-canary,
         asset-packs,
         cron-liveness,

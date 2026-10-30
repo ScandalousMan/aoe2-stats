@@ -2140,7 +2140,7 @@ disabled not statically resolvable (<story>)'` rather than a confirmed `'none'` 
    `'unreached'` guard already gets on one branch, generalised here to the whole story. Removes the
    one spurious `'unresolved: disabled not statically resolvable
 (Dialog:EmptyHoverActiveDisabledNotApplicable)'` reason `unresolved|lg`'s own disabled cell used
-   to carry (`primitives/Dialog/index.tsx:127,138`): no other `Dialog` story ever leaves
+   to carry (`primitives/Dialog/index.tsx:141,152`): no other `Dialog` story ever leaves
    `primaryAction`/`secondaryAction` themselves unresolved (every one that does render `Dialog`
    supplies both, even when a given field inside them is absent — `Default`'s own `primaryAction: {
 label: 'Turn it off' }` resolves `primaryAction.disabled` to a real `undefined`, not
@@ -2635,7 +2635,7 @@ clip, because the force target and the clip are located independently.
 | primitives/Button                 | a                                            | packages/design-system/src/primitives/Button/index.tsx:234               | hover:underline hover:decoration-2 hover:underline-offset-2 hover:bg-surface-sunken → AsLinkHover                                                                                                                                                | focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring → AsLinkFocusVisible                                                                                                                                                                                                                                                  | active:underline-offset-4 active:bg-background active:ring-2 active:ring-border-strong → AsLinkActive                                                                                                                                                                                                       |
 | primitives/Button                 | button                                       | packages/design-system/src/primitives/Button/index.tsx:252               | hover:underline hover:decoration-2 hover:underline-offset-2 hover:bg-surface-sunken → Hover; SecondaryHover; GhostHover; DestructiveHover; PrimaryHoverMd; GhostHoverLg; FavouriteToggle:Hover; ReplayAvailabilityList:Hover; Dialog:Hover       | focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring focus-visible:outline-2 focus-visible:outline-offset-ring focus-visible:outline-focus-ring → FocusVisible; SecondaryFocusVisible; GhostFocusVisible; DestructiveFocusVisible; GhostFocusVisibleLg; LoadingFocusVisible; FavouriteToggle:FocusVisible; ReplayAvailabilityList:FocusVisible; UploadControl:FocusVisible; Callout:FocusVisible; Dialog:FocusVisible | active:underline-offset-4 active:bg-background active:ring-2 active:ring-border-strong → Active; SecondaryActive; DestructiveActive; GhostActive; PrimaryActiveMd; GhostActiveLg; FavouriteToggle:Active; ReplayAvailabilityList:Active; Dialog:Active                                                      |
 | primitives/Callout                | (no local interactive element)               | N/A                                                                      | N/A                                                                                                                                                                                                                                              | N/A                                                                                                                                                                                                                                                                                                                                                                                                                                                         | N/A                                                                                                                                                                                                                                                                                                         |
-| primitives/Dialog                 | h2[tabIndex=-1]                              | packages/design-system/src/primitives/Dialog/index.tsx:102               | none → none                                                                                                                                                                                                                                      | none → none                                                                                                                                                                                                                                                                                                                                                                                                                                                 | none → none                                                                                                                                                                                                                                                                                                 |
+| primitives/Dialog                 | h2[tabIndex=-1]                              | packages/design-system/src/primitives/Dialog/index.tsx:116               | none → none                                                                                                                                                                                                                                      | none → none                                                                                                                                                                                                                                                                                                                                                                                                                                                 | none → none                                                                                                                                                                                                                                                                                                 |
 | primitives/EmptyState             | (no local interactive element)               | N/A                                                                      | N/A                                                                                                                                                                                                                                              | N/A                                                                                                                                                                                                                                                                                                                                                                                                                                                         | N/A                                                                                                                                                                                                                                                                                                         |
 | primitives/ErrorState             | (no local interactive element)               | N/A                                                                      | N/A                                                                                                                                                                                                                                              | N/A                                                                                                                                                                                                                                                                                                                                                                                                                                                         | N/A                                                                                                                                                                                                                                                                                                         |
 | primitives/Field                  | (no local interactive element)               | N/A                                                                      | N/A                                                                                                                                                                                                                                              | N/A                                                                                                                                                                                                                                                                                                                                                                                                                                                         | N/A                                                                                                                                                                                                                                                                                                         |
@@ -2695,7 +2695,7 @@ clip, because the force target and the clip are located independently.
 
 | Row                                                             | Rest                                                       | Hover | Focus-visible | Press (active) | Disabled |
 | --------------------------------------------------------------- | ---------------------------------------------------------- | ----- | ------------- | -------------- | -------- |
-| h2 @ packages/design-system/src/primitives/Dialog/index.tsx:102 | packages/design-system/src/primitives/Dialog/index.tsx:102 | none  | none          | none           | none     |
+| h2 @ packages/design-system/src/primitives/Dialog/index.tsx:116 | packages/design-system/src/primitives/Dialog/index.tsx:116 | none  | none          | none           | none     |
 
 #### `EmptyState`
 
@@ -3037,11 +3037,11 @@ generated region now settles on its own, and left two of them honestly `unresolv
 - **F2.** `ArchivalControl.stories.tsx`'s `HoverFocusActiveNotApplicable` — false for hover on the
   button half (`secondary|lg`, same elsewhere pointer as F1); the privacy-link half was F11, closed
   2026-09-21 (T596) — the rendered claim is now true of the privacy link.
-- **F3 (citation corrected 2026-09-19 — M2/M3: `:127,138` is each `<Button` tag's own opening line;
+- **F3 (citation corrected 2026-09-19 — M2/M3: `:141,152` is each `<Button` tag's own opening line;
   each `variant` prop is one line below it; corrected again 2026-09-20 — the `destructive` half of
   the supporting parenthetical went stale, the verdict itself did not).** `shared-primitives.md:613`
   and `Dialog.stories.tsx`'s `EmptyHoverActiveDisabledNotApplicable`
-  — false for hover. `Dialog`'s own two `Button` instances (`index.tsx:127-128,138-139`,
+  — false for hover. `Dialog`'s own two `Button` instances (`index.tsx:141-142,152-153`,
   `variant={primaryAction.variant ?? 'destructive'}`/`?? 'secondary'`) now resolve mechanically per
   story rather than staying `unresolved`: the generator substitutes each story's own merged `args`
   into the guard/attribute expressions a candidate carries, so `Dialog.stories.tsx`'s `FocusVisible`
@@ -3839,18 +3839,11 @@ That run backs item 13 only for what those scenarios render at rest; what they d
 was owned by T676, whose own row is deleted too (2026-10-03; see the closing paragraphs below), as is the
 comparator row (T675, 2026-10-02). The adversarial reviews of #107 then filed what T676 does not reach,
 under its owning tasks (T681, T682); both rows are deleted too (2026-10-17, see the closing paragraphs below). The review of
-#163 then filed the one row below. It stays because it is where a gap in this
+#163 then filed one row, T744's, deleted too (2026-10-18, see the closing paragraphs below): **no row remains.** The register
+stays because it is where a gap in this
 package's own verification harness — never in a component or a token — is filed when it is found, for the
 reason the four registers above already are: the subject is this package's own tooling, so a future task
 changing that tooling needs its row updated, and it does not belong in a spec written once.
-
-1. **The route suites never render a route's error, transient or unrendered empty branches — found by the review of #163
-   (2026-10-17, B1).** `DataExportPanel`'s `failed` state and its "Try again" button (`size="lg"` since T561),
-   `ArchivalControl` while its write is in flight and after a resume (`justResumed`), the match page's analysis
-   section in its `queued`, `running`, `failed` and `unavailable` states, the no-linked-account state on `/dashboard`, `/matches` and `/matches/$gameId`, and `/search`'s empty-results branches meet none of the four suites; the two held loading states
-   (`ProfileSummary`'s `Skeleton`, the erase button's `Spinner`) run in the reduced-motion suite only. The at-rest
-   scenarios render only the empty match and favourites lists. Production-readiness item 13 is partly met overall until this row is deleted.
-   **Owner: T744. Fix by 2026-10-31.**
 
 T674 (2026-09-28) runs all four of item 13's sub-suites in CI against every route scenario at rest,
 in both themes, and the sizing row this task's own filing opened (formerly in the Verification-coverage gap
@@ -3895,7 +3888,7 @@ surface is walked by its own keyboard contract (`tests/visual/fixtures/open-surf
 focus-ring and touch-footprint assertions; the touch suite adds a sweep of every pointer-only target
 (`tests/visual/fixtures/pointer-targets.ts`); and the reduced-motion suite holds a loading state open and asserts the
 `Skeleton` and `Spinner` loops run without the preference and stop under it (`tests/visual/fixtures/loading-state.ts`);
-those two loading states run through the reduced-motion suite only. The suites run in `.github/workflows/pr.yml`'s
+those two loading states ran through the reduced-motion suite only until T744 (below). The suites run in `.github/workflows/pr.yml`'s
 `visual` job and in `.github/workflows/nightly.yml`'s `visual-full` job, both themes, with no workflow edit. The
 row is deleted rather than kept as a second copy of the fact; the reviews of #107 then filed the T681 and T682 rows, since deleted (below).
 
@@ -3923,4 +3916,40 @@ and a non-null `archival_objected_at`. `DataExportPanel`'s `ready` link is reach
 keyboard, against a stubbed export API (the link is asserted present and never followed). Each is declared in
 `ROUTE_REQUIRED_LISTS`, so `enterScenario` asserts in the browser that the button, the dated callout or the link is on
 screen, and `suite-scenarios.test.ts` fails by name when a scenario or its inventory entry is removed. The row is deleted
-rather than kept as a second copy of the fact. Item 13 is partly met overall, not Met, until the T744 row above is deleted.
+rather than kept as a second copy of the fact. The review of #163 then filed T744's row, deleted below.
+
+T744 (2026-10-18) closed the last row the same way, over every route and not only the instances its text named:
+the four suites now also render the error, transient (in flight or held) and empty branches of the ten routes that
+have one (`/privacy-notice` is static text), in both themes, as `BRANCH_SCENARIOS` in
+`tests/visual/fixtures/suite-scenarios.ts`, each reached through the route's own stubs and by keyboard where the
+branch needs an action. `ROUTE_REQUIRED_BRANCHES` in that file is the enumeration, taken from the containers and the
+screens and composites they render, covering each write they issue in each direction as well as each read, and the
+comment above it names every branch no route stub reaches or that has nothing for a suite to judge, with the reason.
+Each scenario declares the marks its branch puts on screen and `enterScenario` asserts them in a browser after
+`prepare` (`assertBranchScenario`). `suite-scenarios.test.ts` fails by name when a scenario or its entry in the
+inventory is added or removed alone, when the number of scenarios changes, when one scenario's positive marks are all
+another's on the same route unless an absent mark separates them or the two hold provably different requests (the
+identical glob with different explicit methods, or with the same method and different explicit occurrences;
+`holdsDisjoint`), and when a scenario opens with a mark that is not a positive one. That check compares mark selectors
+as written, so two selectors that match the same element but are spelled differently are not seen as one; scenarios in
+different families whose marks overlap that way are covered only by the discriminating marks a sweep added to the
+scenarios it named, not by the check. It plants five kinds of absence, each failing inside `enterScenario` naming the
+mark that fails: for every scenario, the route's success page before any action; for a scenario in a family of
+branches that could be mistaken for one another, the next scenario of that family in the ring; for a held request, the
+request answered at once; for every absent mark, a page where the thing is present; and for each separating mark, the
+mark alone on its twin's page, and on the route's success page unless that page shows the mark too. Each plant first
+waits for a sign that the page it substituted has rendered, which does not rule out a mark of the scenario's own
+arriving only after the 1 s judge window has closed, so a plant's pass can be weaker evidence than it looks; a mark
+that arrives within the window is caught. The two held loading states, `ProfileSummary`'s `Skeleton` and the erase
+button's `Spinner`, are branch scenarios too, so the keyboard, focus-visibility and touch-footprint suites run them
+held as well as the reduced-motion suite. Two things the new scenarios found are defects, not harness gaps, so they
+are not filed in this register. T750, fixed: `Dialog`'s Tab trap counted a disabled button as a stop, so while a
+dialog's request was in flight and its secondary action disabled (`/dashboard (unlink in flight)`, `/privacy (erasure
+in flight)`) Tab left the dialog; both walks now pass every keyboard assertion with no `knownDefects` marker (CI run
+39495444917, #182 at 9ada830f), and Escape leaves them open. T751, fixed: a re-mint inside the erasure dialog gave its
+focused confirm button the native `disabled` attribute, so focus dropped to `body`; the re-mint and the erase are now
+one in-flight run with that button `loading`, the acknowledgement locked and ticked, and focus kept on the button
+(`privacy-data-rights.md` §9), and neither `/privacy (erasure in flight)` nor `/privacy (erasure re-mint in flight)`
+moves focus after its press, so both keyboard walks judge where the press left it and pass every assertion (CI run
+39846980488, #185 at ddb0ccc2). Item 13 is Met. The row is deleted rather than kept as a second copy of the fact; the
+register holds no row.

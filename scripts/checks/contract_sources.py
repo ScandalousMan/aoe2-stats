@@ -387,10 +387,11 @@ def _replay_window() -> None:
     # message told the reader to widen the capture budget, which constitution I 4.1.0 forbids doing
     # on an uncorroborated sample.
     #
-    # So a 200 here is no longer a failure. It is the open question (docs/data-sources.md,
-    # contradicted 2026-08-28: rolling window or fixed epoch) showing up in the nightly, and what
-    # settles it is a deliberate two-point re-measurement that this probe cannot perform from a
-    # recent-window feed.
+    # So a 200 here is no longer a failure. The rolling-against-epoch question is settled
+    # (docs/data-sources.md §2: the window is rolling, and differs per profile); a 200 for an old
+    # replay is a reading of one profile's window, and widening the budget on it is still
+    # forbidden. A re-measurement is a deliberate two-point exercise that this probe cannot perform
+    # from a recent-window feed.
     old = next(
         (m for m in matches if now - m["completiontime"] > 40 * 86400),
         None,
@@ -411,11 +412,11 @@ def _replay_window() -> None:
         age_d = (now - old["completiontime"]) / 86400
         if resp.status_code == 200:
             notes.append(
-                f"a {age_d:.0f} day old replay returned 200. This is evidence for the fixed-epoch "
-                "reading recorded in docs/data-sources.md (2026-08-28), NOT a licence to widen "
-                "CAPTURE_BUDGET_DAYS: constitution I 4.1.0 permits widening only once that file "
-                "records the question as settled, corroborated across more than one profile and "
-                "more than one date. Tighten freely; widen never, on this alone."
+                f"a {age_d:.0f} day old replay returned 200. This is one reading of one profile's "
+                "window (docs/data-sources.md §2), NOT a licence to widen "
+                "CAPTURE_BUDGET_DAYS: constitution I permits widening only once that file "
+                "records what sets a profile's window as settled. "
+                "Tighten freely; widen never, on this alone."
             )
             return
         assert resp.status_code == 404, (

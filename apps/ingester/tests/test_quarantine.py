@@ -16,8 +16,9 @@ engine:
 
 1. **The write ordering never discards a blob.** A downloaded replay that fails well-formedness
    validation is still uploaded to the object store *before* validation ever runs (data-model.md,
-   T055's own task text) — after ~31 days the source holds no replacement, so an unparsable
-   capture is evidence, not garbage (constitution IV). The row ends `quarantined` with
+   T055's own task text) — once the source's retention window has passed it holds no replacement,
+   so an unparsable capture is evidence, not garbage (constitution IV). The row ends `quarantined`
+   with
    `last_error` set, and — because `quarantined` is its own state, distinct from both `stored` and
    `expired` (data-model.md's state table) — the capture counts in neither `stored_total` nor
    `expired_total`.

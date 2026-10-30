@@ -212,4 +212,44 @@ test.describe('loading-state loop guard, planted pages', () => {
     const response = await navigation
     expect(response?.status()).toBe(200)
   })
+  // T744: the erase endpoint is read to mint a token and written to erase, so a hold on its URL has
+  // to leave the read to whatever answered it first.
+  test('holdRequests with a method holds only that method and passes the rest on', async ({
+    page,
+  }) => {
+    await page.route('**/plant', (route) => route.fulfill({ status: 200, body: 'read' }))
+    const held = await holdRequests(page, '**/plant', { ok: true }, 'POST')
+
+    await page.goto('http://127.0.0.1:1/plant')
+    // The navigation is a GET: it was answered by the earlier route, and nothing was held.
+    expect(await page.textContent('body')).toBe('read')
+    expect(held.heldCount()).toBe(0)
+
+    const posted = page.evaluate(() => fetch('http://127.0.0.1:1/plant', { method: 'POST' }))
+    await expect.poll(() => held.heldCount()).toBe(1)
+    await held.release()
+    await posted
+  })
+  // T751: the re-mint is the erase endpoint's second GET; the first mint must be answered by
+  // whatever stood in front, and only the second held.
+  test('holdRequests with an occurrence holds only that request of the method and passes the rest on', async ({
+    page,
+  }) => {
+    await page.route('**/plant', (route) => route.fulfill({ status: 200, body: 'first' }))
+    const held = await holdRequests(page, '**/plant', { ok: true }, 'GET', 2)
+
+    // The navigation is the first GET: answered by the earlier route, nothing held.
+    await page.goto('http://127.0.0.1:1/plant')
+    expect(await page.textContent('body')).toBe('first')
+    expect(held.heldCount()).toBe(0)
+
+    const second = page.evaluate(() => fetch('/plant').then((r) => r.text()))
+    await expect.poll(() => held.heldCount()).toBe(1)
+    await held.release()
+    expect(await second).toBe('{"ok":true}')
+
+    // A third request is past the occurrence: it is not held either.
+    expect(await page.evaluate(() => fetch('/plant').then((r) => r.text()))).toBe('first')
+    expect(held.heldCount()).toBe(1)
+  })
 })

@@ -21,7 +21,6 @@ import { assertLoopsAnimating, assertLoopsStopped, LOOP_SELECTOR } from './fixtu
 import { assertReducedMotion } from './fixtures/reduced-motion'
 import {
   enterScenario,
-  holdLoadingRequest,
   LOADING_SCENARIOS,
   SUITE_SCENARIOS,
   TOOLTIP_SCENARIOS,
@@ -62,6 +61,9 @@ test.describe('reduced motion, every route, both themes', () => {
     // T676: every route at rest, populated, and with each `Dialog`/`Menu` open — a `Menu` item's
     // and a `Dialog` button's transitions are the ones this sweep could not see while the surface
     // was closed.
+    // T744: `SUITE_SCENARIOS` also holds `BRANCH_SCENARIOS` (`fixtures/suite-scenarios.ts`) — each route's
+    // error, transient and unrendered-empty branches, and the two held loading states — so this loop runs
+    // them too, and `enterScenario` has asserted the branch is on screen before anything below measures it.
     for (const scenario of SUITE_SCENARIOS) {
       for (const theme of ['light', 'dark'] as const) {
         test(`${scenario.label} — no transition or looping animation keeps a perceptible duration (${theme})`, async ({
@@ -116,14 +118,10 @@ test.describe('reduced motion, every route, both themes', () => {
           page,
         }) => {
           const context = `${scenario.label} (${theme})`
-          let release: (() => Promise<void>) | undefined
+          // `enterScenario` installs the scenario's `hold`, so the loading state is on screen when
+          // it returns.
+          const entered = await enterScenario(page, scenario, harness.baseUrl, theme)
           try {
-            const external = await enterScenario(page, scenario, harness.baseUrl, theme, {
-              beforeNavigate: async (target) => {
-                release = (await holdLoadingRequest(target, scenario)).release
-              },
-            })
-
             // The skeleton appears after `useDelayedVisible`'s 200ms; wait for the structure, never
             // for an animation.
             await page.locator(LOOP_SELECTOR[scenario.loop]).first().waitFor({ state: 'visible' })
@@ -134,9 +132,9 @@ test.describe('reduced motion, every route, both themes', () => {
             // The whole-page sweep, on the loading state this time.
             await assertReducedMotion(page, context)
 
-            external.assertNone(context)
+            entered.assertNone(context)
           } finally {
-            await release?.()
+            await entered.release()
           }
         })
       }

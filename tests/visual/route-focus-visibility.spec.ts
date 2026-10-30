@@ -56,6 +56,9 @@ test.describe('focus visibility, every route, both themes', () => {
     // T676: every route at rest, populated, and with each `Dialog`/`Menu` open. An open surface's
     // stops are the ones its own keys visit (`fixtures/open-surface.ts`), each ring-checked the same
     // way a Tab stop is — including the `Menu` items that are only ever reached by arrow key.
+    // T744: `SUITE_SCENARIOS` also holds `BRANCH_SCENARIOS` (`fixtures/suite-scenarios.ts`) — each route's
+    // error, transient and unrendered-empty branches, and the two held loading states — so this loop runs
+    // them too, and `enterScenario` has asserted the branch is on screen before anything below measures it.
     for (const scenario of SUITE_SCENARIOS) {
       for (const theme of ['light', 'dark'] as const) {
         test(`${scenario.label} — every interactive element rings visibly on Tab, 3:1 against its own surface (${theme})`, async ({

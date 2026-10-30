@@ -135,7 +135,7 @@ logger = logging.getLogger("aoe2stats_analyzer")
 #: `.env.example`'s own `CAPTURE_BUDGET_DAYS` — the module docstring's paragraph on `capture_
 #: budget_days` explains why this exists only as a fallback for a caller (this package's own test
 #: suite) that does not thread the real setting down, and why a production caller overrides it.
-_DEFAULT_CAPTURE_BUDGET_DAYS = 21
+_DEFAULT_CAPTURE_BUDGET_DAYS = 18
 
 #: `replay_access_log.purpose` for a read this module performs — distinct from `"download"`
 #: (`apps/api/src/aoe2stats_api/routers/replays.py`), the only other writer of that column today,

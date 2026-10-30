@@ -16,30 +16,33 @@ branch here that catches a gap and substitutes a value, a default, an average or
 answer for it — a query either resolves for real or its refusal is recorded, and the loop moves on
 to the next field.
 
-**T652u: a modelled conditional effect (`cost`/`production_time` only) gated on the age or on a
-researched technology is not a gap either, even though this pass never builds that half of
-`query.Context`.** Reaching such an effect with no context raises `effects.ContextRequired`
-(contracts/knowledge-base.md, "The query surface") — this pass catches that directly, in the loop
-below, and treats it as no gap at all: contracts/knowledge-base.md, "Civilisation qualification" is
-explicit that "a conditional effect that is modelled is complete knowledge, so the coverage pass
-does not report it as a gap. The pass supplies no age or research state, so it treats a query that
-raises for want of one as modelled." Building that context — the age a building was constructed in,
-which technologies a player has researched — stays out of scope: neither is observable from a
-canonical stream alone without a reconstruction this feature does not do (007's territory).
+**T652u: a modelled conditional effect on any field that accepts `context` (`cost`,
+`production_time`, `age_requirement`, `produced_at` and `available_to`) gated on the age, on a
+researched technology or on a controlled count is not a gap either, even though this pass never
+builds those parts of `query.Context`.** Reaching such an effect with no such state raises
+`effects.ContextRequired` (contracts/knowledge-base.md, "The query surface") — this pass catches
+that directly, in the loop below, and treats it as no gap at all: contracts/knowledge-base.md,
+"Civilisation qualification" is explicit that "a conditional effect that is modelled is complete
+knowledge, so the coverage pass does not report it as a gap. The pass supplies no age, research or
+controlled-count state, so it treats a query that raises for want of one as modelled." Building that
+context — the age a building was constructed in, which technologies a player has researched — stays
+out of scope: neither is observable from a canonical stream alone without a reconstruction this
+feature does not do (008's territory).
 
 **T652v: the pass does build the team half of `query.Context`, from the canonical stream's own
 `match-started` event.** Each participant's `team` (`ParticipantEntry.team`, the recording's own
 header field, contracts/canonical-events.md) is real match state, not a reconstruction, so unlike
-age and researched technologies it is never left unsupplied. For every civilisation-qualified
-`cost`/`production_time` query this pass makes, `context.team` is the civilisation names of every
-participant who shares that query's own participant's real team, that participant's own
-civilisation included — a participant with no team at all (the header's own "no team" sentinel,
-translated to `None` by the adapter) gets a team of itself alone, the definite, measured fact that
-this participant has no ally, never a guess (`effects.Context`'s own contract: "never guessed by
-this package"). Per contracts/knowledge-base.md, "Civilisation qualification" step 1, an unmodelled
-teammate now makes *every* cost and time query this pass makes for that teammate's allies gap,
-naming the teammate — not only a query this pass happens to make *for* the unmodelled civilisation
-itself.
+age and researched technologies it is never left unsupplied. For every civilisation-qualified query
+this pass makes that accepts a `context` (`cost`, `production_time`, `age_requirement`,
+`produced_at` and `available_to`; `prerequisites` accepts none), `context.team` is the
+civilisation names of every participant who shares that query's own participant's real team, that
+participant's own civilisation included — a participant with no team at all (the header's own "no
+team" sentinel, translated to `None` by the adapter) gets a team of itself alone, the definite,
+measured fact that this participant has no ally, never a guess (`effects.Context`'s own contract:
+"never guessed by this package"). Per contracts/knowledge-base.md, "Civilisation qualification" step
+1, an unmodelled teammate now makes *every* query of those five fields this pass makes for that
+teammate's allies gap, naming the teammate — not only a query this pass happens to make *for* the
+unmodelled civilisation itself.
 
 **Two allies sharing an unmodelled teammate raise the identical gap once each (T652v).** Two
 different, both-modelled civilisations on the same team as one unmodelled civilisation each reach
@@ -61,7 +64,7 @@ this pass does not ask about: see the end of this paragraph). The first six are 
 `query.py`'s civilisation-qualified query surface (`cost`, `production_time`, `age_requirement`,
 `prerequisites`, `produced_at`, `available_to` — `query.py`'s own module docstring). `line_of_sight`
 names no query this package exposes at all: it belongs to map control and exploration, blocked on
-the unread starting state (research.md D1), which is feature 007's territory, not this package's —
+the unread starting state (research.md D1), which is feature 008's territory, not this package's —
 `gaps.py`'s own `test_gaps.py` already exercises `line_of_sight`'s severity computation directly,
 so this pass does not have to ask about it to make that field's severity real. `query.py`'s seventh
 public function, `name()`, is not civilisation-qualified at all (the one exception the contract
@@ -187,12 +190,19 @@ _QUERY_SURFACE_FUNCTIONS: Final[tuple[tuple[str, Any], ...]] = (
     ("available_to", query.available_to),
 )
 
-#: T652v: exactly the two query-surface functions whose signature accepts `context=` at all
-#: (`query.py`'s own module docstring — `age_requirement`, `prerequisites`, `produced_at` and
-#: `available_to` take no such keyword). Passing `context=` to one of those four would be a
-#: `TypeError`, not a gap, so this pass checks membership here rather than passing it
-#: unconditionally to every one of `_QUERY_SURFACE_FUNCTIONS`.
-_CONTEXT_AWARE_FIELDS: Final[frozenset[str]] = frozenset({"cost", "production_time"})
+#: T652v, extended by T764, T763 and T780: exactly the query-surface functions whose signature
+#: accepts `context=` at all (`query.py`'s own module docstring — `prerequisites` takes no such
+#: keyword, and always refuses). Passing `context=` to it would be a `TypeError`, not a gap, so
+#: this pass checks membership here rather than passing it unconditionally to every one of
+#: `_QUERY_SURFACE_FUNCTIONS` (`test_produced_at.py` asserts the two sets agree). `produced_at`
+#: joined at T764, when an effect gained the means to add a producing building under a condition,
+#: `available_to` at T763, when an effect gained the means to set an availability under one, and
+#: `age_requirement` at T780, when a bonus that moves an age with the match state (the Cumans'
+#: additional Town Center, whose row is T770's) became expressible as a row rather than only a
+#: refusal.
+_CONTEXT_AWARE_FIELDS: Final[frozenset[str]] = frozenset(
+    {"cost", "production_time", "age_requirement", "produced_at", "available_to"}
+)
 
 #: T652v: the four columns `analysis_knowledge_gaps`' own unique index checks beside
 #: `identity_digest` (constant across one `coverage()` call, so irrelevant to whether two gaps from
@@ -393,10 +403,11 @@ def coverage(
                         # T652u, contracts/knowledge-base.md "Civilisation qualification": "a
                         # conditional effect that is modelled is complete knowledge, so the
                         # coverage pass does not report it as a gap." T652v supplies the team half
-                        # of `query.Context` for real (above), so only an age- or research-gated
-                        # effect can still reach this branch — this pass supplies neither, so
-                        # reaching one of those always raises; catching it is exactly that
-                        # treatment — the field *is* modelled, so there is nothing to report.
+                        # of `query.Context` for real (above), so only an age-, research- or
+                        # controlled-count-gated effect can still reach this branch — this pass
+                        # supplies none of them, so reaching one of those always raises; catching
+                        # it is exactly that treatment — the field *is* modelled, so there is
+                        # nothing to report.
                         continue
                     if isinstance(answer_or_gap, gaps.KnowledgeGap):
                         result.append(answer_or_gap)

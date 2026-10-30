@@ -53,7 +53,7 @@ Loading fails — the package does not import — when any of these holds:
 - `participant.units_lost`, as above (FR-004).
 - Explicit deletions and market transactions, at `decoded` (FR-014).
 - The group-silence datum, at `inferred`, with its `non_claim` (FR-013).
-- Every datum feature 007 intends to publish, at `planned` or `blocked`, each with its
+- Every datum feature 008 intends to publish, at `planned` or `blocked`, each with its
   `requires_knowledge` — this is what makes gap severity computable (FR-005, research D7).
 - The starting-state data, as `decoded` and `blocked`, with `blocked_on` naming the decoder.
 

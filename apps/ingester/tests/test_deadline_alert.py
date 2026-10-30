@@ -3,17 +3,18 @@ drain, against the still-open `ingest_runs` row `run_once` (T059) opened at the 
 cycle.
 
 FR-025: "System MUST raise an alert when any replay passes its capture deadline unarchived. This
-count is expected to be permanently zero. This alert fires at the **capture deadline** (day 21),
+count is expected to be permanently zero. This alert fires at the **capture deadline** (day 18),
 not at expiry (day ~31)." T059a's own task text is more specific still: one aggregate severity-1
 `deadline_breach` row per run, carrying every offending capture's id in `detail`, for every capture
 past `capture_deadline_at` that is neither `stored`, `unavailable` nor `quarantined` — "one row per
 run, never one per capture: a backlog would otherwise bury the alert it is supposed to raise."
 
 This is a different alert, with a different timing, from `expired_capture` (T056, tested by T047):
-`expired_capture` is a post-mortem raised once the source's ~31-day retention has actually closed,
-whereas `deadline_breach` fires at the internal 21-day budget with roughly ten days still left to
-act. Asserting one for the other would hide a missing alert — see T047's own module docstring for
-the same warning from the other direction.
+`expired_capture` is a post-mortem raised once the source's retention window has actually closed,
+whereas `deadline_breach` fires at the internal 18-day budget. For every profile measured the rest
+of the window is still left to act; a profile whose window is shorter than the budget, if one
+exists, has none. Asserting one for the other would hide a missing alert — see T047's own module
+docstring for the same warning from the other direction.
 
 **Why `run_once(..., session_factory=session_factory)`.** `run_once`'s own module docstring says
 `budget_seconds`, `trigger` and `stages` are resolved once by whichever entrypoint calls it and
@@ -246,7 +247,7 @@ async def test_deadline_breach_fires_at_the_capture_deadline_and_not_before(
 ) -> None:
     """The boundary itself, and the distinction from `expired_capture` (T056/T047) stated
     concretely: a capture one minute past its own `capture_deadline_at` is already breached, no
-    matter how far that is from the source's ~31-day retention window, and a capture one minute
+    matter how far that is from the source's retention window, and a capture one minute
     short of its deadline is not breached yet. A check keyed to some expiry-style margin instead of
     `capture_deadline_at` itself would get either half of this wrong.
     """
@@ -277,10 +278,10 @@ async def test_deadline_breach_fires_at_the_capture_deadline_and_not_before(
     assert len(alerts) == 1
     assert alerts[0].detail is not None
     assert set(alerts[0].detail.get("capture_ids", [])) == {str(breached_id)}, (
-        "the alert fires the moment `capture_deadline_at` (day 21) has passed, for exactly the "
+        "the alert fires the moment `capture_deadline_at` (day 18) has passed, for exactly the "
         "capture whose deadline actually has — the other capture, one minute short of its own "
         "deadline, must not be swept in early, and this alert must never wait for anything "
-        "resembling the source's ~31-day retention expiry"
+        "resembling the source's retention expiry"
     )
 
 

@@ -112,9 +112,9 @@ reasons, not one:
 
 ### 3.2 `obtainable_until` can be `null` on an `obtainable` row (FR-024, amended 2026-08-29)
 
-Research R8 records that the retention window's length is, as of this writing, unresolved, and FR-024
-therefore requires `obtainable_until` to be `null` while the question is open rather than derived from
-a superseded reading. `ReplayAvailabilityList` treats this as an ordinary, expected shape — not a
+Research R8 records why FR-024 requires `obtainable_until` to be `null` in every state (re-derived
+2026-10-27): the window belongs to each profile, so no date can be derived that the source will
+honour, and the list is never handed one. `ReplayAvailabilityList` treats this as an ordinary, expected shape — not a
 degraded or error rendering of the row: the **badge and tone still read `Obtainable`/`info`** exactly
 as when a date is present (the fact that the recording is obtainable right now is not in question,
 only the date it stops being so), and `SecondaryLine` is simply absent, the same "nothing invented"

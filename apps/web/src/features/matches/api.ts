@@ -310,8 +310,9 @@ export function matchesQueryOptions(profileId: number, cursor: string | null = n
  * http-api.md`'s "Recorded games, per point of view" shape. `download_path` and
  * `obtainable_until` are `null` for `expired` and `never_recorded` (FR-025's whole point: an
  * unobtainable download must not be renderable as a button that then fails), and
- * `obtainable_until` is `null` in every state today (FR-024, amended 2026-08-29 — the retention
- * window is unresolved) — never invented client-side either way. */
+ * `obtainable_until` is `null` in every state today (FR-024, re-derived 2026-10-27 — the
+ * retention window belongs to each profile, so no date can be promised) — never invented
+ * client-side either way. */
 export interface ApiReplayAvailability {
   profile_id: number
   availability: 'archived' | 'obtainable' | 'expired' | 'never_recorded'

@@ -17,9 +17,9 @@ whether Vercel Hobby could serve as a simpler starting point.
 Vercel Hobby restricts cron jobs to **once per day**, with ±59 minutes of scheduling imprecision.
 More frequent expressions fail at deploy time. That looks fatal for an ingestion pipeline.
 
-It is not, because of ADR-adjacent measurement: the replay retention window is ~31 days
-(see `docs/data-sources.md`) and the internal capture budget is 21 days. A daily job produces at most
-~25 h of detection lag, leaving about 20 days of margin. Live stats and match history are read from
+It is not, because of ADR-adjacent measurement: the replay retention window is several weeks long
+(`docs/data-sources.md` §2 holds the current figure) and the internal capture budget is 18 days. A
+daily job produces at most ~25 h of detection lag, leaving about 17 days of margin before the budget. Live stats and match history are read from
 the Relic API per request, so nothing the user _sees_ is delayed — only archival is batched.
 
 ## Corrections to widely-cited limits
@@ -132,7 +132,7 @@ preference. It is written into constitution principle IX.
   30 h. This is the single most important monitor on this stack.
 - **Free-tier ceilings** could stall ingestion silently. Mitigation: the nightly job warns at 70 % of
   any allowance, so the phase-2 move is planned rather than forced.
-- **Cron imprecision** (±59 min, no delivery guarantee). Absorbed by the 21-day budget. Escape
+- **Cron imprecision** (±59 min, no delivery guarantee). Absorbed by the 18-day budget. Escape
   hatches, in order: 24 separate daily cron entries (allowed — 100 per project — though it leans on
   the letter of the limit), a GitHub Actions scheduled workflow, then Vercel Pro or phase 2.
 - **Neon cold starts**: compute suspends after 5 minutes idle, so the daily cron always hits a cold

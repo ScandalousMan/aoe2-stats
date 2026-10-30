@@ -203,7 +203,7 @@ the view fails the suite.
       weakest input — that is a function signature, not a review note. `non-determinable` is
       deliberately **absent** from this enumeration: it is a register classification and nothing is
       ever published at it, which is why **FR-001** lists seven classifications and **FR-008** six
-      tiers. Tiers with no producer in this feature exist from the start so that 007 adds no member
+      tiers. Tiers with no producer in this feature exist from the start so that 008 adds no member
 - [x] T610 [P] [US3] Create `packages/core/src/aoe2stats_core/truth/confidence.py` (**FR-010a**): a
       closed, ordered level set and a mandatory non-empty basis, constructed together. A number is
       **not accepted in any form** — no float field, no numeric coercion, no optional escape hatch —
@@ -233,7 +233,7 @@ the view fails the suite.
       condition that would change the answer (**FR-003** — the last question is answered, not left
       open). Explicit deletions and market transactions at **decoded** (**FR-014**) — the wheel returns
       both as raw payloads, so observed would mis-tier them. The
-      group-silence datum at **inferred** with its non-claim (**FR-013**). Every datum feature 007
+      group-silence datum at **inferred** with its non-claim (**FR-013**). Every datum feature 008
       intends to publish, at planned or blocked, each carrying the knowledge it requires
       (**FR-005**) — that list is what makes gap severity computable in phase 4, so an entry with an
       empty requirement set had better mean it. The starting-state data are **blocked** on the named
@@ -780,7 +780,7 @@ Three were arbitration and are decided, with the decision recorded in the task t
       **FR-014** requires to be exact, while `register.toml:564` declares `requires_knowledge = []`
       although the entry's own method admits the constant is not in the recording. **Decided
       2026-09-21: publish the step count, not the amount.** The count is in the payload and is
-      exact; the multiplication is knowledge-qualified and belongs in 007's reconstruction layer,
+      exact; the multiplication is knowledge-qualified and belongs in 008's reconstruction layer,
       where a versioned constant can gap. This keeps the decoded tier honestly exact and needs no
       snapshot change. Rename the register entry and the payload field to say what is carried
       (**FR-012**), and regenerate both canonical goldens under the README's discipline — the
@@ -1234,7 +1234,7 @@ after everything underneath it moves.
 - [x] T653 [US6] Implement `packages/core/src/aoe2stats_core/truth/identity.py`: the tuple of
       recording, parser name and version, parser dependencies, knowledge version, reconstruction
       engine version and analytics version (**FR-040**), with a digest over its canonical
-      serialisation. The reconstruction engine carries an explicit not-applicable marker until 007
+      serialisation. The reconstruction engine carries an explicit not-applicable marker until 008
       ships; **analytics does not** — it is this feature's own version for the coverage pass and
       the group-silence method ([data-model.md](./data-model.md) §8), and marking it not-applicable
       would let a banding change keep the same digest and never trigger T657a's recompute
@@ -1559,7 +1559,7 @@ quickstart run, and the lint. `/speckit-implement` stops here when T670 exits 0.
       self-verifying anchor, and the object table sits behind a per-patch grammar. A living fact in
       `docs/` is trustworthy only because a test asserts it, so add a fixture test that finds the
       attribute anchor in every committed recording. This retires the claim that the section is
-      unreadable **without** promising the decoder, which is 007's. [research.md](./research.md)
+      unreadable **without** promising the decoder, which is 008's. [research.md](./research.md)
       **D1** then becomes the historical record and stops being the home
 - [x] T669 [P] Run the full quickstart end to end on a clean checkout and record any step whose
       stated expectation did not match what happened. A quickstart nobody has executed is a
@@ -2932,7 +2932,7 @@ phase.
   `aoe2techtree-185872-civilisations-20` — so that the chain reads in order without opening
   `snapshot.toml`.
 
-- [ ] T760 [P] [US2] Record FR-022c's sources in `docs/data-sources.md` §6, the living home of a
+- [x] T760 [P] [US2] Record FR-022c's sources in `docs/data-sources.md` §6, the living home of a
       source's scope. **`aoc-reference-data`**: its "Scope" names civilisations only; widen it to
       the `objects` table (identifier to display name for units and buildings), read 2026-10-18 in
       its Definitive Edition dataset (dataset 100), first read for the gate family. Correct "Coverage" ("it carries no
@@ -2951,7 +2951,7 @@ phase.
       where in the game). **Fandom**: its ruling gains that an agent may not read it. **halfon**:
       its "Ruling" gains that buildings 490 and 673 did not make it needed (research D3, amended).
       Docs only; no test
-- [ ] T761 [US2] Resolve an entity identifier the pack does not name through a transcribed alias
+- [x] T761 [US2] Resolve an entity identifier the pack does not name through a transcribed alias
       (FR-022d). A snapshot may carry `aliases.toml`, one `[[alias]]` per identifier: `kind`, `id`,
       `target` (an identifier of the same kind that `rules.json` names), `source_name` (the
       referenced source's name for it, verbatim), `source` and `read_on`. The loader refuses, with
@@ -2969,7 +2969,7 @@ phase.
       say about 490 and 673 ("age-upgraded visual variants"; closable only by a second vendored
       source): a referenced source names both "Gate", and FR-022d closes them without vendoring
       anything. Their strict expectations stay until T767's snapshot closes them
-- [ ] T762 [US2] Add the condition `controlled` to the effect model (FR-022e). The operand is a
+- [x] T762 [US2] Add the condition `controlled` to the effect model (FR-022e). The operand is a
       table keyed by a count; the count is how many of the entities `condition_entities` names the
       player controls, supplied by the caller in the query's `context`. A count above the table's
       highest key takes that key's operand, which is how a stated maximum is written; a count below
@@ -2983,7 +2983,7 @@ phase.
       `packages/knowledge/tests/test_effects.py`: a synthetic effect at counts 0, 1, 4 and 5 against
       a table keyed 1 to 4; the raise without a count; a parse-time refusal of a `controlled` effect
       with no `condition_entities`
-- [ ] T763 [US2] Answer `available_to` from the civilisation's own tree, and let an effect change
+- [x] T763 [US2] Answer `available_to` from the civilisation's own tree, and let an effect change
       it. Today it answers true for any entity that resolves, for every modelled civilisation
       (`packages/knowledge/src/aoe2stats_knowledge/query.py`, `_field_present`), although the pack
       carries each civilisation's tree and the normaliser drops it: `rules.json`'s `civilisations`
@@ -3010,7 +3010,7 @@ phase.
       recording ordered answers true for that participant's civilisation (building 490 through T761's
       alias once a snapshot carries it); and every installed snapshot still re-derives byte for
       byte
-- [ ] T764 [US2] Let `produced_at` answer every building an entity is produced at, and let an effect
+- [x] T764 [US2] Let `produced_at` answer every building an entity is produced at, and let an effect
       add one: Goths' Anarchy (Huskarls at the Barracks), Huns' Marauders (Tarkans at the Stable),
       Italians' Condottiero at the Barracks, Mapuche Settlements training Spearmen and Skirmishers.
       The answer becomes an ordered sequence, the pack's building first. **Before changing the
@@ -3020,7 +3020,7 @@ phase.
       `specs/006-replay-analysis-foundations/`, by hand in the same change. **Red first** in
       `packages/knowledge/tests/test_effects.py`: an unconditional addition, a
       `researched`-conditioned addition before and after, and the pack's building staying first
-- [ ] T765 [US2] Write the whole-pack coverage test (SC-007b) in
+- [x] T765 [US2] Write the whole-pack coverage test (SC-007b) in
       `packages/knowledge/tests/test_whole_pack_coverage.py`. For each build's current snapshot
       (resolution by build, so a superseded one is skipped), parametrized by civilisation: every
       civilisation the snapshot's `rules.json` lists, every entity it names or aliases, every field
@@ -3034,7 +3034,7 @@ phase.
       no pack carries (the six Chronicles civilisations) is outside the test until T776 decides, and
       its docstring says so. If the run takes longer than 30 seconds, cache
       each snapshot's rules once per session; never sample entities
-- [ ] T766 [P] [US2] Add Saxons, Varangians and Danes to
+- [x] T766 [P] [US2] Add Saxons, Varangians and Danes to
       `apps/api/src/aoe2stats_api/civilizations.py`: today their matches show the
       "Civilisation <id>" fallback. Their Relic identifiers were measured on 2026-09-27 by the
       Relic and aoe2companion join `docs/data-sources.md` §1 records (61 Saxons, 62 Varangians,
@@ -3044,7 +3044,7 @@ phase.
       docstring beside T070i's, and correct the docstring where it says that source corroborates
       nothing in this table. **Red first** in `apps/api/tests/`: each of the three resolves to its
       name
-- [ ] T767 [US2] Model batch A on build 185872 in `aoe2techtree-185872-civilisations-20`, which
+- [x] T767 [US2] Model batch A on build 185872 in `aoe2techtree-185872-civilisations-20`, which
       supersedes `aoe2techtree-185872-civilisations`: Britons, Goths, Japanese, Chinese,
       Byzantines, Turks, Vikings, Mongols, Celts, Spanish, Aztecs and Mayans, with T746's eight
       carried. `rules.json` is derived again under T763's normaliser. The snapshot carries the first
@@ -3065,28 +3065,80 @@ phase.
       490's three tuples, by set equality; its Detinets and "Fortifications" blockers (building 82's
       cost, building 1665's production time) stay unless the publisher's notes settle them. The
       Donjon's availability is informational and was never on that set
-- [ ] T768 [US2] Model batch B on build 185872 in `aoe2techtree-185872-civilisations-32`, which
+- [x] T768 [US2] Model batch B on build 185872 in `aoe2techtree-185872-civilisations-32`, which
       supersedes T767's snapshot: Huns, Koreans, Italians, Hindustanis, Incas, Magyars, Portuguese,
       Ethiopians, Berbers, Khmer, Malay and Burmese. Magyars' Corvinian Army and Malay's Forced
       Levy replace a gold cost with "additional" food the strings do not size: FR-022c's order, then
       the owner's sheet. Khmer's bonus removes building prerequisites, a field the knowledge base
       does not carry (research D3); it is listed in the file's header as a bullet with no row, never
       written as a row. **Tests**: as T767's, for thirty-two civilisations
-- [ ] T769 [US2] Model batch C on build 185872 in `aoe2techtree-185872-civilisations-44`, which
+- [x] T769 [US2] Model batch C on build 185872 in `aoe2techtree-185872-civilisations-44`, which
       supersedes T768's snapshot: Vietnamese, Bulgarians, Cumans, Lithuanians, Burgundians, Poles,
       Bohemians, Dravidians, Bengalis, Gurjaras, Romans and Armenians. Bohemians' Hussite Reforms
       replace a gold cost with a food cost the strings do not size, for the Monk and each Monastery
       technology: FR-022c's order, then the owner's sheet, one row per entity. "Available one age
       earlier" is an `age_requirement` row, never a reading of the tree's display links (research
       D3). **Tests**: as T767's, for forty-four civilisations
-- [ ] T770 [US2] Model batch D on build 185872 in `aoe2techtree-185872-civilisations-56`, which
+- [x] T780 [US2] Let `age_requirement` take the match state its effects need (FR-022e). The
+      signature becomes `age_requirement(entity, *, civilisation, context=None)`; an effect on
+      `age_requirement` may carry any condition `context` decides (`age`, `researched`, `team`,
+      `controlled`), and a query that reaches a conditional one without its input raises
+      `ContextRequired`, as `cost` does. Step 1 of "Civilisation qualification" reaches it as it
+      reaches `cost`: an unmodelled civilisation in `context.team` refuses it, and the gap names the
+      teammate. The coverage pass passes `context` to it as it does to `cost`; a committed
+      recording's blocker set that changes for that reason is updated by set equality, and the
+      hand-back names each added tuple and the ally that causes it. That changes what the pass
+      publishes for such a match, so the analytics version becomes `coverage@3` (FR-042), as
+      `coverage@2` did for `produced_at` and `available_to`, and
+      `apps/analyzer/tests/test_document_build.py` pins it. Its first user is the Cumans'
+      "One additional Town Center can be built in Feudal Age", which T769 refused because the query
+      took no context: FR-022e forbids refusing a bonus for the match state it needs. A query
+      without `context` on an entity no conditional effect touches answers as it does today; if a
+      superseded snapshot's reproduction test changes anyway (SC-005), stop and report it, never
+      re-pin it. Amend `specs/006-replay-analysis-foundations/contracts/knowledge-base.md` ("The
+      query surface", "Civilisation qualification" step 1, and the coverage paragraph that names
+      `coverage@2`) and
+      `specs/006-replay-analysis-foundations/data-model.md` §6 by hand in the same change. **Red
+      first** in `packages/knowledge/tests/test_effects.py`: a synthetic `controlled` effect on
+      `age_requirement` at counts 0, 1 and 2 against a table keyed `"0"` and `"2"`; the raise
+      without a count; an unmodelled teammate's refusal
+- [x] T781 [US2] Let one effect carry more than one condition (FR-022e). Besides the single name it
+      takes today, `condition` takes a non-empty list of distinct names from the same closed
+      vocabulary, and the effect applies when every one of them holds; a query that reaches it
+      without the input any one of them needs raises `ContextRequired`. At most one of `age` and
+      `controlled` appears in a list, because each makes the operand a table. `condition_technology`
+      and `condition_entities` keep their rules, keyed to the names the list carries. A single name
+      parses to the same effect as today, so every installed snapshot reproduces (SC-005).
+      `researched` beside `team` reads a new `Context.team_researched`, the technologies researched
+      by any player on the team, the player's own included, because the technology belongs to the
+      bonus's owner and not to the teammate queried; absent, it raises. A list that carries `team`
+      carries besides it `researched` alone, and any other name beside `team` is refused at parse
+      time: whose age or count it would read is undecided, and a bonus that needs it widens this
+      rule then. Its first users are Berbers'
+      Kasbah (T768) and Cuman Mercenaries (T769), each refused because an effect carried one
+      condition. Amend `specs/006-replay-analysis-foundations/data-model.md` §6's `condition` row
+      and `specs/006-replay-analysis-foundations/contracts/knowledge-base.md` ("The query surface",
+      the `context` bullet) by hand in the same change. Lands after T780: both edit the same files.
+      **Red first** in `packages/knowledge/tests/test_effects.py`: a synthetic `researched` and
+      `team` effect applied to a teammate whose team researched the technology and not to one whose
+      team did not; the raise without `team_researched`; a list refused at parse time when empty,
+      when a name repeats, when it carries both `age` and `controlled`, when it carries `team` with
+      `age` or `controlled`, and when a name is outside the vocabulary
+- [x] T770 [US2] Model batch D on build 185872 in `aoe2techtree-185872-civilisations-56`, which
       supersedes T769's snapshot: Georgians, Shu, Wu, Wei, Jurchens, Khitans, Muisca, Mapuche, Tupi,
       Saxons, Varangians and Danes. Saxons' Foot Soldiers discount is a `controlled` row (T762).
       Then write the validation sample in [owner-readings.md](./owner-readings.md), "Validation
       sample": one value per civilisation of the pack, each the effect that changes the most
       entities, stated as the civilisation, the entity, the age, the technologies researched, and the
       value this snapshot answers, for the owner to read in the game. **Tests**: as T767's, for every
-      civilisation of the pack; T765 then has no `xfail` left for build 185872
+      civilisation of the pack; T765 then has no `xfail` left for build 185872. The same snapshot
+      replaces the three refusals the effect model forced, each with a modelled row: the Cumans'
+      additional Town Center (building 621, `age_requirement`, a `controlled` count of Town Centers
+      whose counted set is taken from the sources under FR-022c and named in `validated_by`, T780),
+      Cuman Mercenaries (unit 1260, `available_to`, `researched` and `team`, T781) and
+      Berbers' Kasbah (`production_time`, `researched` and `team`, T781). Their open rows of
+      [owner-readings.md](./owner-readings.md), and the paragraph under its table naming the two
+      Cuman bonuses, are removed in the same change. Depends on T780 and T781
 - [ ] T771 [US2] **Owner task (information).** Read each open row of
       [owner-readings.md](./owner-readings.md), "Open values", and each row of its "Validation
       sample", in the running game on the current build (a tooltip in a solo game or the scenario
@@ -3104,7 +3156,7 @@ phase.
       arrives after promotion waits for the next snapshot. **Tests**: T765's tuples for build 185872
       equal the FR-022b entries, by set equality, and are empty when there are none; the same holds
       for the third committed recording's blocker set
-- [ ] T773 [US2] Model build 180059 in a snapshot that supersedes `aoe2techtree-180059`, every
+- [x] T773 [US2] Model build 180059 in a snapshot that supersedes `aoe2techtree-180059`, every
       civilisation of that build's pack, `rules.json` derived again under T763's normaliser. **The
       carry rule**: a row of T770's snapshot is carried to build 180059 only where the
       bullet's string is byte-identical under the same key in both packs, every selector resolves to
@@ -3130,12 +3182,12 @@ phase.
       gaps per build. Once T772 and T774 are deployed, the count for
       builds 180059 and 185872 equals the FR-022b
       entries those builds keep, zero when there are none, for every analysis recomputed since
-- [ ] T776 [US2] **Owner task (arbitration).** Decide whether the six Chronicles civilisations
+- [x] T776 [US2] **Owner task (arbitration).** Decide whether the six Chronicles civilisations
       `apps/api/src/aoe2stats_api/civilizations.py` names are in scope. No vendored pack carries
       their trees, so including them means choosing a source for every entity they can build, under
       FR-022c. The decision is recorded in [spec.md](./spec.md), Clarifications, Session
       2026-10-18, and the tasks it needs are filed here
-- [ ] T777 [P] Renumber the reconstruction from feature 007 to feature 008 everywhere it is named:
+- [x] T777 [P] Renumber the reconstruction from feature 007 to feature 008 everywhere it is named:
       007 is now the deployment-storage feature (`specs/007-shrink-deployment-storage/`, open as PR
       #176). `git grep -n -i 'feature 007'` lists the sites, among them
       `packages/core/src/aoe2stats_core/truth/register.toml`, whose readable view is regenerated

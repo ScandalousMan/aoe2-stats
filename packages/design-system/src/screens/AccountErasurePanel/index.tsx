@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { cx } from '../../lib/cx'
 import { Button } from '../../primitives/Button'
 import { Callout } from '../../primitives/Callout'
@@ -9,12 +9,12 @@ import { Link } from '../../primitives/Link'
 
 export type ErasureUiState =
   | 'idle'
-  | 'minting' // GET in flight — `EraseButton` busy before the dialog first opens, or a silent
-  // re-mint once it already has (`dialogHasOpened` tells the two apart, below)
+  | 'minting' // GET in flight — `EraseButton` busy before the dialog first opens, or, once it has,
+  // a re-mint with `ConfirmAction` busy (`dialogHasOpened` tells the two apart, below)
   | 'confirming' // dialog open, token held, waiting for the acknowledged confirm
   | 'erasing' // POST in flight
   | 'confirmation-expired' // 403 from POST: the token aged out; dialog says so
-  | 'failed' // POST failed for another reason; dialog says so
+  | 'failed' // POST failed for another reason, or a mint GET failed; dialog says so
   | 'erased' // terminal; the route shows ErasedScreen, not this panel
 
 export interface AccountErasurePanelProps {
@@ -36,8 +36,8 @@ const focusRing =
 
 /** FR-037: irreversible account erasure, gated by a real two-step confirmation — a `GET` mints a
  * short-lived token, then a `Dialog` with a required "I understand" checkbox gates the destructive
- * `POST`. On the `POST`'s 403 (token expiry) the panel silently re-mints and retries once the user
- * confirms again. Owns its own dialog lifecycle; `initialState` exists only for stories. */
+ * `POST`. On the `POST`'s 403 (token expiry) the next confirm press re-mints, then erases, as one
+ * in-flight run (T751). Owns its own dialog lifecycle; `initialState` exists only for stories. */
 export function AccountErasurePanel({
   onRequestConfirmation,
   onErase,
@@ -47,16 +47,12 @@ export function AccountErasurePanel({
 }: AccountErasurePanelProps) {
   const [state, setState] = useState<ErasureUiState>(initialState)
   const [confirmationToken, setConfirmationToken] = useState<string | undefined>(undefined)
-  const [acknowledged, setAcknowledged] = useState(false)
-  // §5's `minting` names two different moments the same state value covers: the very first mint,
-  // triggered by `EraseButton` before `ConfirmDialog` has ever opened ("minting shows the
-  // `EraseButton` busy while the token is fetched" — before the dialog exists to hold anything
-  // busy itself), and the silent re-mint §4.4 describes, fired from inside an already-open dialog
-  // when a stale token expired. Both are `state === 'minting'`; this flag is what tells them
-  // apart without a second state value the vocabulary does not need. `initialState === 'minting'`
-  // (the `Minting` story) starts `false` — the pre-dialog case — deliberately: no story ever needs
-  // to open straight into the re-mint frame, which only exists as a transient step inside a
-  // real `handleConfirm` retry.
+  const [acknowledged, setAcknowledged] = useState(
+    ['erasing', 'failed', 'confirmation-expired'].includes(initialState),
+  )
+  // §5's `minting` is the first mint, fired by `EraseButton` before the dialog opens, or the re-mint
+  // fired from inside the open dialog; `dialogHasOpened` tells them apart. `initialState:
+  // 'minting'` starts it `false` (the first mint): no story needs the re-mint frame.
   const [dialogHasOpened, setDialogHasOpened] = useState(false)
 
   // Guards every `.then()`/`.catch()` below against setting state once this panel has unmounted
@@ -70,9 +66,17 @@ export function AccountErasurePanel({
     [],
   )
 
-  // The dialog is open for `minting` only once it has already opened once this cycle (the
-  // in-dialog re-mint above) — the very first `minting`, fired from `EraseButton` on the page
-  // itself, renders that button busy instead (below) and does not open `ConfirmDialog` early.
+  // T751 (§9): the run is the in-dialog re-mint plus the erase after it, `ConfirmAction` `loading`
+  // through it. The checkbox and "Keep my account" are `disabled`, so neither may keep focus: an
+  // activation that moves none leaves it there, Chromium drops it to `body`. Both are moved.
+  const sectionRef = useRef<HTMLElement>(null)
+  const running = state === 'erasing' || (state === 'minting' && dialogHasOpened)
+  useLayoutEffect(() => {
+    const dialog = sectionRef.current?.querySelector<HTMLElement>('[role="dialog"]')
+    const held = document.activeElement
+    if (!running || !dialog || (held && dialog.contains(held) && !held.matches(':disabled'))) return
+    dialog.querySelector<HTMLElement>('[aria-busy]')?.focus()
+  }, [running])
   const dialogOpen =
     (state === 'minting' && dialogHasOpened) ||
     state === 'confirming' ||
@@ -130,10 +134,8 @@ export function AccountErasurePanel({
   function handleConfirm() {
     if (!acknowledged) return
 
-    // A 403 means the token aged out (module docstring, `_ERASURE_CONFIRMATION_TTL`): the very
-    // next `ConfirmAction` press silently re-mints and immediately retries the erase with the
-    // fresh token — one press does both steps, so "the user simply confirms once more" (§4.4) is
-    // literally true rather than a second, separate mint-only step.
+    // A 403 means the token aged out (`_ERASURE_CONFIRMATION_TTL`): the next `ConfirmAction`
+    // press re-mints and at once retries the erase — one press, both steps (§4.4).
     if (confirmationToken === undefined) {
       setState('minting')
       onRequestConfirmation()
@@ -155,6 +157,7 @@ export function AccountErasurePanel({
 
   return (
     <section
+      ref={sectionRef}
       aria-labelledby="account-erasure-panel-heading"
       className={cx('max-w-measure', className)}
     >
@@ -209,13 +212,10 @@ export function AccountErasurePanel({
       </div>
 
       <div className="mt-8">
-        {/* §5 "loading — ... minting shows the EraseButton busy while the token is fetched" —
-         * only the very first mint, before ConfirmDialog has ever opened (`dialogOpen`'s own
-         * comment above); the disabled-state paragraph's "the EraseButton on the page is always
-         * live" names the *disabled* state, a different category `Button`'s `loading` does not
-         * fall into. No loading label is given for this frame anywhere in §4.3/§4.4's normative
-         * copy, so none is supplied — `Button`'s own rule for an omitted one applies: the resting
-         * label stays, with the spinner beside it. */}
+        {/* §5 "loading": `minting` shows the EraseButton busy while the token is fetched — only
+         * the very first mint, before the dialog has opened. "Always live" names the *disabled*
+         * state, which `loading` is not. No loading label is specified for this frame, so
+         * `Button`'s rule for an omitted one applies: the resting label stays, with the spinner. */}
         <Button
           variant="destructive"
           size="lg"
@@ -232,15 +232,15 @@ export function AccountErasurePanel({
           primaryAction={{
             label: 'Erase my account permanently',
             variant: 'destructive',
-            disabled: !acknowledged || state === 'minting' || state === 'erasing',
-            loading: state === 'erasing',
+            disabled: !acknowledged,
+            loading: running,
             loadingLabel: 'Erasing your account…',
             onClick: handleConfirm,
           }}
           secondaryAction={{
             label: 'Keep my account',
             variant: 'secondary',
-            disabled: state === 'erasing',
+            disabled: running,
             onClick: closeDialog,
           }}
         >
@@ -271,6 +271,7 @@ export function AccountErasurePanel({
             <input
               type="checkbox"
               checked={acknowledged}
+              disabled={running}
               onChange={(event) => setAcknowledged(event.target.checked)}
               className={cx('h-5 w-5 shrink-0', focusRing)}
             />
@@ -302,11 +303,10 @@ export function ErasedScreen({ homeHref }: { homeHref: string }) {
         notice. There is nothing left here to sign in to.
       </p>
       <p className="mt-6 font-sans text-md">
-        {/* T674: was a local `<a>` copying `Link`'s own `inline` recipe by hand — it stands alone
-            in this paragraph rather than sitting inside running prose, so it takes `standalone`
-            (`specs/README.md`, "Minimum interactive footprint"), gaining that variant's block
-            padding and a moved baseline, and now carries the `data-variant` marker the
-            touch-footprint route sweep reads. */}
+        {/* T674: was a local `<a>` copying `Link`'s `inline` recipe by hand — it stands alone in
+            this paragraph, so it takes `standalone` (`specs/README.md`, "Minimum interactive
+            footprint"), gaining that variant's block padding and a moved baseline, and carries
+            the `data-variant` marker the touch-footprint route sweep reads. */}
         <Link href={homeHref} variant="standalone">
           Read the privacy notice
         </Link>

@@ -20,6 +20,8 @@ from typing import Any
 import pytest
 
 from aoe2stats_knowledge.normalise import (
+    FIRST_NORMALISER_VERSION,
+    NORMALISER_VERSIONS,
     Disagreement,
     NormalisedPack,
     disagreements_toml_text,
@@ -318,14 +320,16 @@ def test_every_unit_and_technology_referenced_by_a_committed_recording_resolves(
 
 #: `building-placed` events name two object ids the vendored `aoe2techtree` pack carries nowhere
 #: at all — not in the base `Building` table, not in any per-civilisation tree, not anywhere else
-#: in the pack (confirmed by inspection, not assumed). Both are age-upgraded visual variants: the
-#: tech tree UI this pack was built from only needs one representative id per tech-tree tile, so a
-#: building type whose in-game object id changes with the player's age (the same mechanic that
-#: gives `Building` table id 12 its own internal name "Barracks Age1") has no id here for any age
-#: past the one the tech tree displays. This is a genuine, faithful gap in the vendored source —
-#: exactly what T647's `KnowledgeGap` machinery will represent at the query layer — not a defect in
-#: this normaliser's merge logic, which is why it is named explicitly here rather than silently
-#: excluded from the assertion below.
+#: in the pack (confirmed by inspection, not assumed). This is a genuine, faithful gap in the
+#: vendored source — exactly what T647's `KnowledgeGap` machinery represents at the query layer —
+#: not a defect in this normaliser's merge logic, which is why it is named explicitly here rather
+#: than silently excluded from the assertion below. **Corrected 2026-10-18 (T761):** an earlier
+#: version of this note called both ids age-upgraded visual variants of one tech-tree tile; that
+#: was never measured. A referenced source, `aoc-reference-data`'s `objects` (read 2026-10-18,
+#: `docs/data-sources.md` §6), names both "Gate", and FR-022d closes them with a transcribed alias
+#: in a snapshot's `aliases.toml`, vendoring nothing. The set below stays as the strict statement of
+#: what the pack names: T767's snapshot (build 185872) carries those aliases, and build 180059's
+#: will (T773), but the pack stays what it is.
 _BUILDING_IDS_ABSENT_FROM_THE_VENDORED_PACK: frozenset[int] = frozenset({490, 673})
 
 
@@ -447,12 +451,13 @@ def _pack_directory_pinned_at(commit: str) -> str:
 
 def _rederived_rules_json(snapshot_directory: Path) -> bytes:
     """`rules.json` as the normaliser produces it from the pack the snapshot's own `snapshot.toml`
-    names: the pack is found from `[snapshot].source_version` through each pack's `MANIFEST.json`,
-    never from a table kept here."""
-    source_version = tomllib.loads((snapshot_directory / "snapshot.toml").read_text("utf-8"))[
-        "snapshot"
-    ]["source_version"]
-    return rules_json_bytes(normalise_pack(_pack_directory_pinned_at(source_version)))
+    names, under the normaliser version it names (T763; absent means the first): the pack is found
+    from `[snapshot].source_version` through each pack's `MANIFEST.json`, never from a table kept
+    here, and the version is read from the file, never assumed."""
+    table = tomllib.loads((snapshot_directory / "snapshot.toml").read_text("utf-8"))["snapshot"]
+    version = table.get("normaliser_version", FIRST_NORMALISER_VERSION)
+    pack = normalise_pack(_pack_directory_pinned_at(table["source_version"]), version=version)
+    return rules_json_bytes(pack)
 
 
 def test_the_promoted_snapshots_are_found_not_listed() -> None:
@@ -527,3 +532,139 @@ def test_the_committed_promoted_fixture_carries_real_entities_not_the_old_stub(
         ).read_text(encoding="utf-8")
     )
     assert entity_id in document["entities"][entity_kind]
+
+
+# ---------------------------------------------------- T763: the normaliser's second version
+
+#: Technology ids the pack's `unit_upgrades` table keys under more than one unit, measured
+#: 2026-10-19 in both vendored revisions. The first-version normaliser keeps one owning unit per
+#: technology (the last), which is why the membership rule must collect every key.
+_MULTI_KEYED_UPGRADE_TECHNOLOGIES = {2, 34, 35, 197, 365, 429, 678, 753}
+
+
+def _trees(pack_name: str) -> dict[str, dict[str, list[str]]]:
+    pack = normalise_pack(pack_name, version=2)
+    document = json.loads(rules_json_bytes(pack))
+    trees: dict[str, dict[str, list[str]]] = document["civilisations"]
+    return trees
+
+
+def test_the_normaliser_has_two_versions_and_the_first_is_the_default() -> None:
+    assert NORMALISER_VERSIONS == (1, 2)
+    assert FIRST_NORMALISER_VERSION == 1
+    default = json.loads(rules_json_bytes(normalise_pack(_FIRST_PACK)))
+    explicit = json.loads(rules_json_bytes(normalise_pack(_FIRST_PACK, version=1)))
+    assert default == explicit
+    assert isinstance(default["civilisations"], list)
+
+
+@pytest.mark.parametrize("version", [0, 3, True, "2"])
+def test_the_normaliser_refuses_a_version_it_does_not_have(version: Any) -> None:
+    with pytest.raises(ValueError, match="version"):
+        normalise_pack(_FIRST_PACK, version=version)
+
+
+@pytest.mark.parametrize("pack_name", [_FIRST_PACK, _SECOND_PACK])
+def test_version_two_changes_the_civilisations_and_nothing_else(pack_name: str) -> None:
+    first = json.loads(rules_json_bytes(normalise_pack(pack_name, version=1)))
+    second = json.loads(rules_json_bytes(normalise_pack(pack_name, version=2)))
+    assert set(first) == set(second) == {"entities", "civilisations"}
+    assert first["entities"] == second["entities"]
+    assert sorted(second["civilisations"]) == first["civilisations"]
+
+
+def test_version_two_is_deterministic_and_lists_are_sorted_numerically() -> None:
+    pack = normalise_pack(_FIRST_PACK, version=2)
+    assert rules_json_bytes(pack) == rules_json_bytes(normalise_pack(_FIRST_PACK, version=2))
+    for tree in _trees(_FIRST_PACK).values():
+        assert set(tree) == {"unit", "building", "technology"}
+        for ids in tree.values():
+            assert ids == [str(i) for i in sorted(int(i) for i in ids)]
+            assert len(ids) == len(set(ids))
+
+
+def test_the_multi_keyed_upgrade_technologies_are_exactly_these_in_both_packs() -> None:
+    for pack_name in (_FIRST_PACK, _SECOND_PACK):
+        data = json.loads(
+            (_PACKS_ROOT / pack_name / "data.json").read_text(encoding="utf-8"),
+        )
+        keyed: dict[int, set[str]] = {}
+        for unit_id, raw in data["data"]["unit_upgrades"].items():
+            keyed.setdefault(raw["ID"], set()).add(unit_id)
+        multi = {technology for technology, units in keyed.items() if len(units) > 1}
+        assert multi == _MULTI_KEYED_UPGRADE_TECHNOLOGIES, pack_name
+
+
+def test_a_technology_keyed_under_two_units_is_a_member_through_either() -> None:
+    """Technology 197 (Pikeman) is keyed under units 358 and 1787, and 429 (Halberdier) under 359
+    and 1788. The first-version normaliser's owner table keeps the last key, 1787 and 1788, which
+    Franks, Teutons and Tatars do not have; a last-wins reading would drop both from their trees.
+    """
+    trees = _trees(_FIRST_PACK)
+    last_wins = normalise_pack(_FIRST_PACK).entities["technology"]
+    assert last_wins["197"]["upgrades_unit"] == "1787"
+    for civilisation in ("Franks", "Teutons", "Tatars"):
+        assert "1787" not in trees[civilisation]["unit"], civilisation
+        assert "358" in trees[civilisation]["unit"], civilisation
+        assert "197" in trees[civilisation]["technology"], civilisation
+        assert "429" in trees[civilisation]["technology"], civilisation
+
+
+@pytest.mark.parametrize("technology", ["98", "100", "222"])
+def test_an_upgrade_technology_is_placed_by_the_unit_the_pack_keys_it_under(
+    technology: str,
+) -> None:
+    """Measured 2026-10-18 on match 511523321: technologies 98, 100 and 222 were ordered and are in
+    neither participant's `Tech` list (the pack's civilisation tables list the unit, not the
+    technology that upgrades it). `unit_upgrades` keys them under units 6, 24 and 75."""
+    data = json.loads((_PACKS_ROOT / _SECOND_PACK / "data.json").read_text(encoding="utf-8"))
+    trees = _trees(_SECOND_PACK)
+    for civilisation in ("Slavs", "Sicilians"):
+        assert int(technology) not in data["civs"][civilisation]["Tech"]
+        assert technology in trees[civilisation]["technology"]
+
+
+def test_an_upgrade_technology_whose_keyed_unit_is_not_in_the_tree_is_not_a_member() -> None:
+    """Contrast: Elite Skirmisher (98) is keyed under unit 6, which the Turks' tree lacks, and the
+    Turks' `Tech` list does not name 98 either."""
+    data = json.loads((_PACKS_ROOT / _FIRST_PACK / "data.json").read_text(encoding="utf-8"))
+    trees = _trees(_FIRST_PACK)
+    assert 6 not in data["civs"]["Turks"]["Unit"]
+    assert 98 not in data["civs"]["Turks"]["Tech"]
+    assert "6" not in trees["Turks"]["unit"]
+    assert "98" not in trees["Turks"]["technology"]
+    assert "6" in trees["Franks"]["unit"]
+    assert "98" in trees["Franks"]["technology"]
+
+
+def test_a_tree_lists_what_the_packs_civilisation_table_lists() -> None:
+    data = json.loads((_PACKS_ROOT / _FIRST_PACK / "data.json").read_text(encoding="utf-8"))
+    trees = _trees(_FIRST_PACK)
+    for civilisation, table in data["civs"].items():
+        assert trees[civilisation]["unit"] == [str(i) for i in sorted(table["Unit"])]
+        assert trees[civilisation]["building"] == [str(i) for i in sorted(table["Building"])]
+        assert set(map(str, table["Tech"])) <= set(trees[civilisation]["technology"])
+
+
+def test_every_installed_snapshot_re_derives_under_the_version_it_names() -> None:
+    """Every installed snapshot, found by the loader and not listed here, re-derives byte for byte
+    under the version its `snapshot.toml` names, and the version is read, not assumed: today every
+    one names none, so each is first-version."""
+    assert _PROMOTED_SNAPSHOT_DIRECTORIES
+    for directory in _PROMOTED_SNAPSHOT_DIRECTORIES:
+        root = _SNAPSHOTS_ROOT / directory
+        table = tomllib.loads((root / "snapshot.toml").read_text("utf-8"))["snapshot"]
+        assert table.get("normaliser_version", FIRST_NORMALISER_VERSION) in NORMALISER_VERSIONS
+        assert (root / "rules.json").read_bytes() == _rederived_rules_json(root), directory
+
+
+def test_the_re_derivation_is_made_under_the_version_a_snapshot_names(tmp_path: Path) -> None:
+    """Plant: a copy of an installed snapshot that names version 2 no longer re-derives to its
+    first-version bytes, so the version in `snapshot.toml` is what decides."""
+    copy = tmp_path / "aoe2techtree-180059"
+    shutil.copytree(_SNAPSHOTS_ROOT / "aoe2techtree-180059", copy)
+    text = (copy / "snapshot.toml").read_text(encoding="utf-8")
+    (copy / "snapshot.toml").write_text(
+        text.replace("[snapshot]\n", "[snapshot]\nnormaliser_version = 2\n", 1), encoding="utf-8"
+    )
+    assert (copy / "rules.json").read_bytes() != _rederived_rules_json(copy)

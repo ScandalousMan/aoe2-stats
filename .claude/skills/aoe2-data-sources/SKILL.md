@@ -57,7 +57,7 @@ contract tests in `scripts/checks/contract_sources.py`; a copy is true only unti
 - **At most 1 request per second** to the replay endpoint, serially, with jitter and backoff. Its
   rate limits are undocumented, so behave as a guest.
 - A 429 or an unexpected 403 from a primary source **stops the whole run** and alerts. It does not
-  skip one item and continue. The capture budget is 21 days; there is always tomorrow, and being
+  skip one item and continue. The capture budget is 18 days; there is always tomorrow, and being
   blocked by the source is not recoverable on the same timescale.
 - Persist every response verbatim before transforming it. After the retention window closes there
   may be nothing left to re-fetch.

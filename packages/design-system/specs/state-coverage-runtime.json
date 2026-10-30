@@ -12085,12 +12085,7 @@
         "fullPage": false,
         "mounts": [
           { "component": "Button", "variant": "destructive", "size": "lg", "disabledAt": [] },
-          {
-            "component": "Button",
-            "variant": "destructive",
-            "size": "lg",
-            "disabledAt": ["packages/design-system/src/primitives/Button/index.tsx:252"]
-          },
+          { "component": "Button", "variant": "destructive", "size": "lg", "disabledAt": [] },
           { "component": "Button", "variant": "secondary", "size": "lg", "disabledAt": [] }
         ]
       },
@@ -12099,12 +12094,7 @@
         "fullPage": false,
         "mounts": [
           { "component": "Button", "variant": "destructive", "size": "lg", "disabledAt": [] },
-          {
-            "component": "Button",
-            "variant": "destructive",
-            "size": "lg",
-            "disabledAt": ["packages/design-system/src/primitives/Button/index.tsx:252"]
-          },
+          { "component": "Button", "variant": "destructive", "size": "lg", "disabledAt": [] },
           { "component": "Button", "variant": "secondary", "size": "lg", "disabledAt": [] }
         ]
       },
@@ -12113,12 +12103,7 @@
         "fullPage": false,
         "mounts": [
           { "component": "Button", "variant": "destructive", "size": "lg", "disabledAt": [] },
-          {
-            "component": "Button",
-            "variant": "destructive",
-            "size": "lg",
-            "disabledAt": ["packages/design-system/src/primitives/Button/index.tsx:252"]
-          },
+          { "component": "Button", "variant": "destructive", "size": "lg", "disabledAt": [] },
           { "component": "Button", "variant": "secondary", "size": "lg", "disabledAt": [] }
         ]
       }
@@ -12479,12 +12464,7 @@
         "fullPage": false,
         "mounts": [
           { "component": "Button", "variant": "destructive", "size": "lg", "disabledAt": [] },
-          {
-            "component": "Button",
-            "variant": "destructive",
-            "size": "lg",
-            "disabledAt": ["packages/design-system/src/primitives/Button/index.tsx:252"]
-          },
+          { "component": "Button", "variant": "destructive", "size": "lg", "disabledAt": [] },
           { "component": "Button", "variant": "secondary", "size": "lg", "disabledAt": [] }
         ]
       },
@@ -12493,12 +12473,7 @@
         "fullPage": false,
         "mounts": [
           { "component": "Button", "variant": "destructive", "size": "lg", "disabledAt": [] },
-          {
-            "component": "Button",
-            "variant": "destructive",
-            "size": "lg",
-            "disabledAt": ["packages/design-system/src/primitives/Button/index.tsx:252"]
-          },
+          { "component": "Button", "variant": "destructive", "size": "lg", "disabledAt": [] },
           { "component": "Button", "variant": "secondary", "size": "lg", "disabledAt": [] }
         ]
       },
@@ -12507,12 +12482,7 @@
         "fullPage": false,
         "mounts": [
           { "component": "Button", "variant": "destructive", "size": "lg", "disabledAt": [] },
-          {
-            "component": "Button",
-            "variant": "destructive",
-            "size": "lg",
-            "disabledAt": ["packages/design-system/src/primitives/Button/index.tsx:252"]
-          },
+          { "component": "Button", "variant": "destructive", "size": "lg", "disabledAt": [] },
           { "component": "Button", "variant": "secondary", "size": "lg", "disabledAt": [] }
         ]
       }

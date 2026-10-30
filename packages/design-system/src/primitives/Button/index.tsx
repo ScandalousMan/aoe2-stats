@@ -12,8 +12,8 @@ interface SharedProps {
   /** `md` is pointer-only (spec, §Sizes). Any button reachable on a touch viewport must be `lg`. */
   size?: ButtonSize
   /** Present while the action triggered by this button is in flight. Replaces the leading icon
-   * slot with a spinner and the label with a present-participle description; the button keeps its
-   * resting width. A loading button keeps focus: it renders `aria-busy="true"` and
+   * slot with a spinner and the label with a present-participle description; width follows the
+   * content and none is reserved. A loading button keeps focus: it renders `aria-busy="true"` and
    * `aria-disabled="true"` and never the native `disabled` attribute, even if the caller also
    * passes `disabled` ("loading wins"), and it swallows every activation (click, Enter, Space,
    * form submit) whatever `onClick` the caller passes. Ending the wait does nothing to focus. */

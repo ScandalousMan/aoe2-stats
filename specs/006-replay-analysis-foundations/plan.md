@@ -10,13 +10,13 @@ Build, as working and tested code, the four things a reconstruction has to stand
 machine-readable register of what can be known, a truth tier and provenance carried by every
 published value, an engine-independent canonical event stream, and a versioned, offline,
 immutable knowledge base that refuses to answer what it does not know. The code stops where
-reconstruction begins; that is feature 007.
+reconstruction begins; that is feature 008.
 
 **Phase 0 confirmed the spec's corrections and overturned its central premise.** The starting state
 is unreadable by every working *parser* and perfectly present in the *file*: each player's starting
 attributes sit in the inflated header at an anchor that needs no grammar, and the map's object table
 is there too, behind one. The datum moves from *unreadable* to *decodable, not yet built*, which is
-a different register entry and changes what feature 007 may promise. The decoder is 007's first
+a different register entry and changes what feature 008 may promise. The decoder is 008's first
 task, not this feature's; here it gets a register entry, a reserved place in the vocabulary, and
 corrected documents.
 
@@ -285,6 +285,6 @@ the path of least resistance, and are recorded so a reader does not treat them a
 
 | Decision | Why | Alternative rejected because |
 | -------- | --- | ---------------------------- |
-| A fifth workspace package | Vendored third-party data with its own licence record and a hand-transcription workflow does not belong in a package whose rule is no dependencies and no data. | Putting it in `packages/core` makes every importer of a tier type carry a megabyte of game data; putting it in `apps/analyzer` makes it unreachable from 007's library code and from the API's presentation boundary. |
+| A fifth workspace package | Vendored third-party data with its own licence record and a hand-transcription workflow does not belong in a package whose rule is no dependencies and no data. | Putting it in `packages/core` makes every importer of a tier type carry a megabyte of game data; putting it in `apps/analyzer` makes it unreachable from 008's library code and from the API's presentation boundary. |
 | Hand-modelling civilisation bonuses | FR-023, FR-038 and FR-022a together leave no other lawful path (research D5). | Returning the baseline value is the exact substitution the feature exists to prevent; extracting from the game's data file is barred by the usage rules. |
 | Not pairing the two community datasets as primary and cross-check | They are one generation pipeline run twice; their agreement cannot detect a misread (research D3). | It would satisfy FR-028 and FR-030 on paper and deceive the next reader about how validated the values are. |

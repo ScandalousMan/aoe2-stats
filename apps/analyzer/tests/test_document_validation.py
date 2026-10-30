@@ -305,7 +305,11 @@ def test_the_packaged_register_publishes_the_one_inferred_datum_this_feature_shi
 # a path: the register's own entry, in its own format, in the state it will have on that day.
 
 _RECORDINGS = Path(__file__).resolve().parents[3] / "tests" / "fixtures" / "replays"
-_WITH_COST_GAPS = _RECORDINGS / "AgeIIDE_Replay_504695319.zip"
+#: The recording with a blocking `cost` gap the knowledge base still keeps: the build 185872 one,
+#: whose Slavs' Detinets (building 82) states no wood amount. This was the build 180059 recording
+#: 504695319 until T773, whose snapshot closed its two blocking gaps (buildings 490 and 673) with
+#: aliases.
+_WITH_COST_GAPS = _RECORDINGS / "AgeIIDE_Replay_511523321.zip"
 _WITHOUT = _RECORDINGS / "AgeIIDE_Replay_500546441.zip"
 _KNOWLEDGE_DATUM = "reconstruction.resources_spent"
 _ALWAYS_THERE = "participant.civ_id"
@@ -530,10 +534,11 @@ def test_gaps_on_other_fields_leave_the_datum_alone_whatever_they_say(
     from aoe2stats_analyzer.extract import validate_document
 
     planted = copy.deepcopy(cost_gap_document)
+    # The real recording keeps one blocking gap, about `cost`; the same gaps re-labelled as about a
+    # field the datum does not need (the recording that carried blocking gaps on other fields, build
+    # 180059's 504695319, has none since T773) are blocking gaps none of which is about cost.
     planted["knowledge_gaps"] = [
-        {**gap, "prevents": []}
-        for gap in planted["knowledge_gaps"]
-        if gap["field"] not in (None, "cost")
+        {**gap, "field": "produced_at", "prevents": []} for gap in _blocking(cost_gap_document)
     ]
     assert _blocking(planted)  # blocking gaps, none of them about cost
 

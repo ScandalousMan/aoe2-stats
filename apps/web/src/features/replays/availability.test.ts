@@ -63,7 +63,7 @@ describe('toReplayAvailabilityRows', () => {
     expect(rows[0]?.obtainableUntil).toBeNull()
   })
 
-  it('never invents an obtainable_until date while the retention window is unresolved (FR-024)', () => {
+  it('never invents an obtainable_until date the API did not send (FR-024)', () => {
     const rows = toReplayAvailabilityRows([
       participant({
         replay: {

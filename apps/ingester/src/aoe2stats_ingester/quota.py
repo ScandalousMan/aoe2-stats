@@ -23,7 +23,7 @@ on `users.id`, resolved from `replay_captures.profile_id` through the *active* `
 **The exemption is the whole point of the requirement, not an edge case bolted onto it.** A capture
 whose `capture_deadline_at` is nearer than `exempt_days` runs regardless of the cap — a fairness cap
 that delayed an expiring replay to make room for a fresh one would invert the priority the entire
-21-day capture budget is built on. The exemption also does not spend a cap slot of its own: an
+18-day capture budget is built on. The exemption also does not spend a cap slot of its own: an
 exempt capture ahead of ordinary ones in claim order leaves the full `max_per_user` untouched for
 the ordinary captures behind it, so "exempt" means "bypasses the mechanism entirely", not "consumes
 a free slot in it".

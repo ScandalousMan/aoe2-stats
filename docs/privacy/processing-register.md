@@ -35,15 +35,15 @@ to legitimate interest (Art. 6-1-f). A basis under Art. 6-1-f requires this test
 did not, which is why the section did not exist before.
 
 - **Interest pursued**: archiving a player's own recorded games before the publisher deletes them.
-  The source purges a recording after about 31 days, so the interest is time-limited and the loss it
-  prevents is permanent.
+  The source purges a recording on a rolling window (`docs/data-sources.md` §2), so the interest is
+  time-limited and the loss it prevents is permanent.
 - **Necessity**: the recording cannot be obtained again once the window closes, and no less intrusive
   means exists — there is no partial or summarised form the source offers instead. Only the linked
   user's own point of view is fetched, which is the smallest unit the source serves.
 - **Impact on the data subject**: low, and lower than under the retired basis in one respect worth
   stating plainly: the subject here is the linked user themselves, who obtained an account precisely
   to have this done. The recording is their own game, already published by the game publisher for
-  about 31 days, and this service neither indexes it publicly nor serves it to anyone but a
+  a limited time, and this service neither indexes it publicly nor serves it to anyone but a
   participant. In-game chat is the most sensitive element and is never displayed or indexed publicly.
 - **Why consent was the wrong basis**: it was not freely given in any meaningful sense — a user links
   a profile _in order to_ have their replays archived, so the "choice" was a formality attached to
@@ -303,8 +303,8 @@ warns a wrong row is a breach in.
   point-of-view limit: only the linked user's own point of view is ever captured automatically,
   never another participant's).
 - **Necessity**: an analysis published to every later viewer of the match must stay checkable against
-  the recording it was derived from (constitution IV), and the source purges that recording after
-  about 31 days (`docs/data-sources.md` §2). Past that window, keeping no copy would leave the
+  the recording it was derived from (constitution IV), and the source purges that recording on a
+  rolling window (`docs/data-sources.md` §2). Past that window, keeping no copy would leave the
   published analysis an unfalsifiable conclusion nothing can ever again verify or correct — the exact
   outcome constitution IV forbids. No less intrusive means exists: the analysis cannot be recomputed
   from anything less than the full recording. Retention is triggered only by a deliberate human
@@ -358,7 +358,7 @@ included, which had no entry before.
 
 - **Interest pursued**: parser and analysis tests that read a real recording rather than a fabricated
   one, so that what this project claims a replay contains can be re-measured by anyone from bytes the
-  source actually produced (constitution IV). The source purges a recording after about 31 days
+  source actually produced (constitution IV). The source purges a recording on a rolling window
   (`docs/data-sources.md` §2), so a measurement that names a recording not kept somewhere cannot be
   repeated.
 - **Necessity**: a recording cannot be pseudonymised, trimmed of chat or stripped of names without

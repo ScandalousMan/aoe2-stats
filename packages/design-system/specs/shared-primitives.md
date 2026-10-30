@@ -34,8 +34,8 @@ line for the file:
 how recommended that action is.
 
 **Anatomy** — root `<button>` (or `<a>` when it navigates) / optional leading icon slot / label /
-optional trailing icon slot / loading indicator that replaces the leading icon slot without changing
-the button's width.
+optional trailing icon slot / loading indicator (a spinner) that takes the leading icon slot's place.
+Width follows content: `Button` reserves none, so a `loadingLabel` can change an intrinsic width.
 
 **Variants**
 
@@ -253,8 +253,8 @@ lower than the hover frame's; `primary`'s hover fill is visibly darker than its 
 active fill darker again; `secondary` / `ghost` / `destructive`'s hover fill (`surface-sunken`) and
 active fill (`background`) are two different, already-measured tokens, and `ghost`'s active
 additionally draws a boundary its hover does not — no hover frame shows a ring, a border that the
-resting frame lacks, or any shift of the label — loading button shows a spinner and the same width
-as at rest; disabled button has visible explanatory text near it, and no underline.
+resting frame lacks, or any shift of the label — loading button shows a spinner beside its loading
+label, or the resting one; disabled button has visible explanatory text near it, and no underline.
 
 ---
 
@@ -635,18 +635,18 @@ a centred, boxed dialog. Both actions render at `lg` (48px) and stack full-width
 side by side from `md` up.
 
 **Accessibility** — `role="dialog"` with `aria-modal="true"` and `aria-labelledby` pointing at the
-heading; focus moves to the heading (`tabIndex={-1}`) on mount; Tab is trapped between the dialog's
-own focusable elements; Escape calls the **secondary** action, never the primary one — the
-accidental key must never be the one that takes the consequential path. The primary/secondary split
-is about position and default styling, not about who owns Escape: Escape always goes to
-`secondaryAction`, which is why that prop exists instead of a separate `onEscape`.
+heading; focus moves to the heading (`tabIndex={-1}`) on mount; Tab is trapped among the dialog's
+stops, only elements that can take focus (a `disabled` control, a hidden input or an unrendered
+element never is; a `loading` `Button` is). Escape calls the **secondary** action, never the
+primary — the accidental key must not take the consequential path, hence no `onEscape` a caller
+could wire backwards — and only when a click would: with `secondaryAction.disabled` or `loading`
+set, Escape does nothing, lest it hide the primary's outcome or rerun the secondary's request.
 
-**Acceptance** — heading is focused and announced on open; Escape reaches the secondary action's
-`onClick` and never the primary's; Tab cycles between exactly the dialog's own focusable elements
-and never escapes to the page behind the backdrop; both actions render at least 44px tall; the
-heading is visibly the most prominent text in the frame, larger and heavier than the body — a
-token-correct dialog whose heading used the body's own type role would leave the reader unsure what
-decision they are being asked to make, and fails this criterion (FR-063).
+**Acceptance** — heading is focused and announced on open; Escape reaches the secondary's `onClick`,
+never the primary's, and with the secondary disabled or loading calls nothing and the dialog stays
+open; Tab cycles exactly the dialog's focusable elements, never a disabled one, and never escapes
+to the page behind the backdrop; both actions render at least 44px tall; the heading is visibly the
+most prominent text, larger and heavier than the body — one in the body's type role fails (FR-063).
 
 ---
 

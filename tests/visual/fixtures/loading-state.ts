@@ -162,18 +162,35 @@ export async function assertLoopsStopped(
 /** Holds every request matching `urlGlob` open until `release()`, so the loading state it feeds
  * stays on screen for as long as a test needs. `release()` answers them with `body` — never leaves
  * a request dangling past the test, which would otherwise surface as an aborted-request console
- * error from the page. */
+ * error from the page. `method`, when given, holds only requests of that method. `occurrence`
+ * (1-based), when given, holds only the nth request that matches `urlGlob` and `method`: the others
+ * pass on to whatever answered the URL before (T751: the erase endpoint's re-mint is its second
+ * `GET`, the first being the mint that opened the dialog). */
 export async function holdRequests(
   page: Page,
   urlGlob: string,
   body: unknown,
+  method?: string,
+  occurrence?: number,
 ): Promise<{ release: () => Promise<void>; heldCount: () => number }> {
   let held = 0
+  let seen = 0
   let open: () => void = () => {}
   const gate = new Promise<void>((resolve) => {
     open = resolve
   })
   await page.route(urlGlob, async (route) => {
+    // A request of another method (T744: the erase endpoint is read to mint a token and written to
+    // erase) passes to whatever answered the URL before this hold was installed.
+    if (method !== undefined && route.request().method() !== method) {
+      await route.fallback()
+      return
+    }
+    seen += 1
+    if (occurrence !== undefined && seen !== occurrence) {
+      await route.fallback()
+      return
+    }
     held += 1
     await gate
     await route

@@ -32,34 +32,35 @@ which is what makes that refusal structural rather than a discipline an implemen
 (`test_a_retained_recording_never_yields_archived_and_is_not_a_parameter`, T334, inspects the
 signature itself for exactly this).
 
-**`obtainable_until` is `None` in every state — FR-024, amended 2026-08-29.** The retention window
-`docs/data-sources.md` measures is contradicted and unresolved as of 2026-08-28: a second, equally
-sharp sample reads as a fixed epoch six months back rather than the originally measured ~31-day
-rolling window, and the two cannot both describe one window. A promise about the future drawn from a
-window that may not exist is worse than no promise, so the date this function returns is null while
-the question is open, for every state — not only the two `contracts/http-api.md` already required it
-null for. This module therefore performs no date arithmetic at all for `obtainable_until`, and no
-window-length value feeds it; the day that becomes claimable again is a `research.md` R8 decision to
-re-derive it, not a change owed here.
+**`obtainable_until` is `None` in every state — FR-024, amended 2026-08-29, re-derived 2026-10-27.**
+A date would be a promise about how long the source keeps one point of view, and that length is
+the window of that profile. `docs/data-sources.md` §2 records the window as rolling, as different
+from one profile to another, as moving from day to day, and as set by nothing known, so no date
+can be derived that the source will honour. `capture_budget_days` is a capture setting this
+project chose, not the source's deadline; publishing it as a date would present the setting as the
+source's promise. The field is therefore null for every state, this module performs no date
+arithmetic for it, and no window-length value feeds it. A date becomes claimable under the
+condition constitution I sets for widening the budget: `docs/data-sources.md` records as settled
+what sets a profile's window. History: the 2026-08-29 amendment gave the open window-length
+question (a fixed epoch against a rolling window) as the reason; that question is settled and is
+no longer the cause.
 
 **The `obtainable`/`expired` split still needs one number, and it must be a conservative floor,
-never the measurement itself.** R8: "the derivation stays conservative and unchanged: a match
-older than the shortest credible window renders expired [...] under either reading that is safe in
-the direction FR-025 actually guards — it never presents an unobtainable download as an action
-that then fails." Reading that number as `docs/data-sources.md`'s own "approximately 31 days" —
-bisected to a ~4 h interval, and itself contradicted there by a second, later sample — offers zero
-margin: a match at day 30.9 would still render `obtainable` for a recording that source may already
-have discarded, which is exactly the failure FR-025 forbids. Constitution I settles what the floor
-must be instead: "Capture runs against a budget strictly shorter than the shortest credible window,
+never the measurement itself.** FR-025 guards one direction: the derivation should not present an
+unobtainable download as an action that then fails. That holds for every profile measured
+(`docs/data-sources.md` §2) and not beyond it. Constitution I settles what the floor must be:
+"Capture runs against a budget strictly shorter than the shortest window measured on any profile,
 configured (`CAPTURE_BUDGET_DAYS`) and never hard-coded, so a re-measurement changes a setting, not
 code." `capture_budget_days` below is that same setting, threaded in by the caller from
 `apps/api/src/aoe2stats_api/settings.py`'s `Settings.capture_budget_days` — the identical value
-`apps/ingester/src/aoe2stats_ingester/discover.py` already threads for the same reason and the same
-number. It is strictly shorter than either contested reading of the retention window, so the
-derivation genuinely, rather than only nominally, under-offers: this function is wrong, if at all,
-only in the direction of saying `expired` for a recording the source would still serve — never the
-reverse — and with margin, not at exact equality. `derive_availability` takes no default for it: a
-default would be a hard-coded window under another name, the same restatement this replaces.
+`apps/ingester/src/aoe2stats_ingester/discover.py` already threads for the same reason. For
+every profile measured, this function is wrong, if at all, only in the direction of saying
+`expired` for a recording the source would still serve, which `docs/data-sources.md` §2 records as
+possible for a profile whose window is longer than the budget. The reverse is possible for a
+profile whose window is shorter than the budget, if one exists (§2 says a more active profile than
+any measured may have one): it would see `obtainable` for a purged recording.
+`derive_availability` takes no default for it: a default would be a hard-coded window under
+another name.
 """
 
 from __future__ import annotations

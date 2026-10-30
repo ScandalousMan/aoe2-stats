@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { useEffect, useId, useRef } from 'react'
 import { cx } from '../../lib/cx'
+import { focusableStops } from '../../lib/focusableStops'
 import { Button } from '../Button'
 import type { ButtonVariant } from '../Button'
 
@@ -25,17 +26,19 @@ export interface DialogProps {
    * `variant`. T406 (constitution IX 4.0.0) removed archival withdrawal's own confirmation step —
    * see `archival-control.md` §3 — so profile unlink is this primitive's one live consumer today. */
   primaryAction: DialogAction
-  /** Rendered second. Its `onClick` is also what Escape calls: the accidental key must never be
-   * the one that takes the consequential path, so Escape is wired to the cancelling action rather
-   * than exposed as a separate prop a caller could get backwards. */
+  /** Rendered second. Its `onClick` is also what Escape calls while it is neither `disabled` nor
+   * `loading`: the accidental key must never be the one that takes the consequential path, so
+   * Escape is wired to the cancelling action rather than exposed as a separate prop a caller could
+   * get backwards. */
   secondaryAction: DialogAction
   className?: string
 }
 
 /** A modal confirmation dialog: focus moves to the heading on open, Tab is trapped inside the
- * dialog while it is open, and Escape triggers `secondaryAction` — never `primaryAction`. Chrome is
- * a bottom sheet below `md` and a centred, boxed dialog from `md` up (tokens only: `bg-overlay`
- * backdrop, `bg-surface` fill, `shadow-modal` elevation). */
+ * dialog while it is open, and Escape triggers `secondaryAction` — never `primaryAction` — and does
+ * nothing while `secondaryAction.disabled` or `secondaryAction.loading` is set. Chrome is a bottom
+ * sheet below `md` and a centred, boxed dialog from `md` up (tokens only: `bg-overlay` backdrop,
+ * `bg-surface` fill, `shadow-modal` elevation). */
 export function Dialog({
   heading,
   children,
@@ -48,6 +51,12 @@ export function Dialog({
   const dialogRef = useRef<HTMLDivElement>(null)
   const secondaryOnClickRef = useRef(secondaryAction.onClick)
   secondaryOnClickRef.current = secondaryAction.onClick
+  // Read by the keydown listener below, which registers once: a flag closed over at mount would
+  // stay at its first value while the caller's request starts and ends. Escape calls the
+  // secondary action only when a click on it would, and a click does nothing on a `disabled`
+  // button or a `loading` one (aria-disabled).
+  const secondaryUnavailableRef = useRef(false)
+  secondaryUnavailableRef.current = Boolean(secondaryAction.disabled || secondaryAction.loading)
 
   useEffect(() => {
     headingRef.current?.focus()
@@ -56,13 +65,18 @@ export function Dialog({
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
+        // A disabled or loading secondary action is unavailable, so the key bound to it does
+        // nothing and the dialog stays open until the caller makes it available again.
+        if (secondaryUnavailableRef.current) return
         event.preventDefault()
         secondaryOnClickRef.current?.()
       }
       if (event.key === 'Tab' && dialogRef.current) {
-        const focusable = dialogRef.current.querySelectorAll<HTMLElement>(
-          'button, a[href], input, [tabindex]:not([tabindex="-1"])',
-        )
+        // Only elements that can take focus are stops (`focusableStops`): a disabled control, a
+        // hidden input or an unrendered element as the first or last stop would let Tab walk out
+        // of the dialog, because focus() on it moves nothing. A `loading` Button carries
+        // `aria-disabled`, not `disabled`, keeps focus, and stays a stop.
+        const focusable = focusableStops(dialogRef.current)
         if (focusable.length === 0) return
         const first = focusable[0]
         const last = focusable[focusable.length - 1]

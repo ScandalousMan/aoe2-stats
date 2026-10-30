@@ -26,7 +26,8 @@ directions:
   participant pair answers `200`. Anyone's recorded game, from anyone's point of view, is public
   while it exists.
 - It exists only for a limited window the source itself controls, measured in `docs/data-sources.md`
-  §2 — and, as of 2026-08-28, recorded there as contradicted and unresolved rather than settled.
+  §2, which records it as rolling and as differing from one profile to another. (Amended 2026-10-27:
+  this clause used to say the window was recorded as contradicted and unresolved; that is history.)
   After that window closes it answers `404` for everyone, forever.
 
 So third-party recorded games are freely readable _and_ permanently perishable, and this service
@@ -569,21 +570,24 @@ their current standing and reachable in one click.
 - **FR-024**: System MUST show, for each offered point of view, whether it is currently obtainable,
   and for those that are, the date after which it will stop being — derived from the source's
   measured retention window in `docs/data-sources.md`, not from a value restated here. **Amended
-  2026-08-29**: that window is contradicted and unresolved as of 2026-08-28, so the date MUST be
-  **null while the question is open** rather than derived from the superseded reading. A promise
-  about the future drawn from a window that may not exist is worse than no promise. The reasoning is
-  recorded once, in [research.md](./research.md) R8, and is not restated here.
+  2026-08-29**: the date MUST be null rather than derived from a window then recorded as open.
+  **Re-derived 2026-10-27**: the window is no longer open as to rolling versus epoch, and the epoch
+  reading is not the cause. The date stays **null in every state** because the window belongs to
+  each profile and no date can be derived that the source will honour; it may be shown only once
+  `docs/data-sources.md` records as settled what sets a profile's window. The reasoning is recorded
+  once, in [research.md](./research.md) R8, and is not restated here.
 - **FR-025**: System MUST distinguish and display, per point of view: obtainable now, held in this
   service's own archive, never recorded by the game, and expired beyond the source's retention
   window. It MUST NOT present an unobtainable download as an action that then fails. **Amended
   2026-08-29**: the "expired beyond the source's retention window" clause describes what the display
   is meant to mean, not what the derivation computes — the `obtainable`/`expired` split runs against
-  `capture_budget_days`, a configured budget deliberately shorter than either contested reading of the
-  source's own window, so a match can render `expired` here while the source would still serve it. The
+  `capture_budget_days`, a configured budget deliberately shorter than the shortest window measured, so a match can render `expired` here while the source would still serve it. The
   reasoning, and the cost accepted, are recorded once in [research.md](./research.md) R8 and are not
   restated here. The clause forbidding an unobtainable download from being presented as an action that
-  then fails is unaffected: that half is satisfied — the derivation is conservative, not merely
-  approximate, so it never claims obtainable for a recording that has actually expired.
+  then fails is unaffected: that half is satisfied for every profile measured — the derivation is conservative, not merely
+  approximate, so for those profiles it does not claim obtainable for a recording that has actually
+  expired. The bound is exact: a profile whose window is shorter than the budget, if one exists,
+  would see `obtainable` for a purged recording.
 - **FR-026**: System MUST serve the signed-in user's own point of view from this service's archive
   when it holds one, so that it remains available regardless of the match's age (001 FR-028).
 - **FR-027**: System MUST NOT store a recorded game obtained solely to serve a download. Downloading
@@ -738,10 +742,12 @@ their current standing and reachable in one click.
 - **SC-004**: For 100% of matches shown, the availability stated for every point of view matches what
   the source actually answers at that moment; a download offered as available succeeds, and one
   offered as expired is not clickable. **Amended 2026-08-29**: this criterion is measured against the
-  source's _settled_ window. While `docs/data-sources.md` records that window as contradicted (see
-  [research.md](./research.md) R8), SC-004 is **not claimable** — under the fixed-epoch reading the
-  derivation fails it by construction rather than by implementation error. It becomes measurable
-  again when the re-measurement settles the question.
+  source's own window. **Re-derived 2026-10-27**: the window belongs to each profile (see
+  [research.md](./research.md) R8), so for a profile whose window is longer than the budget the
+  derivation says `expired` for a recording the source would still serve, and SC-004 is **not
+  claimable** — it fails by construction rather than by implementation error. It becomes measurable
+  when `docs/data-sources.md` records as settled what sets a profile's window. (2026-08-29 gave the
+  fixed-epoch reading as the cause; that is history.)
 - **SC-005**: A user can obtain any participant's point of view of a match inside the retention
   window in at most two actions from the match page.
 - **SC-006**: A match is parsed at most once: for any match, the number of times its recorded game is
@@ -785,9 +791,8 @@ their current standing and reachable in one click.
 - The source's retention window and its consequences are as recorded in `docs/data-sources.md`. This
   spec deliberately restates no measured number; where a date or a deadline is shown to the user it
   is derived from that file. **Amended 2026-08-29**: this sentence named "~31 days" while promising
-  to restate no number, and that window is now recorded there as contradicted and unresolved. The
-  figure is removed; the renvoi is the whole of the assumption, and R8 carries what the open question
-  costs this feature.
+  to restate no number. The figure is removed; the renvoi is the whole of the assumption, and R8
+  carries what the window's per-profile length costs this feature (re-derived 2026-10-27).
 - Whether the search source answers from the production platform's egress addresses is **not yet
   verified** — `docs/data-sources.md` §3 records it as open, alongside observed intermittent 403s
   from datacentre addresses. This is why FR-004d exists: if the answer turns out to be no, search
