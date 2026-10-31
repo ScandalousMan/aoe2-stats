@@ -214,15 +214,15 @@ game. Each answer amends the requirement it names; the earlier answers stay abov
   the internet. Each open row of build 185872 is answered from the owner's own answer, from the
   Fandom wiki or Liquipedia read by an agent for the owner, or from a Fandom page the owner copied;
   [owner-readings.md](./owner-readings.md) names the channel in every row. A row no source answers
-  is reported unreadable and becomes an FR-022b entry. None was left, once the owner pasted
-  the one page an agent could not read.
+  is reported unreadable and becomes an FR-022b entry. None was left: the owner pasted the one
+  page an agent could not read and answered Loom.
 - Q: May an agent read the Fandom wiki? → A: Yes. This supersedes research D3's "one human, one
   number": the owner accepts the risk of Fandom's terms on automated access. A value an agent read
   there says so, and says whether the owner checked the page.
 - Q: Two referenced sources disagree and nobody reads the game. Which value is stored? → A: The one
-  consistent with the vendored pack, with the disagreement recorded (FR-028). Forced Levy's
-  "+20 food" is stored over Liquipedia's total of 80 food, which assumes a base the pack does not
-  have.
+  consistent with the vendored pack, with the disagreement recorded (FR-028). Amends FR-022c, which
+  stored the game's value and has no game reading to store. Forced Levy's "+20 food" is stored over
+  Liquipedia's total of 80 food, which assumes a Militia-line base the pack does not have.
 - Q: The validation sample for build 185872 has two rows an independent source confirms. Does the
   build wait for the other 54? → A: No. Those two are recorded at the strong form; the other 54 at
   the weaker form, a second reading of the pack, stating that the owner declined the game reading
@@ -504,7 +504,9 @@ new snapshot, reproduce the analysis from the original identity, and confirm the
   otherwise (FR-031). Where two referenced sources contradict each other, the disagreement is
   recorded (FR-028) and the value stored is the one the running game shows a person (FR-030's strong
   form), never the more convenient of the two. The game's own data file is not a referenced source
-  (research D3).
+  (research D3). **Amended 2026-10-31** at the repository owner's arbitration: where no game
+  reading exists, the value stored is the one consistent with the vendored pack, and the
+  disagreement is still recorded.
 - **FR-022d**: An entity identifier a recording can carry and the pack does not name MUST resolve
   to the pack's entity through an alias that a referenced source states, transcribed by hand with
   its provenance. An alias is never inferred from an identifier's neighbours, from a name other
@@ -541,13 +543,14 @@ new snapshot, reproduce the analysis from the original identity, and confirm the
   run twice, and the game's own data file is barred by the publisher's usage rules. A validation
   record that does not distinguish which of the two forms it used is not a record (found by
   `/speckit-analyze` 2026-09-21; the weaker form was in use and was being reported as the stronger).
-  **Amended 2026-10-31** at the repository owner's arbitration: for build 185872's validation
-  sample the weaker form is admissible for every row no independent source confirms, because the
-  owner declined to read the running game; each such row names that reason.
   **Amended 2026-10-18:** a person reading the running game (the cost or time a tooltip shows, in a
   solo game or the scenario editor, for a stated civilisation) is validation against the game, the
   strong form. It reads the current build only; a value for an earlier build is carried back from it
   under research D4's discipline, build by build through the publisher's notes, never assumed.
+  **Amended 2026-10-31** at the repository owner's arbitration: for build 185872's validation
+  sample the weaker form is admissible for every row no independent source was found to state,
+  because the owner declined to read the running game; each such row names that reason as well as
+  the two fields read.
 - **FR-031**: Only a source whose licence permits it MAY be vendored into this repository. A source
   with no licence MUST NOT be vendored, MUST NOT be fetched at build or test time, and MAY only be
   consulted by a human whose transcription is recorded with its provenance (002 research).
