@@ -305,11 +305,15 @@ def test_the_packaged_register_publishes_the_one_inferred_datum_this_feature_shi
 # a path: the register's own entry, in its own format, in the state it will have on that day.
 
 _RECORDINGS = Path(__file__).resolve().parents[3] / "tests" / "fixtures" / "replays"
-#: The recording with a blocking `cost` gap the knowledge base still keeps: the build 185872 one,
-#: whose Slavs' Detinets (building 82) states no wood amount. This was the build 180059 recording
-#: 504695319 until T773, whose snapshot closed its two blocking gaps (buildings 490 and 673) with
-#: aliases.
+#: The recording with a blocking `cost` gap: the build 185872 one, whose Slavs' Detinets (building
+#: 82) the sixth snapshot of that build refuses because it states no wood amount. This was the build
+#: 180059 recording 504695319 until T773, whose snapshot closed its two blocking gaps (buildings 490
+#: and 673) with aliases; and since T772 no current snapshot keeps a blocking gap on any committed
+#: recording (the seventh snapshot of build 185872 models Detinets from the owner's reading), so the
+#: fixture below pins the sixth snapshot by identity (SC-005), as the reproduction tests do, to get
+#: the gap the real coverage pass still produces under it.
 _WITH_COST_GAPS = _RECORDINGS / "AgeIIDE_Replay_511523321.zip"
+_SIXTH_185872_DIRECTORY = "aoe2techtree-185872-civilisations-56"
 _WITHOUT = _RECORDINGS / "AgeIIDE_Replay_500546441.zip"
 _KNOWLEDGE_DATUM = "reconstruction.resources_spent"
 _ALWAYS_THERE = "participant.civ_id"
@@ -336,7 +340,15 @@ def _real_document(recording: Path) -> dict[str, Any]:
 
 @pytest.fixture(scope="module")
 def cost_gap_document() -> dict[str, Any]:
-    return _real_document(_WITH_COST_GAPS)
+    from aoe2stats_knowledge import snapshot
+
+    (sixth,) = (
+        loaded
+        for loaded in snapshot.load_all_snapshots()
+        if loaded.directory == _SIXTH_185872_DIRECTORY
+    )
+    with snapshot.pinned_snapshot(sixth):
+        return _real_document(_WITH_COST_GAPS)
 
 
 @pytest.fixture(scope="module")

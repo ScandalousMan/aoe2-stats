@@ -640,7 +640,8 @@ against keeping one measurement in two homes.
   `3bb43b1439eef88dfe7fe892d7f7dc41ac9dd76f` (pack `aoe2techtree-3bb43b1`; authored 2026-09-11,
   committed 2026-09-22, assessed 2026-10-08), is the one `aoe2techtree-185872`, `aoe2techtree-185872-civilisations`,
   `aoe2techtree-185872-civilisations-20`, `aoe2techtree-185872-civilisations-32`,
-  `aoe2techtree-185872-civilisations-44` and `aoe2techtree-185872-civilisations-56` are derived from; it is vendored beside the first because a snapshot must stay re-derivable from its own source revision.
+  `aoe2techtree-185872-civilisations-44`, `aoe2techtree-185872-civilisations-56` and
+  `aoe2techtree-185872-owner-readings` are derived from; it is vendored beside the first because a snapshot must stay re-derivable from its own source revision.
   The source carries no explicit build tag; the game build a commit implements is read from that
   commit's own message, a derived reading, not a field (research.md D3, D4). The first pinned
   commit's own newest "Implement DE Update" commit is `daf5fa18de` (2026-06-03), implementing build
@@ -688,9 +689,15 @@ against keeping one measurement in two homes.
   Cumans' additional Town Center, Cuman Mercenaries and the Berbers' Kasbah, which the effect model
   now expresses) and one amended `validated_by` (the Persians' Kamandaran), and Georgians, Shu, Wu, Wei, Jurchens, Khitans, Muisca, Mapuche, Tupi, Saxons,
   Varangians and Danes; its `rules.json`, `aliases.toml` and raw-id table are the fifth's. The first
-  five stay installed so that the analyses published under them still reproduce; resolution by
-  build answers the sixth. Its open values are in
-  `specs/006-replay-analysis-foundations/owner-readings.md`.
+  five stay installed so that the analyses published under them still reproduce. Since 2026-10-31
+  (T772) a seventh, `aoe2techtree-185872-owner-readings`, supersedes the sixth and closes the
+  owner's readings of `specs/006-replay-analysis-foundations/owner-readings.md`: sixteen of the
+  sixth's seventeen refusals on a carried field become thirty modelled rows, and the seventeenth,
+  answered "no", is a refusal no longer. Its `rules.json`, `aliases.toml` and raw-id table are the
+  sixth's. Build 185872 has no FR-022b entry and no open value. One FR-028 disagreement is recorded,
+  on the Militia line's base cost (Liquipedia's Forced Levy total against the pack's), and the
+  pack-consistent value is stored. The first six stay installed so that the analyses published under
+  them still reproduce; resolution by build answers the seventh.
   Build 180059 has a second snapshot since 2026-10-28 (T773),
   `aoe2techtree-180059-civilisations-53`, which supersedes the first and models fifty-three, every
   civilisation of the first pack (the sixth's, but the Saxons, Varangians and Danes, which build
@@ -723,7 +730,9 @@ against keeping one measurement in two homes.
   fifth 2026-10-23
   (`packages/knowledge/snapshots/aoe2techtree-185872-civilisations-44/snapshot.toml`) and by a
   sixth 2026-10-26
-  (`packages/knowledge/snapshots/aoe2techtree-185872-civilisations-56/snapshot.toml`). Licence: MIT,
+  (`packages/knowledge/snapshots/aoe2techtree-185872-civilisations-56/snapshot.toml`) and by a
+  seventh 2026-10-31
+  (`packages/knowledge/snapshots/aoe2techtree-185872-owner-readings/snapshot.toml`). Licence: MIT,
   **copy in** — `docs/asset-packs.md` "Knowledge packs".
 
 ### halfon

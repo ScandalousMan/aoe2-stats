@@ -3148,7 +3148,7 @@ phase.
       they appear; each batch adds its own. **Closed 2026-10-31 by the owner's arbitration**
       (spec Clarifications, Session 2026-10-31): no row was read in the game; every row names the
       source it was answered from, and "Build shown" reads "not a game reading"
-- [ ] T772 [US2] Close the owner's readings on build 185872 in a snapshot that supersedes the last
+- [x] T772 [US2] Close the owner's readings on build 185872 in a snapshot that supersedes the last
       batch's: each open row becomes a modelled row whose `validated_by` cites the reading, and
       each validation-sample reading that differs from what the snapshot answered is recorded as a
       disagreement (FR-028), stored under FR-022c (amended 2026-10-31: with no game reading, the
