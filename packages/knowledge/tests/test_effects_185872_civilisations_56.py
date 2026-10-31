@@ -980,7 +980,8 @@ def test_the_validation_sample_has_one_row_per_civilisation_of_the_pack() -> Non
     assert len(rows) == 56
     for row in rows:
         assert len(row) == 7
-        assert row[5] == "" and row[6] == "", "the owner fills the last two columns"
+        # The owner fills the last two columns together (T771): a reading and its date.
+        assert (row[5] == "") == (row[6] == ""), row[0]
 
 
 def _sample_context(

@@ -205,6 +205,28 @@ record of what was decided then.
   including them would have meant choosing a source for every entity they can build, and no
   vendored pack carries their trees.
 
+### Session 2026-10-31
+
+Arbitrated by the repository owner on T771, once the owner declined to read values in the running
+game. Each answer amends the requirement it names; the earlier answers stay above.
+
+- Q: The owner will not read the open rows in the running game. What answers them? → A: Sources on
+  the internet. Each open row of build 185872 is answered from the owner's own answer, from the
+  Fandom wiki or Liquipedia read by an agent for the owner, or from a Fandom page the owner copied;
+  [owner-readings.md](./owner-readings.md) names the channel in every row. A row no source answers
+  is reported unreadable and becomes an FR-022b entry.
+- Q: May an agent read the Fandom wiki? → A: Yes. This supersedes research D3's "one human, one
+  number": the owner accepts the risk of Fandom's terms on automated access. A value an agent read
+  there says so, and says whether the owner checked the page.
+- Q: Two referenced sources disagree and nobody reads the game. Which value is stored? → A: The one
+  consistent with the vendored pack, with the disagreement recorded (FR-028). Forced Levy's
+  "+20 food" is stored over Liquipedia's total of 80 food, which assumes a base the pack does not
+  have.
+- Q: The validation sample for build 185872 has two rows an independent source confirms. Does the
+  build wait for the other 54? → A: No. Those two are recorded at the strong form; the other 54 at
+  the weaker form, a second reading of the pack, stating that the owner declined the game reading
+  (FR-030, amended).
+
 ## User Scenarios & Testing _(mandatory)_
 
 ### User Story 1 - Know what can and cannot be known (Priority: P1)
@@ -518,6 +540,9 @@ new snapshot, reproduce the analysis from the original identity, and confirm the
   run twice, and the game's own data file is barred by the publisher's usage rules. A validation
   record that does not distinguish which of the two forms it used is not a record (found by
   `/speckit-analyze` 2026-09-21; the weaker form was in use and was being reported as the stronger).
+  **Amended 2026-10-31** at the repository owner's arbitration: for build 185872's validation
+  sample the weaker form is admissible for every row no independent source confirms, because the
+  owner declined to read the running game; each such row names that reason.
   **Amended 2026-10-18:** a person reading the running game (the cost or time a tooltip shows, in a
   solo game or the scenario editor, for a stated civilisation) is validation against the game, the
   strong form. It reads the current build only; a value for an earlier build is carried back from it

@@ -3139,7 +3139,7 @@ phase.
       Berbers' Kasbah (`production_time`, `researched` and `team`, T781). Their open rows of
       [owner-readings.md](./owner-readings.md), and the paragraph under its table naming the two
       Cuman bonuses, are removed in the same change. Depends on T780 and T781
-- [ ] T771 [US2] **Owner task (information).** Read each open row of
+- [x] T771 [US2] **Owner task (information).** Read each open row of
       [owner-readings.md](./owner-readings.md), "Open values", and each row of its "Validation
       sample", in the running game on the current build (a tooltip in a solo game or the scenario
       editor) or, for a value the game does not display, the Fandom wiki. Write, per row, the value
@@ -3149,8 +3149,14 @@ phase.
       batch's: each open row becomes a modelled row whose `validated_by` cites the reading, and
       each validation-sample reading that differs from what the snapshot answered is recorded as a
       disagreement (FR-028), stored as the game's value (FR-022c), and its row corrected.
-      The snapshot's `[validation]` names the strong form for each sampled row and the second
-      reading for every other row. Promote once every row for build 185872 is answered or reported
+      The snapshot's `[validation]` names the strong form for each sampled row an independent
+      source confirmed (Teutons, Vietnamese) and the second reading, stating that the owner
+      declined the game reading, for every other row (FR-030, amended 2026-10-31). Each answer
+      that names an entity its row did not (the Bombard Tower under Detinets, the Cannon Galleon
+      technology under the Turks' discount, the Jurchens' and Sicilians' complete lists) widens
+      that effect's selector. Liquipedia, the Fandom wiki read by an agent, and the ChatGPT
+      channel are added to `docs/data-sources.md` §6 with their licence status first (FR-029,
+      FR-022c). Promote once every row for build 185872 is answered or reported
       unreadable by the owner; a row reported unreadable becomes an FR-022b entry, held in T765 and
       in `packages/knowledge/tests/test_coverage.py` with where the owner looked. A reading that
       arrives after promotion waits for the next snapshot. **Tests**: T765's tuples for build 185872
