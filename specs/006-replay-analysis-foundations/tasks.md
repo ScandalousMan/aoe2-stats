@@ -3151,16 +3151,18 @@ phase.
 - [ ] T772 [US2] Close the owner's readings on build 185872 in a snapshot that supersedes the last
       batch's: each open row becomes a modelled row whose `validated_by` cites the reading, and
       each validation-sample reading that differs from what the snapshot answered is recorded as a
-      disagreement (FR-028), stored under FR-022c (amended 2026-10-31: with no game reading, the value consistent with the pack), and its row corrected.
+      disagreement (FR-028), stored under FR-022c (amended 2026-10-31: with no game reading, the
+      value consistent with the pack), and its row corrected.
       The snapshot's `[validation]` names the strong form for each sampled row an independent
       source confirmed (Teutons, Vietnamese) and the second reading, stating that the owner
       declined the game reading and naming the two fields read, for every other row (FR-030,
       amended 2026-10-31). Each answer that names an entity its row did not widens that effect's
       selector, by the ids [owner-readings.md](./owner-readings.md)'s batch of 2026-10-31 lists
-      (the Bombard Tower under Detinets, the Sicilians' walls, gates, palisades and Donjon, and
+      (the Bombard Tower under Detinets, the Sicilians' walls, gates and palisades, and
       four Jurchens technologies); the Sicilians' list adds to the Castle, it does not replace it,
       and the Turks' Cannon Galleon technology is no pack entity and widens nothing. Liquipedia's
-      Forced Levy total is a disagreement (FR-028) on the Militia line's base cost. Promote once every row for build 185872 is answered or reported
+      Forced Levy total is a disagreement (FR-028) on the Militia line's base cost. Promote once
+      every row for build 185872 is answered or reported
       unreadable by the owner; a row reported unreadable becomes an FR-022b entry, held in T765 and
       in `packages/knowledge/tests/test_coverage.py` with where the owner looked. A reading that
       arrives after promotion waits for the next snapshot. **Tests**: T765's tuples for build 185872

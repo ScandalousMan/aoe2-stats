@@ -882,7 +882,7 @@ against keeping one measurement in two homes.
   of patch changes.
 - **Reliability**: community-edited; a page states a value without naming the game build it was
   checked on, so a value can predate a later change (its Forced Levy total of 80 food assumes a
-  Militia-line base the pack no longer has).
+  Militia-line base the pack does not have).
 - **Update mechanism**: a person, or an agent for the owner, reading a live page; nothing scripted.
 - **Version identifier**: none; a reading is dated by when it was made.
 - **Coverage**: uneven, not surveyed by this project.

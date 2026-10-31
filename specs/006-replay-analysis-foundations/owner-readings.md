@@ -99,8 +99,9 @@ the owner copying a Fandom page. "Build shown" is "not a game reading" throughou
 `unreadable`: the Turks' team bonus was settled from the Gunpowder unit page the owner pasted (it
 refuses an agent), and Loom's research time for the Vietnamese by the owner's answer. Answers that reach
 entities their row did not name: Detinets reaches the Bombard Tower (building 236); the Sicilians'
-Fortifications reach the Stone Wall (117), Fortified Wall (155), Gate (487), Palisade Wall (72),
-Palisade Gate (792) and the Donjon (1665); the Jurchens' complete list (the owner confirmed it
+Fortifications reach the Stone Wall (117), Gate (487), Palisade Wall (72) and Palisade Gate (792),
+the Donjon (1665) being already modelled by T767 and the Fortified Wall (155) not in the Sicilians'
+tree; the Jurchens' complete list (the owner confirmed it
 complete on 2026-10-31) reaches Masonry (technology 50), Architecture (51), Treadmill Crane (54) and
 Sappers (321). The Turks' third technology, Cannon Galleon, is no entity of the pack: the Gunpowder
 unit page the owner pasted says it "was scrapped in update 47820", so it widens nothing. The
