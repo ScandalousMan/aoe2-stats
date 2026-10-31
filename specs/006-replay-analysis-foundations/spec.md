@@ -214,7 +214,8 @@ game. Each answer amends the requirement it names; the earlier answers stay abov
   the internet. Each open row of build 185872 is answered from the owner's own answer, from the
   Fandom wiki or Liquipedia read by an agent for the owner, or from a Fandom page the owner copied;
   [owner-readings.md](./owner-readings.md) names the channel in every row. A row no source answers
-  is reported unreadable and becomes an FR-022b entry.
+  is reported unreadable and becomes an FR-022b entry. None was left, once the owner pasted
+  the one page an agent could not read.
 - Q: May an agent read the Fandom wiki? → A: Yes. This supersedes research D3's "one human, one
   number": the owner accepts the risk of Fandom's terms on automated access. A value an agent read
   there says so, and says whether the owner checked the page.
