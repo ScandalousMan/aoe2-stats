@@ -41,10 +41,22 @@ export const NEVER_SHIPPED = [
   ['tests/**', 'root test suites, visual tests and fixtures'],
   ['apps/*/tests/**', 'per-package tests; the wheels package src/ only'],
   ['packages/*/tests/**', 'per-package tests; the wheels package src/ only'],
-  ['**/*.test.ts', 'test file; the web build bundles only modules reachable from its entry'],
-  ['**/*.test.tsx', 'test file; the web build bundles only modules reachable from its entry'],
-  ['**/*.test.mjs', 'test file; the web build bundles only modules reachable from its entry'],
-  ['**/*.stories.tsx', 'Storybook only; nothing under apps/web imports a story'],
+  [
+    '**/*.test.ts',
+    "test file; no JavaScript module imports it, and Tailwind's @source scan can add or drop CSS rules for classes only it names, which no shipped markup uses",
+  ],
+  [
+    '**/*.test.tsx',
+    "test file; no JavaScript module imports it, and Tailwind's @source scan can add or drop CSS rules for classes only it names, which no shipped markup uses",
+  ],
+  [
+    '**/*.test.mjs',
+    "test file; no JavaScript module imports it, and Tailwind's @source scan can add or drop CSS rules for classes only it names, which no shipped markup uses",
+  ],
+  [
+    '**/*.stories.tsx',
+    "story file; no JavaScript module imports it, and Tailwind's @source scan can add or drop CSS rules for classes only it names, which no shipped markup uses",
+  ],
   ['packages/design-system/.storybook/**', 'Storybook configuration; apps/web does not import it'],
   ['packages/design-system/__screenshots__/**', 'visual baselines, already out of the upload'],
   ['packages/design-system/specs/**', 'design specs'],
@@ -133,8 +145,17 @@ export function decide({ environment, base, head, changedPaths, unavailable }) {
 
 const COMMIT_ID = /^[0-9a-f]{7,64}$/i
 
-function runGit(args, cwd) {
-  return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
+/** A hanging git must throw so the catches below build (FR-007), not leave the outcome to the host. */
+export const GIT_TIMEOUT_MS = 30_000
+
+/** One local git call, bounded by `timeoutMs`; the commit checks and the diff all go through it. */
+export function runGit(args, { cwd, timeoutMs = GIT_TIMEOUT_MS } = {}) {
+  return execFileSync('git', args, {
+    cwd,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'ignore'],
+    timeout: timeoutMs,
+  })
 }
 
 /**
@@ -150,14 +171,14 @@ export function run(env, { cwd = process.cwd(), git = runGit } = {}) {
     let unavailable = null
     if (environment === 'production' && COMMIT_ID.test(base) && COMMIT_ID.test(head)) {
       try {
-        git(['cat-file', '-e', `${base}^{commit}`], cwd)
-        git(['cat-file', '-e', `${head}^{commit}`], cwd)
+        git(['cat-file', '-e', `${base}^{commit}`], { cwd })
+        git(['cat-file', '-e', `${head}^{commit}`], { cwd })
       } catch {
         unavailable = 'comparison base or pushed commit absent from the clone'
       }
       if (unavailable === null) {
         try {
-          const out = git(['diff', '--name-only', '--no-renames', base, head], cwd)
+          const out = git(['diff', '--name-only', '--no-renames', base, head], { cwd })
           changedPaths = out.split('\n').filter((line) => line !== '')
         } catch {
           unavailable = 'git diff failed'

@@ -192,10 +192,13 @@ during a rollback, and needs no special case.
 The always-deploy list (FR-008) is checked first and includes `scripts/checks/config-preflight.mjs`
 and `scripts/deploy/**`, the rule itself. That is what keeps `scripts/**` safe.
 
-**Why test files and stories are in the list.** Neither reaches the build output or a function: the
-web app's type-check emits nothing (`noEmit` in `apps/web/tsconfig.app.json`), Vite bundles only
+**Why test files and stories are in the list.** Neither reaches a function or the JavaScript bundle:
+the web app's type-check emits nothing (`noEmit` in `apps/web/tsconfig.app.json`), Vite bundles only
 modules reachable from the entry, and no module under `apps/web/src` imports a story or a test
-(checked 2026-10-18). A test-only change that broke the type-check would surface on the next shipped
+(checked 2026-10-18). They do reach the stylesheet: Tailwind's `@source` scan
+(`packages/design-system/tokens/tailwind.css`, `apps/web/src/index.css`) reads them for class names,
+so a story or test can add or drop CSS rules for classes only it names, which no shipped markup uses
+(amended 2026-10-31 after review). A test-only change that broke the type-check would surface on the next shipped
 commit's build rather than its own. But `pr.yml` type-checks and builds every pull request, so the
 change could not reach `main` broken in the first place. Without these patterns, half of the
 skippable commits in §0 would deploy.

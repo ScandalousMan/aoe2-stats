@@ -12,12 +12,19 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync, spawnSync } from 'node:child_process'
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { delimiter, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { ALWAYS_DEPLOY, decide, globToRegExp, run } from './ignore-build.mjs'
+import {
+  ALWAYS_DEPLOY,
+  GIT_TIMEOUT_MS,
+  decide,
+  globToRegExp,
+  run,
+  runGit,
+} from './ignore-build.mjs'
 
 const RULE = join(dirname(fileURLToPath(import.meta.url)), 'ignore-build.mjs')
 const SHA_A = 'a'.repeat(40)
@@ -470,7 +477,8 @@ test('throwaway (constructed, not recorded): a rename from a never-shipped path 
     git(dir, 'mv', 'docs/handler.py', 'api/handler.py')
     git(dir, ...IDENTITY, 'commit', '-q', '-m', 'rename')
     const head = git(dir, 'rev-parse', 'HEAD').trim()
-    // Without --no-renames git would show one rename; the rule lists both sides.
+    // The new name alone builds, so this passes with or without --no-renames; it shows only
+    // that a rename into a shipped path builds. The opposite rename, below, proves both sides.
     const out = entry(dir, prod(base, head))
     assert.equal(out.status, 1)
     assert.equal(out.stdout, `build: api/handler.py (${base}..${head})`)
@@ -479,12 +487,17 @@ test('throwaway (constructed, not recorded): a rename from a never-shipped path 
 
 test('throwaway (constructed, not recorded): a rename out of a shipped path builds', () => {
   withRepo((dir) => {
+    // Rename detection on, whatever the machine's git configuration says, so the case means the
+    // same everywhere: only --no-renames makes git list the old, shipped side.
+    git(dir, 'config', 'diff.renames', 'true')
     const body = 'identical content so git would pair this as a rename\n'.repeat(20)
     const base = commitFiles(dir, { 'api/handler.py': body }, 'one')
     mkdirSync(join(dir, 'docs'))
     git(dir, 'mv', 'api/handler.py', 'docs/handler.py')
     git(dir, ...IDENTITY, 'commit', '-q', '-m', 'rename')
     const head = git(dir, 'rev-parse', 'HEAD').trim()
+    // With renames on, `git diff --name-only` would list only docs/handler.py and skip. The rule
+    // passes --no-renames so it lists both sides and finds the shipped one.
     const out = entry(dir, prod(base, head))
     assert.equal(out.status, 1)
     assert.equal(out.stdout, `build: api/handler.py (${base}..${head})`)
@@ -527,13 +540,66 @@ test('crash inside the rule exits 1, not 0', () => {
   assert.match(result.line, /^build: /)
 })
 
-test('crash in the diff itself exits 1, not 0', () => {
+test('crash in every git call (commit check fails first) exits 1 with the absent-from-clone line', () => {
   const result = run(prod(SHA_A, SHA_B), {
     git: () => {
       throw new Error('git blew up')
     },
   })
-  assert.equal(result.exit, 1)
+  assert.deepEqual(result, {
+    exit: 1,
+    line: 'build: comparison base or pushed commit absent from the clone',
+  })
+})
+
+test('crash in the diff itself (commit check succeeds) exits 1 with the git diff failed line', () => {
+  const calls = []
+  const result = run(prod(SHA_A, SHA_B), {
+    git: (args) => {
+      calls.push(args[0])
+      if (args[0] === 'diff') throw new Error('git blew up')
+      return ''
+    },
+  })
+  assert.deepEqual(calls, ['cat-file', 'cat-file', 'diff'])
+  assert.deepEqual(result, { exit: 1, line: 'build: git diff failed' })
+})
+
+test('a git timeout during the diff builds (FR-007)', () => {
+  const result = run(prod(SHA_A, SHA_B), {
+    git: (args) => {
+      if (args[0] === 'diff') {
+        throw Object.assign(new Error('spawnSync git ETIMEDOUT'), { code: 'ETIMEDOUT' })
+      }
+      return ''
+    },
+  })
+  assert.deepEqual(result, { exit: 1, line: 'build: git diff failed' })
+})
+
+test('the default git runner times out on a hanging git instead of waiting for the host', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ignore-build-hang-'))
+  const savedPath = process.env.PATH
+  try {
+    const fake = join(dir, 'git')
+    writeFileSync(fake, '#!/bin/sh\nsleep 10\n')
+    chmodSync(fake, 0o755)
+    process.env.PATH = `${dir}${delimiter}${savedPath}`
+    const started = Date.now()
+    assert.throws(() => runGit(['diff'], { cwd: dir, timeoutMs: 200 }))
+    assert.ok(Date.now() - started < 3000, 'the runner must give up within its timeout')
+    // The same runner serves the cat-file calls, so they carry the timeout too.
+    const startedCat = Date.now()
+    assert.throws(() => runGit(['cat-file', '-e', 'x'], { cwd: dir, timeoutMs: 200 }))
+    assert.ok(Date.now() - startedCat < 3000)
+  } finally {
+    process.env.PATH = savedPath
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('the default git timeout is 30 seconds', () => {
+  assert.equal(GIT_TIMEOUT_MS, 30_000)
 })
 
 // --- 3. Verdict integrity (FR-008, amended) --------------------------------------------------
