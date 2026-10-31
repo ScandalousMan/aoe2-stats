@@ -178,7 +178,8 @@ other referenced source contradicts it. Four consequences, each a change to what
 - The running game, read by a person, is a source: FR-030's strong form, for the current build. A
   person reads a tooltip; nothing is extracted from the game's files.
 - The Fandom wiki stays "one human, one number": a person may read it to settle one value, an agent
-  may not, because its terms forbid automated access.
+  may not, because its terms forbid automated access. **Superseded 2026-10-31** (spec Clarifications, Session
+  2026-10-31): the owner accepts that risk, and an agent may read it for the owner, saying so.
 
 The game's own data file stays rejected, for all three of its reasons.
 

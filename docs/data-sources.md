@@ -870,8 +870,27 @@ against keeping one measurement in two homes.
 - **Ruling**: **one human, one number, with provenance** — consulted only to settle a single
   contested value, by a person reading the page, with the reading recorded against the value it
   supports. Never bulk-imported, never scraped. An agent may not read it at all: its terms forbid
-  automated access, so the reading is the owner's.
-- **Assessed**: 2026-09-19 (research.md D3).
+  automated access, so the reading is the owner's. **Amended 2026-10-31** at the owner's
+  arbitration (006 spec Clarifications, Session 2026-10-31): the owner accepts that risk, and an
+  agent may read a page for the owner, one value at a time, its transcription saying that an agent
+  read it and whether the owner checked the page. Still never bulk-imported, never scraped by code.
+- **Assessed**: 2026-09-19 (research.md D3); amended 2026-10-31.
+
+### Liquipedia
+
+- **Scope**: per-unit and per-technology pages for Age of Empires II, with each page's own history
+  of patch changes.
+- **Reliability**: community-edited; a page states a value without naming the game build it was
+  checked on, so a value can predate a later change (its Forced Levy total of 80 food assumes a
+  Militia-line base the pack does not have).
+- **Update mechanism**: a person, or an agent for the owner, reading a live page; nothing scripted.
+- **Version identifier**: none; a reading is dated by when it was made.
+- **Coverage**: uneven, not surveyed by this project.
+- **Known limitations**: its content is under CC BY-SA 3.0 (as §4 records for aoestats' use of it);
+  values only, never a page copied in.
+- **Ruling**: **read and transcribe, one value at a time**, recording who read it, when, and the
+  page; a value contradicting the vendored pack is recorded as a disagreement (FR-028).
+- **Assessed**: 2026-10-31 (006 spec Clarifications, Session 2026-10-31).
 
 ### The running game, read by a person
 
