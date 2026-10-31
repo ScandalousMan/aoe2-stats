@@ -347,7 +347,7 @@ SC-005.
 ## R9. `.claude/` in a CLI upload
 
 **Decision.** Add `.claude/` to `.vercelignore`, next to the existing development-artifact rules.
-Verify with `vercel deploy --dry --format=json` before and after, from a working copy that has local
+Verify with `vercel deploy --dry --json` before and after, from a working copy that has local
 agent worktrees, and diff the file lists (FR-015). This is the same method as #120 and is run by the
 maintainer, since it needs the CLI's login.
 

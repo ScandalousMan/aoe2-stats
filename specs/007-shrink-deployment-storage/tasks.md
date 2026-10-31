@@ -303,8 +303,8 @@ the ADR section with its date.
       list (Deployment → Resources → Functions) and save the file listing of one function, for
       SC-001's comparison in T816. If T801 was done long enough ago that a newer deployment now
       serves production, repeat T801 for it
-- [ ] T815 [P] [US4] **Maintainer, before merging.** Quickstart §3: `vercel deploy --dry
-    --format=json` on `main` and on this branch, from a working copy with
+- [x] T815 [P] [US4] **Maintainer, before merging.** Quickstart §3: `vercel deploy --dry
+    --json` on `main` and on this branch, from a working copy with
       `.claude/worktrees/`, and diff the two lists (**FR-015**, US4's two scenarios). The only
       paths newly ignored are under `.claude/`. Record the result and the date in the ADR
 - [ ] T816 [US1] **Maintainer, after the merge deploys.** Quickstart §5, all five steps:

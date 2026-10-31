@@ -82,7 +82,8 @@ Constitution principle XII exists because of this ADR. In particular:
   "Function bundles and build skips". Nothing in CI reads a preview (`smoke.yml` probes
   production after a push to `main`).
 - **The upload carries no test artifact and no secret.** `.vercelignore` keeps visual-test
-  baselines, the Storybook build, Playwright output and tool caches out of every deployment, and
+  baselines, the Storybook build, Playwright output, tool caches and `.claude/` (FR-015) out of
+  every deployment, and
   `.env*` files (except `.env.example`, which `config-preflight.mjs` reads) out of a CLI upload,
   since the CLI does not apply `.gitignore`. Deployment storage had reached ~86.9 GB of 10 GB on 2026-10-04.
 
@@ -195,6 +196,20 @@ cancel by the last commit alone and lose the commits canceled before it.
 the dashboard's Ignored Build Step, so the rule governs and carries "Only build production" as its
 step 1. For a branch cut before the rule, the pushed commit's `vercel.json` has no `ignoreCommand`
 and the dashboard's Ignored Build Step governs. The dashboard setting therefore stays in place.
+
+**The upload, checked on 2026-10-31.** `vercel deploy --dry --json` (Vercel CLI 64.5.0; the flag is
+`--json`, and `--format=json` does not exist in this CLI) ran in two detached worktrees linked to the
+project, one at `origin/main` `d27ce3fc` and one at this branch `0122b603`. Each was given the same
+stand-in agent worktree under `.claude/worktrees/` (two files), because the CLI does not apply
+`.gitignore` and a fresh worktree has no `.claude/worktrees/` of its own. It deploys nothing. 24 paths
+in main's upload are absent from the branch's, every one under `.claude/`: 15 under `.claude/skills`,
+5 under `.claude/agents`, the 2 stand-in files under `.claude/worktrees`, `.claude/launch.json` and
+`.claude/settings.json`. No path outside `.claude/` dropped. The paths newly in the `ignored` list are
+`.claude/agents`, `.claude/launch.json`, `.claude/settings.json`, `.claude/skills` and
+`.claude/worktrees`, and none left it. The paths added are this branch's new files (the `scripts/deploy/`
+rule and its test, `scripts/checks/tests/test_vercel_bundle.py` and the feature's specs) and an empty
+`.claude` directory entry of size 0, which carries no file. `scripts/deploy/ignore-build.mjs` is
+therefore in the upload, as `ignoreCommand` needs.
 
 If storage climbs again, the next step is to replace the current S3 client with a lighter one
 behind `packages/storage`. It is not part of feature 007.

@@ -54,7 +54,7 @@ is nothing to check. The number is kept so the other sections keep theirs.
 From a working copy that has local agent worktrees under `.claude/worktrees/`:
 
 ```bash
-vercel deploy --dry --format=json > /tmp/after.json
+vercel deploy --dry --json > /tmp/after.json
 ```
 
 Compare it with the same command run on `main` (`/tmp/before.json`). Expected: the only paths that
