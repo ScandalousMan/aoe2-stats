@@ -980,7 +980,21 @@ def test_the_validation_sample_has_one_row_per_civilisation_of_the_pack() -> Non
     assert len(rows) == 56
     for row in rows:
         assert len(row) == 7
-        assert row[5] == "" and row[6] == "", "the owner fills the last two columns"
+        # T771 filled the last two columns: an independent reading for the two rows one was found
+        # for, the declined-reading marker for every other row (spec Clarifications, Session
+        # 2026-10-31; FR-030, amended), and the date either way.
+        assert row[6] == "2026-10-31", row[0]
+        if row[0] in _SAMPLE_READ:
+            assert row[5] and not row[5].startswith("not read"), row[0]
+        else:
+            assert row[5] == _SAMPLE_DECLINED, row[0]
+
+
+#: The validation-sample rows an independent source answered (T771), and the marker on the others.
+_SAMPLE_READ = frozenset({"Teutons", "Vietnamese"})
+_SAMPLE_DECLINED = (
+    "not read: the owner declined in-game reading; T772 records the weaker form (FR-030, amended)"
+)
 
 
 def _sample_context(

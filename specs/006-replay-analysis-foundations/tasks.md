@@ -2925,7 +2925,8 @@ phase.
 - **An unstated amount follows FR-022c, in order**: the pack's strings (a technology's own help text
   sometimes sizes what the civilisation text does not); the publisher's notes for any build, which
   an agent may read; then the owner's sheet. The Fandom wiki is the owner's to read, never an
-  agent's (`docs/data-sources.md` §6).
+  agent's (`docs/data-sources.md` §6). **Amended 2026-10-31** (spec Clarifications, Session
+  2026-10-31): an agent may read it for the owner, saying so.
 - **Done means T765's test passes for the civilisation without its `xfail`**, with every blocking
   gap it keeps being an open row of the owner's sheet, enumerated under FR-022b.
 - **A batch snapshot's label states the build and how many civilisations it models** —
@@ -3139,18 +3140,29 @@ phase.
       Berbers' Kasbah (`production_time`, `researched` and `team`, T781). Their open rows of
       [owner-readings.md](./owner-readings.md), and the paragraph under its table naming the two
       Cuman bonuses, are removed in the same change. Depends on T780 and T781
-- [ ] T771 [US2] **Owner task (information).** Read each open row of
+- [x] T771 [US2] **Owner task (information).** Read each open row of
       [owner-readings.md](./owner-readings.md), "Open values", and each row of its "Validation
       sample", in the running game on the current build (a tooltip in a solo game or the scenario
       editor) or, for a value the game does not display, the Fandom wiki. Write, per row, the value
       read, where it was read, the build the game reported, and the date. Rows can be answered as
-      they appear; each batch adds its own
+      they appear; each batch adds its own. **Closed 2026-10-31 by the owner's arbitration**
+      (spec Clarifications, Session 2026-10-31): no row was read in the game; every row names the
+      source it was answered from, and "Build shown" reads "not a game reading"
 - [ ] T772 [US2] Close the owner's readings on build 185872 in a snapshot that supersedes the last
       batch's: each open row becomes a modelled row whose `validated_by` cites the reading, and
       each validation-sample reading that differs from what the snapshot answered is recorded as a
-      disagreement (FR-028), stored as the game's value (FR-022c), and its row corrected.
-      The snapshot's `[validation]` names the strong form for each sampled row and the second
-      reading for every other row. Promote once every row for build 185872 is answered or reported
+      disagreement (FR-028), stored under FR-022c (amended 2026-10-31: with no game reading, the
+      value consistent with the pack), and its row corrected.
+      The snapshot's `[validation]` names the strong form for each sampled row an independent
+      source confirmed (Teutons, Vietnamese) and the second reading, stating that the owner
+      declined the game reading and naming the two fields read, for every other row (FR-030,
+      amended 2026-10-31). Each answer that names an entity its row did not widens that effect's
+      selector, by the ids [owner-readings.md](./owner-readings.md)'s batch of 2026-10-31 lists
+      (the Bombard Tower under Detinets, the Sicilians' walls, gates and palisades, and
+      four Jurchens technologies); the Sicilians' list adds to the Castle, it does not replace it,
+      and the Turks' Cannon Galleon technology is no pack entity and widens nothing. Liquipedia's
+      Forced Levy total is a disagreement (FR-028) on the Militia line's base cost. Promote once
+      every row for build 185872 is answered or reported
       unreadable by the owner; a row reported unreadable becomes an FR-022b entry, held in T765 and
       in `packages/knowledge/tests/test_coverage.py` with where the owner looked. A reading that
       arrives after promotion waits for the next snapshot. **Tests**: T765's tuples for build 185872
