@@ -747,8 +747,9 @@ choice "only has to be stable, not special", which is false when a participant's
 - [ ] T826 **Maintainer, after T825 deploys.** Rows already ended `unavailable` by the old rule stay
   terminal: `run_once` returns on one without fetching. A fetch ended the rows with
   `state = 'unavailable'` and `attempts > 0`; the pre-claim branch writes `attempts = 0`. Count the
-  first population, and within it the rows whose match completed within `capture_budget_days` of the
-  count, and record both counts and the date here. Each row of the second count is a candidate for
+  first population, and within it the rows whose `finished_at` is before T825's production deployment
+  and whose match completed within `capture_budget_days` of the count, and record both counts, the
+  deployment's time and the date here. Each row of the second count is a candidate for
   the old rule; deleting it makes the next
   request a first analysis under T825, so the decision to delete is the maintainer's. Delete the row
   for `517629518`, request its analysis, and record the outcome and the point of view it used.
@@ -773,3 +774,20 @@ choice "only has to be stable, not special", which is false when a participant's
   raise propagates, makes no third fetch, and leaves the row `running`; a lost claim writes no point
   of view. **Done**: the tests pass, the whole suite is green, and spec_lint is green on every
   feature.
+- [ ] T828 Remediate PR #208's second review, of T827, in `apps/analyzer/src/aoe2stats_analyzer/run.py`,
+  `apps/analyzer/tests/test_run_once.py` and, only to pass the setting, `api/analyze.py`. A `NotFound`
+  says nothing about whether a recording is not yet published, expired or never recorded
+  (`packages/providers/src/aoe2stats_providers/base.py`). The ingester reads a `NotFound` younger than
+  `REPLAY_PUBLICATION_GRACE_HOURS` after `matches.completed_at` as not yet published, and T827 wrote
+  a `replay_fetch_misses` row for it, which `derive_availability` reads as never recorded. (1) The
+  walk writes a miss row, and skips a participant on a recorded miss, only when the match completed
+  more than `REPLAY_PUBLICATION_GRACE_HOURS` before `now`. `run_once` takes the hours as a keyword
+  parameter, and `api/analyze.py` passes the setting the ingester's wiring passes. (2) A match inside
+  the grace whose every fetched participant answers `NotFound` is handed back to `queued` as T827's
+  refusal is, and does not end `unavailable`. Tests, each failing against the current tree, with
+  the failure output in the hand-back: a `NotFound` on a match inside the grace writes no miss row;
+  a match inside the grace with a recorded miss for its first participant still fetches it; a match
+  inside the grace whose every participant answers `NotFound` ends `queued` with the pre-claim
+  `attempts`, not `unavailable`. T827's tests seed a match one day old, inside the grace: re-seed the
+  ones that assert miss rows or `unavailable` past the grace, so each still tests what its name
+  says. **Done**: the tests pass, the whole suite is green, and spec_lint is green on every feature.
