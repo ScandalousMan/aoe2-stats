@@ -27,3 +27,8 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/aoe2stats_replay_engine"]
+
+# Rebuild this package's cached wheel whenever a file it ships changes, not only when this file
+# does — the reason is in `packages/knowledge/pyproject.toml`'s `[tool.uv]` comment.
+[tool.uv]
+cache-keys = [{ file = "pyproject.toml" }, { file = "src/**" }]

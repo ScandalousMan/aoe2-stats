@@ -34,3 +34,22 @@ exclude = [
 [tool.hatch.build.targets.wheel.force-include]
 "snapshots" = "aoe2stats_knowledge/snapshots"
 "packs" = "aoe2stats_knowledge/packs"
+
+# uv caches the wheel it builds for a local package and, by default, rebuilds it only when this
+# file's modification time changes (https://docs.astral.sh/uv/reference/settings/#cache-keys). A
+# non-editable install (`uv sync --no-editable`, the deployment builder's install) in a checkout
+# that is reused rather than cloned fresh therefore reinstalls a stale wheel after a commit that
+# adds a snapshot or edits a module but leaves this file untouched. Measured 2026-10-30: a warm
+# cache from 906004ce, then a checkout of 193f7ef2 (which adds `aoe2techtree-180059-civilisations-53`),
+# installed 9 of the 10 snapshot directories; `UV_NO_CACHE=1` installed all 10. The globs below make
+# every file the wheel ships part of the key, including what `force-include` pulls from
+# `snapshots/` and `packs/`; uv then also notices an added, deleted or back-dated file.
+# `tests/architecture/test_wheel_cache_keys.py` keeps each workspace member's list in step with its
+# wheel target.
+[tool.uv]
+cache-keys = [
+  { file = "pyproject.toml" },
+  { file = "src/**" },
+  { file = "snapshots/**" },
+  { file = "packs/**" },
+]
