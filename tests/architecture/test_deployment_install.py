@@ -18,8 +18,9 @@ importing would have caught it.
    lacks. `--no-dev` keeps the dev toolchain from papering over a missing runtime dependency.
 2. The files a function bundle keeps are computed from `vercel.json`'s `excludeFiles` value with
    the whole-entry rule `scripts/checks/tests/test_vercel_bundle.py` asserts (its functions are
-   read, not copied, so the guard and this run cannot disagree), less the builder's own excludes.
-   The kept set must be exactly the tracked files under `api/` plus the two root files that guard
+   read, not copied, so the guard and this run cannot disagree), less the directories
+   `.vercelignore` drops whole (never uploaded) and the builder's own excludes. The kept set must
+   be exactly the tracked files under `api/` plus the two root files that guard
    keeps on purpose (`KEPT_IN_BUNDLE`); those are copied into an empty directory.
 3. From that directory, the environment's own interpreter runs in isolated mode (`-I`), which
    drops the working directory from the import path, so the probe puts the bundle root on the path
@@ -124,14 +125,25 @@ def _exclude_alternatives() -> list[str]:
     return list(_bundle_rule.parse_exclude(next(iter(functions.values()))["excludeFiles"]))
 
 
-def kept_files(tracked: list[str], alternatives: list[str]) -> list[str]:
-    """The tracked files a function bundle keeps: what `excludeFiles` does not drop, and what the
-    builder's own built-in excludes do not drop either (any path segment named in them)."""
+def _upload_ignored() -> frozenset[str]:
+    """The directories `.vercelignore` drops whole, read with the guard's own parser."""
+    text = (_REPO_ROOT / ".vercelignore").read_text(encoding="utf-8")
+    ignored: frozenset[str] = _bundle_rule.vercelignore_directories(text)
+    return ignored
+
+
+def kept_files(
+    tracked: list[str], alternatives: list[str], upload_ignored: frozenset[str] = frozenset()
+) -> list[str]:
+    """The tracked files a function bundle keeps: what `.vercelignore` does not drop whole, what
+    `excludeFiles` does not drop, and what the builder's own built-in excludes do not drop either
+    (any path segment named in them)."""
     builder_excludes = _bundle_rule.BUILDER_EXCLUDES
     return sorted(
         path
         for path in tracked
-        if not _bundle_rule.is_excluded(path, alternatives)
+        if path.split("/")[0] not in upload_ignored
+        and not _bundle_rule.is_excluded(path, alternatives)
         and not builder_excludes.intersection(path.split("/"))
     )
 
@@ -146,7 +158,7 @@ def bundle_difference(tracked: list[str], kept: list[str]) -> dict[str, list[str
 
 def _bundle_files() -> list[str]:
     tracked = _tracked()
-    kept = kept_files(tracked, _exclude_alternatives())
+    kept = kept_files(tracked, _exclude_alternatives(), _upload_ignored())
     difference = bundle_difference(tracked, kept)
     assert difference == {"extra": [], "missing": []}, (
         "vercel.json's `excludeFiles` does not leave exactly the tracked files under `api/` and "
@@ -193,6 +205,13 @@ def test_an_exclusion_that_swallows_api_shows_as_missing() -> None:
         "api/cron/ingest.py",
         "api/index.py",
     ]
+
+
+def test_a_directory_the_upload_ignores_is_not_in_the_bundle_though_unlisted() -> None:
+    tracked = [*_SYNTHETIC_TRACKED, "specs/a.md"]
+    alternatives = ["apps/**", "docs/**", "README.md"]
+    assert "specs/a.md" in kept_files(tracked, alternatives)
+    assert "specs/a.md" not in kept_files(tracked, alternatives, frozenset({"specs"}))
 
 
 def test_the_real_exclude_value_leaves_api_and_the_two_kept_files_in_the_bundle() -> None:

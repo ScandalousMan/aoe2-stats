@@ -140,16 +140,36 @@ same way T801 read the before rows, and T819 fills the skip count.
 | ---------------------------------------------------- | ----- | ------------ | --------- |
 | Canceled production deployments, first 30 days live  |       |              | T819      |
 
+The three functions answer, empty until the maintainer runs quickstart §5 against the first
+production deployment that carries feature 007 (T816). That is not the build of the merge
+`45a8dc4c` (#176): it failed the host's `vercel.json` schema check on 2026-11-01 because
+`excludeFiles` was longer than 256 characters, and production kept serving the deployment before
+it. The deployment that carries the fix is the first one.
+
+| Step (quickstart §5)                                        | Result | Run id or evidence | Date |
+| ----------------------------------------------------------- | ------ | ------------------ | ---- |
+| 1. `Production smoke` workflow for that push                |        |                    |      |
+| 2. An analysis request completes or is refused as before    |        |                    |      |
+| 3. Manual `POST /api/cron/ingest`: a run report, not a 504  |        |                    |      |
+| 4. Next 04:00 UTC run: 200 in the cron log, normal in audit |        |                    |      |
+| 5. Deployment → Resources → Functions lists three functions |        |                    |      |
+| Each function below T814's value (SC-001)                   |        | sizes: T818 rows   |      |
+
+Deployment id, to fill: . The trimmed cron function must be seen to import and finish a real capture run
+(constitution I), which steps 3 and 4 show. Zero regressions across the five is SC-005.
+
 ### What a function carries
 
 Each of the three functions (`api/index.py` under a 10 s limit, `api/analyze.py` and
 `api/cron/ingest.py` under 300 s) carries the Python dependencies the builder installs plus the
 repository files its `excludeFiles` entry does not remove. The same value is in all three entries of
-`vercel.json`: a brace list of every top-level entry of the repository except `api`, which holds
-the three entrypoints. Listing the top-level entries, not their contents, keeps the value short, and
-`scripts/checks/tests/test_vercel_bundle.py` compares it with the tracked tree, so a new top-level
-entry that is not listed fails the check. The builder's own excludes (`.gitignore`,
-`pnpm-lock.yaml`) are not repeated in it. `pyproject.toml` and `uv.lock` are not in the list on
+`vercel.json`: a brace list of every top-level entry the upload contains except `api`, which holds
+the three entrypoints, and the two kept files below. Directories `.vercelignore` drops whole
+(`/.claude/`, `/docs/`, `/specs/`, `/.specify/`, `/.github/`) are not listed, and the host caps the value at 256
+characters (the failed production build of `45a8dc4c`, 2026-11-01). Listing the top-level entries,
+not their contents, keeps the value short, and `scripts/checks/tests/test_vercel_bundle.py` compares
+it with the tracked tree and the cap, so a new unlisted top-level entry fails the check. The
+builder's own excludes (`.gitignore`, `pnpm-lock.yaml`) are not repeated in it. `pyproject.toml` and `uv.lock` are not in the list on
 purpose.
 
 Two checks decided that, run on 2026-10-19:
