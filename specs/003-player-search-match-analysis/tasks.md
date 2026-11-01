@@ -713,3 +713,94 @@ open" as the reason `obtainable_until` is null.
   unobtainable download without the measured-profile bound; neither test module cites the replaced
   FR-024 wording as current; the widened absence tests fail against a "31-day" and an "about a
   month" phrasing; the whole suite, the design-system tests and spec_lint on every feature are green.
+
+---
+
+## Phase 16: one point of view's 404 is not the match's (found 2026-11-01)
+
+Added 2026-11-01. Match `517629518`, completed 2026-10-31 09:34 UTC, shows "Analysis is not available
+for this match" a day later. The source answered, read on 2026-11-01: `404` for profile `13837142`,
+`200` for profiles `25591018`, `1807091` and `1813797`. `run_once` in
+`apps/analyzer/src/aoe2stats_analyzer/run.py` fetches one point of view, the first by `team_id` then
+`profile_id`, and on its `NotFound` ends the match `unavailable`, a terminal state. FR-034 makes a match
+unavailable when its recordings have expired, and FR-030 offers analysis for any match whose recorded
+game is obtainable; three of the four were. `_pick_point_of_view_profile_id`'s docstring says the
+choice "only has to be stable, not special", which is false when a participant's recording is absent.
+
+- [x] T825 Fall back across participants before ending a match `unavailable`, in
+  `apps/analyzer/src/aoe2stats_analyzer/run.py` and `apps/analyzer/tests/test_run_once.py`. After a
+  claim, fetch the participants' points of view in the existing order (`team_id`, then `profile_id`),
+  one at a time, and stop at the first `200`. The match ends `unavailable` only when every participant's
+  fetch answers `NotFound`. The point of view that is retained, logged and parsed is the one whose fetch
+  answered `200`, and `match_analyses.point_of_view_profile_id` holds that profile when the row ends
+  failed (FR-032), never the first participant tried. A published row keeps the point of view its
+  document names, as before this task. A fetch that raises (rate limited,
+  unavailable, moved) stops the walk and propagates as it does today: it is not a `NotFound` and moves
+  to no further participant. The pre-claim branch for a match past `capture_budget_days` is unchanged,
+  and no fetch is added to it. Rewrite `_pick_point_of_view_profile_id`'s docstring so it no longer
+  says the choice only has to be stable. Test-first, against the green-tree gate: a match whose first
+  participant's fetch answers `NotFound` and whose second answers `200` ends `published` with the
+  second profile as its point of view and one retained recording, for that profile; a match whose
+  every participant answers `NotFound` ends `unavailable` after one fetch per participant; a raise
+  on the first fetch makes no second fetch. **Done**: the three cases pass, the whole suite is green,
+  and spec_lint is green on every feature.
+- [ ] T826 **Maintainer, after T825 deploys.** Rows already ended `unavailable` by the old rule stay
+  terminal: `run_once` returns on one without fetching. A fetch ended the rows with
+  `state = 'unavailable'` and `attempts > 0`; the pre-claim branch writes `attempts = 0`. Count the
+  first population, and within it the rows whose `finished_at` is before T825's production deployment
+  and whose match completed within `capture_budget_days` of the count, and record both counts, the
+  deployment's time and the date here. Each row of the second count is a candidate for
+  the old rule; deleting it makes the next
+  request a first analysis under T825, so the decision to delete is the maintainer's. Delete the row
+  for `517629518`, request its analysis, and record the outcome and the point of view it used.
+- [x] T827 Remediate PR #208's review of T825, in `apps/analyzer/src/aoe2stats_analyzer/run.py` and
+  `apps/analyzer/tests/test_run_once.py`. (1) The walk made up to one source fetch per participant
+  for one admission, while `check_admission` counted one. Before each fetch after the first,
+  re-check `budget_gate_admits` and the deadline gate from
+  `apps/analyzer/src/aoe2stats_analyzer/admission.py`, with the same settings `api/analyze.py` passes.
+  On a refusal the walk stops, fetches nothing more, and hands the row back to `queued` with its
+  lease cleared and its `attempts` as before the claim, so a refusal spends no attempt and never ends
+  the row `unavailable`. (2) Each `NotFound` in the walk writes a `replay_fetch_misses` row for that
+  `(game_id, profile_id)`, insert-or-nothing as `apps/api/src/aoe2stats_api/routers/replays.py`
+  writes it, and the walk skips a participant that already has one, without fetching. When every
+  participant is skipped or answers `NotFound`, the match ends `unavailable`. (3) The hand-back in
+  (1) and `_record_point_of_view` write only while the row is still this run's claim: guarded on the
+  `claimed_at` the claim returned, so a run that lost its lease writes nothing. (4) The docstrings of
+  `_mark_unavailable` and `_pick_point_of_view_profile_id` describe their current callers. Tests,
+  each failing against the current tree and the failure output in the hand-back: a budget at its
+  limit after the first `NotFound` makes no second fetch and leaves the row `queued` with the
+  pre-claim `attempts`; a first `NotFound` writes one miss row; a participant with a miss row is not
+  fetched; every participant with a miss row ends `unavailable` with no fetch; a `NotFound` then a
+  raise propagates, makes no third fetch, and leaves the row `running`; a lost claim writes no point
+  of view. **Done**: the tests pass, the whole suite is green, and spec_lint is green on every
+  feature.
+- [x] T828 Remediate PR #208's second review, of T827, in `apps/analyzer/src/aoe2stats_analyzer/run.py`,
+  `apps/analyzer/tests/test_run_once.py` and, only to pass the setting, `api/analyze.py`. A `NotFound`
+  says nothing about whether a recording is not yet published, expired or never recorded
+  (`packages/providers/src/aoe2stats_providers/base.py`). The ingester reads a `NotFound` younger than
+  `REPLAY_PUBLICATION_GRACE_HOURS` after `matches.completed_at` as not yet published, and T827 wrote
+  a `replay_fetch_misses` row for it, which `derive_availability` reads as never recorded. (1) The
+  walk writes a miss row, and skips a participant on a recorded miss, only when the match completed
+  more than `REPLAY_PUBLICATION_GRACE_HOURS` before `now`. `run_once` takes the hours as a keyword
+  parameter, and `api/analyze.py` passes the setting the ingester's wiring passes. (2) A match inside
+  the grace whose every fetched participant answers `NotFound` is handed back to `queued` as T827's
+  refusal is, and does not end `unavailable`. Tests, each failing against the current tree, with
+  the failure output in the hand-back: a `NotFound` on a match inside the grace writes no miss row;
+  a match inside the grace with a recorded miss for its first participant still fetches it; a match
+  inside the grace whose every participant answers `NotFound` ends `queued` with the pre-claim
+  `attempts`, not `unavailable`. T827's tests seed a match one day old, inside the grace: re-seed the
+  ones that assert miss rows or `unavailable` past the grace, so each still tests what its name
+  says. **Done**: the tests pass, the whole suite is green, and spec_lint is green on every feature.
+- [x] T829 Remediate PR #208's third review, of T828, in `apps/analyzer/src/aoe2stats_analyzer/run.py`
+  and `apps/analyzer/tests/test_run_once.py`. T828's (2) handed a match inside the grace back to
+  `queued` when every fetched participant answered `NotFound`. `api/analyze.py` counts no request on
+  a `queued` row against the per-user limit, and the match page posts again on each view of a
+  `queued` row, so every view re-walked the participants (FR-040, FR-044). Remove T828's (2): a match
+  inside the grace whose every fetched participant answers `NotFound` ends `unavailable`, as before
+  T825, and T828's (1) still writes no miss row for it. The cost is stated, not fixed: a match
+  analysed before its recordings are published ends `unavailable`, and deleting its
+  `match_analyses` row makes the next request a first analysis again, because no miss row was
+  written. Tests, each failing against the current tree, with the failure output in the hand-back:
+  a match inside the grace whose every participant answers `NotFound` ends `unavailable` with no
+  miss row; a second `run_once` on it makes no fetch. Replace T828's `queued` test with these.
+  **Done**: the tests pass, the whole suite is green, and spec_lint is green on every feature.

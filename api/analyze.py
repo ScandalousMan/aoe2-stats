@@ -252,7 +252,9 @@ async def _analyze(request: Request) -> JSONResponse:
             extractor=deps.extractor,
             object_store=deps.object_store,
             capture_budget_days=settings.capture_budget_days,
+            replay_publication_grace_hours=settings.replay_publication_grace_hours,
             recompute_retry_after=timedelta(seconds=settings.analysis_recompute_retry_seconds),
+            max_source_requests_per_day=settings.analysis_max_source_requests_per_day,
         )
     except LookupError:
         return _not_found()

@@ -87,9 +87,11 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from aoe2stats_analyzer.admission import budget_gate_admits, deadline_gate_admits
 from aoe2stats_analyzer.claim import claim_for_analysis
 from aoe2stats_analyzer.extract import (
     DEPLOYMENT_FAULT_ERRORS,
@@ -116,6 +118,7 @@ from aoe2stats_storage.models import (
     MatchAnalysisState,
     MatchPlayer,
     ReplayAccessLog,
+    ReplayFetchMiss,
     RetainedRecording,
 )
 from aoe2stats_storage.objects import ObjectNotFound, ObjectStore, analysis_object_key
@@ -136,6 +139,11 @@ logger = logging.getLogger("aoe2stats_analyzer")
 #: budget_days` explains why this exists only as a fallback for a caller (this package's own test
 #: suite) that does not thread the real setting down, and why a production caller overrides it.
 _DEFAULT_CAPTURE_BUDGET_DAYS = 18
+
+#: `.env.example`'s own `REPLAY_PUBLICATION_GRACE_HOURS`, mirrored as `_DEFAULT_CAPTURE_BUDGET_DAYS`
+#: mirrors its setting (this package does not depend on `apps/ingester`, where the same figure is
+#: `DEFAULT_REPLAY_PUBLICATION_GRACE_HOURS`). A fallback for a caller that threads nothing down.
+_DEFAULT_REPLAY_PUBLICATION_GRACE_HOURS = 72
 
 #: `replay_access_log.purpose` for a read this module performs — distinct from `"download"`
 #: (`apps/api/src/aoe2stats_api/routers/replays.py`), the only other writer of that column today,
@@ -265,26 +273,140 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
-async def _pick_point_of_view_profile_id(
+async def _participant_profile_ids(
     session_factory: async_sessionmaker[AsyncSession], *, game_id: int
-) -> int:
-    """The participant this call fetches a recording for — any one of them, deterministically:
-    the parsed timeline carries every participant's own data regardless of whose point of view the
-    physical file is (`contracts/analysis.md`), so the choice only has to be stable, not special.
-    Ordered by `team_id` then `profile_id`, which happens to match this package's own seeded fixture
-    order (`test_run_once.py`'s `_seed_match`) without being written to depend on it.
+) -> list[int]:
+    """Every participant of the match, in the order their recordings are tried: `team_id`, then
+    `profile_id`. Which participant's recording exists is a fact about the source, not about the
+    match - a recording can be absent for one participant and served for another - so the order
+    is only where the walk starts; `run_once` stops at the first participant whose fetch answers
+    `200` and ends the match `unavailable` only when every one answers `NotFound` (T825). The
+    parsed timeline carries every participant's own data whichever point of view the physical file
+    is (`contracts/analysis.md`).
     """
     async with session_factory() as session:
         result = await session.execute(
             select(MatchPlayer.profile_id)
             .where(MatchPlayer.game_id == game_id)
             .order_by(MatchPlayer.team_id, MatchPlayer.profile_id)
-            .limit(1)
         )
-        profile_id = result.scalar_one_or_none()
-    if profile_id is None:
+        profile_ids = list(result.scalars().all())
+    if not profile_ids:
         raise LookupError(f"no match_players row for game_id={game_id}")
-    return profile_id
+    return profile_ids
+
+
+async def _pick_point_of_view_profile_id(
+    session_factory: async_sessionmaker[AsyncSession], *, game_id: int
+) -> int:
+    """The point of view recorded on a row `run_once` ends `unavailable` without ever claiming it:
+    the first of `_participant_profile_ids`, for a never-analysed match already past
+    `capture_budget_days`. That branch fetches nothing, so no participant's recording was tried and
+    the first is only a stable profile to name on the row. The claim path does not call this: it
+    walks `_participant_profile_ids` itself and records the profile whose fetch answered."""
+    return (await _participant_profile_ids(session_factory, game_id=game_id))[0]
+
+
+async def _record_point_of_view(
+    session_factory: async_sessionmaker[AsyncSession],
+    *,
+    game_id: int,
+    profile_id: int,
+    claimed_at: datetime,
+) -> None:
+    """FR-032, T825: the claim recorded the first participant tried; once a later participant's
+    fetch answers `200`, the row holds that profile, so a row that ends `failed` (which writes no
+    point of view of its own) names the recording it actually read. The guards sit in the
+    statement: `state` keeps a published row untouched, as `_mark_failed` does, and `claimed_at`
+    keeps the write to the run that still holds the claim (T827) - a run whose lease was taken
+    over writes nothing, so it cannot rename the point of view of a row now held by another run."""
+    async with session_scope(session_factory) as session:
+        await session.execute(
+            update(MatchAnalysis)
+            .where(
+                MatchAnalysis.game_id == game_id,
+                MatchAnalysis.state != MatchAnalysisState.PUBLISHED,
+                MatchAnalysis.claimed_at == claimed_at,
+            )
+            .values(point_of_view_profile_id=profile_id)
+            .execution_options(synchronize_session=False)
+        )
+
+
+async def _recorded_miss_profile_ids(
+    session_factory: async_sessionmaker[AsyncSession], *, game_id: int
+) -> set[int]:
+    """The profiles `replay_fetch_misses` already holds evidence for in this match: the source
+    answered `NotFound` for that exact point of view (here or in `routers/replays.py`), so the walk
+    does not spend a source request asking again (constitution I)."""
+    async with session_factory() as session:
+        result = await session.execute(
+            select(ReplayFetchMiss.profile_id).where(ReplayFetchMiss.game_id == game_id)
+        )
+        return set(result.scalars().all())
+
+
+async def _record_fetch_miss(
+    session_factory: async_sessionmaker[AsyncSession], *, game_id: int, profile_id: int
+) -> None:
+    """One `replay_fetch_misses` row for a point of view whose fetch answered `NotFound`,
+    insert-or-nothing on the primary key exactly as `routers/replays.py::_record_fetch_miss`
+    writes it: two runs racing the same fact both try, and the second is a no-op."""
+    async with session_scope(session_factory) as session:
+        await session.execute(
+            pg_insert(ReplayFetchMiss)
+            .values(game_id=game_id, profile_id=profile_id)
+            .on_conflict_do_nothing(
+                index_elements=[ReplayFetchMiss.game_id, ReplayFetchMiss.profile_id]
+            )
+        )
+
+
+async def _hand_back(
+    session_factory: async_sessionmaker[AsyncSession], *, game_id: int, claimed_at: datetime
+) -> None:
+    """T827: an admission gate refused a further fetch inside the walk. The row returns to
+    `queued` with its lease cleared and the attempt this run's claim spent given back, so a refusal
+    costs no attempt and ends nothing: the match is not `unavailable`, only not asked yet. Guarded
+    on `state` and on `claimed_at` in the statement: a run whose lease was taken over, or whose row
+    has since been published, writes nothing."""
+    async with session_scope(session_factory) as session:
+        await session.execute(
+            update(MatchAnalysis)
+            .where(
+                MatchAnalysis.game_id == game_id,
+                MatchAnalysis.state == MatchAnalysisState.RUNNING,
+                MatchAnalysis.claimed_at == claimed_at,
+            )
+            .values(
+                state=MatchAnalysisState.QUEUED,
+                claimed_at=None,
+                lease_expires_at=None,
+                attempts=MatchAnalysis.attempts - 1,
+            )
+            .execution_options(synchronize_session=False)
+        )
+
+
+async def _admits_another_fetch(
+    session_factory: async_sessionmaker[AsyncSession],
+    *,
+    max_source_requests_per_day: int | None,
+) -> bool:
+    """T827: `check_admission` counts one source request per admission, so every fetch the walk
+    makes after the first re-asks the two gates that fetch competes on - the deadline gate and the
+    budget gate, with the settings the caller admitted the request under. The storage gate is not
+    re-asked: a fetch that answers `NotFound` retains nothing. `None` means the caller threads no
+    budget (the tests) and only the deadline gate applies."""
+    now = _now()
+    async with session_factory() as session:
+        if not await deadline_gate_admits(session, now=now):
+            return False
+        if max_source_requests_per_day is None:
+            return True
+        return await budget_gate_admits(
+            session, now=now, max_source_requests_per_day=max_source_requests_per_day
+        )
 
 
 async def _retained_recording_row(
@@ -329,9 +451,11 @@ async def _mark_unavailable(
     requested_by_user_id: UUID,
     now: datetime,
 ) -> None:
-    """FR-034: permanently `unavailable`, never presented as an action that then fails. Handles
-    both the never-attempted case (no row yet — R8's expired-and-never-analysed match) and a row
-    already claimed whose fetch just answered `NotFound`.
+    """FR-034: permanently `unavailable`, never presented as an action that then fails. Two
+    callers reach it: the pre-claim branch of `run_once` (no row yet — R8's expired-and-never-
+    analysed match, which inserts the row) and the end of the claimed walk, when every participant
+    is either already recorded in `replay_fetch_misses` or just answered `NotFound` (T825, T827),
+    which updates the row the claim made.
 
     **Never unpublishes (T666i, FR-042).** A `published` row is a served analysis; whatever route
     reached here - none does today, the first-analysis path claims only a `queued` or expired
@@ -889,7 +1013,9 @@ async def run_once(
     extractor: AnalysisExtractor,
     object_store: ObjectStore,
     capture_budget_days: int = _DEFAULT_CAPTURE_BUDGET_DAYS,
+    replay_publication_grace_hours: int = _DEFAULT_REPLAY_PUBLICATION_GRACE_HOURS,
     recompute_retry_after: timedelta = _DEFAULT_RECOMPUTE_RETRY_AFTER,
+    max_source_requests_per_day: int | None = None,
 ) -> None:
     """Analyse `game_id` once, on this one request — see the module docstring for the two paths
     this dispatches between and the ordering FR-029 requires. Never raises on an ordinary outcome
@@ -908,7 +1034,15 @@ async def run_once(
     never reads as expired, and an interrupted one really does leave the row claimable once the
     function could no longer be working (FR-037). `max_attempts` (`ANALYSIS_MAX_ATTEMPTS`) bounds
     the claims of one match: the claim past it ends the row `failed` instead and this call fetches
-    nothing.
+    nothing. `max_source_requests_per_day` (`ANALYSIS_MAX_SOURCE_REQUESTS_PER_DAY`) is the budget
+    gate's limit, passed so the walk over participants can re-ask the gates before each fetch after
+    the first (T827); `None` skips the budget gate and keeps the deadline gate.
+    `replay_publication_grace_hours` (`REPLAY_PUBLICATION_GRACE_HOURS`, T828) is the window after
+    `matches.completed_at` in which a `NotFound` may be a recording not yet published, with the
+    ingester's boundary (`capture.py::_classify_not_found`: inside is `now` before `completed_at`
+    plus the grace). Inside it the walk writes no miss row and ignores recorded ones; a match every
+    participant answers `NotFound` for still ends `unavailable` (T829: a hand-back to `queued` made
+    every page view re-walk the participants).
     """
     if lease_seconds < budget_seconds:
         raise ValueError(
@@ -972,13 +1106,11 @@ async def run_once(
     # Reaches here for a brand-new, not-yet-expired match, or an existing row that is `queued` or
     # `running` under a lease that may have expired (R6) — the one path `claim_for_analysis` (T361)
     # itself knows how to resolve.
-    point_of_view_profile_id = await _pick_point_of_view_profile_id(
-        session_factory, game_id=game_id
-    )
+    participants = await _participant_profile_ids(session_factory, game_id=game_id)
     outcome = await claim_for_analysis(
         session_factory,
         game_id=game_id,
-        point_of_view_profile_id=point_of_view_profile_id,
+        point_of_view_profile_id=participants[0],
         requested_by_user_id=requested_by_user_id,
         lease_seconds=lease_seconds,
         max_attempts=max_attempts,
@@ -990,16 +1122,58 @@ async def run_once(
         # nothing is fetched.
         return
 
-    blob = await replay_provider.fetch_replay(game_id, point_of_view_profile_id)
-    if isinstance(blob, NotFound):
+    # T825: one fetch per participant, in order, stopping at the first `200`. Only a `NotFound`
+    # moves to the next participant; a fetch that raises (rate limited, unavailable, moved) ends
+    # the walk by propagating, as it always did - it says nothing about whether the next
+    # participant's recording exists, and trying it would spend the source budget on a failing
+    # source (constitution I).
+    # T827: the admission that let this run in counted one source request. Before each fetch after
+    # the first, the walk re-asks the gates; a refusal stops it and hands the row back. A
+    # participant with a recorded miss is skipped without a fetch, and each `NotFound` records one.
+    assert outcome.claimed_at is not None
+    claimed_at = outcome.claimed_at
+    past_grace = now >= match.completed_at + timedelta(hours=replay_publication_grace_hours)
+    recorded_misses = (
+        await _recorded_miss_profile_ids(session_factory, game_id=game_id)
+        if past_grace
+        else frozenset[int]()
+    )
+    blob = None
+    point_of_view_profile_id = participants[0]
+    fetched = False
+    for candidate in participants:
+        if candidate in recorded_misses:
+            continue
+        if fetched and not await _admits_another_fetch(
+            session_factory, max_source_requests_per_day=max_source_requests_per_day
+        ):
+            await _hand_back(session_factory, game_id=game_id, claimed_at=claimed_at)
+            return
+        answer = await replay_provider.fetch_replay(game_id, candidate)
+        fetched = True
+        if isinstance(answer, NotFound):
+            if past_grace:
+                await _record_fetch_miss(session_factory, game_id=game_id, profile_id=candidate)
+            continue
+        blob = answer
+        point_of_view_profile_id = candidate
+        break
+    if blob is None:
         await _mark_unavailable(
             session_factory,
             game_id=game_id,
-            point_of_view_profile_id=point_of_view_profile_id,
+            point_of_view_profile_id=participants[0],
             requested_by_user_id=requested_by_user_id,
             now=now,
         )
         return
+    if point_of_view_profile_id != participants[0]:
+        await _record_point_of_view(
+            session_factory,
+            game_id=game_id,
+            profile_id=point_of_view_profile_id,
+            claimed_at=claimed_at,
+        )
 
     async with session_factory() as session:
         retained = await retain_recording(
