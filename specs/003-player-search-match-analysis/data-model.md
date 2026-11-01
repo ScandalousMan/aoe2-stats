@@ -264,7 +264,9 @@ pk), `observed_at` (timestamptz).
 recording was never made — 001's `replay_captures` for a linked user's own point of view, and an
 analysis fetch that 404s for a third party's — and the download route's own boundary-race 404 is a
 third that no artifact had decided a home for. `contracts/http-api.md` requires that call to record
-its outcome ("so the page is right the next time"); this table is that record, and
+its outcome once the match completed at least `REPLAY_PUBLICATION_GRACE_HOURS` ago (inside the
+grace a 404 is not read as evidence, since the recording may not be published yet, and nothing
+is recorded); this table is that record, and
 `derive_availability`'s `recorded_404` parameter reads it.
 
 **Why not a `replay_captures` row**, which is where the evidence would naturally go. That table is

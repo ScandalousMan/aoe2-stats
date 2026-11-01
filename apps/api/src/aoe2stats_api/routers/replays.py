@@ -203,7 +203,9 @@ pipeline owes that profile's owner if they later link an account (any terminal s
 exists). `replay_fetch_misses` is read-only evidence with none of `replay_captures`' readers:
 `_has_recorded_fetch_miss` below feeds `derive_availability`'s own `recorded_404` parameter, and
 `_record_fetch_miss` writes it, once, the moment a point of view offered as `obtainable` answers
-404 at fetch time — so the identical next request reads `never_recorded` from the row instead of
+404 at fetch time for a match that completed at least `REPLAY_PUBLICATION_GRACE_HOURS` ago (inside
+the grace a 404 is not read as evidence, since the recording may not be published yet, and no row
+is written) — so the identical next request reads `never_recorded` from the row instead of
 probing the source a second time. **`data-model.md` now names this table explicitly as the
 sixth (amended 2026-08-29, carrying its own section) — this table is no longer an
 undocumented gap between the code and the artifact.**
@@ -309,7 +311,7 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Awaitable, Callable, Mapping, Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
 from urllib.parse import urlencode
 
@@ -966,7 +968,8 @@ async def _has_recorded_fetch_miss(
 
 async def _record_fetch_miss(db_session: AsyncSession, *, game_id: int, profile_id: int) -> None:
     """Persists the boundary-race evidence on its own short-lived session (`_audit_session`),
-    since this call always precedes an `expired_since_page_load` `404` (module docstring).
+    since this call always precedes an `expired_since_page_load` `404` (module docstring). The
+    route calls it only for a match that completed at least `replay_publication_grace_hours` ago.
     `ON CONFLICT DO NOTHING` on the primary key: two callers racing the same boundary each try to
     record the same fact, and the first one wins with no error for the second."""
     async with _audit_session(db_session) as audit_session:
@@ -1307,9 +1310,10 @@ async def download_replay_point_of_view(
         recorded_404 = await _has_recorded_fetch_miss(
             db_session, game_id=game_id, profile_id=profile_id
         )
+        now = datetime.now(UTC)
         availability = derive_availability(
             completed_at=completed_at,
-            now=datetime.now(UTC),
+            now=now,
             capture=capture,
             recorded_404=recorded_404,
             capture_budget_days=settings.capture_budget_days,
@@ -1380,7 +1384,13 @@ async def download_replay_point_of_view(
             raise _source_unavailable_error() from error
 
         if isinstance(result, NotFound):
-            await _record_fetch_miss(db_session, game_id=game_id, profile_id=profile_id)
+            # A `NotFound` for a match that completed less than `replay_publication_grace_hours`
+            # ago is read as not yet published and records nothing, the boundary the ingester and
+            # the analyzer use (`now >= completed_at + grace` is past it). The answer is the same
+            # `expired_since_page_load` on both sides.
+            publication_grace = timedelta(hours=settings.replay_publication_grace_hours)
+            if now >= completed_at + publication_grace:
+                await _record_fetch_miss(db_session, game_id=game_id, profile_id=profile_id)
             raise _expired_since_page_load_error()
 
         filename = _point_of_view_filename(game_id=game_id, profile_id=profile_id)

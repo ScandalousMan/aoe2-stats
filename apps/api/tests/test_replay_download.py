@@ -429,6 +429,24 @@ _T335_DEFINITELY_EXPIRED_AGE = timedelta(days=400)
 #: Comfortably inside every credible reading of the retention window.
 _T335_DEFINITELY_OBTAINABLE_AGE = timedelta(days=2)
 
+#: T830: the publication grace the route reads from `Settings.replay_publication_grace_hours`.
+#: Settings cannot be built at import time, so this mirrors `conftest.py`'s test value, and
+#: `test_publication_grace_constant_matches_the_test_settings` fails if the two drift apart.
+#: `_T335_DEFINITELY_OBTAINABLE_AGE` sits inside it, so a source `NotFound` for such a match is
+#: read as not yet published and records no miss.
+_PUBLICATION_GRACE_HOURS = 72
+_PUBLICATION_GRACE = timedelta(hours=_PUBLICATION_GRACE_HOURS)
+
+#: Obtainable and past the grace (and inside the capture budget): a source `NotFound` for a match
+#: this old is evidence the source does not have the recording, so the route records the miss.
+_T830_PAST_GRACE_AGE = _PUBLICATION_GRACE + timedelta(days=1)
+
+#: T830: one game per new test, so a miss row or a fetch count never crosses between them.
+_T830_YOUNG_GAME_ID = 850_100_025
+_T830_PAST_GRACE_GAME_ID = 850_100_026
+_T830_AT_BOUNDARY_GAME_ID = 850_100_027
+_T830_JUST_INSIDE_GAME_ID = 850_100_028
+
 #: B3 remediation (third-round review): a source 5xx or timeout, both API-caller and browser-
 #: navigation shapes, plus the M12 oracle test's `unavailable` extension below — each gets its own
 #: game so exhausting a rate-limit window or retrying in one never interferes with another.
@@ -989,8 +1007,9 @@ async def test_obtainable_point_of_view_that_404s_at_fetch_time_becomes_never_re
     at the source when actually fetched is `expired_since_page_load` — never conflated with
     `never_recorded`, which means the source never had it at all (R8's derivation table). The
     call also *records* the outcome, so the identical request the next moment answers
-    `never_recorded` instead of repeating the same 404 as a fresh surprise: "That call also
-    records the outcome, so the page is right the next time" (contracts/http-api.md). This is
+    `never_recorded` instead of repeating the same 404 as a fresh surprise, because this match
+    completed past `REPLAY_PUBLICATION_GRACE_HOURS` (contracts/http-api.md: the call records the
+    outcome only once the match completed at least that long ago). This is
     also this file's proof that `expired` (the window closed, tested above),
     `expired_since_page_load` (it closed between page load and click) and `never_recorded` (the
     source never had it) are three distinct codes, never any two of them conflated.
@@ -1004,7 +1023,7 @@ async def test_obtainable_point_of_view_that_404s_at_fetch_time_becomes_never_re
     await _seed_open_match(
         db_session,
         game_id=game_id,
-        completed_at=datetime.now(UTC) - _T335_DEFINITELY_OBTAINABLE_AGE,
+        completed_at=datetime.now(UTC) - _T830_PAST_GRACE_AGE,
     )
     await _seed_match_player(db_session, game_id=game_id, profile_id=_T335_PARTICIPANT_A_PROFILE_ID)
     await db_session.commit()
@@ -1032,6 +1051,132 @@ async def test_obtainable_point_of_view_that_404s_at_fetch_time_becomes_never_re
         "never_recorded (the source never had it) and expired (the window closed) are FR-025's "
         "two distinct unobtainable reasons and must never share a code"
     )
+
+
+def test_publication_grace_constant_matches_the_test_settings() -> None:
+    assert get_settings().replay_publication_grace_hours == _PUBLICATION_GRACE_HOURS
+
+
+async def _count_fetch_misses(db_session: AsyncSession, *, game_id: int) -> int:
+    result = await db_session.execute(
+        select(func.count()).select_from(ReplayFetchMiss).where(ReplayFetchMiss.game_id == game_id)
+    )
+    return result.scalar_one()
+
+
+async def _seed_obtainable_pov(
+    client: TestClient, db_session: AsyncSession, *, game_id: int, completed_at: datetime
+) -> None:
+    caller = await _seed_bare_user(db_session)
+    await _sign_in(client, db_session, caller)
+    await _seed_participant_profile(
+        db_session, profile_id=_T335_PARTICIPANT_A_PROFILE_ID, alias=f"Grace{game_id}"
+    )
+    await _seed_open_match(db_session, game_id=game_id, completed_at=completed_at)
+    await _seed_match_player(db_session, game_id=game_id, profile_id=_T335_PARTICIPANT_A_PROFILE_ID)
+    await db_session.commit()
+
+
+async def test_not_found_inside_the_publication_grace_records_no_miss(
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """T830: for a match that completed inside `REPLAY_PUBLICATION_GRACE_HOURS` a 404 is not read
+    as evidence, since the recording may not be published yet. The source's `NotFound` is answered
+    `expired_since_page_load` and writes no `replay_fetch_misses` row: the next request fetches
+    the source again and answers the same code, never `never_recorded`."""
+    game_id = _T830_YOUNG_GAME_ID
+    await _seed_obtainable_pov(
+        client,
+        db_session,
+        game_id=game_id,
+        completed_at=datetime.now(UTC) - timedelta(hours=1),
+    )
+    fake_upstream = _FakeAoemsUpstream(httpx.Response(404, text="Not Found"))
+    _install_fake_aoems_upstream(monkeypatch, fake_upstream)
+
+    url = f"/api/matches/{game_id}/replay/{_T335_PARTICIPANT_A_PROFILE_ID}"
+    first = client.get(url)
+    assert first.status_code == 404, f"Got {first.status_code}: {first.text}"
+    assert first.json()["error"]["code"] == "expired_since_page_load"
+    assert await _count_fetch_misses(db_session, game_id=game_id) == 0
+
+    second = client.get(url)
+    assert second.status_code == 404, f"Got {second.status_code}: {second.text}"
+    assert second.json()["error"]["code"] == "expired_since_page_load"
+    assert fake_upstream.request_count == 2
+    assert await _count_fetch_misses(db_session, game_id=game_id) == 0
+
+
+async def test_not_found_past_the_publication_grace_records_one_miss(
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """T830: past the grace the same `NotFound` is evidence: one miss row, and the next request
+    answers `never_recorded` without fetching the source again."""
+    game_id = _T830_PAST_GRACE_GAME_ID
+    await _seed_obtainable_pov(
+        client,
+        db_session,
+        game_id=game_id,
+        completed_at=datetime.now(UTC) - _T830_PAST_GRACE_AGE,
+    )
+    fake_upstream = _FakeAoemsUpstream(httpx.Response(404, text="Not Found"))
+    _install_fake_aoems_upstream(monkeypatch, fake_upstream)
+
+    url = f"/api/matches/{game_id}/replay/{_T335_PARTICIPANT_A_PROFILE_ID}"
+    first = client.get(url)
+    assert first.status_code == 404, f"Got {first.status_code}: {first.text}"
+    assert first.json()["error"]["code"] == "expired_since_page_load"
+    assert await _count_fetch_misses(db_session, game_id=game_id) == 1
+
+    second = client.get(url)
+    assert second.status_code == 404, f"Got {second.status_code}: {second.text}"
+    assert second.json()["error"]["code"] == "never_recorded"
+    assert fake_upstream.request_count == 1
+
+
+@pytest.mark.parametrize(
+    ("game_id", "offset_into_grace", "expected_misses"),
+    [
+        # Exactly at `completed_at + grace` is past the grace, the boundary the ingester and the
+        # analyzer use (`now >= completed_at + grace`): the miss is written.
+        (_T830_AT_BOUNDARY_GAME_ID, timedelta(0), 1),
+        # One second before the boundary is still inside the grace: no miss.
+        (_T830_JUST_INSIDE_GAME_ID, timedelta(seconds=1), 0),
+    ],
+)
+async def test_publication_grace_boundary_is_inclusive_of_the_boundary_instant(
+    client: TestClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    game_id: int,
+    offset_into_grace: timedelta,
+    expected_misses: int,
+) -> None:
+    """T830: `now` is frozen on the route's own clock so the match can sit exactly on
+    `completed_at + grace` (and one second short of it)."""
+    moment = datetime.now(UTC).replace(microsecond=0)
+
+    class _FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz: Any = None) -> datetime:
+            return moment if tz is None else moment.astimezone(tz)
+
+    monkeypatch.setattr(replays_router, "datetime", _FrozenDateTime)
+    await _seed_obtainable_pov(
+        client,
+        db_session,
+        game_id=game_id,
+        completed_at=moment - _PUBLICATION_GRACE + offset_into_grace,
+    )
+    _install_fake_aoems_upstream(
+        monkeypatch, _FakeAoemsUpstream(httpx.Response(404, text="Not Found"))
+    )
+
+    response = client.get(f"/api/matches/{game_id}/replay/{_T335_PARTICIPANT_A_PROFILE_ID}")
+
+    assert response.status_code == 404, f"Got {response.status_code}: {response.text}"
+    assert response.json()["error"]["code"] == "expired_since_page_load"
+    assert await _count_fetch_misses(db_session, game_id=game_id) == expected_misses
 
 
 async def test_replay_download_rate_limit_applies_per_user(
@@ -1150,7 +1295,7 @@ async def test_boundary_race_path_still_consumes_the_rate_limit(
     await _seed_open_match(
         db_session,
         game_id=game_id,
-        completed_at=datetime.now(UTC) - _T335_DEFINITELY_OBTAINABLE_AGE,
+        completed_at=datetime.now(UTC) - _T830_PAST_GRACE_AGE,
     )
     await _seed_match_player(db_session, game_id=game_id, profile_id=_T335_PARTICIPANT_A_PROFILE_ID)
     await db_session.commit()
@@ -1457,7 +1602,7 @@ async def test_replay_download_refuses_a_profile_id_unknown_to_aoe_profiles(
     await _seed_open_match(
         db_session,
         game_id=game_id,
-        completed_at=datetime.now(UTC) - _T335_DEFINITELY_OBTAINABLE_AGE,
+        completed_at=datetime.now(UTC) - _T830_PAST_GRACE_AGE,
     )
     await db_session.commit()
 
