@@ -732,8 +732,9 @@ choice "only has to be stable, not special", which is false when a participant's
   claim, fetch the participants' points of view in the existing order (`team_id`, then `profile_id`),
   one at a time, and stop at the first `200`. The match ends `unavailable` only when every participant's
   fetch answers `NotFound`. The point of view that is retained, logged and parsed is the one whose fetch
-  answered `200`, and `match_analyses.point_of_view_profile_id` holds that profile when the row is
-  published or failed (FR-032), never the first participant tried. A fetch that raises (rate limited,
+  answered `200`, and `match_analyses.point_of_view_profile_id` holds that profile when the row ends
+  failed (FR-032), never the first participant tried. A published row keeps the point of view its
+  document names, as before this task. A fetch that raises (rate limited,
   unavailable, moved) stops the walk and propagates as it does today: it is not a `NotFound` and moves
   to no further participant. The pre-claim branch for a match past `capture_budget_days` is unchanged,
   and no fetch is added to it. Rewrite `_pick_point_of_view_profile_id`'s docstring so it no longer
@@ -744,8 +745,31 @@ choice "only has to be stable, not special", which is false when a participant's
   on the first fetch makes no second fetch. **Done**: the three cases pass, the whole suite is green,
   and spec_lint is green on every feature.
 - [ ] T826 **Maintainer, after T825 deploys.** Rows already ended `unavailable` by the old rule stay
-  terminal: `run_once` returns on one without fetching. Count the `match_analyses` rows with
-  `state = 'unavailable'` whose match completed within `capture_budget_days` of the count, and record
-  the count and the date here. Each one is a candidate for the old rule; deleting it makes the next
+  terminal: `run_once` returns on one without fetching. A fetch ended the rows with
+  `state = 'unavailable'` and `attempts > 0`; the pre-claim branch writes `attempts = 0`. Count the
+  first population, and within it the rows whose match completed within `capture_budget_days` of the
+  count, and record both counts and the date here. Each row of the second count is a candidate for
+  the old rule; deleting it makes the next
   request a first analysis under T825, so the decision to delete is the maintainer's. Delete the row
   for `517629518`, request its analysis, and record the outcome and the point of view it used.
+- [ ] T827 Remediate PR #208's review of T825, in `apps/analyzer/src/aoe2stats_analyzer/run.py` and
+  `apps/analyzer/tests/test_run_once.py`. (1) The walk made up to one source fetch per participant
+  for one admission, while `check_admission` counted one. Before each fetch after the first,
+  re-check `budget_gate_admits` and the deadline gate from
+  `apps/analyzer/src/aoe2stats_analyzer/admission.py`, with the same settings `api/analyze.py` passes.
+  On a refusal the walk stops, fetches nothing more, and hands the row back to `queued` with its
+  lease cleared and its `attempts` as before the claim, so a refusal spends no attempt and never ends
+  the row `unavailable`. (2) Each `NotFound` in the walk writes a `replay_fetch_misses` row for that
+  `(game_id, profile_id)`, insert-or-nothing as `apps/api/src/aoe2stats_api/routers/replays.py`
+  writes it, and the walk skips a participant that already has one, without fetching. When every
+  participant is skipped or answers `NotFound`, the match ends `unavailable`. (3) The hand-back in
+  (1) and `_record_point_of_view` write only while the row is still this run's claim: guarded on the
+  `claimed_at` the claim returned, so a run that lost its lease writes nothing. (4) The docstrings of
+  `_mark_unavailable` and `_pick_point_of_view_profile_id` describe their current callers. Tests,
+  each failing against the current tree and the failure output in the hand-back: a budget at its
+  limit after the first `NotFound` makes no second fetch and leaves the row `queued` with the
+  pre-claim `attempts`; a first `NotFound` writes one miss row; a participant with a miss row is not
+  fetched; every participant with a miss row ends `unavailable` with no fetch; a `NotFound` then a
+  raise propagates, makes no third fetch, and leaves the row `running`; a lost claim writes no point
+  of view. **Done**: the tests pass, the whole suite is green, and spec_lint is green on every
+  feature.
