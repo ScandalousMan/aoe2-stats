@@ -3180,7 +3180,7 @@ phase.
       **Tests**: T765 passes for build 180059 without `xfail`; the second committed recording's
       blocker set loses buildings 490 and 673 by set equality; build 180059 resolves to the new
       snapshot and the superseded one reproduces by identity
-- [ ] T774 [US2] Close build 180059's open rows in a snapshot that supersedes T773's. Each
+- [x] T774 [US2] Close build 180059's open rows in a snapshot that supersedes T773's. Each
       reading T772 closed is carried back only under T773's three conditions, under research D4's
       discipline in reverse; a value it cannot reach stays an open row for build 180059, answered or
       reported unreadable as T772's are. T772's readings carry no build field ("not a game

@@ -308,12 +308,10 @@ _RECORDING_1_ENUMERATED_BLOCKING_GAPS: frozenset[tuple[str, str, str, str, str]]
 #: closed, as T767 closed building 490 for build 185872's recording 3. FR-022b's list is empty.
 #:
 #: **T774 (2026-11-01).** A third snapshot of build 180059, `aoe2techtree-180059-owner-readings`,
-#: carries the owner's build 185872 readings back and is the one the build resolves to now. Five
-#: bonuses of build 180059 stay open rows of `owner-readings.md` (the Turks' team bonus, the
-#: Aztecs', the Magyars', the Malay's and the Gurjaras'), held in `test_whole_pack_coverage.py`'s
-#: tuples; none is a civilisation either recording seats (Saracens and Malians, Franks and
-#: Teutons), so FR-022b's list for recordings 1 and 2 is still the empty set, asserted below by
-#: set equality against what the pass observes on the third snapshot.
+#: carries the owner's build 185872 readings back and models the five rows it does not reach from
+#: the owner's own answers for build 180059, and is the one the build resolves to now. Build 180059
+#: keeps no FR-022b entry, so FR-022b's list for recordings 1 and 2 is the empty set, asserted below
+#: by set equality against what the pass observes on the third snapshot.
 _RECORDING_2_BLOCKERS: tuple[_RecordingBlocker, ...] = ()
 
 #: The flattened union of every blocker's `gap_tuples`: empty, which `test_each_committed_recording_

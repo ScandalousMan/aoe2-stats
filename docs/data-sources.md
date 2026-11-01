@@ -711,11 +711,11 @@ against keeping one measurement in two homes.
   again 2026-10-28 at repository head commit `9ee0fe29fa05`. Since 2026-11-01 (T774) a third,
   `aoe2techtree-180059-owner-readings`, supersedes it and carries the owner's build 185872 readings
   back under the same three conditions, each row decided on its own: eleven of the sixteen refusals
-  T772 closed are replaced (twenty-six rows) or, for the Chinese Age advances answered "no", gone;
-  five stay refusals and are open values of `specs/006-replay-analysis-foundations/owner-readings.md`
-  for build 180059 (the Turks' team bonus, the Aztecs, the Magyars, the Malay and the Gurjaras),
-  because the release notes name an entity each selects. Its `rules.json`, `aliases.toml` and
-  `disagreements.toml` are the second's.
+  T772 closed are replaced (twenty-six rows) or, for the Chinese Age advances answered "no", gone.
+  The other five (the Turks' team bonus, the Aztecs, the Magyars, the Malay and the Gurjaras) are
+  modelled from the owner's answers of 2026-11-01 for build 180059, because the release notes name
+  an entity each selects. Build 180059 has no open value and no FR-022b entry. Its `rules.json`,
+  `aliases.toml` and `disagreements.toml` are the second's.
 - **Known limitations**: no civilisation-specific bonus data as structured values, no build/version
   field of its own, no combat attributes (attack, armour, hit points, range) — halfon carries those
   (below). Three builds (178524, 179158, 180059) unimplemented by the first pinned commit as of this
