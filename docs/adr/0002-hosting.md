@@ -105,6 +105,27 @@ The deployment is the production build of `63827989`. The project figure is ever
 of `aoe2-stats` against the plan's 10 GB allowance; no other project on the account stores a
 function, so it is also the account's total.
 
+T814 found a newer production deployment serving traffic, so it repeats T801. The PR compares against
+this one, because it is the deployment the merge replaces.
+
+| Measure                                     | Size    | Date read  | Deployment id                       |
+| ------------------------------------------- | ------- | ---------- | ----------------------------------- |
+| Function `api/index.py`                     | 69.7 MB | 2026-11-01 | `dpl_4bPmABdmMErPz5vLZPkZrSA7ViLs` |
+| Function `api/analyze.py`                   | 69.7 MB | 2026-11-01 | `dpl_4bPmABdmMErPz5vLZPkZrSA7ViLs` |
+| Function `api/cron/ingest.py`               | 69.7 MB | 2026-11-01 | `dpl_4bPmABdmMErPz5vLZPkZrSA7ViLs` |
+| Project: Functions Storage → Projects       | 4.77 GB | 2026-10-31 | —                                   |
+
+The deployment is the production build of `5845678b` (#202), created 2026-10-31 19:09 CET and serving
+`aoe2-stats.com` when read. The maintainer read the function sizes on 2026-11-01 from Deployment →
+Resources → Functions, and the project figure from Usage → Deployment Storage → Functions Storage for
+2026-10-31, the last complete day. The current day's point read 0 B because it was not yet aggregated,
+and a reading of the current day is not a value. `vercel inspect` reports the same functions as
+66.49MB; that is MiB (66.49 MiB = 69.7 MB), so the dashboard figure and the CLI figure are the same
+size in different units, and a comparison is dashboard with dashboard. The file listing T814 asked for
+is not exposed for this deployment: the dashboard's Deployment → Source → Output tree shows each
+function as a leaf with no contents, and the REST endpoint `/v6/deployments/<id>/files` answers 404
+"File tree not found" (a Git deployment has no stored file tree).
+
 After value and skip count, empty until the maintainer reads them. T818 fills the after rows, in the
 same way T801 read the before rows, and T819 fills the skip count.
 

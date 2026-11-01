@@ -299,10 +299,11 @@ that ships still deploys; every doubt deploys.
 **Purpose**: what only the host, its CLI login or production can show. Each result is recorded in
 the ADR section with its date.
 
-- [ ] T814 [P] **Maintainer, before merging.** Read the current production deployment's function
+- [x] T814 [P] **Maintainer, before merging.** Read the current production deployment's function
       list (Deployment → Resources → Functions) and save the file listing of one function, for
       SC-001's comparison in T816. If T801 was done long enough ago that a newer deployment now
-      serves production, repeat T801 for it
+      serves production, repeat T801 for it. *(Done 2026-11-01 against `dpl_4bPmABdmMErPz5vLZPkZrSA7ViLs`;
+      the file listing is not exposed for a Git deployment, recorded in the ADR.)*
 - [x] T815 [P] [US4] **Maintainer, before merging.** Quickstart §3: `vercel deploy --dry
     --json` on `main` and on this branch, from a working copy with
       `.claude/worktrees/`, and diff the two lists (**FR-015**, US4's two scenarios). The only
