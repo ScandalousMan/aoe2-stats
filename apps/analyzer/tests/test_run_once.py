@@ -3801,10 +3801,11 @@ async def test_a_recorded_miss_inside_the_grace_does_not_skip_the_participant(
     assert await _miss_rows(session_factory, game_id) == [(game_id, first)]
 
 
-async def test_a_match_inside_the_grace_whose_every_participant_answers_not_found_ends_queued(
+async def test_a_match_inside_the_grace_whose_every_participant_answers_not_found_ends_unavailable(
     session_factory: async_sessionmaker[AsyncSession], clean_database: None
 ) -> None:
-    game_id = 500_828_003
+    """T829: handing the row back to `queued` made every page view re-walk the participants."""
+    game_id = 500_829_001
     profile_ids, requester = await _seed_four_participants(session_factory, game_id=game_id)
     provider = _ScriptedReplayProvider({})
 
@@ -3819,14 +3820,31 @@ async def test_a_match_inside_the_grace_whose_every_participant_answers_not_foun
     assert [call.profile_id for call in provider.calls] == profile_ids
     row = await _get_analysis(session_factory, game_id)
     assert row is not None
-    assert row.state == MatchAnalysisState.QUEUED
-    assert row.attempts == 0
-    assert row.claimed_at is None
-    assert row.lease_expires_at is None
-    assert row.finished_at is None
-    assert row.result_key is None
+    assert row.state == MatchAnalysisState.UNAVAILABLE
     assert await _miss_rows(session_factory, game_id) == []
-    assert await _access_log_rows(session_factory) == []
+
+
+async def test_a_second_run_on_a_match_ended_unavailable_inside_the_grace_fetches_nothing(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    game_id = 500_829_002
+    profile_ids, requester = await _seed_four_participants(session_factory, game_id=game_id)
+    provider = _ScriptedReplayProvider({})
+
+    for _ in range(2):
+        await _run_with(
+            session_factory,
+            game_id=game_id,
+            requester=requester,
+            provider=provider,
+            extractor=_BuildNamingExtractor(point_of_view_profile_id=profile_ids[0], max_calls=0),
+        )
+        assert [call.profile_id for call in provider.calls] == profile_ids
+
+    row = await _get_analysis(session_factory, game_id)
+    assert row is not None
+    assert row.state == MatchAnalysisState.UNAVAILABLE
+    assert await _miss_rows(session_factory, game_id) == []
 
 
 async def test_the_grace_is_a_keyword_and_its_boundary_is_the_ingesters(

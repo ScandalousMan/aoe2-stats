@@ -791,7 +791,7 @@ choice "only has to be stable, not special", which is false when a participant's
   `attempts`, not `unavailable`. T827's tests seed a match one day old, inside the grace: re-seed the
   ones that assert miss rows or `unavailable` past the grace, so each still tests what its name
   says. **Done**: the tests pass, the whole suite is green, and spec_lint is green on every feature.
-- [ ] T829 Remediate PR #208's third review, of T828, in `apps/analyzer/src/aoe2stats_analyzer/run.py`
+- [x] T829 Remediate PR #208's third review, of T828, in `apps/analyzer/src/aoe2stats_analyzer/run.py`
   and `apps/analyzer/tests/test_run_once.py`. T828's (2) handed a match inside the grace back to
   `queued` when every fetched participant answered `NotFound`. `api/analyze.py` counts no request on
   a `queued` row against the per-user limit, and the match page posts again on each view of a

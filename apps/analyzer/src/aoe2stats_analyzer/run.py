@@ -1040,8 +1040,9 @@ async def run_once(
     `replay_publication_grace_hours` (`REPLAY_PUBLICATION_GRACE_HOURS`, T828) is the window after
     `matches.completed_at` in which a `NotFound` may be a recording not yet published, with the
     ingester's boundary (`capture.py::_classify_not_found`: inside is `now` before `completed_at`
-    plus the grace). Inside it the walk writes no miss row, ignores recorded ones, and a match every
-    participant answers `NotFound` for is handed back to `queued`, not ended `unavailable`.
+    plus the grace). Inside it the walk writes no miss row and ignores recorded ones; a match every
+    participant answers `NotFound` for still ends `unavailable` (T829: a hand-back to `queued` made
+    every page view re-walk the participants).
     """
     if lease_seconds < budget_seconds:
         raise ValueError(
@@ -1157,11 +1158,6 @@ async def run_once(
         blob = answer
         point_of_view_profile_id = candidate
         break
-    if blob is None and not past_grace:
-        # T828: inside the grace a `NotFound` may be a recording not yet published, so the match is
-        # not ended; it goes back to `queued` exactly as a gate refusal does.
-        await _hand_back(session_factory, game_id=game_id, claimed_at=claimed_at)
-        return
     if blob is None:
         await _mark_unavailable(
             session_factory,
