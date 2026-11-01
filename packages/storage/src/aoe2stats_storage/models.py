@@ -974,9 +974,11 @@ class ReplayFetchMiss(Base):
     """`replay_fetch_misses` — T337's own record that the source answered 404 for one exact point
     of view, so a repeat of the identical download request reads `never_recorded` from this row
     rather than fetching the source a second time (FR-025's boundary race, `research.md` R8,
-    `contracts/http-api.md`'s "That call also records the outcome, so the page is right the next
-    time"). `derive_availability`'s `recorded_404` parameter (`availability.py`, T336) is this
-    table, read by `(game_id, profile_id)`.
+    `contracts/http-api.md`: the call records the outcome only once the match completed at least
+    `REPLAY_PUBLICATION_GRACE_HOURS` ago; inside the grace a 404 is not read as evidence, since the
+    recording may not be published yet, and no row is written). `derive_availability`'s
+    `recorded_404` parameter (`availability.py`, T336) is this table,
+    read by `(game_id, profile_id)`.
 
     **Deliberately not a `replay_captures` row, and not a fourth column bolted onto it** — a
     decision this table's whole existence is, not an oversight `data-model.md`'s "this feature adds

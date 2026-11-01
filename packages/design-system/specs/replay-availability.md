@@ -222,9 +222,9 @@ not this vocabulary's `error` or `empty`.
     carries, and it must never be confused with `never_recorded`'s wording — the recording existed
     a moment ago, which `never_recorded`'s copy would misstate. This is the one place `SecondaryLine`
     for an `expired`-tone row differs from §3's table, and it differs for exactly one page load, on
-    exactly the row the race touched; a reload of the page shows the plain `expired` copy from then on,
-    because the server records the outcome on that same request (FR-025, `contracts/http-api.md`
-    §"boundary race").
+    exactly the row the race touched; the server records the outcome on that request only past the
+    grace, so a reload reads `never_recorded` then and offers `obtainable` again inside it (FR-025,
+    `contracts/http-api.md` §"boundary race").
 
     **Amended 2026-08-29 — how this row actually reaches that state.** As first written, §5 and §10
     contradicted each other: §10 requires `DownloadAction` to be a real button triggering a same-tab

@@ -810,3 +810,30 @@ choice "only has to be stable, not special", which is false when a participant's
   a match inside the grace whose every participant answers `NotFound` ends `unavailable` with no
   miss row; a second `run_once` on it makes no fetch. Replace T828's `queued` test with these.
   **Done**: the tests pass, the whole suite is green, and spec_lint is green on every feature.
+- [x] T830 Found in PR #208's review: the download route reads a young `NotFound` as never recorded,
+  in `apps/api/src/aoe2stats_api/routers/replays.py`, `apps/api/tests/test_replay_download.py` and
+  `specs/003-player-search-match-analysis/contracts/http-api.md`. On an `obtainable` point of view,
+  a `NotFound` from the source writes a `replay_fetch_misses` row whatever the match's age, and
+  `derive_availability` reads that row as `never_recorded` on every later request. The ingester
+  (`_classify_not_found`) and, since T828, the analyzer read a `NotFound` younger than
+  `REPLAY_PUBLICATION_GRACE_HOURS` after `matches.completed_at` as not yet published and write no
+  miss. (1) The route writes the miss row only when `now` is at or past `completed_at` plus the
+  grace, the boundary the ingester and the analyzer use; it reads the hours from
+  `Settings.replay_publication_grace_hours`. (2) The route answers `404`
+  `expired_since_page_load` on either side of the grace: the page offered the point of view as
+  `obtainable` and the source does not serve it now, which is that code's meaning, and the
+  contract adds no code for it. (3) The contract's sentence that the call records the outcome says
+  it does so only past the grace, and inside it a `NotFound` is not read as evidence, since the
+  recording may not be published yet; no text claims how likely that is. The texts that restate
+  the old sentence say the same: the `ReplayFetchMiss` docstring in
+  `packages/storage/src/aoe2stats_storage/models.py`, the T337 paragraph in
+  `specs/003-player-search-match-analysis/data-model.md`, the boundary-race paragraph in
+  `packages/design-system/specs/replay-availability.md` (cited by line number, so its line count
+  holds), and the `failure` comment in `apps/web/src/features/replays/availability.ts`. Tests, with
+  the output in the hand-back: a `NotFound` inside the grace answers `expired_since_page_load`,
+  writes no miss row, and a second request fetches the source again, failing against the tree
+  before this task; a `NotFound` past the grace writes one miss row and a second request answers
+  `never_recorded` with no fetch, which the tree before this task already did and the test pins. The existing tests that
+  seed a match two days old, inside the grace in the test settings, and assert a miss row or
+  `never_recorded` are re-seeded past the grace, so each still tests what its name says. **Done**:
+  the tests pass, the whole suite is green, and spec_lint is green on every feature.

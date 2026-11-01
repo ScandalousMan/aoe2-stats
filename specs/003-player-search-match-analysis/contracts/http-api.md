@@ -159,7 +159,9 @@ Behaviour per state:
 
 The boundary race is named rather than hidden: a recording offered as `obtainable` that answers 404
 at fetch time returns `code: "expired_since_page_load"`, distinct from `never_recorded` (FR-025, and
-the spec's own edge case). That call also records the outcome, so the page is right the next time.
+the spec's own edge case). That call records the outcome, so the page is right the next time, only
+once the match completed at least `REPLAY_PUBLICATION_GRACE_HOURS` ago. Inside the grace a 404 is
+not read as evidence, since the recording may not be published yet, and nothing is recorded.
 
 **A failure of this route answers `303`, not `404`/`429`/`502`, when the caller is a browser
 navigating to it directly** (decided 2026-08-29) — every case above (`expired`, `never_recorded`,

@@ -29,10 +29,11 @@ const RATE_LIMITED_CODE = 'rate_limited'
  * - `expired_since_page_load` overrides that row's `availability` to `'expired'` and sets
  *   `expiredSincePageLoad`, so `ReplayAvailabilityList` renders §5's own boundary-race sentence —
  *   "This recording expired while you were viewing this page" — even though the freshly-fetched
- *   `participant.replay.availability` for that same row already reads `never_recorded` by the time
- *   this page reloads (`derive_availability`'s own `recorded_404` reading, `apps/api/.../
- *   availability.py`): the row was `obtainable` a moment ago, and that is the fact this one
- *   render states, once.
+ *   `participant.replay.availability` for that same row reads `never_recorded` by the time this
+ *   page reloads only when the match completed past `REPLAY_PUBLICATION_GRACE_HOURS` (the server
+ *   then records the miss; `derive_availability`'s `recorded_404` reading, `apps/api/.../
+ *   availability.py`) and `obtainable` again inside it: the row was `obtainable` a moment ago, and
+ *   that is the fact this one render states, once.
  * - `rate_limited` renders the row's own `Callout` in its rate-limit wording, carrying the exact
  *   `retryAfterSeconds` the server sent (never rounded or invented) — **only when the server sent
  *   one**. `_source_rate_limited_error` (`replays.py`) raises the identical `rate_limited` code
