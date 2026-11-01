@@ -727,7 +727,7 @@ unavailable when its recordings have expired, and FR-030 offers analysis for any
 game is obtainable; three of the four were. `_pick_point_of_view_profile_id`'s docstring says the
 choice "only has to be stable, not special", which is false when a participant's recording is absent.
 
-- [ ] T825 Fall back across participants before ending a match `unavailable`, in
+- [x] T825 Fall back across participants before ending a match `unavailable`, in
   `apps/analyzer/src/aoe2stats_analyzer/run.py` and `apps/analyzer/tests/test_run_once.py`. After a
   claim, fetch the participants' points of view in the existing order (`team_id`, then `profile_id`),
   one at a time, and stop at the first `200`. The match ends `unavailable` only when every participant's

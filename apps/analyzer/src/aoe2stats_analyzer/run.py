@@ -265,26 +265,55 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
-async def _pick_point_of_view_profile_id(
+async def _participant_profile_ids(
     session_factory: async_sessionmaker[AsyncSession], *, game_id: int
-) -> int:
-    """The participant this call fetches a recording for — any one of them, deterministically:
-    the parsed timeline carries every participant's own data regardless of whose point of view the
-    physical file is (`contracts/analysis.md`), so the choice only has to be stable, not special.
-    Ordered by `team_id` then `profile_id`, which happens to match this package's own seeded fixture
-    order (`test_run_once.py`'s `_seed_match`) without being written to depend on it.
+) -> list[int]:
+    """Every participant of the match, in the order their recordings are tried: `team_id`, then
+    `profile_id`. Which participant's recording exists is a fact about the source, not about the
+    match - a recording can be absent for one participant and served for another - so the order
+    is only where the walk starts; `run_once` stops at the first participant whose fetch answers
+    `200` and ends the match `unavailable` only when every one answers `NotFound` (T825). The
+    parsed timeline carries every participant's own data whichever point of view the physical file
+    is (`contracts/analysis.md`).
     """
     async with session_factory() as session:
         result = await session.execute(
             select(MatchPlayer.profile_id)
             .where(MatchPlayer.game_id == game_id)
             .order_by(MatchPlayer.team_id, MatchPlayer.profile_id)
-            .limit(1)
         )
-        profile_id = result.scalar_one_or_none()
-    if profile_id is None:
+        profile_ids = list(result.scalars().all())
+    if not profile_ids:
         raise LookupError(f"no match_players row for game_id={game_id}")
-    return profile_id
+    return profile_ids
+
+
+async def _pick_point_of_view_profile_id(
+    session_factory: async_sessionmaker[AsyncSession], *, game_id: int
+) -> int:
+    """The participant a claim is first made for: the first of `_participant_profile_ids`. It is
+    the row's point of view only until a fetch answers; `_record_point_of_view` then writes the
+    profile whose recording was actually served (FR-032)."""
+    return (await _participant_profile_ids(session_factory, game_id=game_id))[0]
+
+
+async def _record_point_of_view(
+    session_factory: async_sessionmaker[AsyncSession], *, game_id: int, profile_id: int
+) -> None:
+    """FR-032, T825: the claim recorded the first participant tried; once a later participant's
+    fetch answers `200`, the row holds that profile, so a row that ends `failed` (which writes no
+    point of view of its own) names the recording it actually read. The guard on `state` keeps a
+    published row untouched, as `_mark_failed` does."""
+    async with session_scope(session_factory) as session:
+        await session.execute(
+            update(MatchAnalysis)
+            .where(
+                MatchAnalysis.game_id == game_id,
+                MatchAnalysis.state != MatchAnalysisState.PUBLISHED,
+            )
+            .values(point_of_view_profile_id=profile_id)
+            .execution_options(synchronize_session=False)
+        )
 
 
 async def _retained_recording_row(
@@ -972,13 +1001,11 @@ async def run_once(
     # Reaches here for a brand-new, not-yet-expired match, or an existing row that is `queued` or
     # `running` under a lease that may have expired (R6) — the one path `claim_for_analysis` (T361)
     # itself knows how to resolve.
-    point_of_view_profile_id = await _pick_point_of_view_profile_id(
-        session_factory, game_id=game_id
-    )
+    participants = await _participant_profile_ids(session_factory, game_id=game_id)
     outcome = await claim_for_analysis(
         session_factory,
         game_id=game_id,
-        point_of_view_profile_id=point_of_view_profile_id,
+        point_of_view_profile_id=participants[0],
         requested_by_user_id=requested_by_user_id,
         lease_seconds=lease_seconds,
         max_attempts=max_attempts,
@@ -990,16 +1017,30 @@ async def run_once(
         # nothing is fetched.
         return
 
-    blob = await replay_provider.fetch_replay(game_id, point_of_view_profile_id)
-    if isinstance(blob, NotFound):
+    # T825: one fetch per participant, in order, stopping at the first `200`. Only a `NotFound`
+    # moves to the next participant; a fetch that raises (rate limited, unavailable, moved) ends
+    # the walk by propagating, as it always did - it says nothing about whether the next
+    # participant's recording exists, and trying it would spend the source budget on a failing
+    # source (constitution I).
+    blob = None
+    for point_of_view_profile_id in participants:
+        answer = await replay_provider.fetch_replay(game_id, point_of_view_profile_id)
+        if not isinstance(answer, NotFound):
+            blob = answer
+            break
+    if blob is None:
         await _mark_unavailable(
             session_factory,
             game_id=game_id,
-            point_of_view_profile_id=point_of_view_profile_id,
+            point_of_view_profile_id=participants[0],
             requested_by_user_id=requested_by_user_id,
             now=now,
         )
         return
+    if point_of_view_profile_id != participants[0]:
+        await _record_point_of_view(
+            session_factory, game_id=game_id, profile_id=point_of_view_profile_id
+        )
 
     async with session_factory() as session:
         retained = await retain_recording(
