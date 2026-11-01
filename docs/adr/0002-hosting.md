@@ -140,6 +140,24 @@ same way T801 read the before rows, and T819 fills the skip count.
 | ---------------------------------------------------- | ----- | ------------ | --------- |
 | Canceled production deployments, first 30 days live  |       |              | T819      |
 
+The three functions answer, empty until the maintainer runs quickstart §5 against the first
+production deployment that carries feature 007 (T816). That is not the build of the merge
+`45a8dc4c` (#176): it failed the host's `vercel.json` schema check on 2026-11-01 because
+`excludeFiles` was longer than 256 characters, and production kept serving the deployment before
+it. The deployment that carries the fix is the first one.
+
+| Step (quickstart §5)                                        | Result | Run id or evidence | Date |
+| ----------------------------------------------------------- | ------ | ------------------ | ---- |
+| 1. `Production smoke` workflow for that push                |        |                    |      |
+| 2. An analysis request completes or is refused as before    |        |                    |      |
+| 3. Manual `POST /api/cron/ingest`: a run report, not a 504  |        |                    |      |
+| 4. Next 04:00 UTC run: 200 in the cron log, normal in audit |        |                    |      |
+| 5. Deployment → Resources → Functions lists three functions |        |                    |      |
+| Each function below T814's value (SC-001)                   |        | sizes: T818 rows   |      |
+
+Deployment id, to fill: . The trimmed cron function must be seen to import and finish a real capture run
+(constitution I), which steps 3 and 4 show. Zero regressions across the five is SC-005.
+
 ### What a function carries
 
 Each of the three functions (`api/index.py` under a 10 s limit, `api/analyze.py` and
