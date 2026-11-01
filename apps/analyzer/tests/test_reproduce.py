@@ -36,7 +36,7 @@ _FIXTURE_ZIP = _REPO_ROOT / "tests" / "fixtures" / "replays" / "AgeIIDE_Replay_5
 _GAME_ID = 500_546_441
 _KEY = f"retained-recordings/{_GAME_ID}/196240.zip"
 _MAX_RAW_BYTES = 25_165_824
-_REAL_SNAPSHOT_DIRECTORY = "aoe2techtree-180059-civilisations-53"
+_REAL_SNAPSHOT_DIRECTORY = "aoe2techtree-180059-owner-readings"
 
 
 @pytest.fixture(autouse=True)

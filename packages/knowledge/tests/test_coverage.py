@@ -306,6 +306,14 @@ _RECORDING_1_ENUMERATED_BLOCKING_GAPS: frozenset[tuple[str, str, str, str, str]]
 #: recording used to hold (six tuples: cost, produced_at and production_time of each, for the
 #: civilisation the recording places it under, building 490 for Franks and 673 for Teutons) is
 #: closed, as T767 closed building 490 for build 185872's recording 3. FR-022b's list is empty.
+#:
+#: **T774 (2026-11-01).** A third snapshot of build 180059, `aoe2techtree-180059-owner-readings`,
+#: carries the owner's build 185872 readings back and is the one the build resolves to now. Five
+#: bonuses of build 180059 stay open rows of `owner-readings.md` (the Turks' team bonus, the
+#: Aztecs', the Magyars', the Malay's and the Gurjaras'), held in `test_whole_pack_coverage.py`'s
+#: tuples; none is a civilisation either recording seats (Saracens and Malians, Franks and
+#: Teutons), so FR-022b's list for recordings 1 and 2 is still the empty set, asserted below by
+#: set equality against what the pass observes on the third snapshot.
 _RECORDING_2_BLOCKERS: tuple[_RecordingBlocker, ...] = ()
 
 #: The flattened union of every blocker's `gap_tuples`: empty, which `test_each_committed_recording_
@@ -436,6 +444,19 @@ def test_recording_3_resolves_to_the_snapshot_that_closed_its_last_blocker() -> 
     assert isinstance(resolved, snapshot.Snapshot)
     assert resolved.directory == "aoe2techtree-185872-owner-readings"
     assert not _RECORDING_3_ENUMERATED_BLOCKING_GAPS
+
+
+def test_recordings_1_and_2_resolve_to_the_snapshot_that_carried_the_readings_back() -> None:
+    """T774: the empty lists above are claims about the newest snapshot of build 180059's chain, so
+    the test names it; a later snapshot of the build that is current instead fails here, and the
+    lists are re-measured against it rather than trusted."""
+    from aoe2stats_knowledge import snapshot
+
+    resolved = snapshot.snapshot_for(_BUILD)
+    assert isinstance(resolved, snapshot.Snapshot)
+    assert resolved.directory == "aoe2techtree-180059-owner-readings"
+    assert not _RECORDING_1_ENUMERATED_BLOCKING_GAPS
+    assert not _RECORDING_2_ENUMERATED_BLOCKING_GAPS
 
 
 # ---------------------------------------------------------------------------------------- SC-007

@@ -936,11 +936,12 @@ def test_snapshot_for_resolves_the_committed_promoted_fixture_by_its_real_build(
     """Against the real, unpatched, committed tree: `aoe2techtree-180059` describes build 180059,
     the game build the committed reference recordings actually report
     (`tests/fixtures/replays/README.md`), wired there by T642's carry-forward validation record.
-    Since T773 a second snapshot supersedes it, so resolving that exact build returns the second
-    (`aoe2techtree-180059-civilisations-53`), and the first stays loadable by its directory."""
+    Since T773 a second snapshot supersedes it and since T774 a third supersedes that, so resolving
+    that exact build returns the third (`aoe2techtree-180059-owner-readings`), and the first stays
+    loadable by its directory."""
     result = snapshot_for(180059)
     assert isinstance(result, Snapshot)
-    assert result.directory == "aoe2techtree-180059-civilisations-53"
+    assert result.directory == "aoe2techtree-180059-owner-readings"
     assert load_snapshot("aoe2techtree-180059").identity.describes_build == 180059
 
 
@@ -1002,7 +1003,7 @@ def test_a_pin_changes_the_answer_for_its_own_build_and_no_other() -> None:
         )
         real = snapshot_for(180059)
         assert isinstance(real, Snapshot)
-        assert real.directory == "aoe2techtree-180059-civilisations-53"
+        assert real.directory == "aoe2techtree-180059-owner-readings"
 
 
 def test_the_pin_is_released_when_the_block_raises() -> None:
