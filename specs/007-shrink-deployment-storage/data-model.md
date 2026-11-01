@@ -59,7 +59,7 @@ The rule's only output. A pure function of its inputs, so the test can drive it 
 
 | Output | Exit code the host reads (research R3) | Logged reason                                                  |
 | ------ | -------------------------------------- | -------------------------------------------------------------- |
-| skip   | the host's "cancel" code               | `non-production` or `nothing shipped since <base>`             |
+| skip   | the host's "cancel" code               | `non-production` or `nothing shipped between <base> and <head>` |
 | build  | the host's "proceed" code              | the first shipped path, or the reason the input was unreadable |
 
 **Order of evaluation** (FR-011 before FR-006):

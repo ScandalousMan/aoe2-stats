@@ -327,7 +327,7 @@ the ADR section with its date.
       deployment builds, and the ADR records it as the way to force a deployment (**FR-010**)
 - [ ] T818 **Maintainer, after T816.** Quickstart §6: read the after values the way T801 read the
       before ones, record them with the date, the deployment id and the per-deployment ratio to
-      T801's (**SC-002**: the band is research §0's). A ratio outside the band is recorded as a
+      T814's, the repeat of T801 for the deployment the merge replaces (**SC-002**: the band is research §0's). A ratio outside the band is recorded as a
       finding with its likely cause — research R7 names host-side deduplication — not adjusted
 - [ ] T819 **Maintainer, 30 days after the rule goes live.** Count the canceled production
       deployments in the host's deployment list, check each against its diff for a shipped path,

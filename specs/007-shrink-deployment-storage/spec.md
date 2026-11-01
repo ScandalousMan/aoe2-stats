@@ -97,9 +97,9 @@ a manual analysis request succeeds and a manual trigger of the ingestion run suc
    against the tracked tree, and a copy holding exactly what the bundle keeps), **Then** they contain
    no documentation, spec, test fixture, design-system source, game-asset source, built web app or
    repository copy of packaged data; **and** the first production deployment built with them shows
-   each function smaller than before. *(Amended 2026-11-01: the host exposes no function file
+   each function smaller than in the deployment the merge replaced. *(Amended 2026-11-01: the host exposes no function file
    listing for a Git deployment, so production corroborates by size.)*
-3. **Given** that deployment, **When** the smoke workflow runs, an analysis is requested by hand and
+3. **Given** that production deployment, **When** the smoke workflow runs, an analysis is requested by hand and
    the ingestion run is triggered by hand, **Then** all three succeed.
 4. **Given** the deployment before and after this change, **When** the maintainer reads Functions
    Storage per deployment, **Then** both values are recorded with the date in
@@ -339,7 +339,8 @@ the other stories keep theirs, and FR-012 now holds the three-function layout in
 - **SC-001**: A production deployment after this feature contains zero repository files from the
   excluded categories in any function. Verified offline, by the check of the exclusion list against
   the tracked tree and by the run of a copy holding exactly what the bundle keeps, and corroborated in
-  production by each function's size falling below the before value. *(Amended 2026-11-01: the host
+  production by each function's size falling below the before value recorded for the deployment the
+  merge replaces. *(Amended 2026-11-01: the host
   exposes no function file listing for a Git deployment.)*
 - **SC-002**: Storage per production deployment is lower after the change than before, both values
   recorded with the date in `docs/adr/0002-hosting.md`, and the measured after value is within 20%
