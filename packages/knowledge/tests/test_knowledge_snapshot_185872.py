@@ -67,10 +67,14 @@ _THIRD_DIGEST = "sha256:a4f213b6e84f90ee88a916929a136165c3979f214a191556877669dd
 _FOURTH_DIGEST = "sha256:c24448836cade9ff724ac32935a52280a447df7278cb8cfe3f7cecd58dbf37ae"
 
 #: The fifth snapshot's digest (`aoe2techtree-185872-civilisations-44/snapshot.toml`, T769), which
-#: the sixth, `aoe2techtree-185872-civilisations-56`, names as the one it supersedes (T770). Build
-#: 185872 now has a chain of six: resolution answers the last, and the first five stay loadable
-#: by identity.
+#: the sixth, `aoe2techtree-185872-civilisations-56`, names as the one it supersedes (T770).
 _FIFTH_DIGEST = "sha256:93d084ea8886b4c2d98f67a7f02524f107ffab3c3bcb29142389ceac226dc263"
+
+#: The sixth snapshot's digest (`aoe2techtree-185872-civilisations-56/snapshot.toml`, T770), which
+#: the seventh, `aoe2techtree-185872-owner-readings`, names as the one it supersedes (T772). Build
+#: 185872 now has a chain of seven: resolution answers the last, and the first six stay loadable
+#: by identity.
+_SIXTH_DIGEST = "sha256:b247190134e69b46e5111487db0ff98514df9ceb41bcd4f926a7278fbedd952f"
 
 #: Every replay-space civilisation id of `aoc-reference-data`'s `civilizations` table (read again
 #: 2026-10-22, T767) whose name is a civilisation of the vendored pack: 56 of the dataset's 62
@@ -205,19 +209,20 @@ def _snapshot_by_digest(digest: str) -> snapshot.Snapshot:
     return found
 
 
-def test_the_build_resolves_to_the_sixth_snapshot_of_its_chain() -> None:
+def test_the_build_resolves_to_the_seventh_snapshot_of_its_chain() -> None:
     resolved = snapshot.snapshot_for(_BUILD)
 
     assert isinstance(resolved, snapshot.Snapshot)
     assert resolved.promoted
-    assert resolved.directory == "aoe2techtree-185872-civilisations-56"
-    assert resolved.supersedes == _FIFTH_DIGEST
+    assert resolved.directory == "aoe2techtree-185872-owner-readings"
+    assert resolved.supersedes == _SIXTH_DIGEST
     assert resolved.identity.digest not in (
         _FIRST_DIGEST,
         _SECOND_DIGEST,
         _THIRD_DIGEST,
         _FOURTH_DIGEST,
         _FIFTH_DIGEST,
+        _SIXTH_DIGEST,
     )
     assert resolved.identity.describes_build == _BUILD
     assert resolved.identity.source_version == _SOURCE_COMMIT
@@ -231,7 +236,10 @@ def test_the_build_resolves_to_the_sixth_snapshot_of_its_chain() -> None:
     fifth = _snapshot_by_digest(_FIFTH_DIGEST)
     assert fifth.supersedes == _FOURTH_DIGEST
     assert fifth.directory == "aoe2techtree-185872-civilisations-44"
-    assert resolved.directory != fifth.directory
+    sixth = _snapshot_by_digest(_SIXTH_DIGEST)
+    assert sixth.supersedes == _FIFTH_DIGEST
+    assert sixth.directory == "aoe2techtree-185872-civilisations-56"
+    assert resolved.directory != sixth.directory
 
 
 def test_the_first_snapshot_stays_loadable_by_identity_and_models_no_civilisation() -> None:
@@ -329,6 +337,26 @@ def test_the_fifth_snapshot_stays_loadable_by_identity_and_models_forty_four_civ
     assert modelled.snapshot_identity.digest == _FIFTH_DIGEST
     assert isinstance(unmodelled, gaps.KnowledgeGap)
     assert unmodelled.cause == "civilisation-not-modelled"
+
+
+def test_the_sixth_snapshot_stays_loadable_by_identity_and_models_fifty_six_civilisations() -> None:
+    """SC-005 for the link T772 superseded: pinned by identity, it still models the whole pack and
+    still refuses the Slavs' Detinets, which the seventh models."""
+    sixth = _snapshot_by_digest(_SIXTH_DIGEST)
+    assert sixth.promoted
+    assert sixth.directory == "aoe2techtree-185872-civilisations-56"
+    assert sixth.identity.describes_build == _BUILD
+
+    entity = query.EntityRef(kind="building", id="84", build=_BUILD)
+    castle = query.EntityRef(kind="building", id="82", build=_BUILD)
+    with snapshot.pinned_snapshot(sixth):
+        modelled = query.cost(entity, civilisation="Georgians")
+        refused = query.cost(castle, civilisation="Slavs")
+
+    assert not isinstance(modelled, gaps.KnowledgeGap), f"gap: {modelled!r}"
+    assert modelled.snapshot_identity.digest == _SIXTH_DIGEST
+    assert isinstance(refused, gaps.KnowledgeGap)
+    assert refused.cause == "effect-not-modelled"
 
 
 def test_the_current_snapshot_models_fifty_six_civilisations_and_names_every_pack_one() -> None:

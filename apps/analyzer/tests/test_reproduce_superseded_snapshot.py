@@ -1,5 +1,5 @@
-"""T746 / T767 / T768 / T769 / T770 / SC-005: an analysis published under a superseded knowledge
-snapshot still reproduces.
+"""T746 / T767 / T768 / T769 / T770 / T772 / SC-005: an analysis published under a superseded
+knowledge snapshot still reproduces.
 
 A promoted snapshot is never edited (FR-025), so build 185872's civilisations were modelled in a
 second snapshot that names the digest it supersedes (T746), twelve more in a third (T767) and
@@ -42,7 +42,15 @@ _SECOND_DIGEST = "sha256:becd35a158dafb72c304aeb07bae66347b4442f62d209d8cedb23d0
 _THIRD_DIGEST = "sha256:a4f213b6e84f90ee88a916929a136165c3979f214a191556877669dd0a92b4db"
 _FOURTH_DIGEST = "sha256:c24448836cade9ff724ac32935a52280a447df7278cb8cfe3f7cecd58dbf37ae"
 _FIFTH_DIGEST = "sha256:93d084ea8886b4c2d98f67a7f02524f107ffab3c3bcb29142389ceac226dc263"
-_SUPERSEDED_DIGESTS = (_FIRST_DIGEST, _SECOND_DIGEST, _THIRD_DIGEST, _FOURTH_DIGEST, _FIFTH_DIGEST)
+_SIXTH_DIGEST = "sha256:b247190134e69b46e5111487db0ff98514df9ceb41bcd4f926a7278fbedd952f"
+_SUPERSEDED_DIGESTS = (
+    _FIRST_DIGEST,
+    _SECOND_DIGEST,
+    _THIRD_DIGEST,
+    _FOURTH_DIGEST,
+    _FIFTH_DIGEST,
+    _SIXTH_DIGEST,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -103,7 +111,9 @@ def extractor() -> Aoe2RecExtractor:
 
 
 @pytest.mark.parametrize(
-    "superseded_digest", _SUPERSEDED_DIGESTS, ids=["first", "second", "third", "fourth", "fifth"]
+    "superseded_digest",
+    _SUPERSEDED_DIGESTS,
+    ids=["first", "second", "third", "fourth", "fifth", "sixth"],
 )
 async def test_an_analysis_published_under_a_superseded_snapshot_reproduces_byte_for_byte(
     superseded_digest: str, zip_bytes: bytes, extractor: Aoe2RecExtractor
