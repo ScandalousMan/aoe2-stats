@@ -145,11 +145,13 @@ same way T801 read the before rows, and T819 fills the skip count.
 Each of the three functions (`api/index.py` under a 10 s limit, `api/analyze.py` and
 `api/cron/ingest.py` under 300 s) carries the Python dependencies the builder installs plus the
 repository files its `excludeFiles` entry does not remove. The same value is in all three entries of
-`vercel.json`: a brace list of every top-level entry of the repository except `api`, which holds
-the three entrypoints. Listing the top-level entries, not their contents, keeps the value short, and
-`scripts/checks/tests/test_vercel_bundle.py` compares it with the tracked tree, so a new top-level
-entry that is not listed fails the check. The builder's own excludes (`.gitignore`,
-`pnpm-lock.yaml`) are not repeated in it. `pyproject.toml` and `uv.lock` are not in the list on
+`vercel.json`: a brace list of every top-level entry the upload contains except `api`, which holds
+the three entrypoints, and the two kept files below. Directories `.vercelignore` drops whole
+(`/.claude/`, `/docs/`, `/specs/`, `/.specify/`, `/.github/`) are not listed, and the host caps the value at 256
+characters (the failed production build of `45a8dc4c`, 2026-11-01). Listing the top-level entries,
+not their contents, keeps the value short, and `scripts/checks/tests/test_vercel_bundle.py` compares
+it with the tracked tree and the cap, so a new unlisted top-level entry fails the check. The
+builder's own excludes (`.gitignore`, `pnpm-lock.yaml`) are not repeated in it. `pyproject.toml` and `uv.lock` are not in the list on
 purpose.
 
 Two checks decided that, run on 2026-10-19:

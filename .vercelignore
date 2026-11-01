@@ -28,3 +28,11 @@
 # CLI uploads a working copy and does not apply `.gitignore`, so without this every worktree under
 # `.claude/worktrees/` would be uploaded with the deployment.
 /.claude/
+
+# Spec-kit artifacts, documentation and CI workflows: nothing the build (`vercel.json`'s
+# `buildCommand`: config-preflight, then the web build) and no function under `api/` reads them.
+# `scripts/deploy/ignore-build.mjs` classifies paths from `git diff`, not from the working tree.
+/docs/
+/specs/
+/.specify/
+/.github/
