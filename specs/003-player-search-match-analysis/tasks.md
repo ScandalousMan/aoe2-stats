@@ -752,7 +752,7 @@ choice "only has to be stable, not special", which is false when a participant's
   the old rule; deleting it makes the next
   request a first analysis under T825, so the decision to delete is the maintainer's. Delete the row
   for `517629518`, request its analysis, and record the outcome and the point of view it used.
-- [ ] T827 Remediate PR #208's review of T825, in `apps/analyzer/src/aoe2stats_analyzer/run.py` and
+- [x] T827 Remediate PR #208's review of T825, in `apps/analyzer/src/aoe2stats_analyzer/run.py` and
   `apps/analyzer/tests/test_run_once.py`. (1) The walk made up to one source fetch per participant
   for one admission, while `check_admission` counted one. Before each fetch after the first,
   re-check `budget_gate_admits` and the deadline gate from

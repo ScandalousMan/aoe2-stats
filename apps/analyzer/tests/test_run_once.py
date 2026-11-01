@@ -56,14 +56,14 @@ import json
 import logging
 import shutil
 import uuid
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Awaitable, Callable, Iterator, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 import pytest
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from tests.snapshot_refresh import (
     REAL_SNAPSHOT_DIRECTORY,
@@ -94,7 +94,9 @@ from aoe2stats_storage.models import (
     MatchAnalysis,
     MatchAnalysisState,
     MatchPlayer,
+    ProviderCall,
     ReplayAccessLog,
+    ReplayFetchMiss,
     RetainedRecording,
     User,
 )
@@ -3161,6 +3163,273 @@ async def test_a_raise_on_the_first_fetch_makes_no_second_fetch_and_propagates(
     row = await _get_analysis(session_factory, game_id)
     assert row is not None
     assert row.state == MatchAnalysisState.RUNNING
+
+
+# --- T827: the walk re-checks the gates, records its misses, writes only while it holds the claim
+
+
+class _HookedReplayProvider(_ScriptedReplayProvider):
+    """A scripted provider that runs `on_fetch(profile_id)` as part of each fetch, before it
+    answers: what the real provider's call sink does (a `provider_calls` row) and what a concurrent
+    run does (a re-claim of the row) both happen while a fetch is in flight."""
+
+    def __init__(
+        self,
+        script: dict[int, ReplayBlob | Exception],
+        on_fetch: Callable[[int], Awaitable[None]],
+    ) -> None:
+        super().__init__(script)
+        self._on_fetch = on_fetch
+
+    async def fetch_replay(self, game_id: int, profile_id: int) -> ReplayBlob | NotFound:
+        await self._on_fetch(profile_id)
+        return await super().fetch_replay(game_id, profile_id)
+
+
+def _recording_a_source_call(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> Callable[[int], Awaitable[None]]:
+    async def record(_profile_id: int) -> None:
+        async with session_scope(session_factory) as session:
+            session.add(ProviderCall(provider="aoems", endpoint="replay", status_code=404))
+
+    return record
+
+
+async def _miss_rows(
+    session_factory: async_sessionmaker[AsyncSession], game_id: int
+) -> list[tuple[int, int]]:
+    async with session_scope(session_factory) as session:
+        result = await session.execute(
+            select(ReplayFetchMiss.game_id, ReplayFetchMiss.profile_id)
+            .where(ReplayFetchMiss.game_id == game_id)
+            .order_by(ReplayFetchMiss.profile_id)
+        )
+        return [(row[0], row[1]) for row in result.all()]
+
+
+async def _seed_miss(
+    session_factory: async_sessionmaker[AsyncSession], *, game_id: int, profile_id: int
+) -> None:
+    async with session_scope(session_factory) as session:
+        session.add(ReplayFetchMiss(game_id=game_id, profile_id=profile_id))
+
+
+async def test_a_budget_at_its_limit_after_the_first_not_found_stops_the_walk_and_requeues_the_row(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    game_id = 500_827_001
+    (first, second, _third, _fourth), requester = await _seed_four_participants(
+        session_factory, game_id=game_id
+    )
+    blob = ReplayBlob(content=b"second's bytes", filename="r.zip", content_type="application/zip")
+    provider = _HookedReplayProvider(
+        {second: blob}, on_fetch=_recording_a_source_call(session_factory)
+    )
+
+    await run_module.run_once(
+        game_id,
+        _BUDGET_SECONDS,
+        requester,
+        lease_seconds=_LEASE_SECONDS,
+        max_attempts=_MAX_ATTEMPTS,
+        session_factory=session_factory,
+        replay_provider=provider,
+        extractor=_BuildNamingExtractor(point_of_view_profile_id=second, max_calls=0),
+        object_store=_FakeObjectStore(),
+        max_source_requests_per_day=1,
+    )
+
+    assert [call.profile_id for call in provider.calls] == [first]
+    row = await _get_analysis(session_factory, game_id)
+    assert row is not None
+    assert row.state == MatchAnalysisState.QUEUED
+    assert row.attempts == 0
+    assert row.lease_expires_at is None
+    assert row.claimed_at is None
+    assert row.finished_at is None
+    assert row.point_of_view_profile_id == first
+    assert await _miss_rows(session_factory, game_id) == [(game_id, first)]
+    assert await _access_log_rows(session_factory) == []
+
+
+async def test_a_refusal_after_the_claim_was_lost_writes_nothing_to_the_row(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    game_id = 500_827_002
+    (first, _second, _third, _fourth), requester = await _seed_four_participants(
+        session_factory, game_id=game_id
+    )
+    record_call = _recording_a_source_call(session_factory)
+    taken_over_at = datetime.now(UTC) + timedelta(minutes=1)
+
+    async def a_source_call_while_another_run_takes_the_row(profile_id: int) -> None:
+        await record_call(profile_id)
+        async with session_scope(session_factory) as session:
+            await session.execute(
+                update(MatchAnalysis)
+                .where(MatchAnalysis.game_id == game_id)
+                .values(claimed_at=taken_over_at, attempts=MatchAnalysis.attempts + 1)
+            )
+
+    provider = _HookedReplayProvider({}, on_fetch=a_source_call_while_another_run_takes_the_row)
+
+    await run_module.run_once(
+        game_id,
+        _BUDGET_SECONDS,
+        requester,
+        lease_seconds=_LEASE_SECONDS,
+        max_attempts=_MAX_ATTEMPTS,
+        session_factory=session_factory,
+        replay_provider=provider,
+        extractor=_BuildNamingExtractor(point_of_view_profile_id=first, max_calls=0),
+        object_store=_FakeObjectStore(),
+        max_source_requests_per_day=1,
+    )
+
+    assert [call.profile_id for call in provider.calls] == [first]
+    row = await _get_analysis(session_factory, game_id)
+    assert row is not None
+    assert row.state == MatchAnalysisState.RUNNING
+    assert row.attempts == 2
+    assert row.claimed_at == taken_over_at
+    assert row.lease_expires_at is not None
+
+
+async def test_a_not_found_writes_one_miss_row_for_that_game_and_profile(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    game_id = 500_827_003
+    (first, second, _third, _fourth), requester = await _seed_four_participants(
+        session_factory, game_id=game_id
+    )
+    blob = ReplayBlob(content=b"second's bytes", filename="r.zip", content_type="application/zip")
+    provider = _ScriptedReplayProvider({second: blob})
+
+    await _run_with(
+        session_factory,
+        game_id=game_id,
+        requester=requester,
+        provider=provider,
+        extractor=_BuildNamingExtractor(point_of_view_profile_id=second, max_calls=1),
+    )
+
+    assert await _miss_rows(session_factory, game_id) == [(game_id, first)]
+
+
+async def test_a_participant_with_a_miss_row_is_not_fetched(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    game_id = 500_827_004
+    (first, second, _third, _fourth), requester = await _seed_four_participants(
+        session_factory, game_id=game_id
+    )
+    await _seed_miss(session_factory, game_id=game_id, profile_id=first)
+    blob = ReplayBlob(content=b"second's bytes", filename="r.zip", content_type="application/zip")
+    provider = _ScriptedReplayProvider({first: blob, second: blob})
+
+    await _run_with(
+        session_factory,
+        game_id=game_id,
+        requester=requester,
+        provider=provider,
+        extractor=_BuildNamingExtractor(point_of_view_profile_id=second, max_calls=1),
+    )
+
+    assert [call.profile_id for call in provider.calls] == [second]
+    row = await _get_analysis(session_factory, game_id)
+    assert row is not None
+    assert row.state == MatchAnalysisState.PUBLISHED
+    assert row.point_of_view_profile_id == second
+
+
+async def test_a_match_whose_every_participant_has_a_miss_row_is_unavailable_with_no_fetch(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    game_id = 500_827_005
+    profile_ids, requester = await _seed_four_participants(session_factory, game_id=game_id)
+    for profile_id in profile_ids:
+        await _seed_miss(session_factory, game_id=game_id, profile_id=profile_id)
+    provider = _ScriptedReplayProvider({})
+
+    await _run_with(
+        session_factory,
+        game_id=game_id,
+        requester=requester,
+        provider=provider,
+        extractor=_BuildNamingExtractor(point_of_view_profile_id=profile_ids[0], max_calls=0),
+    )
+
+    assert provider.calls == []
+    row = await _get_analysis(session_factory, game_id)
+    assert row is not None
+    assert row.state == MatchAnalysisState.UNAVAILABLE
+    assert row.result_key is None
+    assert await _access_log_rows(session_factory) == []
+
+
+async def test_a_not_found_then_a_raise_propagates_makes_no_third_fetch_and_leaves_it_running(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    game_id = 500_827_006
+    (first, second, _third, _fourth), requester = await _seed_four_participants(
+        session_factory, game_id=game_id
+    )
+    provider = _ScriptedReplayProvider({second: ConnectionError("rate limited")})
+
+    with pytest.raises(ConnectionError):
+        await _run_with(
+            session_factory,
+            game_id=game_id,
+            requester=requester,
+            provider=provider,
+            extractor=_BuildNamingExtractor(point_of_view_profile_id=first, max_calls=0),
+        )
+
+    assert [call.profile_id for call in provider.calls] == [first, second]
+    row = await _get_analysis(session_factory, game_id)
+    assert row is not None
+    assert row.state == MatchAnalysisState.RUNNING
+    assert row.attempts == 1
+    assert row.lease_expires_at is not None
+    assert await _miss_rows(session_factory, game_id) == [(game_id, first)]
+
+
+async def test_a_run_that_lost_its_claim_does_not_write_the_point_of_view(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    game_id = 500_827_007
+    (first, second, _third, _fourth), requester = await _seed_four_participants(
+        session_factory, game_id=game_id
+    )
+    blob = ReplayBlob(content=b"unparsable", filename="r.zip", content_type="application/zip")
+    taken_over_at = datetime.now(UTC) + timedelta(minutes=1)
+
+    async def another_run_takes_the_row(profile_id: int) -> None:
+        if profile_id != second:
+            return
+        async with session_scope(session_factory) as session:
+            await session.execute(
+                update(MatchAnalysis)
+                .where(MatchAnalysis.game_id == game_id)
+                .values(claimed_at=taken_over_at)
+            )
+
+    provider = _HookedReplayProvider({second: blob}, on_fetch=another_run_takes_the_row)
+
+    await _run_with(
+        session_factory,
+        game_id=game_id,
+        requester=requester,
+        provider=provider,
+        extractor=_BuildNamingExtractor(
+            point_of_view_profile_id=second, raises=EngineParseError("bad"), max_calls=1
+        ),
+    )
+
+    row = await _get_analysis(session_factory, game_id)
+    assert row is not None
+    assert row.point_of_view_profile_id == first
 
 
 async def _recompute_reads_logged(
