@@ -640,7 +640,8 @@ against keeping one measurement in two homes.
   `3bb43b1439eef88dfe7fe892d7f7dc41ac9dd76f` (pack `aoe2techtree-3bb43b1`; authored 2026-09-11,
   committed 2026-09-22, assessed 2026-10-08), is the one `aoe2techtree-185872`, `aoe2techtree-185872-civilisations`,
   `aoe2techtree-185872-civilisations-20`, `aoe2techtree-185872-civilisations-32`,
-  `aoe2techtree-185872-civilisations-44` and `aoe2techtree-185872-civilisations-56` are derived from; it is vendored beside the first because a snapshot must stay re-derivable from its own source revision.
+  `aoe2techtree-185872-civilisations-44`, `aoe2techtree-185872-civilisations-56` and
+  `aoe2techtree-185872-owner-readings` are derived from; it is vendored beside the first because a snapshot must stay re-derivable from its own source revision.
   The source carries no explicit build tag; the game build a commit implements is read from that
   commit's own message, a derived reading, not a field (research.md D3, D4). The first pinned
   commit's own newest "Implement DE Update" commit is `daf5fa18de` (2026-06-03), implementing build
@@ -688,9 +689,15 @@ against keeping one measurement in two homes.
   Cumans' additional Town Center, Cuman Mercenaries and the Berbers' Kasbah, which the effect model
   now expresses) and one amended `validated_by` (the Persians' Kamandaran), and Georgians, Shu, Wu, Wei, Jurchens, Khitans, Muisca, Mapuche, Tupi, Saxons,
   Varangians and Danes; its `rules.json`, `aliases.toml` and raw-id table are the fifth's. The first
-  five stay installed so that the analyses published under them still reproduce; resolution by
-  build answers the sixth. Its open values are in
-  `specs/006-replay-analysis-foundations/owner-readings.md`.
+  five stay installed so that the analyses published under them still reproduce. Since 2026-10-31
+  (T772) a seventh, `aoe2techtree-185872-owner-readings`, supersedes the sixth and closes the
+  owner's readings of `specs/006-replay-analysis-foundations/owner-readings.md`: sixteen of the
+  sixth's seventeen refusals on a carried field become thirty modelled rows, and the seventeenth,
+  answered "no", is a refusal no longer. Its `rules.json`, `aliases.toml` and raw-id table are the
+  sixth's. Build 185872 has no FR-022b entry and no open value. One FR-028 disagreement is recorded,
+  on the Militia line's base cost (Liquipedia's Forced Levy total against the pack's), and the
+  pack-consistent value is stored. The first six stay installed so that the analyses published under
+  them still reproduce; resolution by build answers the seventh.
   Build 180059 has a second snapshot since 2026-10-28 (T773),
   `aoe2techtree-180059-civilisations-53`, which supersedes the first and models fifty-three, every
   civilisation of the first pack (the sixth's, but the Saxons, Varangians and Danes, which build
@@ -723,7 +730,9 @@ against keeping one measurement in two homes.
   fifth 2026-10-23
   (`packages/knowledge/snapshots/aoe2techtree-185872-civilisations-44/snapshot.toml`) and by a
   sixth 2026-10-26
-  (`packages/knowledge/snapshots/aoe2techtree-185872-civilisations-56/snapshot.toml`). Licence: MIT,
+  (`packages/knowledge/snapshots/aoe2techtree-185872-civilisations-56/snapshot.toml`) and by a
+  seventh 2026-10-31
+  (`packages/knowledge/snapshots/aoe2techtree-185872-owner-readings/snapshot.toml`). Licence: MIT,
   **copy in** — `docs/asset-packs.md` "Knowledge packs".
 
 ### halfon
@@ -859,21 +868,18 @@ against keeping one measurement in two homes.
   machines.
 - **Reliability**: community-edited prose, not a generated export; useful as one more human reading
   of a single contested value, not as a bulk source.
-- **Update mechanism**: manual, human reading of a live page; the terms forbid automated access
-  (below), so there is no scripted refresh to describe.
+- **Update mechanism**: manual reading of a live page, by a person or by an agent for the owner;
+  nothing scripted, so there is no refresh to describe.
 - **Version identifier**: none — a wiki page has no version; a reading is dated by when it was made,
   not by a source revision.
 - **Coverage**: whatever the community has written up; uneven, and not surveyed for completeness by
   this project.
 - **Known limitations**: licensed CC BY-SA 3.0, and **its own terms forbid automated access** — a
   bulk import would breach the terms even where CC BY-SA would otherwise permit copying the text.
-- **Ruling**: **one human, one number, with provenance** — consulted only to settle a single
-  contested value, by a person reading the page, with the reading recorded against the value it
-  supports. Never bulk-imported, never scraped. An agent may not read it at all: its terms forbid
-  automated access, so the reading is the owner's. **Amended 2026-10-31** at the owner's
-  arbitration (006 spec Clarifications, Session 2026-10-31): the owner accepts that risk, and an
-  agent may read a page for the owner, one value at a time, its transcription saying that an agent
-  read it and whether the owner checked the page. Still never bulk-imported, never scraped by code.
+- **Ruling**: **one value at a time, with provenance** — read to settle a single value, by a person
+  or by an agent for the owner (the owner accepts the risk of the terms on automated access, 006
+  spec Clarifications, Session 2026-10-31), the transcription saying who read it, when, and whether
+  the owner checked the page. Never bulk-imported, never scraped by code.
 - **Assessed**: 2026-09-19 (research.md D3); amended 2026-10-31.
 
 ### Liquipedia

@@ -1,0 +1,82 @@
+# Source disagreements (FR-028).
+#
+# This normaliser checks the one place the vendored pack itself carries two readings of the same
+# civilisation-neutral fact: a technology id named by both the base Tech table and the
+# unit_upgrades table (ids 34 and 35 in this pack revision, "War Galley" and its neighbour) is
+# compared field by field. Both agree completely in this revision, so there is nothing to record
+# here — "checked, found consistent", not "not checked".
+#
+# Per-civilisation tree files are a different kind of reading and are deliberately not compared
+# here: where they disagree (e.g. Burgundians' and Armenians' well-attested early-technology
+# bonuses showing up as a lone civilisation's tree naming an earlier age than every other
+# civilisation's tree for the same technology), that is genuine civilisation-specific game data —
+# exactly what a hand-transcribed effect (T644) exists to model — not an error in the pack. Filing
+# it here would misfile a bonus as a data defect. rules.json takes the cross-civilisation majority
+# as its civilisation-neutral baseline instead, silently.
+#
+# The writer that would populate this file (aoe2stats_knowledge.normalise.disagreements_toml_text)
+# is exercised against a synthetic, injected conflict in
+# packages/knowledge/tests/test_normalise.py, so the mechanism is proven working even though
+# nothing in this one vendored source currently trips it.
+#
+# T772 (2026-10-31): the entries below are a different kind of disagreement from the pack's own
+# cross-check above. They are FR-028 disagreements between the vendored pack and a source
+# `docs/data-sources.md` section 6 references, found while closing the owner's readings
+# (`specs/006-replay-analysis-foundations/owner-readings.md`, batch of 2026-10-31). They are
+# written by hand, not by the normaliser, and the stored value is the one consistent with the pack
+# (FR-022c, amended 2026-10-31: with no game reading, the pack-consistent value).
+
+[[disagreement]]
+entity_kind = "unit"
+entity_id = "74"
+field = "cost"
+stored_source = "vendored pack (packages/knowledge/packs/aoe2techtree-3bb43b1): rules.json costs the Militia 50 food and 20 gold"
+reason = "Liquipedia's Forced Levy total of 80 food assumes a Militia-line base of 60 food; the pack's base for this unit is 50 food, so the stored value follows the pack: Forced Levy (Malay) takes the 20 gold off and adds 20 food, 70 food in all. No game reading exists to settle it (the owner declined, spec Clarifications, Session 2026-10-31)."
+
+[disagreement.readings]
+pack = "cost food 50, gold 20; with Forced Levy, food 70, gold 0 (-20 gold, +20 food)"
+liquipedia = "Forced Levy (Malay): total 80 food, which assumes a base of 60 food (80 less the 20 food the technology adds); read by ChatGPT for the owner, accepted by the owner unchecked, 2026-10-31"
+
+[[disagreement]]
+entity_kind = "unit"
+entity_id = "75"
+field = "cost"
+stored_source = "vendored pack (packages/knowledge/packs/aoe2techtree-3bb43b1): rules.json costs the Man-at-Arms 50 food and 20 gold"
+reason = "Liquipedia's Forced Levy total of 80 food assumes a Militia-line base of 60 food; the pack's base for this unit is 50 food, so the stored value follows the pack: Forced Levy (Malay) takes the 20 gold off and adds 20 food, 70 food in all. No game reading exists to settle it (the owner declined, spec Clarifications, Session 2026-10-31)."
+
+[disagreement.readings]
+pack = "cost food 50, gold 20; with Forced Levy, food 70, gold 0 (-20 gold, +20 food)"
+liquipedia = "Forced Levy (Malay): total 80 food, which assumes a base of 60 food (80 less the 20 food the technology adds); read by ChatGPT for the owner, accepted by the owner unchecked, 2026-10-31"
+
+[[disagreement]]
+entity_kind = "unit"
+entity_id = "77"
+field = "cost"
+stored_source = "vendored pack (packages/knowledge/packs/aoe2techtree-3bb43b1): rules.json costs the Long Swordsman 50 food and 20 gold"
+reason = "Liquipedia's Forced Levy total of 80 food assumes a Militia-line base of 60 food; the pack's base for this unit is 50 food, so the stored value follows the pack: Forced Levy (Malay) takes the 20 gold off and adds 20 food, 70 food in all. No game reading exists to settle it (the owner declined, spec Clarifications, Session 2026-10-31)."
+
+[disagreement.readings]
+pack = "cost food 50, gold 20; with Forced Levy, food 70, gold 0 (-20 gold, +20 food)"
+liquipedia = "Forced Levy (Malay): total 80 food, which assumes a base of 60 food (80 less the 20 food the technology adds); read by ChatGPT for the owner, accepted by the owner unchecked, 2026-10-31"
+
+[[disagreement]]
+entity_kind = "unit"
+entity_id = "473"
+field = "cost"
+stored_source = "vendored pack (packages/knowledge/packs/aoe2techtree-3bb43b1): rules.json costs the Two-Handed Swordsman 50 food and 20 gold"
+reason = "Liquipedia's Forced Levy total of 80 food assumes a Militia-line base of 60 food; the pack's base for this unit is 50 food, so the stored value follows the pack: Forced Levy (Malay) takes the 20 gold off and adds 20 food, 70 food in all. No game reading exists to settle it (the owner declined, spec Clarifications, Session 2026-10-31)."
+
+[disagreement.readings]
+pack = "cost food 50, gold 20; with Forced Levy, food 70, gold 0 (-20 gold, +20 food)"
+liquipedia = "Forced Levy (Malay): total 80 food, which assumes a base of 60 food (80 less the 20 food the technology adds); read by ChatGPT for the owner, accepted by the owner unchecked, 2026-10-31"
+
+[[disagreement]]
+entity_kind = "unit"
+entity_id = "567"
+field = "cost"
+stored_source = "vendored pack (packages/knowledge/packs/aoe2techtree-3bb43b1): rules.json costs the Champion 50 food and 20 gold"
+reason = "Liquipedia's Forced Levy total of 80 food assumes a Militia-line base of 60 food; the pack's base for this unit is 50 food, so the stored value follows the pack: Forced Levy (Malay) takes the 20 gold off and adds 20 food, 70 food in all. No game reading exists to settle it (the owner declined, spec Clarifications, Session 2026-10-31)."
+
+[disagreement.readings]
+pack = "cost food 50, gold 20; with Forced Levy, food 70, gold 0 (-20 gold, +20 food)"
+liquipedia = "Forced Levy (Malay): total 80 food, which assumes a base of 60 food (80 less the 20 food the technology adds); read by ChatGPT for the owner, accepted by the owner unchecked, 2026-10-31"

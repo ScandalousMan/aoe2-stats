@@ -14,7 +14,8 @@ for every civilisation, so a gap anywhere in a pack is found.
 
 **The expectation, per civilisation.** The set of blocking gaps must equal, exactly, that
 civilisation's open rows in `specs/006-replay-analysis-foundations/owner-readings.md`
-(FR-022b: a closed list, and "the list lives with the test that asserts it"). The rows are held
+(FR-022b: a closed list, and "the list lives with the test that asserts it"); for build 185872 the
+list is empty since T772. The rows are held
 here as literal tuples in `_OPEN_ROWS`, not parsed from the markdown, and each Phase 8 batch edits
 them by hand. **Tuple shape**: `(entity_kind, entity_id, field, cause)`, all four strings, exactly
 the `KnowledgeGap` columns of the same names. A sheet row that names a class of entities ("Archer
@@ -66,6 +67,14 @@ additional Town Center and Cuman Mercenaries are rows (T780, T781).
 `aoe2techtree-180059-civilisations-53`, so no `xfail` is left for build 180059 either. It keeps
 the open rows of build 185872 for the bonuses it carries (the Saxons, who are in no build 180059
 pack, are not among them); the Persians' Kamandaran is modelled, as in build 185872.
+
+**Batch T772** closes the owner's readings on build 185872 in
+`aoe2techtree-185872-owner-readings`, which supersedes `-56`. Every row of the sheet for that build
+was answered on 2026-10-31 and none was reported unreadable, so build 185872 keeps no FR-022b entry:
+its tuples are gone, the expectation is the empty set for every civilisation of the pack, and
+`test_build_185872_keeps_no_fr_022b_entry` says so by name. A blocking gap on that build is a
+transcription defect, never an entry. A reading that arrives after the promotion waits for the next
+snapshot.
 
 **Builds.** `test_the_current_snapshots_are_the_builds_this_module_covers` fails when the library
 resolves a current build this module does not cover, so a new build cannot be added without being
@@ -172,196 +181,12 @@ _NOT_YET_MODELLED: dict[int, dict[str, str]] = {
 #: build -> civilisation -> that civilisation's open rows of owner-readings.md, expanded to one
 #: tuple per refused entity. Empty is the target (FR-022b).
 _OPEN_ROWS: dict[int, dict[str, tuple[OpenRow, ...]]] = {
-    185872: {
-        # Row: Aztecs / Dock warships and Monk in the Aztecs' tree / production_time / "Military
-        # Units train +15% faster": the pack never says whether the warships the Dock trains and
-        # the Monk the Monastery trains are Military Units. The members are the Aztecs' own
-        # warships - War Galley (21), Demolition Ship (527), Fire Ship (529), Fast Fire Ship (532),
-        # Galley (539), Fire Galley (1103), Demolition Raft (1104), Hulk (2626), War Hulk (2627),
-        # Carrack (2628), Catapult Galleon (2633) - and the Monk (125).
-        "Aztecs": (
-            ("unit", "21", "production_time", "effect-not-modelled"),
-            ("unit", "125", "production_time", "effect-not-modelled"),
-            ("unit", "527", "production_time", "effect-not-modelled"),
-            ("unit", "529", "production_time", "effect-not-modelled"),
-            ("unit", "532", "production_time", "effect-not-modelled"),
-            ("unit", "539", "production_time", "effect-not-modelled"),
-            ("unit", "1103", "production_time", "effect-not-modelled"),
-            ("unit", "1104", "production_time", "effect-not-modelled"),
-            ("unit", "2626", "production_time", "effect-not-modelled"),
-            ("unit", "2627", "production_time", "effect-not-modelled"),
-            ("unit", "2628", "production_time", "effect-not-modelled"),
-            ("unit", "2633", "production_time", "effect-not-modelled"),
-        ),
-        # Row: Bohemians / the Monk and each Monastery technology / cost / Hussite Reforms
-        # researched / "Monks and Monastery technologies gold cost is replaced by food cost": no
-        # source states the food. One owner row per entity: the Monk (125), Faith (45), Devotion
-        # (46), Block Printing (230), Sanctity (231), Illumination (233), Fervor (252), Redemption
-        # (316), Atonement (319), Theocracy (438), Heresy (439) and Herbal Medicine (441).
-        "Bohemians": (
-            ("technology", "45", "cost", "effect-not-modelled"),
-            ("technology", "46", "cost", "effect-not-modelled"),
-            ("technology", "230", "cost", "effect-not-modelled"),
-            ("technology", "231", "cost", "effect-not-modelled"),
-            ("technology", "233", "cost", "effect-not-modelled"),
-            ("technology", "252", "cost", "effect-not-modelled"),
-            ("technology", "316", "cost", "effect-not-modelled"),
-            ("technology", "319", "cost", "effect-not-modelled"),
-            ("technology", "438", "cost", "effect-not-modelled"),
-            ("technology", "439", "cost", "effect-not-modelled"),
-            ("technology", "441", "cost", "effect-not-modelled"),
-            ("unit", "125", "cost", "effect-not-modelled"),
-        ),
-        # Row: Burgundians / the Town Center's, the Dock's and the Market's economic-looking
-        # technologies / cost / "Economic upgrades available one age earlier and cost -40% food":
-        # no source defines the class. Wheelbarrow (213), Hand Cart (249), Gillnets (65), Fishing
-        # Lines (906), Guilds (15), Banking (17), Coinage (23), Caravan (48) cost food. Their age is
-        # refused for the same reason and is informational, so it has no tuple.
-        "Burgundians": (
-            ("technology", "15", "cost", "effect-not-modelled"),
-            ("technology", "17", "cost", "effect-not-modelled"),
-            ("technology", "23", "cost", "effect-not-modelled"),
-            ("technology", "48", "cost", "effect-not-modelled"),
-            ("technology", "65", "cost", "effect-not-modelled"),
-            ("technology", "213", "cost", "effect-not-modelled"),
-            ("technology", "249", "cost", "effect-not-modelled"),
-            ("technology", "906", "cost", "effect-not-modelled"),
-        ),
-        # Row: Chinese / Castle Age and Imperial Age advances (technologies 102, 103) / cost /
-        # "Technologies cost -5/10/15%": no source states whether an Age advance is discounted.
-        "Chinese": (
-            ("technology", "102", "cost", "effect-not-modelled"),
-            ("technology", "103", "cost", "effect-not-modelled"),
-        ),
-        # Row: Gurjaras / the Gurjaras' candidate Camel and Elephant Units / production_time /
-        # "Team Bonus: Camel and Elephant Units train +25% faster": no source lists the members.
-        # Camel Rider (329), Heavy Camel Rider (330), Camel Scout (1755), Shrivamsha Rider (1751)
-        # and Elite (1753), Elephant Archer (873) and Elite (875), Armored Elephant (1744), Siege
-        # Elephant (1746).
-        "Gurjaras": (
-            ("unit", "329", "production_time", "effect-not-modelled"),
-            ("unit", "330", "production_time", "effect-not-modelled"),
-            ("unit", "873", "production_time", "effect-not-modelled"),
-            ("unit", "875", "production_time", "effect-not-modelled"),
-            ("unit", "1744", "production_time", "effect-not-modelled"),
-            ("unit", "1746", "production_time", "effect-not-modelled"),
-            ("unit", "1751", "production_time", "effect-not-modelled"),
-            ("unit", "1753", "production_time", "effect-not-modelled"),
-            ("unit", "1755", "production_time", "effect-not-modelled"),
-        ),
-        # Row: Jurchens / the technologies of the Jurchens' tree that one criterion matches and no
-        # source classes / cost and production_time / "Siege and Fortification upgrades cost -75%
-        # wood and research +100% faster": no source says whether the game applies the bonus to
-        # them. The criterion (the header of the snapshot's effects.toml): produced at the Siege
-        # Workshop, or a help string naming a Siege Weapon, a Siege Warship, a Fortification, a
-        # Tower, a Castle, a Donjon, a Krepost or a Wall. Research time: Chemistry (47), Ballistics
-        # (93), Fletching (199), Bodkin Arrow (200), Bracer (201), Siege Engineers (377), Hoardings
-        # (379), Arrowslits (608), Fortified Bastions (996). Cost: those of them that cost wood
-        # (93, 377, 379, 608, 996).
-        "Jurchens": (
-            ("technology", "47", "production_time", "effect-not-modelled"),
-            ("technology", "93", "cost", "effect-not-modelled"),
-            ("technology", "93", "production_time", "effect-not-modelled"),
-            ("technology", "199", "production_time", "effect-not-modelled"),
-            ("technology", "200", "production_time", "effect-not-modelled"),
-            ("technology", "201", "production_time", "effect-not-modelled"),
-            ("technology", "377", "cost", "effect-not-modelled"),
-            ("technology", "377", "production_time", "effect-not-modelled"),
-            ("technology", "379", "cost", "effect-not-modelled"),
-            ("technology", "379", "production_time", "effect-not-modelled"),
-            ("technology", "608", "cost", "effect-not-modelled"),
-            ("technology", "608", "production_time", "effect-not-modelled"),
-            ("technology", "996", "cost", "effect-not-modelled"),
-            ("technology", "996", "production_time", "effect-not-modelled"),
-        ),
-        # Row: Magyars / Magyar Huszar (units 869, 871) / cost / Corvinian Army researched /
-        # "Magyar Huszar gold cost is replaced by additional food cost": update 95810 names the
-        # effect and no source states the food.
-        "Magyars": (
-            ("unit", "869", "cost", "effect-not-modelled"),
-            ("unit", "871", "cost", "effect-not-modelled"),
-        ),
-        # Row: Malay / Militia-line (units 74, 75, 77, 473, 567) / cost / Forced Levy researched /
-        # "Militia-line gold cost is replaced by additional food cost": no page of the publisher's
-        # notes names the technology and no source states the food.
-        "Malay": (
-            ("unit", "74", "cost", "effect-not-modelled"),
-            ("unit", "75", "cost", "effect-not-modelled"),
-            ("unit", "77", "cost", "effect-not-modelled"),
-            ("unit", "473", "cost", "effect-not-modelled"),
-            ("unit", "567", "cost", "effect-not-modelled"),
-        ),
-        # Row: Slavs / Castle and Watch Tower line (buildings 82, 79, 234, 235) / cost / Detinets
-        # researched / "Detinets replaces 40% of the stone with wood; the wood is never stated".
-        # Update 61321 repeats the sentence and no note sizes it. The bonus text is "Replaces 40%
-        # of Castle and Watch Tower-line stone cost", so the one unknown covers the Castle (82) and
-        # the Watch Tower line: Watch Tower (79), Guard Tower (234), Keep (235).
-        "Slavs": (
-            ("building", "79", "cost", "effect-not-modelled"),
-            ("building", "82", "cost", "effect-not-modelled"),
-            ("building", "234", "cost", "effect-not-modelled"),
-            ("building", "235", "cost", "effect-not-modelled"),
-        ),
-        # Row: Sicilians / each building "Fortifications" names beyond the Castle and the Donjon /
-        # production_time. The publisher's notes state the Castle and the Donjon (update 111772:
-        # "83 seconds after civilization bonus"); the buildings the pack's own strings use the
-        # word for besides them are the Watch Tower (79), Guard Tower (234), Keep (235), Bombard
-        # Tower (236) and Krepost (1251). Persians' Kamandaran closed: update 162286 states it.
-        "Sicilians": (
-            ("building", "79", "production_time", "effect-not-modelled"),
-            ("building", "234", "production_time", "effect-not-modelled"),
-            ("building", "235", "production_time", "effect-not-modelled"),
-            ("building", "236", "production_time", "effect-not-modelled"),
-            ("building", "1251", "production_time", "effect-not-modelled"),
-        ),
-        # Row: Saxons / the Saxons' ranged foot units / cost / "Foot Soldiers cost -5% per Town
-        # Center or Castle controlled (maximum -20%)": no source defines Foot Soldiers. Infantry is
-        # taken as one (T770); whether Archer (4), Crossbowman (24), Arbalester (492), Skirmisher
-        # (7) and Elite Skirmisher (6) are is not stated.
-        "Saxons": (
-            ("unit", "4", "cost", "effect-not-modelled"),
-            ("unit", "6", "cost", "effect-not-modelled"),
-            ("unit", "7", "cost", "effect-not-modelled"),
-            ("unit", "24", "cost", "effect-not-modelled"),
-            ("unit", "492", "cost", "effect-not-modelled"),
-        ),
-        # Row: Turks / Gunpowder technologies and Gunner units / "Chemistry free; Gunpowder
-        # technologies costs -50%" and "Team Bonus: Gunpowder Units train +25% faster". Cost of
-        # the candidate technologies Artillery (10), Bombard Tower (64), Elite Janissary (369)
-        # and Elite Cannon Galleon (376); training time of the Foot Gunners and Mounted Gunners
-        # the pack never calls Gunpowder Units: Janissary (46), Elite Janissary (557),
-        # Conquistador (771), Elite Conquistador (773).
-        "Turks": (
-            ("technology", "10", "cost", "effect-not-modelled"),
-            ("technology", "64", "cost", "effect-not-modelled"),
-            ("technology", "369", "cost", "effect-not-modelled"),
-            ("technology", "376", "cost", "effect-not-modelled"),
-            ("unit", "46", "production_time", "effect-not-modelled"),
-            ("unit", "557", "production_time", "effect-not-modelled"),
-            ("unit", "771", "production_time", "effect-not-modelled"),
-            ("unit", "773", "production_time", "effect-not-modelled"),
-        ),
-        # Row: Vietnamese / the Town Center's, the Dock's and the Market's economic-looking
-        # technologies / cost and production_time / "Economic upgrades cost no wood and research
-        # +100% faster": no source defines the class. Cost, for the four that cost wood:
-        # Wheelbarrow (213), Hand Cart (249), Gillnets (65), Fishing Lines (906). Research time,
-        # for those four and Loom (22), Guilds (15), Banking (17), Coinage (23), Caravan (48).
-        "Vietnamese": (
-            ("technology", "15", "production_time", "effect-not-modelled"),
-            ("technology", "17", "production_time", "effect-not-modelled"),
-            ("technology", "22", "production_time", "effect-not-modelled"),
-            ("technology", "23", "production_time", "effect-not-modelled"),
-            ("technology", "48", "production_time", "effect-not-modelled"),
-            ("technology", "65", "cost", "effect-not-modelled"),
-            ("technology", "65", "production_time", "effect-not-modelled"),
-            ("technology", "213", "cost", "effect-not-modelled"),
-            ("technology", "213", "production_time", "effect-not-modelled"),
-            ("technology", "249", "cost", "effect-not-modelled"),
-            ("technology", "249", "production_time", "effect-not-modelled"),
-            ("technology", "906", "cost", "effect-not-modelled"),
-            ("technology", "906", "production_time", "effect-not-modelled"),
-        ),
-    },
+    # Build 185872 keeps no FR-022b entry (T772): the seventh snapshot,
+    # `aoe2techtree-185872-owner-readings`, models every row the owner's readings answered, and no
+    # row was reported unreadable. The tuples the batches held (Aztecs, Bohemians, Burgundians,
+    # Chinese, Gurjaras, Jurchens, Magyars, Malay, Slavs, Sicilians, Saxons, Turks, Vietnamese) are
+    # gone, and a blocking gap on this build is a transcription defect, never an entry.
+    185872: {},
     180059: {
         # T773: the open rows of build 185872 that the carried bonuses keep, with the same members:
         # every entity they name is in the build 180059 pack. Measured on the snapshot, not copied.
@@ -595,6 +420,18 @@ def test_a_civilisations_blocking_gaps_are_exactly_its_open_owner_rows(
         f"list it):\n{_render(observed - expected)}\n  unmatched (an open row with no gap, "
         f"delete its tuple):\n{_render(expected - observed)}"
     )
+
+
+def test_build_185872_keeps_no_fr_022b_entry() -> None:
+    """T772: the tuples for build 185872 equal the FR-022b entries by set equality, and there are
+    none, so the expectation is empty for every civilisation of the pack and the parametrised case
+    above fails on any blocking gap at all."""
+    assert not _OPEN_ROWS[185872]
+    assert not _NOT_YET_MODELLED[185872]
+    current = _current_snapshot(185872)
+    assert current.directory == "aoe2techtree-185872-owner-readings"
+    for civilisation in _civilisations(185872):
+        assert not _blocking_gaps(185872, civilisation), civilisation
 
 
 def test_the_current_snapshots_are_the_builds_this_module_covers() -> None:

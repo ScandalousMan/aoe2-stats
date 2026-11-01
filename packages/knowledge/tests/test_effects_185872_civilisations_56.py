@@ -1,6 +1,13 @@
-"""T770: the civilisation effects of `aoe2techtree-185872-civilisations-56`, the sixth and last
+"""T770: the civilisation effects of `aoe2techtree-185872-civilisations-56`, the sixth
 build 185872 snapshot of Phase 8: it supersedes the fifth (`-44`) and models fifty-six
 civilisations, every civilisation of the vendored pack.
+
+**Since T772 this snapshot is no longer the one the build resolves to**: the seventh,
+`aoe2techtree-185872-owner-readings`, supersedes it (`test_effects_185872_owner_readings.py`). This
+file keeps the sixth snapshot's own record, so every query below runs with that snapshot pinned
+(`snapshot.pinned_snapshot`, SC-005): what it answered when it was current, refusals included, is
+what it still answers. The owner's sheet still holds the rows this snapshot refused, answered, so
+the claims about it are unchanged.
 
 Seven kinds of claim, none of them a restatement of `test_effects.py`, `test_bullet_coverage.py` or
 the earlier snapshots' records (`test_effects_185872_civilisations*.py`, which keep those snapshots'
@@ -37,7 +44,7 @@ import json
 import math
 import re
 import tomllib
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from importlib import resources
 from pathlib import Path
 
@@ -218,6 +225,15 @@ _NO_SELECTOR_BULLETS: Mapping[str, tuple[str, ...]] = {
         "Team Bonus: Siege Weapons +2 line of sight",
     ),
 }
+
+
+@pytest.fixture(autouse=True)
+def _pin_the_sixth_snapshot() -> Iterator[None]:
+    """The build resolves to a newer snapshot now; this file is about the sixth, found by its
+    directory, which is a label and so only ever used to find the identity to pin."""
+    (sixth,) = (s for s in snapshot.load_all_snapshots() if s.directory == _DIRECTORY)
+    with snapshot.pinned_snapshot(sixth):
+        yield
 
 
 def _pack_root() -> resources.abc.Traversable:

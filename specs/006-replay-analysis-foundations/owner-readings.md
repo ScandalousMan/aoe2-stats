@@ -111,6 +111,18 @@ closed Persians row. Liquipedia's 80 food for Forced Levy assumes a Militia-line
 the pack's base for units 74, 75, 77, 473 and 567 is 50 food, so the disagreement (FR-028) is on
 those units' base cost and reaches every row that prices them, the Saxons sample row included.
 
+**Closed by T772 (2026-10-31).** `aoe2techtree-185872-owner-readings`, the seventh snapshot of build
+185872, closes every row of build 185872 above: sixteen refusals become thirty modelled rows, each
+with a `validated_by` that cites the reading, and the Chinese Age advances, answered "no", leave the
+selector they were refused under. Every selector the batch above widens is widened by the ids it
+lists, and by no others. The snapshot is promoted, no row was reported unreadable, and build 185872
+has no FR-022b entry. The rows stay in this table because T774 reads them to carry the answers
+back to build 180059; a reading that arrives after the promotion waits for the next snapshot. The
+one disagreement (FR-028), Liquipedia's Forced Levy total, is recorded in the snapshot's
+`disagreements.toml` for each unit of the Militia line and the pack-consistent value is stored. No
+validation-sample reading differs from what the snapshot answers: the two that were read (Teutons,
+Vietnamese) agree, so no sample row is corrected.
+
 ## Validation sample
 
 Written by T770 for build 185872's current snapshot: one value per civilisation of the pack, each the effect of that civilisation that changes the most entities, for the owner to compare with the game. An effect is one modelled row on a field this knowledge base carries, and the entities it changes are its distinct selector entries; a team bonus counts, since it applies to its owner too, and is read in a game where the owner is alone on the team (a technology it needs is researched by the owner). The entity is one the civilisation's own tree offers, and for Shu, Tupi and the Danes it is one of the entities the row's flagged inference rests on. "Value the snapshot answers" gives the field, the value, and the pack's own value for the same entity; "any" in the Age column means the value is the same in every age. A row marked "no modelled bonus ... changes a value" checks the pack's baseline alone: the civilisation has no modelled row on a carried field. A difference is
@@ -170,7 +182,7 @@ recorded as a disagreement and the game's value is stored (FR-022c).
 | Tupi | Squires (technology 215) | any | none | cost {"food": 50}; pack baseline {"food": 100} | not read: the owner declined in-game reading; T772 records the weaker form (FR-030, amended) | 2026-10-31 |
 | Turks | Hand Cannoneer (unit 5) | any | none | production_time 27.2; pack baseline 34 | not read: the owner declined in-game reading; T772 records the weaker form (FR-030, amended) | 2026-10-31 |
 | Varangians | Jarl (unit 2708) | any | none | cost {"food": 75, "gold": 55}; pack baseline {"food": 75, "gold": 55}; no modelled bonus of this civilisation changes a value this knowledge base carries | not read: the owner declined in-game reading; T772 records the weaker form (FR-030, amended) | 2026-10-31 |
-| Vietnamese | Crop Rotation (technology 12) | any | none | cost {"food": 250, "wood": 0}; pack baseline {"food": 250, "wood": 250} | 250 food, no wood; Liquipedia, Crop Rotation (update 35584), read by ChatGPT, accepted by the owner unchecked, 2026-10-31 | 2026-10-31 |
+| Vietnamese | Crop Rotation (technology 12) | any | none | cost {"food": 250, "wood": 0}; pack baseline {"food": 250, "wood": 250} | 250 food, no wood; Liquipedia, Crop Rotation (update 35584), read by ChatGPT, accepted by the owner unchecked, 2026-10-31; carried to build 185872 under research D4: T769's search of the publisher's pages (130 pages fetched 2026-10-23, every Definitive Edition update through build 185872) recorded update 35584 as the statement of the wood half and recorded no later page changing it | 2026-10-31 |
 | Vikings | War Galley (unit 21) | Imperial Age | none | cost {"gold": 24, "wood": 72}; pack baseline {"gold": 30, "wood": 90} | not read: the owner declined in-game reading; T772 records the weaker form (FR-030, amended) | 2026-10-31 |
 | Wei | Traction Trebuchet (unit 1942) | any | none | cost {"gold": 158, "wood": 131}; pack baseline {"gold": 210, "wood": 175} | not read: the owner declined in-game reading; T772 records the weaker form (FR-030, amended) | 2026-10-31 |
 | Wu | Careening (technology 374) | any | none | cost {"food": 0, "gold": 0}; pack baseline {"food": 100, "gold": 200} | not read: the owner declined in-game reading; T772 records the weaker form (FR-030, amended) | 2026-10-31 |
