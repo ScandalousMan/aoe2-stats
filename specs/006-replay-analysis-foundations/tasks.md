@@ -3183,7 +3183,10 @@ phase.
 - [ ] T774 [US2] Close build 180059's open rows in a snapshot that supersedes T773's. Each
       reading T772 closed is carried back only under T773's three conditions, under research D4's
       discipline in reverse; a value it cannot reach stays an open row for build 180059, answered or
-      reported unreadable as T772's are. Depends on T772 and T773. **Tests**: T765's tuples for
+      reported unreadable as T772's are. T772's readings carry no build field ("not a game
+      reading"): each is attributed to build 185872 by the owner's arbitration of 2026-10-31, and
+      one that cites an update (Liquipedia's 35584 or 111772, the Gunpowder page's 47820) is
+      carried from that update, not from 185872. Depends on T772 and T773. **Tests**: T765's tuples for
       build 180059 and the second committed recording's blocker set equal their FR-022b entries, by
       set equality, and are empty when there are none
 - [ ] T775 [US2] **Owner task (verification).** After each promotion is deployed, read the

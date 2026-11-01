@@ -868,21 +868,18 @@ against keeping one measurement in two homes.
   machines.
 - **Reliability**: community-edited prose, not a generated export; useful as one more human reading
   of a single contested value, not as a bulk source.
-- **Update mechanism**: manual, human reading of a live page; the terms forbid automated access
-  (below), so there is no scripted refresh to describe.
+- **Update mechanism**: manual reading of a live page, by a person or by an agent for the owner;
+  nothing scripted, so there is no refresh to describe.
 - **Version identifier**: none — a wiki page has no version; a reading is dated by when it was made,
   not by a source revision.
 - **Coverage**: whatever the community has written up; uneven, and not surveyed for completeness by
   this project.
 - **Known limitations**: licensed CC BY-SA 3.0, and **its own terms forbid automated access** — a
   bulk import would breach the terms even where CC BY-SA would otherwise permit copying the text.
-- **Ruling**: **one human, one number, with provenance** — consulted only to settle a single
-  contested value, by a person reading the page, with the reading recorded against the value it
-  supports. Never bulk-imported, never scraped. An agent may not read it at all: its terms forbid
-  automated access, so the reading is the owner's. **Amended 2026-10-31** at the owner's
-  arbitration (006 spec Clarifications, Session 2026-10-31): the owner accepts that risk, and an
-  agent may read a page for the owner, one value at a time, its transcription saying that an agent
-  read it and whether the owner checked the page. Still never bulk-imported, never scraped by code.
+- **Ruling**: **one value at a time, with provenance** — read to settle a single value, by a person
+  or by an agent for the owner (the owner accepts the risk of the terms on automated access, 006
+  spec Clarifications, Session 2026-10-31), the transcription saying who read it, when, and whether
+  the owner checked the page. Never bulk-imported, never scraped by code.
 - **Assessed**: 2026-09-19 (research.md D3); amended 2026-10-31.
 
 ### Liquipedia

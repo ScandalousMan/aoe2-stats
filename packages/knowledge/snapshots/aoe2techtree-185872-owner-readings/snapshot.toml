@@ -37,8 +37,9 @@ Rotation, update 35584) by ChatGPT for the owner and accepted by the owner unche
 2026-10-31; Liquipedia is a community wiki, not the pack's generation pipeline, so it is \
 independent of the pack, and the snapshot answers what it read. Every other row of the sample, \
 fifty-four, is the weaker form, a second reading of the pack through a different field (FR-030): \
-the owner declined to read the running game (spec Clarifications, Session 2026-10-31) and no \
-independent source was found to state those values. The two fields read are the civilisation's \
+the owner declined to read the running game (spec Clarifications, Session 2026-10-31) and ruled \
+that the build does not wait for an independent source to be searched for them; none was \
+searched, though Liquipedia, now admitted, may state many. The two fields read are the civilisation's \
 bonus sentence, packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json (the \
 help_string_id text), and the entity's own baseline for the sampled field, \
 packages/knowledge/snapshots/aoe2techtree-185872-owner-readings/rules.json; the sampled value is \
@@ -111,7 +112,7 @@ source = "free (0 food, 0 stone); Liquipedia, Murder Holes, read by ChatGPT, acc
 civilisation = "Vietnamese"
 entity = "Crop Rotation (technology 12)"
 field = "cost"
-source = "250 food, no wood; Liquipedia, Crop Rotation (update 35584), read by ChatGPT, accepted by the owner unchecked, 2026-10-31"
+source = "250 food, no wood; Liquipedia, Crop Rotation (update 35584), read by ChatGPT, accepted by the owner unchecked, 2026-10-31; carried to build 185872 under research D4: T769's search of the publisher's pages (130 pages fetched 2026-10-23, every Definitive Edition update through build 185872) recorded update 35584 as the statement of the wood half and recorded no later page changing it"
 
 [[validation.second_reading]]
 civilisation = "Armenians"

@@ -506,7 +506,11 @@ new snapshot, reproduce the analysis from the original identity, and confirm the
   form), never the more convenient of the two. The game's own data file is not a referenced source
   (research D3). **Amended 2026-10-31** at the repository owner's arbitration: where no game
   reading exists, the value stored is the one consistent with the vendored pack, and the
-  disagreement is still recorded.
+  disagreement is still recorded. Consistency with the pack is not the convenient choice this
+  requirement forbids: every other value of the snapshot comes from the pack, so a value
+  consistent with it composes with them, while a contradicting value that assumes another
+  baseline (Liquipedia's Forced Levy total assumes a Militia-line base the pack does not have)
+  would mix two builds' data in one total.
 - **FR-022d**: An entity identifier a recording can carry and the pack does not name MUST resolve
   to the pack's entity through an alias that a referenced source states, transcribed by hand with
   its provenance. An alias is never inferred from an identifier's neighbours, from a name other
@@ -548,9 +552,10 @@ new snapshot, reproduce the analysis from the original identity, and confirm the
   strong form. It reads the current build only; a value for an earlier build is carried back from it
   under research D4's discipline, build by build through the publisher's notes, never assumed.
   **Amended 2026-10-31** at the repository owner's arbitration: for build 185872's validation
-  sample the weaker form is admissible for every row no independent source was found to state,
-  because the owner declined to read the running game; each such row names that reason as well as
-  the two fields read.
+  sample the weaker form is admissible for every row not checked against an independent source,
+  because the owner declined to read the running game and ruled that the build does not wait for
+  that search; the validation record states that reason once, for every such row, and each row
+  names the two fields it read.
 - **FR-031**: Only a source whose licence permits it MAY be vendored into this repository. A source
   with no licence MUST NOT be vendored, MUST NOT be fetched at build or test time, and MAY only be
   consulted by a human whose transcription is recorded with its provenance (002 research).
