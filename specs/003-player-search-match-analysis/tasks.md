@@ -713,3 +713,39 @@ open" as the reason `obtainable_until` is null.
   unobtainable download without the measured-profile bound; neither test module cites the replaced
   FR-024 wording as current; the widened absence tests fail against a "31-day" and an "about a
   month" phrasing; the whole suite, the design-system tests and spec_lint on every feature are green.
+
+---
+
+## Phase 16: one point of view's 404 is not the match's (found 2026-11-01)
+
+Added 2026-11-01. Match `517629518`, completed 2026-10-31 09:34 UTC, shows "Analysis is not available
+for this match" a day later. The source answered, read on 2026-11-01: `404` for profile `13837142`,
+`200` for profiles `25591018`, `1807091` and `1813797`. `run_once` in
+`apps/analyzer/src/aoe2stats_analyzer/run.py` fetches one point of view, the first by `team_id` then
+`profile_id`, and on its `NotFound` ends the match `unavailable`, a terminal state. FR-034 makes a match
+unavailable when its recordings have expired, and FR-030 offers analysis for any match whose recorded
+game is obtainable; three of the four were. `_pick_point_of_view_profile_id`'s docstring says the
+choice "only has to be stable, not special", which is false when a participant's recording is absent.
+
+- [ ] T825 Fall back across participants before ending a match `unavailable`, in
+  `apps/analyzer/src/aoe2stats_analyzer/run.py` and `apps/analyzer/tests/test_run_once.py`. After a
+  claim, fetch the participants' points of view in the existing order (`team_id`, then `profile_id`),
+  one at a time, and stop at the first `200`. The match ends `unavailable` only when every participant's
+  fetch answers `NotFound`. The point of view that is retained, logged and parsed is the one whose fetch
+  answered `200`, and `match_analyses.point_of_view_profile_id` holds that profile when the row is
+  published or failed (FR-032), never the first participant tried. A fetch that raises (rate limited,
+  unavailable, moved) stops the walk and propagates as it does today: it is not a `NotFound` and moves
+  to no further participant. The pre-claim branch for a match past `capture_budget_days` is unchanged,
+  and no fetch is added to it. Rewrite `_pick_point_of_view_profile_id`'s docstring so it no longer
+  says the choice only has to be stable. Test-first, against the green-tree gate: a match whose first
+  participant's fetch answers `NotFound` and whose second answers `200` ends `published` with the
+  second profile as its point of view and one retained recording, for that profile; a match whose
+  every participant answers `NotFound` ends `unavailable` after one fetch per participant; a raise
+  on the first fetch makes no second fetch. **Done**: the three cases pass, the whole suite is green,
+  and spec_lint is green on every feature.
+- [ ] T826 **Maintainer, after T825 deploys.** Rows already ended `unavailable` by the old rule stay
+  terminal: `run_once` returns on one without fetching. Count the `match_analyses` rows with
+  `state = 'unavailable'` whose match completed within `capture_budget_days` of the count, and record
+  the count and the date here. Each one is a candidate for the old rule; deleting it makes the next
+  request a first analysis under T825, so the decision to delete is the maintainer's. Delete the row
+  for `517629518`, request its analysis, and record the outcome and the point of view it used.
