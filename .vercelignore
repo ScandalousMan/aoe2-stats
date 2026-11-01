@@ -23,3 +23,8 @@
 # `scripts/checks/config-preflight.mjs` reads it.
 .env*
 !.env.example
+
+# Local agent worktrees and agent configuration: never an input to the build or to a function. The
+# CLI uploads a working copy and does not apply `.gitignore`, so without this every worktree under
+# `.claude/worktrees/` would be uploaded with the deployment.
+/.claude/

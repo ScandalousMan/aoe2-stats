@@ -9,6 +9,7 @@
   },
   "buildCommand": "node scripts/checks/config-preflight.mjs && pnpm --filter web build",
   "outputDirectory": "apps/web/dist",
+  "ignoreCommand": "node scripts/deploy/ignore-build.mjs",
   "crons": [
     {
       "path": "/api/cron/ingest",
@@ -17,13 +18,16 @@
   ],
   "functions": {
     "api/cron/ingest.py": {
-      "maxDuration": 300
+      "maxDuration": 300,
+      "excludeFiles": "{.claude/**,.env.example,.github/**,.gitleaks.toml,.prettierrc.json,.specify/**,.tool-versions,.vercelignore,CLAUDE.md,README.md,alembic.ini,apps/**,docs/**,infra/**,package.json,packages/**,playwright.config.ts,pnpm-workspace.yaml,scripts/**,specs/**,tests/**,vercel.json}"
     },
     "api/analyze.py": {
-      "maxDuration": 300
+      "maxDuration": 300,
+      "excludeFiles": "{.claude/**,.env.example,.github/**,.gitleaks.toml,.prettierrc.json,.specify/**,.tool-versions,.vercelignore,CLAUDE.md,README.md,alembic.ini,apps/**,docs/**,infra/**,package.json,packages/**,playwright.config.ts,pnpm-workspace.yaml,scripts/**,specs/**,tests/**,vercel.json}"
     },
     "api/index.py": {
-      "maxDuration": 10
+      "maxDuration": 10,
+      "excludeFiles": "{.claude/**,.env.example,.github/**,.gitleaks.toml,.prettierrc.json,.specify/**,.tool-versions,.vercelignore,CLAUDE.md,README.md,alembic.ini,apps/**,docs/**,infra/**,package.json,packages/**,playwright.config.ts,pnpm-workspace.yaml,scripts/**,specs/**,tests/**,vercel.json}"
     }
   },
   "rewrites": [
