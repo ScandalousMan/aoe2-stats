@@ -636,7 +636,7 @@ against keeping one measurement in two homes.
 - **Version identifier**: two pinned commits, each recorded in its own pack's `MANIFEST.json` and
   `LICENCE.md` under `packages/knowledge/packs/`. The first, `b9d494df6921d4080df69b22f9dbb7a4d1dcd9f0`
   (2026-06-21, pack `aoe2techtree`), is the one `aoe2techtree-180059` and
-  `aoe2techtree-180059-civilisations-53` are derived from. The second,
+  `aoe2techtree-180059-civilisations-53` and `aoe2techtree-180059-owner-readings` are derived from. The second,
   `3bb43b1439eef88dfe7fe892d7f7dc41ac9dd76f` (pack `aoe2techtree-3bb43b1`; authored 2026-09-11,
   committed 2026-09-22, assessed 2026-10-08), is the one `aoe2techtree-185872`, `aoe2techtree-185872-civilisations`,
   `aoe2techtree-185872-civilisations-20`, `aoe2techtree-185872-civilisations-32`,
@@ -708,7 +708,14 @@ against keeping one measurement in two homes.
   own data or a bonus that selects it, and a "-line" note changes every tier of its line); each
   row is decided on its own, so one bullet's rows can be carried and transcribed both. Every other row is transcribed from the older pack's strings. Its
   `aliases.toml` closes the second committed recording's buildings 490 and 673 (both "Gate"), read
-  again 2026-10-28 at repository head commit `9ee0fe29fa05`.
+  again 2026-10-28 at repository head commit `9ee0fe29fa05`. Since 2026-11-01 (T774) a third,
+  `aoe2techtree-180059-owner-readings`, supersedes it and carries the owner's build 185872 readings
+  back under the same three conditions, each row decided on its own: eleven of the sixteen refusals
+  T772 closed are replaced (twenty-six rows) or, for the Chinese Age advances answered "no", gone;
+  five stay refusals and are open values of `specs/006-replay-analysis-foundations/owner-readings.md`
+  for build 180059 (the Turks' team bonus, the Aztecs, the Magyars, the Malay and the Gurjaras),
+  because the release notes name an entity each selects. Its `rules.json`, `aliases.toml` and
+  `disagreements.toml` are the second's.
 - **Known limitations**: no civilisation-specific bonus data as structured values, no build/version
   field of its own, no combat attributes (attack, armour, hit points, range) — halfon carries those
   (below). Three builds (178524, 179158, 180059) unimplemented by the first pinned commit as of this
@@ -732,7 +739,9 @@ against keeping one measurement in two homes.
   sixth 2026-10-26
   (`packages/knowledge/snapshots/aoe2techtree-185872-civilisations-56/snapshot.toml`) and by a
   seventh 2026-10-31
-  (`packages/knowledge/snapshots/aoe2techtree-185872-owner-readings/snapshot.toml`). Licence: MIT,
+  (`packages/knowledge/snapshots/aoe2techtree-185872-owner-readings/snapshot.toml`); the build 180059
+  chain's third 2026-11-01
+  (`packages/knowledge/snapshots/aoe2techtree-180059-owner-readings/snapshot.toml`). Licence: MIT,
   **copy in** — `docs/asset-packs.md` "Knowledge packs".
 
 ### halfon

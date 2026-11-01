@@ -21,8 +21,10 @@ the build 185872 snapshots' records (`test_effects_185872_civilisations*.py`):
   that is not carried fails at least one condition.
 - **The derivation is reproducible.** `rules.json` and `disagreements.toml` are what the
   normaliser (version 2) derives from the pack, byte for byte; the snapshot names the pack's commit.
-- **Resolution.** Build 180059 resolves to this snapshot, which names the first one's digest, and
-  the first still loads by identity and answers its own bytes (SC-005).
+- **Resolution.** This snapshot names the first one's digest, and the first still loads by
+  identity and answers its own bytes (SC-005). Since T774 the build resolves to a third snapshot,
+  which names this one's (`test_effects_180059_owner_readings.py`); this one still loads by
+  identity.
 - **The aliases** close the two building identifiers the second committed recording places that the
   pack does not name (490 and 673, both the Gate).
 - **The values come out as the strings say**: carried and transcribed rows answer through the public
@@ -1301,11 +1303,26 @@ def test_the_second_committed_recordings_two_unnamed_buildings_are_the_gate() ->
 # ----------------------------------------------------------------------- resolution
 
 
-def test_the_build_resolves_to_the_second_snapshot_and_the_first_reproduces_by_identity() -> None:
+def test_the_second_snapshot_is_superseded_by_the_third_and_the_first_reproduces_by_identity() -> (
+    None
+):
+    """Since T774 the build resolves to the third snapshot (`aoe2techtree-180059-owner-readings`),
+    which names this one's digest; this one stays loadable by identity and still answers its own
+    refusals, and the first still reproduces. The value tests below state claims that hold for the
+    carried and transcribed rows both snapshots share, so they run against the current one."""
     resolved = snapshot.snapshot_for(_BUILD)
     assert isinstance(resolved, snapshot.Snapshot)
-    assert resolved.directory == _DIRECTORY
-    assert resolved.supersedes == _FIRST_DIGEST
+    assert resolved.directory == "aoe2techtree-180059-owner-readings"
+    second = next(s for s in snapshot.load_all_snapshots() if s.directory == _DIRECTORY)
+    assert resolved.supersedes == second.identity.digest
+    assert second.promoted
+    assert second.supersedes == _FIRST_DIGEST
+    detinets = effects.Context(researched=frozenset({"455"}))
+    slavs = query.EntityRef(kind="building", id="82", build=_BUILD)
+    with snapshot.pinned_snapshot(second):
+        refused = query.cost(slavs, civilisation="Slavs", context=detinets)
+    assert isinstance(refused, gaps.KnowledgeGap)
+    assert refused.cause == "effect-not-modelled"
 
     first = snapshot.load_snapshot(_FIRST_DIRECTORY)
     assert first.identity.digest == _FIRST_DIGEST
@@ -1328,7 +1345,7 @@ def test_the_build_resolves_to_the_second_snapshot_and_the_first_reproduces_by_i
     assert modelled.snapshot_identity.digest == _FIRST_DIGEST
     assert isinstance(unmodelled, gaps.KnowledgeGap)
     assert unmodelled.cause == "civilisation-not-modelled"
-    # The same query under the current snapshot is answered, by the second.
+    # The same query under the current snapshot is answered, by the third.
     now = query.cost(entity, civilisation="Vietnamese")
     assert not isinstance(now, gaps.KnowledgeGap), f"gap: {now!r}"
     assert now.snapshot_identity.digest == resolved.identity.digest

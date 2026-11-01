@@ -68,6 +68,13 @@ additional Town Center and Cuman Mercenaries are rows (T780, T781).
 the open rows of build 185872 for the bonuses it carries (the Saxons, who are in no build 180059
 pack, are not among them); the Persians' Kamandaran is modelled, as in build 185872.
 
+**Batch T774** carries the owner's readings back to build 180059 in
+`aoe2techtree-180059-owner-readings`, which supersedes `-53`. A reading is carried only where
+T773's three conditions hold for its row, so the Slavs, Sicilians, Chinese, Turks' Gunpowder
+technologies, Vietnamese, Burgundians, Bohemians and Jurchens lose their tuples, and five rows keep
+theirs: the Turks' team bonus, the Aztecs, Magyars, Malay and Gurjaras. They are open rows for
+build 180059, held here by set equality as the batch before held all of them.
+
 **Batch T772** closes the owner's readings on build 185872 in
 `aoe2techtree-185872-owner-readings`, which supersedes `-56`. Every row of the sheet for that build
 was answered on 2026-10-31 and none was reported unreadable, so build 185872 keeps no FR-022b entry:
@@ -188,10 +195,17 @@ _OPEN_ROWS: dict[int, dict[str, tuple[OpenRow, ...]]] = {
     # gone, and a blocking gap on this build is a transcription defect, never an entry.
     185872: {},
     180059: {
-        # T773: the open rows of build 185872 that the carried bonuses keep, with the same members:
-        # every entity they name is in the build 180059 pack. Measured on the snapshot, not copied.
-        # Persians' Kamandaran is modelled here as in build 185872 (carried row); Saxons are in no
-        # build 180059 pack.
+        # T774: the five open rows of build 180059 that the owner's readings on build 185872 do not
+        # reach. T773 held twelve civilisations' tuples (Aztecs, Bohemians, Burgundians, Chinese,
+        # Gurjaras, Jurchens, Magyars, Malay, Sicilians, Slavs, Turks, Vietnamese); T774 carried
+        # eleven of the sixteen refusals back (the Turks' Gunpowder technology discount, not their
+        # team bonus), and each of the five left fails the carry rule's third condition: the
+        # release notes name an entity the row selects (the Turks' Conquistador and Elite
+        # Conquistador, the Aztecs' Fire Galley, Hulk, War Hulk and Carrack, the Magyar Huszar, the
+        # Militia line's Man-at-Arms, Long Swordsman, Two-Handed Swordsman and Champion, the
+        # Gurjaras' Armored Elephant and Siege Elephant). Each is an open row of owner-readings.md
+        # for build 180059, to be read on this build or reported unreadable (FR-022b). Measured on
+        # the snapshot.
         "Aztecs": (
             ("unit", "21", "production_time", "effect-not-modelled"),
             ("unit", "125", "production_time", "effect-not-modelled"),
@@ -206,34 +220,6 @@ _OPEN_ROWS: dict[int, dict[str, tuple[OpenRow, ...]]] = {
             ("unit", "2628", "production_time", "effect-not-modelled"),
             ("unit", "2633", "production_time", "effect-not-modelled"),
         ),
-        "Bohemians": (
-            ("technology", "45", "cost", "effect-not-modelled"),
-            ("technology", "46", "cost", "effect-not-modelled"),
-            ("technology", "230", "cost", "effect-not-modelled"),
-            ("technology", "231", "cost", "effect-not-modelled"),
-            ("technology", "233", "cost", "effect-not-modelled"),
-            ("technology", "252", "cost", "effect-not-modelled"),
-            ("technology", "316", "cost", "effect-not-modelled"),
-            ("technology", "319", "cost", "effect-not-modelled"),
-            ("technology", "438", "cost", "effect-not-modelled"),
-            ("technology", "439", "cost", "effect-not-modelled"),
-            ("technology", "441", "cost", "effect-not-modelled"),
-            ("unit", "125", "cost", "effect-not-modelled"),
-        ),
-        "Burgundians": (
-            ("technology", "15", "cost", "effect-not-modelled"),
-            ("technology", "17", "cost", "effect-not-modelled"),
-            ("technology", "23", "cost", "effect-not-modelled"),
-            ("technology", "48", "cost", "effect-not-modelled"),
-            ("technology", "65", "cost", "effect-not-modelled"),
-            ("technology", "213", "cost", "effect-not-modelled"),
-            ("technology", "249", "cost", "effect-not-modelled"),
-            ("technology", "906", "cost", "effect-not-modelled"),
-        ),
-        "Chinese": (
-            ("technology", "102", "cost", "effect-not-modelled"),
-            ("technology", "103", "cost", "effect-not-modelled"),
-        ),
         "Gurjaras": (
             ("unit", "329", "production_time", "effect-not-modelled"),
             ("unit", "330", "production_time", "effect-not-modelled"),
@@ -244,22 +230,6 @@ _OPEN_ROWS: dict[int, dict[str, tuple[OpenRow, ...]]] = {
             ("unit", "1751", "production_time", "effect-not-modelled"),
             ("unit", "1753", "production_time", "effect-not-modelled"),
             ("unit", "1755", "production_time", "effect-not-modelled"),
-        ),
-        "Jurchens": (
-            ("technology", "47", "production_time", "effect-not-modelled"),
-            ("technology", "93", "cost", "effect-not-modelled"),
-            ("technology", "93", "production_time", "effect-not-modelled"),
-            ("technology", "199", "production_time", "effect-not-modelled"),
-            ("technology", "200", "production_time", "effect-not-modelled"),
-            ("technology", "201", "production_time", "effect-not-modelled"),
-            ("technology", "377", "cost", "effect-not-modelled"),
-            ("technology", "377", "production_time", "effect-not-modelled"),
-            ("technology", "379", "cost", "effect-not-modelled"),
-            ("technology", "379", "production_time", "effect-not-modelled"),
-            ("technology", "608", "cost", "effect-not-modelled"),
-            ("technology", "608", "production_time", "effect-not-modelled"),
-            ("technology", "996", "cost", "effect-not-modelled"),
-            ("technology", "996", "production_time", "effect-not-modelled"),
         ),
         "Magyars": (
             ("unit", "869", "cost", "effect-not-modelled"),
@@ -272,43 +242,11 @@ _OPEN_ROWS: dict[int, dict[str, tuple[OpenRow, ...]]] = {
             ("unit", "473", "cost", "effect-not-modelled"),
             ("unit", "567", "cost", "effect-not-modelled"),
         ),
-        "Sicilians": (
-            ("building", "79", "production_time", "effect-not-modelled"),
-            ("building", "234", "production_time", "effect-not-modelled"),
-            ("building", "235", "production_time", "effect-not-modelled"),
-            ("building", "236", "production_time", "effect-not-modelled"),
-            ("building", "1251", "production_time", "effect-not-modelled"),
-        ),
-        "Slavs": (
-            ("building", "79", "cost", "effect-not-modelled"),
-            ("building", "82", "cost", "effect-not-modelled"),
-            ("building", "234", "cost", "effect-not-modelled"),
-            ("building", "235", "cost", "effect-not-modelled"),
-        ),
         "Turks": (
-            ("technology", "10", "cost", "effect-not-modelled"),
-            ("technology", "64", "cost", "effect-not-modelled"),
-            ("technology", "369", "cost", "effect-not-modelled"),
-            ("technology", "376", "cost", "effect-not-modelled"),
             ("unit", "46", "production_time", "effect-not-modelled"),
             ("unit", "557", "production_time", "effect-not-modelled"),
             ("unit", "771", "production_time", "effect-not-modelled"),
             ("unit", "773", "production_time", "effect-not-modelled"),
-        ),
-        "Vietnamese": (
-            ("technology", "15", "production_time", "effect-not-modelled"),
-            ("technology", "17", "production_time", "effect-not-modelled"),
-            ("technology", "22", "production_time", "effect-not-modelled"),
-            ("technology", "23", "production_time", "effect-not-modelled"),
-            ("technology", "48", "production_time", "effect-not-modelled"),
-            ("technology", "65", "cost", "effect-not-modelled"),
-            ("technology", "65", "production_time", "effect-not-modelled"),
-            ("technology", "213", "cost", "effect-not-modelled"),
-            ("technology", "213", "production_time", "effect-not-modelled"),
-            ("technology", "249", "cost", "effect-not-modelled"),
-            ("technology", "249", "production_time", "effect-not-modelled"),
-            ("technology", "906", "cost", "effect-not-modelled"),
-            ("technology", "906", "production_time", "effect-not-modelled"),
         ),
     },
     177723: {

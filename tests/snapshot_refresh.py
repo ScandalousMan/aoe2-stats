@@ -27,9 +27,9 @@ import pytest
 
 from aoe2stats_knowledge import effects, query, snapshot
 
-#: The packaged snapshot the fixture recording's build (180059) resolves against (T773's, the
-#: second of the build, which carries an `aliases.toml`).
-REAL_SNAPSHOT_DIRECTORY = "aoe2techtree-180059-civilisations-53"
+#: The packaged snapshot the fixture recording's build (180059) resolves against (T774's, the
+#: third of the build, which carries an `aliases.toml`).
+REAL_SNAPSHOT_DIRECTORY = "aoe2techtree-180059-owner-readings"
 REFRESHED_SNAPSHOT_DIRECTORY = "aoe2techtree-180059-refresh"
 
 
@@ -54,7 +54,7 @@ def clear_snapshot_resolution_caches() -> None:
 
 def copy_real_snapshot(root: Path) -> Path:
     """Copy the snapshot the fixture recording resolves against into `root`, and return its
-    directory. It is the second snapshot of its build (T773), which supersedes the first; a copy
+    directory. It is the third snapshot of its build (T774), which supersedes the second; a copy
     alone in a throwaway root has nothing to supersede, so its `supersedes` line is dropped. That
     line is not part of the digest (`rules.json`, `effects.toml` and `aliases.toml` are), so the
     copy keeps the identity the committed snapshot has."""

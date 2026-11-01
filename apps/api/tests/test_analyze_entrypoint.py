@@ -555,7 +555,7 @@ async def test_analyze_answers_the_deployment_fault_envelope_for_a_published_row
         puts_before = list(fake_store.put_calls)
         access_log_before = len((await db_session.execute(select(ReplayAccessLog))).scalars().all())
 
-        (root / "aoe2techtree-180059-civilisations-53" / "rules.json").unlink()
+        (root / "aoe2techtree-180059-owner-readings" / "rules.json").unlink()
         clear_snapshot_resolution_caches()
         _install_no_calls_allowed_upstream(monkeypatch)
         logging.getLogger("aoe2stats_analyzer").disabled = False

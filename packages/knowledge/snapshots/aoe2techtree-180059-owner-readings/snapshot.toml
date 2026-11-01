@@ -1,0 +1,101 @@
+# The third knowledge snapshot for game build 180059 (T774, 2026-11-01): it carries the owner's
+# readings that T772 closed on build 185872 back to build 180059, and models the same fifty-three
+# civilisations as the second, `aoe2techtree-180059-civilisations-53`. A promoted snapshot is never
+# edited (FR-025), so this one names the digest it supersedes: resolution by build now answers this
+# snapshot, and the first two stay installed, promoted and loadable by their full identity so that
+# the analyses published under them still reproduce their own bytes (SC-005). An analysis of a build
+# 180059 recording published under either names a digest that is no longer the current one, so it
+# is recomputed under this snapshot on the analyzer's next pass, as the contract's staleness rule
+# says.
+#
+# Same source, same pack revision (aoe2techtree commit b9d494df6921d4080df69b22f9dbb7a4d1dcd9f0), same
+# normaliser version (2): `rules.json`, `aliases.toml` and `disagreements.toml` are the second's, byte
+# for byte. What is new is `effects.toml`: twelve rows of the second snapshot (ten refusals and two
+# carried rows T772 amended on build 185872) become twenty-six, one refusal is gone and one row gains a
+# sentence, each row carried under T773's three conditions with `validated_by` naming the source snapshot's digest;
+# five open rows of build 180059 are not reached by those conditions and stay refusals. The
+# open rows are held in `packages/knowledge/tests/test_whole_pack_coverage.py`.
+[snapshot]
+source = "aoe2techtree"
+source_version = "b9d494df6921d4080df69b22f9dbb7a4d1dcd9f0"
+describes_build = 180059
+digest = "sha256:020918569af409cb2645490269834ab4c87195f602f0957fe6e03d843e1db8dc"
+promoted = true
+supersedes = "sha256:343f2f003b12107619003d63eb9f1530d3515674c7a946e70e3e1141c2a96e1d"
+normaliser_version = 2
+civilisations_modelled = ["Franks", "Teutons", "Persians", "Saracens", "Malians", "Tatars", "Slavs", "Sicilians", "Britons", "Goths", "Japanese", "Chinese", "Byzantines", "Turks", "Vikings", "Mongols", "Celts", "Spanish", "Aztecs", "Mayans", "Huns", "Koreans", "Italians", "Hindustanis", "Incas", "Magyars", "Portuguese", "Ethiopians", "Berbers", "Khmer", "Malay", "Burmese", "Vietnamese", "Bulgarians", "Cumans", "Lithuanians", "Burgundians", "Poles", "Bohemians", "Dravidians", "Bengalis", "Gurjaras", "Romans", "Armenians", "Georgians", "Shu", "Wu", "Wei", "Jurchens", "Khitans", "Muisca", "Mapuche", "Tupi"]
+
+# FR-030's validation record: what this snapshot's own derivation and readings were checked
+# against. The carried rows are validated as the source snapshot's record says, plus the three
+# conditions of the carry rule.
+[validation]
+method = "second-reading-checked-against-release-notes"
+checked_against = """\
+the vendored pack's own English strings, \
+packages/knowledge/packs/aoe2techtree/strings.en.json (the help_string_id text of each of the \
+fifty-three civilisations, compared bullet by bullet with the same key in \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, and the help strings of the units, \
+buildings and technologies a class name was resolved from), read twice: once to carry or transcribe \
+each bonus, once to resolve each selector against rules.json and to check every bullet is accounted \
+for; the two packs' rules.json compared entity by entity (name, age, cost, time, producing \
+building); and the publisher's release notes for build 185872, \
+https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/ \
+(datePublished 2026-09-22T10:16:33-07:00, dateModified 2026-09-23T08:59:03-07:00), fetched and \
+read on 2026-10-28 (the Balance Changes section in full, line by line against the selected \
+entities of every carried row). The aliases and the raw-id table were read from SiegeEngineers \
+aoc-reference-data, data/datasets/100.json (objects and civilizations), on 2026-10-28, repository \
+head commit 9ee0fe29fa05f176575ce6e3befd21a116d27e12 (2026-10-26). T774 (2026-11-01) adds one \
+reading, over the second snapshot's: the twenty-six rows that carry the owner's build 185872 \
+readings back (aoe2techtree-185872-owner-readings, digest \
+sha256:45417481c2e078e22805d4d7c2365818dea34225634ecd22e52e8b48958d328c) were each tested against \
+T773's three conditions by recomputing them from both packs' strings.en.json and rules.json and \
+from the same table of release-note lines the second snapshot's tests hold, over the union of what \
+the build 185872 row and the build 180059 row select, widened selectors included; the rows that \
+fail a condition keep the second snapshot's refusal. What each reading rests on is the source row's \
+own validated_by, which names the owner's channel and says it is not a game reading\
+"""
+performed_by = "the T774 implementer (an AI agent working for the repository owner), by direct reading; no person has reviewed it yet"
+performed_at = "2026-11-01"
+not_checked = """\
+No value was compared with the game or with any second source that is independent of the pack: \
+the bonuses, the baseline costs, times and ages in rules.json and the strings they are read from \
+all come from the one vendored pack (research.md D3: no second source is lawful to vendor), so \
+this is a second reading of one source and not independent validation. A carried row is a \
+claim about two packs and one set of release notes: the notes can only show a change the \
+publisher chose to write down, and a bonus change they omit cannot be detected from them (the \
+strings of the two packs are compared, which catches a reworded bonus, and the two rules.json \
+files are compared, which catches a changed baseline). The release notes read are build 185872's \
+alone: any build between 180059 and 185872 has no notes read here, so a change made and \
+reverted in between would not show. A note that only grants or removes a civilisation's access \
+to an entity is not counted as a change to the entity. T774 (2026-11-01): no value of the readings carried back was compared with the game, on build \
+180059 or on any build: each is the owner's answer on build 185872 (from the owner's chat, or from \
+Fandom or Liquipedia read by ChatGPT for the owner and accepted unchecked, as the source \
+snapshot's not_checked says), attributed to that build by the owner's arbitration of 2026-10-31, and \
+reaches build 180059 only through the carry rule, so it rests on the packs' agreement and on \
+release notes that can only show a change the publisher chose to write down; the Sicilians' amount \
+(update 111772) and the Cannon Galleon technology's scrapping (update 47820) are carried from \
+those updates, which are older than the build, and their pages were not read again. The release \
+notes of build 185872 were not read again for T774: the carry rule's third condition reads the \
+second snapshot's table of their lines, and the nine entities the widened selectors add (236, 117, \
+487, 72, 792, 50, 51, 54, 321) are in neither that table nor the data difference between the two \
+packs. Five open rows of build 180059 (Turks' Gunpowder Units team bonus, Aztecs' Military Units, \
+Magyars' Corvinian Army, Malay's Forced Levy and Gurjaras' team bonus) are not reached and are \
+refused here: the owner has not read them on this build. The \
+class readings of the carried rows (Infantry, Warships, Military Units and the others the \
+source snapshot lists) are the source snapshot's, re-checked here only by the production \
+sites and the entity data of this pack, not by a definition: where the source snapshot flags \
+a reading as an inference no source states (Shu's Archery Unit technologies, Tupi's and Danes' \
+upgrades, the Persians' Kamandaran total, the Cumans' count table, the Khitans' Imperial \
+Skirmisher and Heavy Cavalry Archer age, the Butalmapu selector), that flag is carried in the row \
+or in the source snapshot's record and is not resolved here. Changes to which technologies and \
+units a civilisation can reach are not bonuses and are not rows; the tree in rules.json \
+(normaliser version 2) answers them. The transcription was not blind: the implementer had read \
+the source snapshot's effects.toml to learn the file's shape and compared every transcribed \
+row with it.\
+"""
+
+[validation.release_notes]
+url = "https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-185872/"
+published = "2026-09-22T10:16:33-07:00"
+modified = "2026-09-23T08:59:03-07:00"
+read_on = "2026-10-28"
