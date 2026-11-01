@@ -189,3 +189,5 @@ Written by T775 after each deployed promotion.
 
 | Date | Build | Snapshot label | Blocking gaps in the window |
 | ---- | ----- | -------------- | --------------------------- |
+| 2026-11-01 | 180059 | aoe2techtree-180059-owner-readings | 0: no gap of any severity recorded, window 2026-10-31T14:23Z to 2026-11-01T14:23Z, read by the owner against production; the window ends 3 minutes after #206's deploy (14:20Z), so it covers almost no analysis recomputed since |
+| 2026-11-01 | 185872 | aoe2techtree-185872-owner-readings | 0: no gap of any severity recorded, window 2026-10-31T14:23Z to 2026-11-01T14:23Z, read by the owner against production; the window ends 3 minutes after #206's deploy (14:20Z), so it covers almost no analysis recomputed since |
