@@ -744,7 +744,7 @@ choice "only has to be stable, not special", which is false when a participant's
   every participant answers `NotFound` ends `unavailable` after one fetch per participant; a raise
   on the first fetch makes no second fetch. **Done**: the three cases pass, the whole suite is green,
   and spec_lint is green on every feature.
-- [ ] T826 **Maintainer, after T825 deploys.** Rows already ended `unavailable` by the old rule stay
+- [x] T826 **Maintainer, after T825 deploys.** Rows already ended `unavailable` by the old rule stay
   terminal: `run_once` returns on one without fetching. A fetch ended the rows with
   `state = 'unavailable'` and `attempts > 0`; the pre-claim branch writes `attempts = 0`. Count the
   first population, and within it the rows whose `finished_at` is before T825's production deployment
@@ -753,6 +753,12 @@ choice "only has to be stable, not special", which is false when a participant's
   the old rule; deleting it makes the next
   request a first analysis under T825, so the decision to delete is the maintainer's. Delete the row
   for `517629518`, request its analysis, and record the outcome and the point of view it used.
+  *(Done 2026-11-01. T825 deployed to production as `dpl_FhE8siYuZpgNke3WAhKFxDBbgFot`, the build of
+  `5e2c13b5` (#208), created 18:35:30 UTC. The row for `517629518` read `unavailable`, `attempts` 1,
+  point of view `13837142`, before the maintainer deleted it. Requested again, the analysis published at
+  18:40:01 UTC with point of view `25591018` and `attempts` 1, parsed by aoe2rec-py 0.1.24. The count
+  ran after that deletion, with `capture_budget_days` 21: 0 rows ended by a fetch and 0 candidates, so
+  `517629518` was the only row the old rule left, and no other row was deleted.)*
 - [x] T827 Remediate PR #208's review of T825, in `apps/analyzer/src/aoe2stats_analyzer/run.py` and
   `apps/analyzer/tests/test_run_once.py`. (1) The walk made up to one source fetch per participant
   for one admission, while `check_admission` counted one. Before each fetch after the first,
