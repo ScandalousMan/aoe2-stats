@@ -3212,7 +3212,7 @@ phase.
       `docs/adr/0001-replay-parser.md` and `.claude/skills/replay-parsing/SKILL.md`. A Clarifications
       answer stays as it was spoken, followed by a bracketed note. **Test**: the register's view test
       passes, and `git grep -i 'feature 007'` names no reconstruction outside a dated note
-- [ ] T778 Close Phase 8: update `docs/data-sources.md` §6, aoe2techtree's "Coverage", and
+- [x] T778 Close Phase 8: update `docs/data-sources.md` §6, aoe2techtree's "Coverage", and
       `docs/risks.md`'s hand-transcription row to the coverage that now holds; run
       `uv run scripts/checks/spec_lint.py --feature specs/006-replay-analysis-foundations` and
       confirm it exits 0; then run the whole suite by exit code
