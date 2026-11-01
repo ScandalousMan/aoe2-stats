@@ -311,8 +311,9 @@ the ADR section with its date.
 - [ ] T816 [US1] **Maintainer, after the merge deploys.** Quickstart §5, all five steps:
       the smoke workflow, a real analysis request, a manual ingestion trigger with the production
       `CRON_SECRET` (never written to a file), the next scheduled 04:00 UTC run in the host's cron
-      log and in the capture audit, and three functions listed. Read one function's file listing and
-      confirm it holds none of the excluded categories (**SC-001**, US1 scenario 2). Zero
+      log and in the capture audit, and three functions listed. Read each function's size and
+      confirm it is below T814's before value (**SC-001**, US1 scenario 2: contents are proven
+      offline by T807 and T809; the host exposes no file listing, amended 2026-11-01). Zero
       regressions is **SC-005**. Record the run ids and dates in the ADR: the trimmed cron function
       must be seen to import and finish a real capture run (constitution I)
 - [ ] T817 [US2] **Maintainer, after T816.** Quickstart §4: a `docs/`-only push to `main` shows

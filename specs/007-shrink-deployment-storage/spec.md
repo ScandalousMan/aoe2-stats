@@ -93,9 +93,12 @@ a manual analysis request succeeds and a manual trigger of the ingestion run suc
 1. **Given** the trimmed bundle definition, **When** every remaining entrypoint is imported from a
    copy holding only the bundle's contents, **Then** every import succeeds with no missing module
    and no missing data file.
-2. **Given** a production deployment built with the trimmed bundles, **When** its function file
-   listing is inspected, **Then** it contains no documentation, spec, test fixture, design-system
-   source, game-asset source, built web app or repository copy of packaged data.
+2. **Given** the trimmed bundles, **When** their contents are checked offline (the exclusion list
+   against the tracked tree, and a copy holding exactly what the bundle keeps), **Then** they contain
+   no documentation, spec, test fixture, design-system source, game-asset source, built web app or
+   repository copy of packaged data; **and** the first production deployment built with them shows
+   each function smaller than before. *(Amended 2026-11-01: the host exposes no function file
+   listing for a Git deployment, so production corroborates by size.)*
 3. **Given** that deployment, **When** the smoke workflow runs, an analysis is requested by hand and
    the ingestion run is triggered by hand, **Then** all three succeed.
 4. **Given** the deployment before and after this change, **When** the maintainer reads Functions
@@ -334,7 +337,10 @@ the other stories keep theirs, and FR-012 now holds the three-function layout in
 ### Measurable Outcomes
 
 - **SC-001**: A production deployment after this feature contains zero repository files from the
-  excluded categories in any function, verified by inspecting its function file listings.
+  excluded categories in any function. Verified offline, by the check of the exclusion list against
+  the tracked tree and by the run of a copy holding exactly what the bundle keeps, and corroborated in
+  production by each function's size falling below the before value. *(Amended 2026-11-01: the host
+  exposes no function file listing for a Git deployment.)*
 - **SC-002**: Storage per production deployment is lower after the change than before, both values
   recorded with the date in `docs/adr/0002-hosting.md`, and the measured after value is within 20%
   of the value the plan predicts from its re-measurement.
