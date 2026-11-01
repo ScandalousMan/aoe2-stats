@@ -2347,13 +2347,16 @@ class _FirstRequest:
 
 
 async def _a_first_request(
-    session_factory: async_sessionmaker[AsyncSession], *, game_id: int
+    session_factory: async_sessionmaker[AsyncSession],
+    *,
+    game_id: int,
+    age: timedelta = timedelta(days=1),
 ) -> _FirstRequest:
     profile_a, profile_b = game_id + 1, game_id + 2
     await _seed_match(
         session_factory,
         game_id=game_id,
-        completed_at=datetime.now(UTC) - timedelta(days=1),
+        completed_at=datetime.now(UTC) - age,
         profile_ids=[profile_a, profile_b],
     )
     return _FirstRequest(
@@ -2983,7 +2986,7 @@ async def test_a_first_analysis_the_source_no_longer_serves_is_still_unavailable
 ) -> None:
     """The contrast to (a), unchanged: with no analysis to serve and nothing retained, 003's
     unavailable path applies."""
-    request = await _a_first_request(session_factory, game_id=500_666_504)
+    request = await _a_first_request(session_factory, game_id=500_666_504, age=timedelta(days=5))
 
     class _Gone:
         async def fetch_replay(self, game_id: int, profile_id: int) -> NotFound:
@@ -3027,14 +3030,23 @@ class _ScriptedReplayProvider:
         return answer
 
 
+#: Inside `REPLAY_PUBLICATION_GRACE_HOURS` (72) after `completed_at`: a `NotFound` may be a
+#: recording not yet published. Past it (and inside the capture budget): evidence of absence.
+_INSIDE_GRACE = timedelta(days=1)
+_PAST_GRACE = timedelta(days=5)
+
+
 async def _seed_four_participants(
-    session_factory: async_sessionmaker[AsyncSession], *, game_id: int
+    session_factory: async_sessionmaker[AsyncSession],
+    *,
+    game_id: int,
+    age: timedelta = _INSIDE_GRACE,
 ) -> tuple[list[int], uuid.UUID]:
     profile_ids = [game_id + 1, game_id + 2, game_id + 3, game_id + 4]
     await _seed_match(
         session_factory,
         game_id=game_id,
-        completed_at=datetime.now(UTC) - timedelta(days=1),
+        completed_at=datetime.now(UTC) - age,
         profile_ids=profile_ids,
     )
     return profile_ids, await _seed_user(session_factory)
@@ -3122,7 +3134,9 @@ async def test_a_match_every_participant_answers_not_found_for_is_unavailable_af
     session_factory: async_sessionmaker[AsyncSession], clean_database: None
 ) -> None:
     game_id = 500_825_003
-    profile_ids, requester = await _seed_four_participants(session_factory, game_id=game_id)
+    profile_ids, requester = await _seed_four_participants(
+        session_factory, game_id=game_id, age=_PAST_GRACE
+    )
     provider = _ScriptedReplayProvider({})
 
     await _run_with(
@@ -3220,7 +3234,7 @@ async def test_a_budget_at_its_limit_after_the_first_not_found_stops_the_walk_an
 ) -> None:
     game_id = 500_827_001
     (first, second, _third, _fourth), requester = await _seed_four_participants(
-        session_factory, game_id=game_id
+        session_factory, game_id=game_id, age=_PAST_GRACE
     )
     blob = ReplayBlob(content=b"second's bytes", filename="r.zip", content_type="application/zip")
     provider = _HookedReplayProvider(
@@ -3301,7 +3315,7 @@ async def test_a_not_found_writes_one_miss_row_for_that_game_and_profile(
 ) -> None:
     game_id = 500_827_003
     (first, second, _third, _fourth), requester = await _seed_four_participants(
-        session_factory, game_id=game_id
+        session_factory, game_id=game_id, age=_PAST_GRACE
     )
     blob = ReplayBlob(content=b"second's bytes", filename="r.zip", content_type="application/zip")
     provider = _ScriptedReplayProvider({second: blob})
@@ -3322,7 +3336,7 @@ async def test_a_participant_with_a_miss_row_is_not_fetched(
 ) -> None:
     game_id = 500_827_004
     (first, second, _third, _fourth), requester = await _seed_four_participants(
-        session_factory, game_id=game_id
+        session_factory, game_id=game_id, age=_PAST_GRACE
     )
     await _seed_miss(session_factory, game_id=game_id, profile_id=first)
     blob = ReplayBlob(content=b"second's bytes", filename="r.zip", content_type="application/zip")
@@ -3347,7 +3361,9 @@ async def test_a_match_whose_every_participant_has_a_miss_row_is_unavailable_wit
     session_factory: async_sessionmaker[AsyncSession], clean_database: None
 ) -> None:
     game_id = 500_827_005
-    profile_ids, requester = await _seed_four_participants(session_factory, game_id=game_id)
+    profile_ids, requester = await _seed_four_participants(
+        session_factory, game_id=game_id, age=_PAST_GRACE
+    )
     for profile_id in profile_ids:
         await _seed_miss(session_factory, game_id=game_id, profile_id=profile_id)
     provider = _ScriptedReplayProvider({})
@@ -3373,7 +3389,7 @@ async def test_a_not_found_then_a_raise_propagates_makes_no_third_fetch_and_leav
 ) -> None:
     game_id = 500_827_006
     (first, second, _third, _fourth), requester = await _seed_four_participants(
-        session_factory, game_id=game_id
+        session_factory, game_id=game_id, age=_PAST_GRACE
     )
     provider = _ScriptedReplayProvider({second: ConnectionError("rate limited")})
 
@@ -3727,3 +3743,116 @@ async def test_the_claim_past_the_maximum_attempts_fails_the_match_and_fetches_n
         f"the analysis was interrupted {_MAX_ATTEMPTS} times and is not retried"
     )
     assert request.store.put_calls == []
+
+
+# --- T828: a NotFound inside the publication grace is not evidence of absence ---------------------
+
+
+async def test_a_not_found_inside_the_grace_writes_no_miss_row(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    game_id = 500_828_001
+    (first, second, _third, _fourth), requester = await _seed_four_participants(
+        session_factory, game_id=game_id
+    )
+    blob = ReplayBlob(content=b"second's bytes", filename="r.zip", content_type="application/zip")
+    provider = _ScriptedReplayProvider({second: blob})
+
+    await _run_with(
+        session_factory,
+        game_id=game_id,
+        requester=requester,
+        provider=provider,
+        extractor=_BuildNamingExtractor(point_of_view_profile_id=second, max_calls=1),
+    )
+
+    assert [call.profile_id for call in provider.calls] == [first, second]
+    assert await _miss_rows(session_factory, game_id) == []
+    row = await _get_analysis(session_factory, game_id)
+    assert row is not None
+    assert row.state == MatchAnalysisState.PUBLISHED
+    assert row.point_of_view_profile_id == second
+
+
+async def test_a_recorded_miss_inside_the_grace_does_not_skip_the_participant(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    game_id = 500_828_002
+    (first, _second, _third, _fourth), requester = await _seed_four_participants(
+        session_factory, game_id=game_id
+    )
+    await _seed_miss(session_factory, game_id=game_id, profile_id=first)
+    blob = ReplayBlob(content=b"first's bytes", filename="r.zip", content_type="application/zip")
+    provider = _ScriptedReplayProvider({first: blob})
+
+    await _run_with(
+        session_factory,
+        game_id=game_id,
+        requester=requester,
+        provider=provider,
+        extractor=_BuildNamingExtractor(point_of_view_profile_id=first, max_calls=1),
+    )
+
+    assert [call.profile_id for call in provider.calls] == [first]
+    row = await _get_analysis(session_factory, game_id)
+    assert row is not None
+    assert row.state == MatchAnalysisState.PUBLISHED
+    assert row.point_of_view_profile_id == first
+    assert await _miss_rows(session_factory, game_id) == [(game_id, first)]
+
+
+async def test_a_match_inside_the_grace_whose_every_participant_answers_not_found_ends_queued(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    game_id = 500_828_003
+    profile_ids, requester = await _seed_four_participants(session_factory, game_id=game_id)
+    provider = _ScriptedReplayProvider({})
+
+    await _run_with(
+        session_factory,
+        game_id=game_id,
+        requester=requester,
+        provider=provider,
+        extractor=_BuildNamingExtractor(point_of_view_profile_id=profile_ids[0], max_calls=0),
+    )
+
+    assert [call.profile_id for call in provider.calls] == profile_ids
+    row = await _get_analysis(session_factory, game_id)
+    assert row is not None
+    assert row.state == MatchAnalysisState.QUEUED
+    assert row.attempts == 0
+    assert row.claimed_at is None
+    assert row.lease_expires_at is None
+    assert row.finished_at is None
+    assert row.result_key is None
+    assert await _miss_rows(session_factory, game_id) == []
+    assert await _access_log_rows(session_factory) == []
+
+
+async def test_the_grace_is_a_keyword_and_its_boundary_is_the_ingesters(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """A match one day old is past a one-hour grace: its `NotFound` is recorded as a miss."""
+    game_id = 500_828_004
+    (first, _second, _third, _fourth), requester = await _seed_four_participants(
+        session_factory, game_id=game_id
+    )
+    provider = _ScriptedReplayProvider({})
+
+    await run_module.run_once(
+        game_id,
+        _BUDGET_SECONDS,
+        requester,
+        lease_seconds=_LEASE_SECONDS,
+        max_attempts=_MAX_ATTEMPTS,
+        session_factory=session_factory,
+        replay_provider=provider,
+        extractor=_BuildNamingExtractor(point_of_view_profile_id=first, max_calls=0),
+        object_store=_FakeObjectStore(),
+        replay_publication_grace_hours=1,
+    )
+
+    row = await _get_analysis(session_factory, game_id)
+    assert row is not None
+    assert row.state == MatchAnalysisState.UNAVAILABLE
+    assert len(await _miss_rows(session_factory, game_id)) == 4

@@ -774,7 +774,7 @@ choice "only has to be stable, not special", which is false when a participant's
   raise propagates, makes no third fetch, and leaves the row `running`; a lost claim writes no point
   of view. **Done**: the tests pass, the whole suite is green, and spec_lint is green on every
   feature.
-- [ ] T828 Remediate PR #208's second review, of T827, in `apps/analyzer/src/aoe2stats_analyzer/run.py`,
+- [x] T828 Remediate PR #208's second review, of T827, in `apps/analyzer/src/aoe2stats_analyzer/run.py`,
   `apps/analyzer/tests/test_run_once.py` and, only to pass the setting, `api/analyze.py`. A `NotFound`
   says nothing about whether a recording is not yet published, expired or never recorded
   (`packages/providers/src/aoe2stats_providers/base.py`). The ingester reads a `NotFound` younger than

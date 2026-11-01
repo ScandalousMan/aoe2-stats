@@ -140,6 +140,11 @@ logger = logging.getLogger("aoe2stats_analyzer")
 #: suite) that does not thread the real setting down, and why a production caller overrides it.
 _DEFAULT_CAPTURE_BUDGET_DAYS = 18
 
+#: `.env.example`'s own `REPLAY_PUBLICATION_GRACE_HOURS`, mirrored as `_DEFAULT_CAPTURE_BUDGET_DAYS`
+#: mirrors its setting (this package does not depend on `apps/ingester`, where the same figure is
+#: `DEFAULT_REPLAY_PUBLICATION_GRACE_HOURS`). A fallback for a caller that threads nothing down.
+_DEFAULT_REPLAY_PUBLICATION_GRACE_HOURS = 72
+
 #: `replay_access_log.purpose` for a read this module performs — distinct from `"download"`
 #: (`apps/api/src/aoe2stats_api/routers/replays.py`), the only other writer of that column today,
 #: because a system read of a third party's recording is never a download (R8, data-model.md).
@@ -1008,6 +1013,7 @@ async def run_once(
     extractor: AnalysisExtractor,
     object_store: ObjectStore,
     capture_budget_days: int = _DEFAULT_CAPTURE_BUDGET_DAYS,
+    replay_publication_grace_hours: int = _DEFAULT_REPLAY_PUBLICATION_GRACE_HOURS,
     recompute_retry_after: timedelta = _DEFAULT_RECOMPUTE_RETRY_AFTER,
     max_source_requests_per_day: int | None = None,
 ) -> None:
@@ -1031,6 +1037,11 @@ async def run_once(
     nothing. `max_source_requests_per_day` (`ANALYSIS_MAX_SOURCE_REQUESTS_PER_DAY`) is the budget
     gate's limit, passed so the walk over participants can re-ask the gates before each fetch after
     the first (T827); `None` skips the budget gate and keeps the deadline gate.
+    `replay_publication_grace_hours` (`REPLAY_PUBLICATION_GRACE_HOURS`, T828) is the window after
+    `matches.completed_at` in which a `NotFound` may be a recording not yet published, with the
+    ingester's boundary (`capture.py::_classify_not_found`: inside is `now` before `completed_at`
+    plus the grace). Inside it the walk writes no miss row, ignores recorded ones, and a match every
+    participant answers `NotFound` for is handed back to `queued`, not ended `unavailable`.
     """
     if lease_seconds < budget_seconds:
         raise ValueError(
@@ -1120,7 +1131,12 @@ async def run_once(
     # participant with a recorded miss is skipped without a fetch, and each `NotFound` records one.
     assert outcome.claimed_at is not None
     claimed_at = outcome.claimed_at
-    recorded_misses = await _recorded_miss_profile_ids(session_factory, game_id=game_id)
+    past_grace = now >= match.completed_at + timedelta(hours=replay_publication_grace_hours)
+    recorded_misses = (
+        await _recorded_miss_profile_ids(session_factory, game_id=game_id)
+        if past_grace
+        else frozenset[int]()
+    )
     blob = None
     point_of_view_profile_id = participants[0]
     fetched = False
@@ -1135,11 +1151,17 @@ async def run_once(
         answer = await replay_provider.fetch_replay(game_id, candidate)
         fetched = True
         if isinstance(answer, NotFound):
-            await _record_fetch_miss(session_factory, game_id=game_id, profile_id=candidate)
+            if past_grace:
+                await _record_fetch_miss(session_factory, game_id=game_id, profile_id=candidate)
             continue
         blob = answer
         point_of_view_profile_id = candidate
         break
+    if blob is None and not past_grace:
+        # T828: inside the grace a `NotFound` may be a recording not yet published, so the match is
+        # not ended; it goes back to `queued` exactly as a gate refusal does.
+        await _hand_back(session_factory, game_id=game_id, claimed_at=claimed_at)
+        return
     if blob is None:
         await _mark_unavailable(
             session_factory,
