@@ -13,13 +13,14 @@
 # for byte. What is new is `effects.toml`: twelve rows of the second snapshot (ten refusals and two
 # carried rows T772 amended on build 185872) become twenty-six, one refusal is gone and one row gains a
 # sentence, each row carried under T773's three conditions with `validated_by` naming the source snapshot's digest;
-# five open rows of build 180059 are not reached by those conditions and stay refusals. The
-# open rows are held in `packages/knowledge/tests/test_whole_pack_coverage.py`.
+# the five rows those conditions do not reach are modelled from the owner's own answers of
+# 2026-11-01 for build 180059 (Turks' team bonus, Aztecs, Magyars, Malay, Gurjaras), so build 180059
+# keeps no refusal on a carried field and no FR-022b entry.
 [snapshot]
 source = "aoe2techtree"
 source_version = "b9d494df6921d4080df69b22f9dbb7a4d1dcd9f0"
 describes_build = 180059
-digest = "sha256:020918569af409cb2645490269834ab4c87195f602f0957fe6e03d843e1db8dc"
+digest = "sha256:59d24e32fb873b331887cd95fdbc074d95618d77373052fbe1c24a735e438adc"
 promoted = true
 supersedes = "sha256:343f2f003b12107619003d63eb9f1530d3515674c7a946e70e3e1141c2a96e1d"
 normaliser_version = 2
@@ -50,8 +51,8 @@ readings back (aoe2techtree-185872-owner-readings, digest \
 sha256:45417481c2e078e22805d4d7c2365818dea34225634ecd22e52e8b48958d328c) were each tested against \
 T773's three conditions by recomputing them from both packs' strings.en.json and rules.json and \
 from the same table of release-note lines the second snapshot's tests hold, over the union of what \
-the build 185872 row and the build 180059 row select, widened selectors included; the rows that \
-fail a condition keep the second snapshot's refusal. What each reading rests on is the source row's \
+the build 185872 row and the build 180059 row select, widened selectors included; the five rows \
+that fail a condition are modelled from the owner's own answers of 2026-11-01 for build 180059. What each reading rests on is the source row's \
 own validated_by, which names the owner's channel and says it is not a game reading\
 """
 performed_by = "the T774 implementer (an AI agent working for the repository owner), by direct reading; no person has reviewed it yet"
@@ -78,9 +79,11 @@ those updates, which are older than the build, and their pages were not read aga
 notes of build 185872 were not read again for T774: the carry rule's third condition reads the \
 second snapshot's table of their lines, and the nine entities the widened selectors add (236, 117, \
 487, 72, 792, 50, 51, 54, 321) are in neither that table nor the data difference between the two \
-packs. Five open rows of build 180059 (Turks' Gunpowder Units team bonus, Aztecs' Military Units, \
-Magyars' Corvinian Army, Malay's Forced Levy and Gurjaras' team bonus) are not reached and are \
-refused here: the owner has not read them on this build. The \
+packs. The five rows of build 180059 that the carry rule does not reach (Turks' Gunpowder Units team bonus, \
+Aztecs' Military Units, Magyars' Corvinian Army, Malay's Forced Levy and Gurjaras' team bonus) are \
+modelled from the owner's answers of 2026-11-01 for build 180059, given in chat with no source stated \
+and no game reading; nothing was compared with the game or with any other source, and the Magyars' \
+and Malay totals are the pack's costs with the gold replaced by an equal amount of food. The \
 class readings of the carried rows (Infantry, Warships, Military Units and the others the \
 source snapshot lists) are the source snapshot's, re-checked here only by the production \
 sites and the entity data of this pack, not by a definition: where the source snapshot flags \

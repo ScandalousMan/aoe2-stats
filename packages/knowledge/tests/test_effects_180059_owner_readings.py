@@ -16,13 +16,14 @@ Six kinds of claim, none of them a restatement of `test_effects.py`, of the seco
   build 185872 is replaced by the rows that closed it if and only if the three conditions hold for
   the refusal and for each closing row (the bullet byte-identical in both packs, every identifier
   the same with the same name, no change in the build 185872 release notes or in the entities'
-  data), recomputed from both packs by the second snapshot's own test; a row that fails one stays
-  a refusal. Each carried row is the source row but for an appended `validated_by`.
-- **The five rows not carried are named**, and each still answers `effect-not-modelled` for every
-  entity it selects.
+  data), recomputed from both packs by the second snapshot's own test; a row that fails one is
+  not carried and is closed from the owner's answer for this build instead.
+  Each carried row is the source row but for an appended `validated_by`.
+- **The five rows not carried are named**, and each is modelled from the owner's own answer of
+  2026-11-01 for build 180059, so no refusal is left on a carried field.
 - **The values come out as the readings say** on build 180059's own baseline, each with its
   contrast case, and equal what the source snapshot answers for the same entity and context.
-- **The sheet** names the carry and holds an open row for exactly the five rows not carried.
+- **The sheet** names the carry, and every build 180059 row of it is answered.
 """
 
 from __future__ import annotations
@@ -97,6 +98,7 @@ _NOT_REACHED = frozenset(
 
 _CARRIED_MARK = "Carried to build 180059 by T774"
 _RECARRIED_MARK = "Re-carried to build 180059 by T774"
+_OWNER_MARK = "Closed by T774"
 _AMENDED_MARK = "Amended by T774"
 
 
@@ -264,16 +266,17 @@ def test_every_row_of_the_second_snapshot_is_here_unchanged_and_in_order_but_the
     assert [r for r in new if r in old] == [r for r in old if r in new]
     removed, added = _removed(), _added()
     assert len(old) == 298
-    # Twelve rows replaced by twenty-six; one refusal gone; one carried-over row gains a sentence.
-    assert (len(removed), len(added)) == (14, 27)
+    # Twelve rows replaced by twenty-six; one refusal gone; one carried-over row gains a sentence;
+    # five refusals replaced by five rows from the owner's answers of 2026-11-01.
+    assert (len(removed), len(added)) == (19, 32)
     assert len(new) == len(old) - len(removed) + len(added) == 311
 
 
 def test_every_removed_row_is_a_closed_refusal_a_row_t772_amended_or_the_chinese_row() -> None:
     removed = _removed()
     refusals = [r for r in removed if r["modelled"] == "no"]
-    assert len(refusals) == 11
-    assert {(r["civilisation"], r["field"]) for r in refusals} == _REACHED
+    assert len(refusals) == 16
+    assert {(r["civilisation"], r["field"]) for r in refusals} == _REACHED | _NOT_REACHED
     others = [r for r in removed if r["modelled"] == "yes"]
     assert sorted((r["civilisation"], r["field"], len(r["selector"])) for r in others) == [  # type: ignore[arg-type]
         ("Chinese", "cost", 294),
@@ -285,9 +288,25 @@ def test_every_removed_row_is_a_closed_refusal_a_row_t772_amended_or_the_chinese
 def test_every_added_row_is_a_source_row_with_the_carry_named_or_the_amended_chinese_row() -> None:
     source = _rows(_SOURCE_DIRECTORY)
     removed = _removed()
-    carried = 0
+    carried = owner = 0
     for row in _added():
         validated = str(row["validated_by"])
+        if _OWNER_MARK in validated:
+            (old,) = [
+                r
+                for r in removed
+                if r["modelled"] == "no"
+                and _key(r) == _key(row)
+                and validated.startswith(str(r["validated_by"]))
+            ]
+            assert row["modelled"] == "yes"
+            assert (str(row["civilisation"]), str(row["field"])) in _NOT_REACHED
+            assert "Date: 2026-11-01" in validated
+            assert "Build shown: not a game reading" in validated
+            assert "Where read: owner, in chat; source not stated" in validated
+            assert _SOURCE_DIGEST not in validated.split(_OWNER_MARK)[1]
+            owner += 1
+            continue
         if _AMENDED_MARK in validated:
             (old,) = [r for r in removed if _without_validation(r) == _without_validation(row)]
             assert row["civilisation"] == "Chinese"
@@ -312,6 +331,7 @@ def test_every_added_row_is_a_source_row_with_the_carry_named_or_the_amended_chi
             assert "arbitration of 2026-10-31" in validated
         carried += 1
     assert carried == 26
+    assert owner == 5
 
 
 # ------------------------------------------------------------------ the carry rule, recomputed
@@ -380,21 +400,23 @@ def test_a_refusal_is_replaced_exactly_when_the_three_conditions_hold_for_it_and
                     _without_validation(r) == _without_validation(s) and r in _added() for r in new
                 ), group
         else:
-            assert mine in new, group
+            # Not carried: the refusal is gone all the same, closed by the owner's own answer.
+            assert mine not in new, group
+            assert any(
+                _OWNER_MARK in str(r["validated_by"]) and _key(r) == _key(refusal) for r in new
+            ), group
             assert not any(
-                _without_validation(r) == _without_validation(s) for s in replacements for r in new
+                _CARRIED_MARK in str(r["validated_by"]) and _key(r) == _key(refusal) for r in new
             ), group
     assert reached == _REACHED
 
 
-def test_each_refusal_left_open_fails_the_third_condition_and_only_it() -> None:
-    new = _new()
+def test_each_row_not_carried_fails_the_third_condition_and_only_it() -> None:
     for civilisation, field in sorted(_NOT_REACHED):
         (refusal,) = [
             r for r in _closed_by_t772() if (r["civilisation"], r["field"]) == (civilisation, field)
         ]
         mine = _counterpart(refusal)
-        assert mine in new
         failures = _row_failures(refusal, mine)
         assert not failures.carried
         conditions = failures.conditions
@@ -443,35 +465,62 @@ def test_the_updates_the_readings_cite_are_carried_from_the_update_not_from_buil
             assert "carried from update" not in str(other["validated_by"])
 
 
-# ----------------------------------------------------------------------------- the open rows
+# ------------------------------------------------------------------ the owner's own answers
 
 
-def test_the_five_rows_not_carried_still_refuse_every_entity_they_select() -> None:
-    contexts = {
-        "Turks": _ctx("Turks"),
-        "Aztecs": _ctx("Aztecs"),
-        "Magyars": _ctx("Magyars", researched=frozenset({"514"})),
-        "Malay": _ctx("Malay", researched=frozenset({"625"})),
-        "Gurjaras": _ctx("Gurjaras"),
-    }
-    for civilisation, field in sorted(_NOT_REACHED):
-        (refusal,) = [
-            r
-            for r in _new()
-            if r["civilisation"] == civilisation
-            and r["field"] == field
-            and r["modelled"] == "no"
-            and "Not carried from the build 185872 snapshot" in str(r["validated_by"])
-        ]
-        for entry in refusal["selector"]:  # type: ignore[attr-defined]
-            kind, identifier = entry["kind"], entry["id"]
-            function = query.cost if field == "cost" else query.production_time
-            got = function(  # type: ignore[operator]
-                _entity(kind, identifier), civilisation=civilisation, context=contexts[civilisation]
-            )
-            assert isinstance(got, gaps.KnowledgeGap), (civilisation, kind, identifier)
-            assert got.cause == "effect-not-modelled"
-            assert got.severity == gaps.BLOCKING
+def test_the_five_rows_not_carried_answer_the_owners_readings_for_this_build() -> None:
+    # Turks' team bonus: yes for all four; the whole team gets it.
+    for unit in (46, 557, 771, 773):
+        base = _baseline("unit", unit, "training_time")
+        assert _time("unit", unit, "Turks", _ctx("Turks")) == pytest.approx(base / 1.25)  # type: ignore[operator]
+        assert _time("unit", unit, "Franks", _ctx("Franks", allies=frozenset({"Turks"}))) == (
+            pytest.approx(base / 1.25)  # type: ignore[operator]
+        )
+        assert _time("unit", unit, "Franks", _ctx("Franks")) == base
+    # Aztecs: the warships, not the Monk.
+    for unit in (21, 527, 529, 532, 539, 1103, 1104, 2626, 2627, 2628, 2633):
+        base = _baseline("unit", unit, "training_time")
+        assert _time("unit", unit, "Aztecs", _ctx("Aztecs")) == pytest.approx(base / 1.15), unit  # type: ignore[operator]
+        assert _time("unit", unit, "Franks", _ctx("Franks")) == base
+    assert _time("unit", 125, "Aztecs", _ctx("Aztecs")) == _baseline("unit", 125, "training_time")
+    # Magyars: the 45 gold becomes 45 food, 80 food and no gold in all.
+    for unit in (869, 871):
+        base = _baseline("unit", unit, "cost")
+        assert base == {"food": 35, "gold": 45}
+        assert _cost("unit", unit, "Magyars", _ctx("Magyars", researched=frozenset({"514"}))) == {
+            "food": 80,
+            "gold": 0,
+        }
+        assert _cost("unit", unit, "Magyars", _ctx("Magyars")) == base
+        assert _cost("unit", unit, "Franks", _ctx("Franks")) == base
+    # Malay: the Militia line costs 70 food and no gold, the pack's own arithmetic.
+    for unit in (74, 75, 77, 473, 567):
+        base = _baseline("unit", unit, "cost")
+        assert base == {"food": 50, "gold": 20}
+        assert _cost("unit", unit, "Malay", _ctx("Malay", researched=frozenset({"625"}))) == {
+            "food": 70,
+            "gold": 0,
+        }
+        assert _cost("unit", unit, "Malay", _ctx("Malay")) == base
+    # Gurjaras: camel and elephant units, not the Shrivamsha Rider and its Elite.
+    for unit in (329, 330, 873, 875, 1744, 1746, 1755):
+        base = _baseline("unit", unit, "training_time")
+        assert _time("unit", unit, "Gurjaras", _ctx("Gurjaras")) == pytest.approx(base / 1.25)  # type: ignore[operator]
+        assert _time("unit", unit, "Franks", _ctx("Franks", allies=frozenset({"Gurjaras"}))) == (
+            pytest.approx(base / 1.25)  # type: ignore[operator]
+        )
+    for unit in (1751, 1753):
+        assert _time("unit", unit, "Gurjaras", _ctx("Gurjaras")) == _baseline(
+            "unit", unit, "training_time"
+        )
+
+
+def test_no_refusal_is_left_on_a_carried_field_and_the_disagreements_add_nothing() -> None:
+    """Build 180059 has no FR-022b entry: every refusal of the snapshot is on a field the knowledge
+    base does not carry. The Malay answer agrees with the pack, so `disagreements.toml` stays the
+    second's."""
+    left = [r for r in _new() if r["modelled"] == "no" and r["field"] in _CARRIED]
+    assert left == []
 
 
 # --------------------------------------------------------------------------------- the values
@@ -642,7 +691,11 @@ def test_every_entity_a_carried_row_selects_answers_what_build_185872_answers() 
     civilisation, field and context, at every age and with the owner's team and technologies."""
     asked = 0
     for row in _added():
-        if row["modelled"] != "yes" or _AMENDED_MARK in str(row["validated_by"]):
+        if (
+            row["modelled"] != "yes"
+            or _AMENDED_MARK in str(row["validated_by"])
+            or _OWNER_MARK in str(row["validated_by"])
+        ):
             continue
         civilisation, field = str(row["civilisation"]), str(row["field"])
         researched = frozenset(
@@ -681,12 +734,13 @@ def test_the_validation_record_names_the_carry_and_what_was_not_checked() -> Non
     assert "not a game reading" in not_checked or "compared with the game" in not_checked
     for name in ("Turks", "Aztecs", "Magyars", "Malay", "Gurjaras"):
         assert name in not_checked, name
+    assert "2026-11-01" in not_checked
 
 
 # ---------------------------------------------------------------------------------- the sheet
 
 
-def test_the_sheet_holds_an_open_row_for_exactly_the_five_rows_not_carried() -> None:
+def test_the_sheet_answers_every_build_180059_row_it_still_holds() -> None:
     sheet = _OWNER_READINGS.read_text(encoding="utf-8")
     assert "T774" in sheet
     assert _DIRECTORY in sheet
@@ -695,7 +749,10 @@ def test_the_sheet_holds_an_open_row_for_exactly_the_five_rows_not_carried() -> 
     found = set()
     for line in rows:
         cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
-        # Open: the four answer columns are empty.
-        assert not any(cells[-4:]), line[:80]
+        assert cells[-4] and cells[-3], line[:80]  # a value read, where it was read
+        assert cells[-3] == "owner, in chat; source not stated", line[:80]
+        assert cells[-2] == "not a game reading", line[:80]
+        assert cells[-1] == "2026-11-01", line[:80]
         found.add((cells[1], cells[3]))
     assert found == _NOT_REACHED
+    assert "unreadable" not in "\n".join(rows)

@@ -3180,7 +3180,7 @@ phase.
       **Tests**: T765 passes for build 180059 without `xfail`; the second committed recording's
       blocker set loses buildings 490 and 673 by set equality; build 180059 resolves to the new
       snapshot and the superseded one reproduces by identity
-- [ ] T774 [US2] Close build 180059's open rows in a snapshot that supersedes T773's. Each
+- [x] T774 [US2] Close build 180059's open rows in a snapshot that supersedes T773's. Each
       reading T772 closed is carried back only under T773's three conditions, under research D4's
       discipline in reverse; a value it cannot reach stays an open row for build 180059, answered or
       reported unreadable as T772's are. T772's readings carry no build field ("not a game
@@ -3212,7 +3212,7 @@ phase.
       `docs/adr/0001-replay-parser.md` and `.claude/skills/replay-parsing/SKILL.md`. A Clarifications
       answer stays as it was spoken, followed by a bracketed note. **Test**: the register's view test
       passes, and `git grep -i 'feature 007'` names no reconstruction outside a dated note
-- [ ] T778 Close Phase 8: update `docs/data-sources.md` §6, aoe2techtree's "Coverage", and
+- [x] T778 Close Phase 8: update `docs/data-sources.md` §6, aoe2techtree's "Coverage", and
       `docs/risks.md`'s hand-transcription row to the coverage that now holds; run
       `uv run scripts/checks/spec_lint.py --feature specs/006-replay-analysis-foundations` and
       confirm it exits 0; then run the whole suite by exit code

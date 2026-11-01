@@ -70,10 +70,12 @@ pack, are not among them); the Persians' Kamandaran is modelled, as in build 185
 
 **Batch T774** carries the owner's readings back to build 180059 in
 `aoe2techtree-180059-owner-readings`, which supersedes `-53`. A reading is carried only where
-T773's three conditions hold for its row, so the Slavs, Sicilians, Chinese, Turks' Gunpowder
-technologies, Vietnamese, Burgundians, Bohemians and Jurchens lose their tuples, and five rows keep
-theirs: the Turks' team bonus, the Aztecs, Magyars, Malay and Gurjaras. They are open rows for
-build 180059, held here by set equality as the batch before held all of them.
+T773's three conditions hold for its row (the Slavs, Sicilians, Chinese, Turks' Gunpowder
+technologies, Vietnamese, Burgundians, Bohemians and Jurchens), and the five rows it does not reach
+(the Turks' team bonus, the Aztecs, Magyars, Malay and Gurjaras) are answered by the owner for
+build 180059 itself on 2026-11-01. Build 180059 keeps no FR-022b entry: its tuples are gone, the
+expectation is the empty set for every civilisation of the pack, and
+`test_build_180059_keeps_no_fr_022b_entry` says so by name.
 
 **Batch T772** closes the owner's readings on build 185872 in
 `aoe2techtree-185872-owner-readings`, which supersedes `-56`. Every row of the sheet for that build
@@ -194,61 +196,12 @@ _OPEN_ROWS: dict[int, dict[str, tuple[OpenRow, ...]]] = {
     # Chinese, Gurjaras, Jurchens, Magyars, Malay, Slavs, Sicilians, Saxons, Turks, Vietnamese) are
     # gone, and a blocking gap on this build is a transcription defect, never an entry.
     185872: {},
-    180059: {
-        # T774: the five open rows of build 180059 that the owner's readings on build 185872 do not
-        # reach. T773 held twelve civilisations' tuples (Aztecs, Bohemians, Burgundians, Chinese,
-        # Gurjaras, Jurchens, Magyars, Malay, Sicilians, Slavs, Turks, Vietnamese); T774 carried
-        # eleven of the sixteen refusals back (the Turks' Gunpowder technology discount, not their
-        # team bonus), and each of the five left fails the carry rule's third condition: the
-        # release notes name an entity the row selects (the Turks' Conquistador and Elite
-        # Conquistador, the Aztecs' Fire Galley, Hulk, War Hulk and Carrack, the Magyar Huszar, the
-        # Militia line's Man-at-Arms, Long Swordsman, Two-Handed Swordsman and Champion, the
-        # Gurjaras' Armored Elephant and Siege Elephant). Each is an open row of owner-readings.md
-        # for build 180059, to be read on this build or reported unreadable (FR-022b). Measured on
-        # the snapshot.
-        "Aztecs": (
-            ("unit", "21", "production_time", "effect-not-modelled"),
-            ("unit", "125", "production_time", "effect-not-modelled"),
-            ("unit", "527", "production_time", "effect-not-modelled"),
-            ("unit", "529", "production_time", "effect-not-modelled"),
-            ("unit", "532", "production_time", "effect-not-modelled"),
-            ("unit", "539", "production_time", "effect-not-modelled"),
-            ("unit", "1103", "production_time", "effect-not-modelled"),
-            ("unit", "1104", "production_time", "effect-not-modelled"),
-            ("unit", "2626", "production_time", "effect-not-modelled"),
-            ("unit", "2627", "production_time", "effect-not-modelled"),
-            ("unit", "2628", "production_time", "effect-not-modelled"),
-            ("unit", "2633", "production_time", "effect-not-modelled"),
-        ),
-        "Gurjaras": (
-            ("unit", "329", "production_time", "effect-not-modelled"),
-            ("unit", "330", "production_time", "effect-not-modelled"),
-            ("unit", "873", "production_time", "effect-not-modelled"),
-            ("unit", "875", "production_time", "effect-not-modelled"),
-            ("unit", "1744", "production_time", "effect-not-modelled"),
-            ("unit", "1746", "production_time", "effect-not-modelled"),
-            ("unit", "1751", "production_time", "effect-not-modelled"),
-            ("unit", "1753", "production_time", "effect-not-modelled"),
-            ("unit", "1755", "production_time", "effect-not-modelled"),
-        ),
-        "Magyars": (
-            ("unit", "869", "cost", "effect-not-modelled"),
-            ("unit", "871", "cost", "effect-not-modelled"),
-        ),
-        "Malay": (
-            ("unit", "74", "cost", "effect-not-modelled"),
-            ("unit", "75", "cost", "effect-not-modelled"),
-            ("unit", "77", "cost", "effect-not-modelled"),
-            ("unit", "473", "cost", "effect-not-modelled"),
-            ("unit", "567", "cost", "effect-not-modelled"),
-        ),
-        "Turks": (
-            ("unit", "46", "production_time", "effect-not-modelled"),
-            ("unit", "557", "production_time", "effect-not-modelled"),
-            ("unit", "771", "production_time", "effect-not-modelled"),
-            ("unit", "773", "production_time", "effect-not-modelled"),
-        ),
-    },
+    # Build 180059 keeps no FR-022b entry (T774): the third snapshot,
+    # `aoe2techtree-180059-owner-readings`, carries eleven of the owner's readings back and models
+    # the other five (the Turks' team bonus, the Aztecs, Magyars, Malay and Gurjaras) from the
+    # owner's own answers of 2026-11-01 for build 180059, so every tuple is gone and a blocking gap
+    # on this build is a transcription defect, never an entry.
+    180059: {},
     177723: {
         # Row: Persians / Archer line / cost / Kamandaran researched / "the replacement amount is
         # never stated". Measured on this snapshot, not assumed: the six civilisations it models
@@ -370,6 +323,17 @@ def test_build_185872_keeps_no_fr_022b_entry() -> None:
     assert current.directory == "aoe2techtree-185872-owner-readings"
     for civilisation in _civilisations(185872):
         assert not _blocking_gaps(185872, civilisation), civilisation
+
+
+def test_build_180059_keeps_no_fr_022b_entry() -> None:
+    """T774: the tuples for build 180059 equal the FR-022b entries by set equality, and there are
+    none, so a blocking gap on any civilisation of its pack fails the parametrised case above."""
+    assert not _OPEN_ROWS[180059]
+    assert not _NOT_YET_MODELLED[180059]
+    current = _current_snapshot(180059)
+    assert current.directory == "aoe2techtree-180059-owner-readings"
+    for civilisation in _civilisations(180059):
+        assert not _blocking_gaps(180059, civilisation), civilisation
 
 
 def test_the_current_snapshots_are_the_builds_this_module_covers() -> None:

@@ -659,10 +659,16 @@ against keeping one measurement in two homes.
 - **Coverage**: all 53 civilisations present in the trees directory at the first pinned commit (56
   at the second, which adds Saxons, Danes and Varangians); costs,
   times and ages for every unit, building and technology those trees name. The build 180059
-  snapshot imports this but validates and hand-models bonuses only for six civilisations — Franks,
+  snapshot imports this but, as first promoted, validates and hand-models bonuses only for six civilisations — Franks,
   Teutons, Persians, Saracens, Malians, Tatars (research.md D11 first named a different six; T652m
   corrected them to the ones whose bonuses were transcribed and validated) — and everything else surfaces as
-  a gap on first use rather than as an unvalidated value (FR-022a). Assessed 2026-10-08, the build
+  a gap on first use rather than as an unvalidated value (FR-022a). What the repository's newest
+  snapshots hold now, as of T778 (2026-11-01): `aoe2techtree-185872-owner-readings` models all
+  fifty-six civilisations of the second pack and `aoe2techtree-180059-owner-readings` all fifty-three
+  of the first pack's, and neither build keeps an open value or an FR-022b entry
+  (`packages/knowledge/tests/test_whole_pack_coverage.py`, `test_coverage.py`). That describes the
+  snapshots, not production: the owner's reading of the deployed gap counts is pending T775. The
+  history below is how each snapshot got there, in order. Assessed 2026-10-08, the build
   185872 snapshot models no civilisation at all: names resolve through the knowledge query
   (`query.name`), and no baseline query answers, because every other query takes a civilisation and
   refuses an unmodelled one. Since 2026-10-17 (T709) those names are served beside the stored
@@ -711,11 +717,11 @@ against keeping one measurement in two homes.
   again 2026-10-28 at repository head commit `9ee0fe29fa05`. Since 2026-11-01 (T774) a third,
   `aoe2techtree-180059-owner-readings`, supersedes it and carries the owner's build 185872 readings
   back under the same three conditions, each row decided on its own: eleven of the sixteen refusals
-  T772 closed are replaced (twenty-six rows) or, for the Chinese Age advances answered "no", gone;
-  five stay refusals and are open values of `specs/006-replay-analysis-foundations/owner-readings.md`
-  for build 180059 (the Turks' team bonus, the Aztecs, the Magyars, the Malay and the Gurjaras),
-  because the release notes name an entity each selects. Its `rules.json`, `aliases.toml` and
-  `disagreements.toml` are the second's.
+  T772 closed are replaced (twenty-six rows) or, for the Chinese Age advances answered "no", gone.
+  The other five (the Turks' team bonus, the Aztecs, the Magyars, the Malay and the Gurjaras) are
+  modelled from the owner's answers of 2026-11-01 for build 180059, because the release notes name
+  an entity each selects. Build 180059 has no open value and no FR-022b entry. Its `rules.json`,
+  `aliases.toml` and `disagreements.toml` are the second's.
 - **Known limitations**: no civilisation-specific bonus data as structured values, no build/version
   field of its own, no combat attributes (attack, armour, hit points, range) — halfon carries those
   (below). Three builds (178524, 179158, 180059) unimplemented by the first pinned commit as of this

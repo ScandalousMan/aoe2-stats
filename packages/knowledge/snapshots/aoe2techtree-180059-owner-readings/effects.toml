@@ -38,17 +38,19 @@
 # selector and keep their baseline, and the Chinese technology row gains a sentence beginning
 # "Amended by T774". Every other row of the second snapshot is here unchanged.
 #
-# **Not carried, and so still refused here (five open rows of
-# `specs/006-replay-analysis-foundations/owner-readings.md` for build 180059, one row of the second
+# **Not carried, and modelled from the owner's own answers (five rows, one row of the second
 # snapshot each):** Turks' team bonus on Gunpowder Units (Conquistador 771 and Elite Conquistador
 # 773 are named by the release notes), Aztecs' Military Units (Fire Galley 1103, Hulk 2626, War Hulk
 # 2627 and Carrack 2628), Magyars' Corvinian Army (Magyar Huszar 869), Malay's Forced Levy (Man-at-Arms
 # 75, Long Swordsman 77, Two-Handed Swordsman 473 and Champion 567) and Gurjaras' team bonus
 # (Armored Elephant 1744 and Siege Elephant 1746). Each fails the third condition for the row as a
-# whole, and the rule is decided per row, so the row keeps its refusal and its `validated_by`; the
-# answer for build 185872 does not reach it. Each stays an open row for build 180059, to be read on
-# this build or reported unreadable (FR-022b), and is held in T765's tuples
-# (`packages/knowledge/tests/test_whole_pack_coverage.py`).
+# whole, so the build 185872 answer does not reach it. The owner answered each for build 180059 in
+# chat on 2026-11-01 (not a game reading, no source stated), and each is a modelled row whose
+# `validated_by` ends in a paragraph beginning "Closed by T774" that cites that reading. The Aztecs'
+# selector drops the Monk (125) and the Gurjaras' the Shrivamsha Rider (1751) and its Elite (1753),
+# as the owner's answers say; nothing is widened. The Malay answer (70 food, no gold) agrees with
+# the pack, so it adds no disagreement (FR-028): `disagreements.toml` is the second's, byte for
+# byte. Build 180059 keeps no refusal on a carried field and no FR-022b entry.
 #
 # What follows is the second snapshot's own header, where it still holds. Where it says an open row
 # is open "here" or that T774 carries the readings back, this snapshot is that carrying.
@@ -4294,14 +4296,11 @@ row. 'Train +25% faster' divides the baseline time by 1.25.]"""
 civilisation = "Turks"
 source_key = "120159"
 source_text = "Team Bonus: Gunpowder Units train +25% faster"
-modelled = "no"
+modelled = "yes"
 field = "production_time"
-reason = """\
-the bonus speeds 'Gunpowder Units', and the pack's own strings call these units Foot Gunners and \
-Mounted Gunners without saying they are Gunpowder Units, so whether the bonus reaches them is \
-not knowledge this snapshot has; their training time stays gapped until the owner has read it in \
-the game\
-"""
+operation = "faster"
+condition = "team"
+operand = 0.25
 selector = [
   { kind = "unit", id = "46" },
   { kind = "unit", id = "557" },
@@ -4337,7 +4336,22 @@ does not name the Turks anywhere on the page. Selector: 46 (Janissary), 557 (Eli
 'Mounted Gunner' and never call it a Gunpowder Unit; Chemistry's list names the Hand Cannoneer, a \
 Foot Gunner, but not the Janissary. No release note settles it. The model scopes a modelled=no row \
 to its own civilisation, so this refusal gaps the Turks' own query and does not reach an ally's: \
-that is a limit of the effect model, recorded here and in the owner's sheet, not widened.]"""
+that is a limit of the effect model, recorded here and in the owner's sheet, not widened.] \
+Closed by T774 (2026-11-01, by the T774 implementer, an AI agent working for the repository \
+owner). The open row of specs/006-replay-analysis-foundations/owner-readings.md for build \
+180059, Turks, Janissary (46), Elite Janissary (557), Conquistador (771), Elite Conquistador \
+(773), production_time, was answered by the owner on 2026-11-01, for build 180059, and is \
+transcribed here under FR-022c (amended 2026-10-31). Reading: Value read: yes for all four (they \
+are Gunpowder Units for the team bonus). Where read: owner, in chat; source not stated. Build \
+shown: not a game reading. Date: 2026-11-01. This is not a game reading: the owner declined to \
+read the running game (spec Clarifications, Session 2026-10-31), so the row rests on an answer \
+the owner accepted, not on a person's tooltip. The build 185872 answer was not carried to this \
+row, because that build's release notes name entities the row selects; this is the owner's own \
+answer for build 180059, and it is the same answer. Selector and operand: the four units are \
+Gunpowder Units, so the row is a team row that reaches every civilisation on the owner's team, \
+and a query for one of them needs Context.team from any civilisation. 'Train +25% faster' \
+divides the training time by 1.25.\
+"""
 
 # ---------------------------------------------------------------------- Vikings
 
@@ -5387,16 +5401,12 @@ and the Monastery's units are the next row. 'Train +15% faster' divides the base
 civilisation = "Aztecs"
 source_key = "120164"
 source_text = "Military Units train +15% faster"
-modelled = "no"
+modelled = "yes"
 field = "production_time"
-reason = """\
-the bonus speeds 'Military Units', and the pack never says whether the warships the Dock trains \
-and the Monk the Monastery trains are Military Units, so their training time is not knowledge \
-this snapshot has; it stays gapped until the owner has read it in the game\
-"""
+operation = "faster"
+operand = 0.15
 selector = [
   { kind = "unit", id = "21" },
-  { kind = "unit", id = "125" },
   { kind = "unit", id = "527" },
   { kind = "unit", id = "529" },
   { kind = "unit", id = "532" },
@@ -5436,7 +5446,22 @@ the pack has trained at the Dock (warships, named so by their help strings) or a
 (Galley), 1103 (Fire Galley), 1104 (Demolition Raft), 2626 (Hulk), 2627 (War Hulk), 2628 \
 (Carrack), 2633 (Catapult Galleon). The pack calls them Warships and Monks; whether either is a \
 'Military Unit' it does not say, and no release note settles it (update 125283 changes the \
-percentage only). A unit the Aztecs cannot train is not listed: a personal bonus cannot reach it.]"""
+percentage only). A unit the Aztecs cannot train is not listed: a personal bonus cannot reach it.] \
+Closed by T774 (2026-11-01, by the T774 implementer, an AI agent working for the repository \
+owner). The open row of specs/006-replay-analysis-foundations/owner-readings.md for build \
+180059, Aztecs, the Dock units listed and the Monk (125), production_time, was answered by the \
+owner on 2026-11-01, for build 180059, and is transcribed here under FR-022c (amended \
+2026-10-31). Reading: Value read: the warships: yes; the Monk (125): no; economic ships (fishing \
+and trade ships) are excluded and are in no selector, so nothing widens. The same answer as for \
+build 185872. Where read: owner, in chat; source not stated. Build shown: not a game reading. \
+Date: 2026-11-01. This is not a game reading: the owner declined to read the running game (spec \
+Clarifications, Session 2026-10-31), so the row rests on an answer the owner accepted, not on a \
+person's tooltip. The build 185872 answer was not carried to this row, because that build's \
+release notes name entities the row selects; this is the owner's own answer for build 180059, \
+and it is the same answer. Selector and operand: every Dock unit listed is a Military Unit; the \
+Monk (125) is not, so it leaves the selector and answers the baseline. 'Train +15% faster' \
+divides the training time by 1.15.\
+"""
 
 [[effect]]
 civilisation = "Aztecs"
@@ -7497,16 +7522,12 @@ selects. The reading above is the source row's, kept as it was written.\
 civilisation = "Magyars"
 source_key = "120171"
 source_text = "Corvinian Army (Magyar Huszar gold cost is replaced by additional food cost)"
-modelled = "no"
+modelled = "yes"
 field = "cost"
 condition = "researched"
 condition_technology = "514"
-reason = """\
-the bonus is conditional on Corvinian Army having been researched and replaces the Magyar Huszar's \
-gold cost with an additional food cost, but neither the pack's string nor any page of the \
-publisher's notes states the food amount, so the adjusted cost is not knowledge this snapshot has; \
-the field stays gapped\
-"""
+operation = "set"
+operand = { food = 80, gold = 0 }
 selector = [
   { kind = "unit", id = "869" },
   { kind = "unit", id = "871" },
@@ -7540,7 +7561,22 @@ names no change to a Magyars bonus. Selector and operand: resolved 'Magyar Husza
 researched. Update 95810 is the one page that names the effect ('changed from Magyar Huszar cost \
 no gold to Magyar Huszar gold cost is replaced by additional food cost') and sets the unit's base \
 cost to 35 food 45 gold; no page states the food that replaces the gold, so a total of 80 food \
-would be an inference and is not transcribed.]"""
+would be an inference and is not transcribed.] \
+Closed by T774 (2026-11-01, by the T774 implementer, an AI agent working for the repository \
+owner). The open row of specs/006-replay-analysis-foundations/owner-readings.md for build \
+180059, Magyars, Magyar Huszar (869) and Elite Magyar Huszar (871), cost, was answered by the \
+owner on 2026-11-01, for build 180059, and is transcribed here under FR-022c (amended \
+2026-10-31). Reading: Value read: Magyar Huszar (869) and Elite (871): the 45 gold becomes 45 \
+additional food, 80 food and 0 gold in total. Where read: owner, in chat; source not stated. \
+Build shown: not a game reading. Date: 2026-11-01. This is not a game reading: the owner \
+declined to read the running game (spec Clarifications, Session 2026-10-31), so the row rests on \
+an answer the owner accepted, not on a person's tooltip. The build 185872 answer was not carried \
+to this row, because that build's release notes name entities the row selects; this is the \
+owner's own answer for build 180059, and it is the same answer. Selector and operand: rules.json \
+costs both units 35 food and 45 gold; the 45 gold replaced by 45 food is a total of 80 food and \
+no gold, the value read. The operation is set, on the total, as in the other snapshots' \
+Corvinian Army row. Condition: technology 514 (Corvinian Army) researched.\
+"""
 
 [[effect]]
 civilisation = "Magyars"
@@ -9511,16 +9547,12 @@ selects. The reading above is the source row's, kept as it was written.\
 civilisation = "Malay"
 source_key = "120178"
 source_text = "Forced Levy (Militia-line gold cost is replaced by additional food cost)"
-modelled = "no"
+modelled = "yes"
 field = "cost"
 condition = "researched"
 condition_technology = "625"
-reason = """\
-the bonus is conditional on Forced Levy having been researched and replaces the Militia-line's \
-gold cost with an additional food cost, but neither the pack's string nor any page of the \
-publisher's notes states the food amount, so the adjusted cost is not knowledge this snapshot has; \
-the field stays gapped\
-"""
+operation = "set"
+operand = { food = 70, gold = 0 }
 selector = [
   { kind = "unit", id = "74" },
   { kind = "unit", id = "75" },
@@ -9554,7 +9586,22 @@ does not name the Malay anywhere on the page. Selector and operand: resolved 'Mi
 units 74 (Militia), 75 (Man-at-Arms), 77 (Long Swordsman), 473 (Two-Handed Swordsman) and 567 \
 (Champion), the chain the pack's unit strings state. Condition: technology 625 (Forced Levy) \
 researched. No page of the publisher's notes names Forced Levy, so the food that replaces the gold \
-is stated nowhere.]"""
+is stated nowhere.] \
+Closed by T774 (2026-11-01, by the T774 implementer, an AI agent working for the repository \
+owner). The open row of specs/006-replay-analysis-foundations/owner-readings.md for build \
+180059, Malay, Militia-line (74, 75, 77, 473, 567), cost, was answered by the owner on \
+2026-11-01, for build 180059, and is transcribed here under FR-022c (amended 2026-10-31). \
+Reading: Value read: the Militia line costs 70 food and 0 gold: the pack's 50 food and 20 gold \
+with the 20 gold replaced by 20 food. Where read: owner, in chat; source not stated. Build \
+shown: not a game reading. Date: 2026-11-01. This is not a game reading: the owner declined to \
+read the running game (spec Clarifications, Session 2026-10-31), so the row rests on an answer \
+the owner accepted, not on a person's tooltip. The build 185872 answer was not carried to this \
+row, because that build's release notes name entities the row selects; this is the owner's own \
+answer for build 180059, and it is the same answer. Selector and operand: rules.json costs each \
+of the five units 50 food and 20 gold; the 20 gold replaced by 20 food is a total of 70 food and \
+no gold, the value read. It agrees with the pack, so it is no disagreement (FR-028) and none is \
+recorded for this build. Condition: technology 625 (Forced Levy) researched.\
+"""
 
 [[effect]]
 civilisation = "Malay"
@@ -13572,13 +13619,11 @@ selects. The reading above is the source row's, kept as it was written.\
 civilisation = "Gurjaras"
 source_key = "120191"
 source_text = "Team Bonus: Camel and Elephant Units train +25% faster"
-modelled = "no"
+modelled = "yes"
 field = "production_time"
-reason = """\
-the bonus speeds 'Camel and Elephant Units', and neither the pack's strings nor the publisher's \
-notes say which units those are, so the training time of the Gurjaras' own candidates is not \
-knowledge this snapshot has; it stays gapped until the owner has read it in the game\
-"""
+operation = "faster"
+condition = "team"
+operand = 0.25
 selector = [
   { kind = "unit", id = "329" },
   { kind = "unit", id = "330" },
@@ -13586,8 +13631,6 @@ selector = [
   { kind = "unit", id = "875" },
   { kind = "unit", id = "1744" },
   { kind = "unit", id = "1746" },
-  { kind = "unit", id = "1751" },
-  { kind = "unit", id = "1753" },
   { kind = "unit", id = "1755" },
 ]
 validated_by = """\
@@ -13623,7 +13666,23 @@ Rider 330, Camel Scout 1755, Shrivamsha Rider 1751 and Elite 1753 (no class word
 listed so the owner can rule on it), Elephant Archer 873 and Elite 875, Armored Elephant 1744 and \
 Siege Elephant 1746. The model scopes a modelled=no row to its own civilisation, so this refusal \
 gaps the Gurjaras' own query and does not reach an ally's: that is a limit of the effect model, \
-recorded here and in the owner's sheet, not widened.]"""
+recorded here and in the owner's sheet, not widened.] \
+Closed by T774 (2026-11-01, by the T774 implementer, an AI agent working for the repository \
+owner). The open row of specs/006-replay-analysis-foundations/owner-readings.md for build \
+180059, Gurjaras, Camel and Elephant Units, production_time, was answered by the owner on \
+2026-11-01, for build 180059, and is transcribed here under FR-022c (amended 2026-10-31). \
+Reading: Value read: camel and elephant units only; the Shrivamsha Rider (1751) and Elite \
+Shrivamsha Rider (1753) are excluded. The same answer as for build 185872. Where read: owner, in \
+chat; source not stated. Build shown: not a game reading. Date: 2026-11-01. This is not a game \
+reading: the owner declined to read the running game (spec Clarifications, Session 2026-10-31), \
+so the row rests on an answer the owner accepted, not on a person's tooltip. The build 185872 \
+answer was not carried to this row, because that build's release notes name entities the row \
+selects; this is the owner's own answer for build 180059, and it is the same answer. Selector \
+and operand: the units listed are Camel and Elephant Units for the team bonus, so the row is a \
+team row reaching every civilisation on the owner's team; the Shrivamsha Rider (1751) and its \
+Elite (1753) leave the selector and answer the baseline. 'Train +25% faster' divides the \
+training time by 1.25.\
+"""
 
 # ---------------------------------------------------------------- Romans
 
