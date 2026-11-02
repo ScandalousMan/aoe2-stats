@@ -88,6 +88,8 @@ _BASELINE_SCHEDULED_JOBS: Mapping[str, frozenset[str]] = {
             "state-coverage-runtime",
             # Added by 001's T821 (#193), its own task: the nightly retention-window sentinel.
             "retention-sentinel",
+            # Added by 002's T211, its own task: the nightly civilisation coverage check.
+            "civ-coverage",
             "report",
         }
     ),
