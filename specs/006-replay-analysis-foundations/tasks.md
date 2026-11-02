@@ -3277,8 +3277,8 @@ this phase, code comments included; only its commits name the old id.
 - **Phase 8's rules hold unchanged**: transcription follows T746, a class name is resolved and never
   guessed, an unstated amount follows FR-022c, and a snapshot's label states its build and how many
   civilisations it models.
-- **The carry rule is T773's**, with build 188329's release notes as the notes its third condition
-  reads: a row of `aoe2techtree-185872-owner-readings` is carried only where its bullet is
+- **The carry rule is T773's, with two readings added for this build** (the last two sentences of
+  this item), and build 188329's release notes as the notes its third condition reads: a row of `aoe2techtree-185872-owner-readings` is carried only where its bullet is
   byte-identical under the same key in both packs, every selector resolves to the same identifiers
   in build 188329's `rules.json`, and build 188329's notes name no change to that bonus or to an
   entity it selects. A note line changes an entity when it changes any of that entity's own data,
@@ -3286,15 +3286,16 @@ this phase, code comments included; only its commits name the old id.
   one that names a civilisation's bonus or unique technology counts as a change to it: the error
   this admits is a row transcribed again that could have been carried, never one carried that
   should not have been.
-- **Assessed 2026-11-02, the rule leaves out twenty rows**: every row whose selector holds
+- **Assessed 2026-11-02, the rule leaves out twenty-one rows**: every row whose selector holds
   `kind = "unit"` with id 873 or 875 (cost and hit points; 875 is also a technology id, Gambesons,
   which no note changes), 2550 (the Champi Scout's bonus damage) or 2569 (the Bolas Rider's
   speed); the two Saxons "Foot Soldiers cost -5% per Town Center or Castle controlled" rows (the
-  notes adjust that discount); and the two Varangians rows on Varangian Guards (the Gothikon fix).
-  By civilisation: Malians, Britons, Goths (three), Aztecs, Koreans, Incas, Magyars, Portuguese,
-  Dravidians, Gurjaras (three), Mapuche (two), Saxons (two) and Varangians (two). Each is
-  transcribed from the third pack's strings.
-- **Two of the twenty hold an owner answer the strings do not state**: the Gurjaras team bonus
+  notes adjust that discount); the two Varangians rows on Varangian Guards (the Gothikon fix); and
+  the Portuguese Circumnavigation row (the fix to the map areas it reveals). By civilisation:
+  Malians, Britons, Goths (three), Aztecs, Koreans, Incas, Magyars, Portuguese (two), Dravidians,
+  Gurjaras (three), Mapuche (two), Saxons (two) and Varangians (two). Each is transcribed from the
+  third pack's strings.
+- **Two of the twenty-one hold an owner answer the strings do not state**: the Gurjaras team bonus
   (which units are Camel and Elephant Units) and the Saxons row on ranged Foot Soldiers (which
   units are Foot Soldiers). Build 188329's notes change neither membership, so each answer carries
   under the owner's arbitration of 2026-11-02, and the row's `validated_by` cites it.
@@ -3329,8 +3330,11 @@ this phase, code comments included; only its commits name the old id.
       is reported, not absorbed). `aliases.toml` and the civilisation table are read again for this
       pack, as T773 read them. Each row of `effects.toml` is decided on its own under this phase's
       carry rule: a carried row's `validated_by` says so and names the source snapshot's digest,
-      and the twenty rows it leaves out are transcribed as this phase's preamble says.
-      `disagreements.toml` (the Militia line's base cost) is carried under the same rule. The
+      and the twenty-one rows it leaves out are transcribed as this phase's preamble says.
+      `disagreements.toml`'s five entries (units 74, 75, 77, 473 and 567, the Militia line's base
+      cost against Liquipedia's Forced Levy total) follow the Malay Forced Levy row's decision:
+      carried with it, or written again with it, in either case with `stored_source` naming the
+      third pack and each pack reading checked against the third pack's `rules.json`. The
       snapshot's `[validation]` takes build 180059's method, a second reading checked against the
       release notes: it names build 188329's notes and the date they were read, compares the two
       packs' `rules.json` entity by entity, and states that the owner declined the game reading
@@ -3343,16 +3347,18 @@ this phase, code comments included; only its commits name the old id.
       the absence record for build 188329 is stale once the snapshot is installed
       (`apps/analyzer/src/aoe2stats_analyzer/staleness.py`). **Size budget**: measured 2026-11-02,
       `packages/knowledge/snapshots` holds 8,065,767 bytes against
-      `scripts/checks/asset_packs.py`'s 8 MiB budget, and a fifty-six-civilisation snapshot is
-      1.0 to 1.35 MB, so this snapshot does not fit. Raise the budget in the same commit,
+      `scripts/checks/asset_packs.py`'s 8 MiB budget, and the two fifty-six-civilisation snapshots
+      are 1.0 and 1.09 MB, so this snapshot does not fit. Raise the budget in the same commit,
       re-measuring the root and stating in its comment the new total and the multiple chosen
       (the root is append-only, a snapshot is never edited), as the pack budget's comment does
 - [ ] T836 [US2] **Owner task (verification).** After T835 is deployed, read the aggregate gap
       report as T775 does and record in [owner-readings.md](./owner-readings.md), "Production", the
       date and the count of blocking gaps for build 188329. Gaps are append-only and an analysis
-      recomputes only when it is read, so the reading counts only a window that starts after the
-      deploy and holds at least one build 188329 analysis whose `identity.knowledge.describes_build`
-      is 188329; a
+      recomputes only when a recompute is requested, so the reading counts only a window that starts
+      after the deploy and holds at least one build 188329 analysis whose
+      `identity.knowledge.describes_build` is 188329, read from
+      `GET /api/matches/{game_id}/analysis` for a match analysed or recomputed after the deploy (the
+      gap report prints counts only, so it cannot show this); a
       zero over a window with no such analysis is not an answer, and the reading is repeated. In
       that window no `no-snapshot-for-build` gap is recorded for build 188329, and the blocking
       count equals the blocking gaps T765 holds for build 188329, zero when there are none

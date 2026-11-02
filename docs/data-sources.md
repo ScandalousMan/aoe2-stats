@@ -658,9 +658,8 @@ against keeping one measurement in two homes.
   neither was any value in the snapshot (FR-030).
   Assessed 2026-11-02, the source's newest commit is a third one,
   `e56728e76b7d` (authored and committed 2026-10-27, "Implement DE
-  Update 188329"), whose message carries the publisher's update page for build 188329, a build
-  production has recorded a `no-snapshot-for-build` gap for (match 517988141, played
-  2026-11-01). It is not vendored, and no snapshot describes build 188329. Its one parent is the
+  Update 188329"), whose message carries the publisher's update page for build 188329. It is not
+  vendored, and no snapshot describes build 188329. Its one parent is the
   second pinned commit, and against it the commit changes no file under `data/trees/` and leaves
   `data/locales/en/strings.json` unchanged (the 56 trees, and every civilisation's English bonus
   text, are the second pack's). In `data/data.json` it changes six units: the Elephant Archer
@@ -991,12 +990,14 @@ against keeping one measurement in two homes.
   Read 2026-11-02 for build 188329 (its own page, dated 2026-10-27). Its balance changes are the
   (Elite) Elephant Archer's cost (60 food 80 gold to 70 food 80 gold) and hit points (230 to 220,
   Elite 280 to 270), the Champi Scout's bonus damage against the Scout Cavalry-line and Camel Scout
-  (+1 to +2), the Mapuche Bolas Rider's speed (1.5 to 1.45), and Gaia animals. One line touches a
-  bonus `packages/knowledge` models and gives no number: a "very minor adjustment" to the Saxons'
-  infantry discount, so that its internal values better fit the numbers the bonus text states.
-  Its other civilisation lines are fixes to bonuses on fields `packages/knowledge` does not carry
-  (the Danes' loot from destroyed buildings, the Varangians' and Portuguese food bonuses, the Tupi
-  refund on death, Varangian Guards with Gothikon). It names no new civilisation, unit or
+  (+1 to +2), the Mapuche Bolas Rider's speed (1.5 to 1.45), and Gaia animals. One line changes the
+  amount of a bonus `packages/knowledge` models and gives no number: a "very minor adjustment" to
+  the Saxons' infantry discount, so that its internal values better fit the numbers the bonus text
+  states. Its other civilisation lines are fixes to bonuses, or to the parts of bonuses, on fields
+  `packages/knowledge` does not carry: the Danes' loot from destroyed buildings, the Varangians'
+  and Portuguese food bonuses, the Tupi refund on death, Varangian Guards with Gothikon, and the
+  map areas Circumnavigation reveals (its Ships training half, which is carried, is not
+  mentioned). It names no new civilisation, unit or
   technology, and no change to a training or research time or an age requirement. It does not
   mention the Jarl's armour entry the aoe2techtree commit removes.
 - **Known limitations**: all rights reserved — read and transcribed only, never copied in; and, as
