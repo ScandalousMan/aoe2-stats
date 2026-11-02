@@ -85,10 +85,15 @@ its tuples are gone, the expectation is the empty set for every civilisation of 
 transcription defect, never an entry. A reading that arrives after the promotion waits for the next
 snapshot.
 
+**Batch T835** models build 188329 in `aoe2techtree-188329-civilisations-56`, a direct import of
+the third pack. It carries 302 rows of the build 185872 snapshot and transcribes 21 again; no row is
+open, so build 188329 keeps no entry: its tuples are empty, no civilisation is `xfail`, and
+`test_build_188329_keeps_no_open_row` says so by name.
+
 **Builds.** `test_the_current_snapshots_are_the_builds_this_module_covers` fails when the library
 resolves a current build this module does not cover, so a new build cannot be added without being
-covered. Three builds are covered: 185872, 180059 and 177723. Build 177723's snapshot is the test
-infrastructure T646 added (`aoe2techtree-177723-test`, promoted, with `rules.json` and
+covered. Four builds are covered: 188329, 185872, 180059 and 177723. Build 177723's snapshot is the
+test infrastructure T646 added (`aoe2techtree-177723-test`, promoted, with `rules.json` and
 `effects.toml` byte for byte those of build 180059's first snapshot), so it models the same six
 civilisations with the same open row, and no Phase 8 task models the other 47.
 
@@ -179,6 +184,7 @@ def _reasons(civilisations: tuple[str, ...], reason: str) -> dict[str, str]:
 
 #: build -> civilisation -> the reason it is expected to fail today, naming the task that models it.
 _NOT_YET_MODELLED: dict[int, dict[str, str]] = {
+    188329: {},
     185872: {},
     180059: {},
     177723: _reasons(
@@ -190,11 +196,15 @@ _NOT_YET_MODELLED: dict[int, dict[str, str]] = {
 #: build -> civilisation -> that civilisation's open rows of owner-readings.md, expanded to one
 #: tuple per refused entity. Empty is the target (FR-022b).
 _OPEN_ROWS: dict[int, dict[str, tuple[OpenRow, ...]]] = {
+    # Build 188329 has no open row (T835): `aoe2techtree-188329-civilisations-56` carried or
+    # transcribed every row, so owner-readings.md holds no "Build 188329" row and the expectation is
+    # the empty set for every civilisation of the pack.
     # Build 185872 keeps no FR-022b entry (T772): the seventh snapshot,
     # `aoe2techtree-185872-owner-readings`, models every row the owner's readings answered, and no
     # row was reported unreadable. The tuples the batches held (Aztecs, Bohemians, Burgundians,
     # Chinese, Gurjaras, Jurchens, Magyars, Malay, Slavs, Sicilians, Saxons, Turks, Vietnamese) are
     # gone, and a blocking gap on this build is a transcription defect, never an entry.
+    188329: {},
     185872: {},
     # Build 180059 keeps no FR-022b entry (T774): the third snapshot,
     # `aoe2techtree-180059-owner-readings`, carries eleven of the owner's readings back and models
@@ -323,6 +333,20 @@ def test_build_185872_keeps_no_fr_022b_entry() -> None:
     assert current.directory == "aoe2techtree-185872-owner-readings"
     for civilisation in _civilisations(185872):
         assert not _blocking_gaps(185872, civilisation), civilisation
+
+
+def test_build_188329_keeps_no_open_row() -> None:
+    """T835: the tuples for build 188329 equal its open rows of owner-readings.md by set equality,
+    and there are none, so the expectation is empty for all fifty-six civilisations and the
+    parametrised case above fails on any blocking gap at all. The case runs without `xfail`: every
+    civilisation of the pack is modelled."""
+    assert not _OPEN_ROWS[188329]
+    assert not _NOT_YET_MODELLED[188329]
+    current = _current_snapshot(188329)
+    assert current.directory == "aoe2techtree-188329-civilisations-56"
+    assert len(_civilisations(188329)) == 56
+    for civilisation in _civilisations(188329):
+        assert not _blocking_gaps(188329, civilisation), civilisation
 
 
 def test_build_180059_keeps_no_fr_022b_entry() -> None:

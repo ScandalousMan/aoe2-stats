@@ -68,9 +68,18 @@ KNOWLEDGE_PACK_SIZE_BUDGET_BYTES = 24 * 1024 * 1024
 #: today's measured total — a handful more snapshots at today's largest single-snapshot size —
 #: because this root is append-only by design (written once, never edited); the multiple is stated
 #: so a future re-measurement can say whether it still holds rather than re-deriving it from
-#: scratch. Unchanged from the estimate T637 first set: the measurement now backing it still sits
-#: comfortably inside it, so there is no case for moving it yet.
-KNOWLEDGE_SNAPSHOT_SIZE_BUDGET_BYTES = 8 * 1024 * 1024
+#: scratch. Unchanged from the estimate T637 first set until T835: the measurement backing it sat
+#: inside it for as long as the root held few snapshots.
+#:
+#: **Raised to 16 MiB by T835 (2026-11-02).** The root is append-only, a snapshot is never edited,
+#: and a build gets a new one each time its rows are closed, so it only grows. Measured the same
+#: day before T835, the root held 8,065,767 bytes against the 8 MiB budget (8,388,608), and the two
+#: fifty-six-civilisation snapshots of build 185872 are 1.0 and 1.09 MB, so the next one, which
+#: carries every row's `validated_by` with a paragraph naming the carry, did not fit. With
+#: `aoe2techtree-188329-civilisations-56` (1,389,692 bytes) the root is 9,455,459 bytes (9.02 MiB).
+#: The new budget is 16 MiB (16,777,216 bytes): 1.77 times that total, room for five more
+#: snapshots at the size of the largest. Revisit the number when a sixth is proposed.
+KNOWLEDGE_SNAPSHOT_SIZE_BUDGET_BYTES = 16 * 1024 * 1024
 
 
 @dataclass(frozen=True)

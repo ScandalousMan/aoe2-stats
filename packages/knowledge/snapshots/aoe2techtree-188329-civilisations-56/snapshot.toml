@@ -1,0 +1,83 @@
+# The first knowledge snapshot for game build 188329 (T835, 2026-11-02): a direct import of the
+# third pack, `packages/knowledge/packs/aoe2techtree-e56728e/` (aoe2techtree commit
+# e56728e76b7d08301fba7b18d5f16bc8554c109a, whose message carries the publisher's update page for
+# build 188329), modelling all fifty-six civilisations. No snapshot of this build existed, so it
+# supersedes none; resolution by build now answers it, and an analysis published under the absence
+# record for build 188329 names a digest that is no longer the current one, so it is recomputed under
+# this snapshot on the analyzer's next pass, as the contract's staleness rule says. The earlier
+# snapshots of builds 185872 and 180059 stay installed, promoted and loadable by identity (SC-005).
+#
+# `rules.json` is derived from the third pack under normaliser version 2. Against
+# `aoe2techtree-185872-owner-readings` it differs in the food cost of units 873 and 875 only.
+# `effects.toml` follows Phase 9's carry rule row by row (302 carried, 21 transcribed again, none
+# open), `aliases.toml` is checked against this pack, and `disagreements.toml` carries the five
+# Militia-line entries with the Malay Forced Levy row. See `effects.toml`'s header.
+[snapshot]
+source = "aoe2techtree"
+source_version = "e56728e76b7d08301fba7b18d5f16bc8554c109a"
+describes_build = 188329
+digest = "sha256:e6cd9fd2b4fd6a01e03bf706a10ac73037c6dc8029300386e9f5d0736a07e406"
+promoted = true
+normaliser_version = 2
+civilisations_modelled = ["Franks", "Teutons", "Persians", "Saracens", "Malians", "Tatars", "Slavs", "Sicilians", "Britons", "Goths", "Japanese", "Chinese", "Byzantines", "Turks", "Vikings", "Mongols", "Celts", "Spanish", "Aztecs", "Mayans", "Huns", "Koreans", "Italians", "Hindustanis", "Incas", "Magyars", "Portuguese", "Ethiopians", "Berbers", "Khmer", "Malay", "Burmese", "Vietnamese", "Bulgarians", "Cumans", "Lithuanians", "Burgundians", "Poles", "Bohemians", "Dravidians", "Bengalis", "Gurjaras", "Romans", "Armenians", "Georgians", "Shu", "Wu", "Wei", "Jurchens", "Khitans", "Muisca", "Mapuche", "Tupi", "Saxons", "Varangians", "Danes"]
+
+# FR-030's validation record, the weaker form the owner's arbitration of 2026-11-02 admits for this
+# build: a second reading of the pack checked against the release notes, as build 180059's is.
+[validation]
+method = "second-reading-checked-against-release-notes"
+checked_against = """\
+the vendored pack's own English strings, \
+packages/knowledge/packs/aoe2techtree-e56728e/strings.en.json (the help_string_id text of each of \
+the fifty-six civilisations, compared bullet by bullet with the same key in \
+packages/knowledge/packs/aoe2techtree-3bb43b1/strings.en.json, with which the file is byte for \
+byte identical, and the help strings of the units, buildings and technologies a class name was \
+resolved from), read twice: once to carry or transcribe each bonus, once to resolve each selector \
+against rules.json and to check every bullet is accounted for; the two packs' rules.json compared \
+entity by entity (name, age, cost, time, producing building, and each civilisation's tree) against \
+packages/knowledge/snapshots/aoe2techtree-185872-owner-readings/rules.json, which differ in the \
+food cost of units 873 and 875 and in nothing else; and the publisher's release notes for build \
+188329, https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-188329/ \
+(dated 2026-10-27), read on 2026-11-02 and recorded in docs/data-sources.md section 6, against the \
+selected entities of every carried row. The aliases and the raw-id table are the seventh \
+snapshot's, from SiegeEngineers aoc-reference-data (repository head commit \
+5c59f163b41f757c2d4c9452fca034ec9c4e9d6c, read 2026-10-22), checked against this pack's rules.json. \
+The owner declined the game reading (spec Clarifications, Session 2026-11-02; FR-030, amended \
+2026-11-02), so no value was compared with the running game\
+"""
+performed_by = "the T835 implementer (an AI agent working for the repository owner), by direct reading; no person has reviewed it yet"
+performed_at = "2026-11-02"
+not_checked = """\
+No value was compared with the game or with any second source that is independent of the pack: \
+the bonuses, the baseline costs, times and ages in rules.json and the strings they are read from \
+all come from the one vendored pack (research.md D3: no second source is lawful to vendor), so \
+this is a second reading of one source and not independent validation. The owner declined the game \
+reading. The release notes can only show a change the publisher chose to write down: a bonus \
+change they omit cannot be detected from them. The T835 implementer had no network and did not \
+read the notes page itself; it read the record of the 2026-11-02 reading in docs/data-sources.md \
+section 6 and in specs/006-replay-analysis-foundations/tasks.md, Phase 9, which list the notes' \
+balance changes: the (Elite) Elephant Archer's cost and hit points, the Champi Scout's bonus \
+damage, the Bolas Rider's speed, Gaia animals, a very minor adjustment to the Saxons' infantry \
+discount with no number given, and fixes to the Danes' loot from destroyed buildings, the \
+Varangians' and Portuguese food bonuses, the Tupi refund on death, Varangian Guards with Gothikon \
+and the map areas Circumnavigation reveals. A carried row is a claim about two packs and that \
+record: the strings of the two packs are identical and the two rules.json files differ in two \
+costs, so a reworded bonus or a changed baseline other than those cannot hide, and the rows the \
+record names are the twenty-one transcribed again. The Saxons' discount keeps the amount the \
+pack's string states (5% per Town Center or Castle controlled, to a maximum of 20%) because the \
+notes give no number and no game reading exists (FR-022c). Every owner answer, reading and \
+class inference the seventh snapshot records as not checked is carried with its row and is not \
+resolved here: the owner's answers of 2026-10-31 came from chat, from the Fandom wiki or \
+Liquipedia read by ChatGPT for the owner and accepted unchecked, or from a page the owner copied; \
+Forced Levy's 70 food is the value consistent with the pack, over Liquipedia's 80 (FR-028, \
+disagreements.toml); the Persians' Kamandaran total, the Bohemians' derived totals, the Saxons' \
+reading of every Infantry unit as a Foot Soldier, the Khitans' Imperial Skirmisher and Heavy \
+Cavalry Archer age, the Cumans' count table and the Butalmapu selector stay as the seventh \
+snapshot left them. No validation sample is recorded for this snapshot: the seventh snapshot's \
+sample (specs/006-replay-analysis-foundations/owner-readings.md) was drawn on the build 185872 \
+pack and is not re-drawn here.\
+"""
+
+[validation.release_notes]
+url = "https://www.ageofempires.com/news/age-of-empires-ii-definitive-edition-update-188329/"
+dated = "2026-10-27"
+read_on = "2026-11-02"
