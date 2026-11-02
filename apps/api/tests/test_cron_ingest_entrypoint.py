@@ -35,6 +35,9 @@ exception propagating into the test itself, which is Starlette's `TestClient` de
 
 from __future__ import annotations
 
+import logging
+from collections.abc import Iterator
+
 import pytest
 from pydantic import SecretStr
 from starlette.testclient import TestClient
@@ -42,6 +45,20 @@ from starlette.testclient import TestClient
 from aoe2stats_api.settings import Settings
 
 pytestmark = pytest.mark.usefixtures("environment")
+
+
+@pytest.fixture(autouse=True)
+def _reset_entrypoint_logger_disabled_state() -> Iterator[None]:
+    """T832's caplog assertions share this file with the session-scoped `database_url` fixture,
+    whose first migration run calls `logging.config.fileConfig` (`infra/migrations/env.py`) and so
+    disables every logger that already exists — `api.cron.ingest.logger` among them. A disabled
+    logger is a silent no-op, which would make the assertions depend on test order. Same
+    discipline as `apps/ingester/tests/test_run.py`."""
+    import api.cron.ingest as ingest_module
+
+    ingest_module.logger.disabled = False
+    yield
+    ingest_module.logger.disabled = False
 
 
 def _client() -> TestClient:
@@ -201,3 +218,62 @@ def test_ingest_returns_a_non_200_status_when_the_cycle_cannot_run_at_all(
         )
 
     assert response.status_code == 500
+
+
+def _region_records(caplog: pytest.LogCaptureFixture) -> list[str]:
+    return [r.getMessage() for r in caplog.records if "executing in region" in r.getMessage()]
+
+
+def test_ingest_logs_the_region_the_host_reports(
+    required_env: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    database_url: str,
+    clean_database: None,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """T832: one INFO line names the region the function executes in, so a runtime-log label
+    can be told apart as the edge's or the function's."""
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    monkeypatch.setenv("VERCEL_REGION", "cdg1")
+
+    with caplog.at_level(logging.INFO, logger="api.cron.ingest"), _client() as client:
+        response = client.get(
+            "/api/cron/ingest",
+            headers={"Authorization": f"Bearer {required_env['CRON_SECRET']}"},
+        )
+
+    assert response.status_code == 200
+    assert _region_records(caplog) == ["cron ingest executing in region=cdg1"]
+
+
+def test_ingest_logs_unknown_when_the_host_reports_no_region(
+    required_env: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    database_url: str,
+    clean_database: None,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    monkeypatch.delenv("VERCEL_REGION", raising=False)
+
+    with caplog.at_level(logging.INFO, logger="api.cron.ingest"), _client() as client:
+        response = client.get(
+            "/api/cron/ingest",
+            headers={"Authorization": f"Bearer {required_env['CRON_SECRET']}"},
+        )
+
+    assert response.status_code == 200
+    assert _region_records(caplog) == ["cron ingest executing in region=unknown"]
+
+
+def test_ingest_logs_no_region_line_for_an_unauthorised_request(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setenv("VERCEL_REGION", "cdg1")
+
+    with caplog.at_level(logging.INFO, logger="api.cron.ingest"), _client() as client:
+        response = client.get("/api/cron/ingest")
+
+    assert response.status_code == 401
+    assert _region_records(caplog) == []
