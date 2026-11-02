@@ -79,8 +79,14 @@ export function AnalysisContainer({ gameId }: AnalysisContainerProps) {
   // claims the row some seconds into the request, so a poll that reads `absent` before then says
   // nothing. Keyed to the match so a settle after a navigation to another cannot touch it.
   const queryClient = useQueryClient()
-  const [pendingRequest, setPendingRequest] = useState<{ gameId: number } | null>(null)
-  const optimisticRunning = pendingRequest !== null && pendingRequest.gameId === numericGameId
+  // T832: `from` is the state the click came from. A click from `absent` pins `running` (progress);
+  // Recompute (`published`) and the refused retry keep their own frame and show `requesting`.
+  const [pendingRequest, setPendingRequest] = useState<{
+    gameId: number
+    from: 'absent' | 'published' | 'refused'
+  } | null>(null)
+  const activeRequest = pendingRequest?.gameId === numericGameId ? pendingRequest : null
+  const optimisticRunning = activeRequest !== null
 
   // T706a: set when the page's automatic `POST /api/analyze` on a `queued` analysis is refused
   // (an admission gate's 409, a 401, a network failure). A refused request takes nothing over, so
@@ -122,8 +128,10 @@ export function AnalysisContainer({ gameId }: AnalysisContainerProps) {
     }
   }
 
-  const effectiveState: ApiAnalysisSummary['state'] | undefined = optimisticRunning
-    ? 'running'
+  const effectiveState: ApiAnalysisSummary['state'] | undefined = activeRequest
+    ? activeRequest.from === 'absent'
+      ? 'running'
+      : activeRequest.from
     : summary?.state
 
   // T706: a `queued` analysis is one nobody holds - the server serves a `running` row whose lease
@@ -163,15 +171,19 @@ export function AnalysisContainer({ gameId }: AnalysisContainerProps) {
     if (numericGameId === null) {
       return
     }
+    const from =
+      summary?.state === 'published' || summary?.state === 'refused' ? summary.state : 'absent'
     const requestedGameId = numericGameId
     requestedForGameIdRef.current = requestedGameId
-    setPendingRequest({ gameId: requestedGameId })
+    setPendingRequest({ gameId: requestedGameId, from })
     // Settled either way (a rejection, such as a rate limit or the cap, is not shown): the match is
     // read once, and progress ends only when that read has answered, so the cached pre-claim read
     // is never shown in between.
     void requestAnalysis(requestedGameId)
       .catch(() => {})
       .then(() =>
+        // The document's key extends the match's, so this refetch also fetches a Recompute's new
+        // document (T832) before the pinned frame is released.
         queryClient.refetchQueries({
           queryKey: matchDetailQueryOptions(requestedGameId).queryKey,
         }),
@@ -249,7 +261,9 @@ export function AnalysisContainer({ gameId }: AnalysisContainerProps) {
     return (
       <AnalysisTimeline
         state="published"
-        stale={summary.stale}
+        // A pinned Recompute keeps its notice (and loading button) even if a read says otherwise.
+        stale={activeRequest ? true : summary.stale}
+        requesting={activeRequest !== null}
         engineName={documentQuery.data.engine.name}
         engineVersion={documentQuery.data.engine.version}
         analysedAtLabel={formatPlayedAtAbsolute(documentQuery.data.extracted_at)}
@@ -271,6 +285,7 @@ export function AnalysisContainer({ gameId }: AnalysisContainerProps) {
     <AnalysisTimeline
       state={effectiveState}
       errorClass={summary.error_class ?? undefined}
+      requesting={activeRequest !== null}
       onRequestAnalysis={handleRequestAnalysis}
     />
   )

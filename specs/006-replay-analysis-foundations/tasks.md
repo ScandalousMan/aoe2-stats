@@ -2908,6 +2908,24 @@ carries what T673's dry run read.
       progress; the `POST` then resolves, the next read answers `published`, and the published
       timeline renders without a focus event. **Contrast**: a `POST` that is rejected ends the
       optimistic state, and the page shows "Request analysis" again
+- [x] T832 Keep the published result, or the refused notice, on screen while its own request runs
+      (filed 2026-11-02 from T831). `packages/design-system/specs/analysis-timeline.md` §3.4 says
+      Recompute keeps the published columns on screen and moves its `Button` to `loading`
+      ("Recomputing…") until the new result publishes; §3.5 says a refused retry shows the same
+      notice. `AnalysisTimeline`'s `requesting` prop implements both. §5 instead said requesting or
+      recomputing shows `AnalysisProgress`, and
+      `apps/web/src/features/analysis/AnalysisContainer.tsx` does that for every click and never
+      passes `requesting`. §3.4 and §3.5 hold. **Fix**: a click from `published` (Recompute) or from
+      `refused` (retry) keeps that frame and passes `requesting` until the click's `POST` and the
+      match refetch after it settle, whatever a read meanwhile carries; after a Recompute, the
+      document is fetched again. A click from `absent` still shows `AnalysisProgress` (T831).
+      Narrow §5 to match, keeping that file's line count. **Tests**, in
+      `apps/web/src/features/analysis/AnalysisContainer.test.tsx`, red against the current
+      container first: clicking Recompute keeps the published names on screen with "Recomputing…"
+      while the `POST` is pending, and once it settles the page shows the new document with no
+      Recompute offered; clicking "Try requesting analysis" keeps the refused notice with
+      "Requesting…" while pending. **Contrast**: a click from `absent` still shows progress, and a
+      rejected Recompute leaves the published result on screen with Recompute offered again
 
 ---
 
