@@ -238,7 +238,8 @@ request #216). Each answer amends the requirement it names; the earlier answers 
   notes, stating that the owner declined the game reading (FR-030, amended). An owner answer
   recorded for build 185872 carries to build 188329 on a row T773's carry rule leaves out, where
   build 188329's notes state no change to what that answer states (which entities a class holds,
-  or the amount it gave); the row's `validated_by` cites this answer.
+  or the amount it gave); the row's `validated_by` cites this answer. This second half amends no
+  requirement: it governs the carry rule of [tasks.md](./tasks.md), Phase 9.
 - Q: Is a build 188329 recording committed as a fourth reference fixture? → A: No. No test of the
   build 188329 snapshot needs one, and the processing register's safeguard for committed
   recordings is only what the tests need (activity 10).

@@ -3302,6 +3302,11 @@ this phase, code comments included; only its commits name the old id.
   give no number, and the pack's string is unchanged; FR-022c (amended 2026-10-31) stores the
   value consistent with the pack when no game reading exists. The operand is transcribed from the
   string, and `validated_by` cites the notes' line and FR-022c. It is not an open row.
+- **The rule acts on rows only.** The fix lines also name four bonuses that have no row: the Danes'
+  loot from destroyed buildings, the Tupi refund on death, and the Varangians' and Portuguese food
+  bonuses. `effects.toml`'s header lists them among its bullets with no row (the Portuguese one
+  in `aoe2techtree-185872-civilisations-32`'s header, which the later headers point to), and they
+  stay there.
 
 - [ ] T834 [US2] Vendor aoe2techtree commit `e56728e76b7d` as a third pack,
       `packages/knowledge/packs/aoe2techtree-e56728e/`, with
@@ -3336,16 +3341,21 @@ this phase, code comments included; only its commits name the old id.
       before; T765 runs for build 188329 with no `xfail`, and its blocking gaps equal build
       188329's open rows by set equality, empty when there are none; an analysis published under
       the absence record for build 188329 is stale once the snapshot is installed
-      (`apps/analyzer/src/aoe2stats_analyzer/staleness.py`)
+      (`apps/analyzer/src/aoe2stats_analyzer/staleness.py`). **Size budget**: measured 2026-11-02,
+      `packages/knowledge/snapshots` holds 8,065,767 bytes against
+      `scripts/checks/asset_packs.py`'s 8 MiB budget, and a fifty-six-civilisation snapshot is
+      1.0 to 1.35 MB, so this snapshot does not fit. Raise the budget in the same commit,
+      re-measuring the root and stating in its comment the new total and the multiple chosen
+      (the root is append-only, a snapshot is never edited), as the pack budget's comment does
 - [ ] T836 [US2] **Owner task (verification).** After T835 is deployed, read the aggregate gap
       report as T775 does and record in [owner-readings.md](./owner-readings.md), "Production", the
       date and the count of blocking gaps for build 188329. Gaps are append-only and an analysis
       recomputes only when it is read, so the reading counts only a window that starts after the
-      deploy and holds at least one build 188329 analysis whose identity names
-      `aoe2techtree-188329-civilisations-56` (`identity.knowledge.describes_build` is 188329); a
+      deploy and holds at least one build 188329 analysis whose `identity.knowledge.describes_build`
+      is 188329; a
       zero over a window with no such analysis is not an answer, and the reading is repeated. In
       that window no `no-snapshot-for-build` gap is recorded for build 188329, and the blocking
-      count equals build 188329's FR-022b entries, zero when there are none
+      count equals the blocking gaps T765 holds for build 188329, zero when there are none
 - [ ] T837 Close Phase 9: update `docs/data-sources.md` §6, aoe2techtree's "Version identifier",
       "Coverage" and "Assessed", to say that the third commit is vendored and which snapshot derives
       from it, and the coverage sentence of `docs/risks.md`'s R12 to the builds whose snapshots
