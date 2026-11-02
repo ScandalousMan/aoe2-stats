@@ -34,7 +34,8 @@ from aoe2stats_api.ingest_stages import build_ingest_stages
 from aoe2stats_api.settings import get_settings
 from aoe2stats_ingester.run import run_once
 
-logger = logging.getLogger(__name__)
+# Fixed package-level name, not __name__: see apps/ingester/src/aoe2stats_ingester/run.py.
+logger = logging.getLogger("aoe2stats_api")
 
 
 def _authorized(authorization: str | None, secret: SecretStr) -> bool:

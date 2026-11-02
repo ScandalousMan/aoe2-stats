@@ -51,9 +51,9 @@ pytestmark = pytest.mark.usefixtures("environment")
 def _reset_entrypoint_logger_disabled_state() -> Iterator[None]:
     """T832's caplog assertions share this file with the session-scoped `database_url` fixture,
     whose first migration run calls `logging.config.fileConfig` (`infra/migrations/env.py`) and so
-    disables every logger that already exists — `api.cron.ingest.logger` among them. A disabled
-    logger is a silent no-op, which would make the assertions depend on test order. Same
-    discipline as `apps/ingester/tests/test_run.py`."""
+    disables every logger that already exists — the entrypoint's `logger` (named `aoe2stats_api`)
+    among them. A disabled logger is a silent no-op, which would make the assertions depend on
+    test order. Same discipline as `apps/ingester/tests/test_run.py`."""
     import api.cron.ingest as ingest_module
 
     ingest_module.logger.disabled = False
@@ -236,7 +236,7 @@ def test_ingest_logs_the_region_the_host_reports(
     monkeypatch.setenv("DATABASE_URL", database_url)
     monkeypatch.setenv("VERCEL_REGION", "cdg1")
 
-    with caplog.at_level(logging.INFO, logger="api.cron.ingest"), _client() as client:
+    with caplog.at_level(logging.INFO, logger="aoe2stats_api"), _client() as client:
         response = client.get(
             "/api/cron/ingest",
             headers={"Authorization": f"Bearer {required_env['CRON_SECRET']}"},
@@ -256,7 +256,7 @@ def test_ingest_logs_unknown_when_the_host_reports_no_region(
     monkeypatch.setenv("DATABASE_URL", database_url)
     monkeypatch.delenv("VERCEL_REGION", raising=False)
 
-    with caplog.at_level(logging.INFO, logger="api.cron.ingest"), _client() as client:
+    with caplog.at_level(logging.INFO, logger="aoe2stats_api"), _client() as client:
         response = client.get(
             "/api/cron/ingest",
             headers={"Authorization": f"Bearer {required_env['CRON_SECRET']}"},
@@ -272,7 +272,7 @@ def test_ingest_logs_no_region_line_for_an_unauthorised_request(
 ) -> None:
     monkeypatch.setenv("VERCEL_REGION", "cdg1")
 
-    with caplog.at_level(logging.INFO, logger="api.cron.ingest"), _client() as client:
+    with caplog.at_level(logging.INFO, logger="aoe2stats_api"), _client() as client:
         response = client.get("/api/cron/ingest")
 
     assert response.status_code == 401
