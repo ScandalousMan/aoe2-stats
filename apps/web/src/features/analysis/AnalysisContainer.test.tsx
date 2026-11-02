@@ -151,9 +151,9 @@ function baseDocument(): ApiAnalysisDocument {
 }
 
 function installFakeApi(options: {
-  detail: () => Response
+  detail: () => Response | Promise<Response>
   document?: () => Response
-  analyze?: () => Response
+  analyze?: () => Response | Promise<Response>
 }) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const path = String(input)
@@ -330,14 +330,15 @@ describe('AnalysisContainer', () => {
   it('clicking "Request analysis" fires POST /api/analyze and immediately shows progress (FR-035, FR-041)', async () => {
     const fetchMock = installFakeApi({
       detail: () => jsonResponse(baseDetail({ state: 'absent' })),
+      analyze: () => new Promise<Response>(() => {}),
     })
     renderAnalysis()
 
     const button = await screen.findByRole('button', { name: 'Request analysis' })
     fireEvent.click(button)
 
-    // The click switches this section straight to `AnalysisProgress`, without waiting on
-    // `POST /api/analyze`'s own response (analysis-timeline.md §5).
+    // The click switches this section straight to `AnalysisProgress`, which lasts while the
+    // `POST /api/analyze` is pending (analysis-timeline.md §5).
     expect(await screen.findByText('Analysing this match…')).toBeInTheDocument()
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
@@ -352,6 +353,7 @@ describe('AnalysisContainer', () => {
       detail: () =>
         jsonResponse(baseDetail({ state: 'published', stale: true, parser_version: '0.1.0' })),
       document: () => jsonResponse(baseDocument()),
+      analyze: () => new Promise<Response>(() => {}),
     })
     renderAnalysis()
 
@@ -365,6 +367,151 @@ describe('AnalysisContainer', () => {
         expect.objectContaining({ method: 'POST' }),
       ),
     )
+  })
+
+  it("keeps progress while the click's POST is pending, and shows the published timeline once it settles (T831)", async () => {
+    vi.useFakeTimers()
+    try {
+      let matchState: 'absent' | 'published' = 'absent'
+      let resolvePost: (response: Response) => void = () => {}
+      const fetchMock = installFakeApi({
+        detail: () =>
+          jsonResponse(
+            matchState === 'published'
+              ? baseDetail({ state: 'published', parser_version: '0.1.21' })
+              : baseDetail({ state: 'absent' }),
+          ),
+        document: () => jsonResponse(baseDocument()),
+        analyze: () =>
+          new Promise<Response>((resolve) => {
+            resolvePost = resolve
+          }),
+      })
+      renderAnalysis()
+
+      await act(async () => {
+        await vi.waitFor(() =>
+          expect(screen.getByRole('button', { name: 'Request analysis' })).toBeInTheDocument(),
+        )
+      })
+      fireEvent.click(screen.getByRole('button', { name: 'Request analysis' }))
+      expect(screen.getByText('Analysing this match…')).toBeInTheDocument()
+
+      // The first poll reads `absent` (the server has not claimed the row yet): still progress.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5000)
+        await vi.advanceTimersByTimeAsync(100)
+      })
+      const matchCalls = () =>
+        fetchMock.mock.calls.filter(([input]) => input === '/api/matches/500546441').length
+      expect(matchCalls()).toBe(2)
+      expect(screen.queryByRole('button', { name: 'Request analysis' })).not.toBeInTheDocument()
+      expect(screen.getByText('Analysing this match…')).toBeInTheDocument()
+
+      // The POST settles; the refetch it triggers (no timer advance, no focus event) shows the result.
+      matchState = 'published'
+      await act(async () => {
+        resolvePost(jsonResponse(baseDetail({ state: 'published' }).analysis))
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      await vi.waitFor(() => expect(screen.getByText('GL.TheViper')).toBeInTheDocument())
+      expect(screen.queryByText('Analysing this match…')).not.toBeInTheDocument()
+      expect(matchCalls()).toBe(3)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('keeps progress until the refetch after the POST settles, with no "Request analysis" flash (T831)', async () => {
+    vi.useFakeTimers()
+    try {
+      let holdNext = false
+      let releaseMatch: (response: Response) => void = () => {}
+      let resolvePost: (response: Response) => void = () => {}
+      installFakeApi({
+        detail: () =>
+          holdNext
+            ? new Promise<Response>((resolve) => {
+                releaseMatch = resolve
+              })
+            : jsonResponse(baseDetail({ state: 'absent' })),
+        document: () => jsonResponse(baseDocument()),
+        analyze: () =>
+          new Promise<Response>((resolve) => {
+            resolvePost = resolve
+          }),
+      })
+      renderAnalysis()
+
+      await act(async () => {
+        await vi.waitFor(() =>
+          expect(screen.getByRole('button', { name: 'Request analysis' })).toBeInTheDocument(),
+        )
+      })
+      fireEvent.click(screen.getByRole('button', { name: 'Request analysis' }))
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5000)
+        await vi.advanceTimersByTimeAsync(100)
+      })
+
+      // The POST settles while the refetch it triggers is still in flight.
+      holdNext = true
+      await act(async () => {
+        resolvePost(jsonResponse(baseDetail({ state: 'published' }).analysis))
+        await vi.advanceTimersByTimeAsync(100)
+      })
+      expect(screen.queryByRole('button', { name: 'Request analysis' })).not.toBeInTheDocument()
+      expect(screen.getByText('Analysing this match…')).toBeInTheDocument()
+
+      await act(async () => {
+        releaseMatch(jsonResponse(baseDetail({ state: 'published', parser_version: '0.1.21' })))
+        await vi.advanceTimersByTimeAsync(100)
+      })
+      await vi.waitFor(() => expect(screen.getByText('GL.TheViper')).toBeInTheDocument())
+      expect(screen.queryByText('Analysing this match…')).not.toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('ends the optimistic state and offers "Request analysis" again when the click\'s POST is rejected (T831)', async () => {
+    vi.useFakeTimers()
+    try {
+      let answerPost: (response: Response) => void = () => {}
+      installFakeApi({
+        detail: () => jsonResponse(baseDetail({ state: 'absent' })),
+        analyze: () =>
+          new Promise<Response>((resolve) => {
+            answerPost = resolve
+          }),
+      })
+      renderAnalysis()
+
+      await act(async () => {
+        await vi.waitFor(() =>
+          expect(screen.getByRole('button', { name: 'Request analysis' })).toBeInTheDocument(),
+        )
+      })
+      fireEvent.click(screen.getByRole('button', { name: 'Request analysis' }))
+      expect(screen.getByText('Analysing this match…')).toBeInTheDocument()
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5000)
+        await vi.advanceTimersByTimeAsync(100)
+      })
+      expect(screen.getByText('Analysing this match…')).toBeInTheDocument()
+
+      await act(async () => {
+        answerPost(jsonResponse({ error: { code: 'rate_limited', message: 'Slow down.' } }, 429))
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      await vi.waitFor(() =>
+        expect(screen.getByRole('button', { name: 'Request analysis' })).toBeInTheDocument(),
+      )
+      expect(screen.queryByText('Analysing this match…')).not.toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('polls GET /api/matches/{game_id} every 5 seconds while running, and stops once published (FR-035)', async () => {

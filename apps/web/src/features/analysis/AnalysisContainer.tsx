@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AnalysisTimeline, Button, Callout } from 'design-system'
 import { ApiRequestError, isApiErrorCode } from '../../lib/api'
@@ -74,12 +74,13 @@ function safeAnalysisState(data: unknown): ApiAnalysisSummary['state'] | undefin
 export function AnalysisContainer({ gameId }: AnalysisContainerProps) {
   const numericGameId = parseGameId(gameId)
 
-  // FR-041, `analysis-timeline.md` §5: "does not wait on its own `POST /api/analyze` response...
-  // the click fires the request and this component immediately shows `AnalysisProgress`" — this is
-  // that immediate, optimistic switch, cleared the moment a real fetch lands after the click
-  // (below), whatever state it turns out to carry.
-  const [optimisticRunning, setOptimisticRunning] = useState(false)
-  const clickedAtRef = useRef<number | null>(null)
+  // FR-041, `analysis-timeline.md` §5: a click shows `AnalysisProgress` at once, and what the
+  // match reads is trusted only after the click's own `POST /api/analyze` settles (T831). The server
+  // claims the row some seconds into the request, so a poll that reads `absent` before then says
+  // nothing. Keyed to the match so a settle after a navigation to another cannot touch it.
+  const queryClient = useQueryClient()
+  const [pendingRequest, setPendingRequest] = useState<{ gameId: number } | null>(null)
+  const optimisticRunning = pendingRequest !== null && pendingRequest.gameId === numericGameId
 
   // T706a: set when the page's automatic `POST /api/analyze` on a `queued` analysis is refused
   // (an admission gate's 409, a 401, a network failure). A refused request takes nothing over, so
@@ -110,16 +111,6 @@ export function AnalysisContainer({ gameId }: AnalysisContainerProps) {
         : false
     },
   })
-
-  useEffect(() => {
-    if (!optimisticRunning || clickedAtRef.current === null) {
-      return
-    }
-    if (matchQuery.dataUpdatedAt > clickedAtRef.current) {
-      setOptimisticRunning(false)
-      clickedAtRef.current = null
-    }
-  }, [optimisticRunning, matchQuery.dataUpdatedAt])
 
   let summary: ApiAnalysisSummary | undefined
   let summaryShapeError = false
@@ -172,12 +163,23 @@ export function AnalysisContainer({ gameId }: AnalysisContainerProps) {
     if (numericGameId === null) {
       return
     }
-    clickedAtRef.current = Date.now()
-    requestedForGameIdRef.current = numericGameId
-    setOptimisticRunning(true)
-    // Fire-and-forget (this function's own docstring, `api.ts`) — a rejection here (a rate limit,
-    // the cap) is not shown by this promise; the next poll shows the state the row is really in.
-    void requestAnalysis(numericGameId).catch(() => {})
+    const requestedGameId = numericGameId
+    requestedForGameIdRef.current = requestedGameId
+    setPendingRequest({ gameId: requestedGameId })
+    // Settled either way (a rejection, such as a rate limit or the cap, is not shown): the match is
+    // read once, and progress ends only when that read has answered, so the cached pre-claim read
+    // is never shown in between.
+    void requestAnalysis(requestedGameId)
+      .catch(() => {})
+      .then(() =>
+        queryClient.refetchQueries({
+          queryKey: matchDetailQueryOptions(requestedGameId).queryKey,
+        }),
+      )
+      .catch(() => {})
+      .finally(() => {
+        setPendingRequest((current) => (current?.gameId === requestedGameId ? null : current))
+      })
   }
 
   // Mirrors `MatchDetailContainer.tsx`'s own `showReplayAvailability` gate: nothing to analyse for
