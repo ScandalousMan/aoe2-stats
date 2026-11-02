@@ -3189,7 +3189,7 @@ phase.
       carried from that update, not from 185872. Depends on T772 and T773. **Tests**: T765's tuples for
       build 180059 and the second committed recording's blocker set equal their FR-022b entries, by
       set equality, and are empty when there are none
-- [ ] T775 [US2] **Owner task (verification).** After each promotion is deployed, read the
+- [x] T775 [US2] **Owner task (verification).** After each promotion is deployed, read the
       aggregate gap report for that build: the `knowledge_gap_rate.py` step of `nightly.yml`'s
       `capture-audit` job, or
       `uv run scripts/checks/knowledge_gap_rate.py --window-days 1` against production. Record in
