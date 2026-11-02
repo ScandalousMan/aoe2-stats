@@ -228,6 +228,21 @@ game. Each answer amends the requirement it names; the earlier answers stay abov
   the weaker form, a second reading of the pack, stating that the owner declined the game reading
   (FR-030, amended).
 
+### Session 2026-11-02
+
+Arbitrated by the repository owner on the build 188329 assessment (`/speckit-analyze` of pull
+request #216). Each answer amends the requirement it names; the earlier answers stay above.
+
+- Q: Does the arbitration of 2026-10-31 extend to build 188329? → A: Yes. Build 188329's snapshot
+  is validated at the weaker form, a second reading of the pack checked against build 188329's
+  notes, stating that the owner declined the game reading (FR-030, amended). An owner answer
+  recorded for build 185872 carries to build 188329 on a row T773's carry rule leaves out, where
+  build 188329's notes state no change to what that answer states (which entities a class holds,
+  or the amount it gave); the row's `validated_by` cites this answer.
+- Q: Is a build 188329 recording committed as a fourth reference fixture? → A: No. No test of the
+  build 188329 snapshot needs one, and the processing register's safeguard for committed
+  recordings is only what the tests need (activity 10).
+
 ## User Scenarios & Testing _(mandatory)_
 
 ### User Story 1 - Know what can and cannot be known (Priority: P1)
@@ -556,6 +571,8 @@ new snapshot, reproduce the analysis from the original identity, and confirm the
   because the owner declined to read the running game and ruled that the build does not wait for
   that search; the validation record states that reason once, for every such row, and each row
   names the two fields it read.
+  **Amended 2026-11-02** at the repository owner's arbitration (Clarifications, Session
+  2026-11-02): the same admission holds for build 188329's snapshot.
 - **FR-031**: Only a source whose licence permits it MAY be vendored into this repository. A source
   with no licence MUST NOT be vendored, MUST NOT be fetched at build or test time, and MAY only be
   consulted by a human whose transcription is recorded with its provenance (002 research).

@@ -657,7 +657,7 @@ against keeping one measurement in two homes.
   and committed on the release day, that its data matches the released build was not verified, and
   neither was any value in the snapshot (FR-030).
   Assessed 2026-11-02, the source's newest commit is a third one,
-  `e56728e76b7d08301fba7b18d5f16bc8554c109a` (authored and committed 2026-10-27, "Implement DE
+  `e56728e76b7d` (authored and committed 2026-10-27, "Implement DE
   Update 188329"), whose message carries the publisher's update page for build 188329, a build
   production has recorded a `no-snapshot-for-build` gap for (match 517988141, played
   2026-11-01). It is not vendored, and no snapshot describes build 188329. Its one parent is the
