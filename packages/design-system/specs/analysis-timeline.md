@@ -304,11 +304,11 @@ six domain states tabled in §3, which this vocabulary's `loading`/`error`/`empt
   and returning to find the right state already showing, not necessarily watching this page the whole
   time. Polling stops the instant `state` is anything other than `queued`/`running`, and stops entirely
   when the component unmounts. A `queued` summary (an unclaimed analysis; the server also serves a `running` one whose lease expired as `queued`) makes it send one `POST /api/analyze` per page view, not one per poll and never while `running`; if that `POST` is refused, polling stops and the page shows the refusal in a `Callout` with a "Try again". Requesting or recomputing an analysis (§3.4) does not wait on its own
-  `POST /api/analyze` response to update this component: the click fires the request and this component
-  immediately shows `AnalysisProgress`, relying on the very next poll (or the eventual page it lands on)
-  to read the outcome — this is what keeps SC-007's "never a frozen screen" true even though a single
-  analysis run may take up to the platform's 300 s budget, because no `Button` is ever left spinning for
-  more than the instant it takes to fire the request.
+  `POST /api/analyze` response to show progress: the click immediately shows `AnalysisProgress`, so no
+  `Button` spins past that instant and SC-007's "never a frozen screen" holds though one run may take up
+  to the platform's 300 s budget. While that `POST` is unsettled, no poll's read (`absent` or any other) is
+  taken as the click's outcome; progress stays shown. Once it settles, accepted or refused, the page refetches
+  the match once and shows what that read carries, so a refused `POST` ends progress and shows the request again.
 - **error** — a network failure loading the match-detail response itself (not any of §3's domain states,
   which are not errors): `Callout/danger` in place of this whole section, "We could not load this
   match's analysis. Try again." with a retry — matching `match-history.md`'s and

@@ -2887,6 +2887,27 @@ carries what T673's dry run read.
       other capture that this cause does not explain. **Done 2026-10-18**: `baselines.yml` run
       39119237720 moved exactly those 36 beyond noise; its other 119 rewrites, all at or under
       100px, are reverted
+- [x] T831 Keep the click's progress state until its own `POST /api/analyze` settles (filed
+      2026-11-02, production incident). Reproduced by the owner on matches 517988141 and
+      517625548: the click's `POST` answered 200 and the analysis was published, yet the page went
+      back to "Request analysis" until a window-focus refetch. Measured on 517625548: the `POST`
+      took about 10 s; the first `GET /api/matches/517625548` after the click landed at about
+      5.5 s and answered `absent`; every later one answered `published`.
+      `apps/web/src/features/analysis/AnalysisContainer.tsx` clears its optimistic `running` on
+      the first match fetch after the click, and `refetchInterval` stops for any state other than
+      `queued`/`running`, so an `absent` read taken before the server claims the row ends polling.
+      The claim (`apps/analyzer/src/aoe2stats_analyzer/claim.py`) comes only after the function's
+      start-up and `run_once`'s pre-claim checks (`apps/analyzer/src/aoe2stats_analyzer/run.py`),
+      which can take longer than one poll interval. **Fix**: the optimistic state lasts until the
+      click's `POST` settles, whatever the polls read meanwhile; once it settles, the match is
+      refetched once and the page shows what that read carries. The same holds for Recompute.
+      Amend `packages/design-system/specs/analysis-timeline.md` §5 to match, keeping that file's
+      line count (its lines are cited). **Tests**, in
+      `apps/web/src/features/analysis/AnalysisContainer.test.tsx`, red against the current
+      container first: with the `POST` pending, a poll answers `absent` and the page still shows
+      progress; the `POST` then resolves, the next read answers `published`, and the published
+      timeline renders without a focus event. **Contrast**: a `POST` that is rejected ends the
+      optimistic state, and the page shows "Request analysis" again
 
 ---
 
