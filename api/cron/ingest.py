@@ -13,7 +13,7 @@ HTTP hop between the two would put the cycle in whichever one has no extended du
 (ADR-0002). The secret check (`_authorized` below) is duplicated there rather than shared, which
 is the price constitution XII's "two thin entrypoints" asks this feature to pay.
 
-T832: each authorised run logs the region the host reports it executes in (`VERCEL_REGION`), read
+T841: each authorised run logs the region the host reports it executes in (`VERCEL_REGION`), read
 here only. A runtime log once labelled this function `iad1` though `vercel.json` pins `cdg1`; the
 line tells a function's region from the label an edge attaches.
 """
