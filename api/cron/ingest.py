@@ -12,11 +12,17 @@ $CRON_SECRET` itself — the quickstart's manual `curl -X POST` and the phase-2 
 HTTP hop between the two would put the cycle in whichever one has no extended duration
 (ADR-0002). The secret check (`_authorized` below) is duplicated there rather than shared, which
 is the price constitution XII's "two thin entrypoints" asks this feature to pay.
+
+T832: each authorised run logs the region the host reports it executes in (`VERCEL_REGION`), read
+here only. A runtime log once labelled this function `iad1` though `vercel.json` pins `cdg1`; the
+line tells a function's region from the label an edge attaches.
 """
 
 from __future__ import annotations
 
 import hmac
+import logging
+import os
 
 from pydantic import SecretStr
 from starlette.applications import Starlette
@@ -27,6 +33,9 @@ from starlette.routing import Route
 from aoe2stats_api.ingest_stages import build_ingest_stages
 from aoe2stats_api.settings import get_settings
 from aoe2stats_ingester.run import run_once
+
+# Fixed package-level name, not __name__: see apps/ingester/src/aoe2stats_ingester/run.py.
+logger = logging.getLogger("aoe2stats_api")
 
 
 def _authorized(authorization: str | None, secret: SecretStr) -> bool:
@@ -61,6 +70,7 @@ async def _ingest(request: Request) -> JSONResponse:
             status_code=401,
         )
 
+    logger.info("cron ingest executing in region=%s", os.environ.get("VERCEL_REGION") or "unknown")
     report = await run_once(
         settings.ingest_run_budget_seconds,
         trigger="cron",
