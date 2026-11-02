@@ -3256,6 +3256,93 @@ phase.
       `uv run scripts/checks/spec_lint.py --feature specs/006-replay-analysis-foundations` and
       confirm it exits 0; then run the whole suite by exit code
 
+## Phase 9: Game build 188329 (filed 2026-11-02, production gap)
+
+**Purpose**: production analysed match 517988141 (played 2026-11-01) and recorded
+`build=188329 cause=no-snapshot-for-build severity=blocking`. Build 188329 shipped on 2026-10-27,
+`packages/knowledge` has no snapshot for it, and every analysis of a match on it is published with
+the absence record and one whole-build gap. What is measured about the build and its sources is in
+`docs/data-sources.md` §6 (aoe2techtree's "Version identifier", "Publisher patch notes" and the
+aoe2de_patcher build list), assessed 2026-11-02; this phase does not restate it. In short: a newer
+aoe2techtree commit implements the build, so a snapshot is a direct import, and the build's notes
+leave one modelled bonus without a number (the Saxons' infantry discount).
+
+**Numbering**: Phase 9 starts at T834. T831 is this feature's last merged task; the two ids
+between are named by open pull requests (#214, #215).
+
+**What every Phase 9 implementer must know**: Phase 8's rules hold unchanged (transcription follows
+T746, a class name is resolved and never guessed, an unstated amount follows FR-022c, a snapshot's
+label states its build). A row of `aoe2techtree-185872-owner-readings` reaches build 188329 only
+under T773's carry rule, with build 188329's release notes as the notes its third condition reads:
+the bullet is byte-identical under the same key in both packs, every selector resolves to the same
+identifiers in build 188329's `rules.json`, and build 188329's notes name no change to that bonus or
+to an entity it selects. Assessed 2026-11-02, that rule leaves out two sets of rows: the ten whose
+selector names unit 873 or 875 (the notes change those units' cost), and the two Saxons "Foot
+Soldiers cost -5% per Town Center or Castle controlled" rows (the notes adjust that bonus and give
+no number).
+
+- [ ] T834 [US2] Commit a build 188329 recording as a fourth fixture in `tests/fixtures/replays/`,
+      under that README's rules, before the source purges it (`docs/data-sources.md` §2 holds the
+      retention window; match 517988141 was played 2026-11-01). Download it from the public replay
+      endpoint the README's other entries name, with a `profileId` of a player in that match read
+      from a public source, byte for byte as served; record build, sizes, members, point of view,
+      operation counts and SHA-256 as the other entries do. A different build 188329 match is
+      acceptable if this one is gone, and the README says which and why. **Test**: it extracts
+      through `packages/replay-engine/`, and its recorded build is 188329; while no snapshot
+      describes build 188329, its blocker set is the single `no-snapshot-for-build` gap
+- [ ] T835 [P] [US2] Vendor aoe2techtree commit `e56728e76b7d08301fba7b18d5f16bc8554c109a` as a third
+      pack, `packages/knowledge/packs/aoe2techtree-e56728e/`, with
+      `scripts/ops/import_knowledge_pack.py` reading a local checkout at that commit (FR-032),
+      beside the two packs already vendored, with its `MANIFEST.json` and `LICENCE.md` as the
+      second pack's are written. No snapshot in this task. **Test**: whatever the existing pack
+      tests assert of the second pack holds for the third, and the third's `trees/` and
+      `strings.en.json` are byte-identical to the second's, as the commit's diff says
+- [ ] T836 [US2] Promote `aoe2techtree-188329`, a direct import of the third pack (its commit
+      message carries the build's update page, as T707's did for build 185872), modelling all
+      fifty-six civilisations. `rules.json` is derived under the current normaliser; before
+      promotion, diff it against `aoe2techtree-185872-owner-readings`'s and explain every
+      difference in the commit body (`docs/data-sources.md` §6 reads the commit's diff as changing
+      only the food cost of units 873 and 875 among the imported fields; a difference beyond that
+      is reported, not absorbed). `aliases.toml` and the civilisation table are read again for this
+      pack, as T773 read them. Each row of `effects.toml` is decided on its own under T773's carry
+      rule, and a carried row's `validated_by` says so and names the source snapshot's digest. The
+      ten rows that select unit 873 or 875 are transcribed again from the third pack's strings and
+      checked against build 188329's notes. The two Saxons "Foot Soldiers" rows are
+      `modelled = "no"` with a reason citing the notes' line, and each is an open row of
+      [owner-readings.md](./owner-readings.md) under a new "Build 188329" heading, until T837
+      answers. `disagreements.toml` (the Militia line's base cost) is carried under the same rule.
+      **Tests**: build 188329 resolves to the new snapshot, and builds 180059 and 185872 resolve
+      as before; T765 runs for build 188329 with no `xfail`, and its blocking gaps for Saxons equal
+      the open rows by set equality, with none for any other civilisation; an analysis published
+      under the absence record for build 188329 is stale once the snapshot is installed
+      (`apps/analyzer/src/aoe2stats_analyzer/staleness.py`); with T834 landed, the fourth fixture's
+      blocker set equals its open rows by set equality. Depends on T835
+- [ ] T837 [US2] **Owner task (information, or arbitration).** For build 188329, give the Saxons'
+      infantry discount per Town Center or Castle controlled, and its maximum, and say where it was
+      read: the running game, or the Fandom wiki or Liquipedia (an agent may read either for the
+      owner, saying so; Phase 8, amended 2026-10-31). The notes call the change a "very minor
+      adjustment" toward the stated numbers and give none, and the pack's English text is the
+      same as build 185872's. If no reading is available, the owner may rule instead that the stated
+      numbers (-5% each, -20% at most) are build 188329's; the ruling is recorded as a ruling, not a
+      reading. Recorded per row in [owner-readings.md](./owner-readings.md) as T771's are
+- [ ] T838 [US2] Close build 188329's open rows in a snapshot that supersedes T836's,
+      `aoe2techtree-188329-owner-readings`: each Saxons row becomes modelled from T837's answer,
+      its `validated_by` citing the answer and whether it is a reading or a ruling; an answer that
+      differs from the stated numbers is recorded as a disagreement (FR-028). A row the owner
+      reports unreadable, with no ruling, becomes an FR-022b entry. **Tests**: T765's tuples for
+      build 188329 equal its FR-022b entries, by set equality, and are empty when there are none;
+      the same for the fourth fixture's blocker set. Depends on T836 and T837
+- [ ] T839 [US2] **Owner task (verification).** After T836, and again after T838, is deployed, read
+      the aggregate gap report as T775 does and record in
+      [owner-readings.md](./owner-readings.md), "Production", the date and the count of blocking
+      gaps for build 188329. After T836 it holds no `no-snapshot-for-build` gap for build 188329;
+      after T838 it equals build 188329's FR-022b entries, zero when there are none, for every
+      analysis recomputed since
+- [ ] T840 Close Phase 9: update `docs/data-sources.md` §6, aoe2techtree's "Version identifier",
+      "Coverage" and "Assessed", to say that the third commit is vendored and which snapshots derive
+      from it; run `uv run scripts/checks/spec_lint.py --feature specs/006-replay-analysis-foundations`
+      and confirm it exits 0; then run the whole suite by exit code
+
 ## Dependencies and execution order
 
 ### Phase dependencies
@@ -3273,6 +3360,9 @@ phase.
   to T764 before T765; T765 before T767; the batches T767 to T770 in order, because each
   supersedes the last; T772 after T771's answers for build 185872; T773 after T770; T774 after
   T772 and T773. T760, T766 and T777 depend on nothing in the phase.
+- **Phase 9** depends on phase 8's T772, whose snapshot its rows are carried from. Inside it: T834
+  first, because its evidence expires, and independent of the rest; T835 before T836; T838 after
+  T836 and T837; T839 after each deployment; T840 last.
 
 ### Within phases
 

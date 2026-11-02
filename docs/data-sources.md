@@ -656,6 +656,21 @@ against keeping one measurement in two homes.
   more: the commit was authored eleven days before the publisher released the build (2026-09-22)
   and committed on the release day, that its data matches the released build was not verified, and
   neither was any value in the snapshot (FR-030).
+  Assessed 2026-11-02, the source's newest commit is a third one,
+  `e56728e76b7d08301fba7b18d5f16bc8554c109a` (authored and committed 2026-10-27, "Implement DE
+  Update 188329"), whose message carries the publisher's update page for build 188329, a build
+  production has recorded a `no-snapshot-for-build` gap for (match 517988141, played
+  2026-11-01). It is not vendored, and no snapshot describes build 188329. Its one parent is the
+  second pinned commit, and against it the commit changes no file under `data/trees/` and leaves
+  `data/locales/en/strings.json` unchanged (the 56 trees, and every civilisation's English bonus
+  text, are the second pack's). In `data/data.json` it changes six units: the Elephant Archer
+  (873) and Elite Elephant Archer (875) cost 70 food where they cost 60, with 10 fewer hit points
+  each; the Champi Scout (2550) bonus attack against armour classes 8 and 30 goes from 1 to 2; the
+  Bolas Rider (2569) speed from 1.5 to 1.45; the Jarl (2708) and Elite Jarl (2709) each lose an
+  armour entry of amount 0 for class 36. Of the fields `packages/knowledge` imports (cost,
+  training time, age requirement, producing building, name, and each civilisation's tree), only
+  the two Elephant Archers' food cost differs. That is a reading of the commit's diff, not an
+  import: no `rules.json` has been derived from this commit.
 - **Coverage**: all 53 civilisations present in the trees directory at the first pinned commit (56
   at the second, which adds Saxons, Danes and Varangians); costs,
   times and ages for every unit, building and technology those trees name. The build 180059
@@ -723,8 +738,10 @@ against keeping one measurement in two homes.
   an entity each selects. Build 180059 has no open value and no FR-022b entry. Its `rules.json`,
   `aliases.toml` and `disagreements.toml` are the second's.
 - **Known limitations**: no civilisation-specific bonus data as structured values, no build/version
-  field of its own, no combat attributes (attack, armour, hit points, range) — halfon carries those
-  (below). Three builds (178524, 179158, 180059) unimplemented by the first pinned commit as of this
+  field of its own. **Corrected 2026-11-02**: this said the source carries no combat attributes;
+  every unit in both vendored packs' `data.json` carries `HP`, `Attack`, `Attacks`, `Armours`,
+  `MeleeArmor`, `PierceArmor`, `Range` and `Speed`. `packages/knowledge` does not import them.
+  Three builds (178524, 179158, 180059) unimplemented by the first pinned commit as of this
   assessment. Each tree entry's `link_id`/`link_node_type` is the tech-tree screen's display link,
   not the game's own prerequisite rule: Hand Cannoneer links to node 6 in Bohemians' tree alone,
   where the game requires Chemistry in every civilisation (research.md D3, T652y).
@@ -747,7 +764,8 @@ against keeping one measurement in two homes.
   seventh 2026-10-31
   (`packages/knowledge/snapshots/aoe2techtree-185872-owner-readings/snapshot.toml`); the build 180059
   chain's third 2026-11-01
-  (`packages/knowledge/snapshots/aoe2techtree-180059-owner-readings/snapshot.toml`). Licence: MIT,
+  (`packages/knowledge/snapshots/aoe2techtree-180059-owner-readings/snapshot.toml`); the third
+  commit, implementing build 188329, read and not vendored 2026-11-02. Licence: MIT,
   **copy in** — `docs/asset-packs.md` "Knowledge packs".
 
 ### halfon
@@ -970,6 +988,17 @@ against keeping one measurement in two homes.
   do not define "Foot Soldiers" or the Jurchens' "Siege and Fortification upgrades" beyond Murder
   Holes. Update 61321 says only that Cuman Town Centers can be repaired in the Feudal Age even if the
   player has more than two.
+  Read 2026-11-02 for build 188329 (its own page, dated 2026-10-27). Its balance changes are the
+  (Elite) Elephant Archer's cost (60 food 80 gold to 70 food 80 gold) and hit points (230 to 220,
+  Elite 280 to 270), the Champi Scout's bonus damage against the Scout Cavalry-line and Camel Scout
+  (+1 to +2), the Mapuche Bolas Rider's speed (1.5 to 1.45), and Gaia animals. One line touches a
+  bonus `packages/knowledge` models and gives no number: a "very minor adjustment" to the Saxons'
+  infantry discount, so that its internal values better fit the numbers the bonus text states.
+  Its other civilisation lines are fixes to bonuses on fields `packages/knowledge` does not carry
+  (the Danes' loot from destroyed buildings, the Varangians' and Portuguese food bonuses, the Tupi
+  refund on death, Varangian Guards with Gothikon). It names no new civilisation, unit or
+  technology, and no change to a training or research time or an age requirement. It does not
+  mention the Jarl's armour entry the aoe2techtree commit removes.
 - **Known limitations**: all rights reserved — read and transcribed only, never copied in; and, as
   above, minor-update sections carry no independent dated timestamp of their own, a stated weakness
   of the validation rather than a hidden one (research.md D4).
@@ -989,7 +1018,8 @@ against keeping one measurement in two homes.
 - **Version identifier**: the build number itself is the identifier; the list has no version of its
   own.
 - **Coverage**: dates for builds 178524 (2026-06-08), 179158 (2026-06-16) and 180059 (2026-07-07),
-  as read for the committed fixtures' carry-forward validation.
+  as read for the committed fixtures' carry-forward validation; build 188329's depot date,
+  2026-10-27 17:27 UTC, read 2026-11-02 from `remote/patches.json` at commit `6055d8c957`.
 - **Known limitations**: GPL-2.0, and used **for reference only** — the dates are transcribed by
   hand into a validation record; the file itself is never copied into this repository.
 - **Ruling**: **reference only.**
