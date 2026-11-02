@@ -152,7 +152,7 @@ stays silent.
 **Independent Test**: present a maintainer with two sources spelling a civilisation differently and
 confirm they resolve it from the documentation alone.
 
-- [ ] T212 [US3] Write the precedence section of `docs/reference-data.md` (FR-007, SC-005): the name the game itself displays wins over any community restatement, and captured evidence from the live source wins over any third-party statement about that source. Point at the divergence already in the table — the reference dataset writes "Maya" where the table keeps "Mayans" — as a decision that was checked rather than an oversight, without restating the entry itself (FR-009)
+- [x] T212 [US3] Write the precedence section of `docs/reference-data.md` (FR-007, SC-005): the name the game itself displays wins over any community restatement, and captured evidence from the live source wins over any third-party statement about that source. Point at the divergence already in the table — the reference dataset writes "Maya" where the table keeps "Mayans" — as a decision that was checked rather than an oversight, without restating the entry itself (FR-009)
 
 **Checkpoint**: all four stories are independently functional.
 
