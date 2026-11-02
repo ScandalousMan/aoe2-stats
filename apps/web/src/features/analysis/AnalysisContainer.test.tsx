@@ -360,7 +360,8 @@ describe('AnalysisContainer', () => {
     const recompute = await screen.findByRole('button', { name: 'Recompute' })
     fireEvent.click(recompute)
 
-    expect(await screen.findByText('Analysing this match…')).toBeInTheDocument()
+    // T832: Recompute keeps the published frame; the button shows its own loading state.
+    expect(await screen.findByRole('button', { name: /Recomputing/ })).toBeInTheDocument()
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
         '/api/analyze',
@@ -512,6 +513,123 @@ describe('AnalysisContainer', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it('keeps the published result with "Recomputing…" while the POST is pending, then shows the new document (T832)', async () => {
+    let matchState: 'stale' | 'fresh' = 'stale'
+    let resolvePost: (response: Response) => void = () => {}
+    const newDocument = baseDocument()
+    newDocument.engine.version = '0.2.0'
+    newDocument.participants[0]!.age_up_commands = {}
+    let documentFetches = 0
+    installFakeApi({
+      detail: () =>
+        jsonResponse(
+          matchState === 'fresh'
+            ? baseDetail({ state: 'published', stale: false, parser_version: '0.2.0' })
+            : baseDetail({ state: 'published', stale: true, parser_version: '0.1.0' }),
+        ),
+      document: () => {
+        documentFetches += 1
+        return jsonResponse(matchState === 'fresh' ? newDocument : baseDocument())
+      },
+      analyze: () =>
+        new Promise<Response>((resolve) => {
+          resolvePost = resolve
+        }),
+    })
+    renderAnalysis()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Recompute' }))
+
+    expect(await screen.findByRole('button', { name: /Recomputing/ })).toBeInTheDocument()
+    expect(screen.getByText('GL.TheViper')).toBeInTheDocument()
+    expect(screen.queryByText('Analysing this match…')).not.toBeInTheDocument()
+    expect(documentFetches).toBe(1)
+
+    matchState = 'fresh'
+    await act(async () => {
+      resolvePost(jsonResponse(baseDetail({ state: 'published' }).analysis))
+    })
+    await waitFor(() => expect(documentFetches).toBe(2))
+    await waitFor(() => expect(screen.getByText(/0\.2\.0/)).toBeInTheDocument())
+    expect(screen.getByText('GL.TheViper')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Recomput/ })).not.toBeInTheDocument()
+  })
+
+  it('keeps the published frame when a match read answers running during a Recompute (T832)', async () => {
+    vi.useFakeTimers()
+    try {
+      let matchState: 'stale' | 'running' = 'stale'
+      installFakeApi({
+        detail: () =>
+          jsonResponse(
+            matchState === 'running'
+              ? baseDetail({ state: 'running', parser_version: '0.1.0' })
+              : baseDetail({ state: 'published', stale: true, parser_version: '0.1.0' }),
+          ),
+        document: () => jsonResponse(baseDocument()),
+        analyze: () => new Promise<Response>(() => {}),
+      })
+      renderAnalysis()
+
+      await act(async () => {
+        await vi.waitFor(() =>
+          expect(screen.getByRole('button', { name: 'Recompute' })).toBeInTheDocument(),
+        )
+      })
+      fireEvent.click(screen.getByRole('button', { name: 'Recompute' }))
+      matchState = 'running'
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5000)
+        await vi.advanceTimersByTimeAsync(100)
+      })
+
+      expect(screen.getByText('GL.TheViper')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /Recomputing/ })).toBeInTheDocument()
+      expect(screen.queryByText('Analysing this match…')).not.toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('leaves the published result on screen and offers Recompute again when the POST is rejected (T832)', async () => {
+    let answerPost: (response: Response) => void = () => {}
+    installFakeApi({
+      detail: () =>
+        jsonResponse(baseDetail({ state: 'published', stale: true, parser_version: '0.1.0' })),
+      document: () => jsonResponse(baseDocument()),
+      analyze: () =>
+        new Promise<Response>((resolve) => {
+          answerPost = resolve
+        }),
+    })
+    renderAnalysis()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Recompute' }))
+    expect(await screen.findByRole('button', { name: /Recomputing/ })).toBeInTheDocument()
+
+    await act(async () => {
+      answerPost(jsonResponse({ error: { code: 'rate_limited', message: 'Slow down.' } }, 429))
+    })
+    const again = await screen.findByRole('button', { name: 'Recompute' })
+    expect(again).not.toBeDisabled()
+    expect(screen.getByText('GL.TheViper')).toBeInTheDocument()
+    expect(screen.queryByText('Analysing this match…')).not.toBeInTheDocument()
+  })
+
+  it('keeps the refused notice with "Requesting…" while its retry POST is pending (T832)', async () => {
+    installFakeApi({
+      detail: () => jsonResponse(baseDetail({ state: 'refused' })),
+      analyze: () => new Promise<Response>(() => {}),
+    })
+    renderAnalysis()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Try requesting analysis' }))
+
+    expect(await screen.findByRole('button', { name: /Requesting/ })).toBeInTheDocument()
+    expect(screen.getByText('Analysis is temporarily unavailable')).toBeInTheDocument()
+    expect(screen.queryByText('Analysing this match…')).not.toBeInTheDocument()
   })
 
   it('polls GET /api/matches/{game_id} every 5 seconds while running, and stops once published (FR-035)', async () => {

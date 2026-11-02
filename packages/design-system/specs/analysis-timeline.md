@@ -303,12 +303,12 @@ six domain states tabled in §3, which this vocabulary's `loading`/`error`/`empt
   concrete mechanism behind FR-035's "let the user leave and come back": leaving means navigating away
   and returning to find the right state already showing, not necessarily watching this page the whole
   time. Polling stops the instant `state` is anything other than `queued`/`running`, and stops entirely
-  when the component unmounts. A `queued` summary (an unclaimed analysis; the server also serves a `running` one whose lease expired as `queued`) makes it send one `POST /api/analyze` per page view, not one per poll and never while `running`; if that `POST` is refused, polling stops and the page shows the refusal in a `Callout` with a "Try again". Requesting or recomputing an analysis (§3.4) does not wait on its own
-  `POST /api/analyze` response to show progress: the click immediately shows `AnalysisProgress`, so no
-  `Button` spins past that instant and SC-007's "never a frozen screen" holds though one run may take up
-  to the platform's 300 s budget. While that `POST` is unsettled, no poll's read (`absent` or any other) is
-  taken as the click's outcome; progress stays shown. Once it settles, accepted or refused, the page refetches
-  the match once and shows what that read carries, so a refused `POST` ends progress and shows the request again.
+  when the component unmounts. A `queued` summary (an unclaimed analysis; the server also serves a `running` one whose lease expired as `queued`) makes it send one `POST /api/analyze` per page view, not one per poll and never while `running`; if that `POST` is refused, polling stops and the page shows the refusal in a `Callout` with a "Try again". A first request (from `absent`, where there is nothing to keep) shows `AnalysisProgress` at the click, without waiting on its `POST /api/analyze` response; Recompute (§3.4) and the refused retry (§3.5) keep their frame and move their own `Button` to `loading` instead.
+  While that `POST` is unsettled, no poll's read (`absent` or any other) is taken as the click's outcome; progress
+  or `loading` stays shown. Once it settles, accepted or refused, the page refetches the match once and shows
+  that read: a refused first request ends progress and shows the request again, and a refused Recompute leaves
+  the published result with Recompute offered again. SC-007's "never a frozen screen" holds: something always
+  moves at once (progress, or the clicked `Button`'s `loading` state) and the content never disappears.
 - **error** — a network failure loading the match-detail response itself (not any of §3's domain states,
   which are not errors): `Callout/danger` in place of this whole section, "We could not load this
   match's analysis. Try again." with a retry — matching `match-history.md`'s and
