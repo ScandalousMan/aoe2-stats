@@ -3286,8 +3286,9 @@ this phase, code comments included; only its commits name the old id.
   one that names a civilisation's bonus or unique technology counts as a change to it: the error
   this admits is a row transcribed again that could have been carried, never one carried that
   should not have been.
-- **Assessed 2026-11-02, the rule leaves out twenty rows**: every row whose selector names unit 873
-  or 875 (cost and hit points), 2550 (the Champi Scout's bonus damage) or 2569 (the Bolas Rider's
+- **Assessed 2026-11-02, the rule leaves out twenty rows**: every row whose selector holds
+  `kind = "unit"` with id 873 or 875 (cost and hit points; 875 is also a technology id, Gambesons,
+  which no note changes), 2550 (the Champi Scout's bonus damage) or 2569 (the Bolas Rider's
   speed); the two Saxons "Foot Soldiers cost -5% per Town Center or Castle controlled" rows (the
   notes adjust that discount); and the two Varangians rows on Varangian Guards (the Gothikon fix).
   By civilisation: Malians, Britons, Goths (three), Aztecs, Koreans, Incas, Magyars, Portuguese,
@@ -3338,9 +3339,13 @@ this phase, code comments included; only its commits name the old id.
       (`apps/analyzer/src/aoe2stats_analyzer/staleness.py`)
 - [ ] T836 [US2] **Owner task (verification).** After T835 is deployed, read the aggregate gap
       report as T775 does and record in [owner-readings.md](./owner-readings.md), "Production", the
-      date and the count of blocking gaps for build 188329. Among the analyses recorded since the
-      deploy, none holds a `no-snapshot-for-build` gap for build 188329, and the blocking count
-      equals build 188329's FR-022b entries, zero when there are none
+      date and the count of blocking gaps for build 188329. Gaps are append-only and an analysis
+      recomputes only when it is read, so the reading counts only a window that starts after the
+      deploy and holds at least one build 188329 analysis whose identity names
+      `aoe2techtree-188329-civilisations-56` (`identity.knowledge.describes_build` is 188329); a
+      zero over a window with no such analysis is not an answer, and the reading is repeated. In
+      that window no `no-snapshot-for-build` gap is recorded for build 188329, and the blocking
+      count equals build 188329's FR-022b entries, zero when there are none
 - [ ] T837 Close Phase 9: update `docs/data-sources.md` §6, aoe2techtree's "Version identifier",
       "Coverage" and "Assessed", to say that the third commit is vendored and which snapshot derives
       from it, and the coverage sentence of `docs/risks.md`'s R12 to the builds whose snapshots
