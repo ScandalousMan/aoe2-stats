@@ -49,7 +49,7 @@ pytestmark = pytest.mark.usefixtures("environment")
 
 @pytest.fixture(autouse=True)
 def _reset_entrypoint_logger_disabled_state() -> Iterator[None]:
-    """T832's caplog assertions share this file with the session-scoped `database_url` fixture,
+    """T841's caplog assertions share this file with the session-scoped `database_url` fixture,
     whose first migration run calls `logging.config.fileConfig` (`infra/migrations/env.py`) and so
     disables every logger that already exists — the entrypoint's `logger` (named `aoe2stats_api`)
     among them. A disabled logger is a silent no-op, which would make the assertions depend on
@@ -231,7 +231,7 @@ def test_ingest_logs_the_region_the_host_reports(
     clean_database: None,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """T832: one INFO line names the region the function executes in, so a runtime-log label
+    """T841: one INFO line names the region the function executes in, so a runtime-log label
     can be told apart as the edge's or the function's."""
     monkeypatch.setenv("DATABASE_URL", database_url)
     monkeypatch.setenv("VERCEL_REGION", "cdg1")

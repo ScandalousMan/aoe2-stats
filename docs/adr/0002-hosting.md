@@ -304,6 +304,12 @@ Vercel functions default to `iad1` (US East). Hobby allows changing the default 
 that archived replays contain third-party players' in-game chat, this is a GDPR requirement, not a
 preference. It is written into constitution principle IX.
 
+The host's runtime log labels each line with the edge region the request entered at, not the region
+the function ran in. A cron request, which the host sends from the US, is labelled `iad1` while the
+function runs in `cdg1`: on 2026-11-02 the same line read `iad1` in the label and
+`region=cdg1` in its text, which the cron entrypoint takes from the host's runtime region variable
+(T841). The function's region is that logged line, never the label.
+
 ## Risks accepted
 
 - **A silently stopped cron is invisible** without an always-on process to notice. Mitigation: a
