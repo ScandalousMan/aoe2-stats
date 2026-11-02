@@ -79,7 +79,7 @@ export function AnalysisContainer({ gameId }: AnalysisContainerProps) {
   // claims the row some seconds into the request, so a poll that reads `absent` before then says
   // nothing. Keyed to the match so a settle after a navigation to another cannot touch it.
   const queryClient = useQueryClient()
-  // T832: `from` is the state the click came from. A click from `absent` pins `running` (progress);
+  // T838: `from` is the state the click came from. A click from `absent` pins `running` (progress);
   // Recompute (`published`) and the refused retry keep their own frame and show `requesting`.
   const [pendingRequest, setPendingRequest] = useState<{
     gameId: number
@@ -183,7 +183,7 @@ export function AnalysisContainer({ gameId }: AnalysisContainerProps) {
       .catch(() => {})
       .then(() =>
         // The document's key extends the match's, so this refetch also fetches a Recompute's new
-        // document (T832) before the pinned frame is released.
+        // document (T838) before the pinned frame is released.
         queryClient.refetchQueries({
           queryKey: matchDetailQueryOptions(requestedGameId).queryKey,
         }),

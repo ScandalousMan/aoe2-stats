@@ -2908,7 +2908,7 @@ carries what T673's dry run read.
       progress; the `POST` then resolves, the next read answers `published`, and the published
       timeline renders without a focus event. **Contrast**: a `POST` that is rejected ends the
       optimistic state, and the page shows "Request analysis" again
-- [x] T832 Keep the published result, or the refused notice, on screen while its own request runs
+- [x] T838 Keep the published result, or the refused notice, on screen while its own request runs
       (filed 2026-11-02 from T831). `packages/design-system/specs/analysis-timeline.md` §3.4 says
       Recompute keeps the published columns on screen and moves its `Button` to `loading`
       ("Recomputing…") until the new result publishes; §3.5 says a refused retry shows the same
@@ -3268,8 +3268,9 @@ aoe2techtree commit implements the build, so its snapshot is a direct import. Th
 arbitration of 2026-11-02 ([spec.md](./spec.md), Clarifications) extends that of 2026-10-31 to this
 build and files no fourth reference recording.
 
-**Numbering**: Phase 9 starts at T834. T831 is this feature's last merged task; the two ids
-between are named by open pull requests (#214, #215).
+**Numbering**: Phase 9 takes T834 to T837. T838 is the recompute task pull request #214 merged:
+it was numbered with the id feature 001's #215 also took, and was renumbered on 2026-11-02 with
+this phase, code comments included; only its commits name the old id.
 
 **What every Phase 9 implementer must know**:
 

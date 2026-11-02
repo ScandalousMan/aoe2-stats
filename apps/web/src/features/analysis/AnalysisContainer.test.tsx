@@ -360,7 +360,7 @@ describe('AnalysisContainer', () => {
     const recompute = await screen.findByRole('button', { name: 'Recompute' })
     fireEvent.click(recompute)
 
-    // T832: Recompute keeps the published frame; the button shows its own loading state.
+    // T838: Recompute keeps the published frame; the button shows its own loading state.
     expect(await screen.findByRole('button', { name: /Recomputing/ })).toBeInTheDocument()
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
@@ -515,7 +515,7 @@ describe('AnalysisContainer', () => {
     }
   })
 
-  it('keeps the published result with "Recomputing…" while the POST is pending, then shows the new document (T832)', async () => {
+  it('keeps the published result with "Recomputing…" while the POST is pending, then shows the new document (T838)', async () => {
     let matchState: 'stale' | 'fresh' = 'stale'
     let resolvePost: (response: Response) => void = () => {}
     const newDocument = baseDocument()
@@ -557,7 +557,7 @@ describe('AnalysisContainer', () => {
     expect(screen.queryByRole('button', { name: /Recomput/ })).not.toBeInTheDocument()
   })
 
-  it('keeps the published frame when a match read answers running during a Recompute (T832)', async () => {
+  it('keeps the published frame when a match read answers running during a Recompute (T838)', async () => {
     vi.useFakeTimers()
     try {
       let matchState: 'stale' | 'running' = 'stale'
@@ -593,7 +593,7 @@ describe('AnalysisContainer', () => {
     }
   })
 
-  it('leaves the published result on screen and offers Recompute again when the POST is rejected (T832)', async () => {
+  it('leaves the published result on screen and offers Recompute again when the POST is rejected (T838)', async () => {
     let answerPost: (response: Response) => void = () => {}
     installFakeApi({
       detail: () =>
@@ -618,7 +618,7 @@ describe('AnalysisContainer', () => {
     expect(screen.queryByText('Analysing this match…')).not.toBeInTheDocument()
   })
 
-  it('keeps the refused notice with "Requesting…" while its retry POST is pending (T832)', async () => {
+  it('keeps the refused notice with "Requesting…" while its retry POST is pending (T838)', async () => {
     installFakeApi({
       detail: () => jsonResponse(baseDetail({ state: 'refused' })),
       analyze: () => new Promise<Response>(() => {}),
