@@ -126,37 +126,46 @@ is not exposed for this deployment: the dashboard's Deployment → Source → Ou
 function as a leaf with no contents, and the REST endpoint `/v6/deployments/<id>/files` answers 404
 "File tree not found" (a Git deployment has no stored file tree).
 
-After value and skip count, empty until the maintainer reads them. T818 fills the after rows, in the
-same way T801 read the before rows, and T819 fills the skip count.
+After value and skip count. T816 read the three function rows on 2026-11-02, in the same way T801
+read the before rows; T818 fills the project row and the ratios, and T819 fills the skip count.
 
 | Measure                                     | Size | Date read | Deployment id | Filled by |
 | ------------------------------------------- | ---- | --------- | ------------- | --------- |
-| Function `api/index.py`                     |      |           |               | T818      |
-| Function `api/analyze.py`                   |      |           |               | T818      |
-| Function `api/cron/ingest.py`               |      |           |               | T818      |
+| Function `api/index.py`                     | 47.9 MB | 2026-11-02 | `dpl_BVynfYZmgt5f1kqqZ3E76ZGd7sEF` | T816 |
+| Function `api/analyze.py`                   | 47.9 MB | 2026-11-02 | `dpl_BVynfYZmgt5f1kqqZ3E76ZGd7sEF` | T816 |
+| Function `api/cron/ingest.py`               | 47.9 MB | 2026-11-02 | `dpl_BVynfYZmgt5f1kqqZ3E76ZGd7sEF` | T816 |
 | Project: Functions Storage → Projects       |      |           | —             | T818      |
 
 | Measure                                              | Count | Date counted | Filled by |
 | ---------------------------------------------------- | ----- | ------------ | --------- |
 | Canceled production deployments, first 30 days live  |       |              | T819      |
 
-The three functions answer, empty until the maintainer runs quickstart §5 against the first
-production deployment that carries feature 007 (T816). That is not the build of the merge
+The three functions answer: quickstart §5, run by T816 against a production deployment that
+carries feature 007. That is not the build of the merge
 `45a8dc4c` (#176): it failed the host's `vercel.json` schema check on 2026-11-01 because
 `excludeFiles` was longer than 256 characters, and production kept serving the deployment before
 it. The deployment that carries the fix is the first one.
 
 | Step (quickstart §5)                                        | Result | Run id or evidence | Date |
 | ----------------------------------------------------------- | ------ | ------------------ | ---- |
-| 1. `Production smoke` workflow for that push                |        |                    |      |
-| 2. An analysis request completes or is refused as before    |        |                    |      |
-| 3. Manual `POST /api/cron/ingest`: a run report, not a 504  |        |                    |      |
-| 4. Next 04:00 UTC run: 200 in the cron log, normal in audit |        |                    |      |
-| 5. Deployment → Resources → Functions lists three functions |        |                    |      |
-| Each function below T814's value (SC-001)                   |        | sizes: T818 rows   |      |
+| 1. `Production smoke` workflow for that push                | Pass   | GitHub Actions runs `41346174514` (push of `baac3caf`) and `41512196511` (dispatched on `main`) | 2026-11-01, 2026-11-02 |
+| 2. An analysis request completes or is refused as before    | Pass   | Three `POST /api/analyze` answered 200, 19:21–19:36 UTC, host request log | 2026-11-02 |
+| 3. Manual `POST /api/cron/ingest`: a run report, not a 504  | Pass   | Dashboard Cron Jobs → Run: 200 at 19:39:39 UTC, ingest run `093d8b7e-bed9-41e0-ad9b-c8b082e71555` finished, 3 stages, not stopped early | 2026-11-02 |
+| 4. Next 04:00 UTC run: 200 in the cron log, normal in audit | Pass   | `ingest_runs` row, trigger `cron`, 04:01:26–04:01:34 UTC, 0 failed, 0 expired; nightly run `41430970881`, cron liveness and capture audit OK | 2026-11-02 |
+| 5. Deployment → Resources → Functions lists three functions | Pass   | `api/analyze`, `api/cron/ingest`, `api/index` | 2026-11-02 |
+| Each function below T814's value (SC-001)                   | Pass   | 47.9 MB against 69.7 MB, the after rows above | 2026-11-02 |
 
-Deployment id, to fill: . The trimmed cron function must be seen to import and finish a real capture run
-(constitution I), which steps 3 and 4 show. Zero regressions across the five is SC-005.
+Deployment id: `dpl_BVynfYZmgt5f1kqqZ3E76ZGd7sEF`, the production build of `baac3caf` (#211). The first
+production deployment carrying feature 007 is `dpl_6qUWFNccPNBCXTH8zev3JTY34Pnf`, the build of
+`48c0a97d` (#205); the steps ran against the later one, which carries the same `vercel.json` and two
+analyzer and download fixes, because it was serving production when T816 ran. Step 4's 04:00 line in
+the host's cron log is not recorded: Hobby keeps runtime logs for about an hour, so the line had
+expired when it was read; the `ingest_runs` row is the record instead. Step 3 used the dashboard's
+Run button, which sends the same authenticated request as the scheduler, rather than a curl with the
+secret. The trimmed cron function must be seen to import and finish a real capture run
+(constitution I), which steps 3 and 4 show: both runs imported, polled, and finished every stage. Both
+attempted 0 captures, because no polled profile had a recording queued, so neither stored a replay.
+Zero regressions across the five is SC-005.
 
 ### What a function carries
 

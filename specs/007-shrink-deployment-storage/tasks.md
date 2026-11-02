@@ -308,14 +308,15 @@ the ADR section with its date.
     --json` on `main` and on this branch, from a working copy with
       `.claude/worktrees/`, and diff the two lists (**FR-015**, US4's two scenarios). The only
       paths newly ignored are under `.claude/`. Record the result and the date in the ADR
-- [ ] T816 [US1] **Maintainer, after the merge deploys.** Quickstart §5, all five steps:
+- [x] T816 [US1] **Maintainer, after the merge deploys.** Quickstart §5, all five steps:
       the smoke workflow, a real analysis request, a manual ingestion trigger with the production
       `CRON_SECRET` (never written to a file), the next scheduled 04:00 UTC run in the host's cron
       log and in the capture audit, and three functions listed. Read each function's size and
       confirm it is below T814's before value (**SC-001**, US1 scenario 2: contents are proven
       offline by T807 and T809; the host exposes no file listing, amended 2026-11-01). Zero
       regressions is **SC-005**. Record the run ids and dates in the ADR: the trimmed cron function
-      must be seen to import and finish a real capture run (constitution I)
+      must be seen to import and finish a real capture run (constitution I). *(Done 2026-11-02 against
+      `dpl_BVynfYZmgt5f1kqqZ3E76ZGd7sEF`: 47.9 MB per function, recorded in the ADR.)*
 - [ ] T817 [US2] **Maintainer, after T816.** Quickstart §4: a `docs/`-only push to `main` shows
       Canceled with the `skip: nothing shipped …` line, and a `uv.lock` push deploys with
       `build: uv.lock …` (**SC-004**). **Confirm in production what T810a established from the
