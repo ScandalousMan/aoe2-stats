@@ -15,6 +15,7 @@ which is how a test lets an upload land between the drain's claim and its write.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import time
 import uuid
@@ -652,6 +653,126 @@ async def test_a_row_that_was_not_erased_keeps_its_object_and_its_metadata(
     assert row["zip_sha256"] == _sha(_DOWNLOADED)
     assert store.objects[_KEY] == _DOWNLOADED
     assert store.deleted == []
+
+
+async def test_an_object_a_row_names_by_the_time_of_the_metadata_update_is_not_deleted(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """T459m (1): the drain writes, then another actor names the row with that key and commits
+    before the drain's metadata update. The update matches no row, but the row exists and names the
+    object, so the object stays."""
+    capture_id = await _seed(session_factory)
+    store = _HookedObjectStore()
+
+    async def another_actor_names_the_row() -> None:
+        async with session_factory() as session:
+            await session.execute(
+                update(ReplayCapture)
+                .where(ReplayCapture.id == capture_id)
+                .values(object_key=_KEY, zip_bytes=len(_UPLOADED), zip_sha256=_sha(_UPLOADED))
+            )
+            await session.commit()
+
+    store.after_write = another_actor_names_the_row
+    await _run(_drain(session_factory, _Provider(_blob()), store))
+
+    assert store.deleted == []
+    assert store.objects[_KEY] == _DOWNLOADED
+    assert (await _row(session_factory, capture_id))["object_key"] == _KEY
+
+
+async def test_an_object_the_drain_did_not_write_is_not_deleted_when_its_row_is_gone(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """T459m (1): the store already holds the drain's marked object (an earlier attempt's), so
+    `put_if_absent` writes nothing; the row is deleted meanwhile. The drain did not write that
+    object, so it deletes nothing."""
+    capture_id = await _seed(session_factory)
+    store = _HookedObjectStore(
+        {_KEY: _DOWNLOADED}, {_KEY: dict(capture_module._DRAIN_OBJECT_METADATA)}
+    )
+
+    async def row_deleted() -> None:
+        async with session_factory() as session:
+            await session.execute(delete(ReplayCapture).where(ReplayCapture.id == capture_id))
+            await session.commit()
+
+    store.before_write = row_deleted
+    await _run(_drain(session_factory, _Provider(_blob()), store))
+
+    assert store.deleted == []
+    assert store.objects == {_KEY: _DOWNLOADED}
+
+
+async def test_the_existence_check_waits_for_an_erasure_holding_the_row(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """T459m (2), FR-037: a row already names the key, an erasure locks it `FOR UPDATE`, deletes
+    the object and the row, and has not committed when the drain writes the key again. The drain's
+    metadata update matches no row (it names an object) without waiting; the existence check must
+    wait for the erasure and then see the row gone, so the bucket ends empty."""
+    capture_id = await _seed(session_factory)
+    async with session_factory() as session:
+        await session.execute(
+            update(ReplayCapture).where(ReplayCapture.id == capture_id).values(object_key=_KEY)
+        )
+        await session.commit()
+    store = _HookedObjectStore({_KEY: _UPLOADED})
+    erasure = session_factory()
+    committer: list[asyncio.Task[None]] = []
+
+    async def erasure_in_progress() -> None:
+        await erasure.execute(
+            select(ReplayCapture).where(ReplayCapture.id == capture_id).with_for_update()
+        )
+        store.objects.pop(_KEY)
+        await erasure.execute(delete(ReplayCapture).where(ReplayCapture.id == capture_id))
+
+    async def commit_once_the_drain_is_checking() -> None:
+        await asyncio.sleep(0.5)
+        await erasure.commit()
+
+    async def start_committer() -> None:
+        committer.append(asyncio.create_task(commit_once_the_drain_is_checking()))
+
+    store.before_write = erasure_in_progress
+    store.after_write = start_committer
+    try:
+        await _run(_drain(session_factory, _Provider(_blob()), store))
+        await asyncio.gather(*committer)
+    finally:
+        await erasure.close()
+
+    assert store.objects == {}, f"the bucket still holds {sorted(store.objects)}"
+
+
+async def test_an_object_a_newer_row_for_the_same_pair_names_is_not_deleted(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """T459m (3): the claimed row is gone but a row for the same `(game_id, profile_id)` exists
+    (a newer one); the object under that pair's key is kept. Contrast with the erased pair above."""
+    capture_id = await _seed(session_factory)
+    store = _HookedObjectStore()
+
+    async def replaced_by_a_newer_row() -> None:
+        async with session_factory() as session:
+            await session.execute(delete(ReplayCapture).where(ReplayCapture.id == capture_id))
+            session.add(
+                ReplayCapture(
+                    id=uuid.uuid4(),
+                    game_id=_GAME_ID,
+                    profile_id=_PROFILE_ID,
+                    capture_deadline_at=datetime.now(UTC) + timedelta(days=1),
+                    source=CaptureSource.AUTOMATIC,
+                )
+            )
+            await session.commit()
+
+    store.after_write = replaced_by_a_newer_row
+    await _run(_drain(session_factory, _Provider(_blob()), store))
+
+    assert store.deleted == []
+    assert store.objects[_KEY] == _DOWNLOADED
 
 
 async def test_a_row_reverted_to_pending_by_another_drain_names_the_object_and_resumes(

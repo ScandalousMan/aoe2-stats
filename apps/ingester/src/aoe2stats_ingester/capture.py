@@ -1253,11 +1253,16 @@ class CaptureDrain:
             sha256 = hashlib.sha256(content).hexdigest()
         if not await self._commit_blob_metadata(capture_id, key, len(content), sha256):
             # The row already names an object, or is gone: this drain does not name another.
-            if written and not await self._row_exists(capture_id):
-                # Erased while the download was in flight (FR-037, T459j): the erasure found no
-                # `object_key`, deleted the row, and the object this drain just wrote is the only
-                # copy left, with nothing pointing at it. Only an object this drain wrote is
-                # removed, never one it found held.
+            if written and not await self._pair_has_row(game_id, profile_id):
+                # No row is left for this `(game_id, profile_id)` (FR-037, T459j): the pair was
+                # erased while the download was in flight, so the object this drain just wrote has
+                # nothing naming it and is removed. Only an object this drain wrote is removed,
+                # never one it found held. The read takes a lock that conflicts with the
+                # erasure's `FOR UPDATE`, so it answers after an erasure in progress commits or
+                # rolls back. The assumption, which nothing at runtime enforces beyond
+                # `tests/architecture/test_capture_row_deletes.py`: erasure is the only code that
+                # deletes a `replay_captures` row, so a missing row means an erasure, not a
+                # cleanup of someone else's object.
                 await store.delete(key)
             return _NOT_CONCLUDED
 
@@ -1831,11 +1836,17 @@ class CaptureDrain:
             await session.commit()
         return bool(outcome.rowcount)  # type: ignore[attr-defined]
 
-    async def _row_exists(self, capture_id: uuid.UUID) -> bool:
+    async def _pair_has_row(self, game_id: int, profile_id: int) -> bool:
+        """Whether any `replay_captures` row exists for the pair (one row per pair, so a newer
+        row for it counts). `FOR SHARE` conflicts with the erasure's `FOR UPDATE`, so the read
+        waits for an erasure holding the row and then sees its outcome."""
         async with self._session_factory() as session:
             found = await session.scalar(
-                select(ReplayCapture.id).where(ReplayCapture.id == capture_id)
+                select(ReplayCapture.id)
+                .where(ReplayCapture.game_id == game_id, ReplayCapture.profile_id == profile_id)
+                .with_for_update(read=True)
             )
+            await session.rollback()
         return found is not None
 
     async def _mark_stored(
