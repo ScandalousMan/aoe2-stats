@@ -341,11 +341,12 @@ def test_a_snapshot_without_aliases_toml_keeps_the_digest_it_has() -> None:
     assert snapshot_module.compute_digest(rules, effects_bytes, b"") != two_files
 
 
-def test_every_installed_snapshot_still_verifies_and_only_seven_carry_aliases() -> None:
-    """The committed tree, through the real resolver: nothing recorded changed, and exactly seven
+def test_every_installed_snapshot_still_verifies_and_only_eight_carry_aliases() -> None:
+    """The committed tree, through the real resolver: nothing recorded changed, and exactly eight
     promoted snapshots carry the file: five of build 185872 (T767's is the first; T768's, T769's,
-    T770's and T772's carry it forward) and build 180059's second and third (T773, read again for
-    its own pack, and T774, which carries it forward)."""
+    T770's and T772's carry it forward), build 180059's second and third (T773, read again for
+    its own pack, and T774, which carries it forward) and build 188329's (T835, checked against its
+    own pack)."""
     installed = snapshot_module.load_all_snapshots()
 
     assert installed
@@ -358,6 +359,7 @@ def test_every_installed_snapshot_still_verifies_and_only_seven_carry_aliases() 
         "aoe2techtree-185872-civilisations-44",
         "aoe2techtree-185872-civilisations-56",
         "aoe2techtree-185872-owner-readings",
+        "aoe2techtree-188329-civilisations-56",
     ]
 
 

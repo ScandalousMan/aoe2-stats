@@ -3309,7 +3309,7 @@ this phase, code comments included; only its commits name the old id.
   in `aoe2techtree-185872-civilisations-32`'s header, which the later headers point to), and they
   stay there.
 
-- [ ] T834 [US2] Vendor aoe2techtree commit `e56728e76b7d` as a third pack,
+- [x] T834 [US2] Vendor aoe2techtree commit `e56728e76b7d` as a third pack,
       `packages/knowledge/packs/aoe2techtree-e56728e/`, with
       `scripts/ops/import_knowledge_pack.py` reading a local checkout at that commit (FR-032),
       beside the two packs already vendored, with its `MANIFEST.json` and `LICENCE.md` written as
@@ -3321,7 +3321,7 @@ this phase, code comments included; only its commits name the old id.
       exit 0; the third pack's `trees/` and `strings.en.json` are byte-identical to the second's,
       as the commit's diff says. The second check refuses a pack no snapshot names, so this task
       is committed with T835
-- [ ] T835 [US2] Promote `aoe2techtree-188329-civilisations-56`, a direct import of the third pack
+- [x] T835 [US2] Promote `aoe2techtree-188329-civilisations-56`, a direct import of the third pack
       (its commit message carries the build's update page, as T707's did for build 185872),
       modelling all fifty-six civilisations. `rules.json` is derived under the current normaliser;
       before promotion, diff it against `aoe2techtree-185872-owner-readings`'s and explain every

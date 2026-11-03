@@ -633,7 +633,7 @@ against keeping one measurement in two homes.
   the pack, with no network call from the build, the tests or the running system (FR-032). The
   source itself tracks new DE builds on its maintainer's own cadence, with a lag — see "Version
   identifier".
-- **Version identifier**: two pinned commits, each recorded in its own pack's `MANIFEST.json` and
+- **Version identifier**: three pinned commits, each recorded in its own pack's `MANIFEST.json` and
   `LICENCE.md` under `packages/knowledge/packs/`. The first, `b9d494df6921d4080df69b22f9dbb7a4d1dcd9f0`
   (2026-06-21, pack `aoe2techtree`), is the one `aoe2techtree-180059` and
   `aoe2techtree-180059-civilisations-53` and `aoe2techtree-180059-owner-readings` are derived from. The second,
@@ -657,9 +657,9 @@ against keeping one measurement in two homes.
   and committed on the release day, that its data matches the released build was not verified, and
   neither was any value in the snapshot (FR-030).
   Assessed 2026-11-02, the source's newest commit is a third one,
-  `e56728e76b7d` (authored and committed 2026-10-27, "Implement DE
-  Update 188329"), whose message carries the publisher's update page for build 188329. It is not
-  vendored, and no snapshot describes build 188329. Its one parent is the
+  `e56728e76b7d08301fba7b18d5f16bc8554c109a` (pack `aoe2techtree-e56728e`; authored and committed
+  2026-10-27, "Implement DE Update 188329"), whose message carries the publisher's update page for
+  build 188329. It is vendored beside the other two (T834), and no snapshot describes build 188329 yet. Its one parent is the
   second pinned commit, and against it the commit changes no file under `data/trees/` and leaves
   `data/locales/en/strings.json` unchanged (the 56 trees, and every civilisation's English bonus
   text, are the second pack's). In `data/data.json` it changes six units: the Elephant Archer
@@ -669,7 +669,7 @@ against keeping one measurement in two homes.
   armour entry of amount 0 for class 36. Of the fields `packages/knowledge` imports (cost,
   training time, age requirement, producing building, name, and each civilisation's tree), only
   the two Elephant Archers' food cost differs. That is a reading of the commit's diff, not an
-  import: no `rules.json` has been derived from this commit.
+  import: no `rules.json` has been derived from this commit yet.
 - **Coverage**: all 53 civilisations present in the trees directory at the first pinned commit (56
   at the second, which adds Saxons, Danes and Varangians); costs,
   times and ages for every unit, building and technology those trees name. The build 180059

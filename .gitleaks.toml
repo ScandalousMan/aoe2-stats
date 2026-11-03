@@ -37,4 +37,10 @@ regexes = [
   # T594's `componentKey`: a design-system component's own directory path. Anchored to the three
   # tier directories and a single component name, so nothing else can hide behind it.
   '''^(primitives|composites|screens)/[A-Za-z][A-Za-z0-9]*$''',
+  # T835's staleness test names a recording by its object key, `recordings/<game id>` for match
+  # 517988141 (apps/analyzer/tests/test_staleness_build_188329.py). `generic-api-key` fires on the
+  # name ending in `key` plus the value's entropy; the value is a storage path, not a secret.
+  # Anchored to that one literal, so a real key assigned to an `object_key` elsewhere is still
+  # caught. Applied from the working tree, it covers commit f0b14887 without rewriting it.
+  '''^recordings/517988141$''',
 ]
