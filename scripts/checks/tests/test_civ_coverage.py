@@ -38,10 +38,9 @@ from aoe2stats_storage.models import AoeProfile, Match, MatchPlayer
 __all__ = ["clean_database", "database_url", "db_session", "engine", "session_factory"]
 
 
-# Ids 0 and 1 are named in the mapping (Armenians, Aztecs). 99 is far past the highest named id
-# (61 is now named); 56 is
-# absent from every source but is unknown rather than unnameable (FR-016). 77 stands in for an
-# identifier that can never be named by any source, and is only ever excluded by injection.
+# Ids 0 and 1 are named in the mapping (Armenians, Aztecs). 99 is far past the highest named id.
+# 56 is absent from every source but is unknown rather than unnameable (FR-016). 77 stands in for
+# an identifier that can never be named by any source, and is only ever excluded by injection.
 _COVERED_IDS = (0, 1)
 _UNNAMED_ID = 99
 _UNKNOWN_BUT_NAMEABLE_ID = 56
@@ -94,8 +93,8 @@ async def test_unnamed_identifier_is_reported_with_its_row_count(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Scenario 1: civilisation 61 on four rows, plus covered rows. Exit 1; the output names 61 and
-    the count 4 on the same line."""
+    """Scenario 1: the unnamed id on four rows, plus covered rows. Exit 1; the output names that id
+    and the count 4 on the same line."""
     await _seed(db_session, [_UNNAMED_ID] * 4 + [0, 1])
 
     status, out = await _run_check(monkeypatch, capsys, database_url)
