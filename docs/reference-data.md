@@ -182,7 +182,27 @@ test asserts its size.
 
 ## Precedence
 
-<!-- Which source wins when two disagree, and why. Filled by a later task. -->
+Two rules settle a disagreement between sources. Apply the one that matches what the sources
+disagree about; no third rule exists, and a case neither fits is not settled by this section.
+
+**A name: the game wins.** When two sources spell a civilisation, unit, building or technology
+differently, the name the game itself displays is the one this repository keeps. A community
+restatement of that name, however widely used and whichever dataset carries it, does not override it.
+A disagreement about spelling is never a reason to change a numeric id: the name changes, the id
+stays (see "Renames" above).
+
+**A fact about a source: captured evidence wins.** When a third party states something about how a
+live source behaves (what it returns, what an identifier means, how long it keeps data) and a
+response this repository captured says otherwise, the captured response wins. A statement about a
+source is a lead until a capture agrees with it. The captures and their dates are in
+`docs/data-sources.md`, which is the home for measured properties of the sources the product calls.
+
+**The divergence already in the table was checked.** The reference dataset and the civilisation
+table spell one civilisation differently. The table keeps the game's spelling, by the first rule,
+and the dataset's spelling is not adopted. The entry and the measurement behind it are recorded in
+`docs/data-sources.md` §6, "aoc-reference-data"; the table itself is
+`apps/api/src/aoe2stats_api/civilizations.py`. Neither is restated here (FR-009). A maintainer who
+meets this divergence again does not reopen it, and does not "correct" the table toward the dataset.
 
 ## Known gaps
 

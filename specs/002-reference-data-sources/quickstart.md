@@ -23,11 +23,11 @@ Scenarios 1 to 4 run through the check's own test module. To drive them by hand 
 
 Covers FR-013, SC-007.
 
-1. Seed `match_players` rows carrying a `civ_id` outside the mapping — 61 is safe today, being past
-   the highest named id.
+1. Seed `match_players` rows carrying a `civ_id` outside the mapping — 99 is safe because the mapping
+   holds no id that high.
 2. Run the check.
 
-**Expected**: exit status `1`. The output names identifier 61 and the number of rows carrying it.
+**Expected**: exit status `1`. The output names identifier 99 and the number of rows carrying it.
 
 **Also expected, and worth asserting rather than eyeballing**: the output contains no `profile_id`,
 no alias and no `game_id`, per the contract. Assert their absence, because this is the requirement a

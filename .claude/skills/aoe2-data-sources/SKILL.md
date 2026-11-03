@@ -47,6 +47,19 @@ contract tests in `scripts/checks/contract_sources.py`; a copy is true only unti
   from CI more often than from a laptop. This is normal operating noise, not an incident. Its contract
   check is deliberately non-blocking.
 
+## Consulting the reference-data sources
+
+These are read by a maintainer when the game changes, never by the running system. Facts, sources
+and licence readings are in [`docs/reference-data.md`](../../../docs/reference-data.md); read it
+before using any of them.
+
+- **A rename does not renumber.** An identifier stays put when its display name changes, so match on
+  the id and treat the name as a label that can be rewritten under you.
+- **A confident wrong name is worse than a bare id.** A bare id looks unverified and gets checked; a
+  plausible name looks settled and never is, so leave the id unnamed until a source actually names it.
+- **A source with no licence may be read and transcribed, never copied in.** Retype the facts you
+  verified; do not paste its files or tables into the repository.
+
 ## Rules every provider follows
 
 - All outbound access goes through `packages/providers`. No exceptions, authentication included.
