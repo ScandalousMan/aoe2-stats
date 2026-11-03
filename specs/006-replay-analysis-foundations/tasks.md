@@ -3362,7 +3362,7 @@ this phase, code comments included; only its commits name the old id.
       zero over a window with no such analysis is not an answer, and the reading is repeated. In
       that window no `no-snapshot-for-build` gap is recorded for build 188329, and the blocking
       count equals the blocking gaps T765 holds for build 188329, zero when there are none
-- [ ] T837 Close Phase 9: update `docs/data-sources.md` §6, aoe2techtree's "Version identifier",
+- [x] T837 Close Phase 9: update `docs/data-sources.md` §6, aoe2techtree's "Version identifier",
       "Coverage" and "Assessed", to say that the third commit is vendored and which snapshot derives
       from it, and the coverage sentence of `docs/risks.md`'s R12 to the builds whose snapshots
       model every civilisation; run
