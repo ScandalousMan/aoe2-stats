@@ -23,7 +23,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
-from sqlalchemy import Update, select, update
+from sqlalchemy import Update, delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from tests.links import link_profile
 
@@ -88,6 +88,7 @@ class _HookedObjectStore:
         self.metadata: dict[str, dict[str, str]] = dict(metadata or {})
         self.put_calls: list[tuple[str, bytes]] = []
         self.put_if_absent_calls: list[tuple[str, bytes]] = []
+        self.deleted: list[str] = []
         self.before_write: Callable[[], Awaitable[None]] | None = None
         self.after_write: Callable[[], Awaitable[None]] | None = None
         self.vanish_on_get = False
@@ -123,6 +124,11 @@ class _HookedObjectStore:
             hook, self.after_write = self.after_write, None
             await hook()
         return True
+
+    async def delete(self, key: str) -> None:
+        self.deleted.append(key)
+        self.objects.pop(key, None)
+        self.metadata.pop(key, None)
 
     async def get(self, key: str) -> bytes:
         if self.vanish_on_get or key not in self.objects:
@@ -604,6 +610,48 @@ async def test_a_row_withdrawn_after_the_object_write_ends_withdrawn_naming_the_
     assert row["zip_bytes"] == len(_DOWNLOADED)
     assert store.objects[_KEY] == _DOWNLOADED
     assert report["stored_total"] == 0
+
+
+async def test_a_row_erased_during_the_download_leaves_no_object_in_the_bucket(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """T459j, FR-037: the drain claims and commits, then downloads with no row lock. An erasure
+    committing meanwhile sees no `object_key`, so it deletes the row and no blob. The drain's
+    metadata `UPDATE` then matches no row; the object it just wrote must not stay in the bucket."""
+    capture_id = await _seed(session_factory)
+    store = _HookedObjectStore()
+    provider = _Provider(_blob())
+
+    async def erase() -> None:
+        async with session_factory() as session:
+            await session.execute(delete(ReplayCapture).where(ReplayCapture.id == capture_id))
+            await session.commit()
+
+    provider.on_fetch = erase
+    report = await _run(_drain(session_factory, provider, store))
+
+    assert store.objects == {}, f"the bucket still holds {sorted(store.objects)}"
+    assert store.deleted == [_KEY]
+    async with session_factory() as session:
+        assert await session.get(ReplayCapture, capture_id) is None
+    assert report["stored_total"] == 0
+
+
+async def test_a_row_that_was_not_erased_keeps_its_object_and_its_metadata(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """T459j contrast: an ordinary capture is untouched by the post-write cleanup (the original zip
+    is never deleted for a user who did not erase)."""
+    capture_id = await _seed(session_factory)
+    store = _HookedObjectStore()
+    await _run(_drain(session_factory, _Provider(_blob()), store))
+
+    row = await _row(session_factory, capture_id)
+    assert row["status"] == CaptureStatus.STORED
+    assert row["object_key"] == _KEY
+    assert row["zip_sha256"] == _sha(_DOWNLOADED)
+    assert store.objects[_KEY] == _DOWNLOADED
+    assert store.deleted == []
 
 
 async def test_a_row_reverted_to_pending_by_another_drain_names_the_object_and_resumes(

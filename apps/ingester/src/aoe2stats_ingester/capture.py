@@ -691,6 +691,7 @@ class _ObjectPut(Protocol):
     ) -> bool: ...
     async def get(self, key: str) -> bytes: ...
     async def get_with_metadata(self, key: str) -> tuple[bytes, Mapping[str, str]]: ...
+    async def delete(self, key: str) -> None: ...
 
 
 class _DatabaseAlertSink:
@@ -1252,6 +1253,12 @@ class CaptureDrain:
             sha256 = hashlib.sha256(content).hexdigest()
         if not await self._commit_blob_metadata(capture_id, key, len(content), sha256):
             # The row already names an object, or is gone: this drain does not name another.
+            if written and not await self._row_exists(capture_id):
+                # Erased while the download was in flight (FR-037, T459j): the erasure found no
+                # `object_key`, deleted the row, and the object this drain just wrote is the only
+                # copy left, with nothing pointing at it. Only an object this drain wrote is
+                # removed, never one it found held.
+                await store.delete(key)
             return _NOT_CONCLUDED
 
         result, error = await _validate_with_barrier(
@@ -1823,6 +1830,13 @@ class CaptureDrain:
             )
             await session.commit()
         return bool(outcome.rowcount)  # type: ignore[attr-defined]
+
+    async def _row_exists(self, capture_id: uuid.UUID) -> bool:
+        async with self._session_factory() as session:
+            found = await session.scalar(
+                select(ReplayCapture.id).where(ReplayCapture.id == capture_id)
+            )
+        return found is not None
 
     async def _mark_stored(
         self,

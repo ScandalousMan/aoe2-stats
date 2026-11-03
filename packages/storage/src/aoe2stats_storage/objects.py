@@ -363,7 +363,8 @@ class ObjectStore:
     async def delete(self, key: str) -> None:
         """Delete `key`.
 
-        The one caller allowed to reach for this is GDPR erasure (T091, constitution IX): the
+        The callers allowed to reach for this are GDPR erasure (T091, constitution IX) and the
+        capture worker removing the object it just wrote for a row erased meanwhile (T459j): the
         original zip is otherwise never modified and never deleted (constitution IV). A
         capture that turns out to be unparsable is quarantined, not deleted — once the source's
         retention window has passed it holds no replacement, so an unreadable blob is evidence,
