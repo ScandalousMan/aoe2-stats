@@ -66,6 +66,23 @@ rule is not allowed. This supersedes the interval rule recorded in 006's Clarifi
 
 ## Clarifications
 
+### Session 2026-11-06
+
+- Q: The military share needs a class per unit, and the knowledge base has none. Villagers, fishing
+  ships and trade units are economic; combat units are military; what are Monks, Missionaries,
+  transport ships and the King? → A: Neither. Units are in three classes: economic, military, and
+  neither; the military share counts the military class only, and the neither class is in neither
+  figure. The class per unit is a knowledge fact, transcribed per build.
+- Q: A technology has no confirming order, ever (an order names the line's base unit after every
+  upgrade). Does a researched technology count as completed at its modelled arrival (optimistic) or
+  never (pessimistic)? → A: Neither is exact. The reconstruction MUST demonstrate that nothing
+  prevented the research from completing before it counts the technology as researched: the
+  command was executed, the participant had not resigned before the modelled arrival, the
+  researching building was not deleted by its owner before it, and either no enemy command targeted
+  the building between the click and the arrival or an order issued from that building after the
+  arrival proves it still stood. A technology for which that cannot be shown counts as not
+  researched, and the value names what was missing (FR-007a).
+
 ### Session 2026-11-03
 
 - Q: Should "resources spent" mean what the orders committed, or what the player actually paid
@@ -255,6 +272,11 @@ reconstruction version and confirm both analyses are kept and resolvable.
   time per producing building, the modelled arrival of each age-up, and resources spent on military
   units. Each MUST move from `planned` to `published` in the register in the same change that
   publishes it.
+- **FR-001b**: Every unit MUST carry one of three classes in the knowledge base, per build:
+  `economic`, `military` or `neither`. The military share (FR-001) counts the `military` class
+  only. Villagers in every form, fishing ships and trade units are `economic`; combat units are
+  `military`; Monks, Missionaries, transport ships and the King are `neither` (Clarifications,
+  Session 2026-11-06). A unit with no class is a knowledge gap that withholds the military share.
 - **FR-001a**: The system MUST also publish, for each participant, the population over the match and
   each Town Center's idle time, both as exact figures, and both added to the register as `planned` in
   the change that files their tasks. The method is chosen by FR-012.
@@ -270,10 +292,16 @@ reconstruction version and confirm both analyses are kept and resolvable.
   refunds nothing. The document MUST name the hypothesis wherever it changed a value. A deletion that
   cannot be tied to one placement MUST be reported with the value it could have changed, never
   silently dropped.
-- **FR-003b**: Until it is measured whether the game records a queue command it then refuses for
-  want of resources, a recorded queue command MUST be counted as paid under a written hypothesis that
-  the document names. The measurement replaces the hypothesis with a proof rule, or with a rule for
-  telling refused commands apart, and bumps the reconstruction version (FR-021).
+- **FR-003b**: A recorded queue command MUST NOT be counted as paid by itself. Measured 2026-11-06
+  on the committed recordings (`specs/008-match-reconstruction/research.md` R2): the recording keeps
+  commands the game refused, since the same technology is commanded twice by the same participant
+  from the same building, under a second apart, 25 times, and the game accepts one of each pair; and
+  with every recorded order executed, 10 of the 22 committed age-ups would arrive after an order
+  that proves the age already reached. Which recorded commands the game executed MUST be settled by
+  a written rule checked against the game's playback before any spending or arrival is published
+  (plan.md, gate G1), and that rule carries the reconstruction version (FR-021). The earlier form of
+  this requirement, a hypothesis counting every recorded command as paid until measured, is retired
+  by that measurement.
 
 ### Proving the state an effect depends on
 
@@ -291,6 +319,14 @@ reconstruction version and confirm both analyses are kept and resolvable.
   settle it. The rule set is closed and covers every kind of condition an effect depends on; each
   rule carries the owner's ruling or evidence that the game behaves that way, and the value MUST name
   the rule and the facts it used.
+- **FR-007a**: A technology MUST count as researched only when the recording demonstrates that
+  nothing prevented its research from completing: an executed command, no resignation before the
+  modelled arrival, no deletion of the researching building by its owner before it, and no enemy
+  command targeting that building between the click and the arrival unless a later order from the
+  building proves it stood after the arrival. Otherwise it counts as not researched, and every value
+  that depends on it names the obstacle, or the proof that was missing. The same discipline applies
+  to every condition this feature settles by a rule: a rule demonstrates the absence of every
+  observable obstacle, and states which obstacles the recording cannot show.
 - **FR-008**: The system MUST NOT publish an interval, a midpoint, a most-likely state or a
   probability for a reconstructed datum. Every reconstructed datum is one exact value.
 - **FR-009**: A value MUST NOT be withheld because its state is uncertain. It is withheld only when
@@ -316,8 +352,9 @@ reconstruction version and confirm both analyses are kept and resolvable.
   house completions and destructions, housing pauses), using every observed fact (orders, targets of
   commands, later commands to the same units, the starting state of FR-026). Each candidate rule MUST
   be checked against the game's playback (FR-019) before it is adopted. A strategy already measured
-  and refuted MUST NOT be adopted (a unit counted dead because it is no longer commanded: 006,
-  `docs/data-sources.md` §2).
+  and refuted MUST NOT be adopted (a unit counted dead because it is no longer commanded: 006's
+  specification, User Story 4 and its clarification on the group-silence observable, and the
+  non-claim of the `participant.group_silence_episodes` register entry).
 - **FR-013**: Ordered production time per building MUST be the sum of the knowledge base's
   production time for each order attributed to that building, priced with the effects that held,
   and is a quantity of ordered work, not a timeline of when the building was busy.
@@ -430,10 +467,9 @@ reconstruction version and confirm both analyses are kept and resolvable.
 - **006's Phase 8 lands first, or in parallel.** Until a civilisation is modelled, its values are
   withheld by the knowledge base's blocking gaps, which this feature honours and does not work
   around. This feature does not wait for Phase 8 to start; it waits for it to call itself done.
-- **Resources are committed at the moment an order is accepted.** Whether the game records a
-  command it then rejects for want of resources is not yet measured; until it is, a recorded queue
-  command is counted as paid under a named hypothesis (FR-003b). See **Important unresolved
-  decisions**.
+- **Resources are committed at the moment an order is accepted, and the recording holds orders
+  that were not.** The recording keeps commands the game refused (FR-003b, measured); which recorded
+  commands were executed is settled by gate G1 of the plan before anything is published.
 - **The game's own playback is an authoritative oracle and lawful to read.** Watching a recording in
   the game reads what the game shows; it extracts nothing from the game's files (006, research D3,
   amended 2026-10-18).
@@ -465,11 +501,11 @@ reconstruction version and confirm both analyses are kept and resolvable.
 
 ## Important unresolved decisions
 
-- **Does a recorded queue command prove the order was paid?** If the game records a command it then
-  refuses for want of resources, spending as "orders less cancellations" overstates, and FR-003's
-  wording would need a proof rule of its own. It is measurable: the owner queues a unit without
-  enough resources in a recorded game and reads the recording. Until measured, FR-003b counts a
-  recorded command as paid under a named hypothesis.
+- **Does a recorded queue command prove the order was paid?** **Settled 2026-11-06: no.** The
+  committed recordings keep commands the game refused (FR-003b, research R2). What remains open is
+  the rule that tells an executed command from a refused one, which the plan's gate G1 settles from
+  the owner's readings of each age-up's queue; if no observed fact distinguishes them, the owner
+  arbitrates what is published (plan.md, Complexity Tracking).
 - **Which orders the game refuses before an age.** FR-006's first proof rule needs, per build, which
   entities have an age requirement. That is 006's `age_requirement` field, informational until now
   because no published datum required it; this feature makes it required, so its gaps become
