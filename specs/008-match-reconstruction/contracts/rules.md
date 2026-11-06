@@ -35,7 +35,8 @@ Loading fails, and the package does not import, when any of these holds:
 
 1. An id is duplicated or outside the two id shapes.
 2. `family`, `settles` or `status` is outside its closed set.
-3. A deduction rule with status `adopted` has neither `ruling` nor `readings`.
+3. A deduction rule with status `adopted` has neither `ruling` nor `readings` nor an `evidence`
+   that states the game's own definition of a command (D-WIN-1 rests on what resigning means).
 4. Any rule with status `adopted` has an empty `evidence`.
 5. A rule with status `refuted` has no reading in `readings`.
 6. A `readings` entry names no reading in any committed `playback.toml`.
@@ -57,12 +58,16 @@ in the change that earns them (data-model §6).
 | D-HOUSE-0 | housing | no housing pause ahead of an age-up | candidate | the 22 age-up readings |
 | D-EXEC-1 | executed | how a recorded order is told executed or refused | **not yet written** | gate G1: O1, O2 |
 | D-DIST-1 | distribution | how a command naming several buildings places its items | **not yet written** | O2 |
-| D-TECH-1 | researched | a technology counts researched from its modelled arrival unless its participant resigned first | candidate | the owner's ruling |
+| D-TECH-1 | researched | an executed technology counts researched from its modelled arrival unless its participant resigned first | candidate | the owner's ruling on its direction (research R9, R15); then readings |
 | D-CONTROL-1 | controlled | a building counts controlled from its first order until the match ends; the starting Town Center from 0 | candidate | the owner's ruling |
-| D-CANCEL-1 | cancellation | the building with the most recently queued unstarted items of that unit, from the end | candidate | the owner's ruling; synthetic streams (no recording exercises it) |
+| D-CANCEL-1 | cancellation | the building with the most recently queued unstarted items of that unit, from the end | candidate | a recording that carries a cancellation (O7); synthetic streams until then |
 | D-TIE-1 | tie | a deletion is the latest untied placement its owner targeted within a window | candidate | O5 |
 | D-REFUND-1 | refund | an unstarted foundation is refunded in full, anything else nothing | adopted | spec Clarifications, Session 2026-11-03 |
-| D-WIN-1 | winner | the team with no resignation, when every other team's members all resigned | candidate | the owner's ruling |
+| D-WIN-1 | winner | the team with no resignation, when every other team's members all resigned; otherwise no winner | adopted | the meaning of the Resign command (research R8); limit: a match ended otherwise establishes no winner |
+
+No proof rule for a technology exists: research R15 measured that later orders name the line's
+base unit after every upgrade, so the candidate was refuted before being written, and the registry
+holds no `P4`.
 
 FR-003b's hypothesis is **not** in the set as a usable rule. Research R2 records it refuted by the
 recordings themselves, so it could enter only as `refuted`, citing that evidence. D-EXEC-1 replaces

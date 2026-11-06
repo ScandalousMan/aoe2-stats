@@ -17,6 +17,7 @@ outside world into `docs/data-sources.md` (R13). It restates nothing that file a
 | Each order names its producing building (Edge Cases, FR-011) | **False of the canonical stream.** Most queue commands name several buildings and the stream keeps the first. | R1 |
 | A recorded queue command can be counted as paid until measured (FR-003b) | **Contradicted by the recordings themselves**, before any playback reading. | R2 |
 | A later order refused before an age proves the age (FR-006) | **Holds on 3,235 of 3,241 orders**; the six exceptions are one knowledge defect. | R3 |
+| A later order can confirm a technology the way it confirms an age | **False.** Orders name the line's base unit after every upgrade. | R15 |
 | The winning side is available to FR-010a | **Not in the stream**, and FR-002 forbids the one place it exists. A deduction rule settles it. | R8 |
 | Spending on military units needs only `cost` (register) | **The knowledge base has no unit class.** | R10 |
 | Population can be priced by the knowledge base (FR-001a) | **The knowledge base has no population field.** | R5 |
@@ -105,10 +106,11 @@ gets wrong. Housing is not a candidate: it lengthens the queue.
 
 **Decision.**
 
-1. FR-003b's hypothesis is **not adopted as a default**. Published, it would give age-up arrivals
-   that the recording refutes in 10 of 22 cases, which FR-019 makes a defect and SC-001 a failure.
-   Under the spec's own discipline (FR-012: a strategy already measured and refuted is not adopted),
-   it is refuted.
+1. FR-003b's hypothesis is **refuted and retired**, and the spec's FR-003b, Assumptions and
+   unresolved decisions were amended in this plan's change to record the measurement. Published, it
+   would give age-up arrivals that the recording refutes in 10 of 22 cases, which FR-019 makes a
+   defect and SC-001 a failure; under the spec's own discipline (FR-012: a strategy already measured
+   and refuted is not adopted), nothing else was possible.
 2. Telling an executed command from a refused one becomes the first gate of this feature (G1 in the
    plan). Its inputs are owner readings O1 and O2: the Town Center queue at each age-up click, and
    what a command naming several buildings put in each.
@@ -215,10 +217,10 @@ no housing pause ahead of an age-up, a candidate that the 22 age-up readings che
 knowledge fields and the readings O6 first. Their register entries are added as `planned` in the
 change that files their tasks (FR-001a), not now.
 
-**The spec's citation is wrong.** FR-012 cites `docs/data-sources.md` §2 for the refuted death
-heuristic. That section records the absence of a post-game statistics block. The refutation is in
-006's spec, in the group-silence user story and its clarification, and in the group-silence
-register entry's non-claim. A task corrects the citation.
+**The spec's citation was wrong, and is corrected in this change.** FR-012 cited
+`docs/data-sources.md` §2 for the refuted death heuristic; that section records the absence of a
+post-game statistics block. The refutation is in 006's spec, in the group-silence user story and its
+clarification, and in the group-silence register entry's non-claim, which FR-012 now cites.
 
 ## R6 — Tying a deletion to the building it removes
 
@@ -245,8 +247,12 @@ unproven (006 canonical-events contract). The rule is written, because FR-011 fo
 unattributed: **D-CANCEL-1**, a cancellation of unit _u_ and count _n_ is attributed to the
 participant's building with the most recently queued, not yet started, items of _u_, removing from
 the end of its queue, and never more items than are unstarted there (FR-017). It is tested on
-synthetic streams, and the rule's record says no recording has exercised it. Research has no
-observed cancellation at all (spec, Edge Cases), and R2 shows its consequence.
+synthetic streams, and the rule's record says no recording has exercised it. It is not an
+arbitration: what it lacks is a recording that carries one, so that the payload layout the adapter
+guards (006 canonical-events contract) is proven and the rule can be checked. Owner reading O7 asks
+for one. Until then the adapter emits no cancellation event, so the rule settles nothing, and the
+reconstruction's limits say so. Research has no observed cancellation at all (spec, Edge Cases), and
+R2 shows its consequence.
 
 ## R8 — The winning side
 
@@ -254,10 +260,16 @@ The stream carries resignations and the final clock, and no outcome (006 canonic
 `docs/data-sources.md` §2 on the post-game block). The match result exists on the API's match rows,
 and FR-002 forbids that input.
 
-**Decision.** **D-WIN-1**: the winning side is the one team none of whose members resigned, when
-every member of every other team resigned before the match ended; otherwise no winning side is
-established and FR-010a's winning-side clause does not apply. In the committed recordings it
-establishes a winner in all three (the 2v2 ends with both members of one team resigning).
+**Decision.** **D-WIN-1**, adopted: the winning side is the one team none of whose members
+resigned, when every member of every other team resigned before the match ended; otherwise no
+winning side is established and FR-010a's winning-side clause does not apply. Its evidence is the
+meaning of the command itself: a resignation is a defeat, and a match in which every member of every
+other team is defeated is won by the team that remains. No ruling is needed for that. Its limit is
+stated on the record: a match ended any other way (every building and unit destroyed, a disconnect)
+establishes no winner, and the clause then does not apply. In the committed recordings it establishes
+a winner in all three (the 2v2 ends with both members of one team resigning). The fixtures README
+records no result, so the match rows' result is not used even to corroborate it (FR-002 would not
+forbid that, but a corroboration read from production needs the owner).
 
 **The attack clause of FR-010a** reads an interact command whose target is the researching
 building's object, issued by a participant of another team. Interact is the only command class
@@ -270,11 +282,17 @@ move, formation) are invisible to it, and the rule's record says so.
 Two kinds of condition have no observed completion and no rule in the spec beyond FR-007's
 requirement that one exist.
 
-- **A technology researched** (Kamandaran, Szlachta Privileges, Perfusion). The confirming order of
-  FR-010 has no lawful analogue: it would need prerequisites, which the register holds `blocked`
-  (FR-024). Candidate **D-TECH-1**: a technology counts researched from its modelled arrival, by the
-  same queue model as an age-up, unless its participant resigned first. It needs the owner's ruling,
-  because it has no confirming order at all.
+- **A technology researched** (Kamandaran, Szlachta Privileges, Perfusion, and every unit upgrade,
+  R15). The confirming order of FR-010 has no lawful analogue: it would need prerequisites, which
+  the register holds `blocked` (FR-024), and R15 shows a unit upgrade leaves no trace in later
+  orders either. Candidate **D-TECH-1**: an executed research counts researched from its modelled
+  arrival, by the same queue model as an age-up, unless its participant resigned first. It needs
+  the owner's ruling on its direction, because it has no confirming order at all: the age-up
+  clarification chose "not reached unless confirmed", and applied to a technology that nothing can
+  confirm, that reads "never researched", which would make Kamandaran never apply and every archer
+  train at the Archer's time after Crossbowman. In the committed recordings the ruling decides the
+  Persians' Kamandaran in 504695319 (researched at 36:01) and the training time of 665 units
+  ordered after a line upgrade (R15).
 - **Buildings controlled** (Saxons' discount per Town Center or Castle, the Cumans' second Town
   Center in the Feudal Age). **P2** proves a building standing at each order issued from it. Candidate
   **D-CONTROL-1**: a building counts controlled from the first order issued from it until the match
@@ -320,11 +338,37 @@ test exactly like the register's (006 research D6). A rule carries its evidence,
 where it rests on one, its playback readings, and a status; only an adopted rule may settle a
 published value (contracts/rules.md).
 
+## R15 — A queue order names the line's base unit, whatever has been upgraded
+
+**Measured.** After a participant researches a unit upgrade, their later queue orders still carry
+the base unit's identifier. 500546441 player 1 researched Crossbowman at 1,078 s and then ordered
+unit 4, the Archer, 167 times, and unit 24, the Crossbowman, never; across the three recordings,
+not one of the 24 upgrade researches is followed by an order of the upgraded unit, and no upgraded
+unit is ordered before its upgrade. The recording names the button pressed, not the unit produced.
+
+**Consequences.**
+
+- There is no proof rule for an upgrade technology from later orders; a candidate "P4" was
+  considered and is refuted by this measurement before being written. Every technology is settled by
+  D-TECH-1 (R9).
+- The production time of an order depends on the line's stage at that moment: an Archer trains in
+  35 s, a Crossbowman in 27 s, and the order is the same. Across the three recordings 665 unit orders
+  follow an upgrade that changes the training time (Archer to Crossbowman and Arbalester, Skirmisher
+  to Elite Skirmisher, Cavalry Archer to Heavy Cavalry Archer). Costs do not change along those lines
+  in these snapshots, so spending is untouched, but ordered production time, the queue ahead of an
+  age-up and idle time all are.
+- The knowledge base knows which unit a technology produces (`upgrades_unit`) and not which unit it
+  upgrades from, so the line cannot be walked from an order's identifier. **A line table is a new
+  knowledge fact**: per build, the base unit of each line and its stages in order, transcribed from a
+  referenced source through 006's snapshot mechanism, like the population fields (R5) and the
+  economic-unit list (R10). The reconstruction then prices and times an order at the stage every
+  upgrade counted researched (D-TECH-1) by that moment selects.
+
 ## R13 — Where the new measurements live
 
 The measurements in R1 (queue commands naming several buildings), R2 (refused commands kept in the
-recording) and R5 (empty unit-id lists, deletions naming unseen objects) describe the recording
-format, an outside-world subject, so a task moves each into `docs/data-sources.md` §2 under a test
+recording), R5 (empty unit-id lists, deletions naming unseen objects) and R15 (orders name the
+line's base unit) describe the recording format, an outside-world subject, so a task moves each into `docs/data-sources.md` §2 under a test
 that asserts it, and this file becomes their record of origin. The age-proof consistency of R3 is a
 property of the knowledge base against the recordings, asserted by its test and recorded nowhere
 else.
