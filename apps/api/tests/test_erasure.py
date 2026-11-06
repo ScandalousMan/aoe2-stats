@@ -455,6 +455,53 @@ async def test_confirmed_erasure_deletes_objects_under_the_users_pairs_that_no_r
     assert sorted(await store.list_keys()) == sorted(kept)
 
 
+async def test_erasure_deletes_the_deterministic_key_of_a_row_in_flight_whatever_its_object_key(
+    client: TestClient, db_session: AsyncSession
+) -> None:
+    """T459j, FR-037: the capture worker writes `replay_object_key(game, profile)` and only then
+    names it on the row. Erasure deletes that key for every row it removes: a `downloading` row
+    naming nothing, and one naming a different key (whose own blob goes too)."""
+    user = await _seed_linked_user(
+        db_session, profile_id=_OWNER_PROFILE_ID, steam_id64="76561197960280021"
+    )
+    games = (_ORPHAN_GAME_ID + 10, _ORPHAN_GAME_ID + 11)
+    completed_at = datetime.now(UTC) - timedelta(days=2)
+    for game_id in games:
+        db_session.add(
+            Match(
+                game_id=game_id,
+                leaderboard_id=3,
+                completed_at=completed_at,
+                source="relic",
+                raw_payload={},
+            )
+        )
+    await db_session.flush()
+    other_name = f"replays/{games[1]}/elsewhere.zip"
+    for game_id, named in ((games[0], None), (games[1], other_name)):
+        db_session.add(
+            ReplayCapture(
+                game_id=game_id,
+                profile_id=_OWNER_PROFILE_ID,
+                status=CaptureStatus.DOWNLOADING,
+                object_key=named,
+                capture_deadline_at=completed_at + timedelta(days=21),
+                source=CaptureSource.AUTOMATIC,
+            )
+        )
+    await db_session.commit()
+    await _sign_in(client, db_session, user)
+    store = _install_recording_object_store(client)
+    for key in [*(replay_object_key(g, _OWNER_PROFILE_ID) for g in games), other_name]:
+        await store.put(key, b"FAKE-REPLAY-BYTES")
+
+    token = _get_confirmation_token(client)
+    response = client.post(_ERASE_PATH, json={"confirmation_token": token})
+    assert response.status_code == 200, f"Got {response.status_code}: {response.text}"
+
+    assert await store.list_keys() == []
+
+
 class _TimedObjectStore(_RecordingObjectStore):
     """`_RecordingObjectStore` whose `delete` takes a moment and records the order of the calls and
     how many were in flight at once (T730 remediation: the order of the two passes, and that the

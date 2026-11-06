@@ -15,6 +15,7 @@ which is how a test lets an upload land between the drain's claim and its write.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import time
 import uuid
@@ -23,7 +24,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
-from sqlalchemy import Update, select, update
+from sqlalchemy import Update, delete, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from tests.links import link_profile
 
@@ -88,6 +89,7 @@ class _HookedObjectStore:
         self.metadata: dict[str, dict[str, str]] = dict(metadata or {})
         self.put_calls: list[tuple[str, bytes]] = []
         self.put_if_absent_calls: list[tuple[str, bytes]] = []
+        self.deleted: list[str] = []
         self.before_write: Callable[[], Awaitable[None]] | None = None
         self.after_write: Callable[[], Awaitable[None]] | None = None
         self.vanish_on_get = False
@@ -123,6 +125,11 @@ class _HookedObjectStore:
             hook, self.after_write = self.after_write, None
             await hook()
         return True
+
+    async def delete(self, key: str) -> None:
+        self.deleted.append(key)
+        self.objects.pop(key, None)
+        self.metadata.pop(key, None)
 
     async def get(self, key: str) -> bytes:
         if self.vanish_on_get or key not in self.objects:
@@ -604,6 +611,245 @@ async def test_a_row_withdrawn_after_the_object_write_ends_withdrawn_naming_the_
     assert row["zip_bytes"] == len(_DOWNLOADED)
     assert store.objects[_KEY] == _DOWNLOADED
     assert report["stored_total"] == 0
+
+
+async def test_a_row_erased_during_the_download_leaves_no_object_in_the_bucket(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """T459j, FR-037: the drain claims and commits, then downloads with no row lock. An erasure
+    committing meanwhile sees no `object_key`, so it deletes the row and no blob. The drain's
+    metadata `UPDATE` then matches no row; the object it just wrote must not stay in the bucket."""
+    capture_id = await _seed(session_factory)
+    store = _HookedObjectStore()
+    provider = _Provider(_blob())
+
+    async def erase() -> None:
+        async with session_factory() as session:
+            await session.execute(delete(ReplayCapture).where(ReplayCapture.id == capture_id))
+            await session.commit()
+
+    provider.on_fetch = erase
+    report = await _run(_drain(session_factory, provider, store))
+
+    assert store.objects == {}, f"the bucket still holds {sorted(store.objects)}"
+    assert store.deleted == [_KEY]
+    async with session_factory() as session:
+        assert await session.get(ReplayCapture, capture_id) is None
+    assert report["stored_total"] == 0
+
+
+async def test_a_row_that_was_not_erased_keeps_its_object_and_its_metadata(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """T459j contrast: an ordinary capture is untouched by the post-write cleanup (the original zip
+    is never deleted for a user who did not erase)."""
+    capture_id = await _seed(session_factory)
+    store = _HookedObjectStore()
+    await _run(_drain(session_factory, _Provider(_blob()), store))
+
+    row = await _row(session_factory, capture_id)
+    assert row["status"] == CaptureStatus.STORED
+    assert row["object_key"] == _KEY
+    assert row["zip_sha256"] == _sha(_DOWNLOADED)
+    assert store.objects[_KEY] == _DOWNLOADED
+    assert store.deleted == []
+
+
+async def test_an_object_a_row_names_by_the_time_of_the_metadata_update_is_not_deleted(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """T459m (1): the drain writes, then another actor names the row with that key and commits
+    before the drain's metadata update. The update matches no row, but the row exists and names the
+    object, so the object stays."""
+    capture_id = await _seed(session_factory)
+    store = _HookedObjectStore()
+
+    async def another_actor_names_the_row() -> None:
+        async with session_factory() as session:
+            await session.execute(
+                update(ReplayCapture)
+                .where(ReplayCapture.id == capture_id)
+                .values(object_key=_KEY, zip_bytes=len(_UPLOADED), zip_sha256=_sha(_UPLOADED))
+            )
+            await session.commit()
+
+    store.after_write = another_actor_names_the_row
+    await _run(_drain(session_factory, _Provider(_blob()), store))
+
+    assert store.deleted == []
+    assert store.objects[_KEY] == _DOWNLOADED
+    assert (await _row(session_factory, capture_id))["object_key"] == _KEY
+
+
+async def test_an_object_the_drain_did_not_write_is_not_deleted_when_its_row_is_gone(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """T459m (1): the store already holds the drain's marked object (an earlier attempt's), so
+    `put_if_absent` writes nothing; the row is deleted meanwhile. The drain did not write that
+    object, so it deletes nothing."""
+    capture_id = await _seed(session_factory)
+    store = _HookedObjectStore(
+        {_KEY: _DOWNLOADED}, {_KEY: dict(capture_module._DRAIN_OBJECT_METADATA)}
+    )
+
+    async def row_deleted() -> None:
+        async with session_factory() as session:
+            await session.execute(delete(ReplayCapture).where(ReplayCapture.id == capture_id))
+            await session.commit()
+
+    store.before_write = row_deleted
+    await _run(_drain(session_factory, _Provider(_blob()), store))
+
+    assert store.deleted == []
+    assert store.objects == {_KEY: _DOWNLOADED}
+
+
+_LOCK_WAIT_TIMEOUT_SECONDS = 10.0
+
+
+async def _end_once_the_drain_waits_on_a_lock(
+    session_factory: async_sessionmaker[AsyncSession],
+    holder: AsyncSession,
+    end: Callable[[], Awaitable[None]],
+) -> None:
+    """Run `end` (commit or roll back `holder`) once another backend of this database is waiting
+    on a lock, which is the drain's existence check blocked by `holder`'s `FOR UPDATE`. No timer
+    orders the test: if no backend waits within the bound, `holder` is rolled back (so the drain
+    is not left blocked) and the test fails."""
+    deadline = time.monotonic() + _LOCK_WAIT_TIMEOUT_SECONDS
+    while True:
+        async with session_factory() as probe:
+            waiting = await probe.scalar(
+                text(
+                    "SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() "
+                    "AND pid <> pg_backend_pid() AND wait_event_type = 'Lock'"
+                )
+            )
+        if waiting:
+            await end()
+            return
+        if time.monotonic() > deadline:
+            await holder.rollback()
+            pytest.fail("the drain never waited on a lock held by the erasure session")
+        await asyncio.sleep(0.02)
+
+
+async def test_the_existence_check_waits_for_an_erasure_holding_the_row(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """T459m (2), FR-037: a row already names the key, an erasure locks it `FOR UPDATE`, deletes
+    the object and the row, and has not committed when the drain writes the key again. The drain's
+    metadata update matches no row (it names an object) without waiting; the existence check must
+    wait for the erasure and then see the row gone, so the bucket ends empty. The erasure commits
+    only once `pg_stat_activity` shows a backend waiting on a lock (T459p)."""
+    capture_id = await _seed(session_factory)
+    async with session_factory() as session:
+        await session.execute(
+            update(ReplayCapture).where(ReplayCapture.id == capture_id).values(object_key=_KEY)
+        )
+        await session.commit()
+    store = _HookedObjectStore({_KEY: _UPLOADED})
+    erasure = session_factory()
+    committer: list[asyncio.Task[None]] = []
+
+    async def erasure_in_progress() -> None:
+        await erasure.execute(
+            select(ReplayCapture).where(ReplayCapture.id == capture_id).with_for_update()
+        )
+        store.objects.pop(_KEY)
+        await erasure.execute(delete(ReplayCapture).where(ReplayCapture.id == capture_id))
+
+    async def start_committer() -> None:
+        committer.append(
+            asyncio.create_task(
+                _end_once_the_drain_waits_on_a_lock(session_factory, erasure, erasure.commit)
+            )
+        )
+
+    store.before_write = erasure_in_progress
+    store.after_write = start_committer
+    try:
+        await _run(_drain(session_factory, _Provider(_blob()), store))
+        await asyncio.gather(*committer)
+    finally:
+        await erasure.close()
+
+    assert store.objects == {}, f"the bucket still holds {sorted(store.objects)}"
+
+
+async def test_the_existence_check_waits_for_an_erasure_that_rolls_back(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """T459p (1), FR-037: the row names the key, the store does not hold the object, and a session
+    locks the row `FOR UPDATE`, deletes it, and has not finished when the drain writes the key.
+    That session then ROLLS BACK, so the row is still there. The existence check must wait for it
+    (a skipping read would see no row and delete). Asserted: the drain's `store.delete` is never
+    called (`store.deleted == []`), the object the drain wrote is still in the store, and the row
+    still names the key. The locking session never touches the store, so `store.deleted` records
+    only the drain's deletes. It rolls back once a backend is seen waiting on a lock."""
+    capture_id = await _seed(session_factory)
+    async with session_factory() as session:
+        await session.execute(
+            update(ReplayCapture).where(ReplayCapture.id == capture_id).values(object_key=_KEY)
+        )
+        await session.commit()
+    store = _HookedObjectStore()
+    locker = session_factory()
+    rollbacker: list[asyncio.Task[None]] = []
+
+    async def lock_and_delete_the_row() -> None:
+        await locker.execute(
+            select(ReplayCapture).where(ReplayCapture.id == capture_id).with_for_update()
+        )
+        await locker.execute(delete(ReplayCapture).where(ReplayCapture.id == capture_id))
+
+    async def start_rollbacker() -> None:
+        rollbacker.append(
+            asyncio.create_task(
+                _end_once_the_drain_waits_on_a_lock(session_factory, locker, locker.rollback)
+            )
+        )
+
+    store.before_write = lock_and_delete_the_row
+    store.after_write = start_rollbacker
+    try:
+        await _run(_drain(session_factory, _Provider(_blob()), store))
+        await asyncio.gather(*rollbacker)
+    finally:
+        await locker.close()
+
+    assert store.deleted == []
+    assert store.objects == {_KEY: _DOWNLOADED}
+    assert (await _row(session_factory, capture_id))["object_key"] == _KEY
+
+
+async def test_an_object_a_newer_row_for_the_same_pair_names_is_not_deleted(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """T459m (3): the claimed row is gone but a row for the same `(game_id, profile_id)` exists
+    (a newer one); the object under that pair's key is kept. Contrast with the erased pair above."""
+    capture_id = await _seed(session_factory)
+    store = _HookedObjectStore()
+
+    async def replaced_by_a_newer_row() -> None:
+        async with session_factory() as session:
+            await session.execute(delete(ReplayCapture).where(ReplayCapture.id == capture_id))
+            session.add(
+                ReplayCapture(
+                    id=uuid.uuid4(),
+                    game_id=_GAME_ID,
+                    profile_id=_PROFILE_ID,
+                    capture_deadline_at=datetime.now(UTC) + timedelta(days=1),
+                    source=CaptureSource.AUTOMATIC,
+                )
+            )
+            await session.commit()
+
+    store.after_write = replaced_by_a_newer_row
+    await _run(_drain(session_factory, _Provider(_blob()), store))
+
+    assert store.deleted == []
+    assert store.objects[_KEY] == _DOWNLOADED
 
 
 async def test_a_row_reverted_to_pending_by_another_drain_names_the_object_and_resumes(

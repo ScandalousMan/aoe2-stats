@@ -363,11 +363,16 @@ class ObjectStore:
     async def delete(self, key: str) -> None:
         """Delete `key`.
 
-        The one caller allowed to reach for this is GDPR erasure (T091, constitution IX): the
-        original zip is otherwise never modified and never deleted (constitution IV). A
-        capture that turns out to be unparsable is quarantined, not deleted — once the source's
-        retention window has passed it holds no replacement, so an unreadable blob is evidence,
-        not garbage.
+        The callers meant to reach for this are GDPR erasure (T091, constitution IX) and the
+        capture worker removing the object it just wrote when no `replay_captures` row is left
+        for its `(game_id, profile_id)` (T459j). The worker's call rests on an assumption this
+        method does not enforce: erasure is the only code that deletes a capture row; one test
+        scans for another, though not every shape (its docstring lists what it cannot see;
+        `tests/architecture/test_capture_row_deletes.py`).
+        Apart from those two, the original zip is not deleted (constitution IV). A capture that
+        turns out to be unparsable is quarantined, not deleted: once the source's retention
+        window has passed it holds no replacement, so an unreadable blob is evidence, not
+        garbage.
         """
         await asyncio.to_thread(self._client.delete_object, Bucket=self._bucket, Key=key)
 
