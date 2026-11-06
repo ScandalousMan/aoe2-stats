@@ -7,10 +7,22 @@ fails naming it, so the assumption is checked rather than only written down.
 
 What it detects: a `delete(ReplayCapture)` / `ReplayCapture.__table__.delete()` construct, a
 `session.delete(...)` / `.delete(...)` call whose argument or receiver names `ReplayCapture`, and
-SQL text `DELETE FROM replay_captures`. It does not see a delete reached some other way (a foreign
-key `ON DELETE CASCADE` from a parent table, or SQL assembled at runtime); such a path is outside
-what this scan guarantees. Scope is production `src/` trees, `api/` and `scripts/`, never `tests/`
-or Alembic revisions.
+a single string constant containing `DELETE FROM replay_captures`. It does not see these shapes,
+so a delete reached through one of them is outside what this scan guarantees:
+
+- a foreign key `ON DELETE CASCADE` from a parent table;
+- SQL assembled at runtime (an f-string or concatenation that splits the statement across
+  constants);
+- `session.delete(instance)` on a model instance held in a variable (the last test pins it);
+- an aliased import of the model (`import ReplayCapture as RC`);
+- a table object bound in one statement and deleted in another (`t = ReplayCapture.__table__`
+  then `t.delete()`), or reached through `metadata.tables["replay_captures"]`;
+- SQL that is not the exact text `DELETE FROM [public.]replay_captures`: a quoted identifier, a
+  different schema, `DELETE FROM ONLY`, or `TRUNCATE replay_captures`;
+- a delete outside Python source (a `.sql` file, a shell script, a database trigger or console);
+- a Python file outside the scan roots below.
+
+Scope is production `src/` trees, `api/` and `scripts/`, never `tests/` or Alembic revisions.
 """
 
 from __future__ import annotations

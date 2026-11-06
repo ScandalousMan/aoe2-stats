@@ -1259,10 +1259,11 @@ class CaptureDrain:
                 # nothing naming it and is removed. Only an object this drain wrote is removed,
                 # never one it found held. The read takes a lock that conflicts with the
                 # erasure's `FOR UPDATE`, so it answers after an erasure in progress commits or
-                # rolls back. The assumption, which nothing at runtime enforces beyond
-                # `tests/architecture/test_capture_row_deletes.py`: erasure is the only code that
-                # deletes a `replay_captures` row, so a missing row means an erasure, not a
-                # cleanup of someone else's object.
+                # rolls back. The assumption, which nothing at runtime enforces: erasure is the
+                # only code that deletes a `replay_captures` row, so a missing row means an
+                # erasure, not a cleanup of someone else's object.
+                # `tests/architecture/test_capture_row_deletes.py` scans for other deletes but
+                # lists the shapes it cannot see.
                 await store.delete(key)
             return _NOT_CONCLUDED
 

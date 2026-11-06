@@ -24,7 +24,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
-from sqlalchemy import Update, delete, select, update
+from sqlalchemy import Update, delete, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from tests.links import link_profile
 
@@ -704,13 +704,44 @@ async def test_an_object_the_drain_did_not_write_is_not_deleted_when_its_row_is_
     assert store.objects == {_KEY: _DOWNLOADED}
 
 
+_LOCK_WAIT_TIMEOUT_SECONDS = 10.0
+
+
+async def _end_once_the_drain_waits_on_a_lock(
+    session_factory: async_sessionmaker[AsyncSession],
+    holder: AsyncSession,
+    end: Callable[[], Awaitable[None]],
+) -> None:
+    """Run `end` (commit or roll back `holder`) once another backend of this database is waiting
+    on a lock, which is the drain's existence check blocked by `holder`'s `FOR UPDATE`. No timer
+    orders the test: if no backend waits within the bound, `holder` is rolled back (so the drain
+    is not left blocked) and the test fails."""
+    deadline = time.monotonic() + _LOCK_WAIT_TIMEOUT_SECONDS
+    while True:
+        async with session_factory() as probe:
+            waiting = await probe.scalar(
+                text(
+                    "SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() "
+                    "AND pid <> pg_backend_pid() AND wait_event_type = 'Lock'"
+                )
+            )
+        if waiting:
+            await end()
+            return
+        if time.monotonic() > deadline:
+            await holder.rollback()
+            pytest.fail("the drain never waited on a lock held by the erasure session")
+        await asyncio.sleep(0.02)
+
+
 async def test_the_existence_check_waits_for_an_erasure_holding_the_row(
     session_factory: async_sessionmaker[AsyncSession], clean_database: None
 ) -> None:
     """T459m (2), FR-037: a row already names the key, an erasure locks it `FOR UPDATE`, deletes
     the object and the row, and has not committed when the drain writes the key again. The drain's
     metadata update matches no row (it names an object) without waiting; the existence check must
-    wait for the erasure and then see the row gone, so the bucket ends empty."""
+    wait for the erasure and then see the row gone, so the bucket ends empty. The erasure commits
+    only once `pg_stat_activity` shows a backend waiting on a lock (T459p)."""
     capture_id = await _seed(session_factory)
     async with session_factory() as session:
         await session.execute(
@@ -728,12 +759,12 @@ async def test_the_existence_check_waits_for_an_erasure_holding_the_row(
         store.objects.pop(_KEY)
         await erasure.execute(delete(ReplayCapture).where(ReplayCapture.id == capture_id))
 
-    async def commit_once_the_drain_is_checking() -> None:
-        await asyncio.sleep(0.5)
-        await erasure.commit()
-
     async def start_committer() -> None:
-        committer.append(asyncio.create_task(commit_once_the_drain_is_checking()))
+        committer.append(
+            asyncio.create_task(
+                _end_once_the_drain_waits_on_a_lock(session_factory, erasure, erasure.commit)
+            )
+        )
 
     store.before_write = erasure_in_progress
     store.after_write = start_committer
@@ -744,6 +775,52 @@ async def test_the_existence_check_waits_for_an_erasure_holding_the_row(
         await erasure.close()
 
     assert store.objects == {}, f"the bucket still holds {sorted(store.objects)}"
+
+
+async def test_the_existence_check_waits_for_an_erasure_that_rolls_back(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """T459p (1), FR-037: the row names the key, the store does not hold the object, and a session
+    locks the row `FOR UPDATE`, deletes it, and has not finished when the drain writes the key.
+    That session then ROLLS BACK, so the row is still there. The existence check must wait for it
+    (a skipping read would see no row and delete). Asserted: the drain's `store.delete` is never
+    called (`store.deleted == []`), the object the drain wrote is still in the store, and the row
+    still names the key. The locking session never touches the store, so `store.deleted` records
+    only the drain's deletes. It rolls back once a backend is seen waiting on a lock."""
+    capture_id = await _seed(session_factory)
+    async with session_factory() as session:
+        await session.execute(
+            update(ReplayCapture).where(ReplayCapture.id == capture_id).values(object_key=_KEY)
+        )
+        await session.commit()
+    store = _HookedObjectStore()
+    locker = session_factory()
+    rollbacker: list[asyncio.Task[None]] = []
+
+    async def lock_and_delete_the_row() -> None:
+        await locker.execute(
+            select(ReplayCapture).where(ReplayCapture.id == capture_id).with_for_update()
+        )
+        await locker.execute(delete(ReplayCapture).where(ReplayCapture.id == capture_id))
+
+    async def start_rollbacker() -> None:
+        rollbacker.append(
+            asyncio.create_task(
+                _end_once_the_drain_waits_on_a_lock(session_factory, locker, locker.rollback)
+            )
+        )
+
+    store.before_write = lock_and_delete_the_row
+    store.after_write = start_rollbacker
+    try:
+        await _run(_drain(session_factory, _Provider(_blob()), store))
+        await asyncio.gather(*rollbacker)
+    finally:
+        await locker.close()
+
+    assert store.deleted == []
+    assert store.objects == {_KEY: _DOWNLOADED}
+    assert (await _row(session_factory, capture_id))["object_key"] == _KEY
 
 
 async def test_an_object_a_newer_row_for_the_same_pair_names_is_not_deleted(

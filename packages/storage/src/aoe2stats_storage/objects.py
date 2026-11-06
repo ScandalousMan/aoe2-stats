@@ -367,7 +367,8 @@ class ObjectStore:
         capture worker removing the object it just wrote when no `replay_captures` row is left
         for its `(game_id, profile_id)` (T459j). The worker's call rests on an assumption this
         method does not enforce: erasure is the only code that deletes a capture row; one test
-        scans the production modules for another (`tests/architecture/test_capture_row_deletes.py`).
+        scans for another, though not every shape (its docstring lists what it cannot see;
+        `tests/architecture/test_capture_row_deletes.py`).
         Apart from those two, the original zip is not deleted (constitution IV). A capture that
         turns out to be unparsable is quarantined, not deleted: once the source's retention
         window has passed it holds no replacement, so an unreadable blob is evidence, not
