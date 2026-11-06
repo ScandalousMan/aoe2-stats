@@ -66,6 +66,23 @@ rule is not allowed. This supersedes the interval rule recorded in 006's Clarifi
 
 ## Clarifications
 
+### Session 2026-11-06
+
+- Q: The military share needs a class per unit, and the knowledge base has none. Villagers, fishing
+  ships and trade units are economic; combat units are military; what are Monks, Missionaries,
+  transport ships and the King? → A: Neither. Units are in three classes: economic, military, and
+  neither; the military share counts the military class only, and the neither class is in neither
+  figure. The class per unit is a knowledge fact, transcribed per build.
+- Q: A technology has no confirming order, ever (an order names the line's base unit after every
+  upgrade). Does a researched technology count as completed at its modelled arrival (optimistic) or
+  never (pessimistic)? → A: Neither is exact. The reconstruction MUST demonstrate that nothing
+  prevented the research from completing before it counts the technology as researched: the
+  command was executed, the participant had not resigned before the modelled arrival, the
+  researching building was not deleted by its owner before it, and either no enemy command targeted
+  the building between the click and the arrival or an order issued from that building after the
+  arrival proves it still stood. A technology for which that cannot be shown counts as not
+  researched, and the value names what was missing (FR-007a).
+
 ### Session 2026-11-03
 
 - Q: Should "resources spent" mean what the orders committed, or what the player actually paid
@@ -255,6 +272,11 @@ reconstruction version and confirm both analyses are kept and resolvable.
   time per producing building, the modelled arrival of each age-up, and resources spent on military
   units. Each MUST move from `planned` to `published` in the register in the same change that
   publishes it.
+- **FR-001b**: Every unit MUST carry one of three classes in the knowledge base, per build:
+  `economic`, `military` or `neither`. The military share (FR-001) counts the `military` class
+  only. Villagers in every form, fishing ships and trade units are `economic`; combat units are
+  `military`; Monks, Missionaries, transport ships and the King are `neither` (Clarifications,
+  Session 2026-11-06). A unit with no class is a knowledge gap that withholds the military share.
 - **FR-001a**: The system MUST also publish, for each participant, the population over the match and
   each Town Center's idle time, both as exact figures, and both added to the register as `planned` in
   the change that files their tasks. The method is chosen by FR-012.
@@ -297,6 +319,14 @@ reconstruction version and confirm both analyses are kept and resolvable.
   settle it. The rule set is closed and covers every kind of condition an effect depends on; each
   rule carries the owner's ruling or evidence that the game behaves that way, and the value MUST name
   the rule and the facts it used.
+- **FR-007a**: A technology MUST count as researched only when the recording demonstrates that
+  nothing prevented its research from completing: an executed command, no resignation before the
+  modelled arrival, no deletion of the researching building by its owner before it, and no enemy
+  command targeting that building between the click and the arrival unless a later order from the
+  building proves it stood after the arrival. Otherwise it counts as not researched, and every value
+  that depends on it names the obstacle, or the proof that was missing. The same discipline applies
+  to every condition this feature settles by a rule: a rule demonstrates the absence of every
+  observable obstacle, and states which obstacles the recording cannot show.
 - **FR-008**: The system MUST NOT publish an interval, a midpoint, a most-likely state or a
   probability for a reconstructed datum. Every reconstructed datum is one exact value.
 - **FR-009**: A value MUST NOT be withheld because its state is uncertain. It is withheld only when

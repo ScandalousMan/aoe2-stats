@@ -58,8 +58,8 @@ in the change that earns them (data-model §6).
 | D-HOUSE-0 | housing | no housing pause ahead of an age-up | candidate | the 22 age-up readings |
 | D-EXEC-1 | executed | how a recorded order is told executed or refused | **not yet written** | gate G1: O1, O2 |
 | D-DIST-1 | distribution | how a command naming several buildings places its items | **not yet written** | O2 |
-| D-TECH-1 | researched | an executed technology counts researched from its modelled arrival unless its participant resigned first | candidate | the owner's ruling on its direction (research R9, R15); then readings |
-| D-CONTROL-1 | controlled | a building counts controlled from its first order until the match ends; the starting Town Center from 0 | candidate | the owner's ruling |
+| D-TECH-1 | researched | an executed research counts completed at its modelled arrival when no observable obstacle occurred: no resignation before it, no owner deletion of the building before it, no enemy command targeting the building between click and arrival unless a later order from it proves it stood (FR-007a) | adopted | the owner's ruling, spec Clarifications 2026-11-06; checked by readings |
+| D-CONTROL-1 | controlled | a building counts at an order's time when an earlier order from it proves it stood and no enemy command targeted it since; after a targeting, from its next proof; the starting Town Center from 0 | candidate | the owner's yes to this application of FR-007a (research R9) |
 | D-CANCEL-1 | cancellation | the building with the most recently queued unstarted items of that unit, from the end | candidate | a recording that carries a cancellation (O7); synthetic streams until then |
 | D-TIE-1 | tie | a deletion is the latest untied placement its owner targeted within a window | candidate | O5 |
 | D-REFUND-1 | refund | an unstarted foundation is refunded in full, anything else nothing | adopted | spec Clarifications, Session 2026-11-03 |
@@ -72,6 +72,13 @@ holds no `P4`.
 FR-003b's hypothesis is **not** in the set as a usable rule. Research R2 records it refuted by the
 recordings themselves, so it could enter only as `refuted`, citing that evidence. D-EXEC-1 replaces
 it once G1 closes.
+
+## Every deduction demonstrates absence (FR-007a)
+
+A deduction rule that counts a state as holding enumerates, in its `statement`, every obstacle the
+recording could show and asserts each absent, and names in `limits` every obstacle the recording
+cannot show. A rule that assumes a state without that enumeration, in either direction, is refused by
+review; the loader cannot read prose, so this is a reviewer's gate, written here so it is applied.
 
 ## Adoption gate
 
