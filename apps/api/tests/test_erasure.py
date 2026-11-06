@@ -502,6 +502,122 @@ async def test_erasure_deletes_the_deterministic_key_of_a_row_in_flight_whatever
     assert await store.list_keys() == []
 
 
+class _FailingNamedDeleteStore(_RecordingObjectStore):
+    """Fails the delete of one key, which only the named pass reaches: a `DeleteObject` error
+    after the unnamed pass has run, so the erasure's transaction rolls back."""
+
+    def __init__(self, failing_key: str) -> None:
+        super().__init__()
+        self._failing_key = failing_key
+
+    async def delete(self, key: str) -> None:
+        if key == self._failing_key:
+            raise RuntimeError("simulated DeleteObject failure")
+        await super().delete(key)
+
+
+async def _seed_in_flight_and_stored(
+    db_session: AsyncSession, *, game_id: int, status: CaptureStatus
+) -> tuple[User, str, str]:
+    """The user, the deterministic key of a row in `status` naming nothing, and the key a stored
+    row names (the one whose delete a test may fail)."""
+    user = await _seed_linked_user(
+        db_session, profile_id=_OWNER_PROFILE_ID, steam_id64="76561197960280021"
+    )
+    completed_at = datetime.now(UTC) - timedelta(days=2)
+    for offset in (0, 1):
+        db_session.add(
+            Match(
+                game_id=game_id + offset,
+                leaderboard_id=3,
+                completed_at=completed_at,
+                source="relic",
+                raw_payload={},
+            )
+        )
+    await db_session.flush()
+    db_session.add(
+        ReplayCapture(
+            game_id=game_id,
+            profile_id=_OWNER_PROFILE_ID,
+            status=status,
+            capture_deadline_at=completed_at + timedelta(days=21),
+            source=CaptureSource.AUTOMATIC,
+        )
+    )
+    await db_session.commit()
+    named = f"replays/{game_id + 1}/named.zip"
+    await _seed_stored_capture(
+        db_session, game_id=game_id + 1, profile_id=_OWNER_PROFILE_ID, object_key=named
+    )
+    return user, replay_object_key(game_id, _OWNER_PROFILE_ID), named
+
+
+@pytest.mark.parametrize(
+    ("status", "original_survives"),
+    [(CaptureStatus.DOWNLOADING, True), (CaptureStatus.FAILED, False)],
+)
+async def test_a_rolled_back_erasure_keeps_the_original_of_a_row_in_flight(
+    client: TestClient,
+    db_session: AsyncSession,
+    status: CaptureStatus,
+    original_survives: bool,
+) -> None:
+    """T459o, FR-037, constitution IV: the erasure rolls back after the unnamed pass (a
+    `DeleteObject` error in the named pass). A `downloading` row survives it, and its drain later
+    names the deterministic key, so that object must still exist. The contrast: a row not in
+    flight names no object this pass owes anyone, and its unnamed key is removed as before."""
+    game_id = _ORPHAN_GAME_ID + 20
+    user, deterministic, named = await _seed_in_flight_and_stored(
+        db_session, game_id=game_id, status=status
+    )
+    await _sign_in(client, db_session, user)
+    store = _FailingNamedDeleteStore(named)
+    client.app.dependency_overrides[get_object_store] = lambda: store  # type: ignore[attr-defined]
+    await store.put(deterministic, b"ORIGINAL")
+    await store.put(named, b"NAMED")
+
+    token = _get_confirmation_token(client)
+    with pytest.raises(RuntimeError, match="simulated DeleteObject failure"):
+        client.post(_ERASE_PATH, json={"confirmation_token": token})
+
+    assert (deterministic in await store.list_keys()) is original_survives
+    assert await db_session.scalar(select(func.count(User.id)).where(User.id == user.id)) == 1
+
+
+async def test_a_committed_erasure_removes_the_original_of_a_row_in_flight_after_the_commit(
+    client: TestClient, db_session: AsyncSession
+) -> None:
+    """T459o: the limit made visible. When the erasure commits, the in-flight row's deterministic
+    key is deleted too, and only once the commit is done: the user row is already gone when
+    that `DeleteObject` runs."""
+    game_id = _ORPHAN_GAME_ID + 30
+    user, deterministic, named = await _seed_in_flight_and_stored(
+        db_session, game_id=game_id, status=CaptureStatus.DOWNLOADING
+    )
+    await _sign_in(client, db_session, user)
+    store = _install_recording_object_store(client)
+    await store.put(deterministic, b"ORIGINAL")
+    await store.put(named, b"NAMED")
+    users_when_deleted: dict[str, int] = {}
+    original_delete = store.delete
+
+    async def spying_delete(key: str) -> None:
+        async with db_session.bind.connect() as connection:  # type: ignore[union-attr]
+            count = await connection.scalar(select(func.count(User.id)).where(User.id == user.id))
+        users_when_deleted[key] = count or 0
+        await original_delete(key)
+
+    store.delete = spying_delete  # type: ignore[method-assign]
+
+    token = _get_confirmation_token(client)
+    response = client.post(_ERASE_PATH, json={"confirmation_token": token})
+    assert response.status_code == 200, f"Got {response.status_code}: {response.text}"
+
+    assert await store.list_keys() == []
+    assert users_when_deleted[deterministic] == 0, "the in-flight key went before the commit"
+
+
 class _TimedObjectStore(_RecordingObjectStore):
     """`_RecordingObjectStore` whose `delete` takes a moment and records the order of the calls and
     how many were in flight at once (T730 remediation: the order of the two passes, and that the

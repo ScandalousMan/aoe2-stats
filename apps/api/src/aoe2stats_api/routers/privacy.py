@@ -109,6 +109,7 @@ within what delay.
 from __future__ import annotations
 
 import asyncio
+import logging
 import math
 import os
 import uuid
@@ -144,6 +145,8 @@ from aoe2stats_storage.models import (
 )
 from aoe2stats_storage.models import Session as SessionRow
 from aoe2stats_storage.objects import ObjectStore, replay_object_key
+
+logger = logging.getLogger("aoe2stats_api")
 
 router = APIRouter(tags=["privacy"])
 
@@ -817,9 +820,16 @@ async def erase_account(
     key that no row names, **first**; then one to each key a row names. A function killed at the
     limit, or a `DeleteObject` error partway through a pass, rolls the database back (after the
     idle-in-transaction timeout for a kill), and what that leaves depends on the pass: during the
-    unnamed pass only objects no row names are gone, so no row points at a missing original; during
-    the named pass the rolled-back rows still name objects already deleted - originals gone while
-    the account survives - narrowed to that pass. A retry repeats the idempotent deletes.
+    unnamed pass only objects no row names are gone, and no `stored` row points at a missing
+    original; during the named pass the rolled-back rows still name objects already deleted -
+    originals gone while the account survives - narrowed to that pass. A `downloading` row is the
+    exception to "no row names it": its drain writes the deterministic key and names it later, so
+    that key is not in the unnamed pass (T459o, constitution IV). It is deleted after the commit
+    instead, on the commit path only, and a failure there is logged and not raised, the erasure
+    having committed. What that leaves: a rolled-back erasure keeps the in-flight original; a
+    committed one whose post-commit delete fails leaves an object no row names, which the drain
+    removes only if it is the one that wrote it (`capture.py`, `_pair_has_row`). A retry repeats
+    the idempotent deletes.
 
     **Duration.** Erasure's route runs in `api/index.py`, whose limit is `maxDuration: 10` in
     `vercel.json` (`api/cron/ingest.py` and `api/analyze.py` are separate functions). Both passes
@@ -861,6 +871,7 @@ async def erase_account(
     db_session.add(data_request)
     await db_session.flush()
 
+    in_flight_keys: set[str] = set()
     if profile_ids:
         played = await _pseudonymise_profile_ids(db_session, profile_ids)
 
@@ -885,15 +896,26 @@ async def erase_account(
         )
         named_keys = {c.object_key for c in captures if c.object_key is not None}
         pairs = [*played, *((capture.game_id, capture.profile_id) for capture in captures)]
-        unnamed_keys = {replay_object_key(game_id, owner) for game_id, owner in pairs} - named_keys
+        all_pair_keys = {replay_object_key(game_id, owner) for game_id, owner in pairs}
+        # A `downloading` row's drain writes the deterministic key and only then names it, so
+        # that object is the original a rolled-back erasure's surviving row will name (T459o,
+        # constitution IV): it is not deleted before the commit, but after it.
+        in_flight_keys = {
+            replay_object_key(c.game_id, c.profile_id)
+            for c in captures
+            if c.status is CaptureStatus.DOWNLOADING
+        } - named_keys
+        unnamed_keys = all_pair_keys - named_keys - in_flight_keys
         # Before any `DeleteObject` (docstring, "Duration"): an erasure that cannot fit is
         # refused whole, since a kill in the named pass is irreversible.
-        waves = _erasure_delete_waves(unnamed=len(unnamed_keys), named=len(named_keys))
+        waves = _erasure_delete_waves(
+            unnamed=len(unnamed_keys) + len(in_flight_keys), named=len(named_keys)
+        )
         if waves > _ERASURE_WAVE_BUDGET:
             raise await _refuse_erasure_too_large(
                 db_session,
                 user_id=user_id,
-                keys=len(unnamed_keys) + len(named_keys),
+                keys=len(unnamed_keys) + len(in_flight_keys) + len(named_keys),
                 waves=waves,
             )
         # The unnamed pass first (docstring): a kill in the slow pass must not leave rows naming
@@ -928,6 +950,18 @@ async def erase_account(
     )
 
     await db_session.execute(delete(User).where(User.id == user_id))
+
+    if in_flight_keys:
+        # Committed here, not by `get_session` after the return: the deletes follow the commit.
+        # The row is gone, so the drain's own `_pair_has_row` check deletes what it wrote too;
+        # this covers a drain that wrote and then died. A failure here cannot undo the erasure.
+        await db_session.commit()
+        try:
+            await _delete_objects(object_store, sorted(in_flight_keys))
+        except Exception:
+            logger.warning(
+                "erasure committed; deleting %d in-flight object(s) failed", len(in_flight_keys)
+            )
 
     return {"status": "erased"}
 
