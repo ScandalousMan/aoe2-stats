@@ -99,3 +99,12 @@ Checks D-TIE-1 and D-REFUND-1 (research R6).
 Not requested yet. The population phase (plan.md) adds its requests here, each a population figure
 or a Town Center's idle stretch at a stated time, once its candidate rules are written (research
 R5).
+
+## O7 — A recording that carries a cancellation (optional, no fixture has one)
+
+No committed recording contains a unit cancellation, so the adapter cannot prove the payload's
+layout and D-CANCEL-1 cannot be checked. If one of your own recorded games has you cancel a queued
+Villager or soldier, say which match; it can be committed under 006's basis for committed reference
+recordings. If none does, play one game in which you queue three Villagers and cancel the last two
+from the Town Center's queue panel, and note the match time. Nothing else in this feature waits on
+it.

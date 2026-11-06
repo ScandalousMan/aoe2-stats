@@ -37,6 +37,11 @@ lawful sources, and the membership of "military" is put to the owner because it 
 that require an age not yet clicked are one Sicilian unit the knowledge base dates one age too late.
 The rule is adopted, the defect goes to 006's owner readings, and the check becomes permanent.
 
+**A queue order names the line's base unit after every upgrade.** After Crossbowman, the player
+still orders "Archer" 167 times. So no later order confirms a technology, every technology rests on
+one deduction rule whose direction the owner must choose, and the knowledge base needs a line table
+to time an order at its stage (research R15).
+
 Population and idle time get no method in this plan, as FR-012 requires: the strategies are analysed
 (research R5), each is a candidate, and their phase is filed behind the knowledge fields and the
 readings it needs.
@@ -83,8 +88,8 @@ anywhere in the published types (FR-008).
 
 **Scale/Scope**: 5 user stories, 29 functional requirements, 10 success criteria. One new package,
 three existing packages touched (`packages/core`, `packages/replay-engine`, `packages/knowledge`
-through new snapshots) and one application (`apps/analyzer`), one front-end feature directory and
-one design-system composite. Three committed recordings; 22 age-ups; 14 rules in the initial registry, 4 adopted at
+through new snapshots: population fields, the economic-unit list, the line table, starting objects) and one application (`apps/analyzer`), one front-end feature directory and
+one design-system composite. Three committed recordings; 22 age-ups; 14 rules in the initial registry, 5 adopted at
 entry (contracts/rules.md). Nine phases, two of them gates.
 
 ## Constitution Check
@@ -207,11 +212,11 @@ in the registry, and what follows them does not start until that decision is mad
 
 | # | Phase | Stories | Why here |
 | - | ----- | ------- | -------- |
-| 1 | Evidence and vocabulary | — | The owner readings are the critical path and cost a person's time, so they are requested first (owner-readings.md is already written). In parallel: the vocabulary widening, the population limit, the analysis-time baseline SC-008 needs, the age-proof consistency test, the Sicilian age-requirement defect filed with 006, and the spec's wrong citation corrected. Nothing here publishes. |
+| 1 | Evidence and vocabulary | — | The owner readings are the critical path and cost a person's time, so they are requested first (owner-readings.md is already written). In parallel: the vocabulary widening, the population limit, the analysis-time baseline SC-008 needs, the age-proof consistency test, the base-unit measurement of research R15 as a test, and the Sicilian age-requirement defect filed with 006. Nothing here publishes. |
 | 2 | The reconstruction spine | US3, US5 | The package, the order fold, the rules registry and its view, settlements, the invariants, the identity's reconstruction component, the reproduce path, validator rules 11 to 14, and document version 3 with an empty `reconstructed` block. The starting-attributes decoder lands here because every price needs the starting age. |
 | 3 | **Gate G1: executed or refused, and distribution** | — | Transcribes O1 and O2, writes D-EXEC-1 and D-DIST-1 from what they show, builds the queue model, and checks it against the 22 age-up queues. Ends adopted, or ends in the arbitration Complexity Tracking names, in which case phases 4 and 5 do not publish. |
 | 4 | Age-up arrivals | US2 | First, because every price depends on the age in force (FR-010, US1 scenario 2). D-AGE-1 and D-HOUSE-0 are adopted against the age-up readings, D-WIN-1 on the owner's ruling; `age_requirement` joins the datum's required knowledge, so its gaps turn blocking. |
-| 5 | Spending, military share, production per building | US1 | Needs the age timeline from phase 4, the economic-unit list, and the owner's rulings on D-TECH-1, D-CONTROL-1 and D-CANCEL-1. Ties deletions (O5) and applies the refund rule. Amends the spending method in the register (FR-003) in the same change that publishes it. |
+| 5 | Spending, military share, production per building | US1 | Needs the age timeline from phase 4, the economic-unit list, the line table (research R15), and the owner's rulings on D-TECH-1 and D-CONTROL-1. Ties deletions (O5) and applies the refund rule. Amends the spending method in the register (FR-003) in the same change that publishes it. |
 | 6 | Correctness at scale | US3, US5 | The golden reconstructions of all three recordings agreeing with every reading, the synthetic stream for every civilisation and every effect state (FR-020), the per-rule settlement table (SC-009), the analysis-time check (SC-008), and byte-identical reproduction (SC-006). |
 | 7 | The view | US4 | The product designer's spec, then the component, stories and baselines in both themes, then the mappers. Last of the published work because it only renders what phases 4 and 5 publish. |
 | 8 | **Gate G2: population and idle time** | — | FR-001a and FR-012. The two population fields added to the knowledge base, the candidate rules of research R5 written, O6 requested and transcribed. Idle time by empty queue first (it needs only G1); population only if a candidate survives the readings. The two register entries are added as `planned` in the change that files this phase's tasks. |
@@ -228,13 +233,16 @@ staleness test recomputes each on its next request, as it did for 006's knowledg
 ## Complexity Tracking
 
 No constitution violation. Five decisions depart from the spec's text or from the path of least
-resistance; each is recorded so a reader does not take it for an oversight, and four of them need
-the owner.
+resistance; each is recorded so a reader does not take it for an oversight. Three need the owner,
+and are the only arbitrations this plan leaves open; the rest was settled by evidence in this
+change (the spec's FR-003b and FR-012 amended, D-WIN-1 adopted, D-CANCEL-1 blocked on a recording
+rather than a ruling).
 
 | Decision | Why | Alternative rejected because |
 | -------- | --- | ---------------------------- |
-| FR-003b's hypothesis is not adopted, even as a default | The recordings refute it (research R2): published, it gives arrivals the recording itself contradicts. **Needs the owner**: FR-003b should be amended to say the hypothesis is refuted and G1 replaces it. | Adopting it as written satisfies FR-003b's letter and breaks FR-019 and SC-001 on day one. |
-| If G1 cannot tell executed from refused exactly, spending and arrivals are not published | The owner's rule allows one exact value or nothing; a refusal for want of resources depends on income, which is `blocked` (research R2). **Needs the owner** if it happens: accept a narrower datum, or keep it unpublished. | Publishing a figure "under a named hypothesis" that the recording contradicts is the estimate-wearing-a-disguise the spec's US3 forbids. |
+| FR-003b's hypothesis is retired, and the spec amended in this change | The recordings refute it (research R2): published, it gives arrivals the recording itself contradicts. Settled by evidence; no ruling asked. | Adopting it as written satisfies FR-003b's old letter and breaks FR-019 and SC-001 on day one. |
+| If G1 cannot tell executed from refused exactly, spending and arrivals are not published | The owner's rule allows one exact value or nothing; a refusal for want of resources depends on income, which is `blocked` (research R2). Conditional, not open today: it becomes an arbitration only if the O1 and O2 readings show refusals no observed fact distinguishes. | Publishing a figure "under a named hypothesis" that the recording contradicts is the estimate-wearing-a-disguise the spec's US3 forbids. |
 | 006's canonical vocabulary is widened by this feature | Per-building data need every producing building (research R1). | Reading the engine below the seam re-couples the reconstruction to one engine (006 FR-015). |
-| The economic-unit list is a proposal, not a decision | What "military" covers (Monks, Missionaries, transports) is a definition the code cannot settle (research R10). **Needs the owner.** | Deriving it from production buildings silently decides the same question. |
-| D-TECH-1, D-CONTROL-1, D-CANCEL-1 and D-WIN-1 enter as candidates | Each settles a condition no order proves and no clarification covers (research R7 to R9); FR-007 requires a ruling or evidence. **Needs the owner's rulings.** | Adopting them on this plan's say-so is the unwritten assumption the owner's rule forbids. |
+| The economic-unit list is a proposal, not a decision | What "military" covers (Monks, Missionaries, transports) is a definition the code cannot settle (research R10). **Arbitration 1.** | Deriving it from production buildings silently decides the same question. |
+| D-TECH-1's direction | A technology has no confirming order, ever (research R9, R15); "not reached unless confirmed" applied to it reads "never researched". Optimistic (researched from the modelled arrival) or pessimistic (never)? **Arbitration 2.** | Adopting either on this plan's say-so is the unwritten assumption the owner's rule forbids. |
+| D-CONTROL-1's shape | Destruction is unobservable, so "buildings controlled" cannot be exact; the rule chooses an error direction (research R9). Affects Saxons and Cumans only, none in the committed recordings, but production analyses every civilisation, so it is needed before phase 5 ships. **Arbitration 3.** | Withholding those civilisations' values is the uncertainty-withholding FR-009 forbids. |
