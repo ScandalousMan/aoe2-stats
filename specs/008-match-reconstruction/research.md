@@ -285,31 +285,41 @@ requirement that one exist.
 - **A technology researched** (Kamandaran, Szlachta Privileges, Perfusion, and every unit upgrade,
   R15). The confirming order of FR-010 has no lawful analogue: it would need prerequisites, which
   the register holds `blocked` (FR-024), and R15 shows a unit upgrade leaves no trace in later
-  orders either. Candidate **D-TECH-1**: an executed research counts researched from its modelled
-  arrival, by the same queue model as an age-up, unless its participant resigned first. It needs
-  the owner's ruling on its direction, because it has no confirming order at all: the age-up
-  clarification chose "not reached unless confirmed", and applied to a technology that nothing can
-  confirm, that reads "never researched", which would make Kamandaran never apply and every archer
-  train at the Archer's time after Crossbowman. In the committed recordings the ruling decides the
-  Persians' Kamandaran in 504695319 (researched at 36:01) and the training time of 665 units
-  ordered after a line upgrade (R15).
+  orders either. **D-TECH-1**, on the owner's ruling (spec Clarifications, Session 2026-11-06; FR-007a):
+  an executed research counts completed at its modelled arrival when the recording demonstrates
+  that nothing prevented it. The obstacles the recording can show are enumerated: a resignation
+  before the arrival; the owner's own deletion of the researching building before it (the building
+  object is named by the research order, so a matching `object-deleted` is readable); an enemy
+  command targeting that building between the click and the arrival, neutralised only by an order
+  issued from the building after the arrival, which proves it stood. The rule's record names the
+  obstacle it cannot show, a cancellation, so the value is exact under that stated limit and never
+  under an unstated one. Neither the optimistic reading (completed unless resigned) nor the
+  pessimistic one (never researched) was accepted: the first assumes, the second refuses to look.
+  In the committed recordings the rule decides the Persians' Kamandaran in 504695319 (commanded at
+  36:01) and the training time of 665 units ordered after a line upgrade (R15).
 - **Buildings controlled** (Saxons' discount per Town Center or Castle, the Cumans' second Town
-  Center in the Feudal Age). **P2** proves a building standing at each order issued from it. Candidate
-  **D-CONTROL-1**: a building counts controlled from the first order issued from it until the match
-  ends, the starting Town Center from 0; destruction is unobservable, so a destroyed building keeps
-  counting. It needs the owner's ruling, and its record names that blind spot.
+  Center in the Feudal Age). **P2** proves a building standing at each order issued from it, and
+  nothing proves a completion or a destruction. Candidate **D-CONTROL-1**, written by applying the
+  owner's FR-007a discipline to this condition and awaiting the owner's yes: a building counts as
+  controlled at an order's time when an earlier order issued from it proves it stood, and no enemy
+  command has targeted it since that proof; a building targeted since its last proof counts again
+  only from its next proof; the starting Town Center counts from the start. A placed building from
+  which no order was ever issued never counts, because the recording never showed it finished, and
+  the rule's record says so. What the rule cannot show: a destruction with no enemy command in the
+  recording, and a building that stood but was never used.
 
 ## R10 — Military units
 
 The register's method for the military share reads "units the knowledge base classes as military",
 and the knowledge base has no class: selectors are explicit identifier lists, never class names.
 
-**Decision.** The classification is a knowledge fact, so it goes into the knowledge base, as an
-explicit list of economic units per build (every unit not on it is military), transcribed from a
-referenced source. The list's membership is a definition, not a measurement: whether a Monk, a
-Missionary or a transport ship counts as military is something the code cannot settle. The plan
-proposes Villagers in all their forms, Fishing Ships, Trade Carts, Trade Cogs and Transport Ships as
-the economic list, everything else military, and asks the owner to confirm it (an arbitration).
+**Decision, on the owner's ruling (spec Clarifications, Session 2026-11-06; FR-001b).** The
+classification is a knowledge fact and goes into the knowledge base, as one class per unit per
+build, in three values: `economic` (Villagers in every form, fishing ships, trade units),
+`military` (combat units) and `neither` (Monks, Missionaries, transport ships, the King). The
+military share counts `military` only; `neither` is in no figure. A unit without a class gaps the
+share. The classes are transcribed from a referenced source and the ruling, not inferred from a
+producing building.
 
 ## R11 — Market transactions and other resource movements
 
