@@ -118,8 +118,9 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import Engine
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
@@ -134,6 +135,7 @@ from aoe2stats_storage.models import (
     CaptureStatus,
     DataRequest,
     DataRequestKind,
+    ErasedRecordingKey,
     Favourite,
     Match,
     MatchAnalysis,
@@ -837,7 +839,10 @@ async def erase_account(
     What pass 3 does not cover: a drain that writes after pass 3 has run leaves an object no row
     names, which that drain removes only if it is the one that wrote it (`capture.py`,
     `_pair_has_row`). A drain that wrote, died, and wrote nothing more is covered only if its write
-    came before pass 3; the object a failed pass 3 leaves is T459n's scope.
+    came before pass 3; that object, and the one a failed or killed pass 3 leaves, are removed by
+    the ingester's sweep (T459n, T459s, T459t, `erased_recordings.py`), which reads the
+    `erased_recording_keys` rows this transaction writes for every pair key it deletes or leaves
+    (the named keys too), so a rolled-back erasure leaves none.
     A retry repeats the idempotent deletes.
 
     **Duration.** Erasure's route runs in `api/index.py`, whose limit is `maxDuration: 10` in
@@ -937,6 +942,18 @@ async def erase_account(
         await db_session.execute(
             delete(ReplayCapture).where(ReplayCapture.profile_id.in_(profile_ids))
         )
+        # Every key this erasure deleted or leaves for pass 3 (T459s, T459t), recorded in this same
+        # transaction: the ingester's sweep removes what a killed drain or a failed or killed pass 3
+        # leaves, including a stale drain's late write of a key the named pass already deleted
+        # (the T459m (2) shape). A rolled-back erasure never reaches here and records nothing.
+        # `ON CONFLICT DO NOTHING`: a repeated erasure records a key once.
+        recorded_keys = sorted(all_pair_keys | named_keys)
+        if recorded_keys:
+            await db_session.execute(
+                pg_insert(ErasedRecordingKey)
+                .values([{"key": key} for key in recorded_keys])
+                .on_conflict_do_nothing(index_elements=["key"])
+            )
 
     completed_at = datetime.now(UTC)
     data_request.completed_at = completed_at
@@ -968,9 +985,9 @@ async def erase_account(
         # commit. The rows are gone, so a drain that writes after this point deletes what it wrote
         # itself (`_pair_has_row`); a drain that wrote before this delete ran is covered by it, one
         # that wrote and died after it is not. A failure here cannot undo the erasure: the object
-        # it leaves is T459n's scope. The warning carries a count and the exception's type name,
-        # never a key: no `exc_info`, because botocore's connection errors embed the request URL,
-        # which holds `replays/{game_id}/{profile_id}.zip`.
+        # it leaves is removed by the ingester's sweep (T459n, T459s). The warning carries a count
+        # and the exception's type name, never a key: no `exc_info`, because botocore's connection
+        # errors embed the request URL, which holds `replays/{game_id}/{profile_id}.zip`.
         await db_session.commit()
         try:
             await _delete_objects(object_store, sorted(post_commit_keys))
@@ -988,7 +1005,9 @@ async def erase_account(
 
 
 class ThirdPartyObjectionRequest(BaseModel):
-    profile_id: int
+    # Positive only (T459s): a negative id is a pseudonymisation placeholder's, and the route's
+    # `touch_aoe_profile` would plant one for anyone who sends it.
+    profile_id: int = Field(gt=0)
 
 
 #: This route's own rate limit, counted against `data_requests` itself rather than through
@@ -1094,6 +1113,8 @@ async def resolve_third_party_objection(
         raise ValueError(f"No third-party objection request found for id {data_request_id}.")
     if data_request.subject_profile_id is None:
         raise ValueError(f"Data request {data_request_id} names no profile to pseudonymise.")
+    if data_request.subject_profile_id <= 0:
+        raise ValueError(f"Data request {data_request_id} names a non-positive profile id.")
     if data_request.completed_at is not None:
         raise ValueError(f"Data request {data_request_id} was already resolved.")
 

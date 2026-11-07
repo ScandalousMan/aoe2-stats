@@ -155,6 +155,10 @@ def test_a_downgrade_with_a_withdrawn_row_fails_and_leaves_the_revision_applied(
     with psycopg.connect(_psycopg_dsn(migrated_url), autocommit=True) as conn:
         _seed_capture(conn, game_id=1, status="withdrawn")
 
+    # Later revisions sit above this one (T459s): step down to it first, so the failing downgrade
+    # is this revision's own.
+    _alembic(migrated_url, "downgrade", REVISION)
+
     with pytest.raises(sa.exc.DBAPIError):
         _alembic(migrated_url, "downgrade", PARENT_REVISION)
 

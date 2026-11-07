@@ -317,7 +317,7 @@ from urllib.parse import urlencode
 
 from fastapi import APIRouter, File, Request, UploadFile
 from fastapi.responses import RedirectResponse, Response
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError
@@ -348,6 +348,7 @@ from aoe2stats_providers.wiring import build_async_client_resources
 from aoe2stats_storage.models import (
     Alert,
     CaptureStatus,
+    ErasedRecordingKey,
     Match,
     MatchPlayer,
     ProfileLink,
@@ -803,6 +804,11 @@ async def upload_replay(
 
     key = replay_object_key(game_id, profile_id)
     zip_sha256 = hashlib.sha256(content).hexdigest()
+    # T459t: drop this key's erased-recording record, and commit, before the write. The ingester's
+    # sweep holds that record `FOR UPDATE` across its checks and its object delete, so this waits
+    # for a sweep in progress, and a later sweep finds no record. Nothing else is held here.
+    await db_session.execute(delete(ErasedRecordingKey).where(ErasedRecordingKey.key == key))
+    await db_session.commit()
     # T723: a conditional write; an object already under the key is never replaced. T730: it is
     # accepted only when it is this very file - for example an earlier attempt's object, whose row
     # write failed, or one the ingester wrote.

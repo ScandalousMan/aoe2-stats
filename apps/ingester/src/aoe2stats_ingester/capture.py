@@ -233,6 +233,7 @@ from aoe2stats_core.alerting import AlertRecord, AlertSink, raise_alert
 from aoe2stats_core.replay.validation import ReplayValidationResult, ReplayValidator
 from aoe2stats_ingester.budget import Budget
 from aoe2stats_ingester.discover import archiving_links
+from aoe2stats_ingester.erased_recordings import ErasedRecordingStore, sweep_erased_recordings
 from aoe2stats_ingester.quota import apply_quota
 from aoe2stats_ingester.ratelimit import drain_with_rate_limit_guard
 from aoe2stats_providers.base import (
@@ -353,7 +354,8 @@ DEFAULT_BATCH_SIZE = 1
 #: a setting nothing else reads.
 DEFAULT_VALIDATION_TIMEOUT_SECONDS = 30.0
 
-#: `CAPTURE_BUDGET_DAYS` (`.env.example`). Accepted and stored, but still not read by this module:
+#: `CAPTURE_BUDGET_DAYS` (`.env.example`). Stored, and read only as the age after which the
+#: erased-recording sweep drops a record (T459t). Not read by the claim path:
 #: `_classify_not_found` compares against the claimed row's own `capture_deadline_at`
 #: (`completed_at + CAPTURE_BUDGET_DAYS`, computed once at insert by `discover.py`) rather than
 #: recomputing the same threshold from this value a second time — a row's deadline is fixed at the
@@ -868,7 +870,7 @@ class CaptureDrain:
         self._validation_timeout_seconds = validation_timeout_seconds
         self._batch_size = batch_size
         self._max_claim_age_seconds = max_claim_age_seconds
-        self._capture_budget_days = capture_budget_days  # accepted, stored, not read — see above
+        self._capture_budget_days = capture_budget_days  # read by the erased-recording sweep only
         self._replay_publication_grace_hours = replay_publication_grace_hours
         self._max_attempts = max_attempts  # accepted, stored, not read — T057 owns using it
         if withdraw_lead_hours < 0:
@@ -932,6 +934,18 @@ class CaptureDrain:
         # count correctly (see the module docstring's "per-user fairness cap" paragraph). Unused,
         # and never grown, when quota enforcement is off (`_quota_enabled()` is `False`).
         quota_candidates: list[ReplayCapture] = []
+
+        # T459n, T459s, T459t (FR-037): first, then the claims. It honours `budget` between
+        # records and does nothing when it is already spent (one database transaction or object
+        # delete in progress is not interrupted); the drain is the third stage, so the budget may
+        # be spent on arrival. It never raises.
+        if isinstance(self._object_store, ErasedRecordingStore):
+            report["erased_recording_keys_swept"] = await sweep_erased_recordings(
+                self._object_store,
+                self._session_factory,
+                budget=budget,
+                record_max_age_days=self._capture_budget_days,
+            )
 
         async def handle_item(capture_id: uuid.UUID) -> None:
             outcome = await self._process_one(capture_id)
@@ -1263,7 +1277,8 @@ class CaptureDrain:
                 # only code that deletes a `replay_captures` row, so a missing row means an
                 # erasure, not a cleanup of someone else's object.
                 # `tests/architecture/test_capture_row_deletes.py` scans for other deletes but
-                # lists the shapes it cannot see.
+                # lists the shapes it cannot see. A kill or failure before this delete leaves
+                # the object to `erased_recordings.sweep_erased_recordings` (T459n).
                 await store.delete(key)
             return _NOT_CONCLUDED
 
