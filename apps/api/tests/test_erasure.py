@@ -679,7 +679,8 @@ async def test_a_failed_post_commit_delete_leaves_the_erasure_committed_and_logs
     """T459q: the post-commit delete fails. The erasure has committed, so the answer is a 200 and
     the user row is gone; the warning carries a count and the exception's type name, never a key
     (T459r: botocore's message embeds the request URL, so no `exc_info`, no message). The object it
-    leaves is T459n's scope."""
+    leaves is removed by the ingester's sweep (T459n), which keys on the placeholder profile row
+    this erasure commits, asserted below."""
     # The test database's alembic run (`fileConfig`) disables loggers that already exist.
     monkeypatch.setattr(privacy.logger, "disabled", False)
     user, deterministic, named = await _seed_in_flight_and_stored(
@@ -708,6 +709,7 @@ async def test_a_failed_post_commit_delete_leaves_the_erasure_committed_and_logs
     assert "EndpointConnectionError" in formatted
     assert warnings[0].exc_info is None
     assert deterministic in await store.list_keys()
+    assert await db_session.get(AoeProfile, -_OWNER_PROFILE_ID) is not None
 
 
 class _TimedObjectStore(_RecordingObjectStore):

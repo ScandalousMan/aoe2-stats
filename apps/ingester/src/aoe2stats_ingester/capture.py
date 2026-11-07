@@ -233,6 +233,7 @@ from aoe2stats_core.alerting import AlertRecord, AlertSink, raise_alert
 from aoe2stats_core.replay.validation import ReplayValidationResult, ReplayValidator
 from aoe2stats_ingester.budget import Budget
 from aoe2stats_ingester.discover import archiving_links
+from aoe2stats_ingester.erased_recordings import ErasedRecordingStore, sweep_erased_recordings
 from aoe2stats_ingester.quota import apply_quota
 from aoe2stats_ingester.ratelimit import drain_with_rate_limit_guard
 from aoe2stats_providers.base import (
@@ -933,6 +934,17 @@ class CaptureDrain:
         # and never grown, when quota enforcement is off (`_quota_enabled()` is `False`).
         quota_candidates: list[ReplayCapture] = []
 
+        # T459n (FR-037): first, while the budget is fresh, so it cannot eat the reserve
+        # `run_once` keeps to record its run. It is skipped when the budget is already expired and
+        # checks it between keys (one `list_keys` call is not interruptible). It never raises.
+        if isinstance(self._object_store, ErasedRecordingStore):
+            report["erased_recordings_deleted"] = await sweep_erased_recordings(
+                self._object_store,
+                self._session_factory,
+                pair_has_row=self._pair_has_row,
+                budget=budget,
+            )
+
         async def handle_item(capture_id: uuid.UUID) -> None:
             outcome = await self._process_one(capture_id)
             attempted_ids.add(capture_id)
@@ -1263,7 +1275,8 @@ class CaptureDrain:
                 # only code that deletes a `replay_captures` row, so a missing row means an
                 # erasure, not a cleanup of someone else's object.
                 # `tests/architecture/test_capture_row_deletes.py` scans for other deletes but
-                # lists the shapes it cannot see.
+                # lists the shapes it cannot see. A kill or failure before this delete leaves
+                # the object to `erased_recordings.sweep_erased_recordings` (T459n).
                 await store.delete(key)
             return _NOT_CONCLUDED
 
