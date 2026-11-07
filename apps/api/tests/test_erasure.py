@@ -49,7 +49,7 @@ import pytest
 from botocore.exceptions import EndpointConnectionError
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from aoe2stats_api import security
 from aoe2stats_api.deps import get_object_store
@@ -656,10 +656,12 @@ async def test_a_committed_erasure_removes_the_original_of_a_row_in_flight_after
 
     assert await store.list_keys() == []
     assert users_when_deleted[deterministic] == 0, "the in-flight key went before the commit"
-    # T459s: the post-commit key is recorded for the ingester's sweep, and only that key.
+    # T459s, T459t: every pair key the erasure deleted or left is recorded for the ingester's
+    # sweep, the named pair's key included.
     db_session.expire_all()
     recorded = (await db_session.scalars(select(ErasedRecordingKey.key))).all()
-    assert list(recorded) == [deterministic]
+    assert deterministic in recorded
+    assert replay_object_key(game_id + 1, _OWNER_PROFILE_ID) in recorded
 
 
 class _FailingKeyStore(_RecordingObjectStore):
@@ -717,7 +719,7 @@ async def test_a_failed_post_commit_delete_leaves_the_erasure_committed_and_logs
     assert warnings[0].exc_info is None
     assert deterministic in await store.list_keys()
     recorded = (await db_session.scalars(select(ErasedRecordingKey.key))).all()
-    assert list(recorded) == [deterministic], "the failed pass-3 key must stay recorded"
+    assert deterministic in recorded, "the failed pass-3 key must stay recorded"
 
 
 class _TimedObjectStore(_RecordingObjectStore):
@@ -1723,3 +1725,49 @@ async def test_confirmed_erasure_leaves_a_completed_data_request_with_the_subjec
     assert request.completed_at is not None, (
         "SC-008: the request must be verifiably resolved, not merely opened"
     )
+
+
+async def test_a_stale_drains_late_write_of_a_key_the_named_pass_deleted_is_swept(
+    client: TestClient, db_session: AsyncSession
+) -> None:
+    """T459t (2), the T459m (2) shape: drain B stored the row naming K, the erasure's named pass
+    deleted K, then stale drain A's `put_if_absent` wrote K and A was killed before its cleanup.
+    The erasure recorded K (named keys too), so the ingester's sweep removes the object."""
+    from aoe2stats_ingester.budget import Budget
+    from aoe2stats_ingester.erased_recordings import sweep_erased_recordings
+
+    user = await _seed_linked_user(
+        db_session, profile_id=_OWNER_PROFILE_ID, steam_id64="76561197960280021"
+    )
+    game_id = _ORPHAN_GAME_ID + 50
+    db_session.add(
+        Match(
+            game_id=game_id,
+            leaderboard_id=3,
+            completed_at=datetime.now(UTC) - timedelta(days=2),
+            source="relic",
+            raw_payload={},
+        )
+    )
+    await db_session.flush()
+    named = replay_object_key(game_id, _OWNER_PROFILE_ID)
+    await _seed_stored_capture(
+        db_session, game_id=game_id, profile_id=_OWNER_PROFILE_ID, object_key=named
+    )
+    await _sign_in(client, db_session, user)
+    store = _install_recording_object_store(client)
+    await store.put(named, b"B's object")
+
+    token = _get_confirmation_token(client)
+    response = client.post(_ERASE_PATH, json={"confirmation_token": token})
+    assert response.status_code == 200, f"Got {response.status_code}: {response.text}"
+    assert await store.list_keys() == []
+
+    await store.put(named, b"A's late write")  # A is killed here: no cleanup follows
+    session_factory = async_sessionmaker(db_session.bind, expire_on_commit=False)  # type: ignore[arg-type]
+    swept = await sweep_erased_recordings(
+        store, session_factory, budget=Budget(seconds=30), record_max_age_days=21
+    )
+
+    assert swept == 1
+    assert await store.list_keys() == []

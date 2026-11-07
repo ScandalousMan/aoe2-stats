@@ -192,3 +192,23 @@ async def test_a_non_positive_profile_id_is_refused_and_plants_nothing(
 
     assert response.status_code == 422, f"Got {response.status_code}: {response.text}"
     assert await db_session.get(AoeProfile, profile_id) is None
+
+
+async def test_resolving_an_objection_with_a_stored_non_positive_subject_is_refused(
+    db_session: AsyncSession,
+) -> None:
+    """T459t (6): a row that already holds a placeholder-shaped subject (planted before the route
+    refused it) is not pseudonymised by the operator path."""
+    from aoe2stats_api.routers.privacy import resolve_third_party_objection
+
+    db_session.add(AoeProfile(profile_id=-900_000_301, alias="planted"))
+    await db_session.flush()
+    data_request = DataRequest(
+        kind=DataRequestKind.THIRD_PARTY_OBJECTION, subject_profile_id=-900_000_301
+    )
+    db_session.add(data_request)
+    await db_session.flush()
+
+    with pytest.raises(ValueError, match="non-positive"):
+        await resolve_third_party_objection(db_session, data_request.id)
+    assert data_request.completed_at is None

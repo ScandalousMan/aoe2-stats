@@ -34,6 +34,7 @@ def upgrade() -> None:
             server_default=sa.text("now()"),
             nullable=False,
         ),
+        sa.Column("swept_at", sa.DateTime(timezone=True), nullable=True),
         sa.PrimaryKeyConstraint("key"),
     )
 

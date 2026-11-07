@@ -354,7 +354,8 @@ DEFAULT_BATCH_SIZE = 1
 #: a setting nothing else reads.
 DEFAULT_VALIDATION_TIMEOUT_SECONDS = 30.0
 
-#: `CAPTURE_BUDGET_DAYS` (`.env.example`). Accepted and stored, but still not read by this module:
+#: `CAPTURE_BUDGET_DAYS` (`.env.example`). Stored, and read only as the age after which the
+#: erased-recording sweep drops a record (T459t). Not read by the claim path:
 #: `_classify_not_found` compares against the claimed row's own `capture_deadline_at`
 #: (`completed_at + CAPTURE_BUDGET_DAYS`, computed once at insert by `discover.py`) rather than
 #: recomputing the same threshold from this value a second time — a row's deadline is fixed at the
@@ -869,7 +870,7 @@ class CaptureDrain:
         self._validation_timeout_seconds = validation_timeout_seconds
         self._batch_size = batch_size
         self._max_claim_age_seconds = max_claim_age_seconds
-        self._capture_budget_days = capture_budget_days  # accepted, stored, not read — see above
+        self._capture_budget_days = capture_budget_days  # read by the erased-recording sweep only
         self._replay_publication_grace_hours = replay_publication_grace_hours
         self._max_attempts = max_attempts  # accepted, stored, not read — T057 owns using it
         if withdraw_lead_hours < 0:
@@ -934,17 +935,16 @@ class CaptureDrain:
         # and never grown, when quota enforcement is off (`_quota_enabled()` is `False`).
         quota_candidates: list[ReplayCapture] = []
 
-        # T459n, T459s (FR-037): first, then the claims. It honours `budget` between records and
-        # does nothing when it is already spent (one read or delete in progress is not
-        # interrupted); the drain is the third stage, so the budget may be spent on arrival. It
-        # never raises.
+        # T459n, T459s, T459t (FR-037): first, then the claims. It honours `budget` between
+        # records and does nothing when it is already spent (one database transaction or object
+        # delete in progress is not interrupted); the drain is the third stage, so the budget may
+        # be spent on arrival. It never raises.
         if isinstance(self._object_store, ErasedRecordingStore):
-            report["erased_recordings_deleted"] = await sweep_erased_recordings(
+            report["erased_recording_keys_swept"] = await sweep_erased_recordings(
                 self._object_store,
                 self._session_factory,
-                pair_has_row=self._pair_has_row,
                 budget=budget,
-                max_record_age_seconds=self._max_claim_age_seconds,
+                record_max_age_days=self._capture_budget_days,
             )
 
         async def handle_item(capture_id: uuid.UUID) -> None:
@@ -1852,21 +1852,11 @@ class CaptureDrain:
             await session.commit()
         return bool(outcome.rowcount)  # type: ignore[attr-defined]
 
-    async def _pair_has_row(
-        self, game_id: int, profile_id: int, *, lock_timeout_ms: int | None = None
-    ) -> bool:
+    async def _pair_has_row(self, game_id: int, profile_id: int) -> bool:
         """Whether any `replay_captures` row exists for the pair (one row per pair, so a newer
         row for it counts). `FOR SHARE` conflicts with the erasure's `FOR UPDATE`, so the read
-        waits for an erasure holding the row and then sees its outcome, or, given `lock_timeout_ms`,
-        raises a lock-not-available error after that long."""
+        waits for an erasure holding the row and then sees its outcome."""
         async with self._session_factory() as session:
-            if lock_timeout_ms is not None:
-                # The sweep's read (T459s): a lock holder that outlasts it fails the read with
-                # SQLSTATE 55P03, which the sweep reads as "skip the key". The drain's own cleanup
-                # passes none and waits.
-                await session.execute(
-                    select(func.set_config("lock_timeout", f"{int(lock_timeout_ms)}ms", True))
-                )
             found = await session.scalar(
                 select(ReplayCapture.id)
                 .where(ReplayCapture.game_id == game_id, ReplayCapture.profile_id == profile_id)

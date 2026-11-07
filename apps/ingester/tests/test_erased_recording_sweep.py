@@ -134,7 +134,7 @@ def _drain(session_factory: async_sessionmaker[AsyncSession], provider: _Provide
     )
 
 
-_MAX_AGE = 300.0
+_BUDGET_DAYS = 21
 
 
 async def _seed(session_factory: async_sessionmaker[AsyncSession]) -> uuid.UUID:
@@ -205,13 +205,11 @@ async def _sweep(
     *,
     lock_timeout_ms: int = 2_000,
 ) -> int:
-    drain = _drain(session_factory, provider, store)
     return await sweep_erased_recordings(
         store,
         session_factory,
-        pair_has_row=drain._pair_has_row,
         budget=budget or Budget(seconds=30),
-        max_record_age_seconds=_MAX_AGE,
+        record_max_age_days=_BUDGET_DAYS,
         lock_timeout_ms=lock_timeout_ms,
     )
 
@@ -245,7 +243,7 @@ async def test_a_drain_killed_between_its_write_and_its_cleanup_leaves_nothing_a
     report = await _drain_call(session_factory, store, provider)
 
     assert store.objects == {}, f"the bucket still holds {sorted(store.objects)}"
-    assert report["erased_recordings_deleted"] == 1
+    assert report["erased_recording_keys_swept"] == 1
 
 
 async def test_an_object_left_by_a_failed_post_commit_delete_is_removed(
@@ -259,7 +257,7 @@ async def test_an_object_left_by_a_failed_post_commit_delete_is_removed(
 
     report = await _drain_call(session_factory, store, _Provider())
 
-    assert report["erased_recordings_deleted"] == 1
+    assert report["erased_recording_keys_swept"] == 1
     assert store.objects == {}
 
 
@@ -304,7 +302,7 @@ async def test_a_live_link_keeps_the_object_but_the_record_still_ages_out(
         await session.flush()
         await link_profile(session, _PROFILE_ID)
         await session.commit()
-    await _record(session_factory, age=timedelta(seconds=_MAX_AGE + 60))
+    await _record(session_factory, age=timedelta(days=_BUDGET_DAYS + 1))
     store = _Store({_KEY: _BYTES})
 
     assert await _sweep(session_factory, store, _Provider()) == 0
@@ -389,7 +387,7 @@ async def test_a_malformed_key_is_never_deleted_and_its_aged_record_is_dropped(
         f"replays/{_GAME_ID}/{_PROFILE_ID}.zip.bak",
     }
     for key in bad:
-        await _record(session_factory, key, age=timedelta(seconds=_MAX_AGE + 60))
+        await _record(session_factory, key, age=timedelta(days=_BUDGET_DAYS + 1))
     store = _Store(dict.fromkeys(bad, b"x"))
 
     assert await _sweep(session_factory, store, _Provider()) == 0
@@ -403,8 +401,8 @@ async def test_an_aged_record_is_dropped_after_its_delete_and_a_young_one_is_kep
     """Aging: both objects are deleted; only the record older than the stale-claim bound goes."""
     old_key = replay_object_key(930_001, 8_001)
     young_key = replay_object_key(930_002, 8_002)
-    await _record(session_factory, old_key, age=timedelta(seconds=_MAX_AGE + 60))
-    await _record(session_factory, young_key, age=timedelta(seconds=_MAX_AGE - 60))
+    await _record(session_factory, old_key, age=timedelta(days=_BUDGET_DAYS + 1))
+    await _record(session_factory, young_key, age=timedelta(days=1))
     store = _Store({old_key: _BYTES, young_key: _BYTES})
 
     assert await _sweep(session_factory, store, _Provider()) == 2
@@ -421,7 +419,7 @@ async def test_a_lock_timeout_skips_the_key_and_keeps_the_record(
     async with session_factory() as session:
         await session.execute(delete(ProfileLink))
         await session.commit()
-    await _record(session_factory, age=timedelta(seconds=_MAX_AGE + 60))
+    await _record(session_factory, age=timedelta(days=_BUDGET_DAYS + 1))
     store = _Store({_KEY: _BYTES})
     holder = session_factory()
     try:
@@ -523,7 +521,72 @@ async def test_the_sweep_runs_before_the_first_claim_and_the_claim_loop_still_ru
 
     assert store.events.index("delete") < store.events.index("put")
     assert leftover not in store.objects
-    assert report["erased_recordings_deleted"] == 1
+    assert report["erased_recording_keys_swept"] == 1
     async with session_factory() as session:
         row = await session.get(ReplayCapture, capture_id)
         assert row is not None and row.status is CaptureStatus.STORED
+
+
+async def test_an_upload_landing_after_the_sweeps_checks_is_not_deleted(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """Exclusion on the record, T459t (1): the erased pair's user links again and uploads while the
+    sweep is between its checks and its object delete. The upload deletes the key's record before
+    its put, which waits for the sweep holding the record; the sweep deletes the old object first
+    and the upload's write follows, so the upload's replay is in the bucket at the end."""
+    capture_id = await _seed(session_factory)
+    await _erase(session_factory, capture_id)
+    store = _Store({_KEY: _BYTES})
+    uploaded = b"the relinked user's upload" * 20
+    tasks: list[asyncio.Task[None]] = []
+
+    async def upload() -> None:
+        async with session_factory() as session:
+            await link_profile(session, _PROFILE_ID, second_user=True)
+            await session.commit()
+        async with session_factory() as session:
+            await session.execute(delete(ErasedRecordingKey).where(ErasedRecordingKey.key == _KEY))
+            await session.commit()
+        await store.put_if_absent(_KEY, uploaded)
+
+    real_delete = store.delete
+
+    async def delete_while_an_upload_runs(key: str) -> None:
+        tasks.append(asyncio.create_task(upload()))
+        # The upload runs inline unless the sweep's lock holds it back.
+        await asyncio.wait(tasks, timeout=0.5)
+        await real_delete(key)
+
+    store.delete = delete_while_an_upload_runs  # type: ignore[method-assign]
+    await _sweep(session_factory, store, _Provider())
+    await asyncio.wait_for(tasks[0], timeout=10)
+
+    assert store.objects == {_KEY: uploaded}
+    assert await _records(session_factory) == []
+
+
+async def test_records_kept_past_a_sweep_do_not_starve_a_new_one(
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """T459t (3): with two kept records already examined and a batch of two, a record added since
+    is examined first, so its object is deleted."""
+    monkeypatch.setattr(erased_recordings, "MAX_RECORDS_EXAMINED", 2)
+    kept = ["replays/not-a-pair/1", "replays/not-a-pair/2"]
+    for offset, key in enumerate(kept):
+        await _record(session_factory, key, age=timedelta(days=2, seconds=-offset))
+    store = _Store()
+    assert await _sweep(session_factory, store, _Provider()) == 0
+    async with session_factory() as session:
+        assert (await session.scalars(select(ErasedRecordingKey.swept_at))).all()
+        assert all(
+            swept is not None
+            for swept in await session.scalars(select(ErasedRecordingKey.swept_at))
+        )
+
+    await _record(session_factory, _KEY)
+    store.objects[_KEY] = _BYTES
+
+    assert await _sweep(session_factory, store, _Provider()) == 1
+    assert store.objects == {}

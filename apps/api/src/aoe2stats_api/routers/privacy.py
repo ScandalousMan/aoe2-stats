@@ -840,9 +840,9 @@ async def erase_account(
     names, which that drain removes only if it is the one that wrote it (`capture.py`,
     `_pair_has_row`). A drain that wrote, died, and wrote nothing more is covered only if its write
     came before pass 3; that object, and the one a failed or killed pass 3 leaves, are removed by
-    the ingester's sweep (T459n, T459s, `erased_recordings.py`), which reads the
-    `erased_recording_keys` rows this transaction writes for the pass-3 keys, so a rolled-back
-    erasure leaves none.
+    the ingester's sweep (T459n, T459s, T459t, `erased_recordings.py`), which reads the
+    `erased_recording_keys` rows this transaction writes for every pair key it deletes or leaves
+    (the named keys too), so a rolled-back erasure leaves none.
     A retry repeats the idempotent deletes.
 
     **Duration.** Erasure's route runs in `api/index.py`, whose limit is `maxDuration: 10` in
@@ -942,6 +942,18 @@ async def erase_account(
         await db_session.execute(
             delete(ReplayCapture).where(ReplayCapture.profile_id.in_(profile_ids))
         )
+        # Every key this erasure deleted or leaves for pass 3 (T459s, T459t), recorded in this same
+        # transaction: the ingester's sweep removes what a killed drain or a failed or killed pass 3
+        # leaves, including a stale drain's late write of a key the named pass already deleted
+        # (the T459m (2) shape). A rolled-back erasure never reaches here and records nothing.
+        # `ON CONFLICT DO NOTHING`: a repeated erasure records a key once.
+        recorded_keys = sorted(all_pair_keys | named_keys)
+        if recorded_keys:
+            await db_session.execute(
+                pg_insert(ErasedRecordingKey)
+                .values([{"key": key} for key in recorded_keys])
+                .on_conflict_do_nothing(index_elements=["key"])
+            )
 
     completed_at = datetime.now(UTC)
     data_request.completed_at = completed_at
@@ -969,14 +981,6 @@ async def erase_account(
     await db_session.execute(delete(User).where(User.id == user_id))
 
     if post_commit_keys:
-        # The same keys are recorded in this transaction (T459s), so the ingester's sweep removes
-        # an object this pass leaves behind (a failure or a kill) or a drain writes after it; a
-        # rolled-back erasure never reaches here and records nothing.
-        await db_session.execute(
-            pg_insert(ErasedRecordingKey)
-            .values([{"key": key} for key in sorted(post_commit_keys)])
-            .on_conflict_do_nothing(index_elements=["key"])
-        )
         # Pass 3. Committed here, not by `get_session` after the return: the deletes follow the
         # commit. The rows are gone, so a drain that writes after this point deletes what it wrote
         # itself (`_pair_has_row`); a drain that wrote before this delete ran is covered by it, one
