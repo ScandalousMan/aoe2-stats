@@ -181,3 +181,14 @@ async def test_object_records_a_data_request_without_pseudonymising_immediately(
     # Deferred to a human, not resolved by this call (module docstring's "records rather than
     # pseudonymising immediately").
     assert data_request.completed_at is None
+
+
+@pytest.mark.parametrize("profile_id", [0, -1, -900_000_201])
+async def test_a_non_positive_profile_id_is_refused_and_plants_nothing(
+    client: TestClient, db_session: AsyncSession, profile_id: int
+) -> None:
+    """T459s: a negative id is a pseudonymisation placeholder's; the route must not create one."""
+    response = client.post("/api/privacy/object", json={"profile_id": profile_id})
+
+    assert response.status_code == 422, f"Got {response.status_code}: {response.text}"
+    assert await db_session.get(AoeProfile, profile_id) is None

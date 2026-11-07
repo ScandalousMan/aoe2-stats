@@ -1032,3 +1032,24 @@ class ReplayFetchMiss(Base):
     observed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+
+class ErasedRecordingKey(Base):
+    """`erased_recording_keys` — T459s: the replay object keys an erasure left for after its commit,
+    written in the erasure's own transaction (`routers/privacy.py`, `erase_account`), so a rolled
+    back erasure rolls its records back with it.
+
+    The ingester's sweep (`aoe2stats_ingester.erased_recordings`) reads this table, oldest first, to
+    remove an object a dying writer left behind: the capture drain killed between its write and its
+    cleanup, or the erasure's own post-commit delete failing. A record names a key only; it holds no
+    profile, user or match reference, since the rows it concerns are gone. Insert-only apart from
+    the sweep dropping a record once it is older than the drain's stale-claim bound; `ON CONFLICT
+    DO NOTHING` on the key, so a repeated erasure of the same key records it once.
+    """
+
+    __tablename__ = "erased_recording_keys"
+
+    key: Mapped[str] = mapped_column(Text, primary_key=True)
+    recorded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )

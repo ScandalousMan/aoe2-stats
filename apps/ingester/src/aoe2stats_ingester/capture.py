@@ -934,15 +934,17 @@ class CaptureDrain:
         # and never grown, when quota enforcement is off (`_quota_enabled()` is `False`).
         quota_candidates: list[ReplayCapture] = []
 
-        # T459n (FR-037): first, while the budget is fresh, so it cannot eat the reserve
-        # `run_once` keeps to record its run. It is skipped when the budget is already expired and
-        # checks it between keys (one `list_keys` call is not interruptible). It never raises.
+        # T459n, T459s (FR-037): first, then the claims. It honours `budget` between records and
+        # does nothing when it is already spent (one read or delete in progress is not
+        # interrupted); the drain is the third stage, so the budget may be spent on arrival. It
+        # never raises.
         if isinstance(self._object_store, ErasedRecordingStore):
             report["erased_recordings_deleted"] = await sweep_erased_recordings(
                 self._object_store,
                 self._session_factory,
                 pair_has_row=self._pair_has_row,
                 budget=budget,
+                max_record_age_seconds=self._max_claim_age_seconds,
             )
 
         async def handle_item(capture_id: uuid.UUID) -> None:
@@ -1850,11 +1852,21 @@ class CaptureDrain:
             await session.commit()
         return bool(outcome.rowcount)  # type: ignore[attr-defined]
 
-    async def _pair_has_row(self, game_id: int, profile_id: int) -> bool:
+    async def _pair_has_row(
+        self, game_id: int, profile_id: int, *, lock_timeout_ms: int | None = None
+    ) -> bool:
         """Whether any `replay_captures` row exists for the pair (one row per pair, so a newer
         row for it counts). `FOR SHARE` conflicts with the erasure's `FOR UPDATE`, so the read
-        waits for an erasure holding the row and then sees its outcome."""
+        waits for an erasure holding the row and then sees its outcome, or, given `lock_timeout_ms`,
+        raises a lock-not-available error after that long."""
         async with self._session_factory() as session:
+            if lock_timeout_ms is not None:
+                # The sweep's read (T459s): a lock holder that outlasts it fails the read with
+                # SQLSTATE 55P03, which the sweep reads as "skip the key". The drain's own cleanup
+                # passes none and waits.
+                await session.execute(
+                    select(func.set_config("lock_timeout", f"{int(lock_timeout_ms)}ms", True))
+                )
             found = await session.scalar(
                 select(ReplayCapture.id)
                 .where(ReplayCapture.game_id == game_id, ReplayCapture.profile_id == profile_id)

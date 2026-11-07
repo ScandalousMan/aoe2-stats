@@ -62,6 +62,7 @@ from aoe2stats_storage.models import (
     CaptureStatus,
     DataRequest,
     DataRequestKind,
+    ErasedRecordingKey,
     Favourite,
     Match,
     MatchAnalysis,
@@ -595,6 +596,8 @@ async def test_a_rolled_back_erasure_keeps_the_original_of_every_row_naming_noth
 
     assert deterministic in await store.list_keys()
     assert await db_session.scalar(select(func.count(User.id)).where(User.id == user.id)) == 1
+    # T459s: the records are written in the erasure's transaction, so a rollback leaves none.
+    assert await db_session.scalar(select(func.count()).select_from(ErasedRecordingKey)) == 0
 
 
 async def test_a_rolled_back_erasure_still_deletes_the_key_of_a_played_pair_with_no_row(
@@ -653,6 +656,10 @@ async def test_a_committed_erasure_removes_the_original_of_a_row_in_flight_after
 
     assert await store.list_keys() == []
     assert users_when_deleted[deterministic] == 0, "the in-flight key went before the commit"
+    # T459s: the post-commit key is recorded for the ingester's sweep, and only that key.
+    db_session.expire_all()
+    recorded = (await db_session.scalars(select(ErasedRecordingKey.key))).all()
+    assert list(recorded) == [deterministic]
 
 
 class _FailingKeyStore(_RecordingObjectStore):
@@ -709,7 +716,8 @@ async def test_a_failed_post_commit_delete_leaves_the_erasure_committed_and_logs
     assert "EndpointConnectionError" in formatted
     assert warnings[0].exc_info is None
     assert deterministic in await store.list_keys()
-    assert await db_session.get(AoeProfile, -_OWNER_PROFILE_ID) is not None
+    recorded = (await db_session.scalars(select(ErasedRecordingKey.key))).all()
+    assert list(recorded) == [deterministic], "the failed pass-3 key must stay recorded"
 
 
 class _TimedObjectStore(_RecordingObjectStore):

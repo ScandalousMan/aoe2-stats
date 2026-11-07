@@ -1,4 +1,5 @@
-"""T459n: the sweep that removes an erased user's recording a dying writer left behind (FR-037).
+"""T459n, T459s: the sweep that removes an erased user's recording a dying writer left behind
+(FR-037).
 
 Two writers can leave `replays/{game_id}/{profile_id}.zip` in the bucket with no row naming it,
 after the user's erasure has committed: the capture drain, killed or failed between its
@@ -6,121 +7,160 @@ after the user's erasure has committed: the capture drain, killed or failed betw
 its post-commit delete fails or is killed (`routers/privacy.py`, pass 3, T459q). Nothing else
 revisits such an object, so this sweep does, once per drain call.
 
-**Mechanism: the erasure's own committed trace, not a new record.** `erase_account` inserts the
-placeholder `aoe_profiles` row `-abs(profile_id)` (`pseudonymise_profile`) for every profile the
-user owned, in the transaction that deletes their rows and the user, so it is committed exactly when
-the erasure is. A replay key is removed only when all three hold:
+**Mechanism: a record the erasure writes in its own transaction.** `erase_account` inserts into
+`erased_recording_keys` (`ErasedRecordingKey`) the exact keys it leaves for after its commit: the
+post-commit pass's keys, which are the deterministic key of every captured row naming no object,
+`downloading` included. The records commit with the erasure and roll back with it, so a rolled-back
+erasure leaves none. Nothing else writes the table. The sweep reads it, oldest first, and lists no
+bucket.
 
-1. the key has the exact shape `replays/{game_id}/{profile_id}.zip`;
-2. no `replay_captures` row exists for `(game_id, profile_id)`;
-3. the placeholder `aoe_profiles` row for `profile_id` exists.
+For each record examined, the object is deleted only when all of these hold:
 
-Condition 3 is what separates an erased user's leftover from an object that merely has no row yet or
-any more: a manual upload writes its object before its row, and one whose row write then fails
-(`CaptureNoLongerOpen`, say) leaves an object of a user who never erased. Constitution IV keeps
-that original, so a key whose profile was never pseudonymised is never removed. Condition 2 keeps
-the object of any live row, an in-flight drain's included (the drain's row exists from its claim
-until it is erased), and the read that confirms it is `CaptureDrain._pair_has_row`'s `FOR SHARE`
-read, which waits for an erasure holding the row. An erasure in progress or rolled back has no
-committed placeholder, so condition 3 fails and its objects are kept.
+1. the key parses as `replays/{game_id}/{profile_id}.zip`;
+2. no `replay_captures` row exists for `(game_id, profile_id)`, read by `CaptureDrain._pair_has_row`
+   (`FOR SHARE`, which waits for an erasure holding the row) under a bounded `lock_timeout`; on a
+   timeout the key is skipped and its record kept;
+3. no live link (`profile_links.unlinked_at IS NULL`) names that profile. An upload needs a
+   committed link, so if its `put_if_absent` preceded this check, this check sees the link and the
+   object is kept; one that follows it writes a new object. A profile erased and linked again
+   keeps its recorded key unacted on.
 
-The residual: a profile id an erasure pseudonymised and a user later links again gets a fresh row
-(condition 2 then keeps its object). The placeholder is also written by a third-party objection
-(FR-039); such a profile has no user and so no capture row or object of its own.
+The store's `delete` succeeds on a key that holds nothing, so an object already gone is fine.
 
-**Budget.** The sweep takes the drain's `Budget` and runs at the start of `CaptureDrain.__call__`,
-before the claim loop. It does nothing, not even a listing, when the budget is already expired, and
-checks it before each key it examines, stopping cleanly. The single `list_keys` call and the
-one read or delete in progress are not interrupted, so the budget is honoured between those calls,
-not within them.
+**Aging.** A record is dropped once it is older than the drain's stale-claim bound
+(`max_claim_age_seconds`, `DEFAULT_MAX_CLAIM_AGE_SECONDS` in `capture.py`), and only after it has
+been examined in a sweep, whether or not it led to a delete. Younger records stay after their
+delete, so a stale drain's late write is still caught by a later run. A record skipped on a lock
+timeout, or whose delete failed, stays.
+
+**Bounds.** At most `MAX_RECORDS_EXAMINED` records are read and `MAX_DELETES_PER_SWEEP` keys deleted
+per call. The sweep takes the drain's `Budget`, runs at the start of `CaptureDrain.__call__`, does
+nothing when the budget is already expired, and checks it before each record. One database read and
+one delete in progress are not interrupted, so the budget is honoured between calls, not within
+them, and the drain is the third stage of a run, so the budget may already be spent when it starts.
 
 Every failure is contained: the sweep never raises into the drain, and its log line carries a count
-and the exception's type name, never a key, because the object store's exceptions carry the request
-URL, which holds the key. Deletes per call are capped at `MAX_DELETES_PER_SWEEP`.
+and the exception's type name, never a key and never `exc_info`, because the object store's
+exceptions carry the request URL, which holds the key.
 """
 
 from __future__ import annotations
 
 import logging
 import re
-from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime, timedelta
 from typing import Protocol, runtime_checkable
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from aoe2stats_core.privacy.erasure import pseudonymise_profile
 from aoe2stats_ingester.budget import Budget
-from aoe2stats_storage.models import AoeProfile
+from aoe2stats_storage.models import ErasedRecordingKey, ProfileLink
 
 logger = logging.getLogger(__name__)
 
 #: The most keys one sweep deletes; the rest wait for the next cycle.
 MAX_DELETES_PER_SWEEP = 50
 
-#: Profile ids looked up per `IN` query.
-_LOOKUP_CHUNK = 500
+#: The most records one sweep reads.
+MAX_RECORDS_EXAMINED = 200
+
+#: How long the row-existence read waits for a lock holder before the key is skipped.
+DEFAULT_PAIR_LOCK_TIMEOUT_MS = 2_000
+
+_LOCK_NOT_AVAILABLE = "55P03"
 
 _REPLAY_KEY = re.compile(r"^replays/(\d+)/(\d+)\.zip$")
 
 
 @runtime_checkable
 class ErasedRecordingStore(Protocol):
-    """The two `ObjectStore` methods the sweep calls. A store without both is not swept."""
+    """The one `ObjectStore` method the sweep calls. A store without it is not swept."""
 
-    async def list_keys(self, prefix: str = "") -> list[str]: ...
     async def delete(self, key: str) -> None: ...
 
 
-async def _pseudonymised(
-    session_factory: async_sessionmaker[AsyncSession], profile_ids: set[int]
-) -> set[int]:
-    """The profile ids among `profile_ids` whose placeholder row exists (condition 3)."""
-    found: set[int] = set()
-    ordered = sorted(profile_ids)
-    async with session_factory() as session:
-        for start in range(0, len(ordered), _LOOKUP_CHUNK):
-            chunk = ordered[start : start + _LOOKUP_CHUNK]
-            placeholders = {pseudonymise_profile(p).pseudonymous_profile_id: p for p in chunk}
-            rows = await session.scalars(
-                select(AoeProfile.profile_id).where(AoeProfile.profile_id.in_(list(placeholders)))
-            )
-            found.update(placeholders[placeholder] for placeholder in rows)
-        await session.rollback()
-    return found
+class PairHasRow(Protocol):
+    async def __call__(
+        self, game_id: int, profile_id: int, *, lock_timeout_ms: int | None = None
+    ) -> bool: ...
+
+
+def _is_lock_timeout(exc: DBAPIError) -> bool:
+    return getattr(exc.orig, "sqlstate", None) == _LOCK_NOT_AVAILABLE
 
 
 async def sweep_erased_recordings(
     store: ErasedRecordingStore,
     session_factory: async_sessionmaker[AsyncSession],
     *,
-    pair_has_row: Callable[[int, int], Awaitable[bool]],
+    pair_has_row: PairHasRow,
     budget: Budget,
+    max_record_age_seconds: float,
+    now: datetime | None = None,
+    lock_timeout_ms: int = DEFAULT_PAIR_LOCK_TIMEOUT_MS,
 ) -> int:
-    """Delete the replay objects that conditions 1-3 (module docstring) mark as an erased user's
-    leftover; returns how many were deleted. `pair_has_row` is the waiting `FOR SHARE` read
-    (`CaptureDrain._pair_has_row`). Stops when `budget` expires. Never raises."""
+    """Delete the objects the records name that conditions 1-3 (module docstring) allow, drop the
+    records that have aged out, and return how many objects were deleted. Never raises."""
     deleted = 0
     if budget.expired:
         return 0
+    cutoff = (now or datetime.now(UTC)) - timedelta(seconds=max_record_age_seconds)
+    aged: list[str] = []
     try:
-        pairs: list[tuple[int, int, str]] = []
-        for key in await store.list_keys("replays/"):
-            match = _REPLAY_KEY.match(key)
-            if match is not None:
-                pairs.append((int(match.group(1)), int(match.group(2)), key))
-        erased = await _pseudonymised(session_factory, {profile_id for _, profile_id, _ in pairs})
-        for game_id, profile_id, key in pairs:
+        async with session_factory() as session:
+            records = (
+                await session.execute(
+                    select(ErasedRecordingKey.key, ErasedRecordingKey.recorded_at)
+                    .order_by(ErasedRecordingKey.recorded_at, ErasedRecordingKey.key)
+                    .limit(MAX_RECORDS_EXAMINED)
+                )
+            ).all()
+            profile_ids = {
+                int(match.group(2))
+                for key, _ in records
+                if (match := _REPLAY_KEY.match(key)) is not None
+            }
+            linked = set(
+                await session.scalars(
+                    select(ProfileLink.profile_id).where(
+                        ProfileLink.profile_id.in_(profile_ids), ProfileLink.unlinked_at.is_(None)
+                    )
+                )
+            )
+            await session.rollback()
+        for key, recorded_at in records:
             if deleted >= MAX_DELETES_PER_SWEEP or budget.expired:
                 break
-            if profile_id not in erased or await pair_has_row(game_id, profile_id):
-                continue
-            await store.delete(key)
-            deleted += 1
+            match = _REPLAY_KEY.match(key)
+            if match is not None and int(match.group(2)) not in linked:
+                try:
+                    has_row = await pair_has_row(
+                        int(match.group(1)), int(match.group(2)), lock_timeout_ms=lock_timeout_ms
+                    )
+                except DBAPIError as exc:
+                    if not _is_lock_timeout(exc):
+                        raise
+                    continue
+                if not has_row:
+                    await store.delete(key)
+                    deleted += 1
+            if recorded_at < cutoff:
+                aged.append(key)
     except Exception as exc:
         logger.warning(
             "erased-recording sweep stopped after %d deletion(s): %s", deleted, type(exc).__name__
         )
+    if aged:
+        try:
+            async with session_factory() as session:
+                await session.execute(
+                    delete(ErasedRecordingKey).where(ErasedRecordingKey.key.in_(aged))
+                )
+                await session.commit()
+        except Exception as exc:
+            logger.warning("erased-recording sweep could not drop records: %s", type(exc).__name__)
     if deleted:
         logger.info("erased-recording sweep deleted %d object(s)", deleted)
     return deleted

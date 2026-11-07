@@ -49,6 +49,10 @@ from __future__ import annotations
 #: `replay_capture_status` enum type: additive, no row rewritten. Apply it **before** the deploy
 #: that carries this constant: a build that writes `withdrawn` into a database without the value
 #: fails that write, and one that lags answers `schema_out_of_date`.
-EXPECTED_SCHEMA_REVISION = "19b5ac9aa12c"
+#:
+#: `c3d41a7e92b5` (004-visual-parity, T459s) adds `erased_recording_keys`: additive, one new table.
+#: Apply it **before** the deploy that carries this constant: a build that writes the table into a
+#: database without it fails the erasure's insert, and one that lags answers `schema_out_of_date`.
+EXPECTED_SCHEMA_REVISION = "c3d41a7e92b5"
 
 __all__ = ["EXPECTED_SCHEMA_REVISION"]
