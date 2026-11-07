@@ -40,11 +40,13 @@ requester removes a link and not a subject and a published analysis must stay re
 from __future__ import annotations
 
 import asyncio
+import logging
 import secrets
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from botocore.exceptions import EndpointConnectionError
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -502,6 +504,212 @@ async def test_erasure_deletes_the_deterministic_key_of_a_row_in_flight_whatever
     assert await store.list_keys() == []
 
 
+class _FailingNamedDeleteStore(_RecordingObjectStore):
+    """Fails the delete of one key, which only the named pass reaches: a `DeleteObject` error
+    after the unnamed pass has run, so the erasure's transaction rolls back."""
+
+    def __init__(self, failing_key: str) -> None:
+        super().__init__()
+        self._failing_key = failing_key
+
+    async def delete(self, key: str) -> None:
+        if key == self._failing_key:
+            raise RuntimeError("simulated DeleteObject failure")
+        await super().delete(key)
+
+
+async def _seed_in_flight_and_stored(
+    db_session: AsyncSession, *, game_id: int, status: CaptureStatus
+) -> tuple[User, str, str]:
+    """The user, the deterministic key of a row in `status` naming nothing, and the key a stored
+    row names (the one whose delete a test may fail)."""
+    user = await _seed_linked_user(
+        db_session, profile_id=_OWNER_PROFILE_ID, steam_id64="76561197960280021"
+    )
+    completed_at = datetime.now(UTC) - timedelta(days=2)
+    for offset in (0, 1):
+        db_session.add(
+            Match(
+                game_id=game_id + offset,
+                leaderboard_id=3,
+                completed_at=completed_at,
+                source="relic",
+                raw_payload={},
+            )
+        )
+    await db_session.flush()
+    db_session.add(
+        ReplayCapture(
+            game_id=game_id,
+            profile_id=_OWNER_PROFILE_ID,
+            status=status,
+            capture_deadline_at=completed_at + timedelta(days=21),
+            source=CaptureSource.AUTOMATIC,
+        )
+    )
+    await db_session.commit()
+    named = f"replays/{game_id + 1}/named.zip"
+    await _seed_stored_capture(
+        db_session, game_id=game_id + 1, profile_id=_OWNER_PROFILE_ID, object_key=named
+    )
+    return user, replay_object_key(game_id, _OWNER_PROFILE_ID), named
+
+
+# Statuses a row can have while its `object_key` is NULL. `stored` is absent: in the drain
+# (`capture.py`), `_commit_blob_metadata` names the object before `_mark_stored_by_drain` (which
+# calls `_mark_stored`) runs, so a row the drain marks `stored` already names its object.
+# `quarantined` is present: `_commit_blob_metadata` names the object on `object_key IS NULL`
+# whatever the status, and a drain can quarantine a row before it has named anything.
+_STATUSES_NAMING_NOTHING = [
+    CaptureStatus.PENDING,
+    CaptureStatus.DOWNLOADING,
+    CaptureStatus.FAILED,
+    CaptureStatus.EXPIRED,
+    CaptureStatus.UNAVAILABLE,
+    CaptureStatus.WITHDRAWN,
+    CaptureStatus.QUARANTINED,
+]
+
+
+@pytest.mark.parametrize("status", _STATUSES_NAMING_NOTHING)
+async def test_a_rolled_back_erasure_keeps_the_original_of_every_row_naming_nothing(
+    client: TestClient, db_session: AsyncSession, status: CaptureStatus
+) -> None:
+    """T459o, T459q, FR-037, constitution IV: the erasure rolls back after the unnamed pass (a
+    `DeleteObject` error in the named pass). A row whose `object_key` is NULL, whatever its status,
+    survives it, and a drain that already wrote the object may still name it, so that object must
+    still exist."""
+    game_id = _ORPHAN_GAME_ID + 20
+    user, deterministic, named = await _seed_in_flight_and_stored(
+        db_session, game_id=game_id, status=status
+    )
+    await _sign_in(client, db_session, user)
+    store = _FailingNamedDeleteStore(named)
+    client.app.dependency_overrides[get_object_store] = lambda: store  # type: ignore[attr-defined]
+    await store.put(deterministic, b"ORIGINAL")
+    await store.put(named, b"NAMED")
+
+    token = _get_confirmation_token(client)
+    with pytest.raises(RuntimeError, match="simulated DeleteObject failure"):
+        client.post(_ERASE_PATH, json={"confirmation_token": token})
+
+    assert deterministic in await store.list_keys()
+    assert await db_session.scalar(select(func.count(User.id)).where(User.id == user.id)) == 1
+
+
+async def test_a_rolled_back_erasure_still_deletes_the_key_of_a_played_pair_with_no_row(
+    client: TestClient, db_session: AsyncSession
+) -> None:
+    """T459q, the contrast: a played pair with no `replay_captures` row has no row to survive the
+    rollback and name its object, so its key is deleted in the unnamed pass, before the commit,
+    even though the erasure then rolls back."""
+    user = await _seed_linked_user(
+        db_session, profile_id=_OWNER_PROFILE_ID, steam_id64="76561197960280021"
+    )
+    await _sign_in(client, db_session, user)
+    (named,) = await _seed_stored_captures(db_session, first_game_id=810_600_000, count=1)
+    (played,) = await _seed_unnamed_players(db_session, first_game_id=810_600_100, count=1)
+    store = _FailingNamedDeleteStore(named)
+    client.app.dependency_overrides[get_object_store] = lambda: store  # type: ignore[attr-defined]
+    await store.put(played, b"ORPHAN")
+    await store.put(named, b"NAMED")
+
+    token = _get_confirmation_token(client)
+    with pytest.raises(RuntimeError, match="simulated DeleteObject failure"):
+        client.post(_ERASE_PATH, json={"confirmation_token": token})
+
+    assert played not in await store.list_keys()
+    assert await db_session.scalar(select(func.count(User.id)).where(User.id == user.id)) == 1
+
+
+async def test_a_committed_erasure_removes_the_original_of_a_row_in_flight_after_the_commit(
+    client: TestClient, db_session: AsyncSession
+) -> None:
+    """T459o: the limit made visible. When the erasure commits, the in-flight row's deterministic
+    key is deleted too, and only once the commit is done: the user row is already gone when
+    that `DeleteObject` runs."""
+    game_id = _ORPHAN_GAME_ID + 30
+    user, deterministic, named = await _seed_in_flight_and_stored(
+        db_session, game_id=game_id, status=CaptureStatus.DOWNLOADING
+    )
+    await _sign_in(client, db_session, user)
+    store = _install_recording_object_store(client)
+    await store.put(deterministic, b"ORIGINAL")
+    await store.put(named, b"NAMED")
+    users_when_deleted: dict[str, int] = {}
+    original_delete = store.delete
+
+    async def spying_delete(key: str) -> None:
+        async with db_session.bind.connect() as connection:  # type: ignore[union-attr]
+            count = await connection.scalar(select(func.count(User.id)).where(User.id == user.id))
+        users_when_deleted[key] = count or 0
+        await original_delete(key)
+
+    store.delete = spying_delete  # type: ignore[method-assign]
+
+    token = _get_confirmation_token(client)
+    response = client.post(_ERASE_PATH, json={"confirmation_token": token})
+    assert response.status_code == 200, f"Got {response.status_code}: {response.text}"
+
+    assert await store.list_keys() == []
+    assert users_when_deleted[deterministic] == 0, "the in-flight key went before the commit"
+
+
+class _FailingKeyStore(_RecordingObjectStore):
+    """Fails the delete of one key whatever the pass; used for a key only the post-commit pass
+    reaches, so the failure comes after the commit."""
+
+    def __init__(self, failing_key: str) -> None:
+        super().__init__()
+        self._failing_key = failing_key
+
+    async def delete(self, key: str) -> None:
+        if key == self._failing_key:
+            # botocore builds this message from the request URL, which holds the replay key.
+            raise EndpointConnectionError(endpoint_url=f"https://example.invalid/bucket/{key}")
+        await super().delete(key)
+
+
+async def test_a_failed_post_commit_delete_leaves_the_erasure_committed_and_logs_a_count(
+    client: TestClient,
+    db_session: AsyncSession,
+    caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """T459q: the post-commit delete fails. The erasure has committed, so the answer is a 200 and
+    the user row is gone; the warning carries a count and the exception's type name, never a key
+    (T459r: botocore's message embeds the request URL, so no `exc_info`, no message). The object it
+    leaves is T459n's scope."""
+    # The test database's alembic run (`fileConfig`) disables loggers that already exist.
+    monkeypatch.setattr(privacy.logger, "disabled", False)
+    user, deterministic, named = await _seed_in_flight_and_stored(
+        db_session, game_id=_ORPHAN_GAME_ID + 40, status=CaptureStatus.DOWNLOADING
+    )
+    user_id = user.id
+    await _sign_in(client, db_session, user)
+    store = _FailingKeyStore(deterministic)
+    client.app.dependency_overrides[get_object_store] = lambda: store  # type: ignore[attr-defined]
+    await store.put(deterministic, b"ORIGINAL")
+    await store.put(named, b"NAMED")
+
+    token = _get_confirmation_token(client)
+    with caplog.at_level("WARNING", logger="aoe2stats_api"):
+        response = client.post(_ERASE_PATH, json={"confirmation_token": token})
+
+    assert response.status_code == 200, f"Got {response.status_code}: {response.text}"
+    db_session.expire_all()
+    assert await db_session.get(User, user_id) is None
+    warnings = [r for r in caplog.records if r.name == "aoe2stats_api" and r.levelname == "WARNING"]
+    assert len(warnings) == 1
+    formatted = logging.Formatter().format(warnings[0])
+    for secret in (deterministic, named, str(_OWNER_PROFILE_ID)):
+        assert secret not in formatted
+        assert secret not in caplog.text
+    assert "EndpointConnectionError" in formatted
+    assert warnings[0].exc_info is None
+    assert deterministic in await store.list_keys()
+
+
 class _TimedObjectStore(_RecordingObjectStore):
     """`_RecordingObjectStore` whose `delete` takes a moment and records the order of the calls and
     how many were in flight at once (T730 remediation: the order of the two passes, and that the
@@ -652,27 +860,41 @@ async def _seed_unnamed_players(
 
 
 @pytest.mark.parametrize(
-    ("unnamed", "named", "width", "waves"),
+    ("unnamed", "named", "post_commit", "width", "waves"),
     [
-        (0, 0, 5, 0),
-        (1, 0, 5, 1),
-        (0, 5, 5, 1),
-        (0, 6, 5, 2),
-        # The two passes run one after the other, so each rounds up on its own: 1 + 1, not 1.
-        (1, 1, 5, 2),
-        (2, 3, 2, 3),
+        (0, 0, 0, 5, 0),
+        (1, 0, 0, 5, 1),
+        (0, 5, 0, 5, 1),
+        (0, 6, 0, 5, 2),
+        # The passes run one after the other, so each rounds up on its own: 1 + 1, not 1.
+        (1, 1, 0, 5, 2),
+        (2, 3, 0, 2, 3),
         # N = 177 at C = 5, the docstring's worst case: 1 unnamed and 176 named is 1 + 36.
-        (1, 176, 5, 37),
-        (0, 177, 5, 36),
-        (177, 0, 5, 36),
-        (88, 89, 5, 36),
+        (1, 176, 0, 5, 37),
+        (0, 177, 0, 5, 36),
+        (177, 0, 0, 5, 36),
+        (88, 89, 0, 5, 36),
+        # The post-commit pass is a third term, rounded up on its own (T459q).
+        (0, 0, 1, 5, 1),
+        (1, 0, 1, 5, 2),
+        (1, 1, 1, 5, 3),
+        (2, 3, 1, 2, 4),
+        (1, 1, 175, 5, 37),
     ],
 )
 def test_erasure_delete_waves_rounds_each_pass_up_on_its_own(
-    monkeypatch: pytest.MonkeyPatch, unnamed: int, named: int, width: int, waves: int
+    monkeypatch: pytest.MonkeyPatch,
+    unnamed: int,
+    named: int,
+    post_commit: int,
+    width: int,
+    waves: int,
 ) -> None:
     monkeypatch.setattr(privacy, "_erasure_delete_width", lambda: width)
-    assert privacy._erasure_delete_waves(unnamed=unnamed, named=named) == waves
+    assert (
+        privacy._erasure_delete_waves(unnamed=unnamed, named=named, post_commit=post_commit)
+        == waves
+    )
 
 
 def test_erasure_delete_width_is_the_smaller_of_the_bound_and_the_default_thread_pool(
@@ -702,7 +924,7 @@ async def _seed_account_for_wave_budget(
     client.app.dependency_overrides[get_object_store] = lambda: store  # type: ignore[attr-defined]
     for key in [*named, *unnamed]:
         await store.put(key, b"FAKE-REPLAY-BYTES")
-    assert privacy._erasure_delete_waves(unnamed=2, named=3) == 3
+    assert privacy._erasure_delete_waves(unnamed=2, named=3, post_commit=0) == 3
     return user, store, [*named, *unnamed]
 
 
@@ -967,6 +1189,55 @@ async def test_a_token_dated_in_the_future_is_refused_and_erases_nothing(
             .where(DataRequest.kind == DataRequestKind.ERASURE)
         )
     ).scalar_one() == 0, "a token from the future must not even record a request"
+
+
+async def test_the_wave_budget_counts_the_post_commit_pass_separately(
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """T459q: one unnamed key (a played pair, no row) and one post-commit key (a `failed` row
+    naming nothing), at a width of 2. Summed they are 2 keys, 1 wave; the passes run one after
+    the other, so they are 1 + 1 = 2 waves. A budget of 1 refuses, and nothing is deleted."""
+    monkeypatch.setattr(privacy, "_ERASURE_DELETE_CONCURRENCY", 2)
+    monkeypatch.setattr(privacy, "_ERASURE_WAVE_BUDGET", 1)
+    assert privacy._erasure_delete_waves(unnamed=1, named=0, post_commit=1) == 2
+    user = await _seed_linked_user(
+        db_session, profile_id=_OWNER_PROFILE_ID, steam_id64="76561197960280032"
+    )
+    await _sign_in(client, db_session, user)
+    (played,) = await _seed_unnamed_players(db_session, first_game_id=810_700_000, count=1)
+    completed_at = datetime.now(UTC) - timedelta(days=2)
+    db_session.add(
+        Match(
+            game_id=810_700_100,
+            leaderboard_id=3,
+            completed_at=completed_at,
+            source="relic",
+            raw_payload={},
+        )
+    )
+    await db_session.flush()
+    db_session.add(
+        ReplayCapture(
+            game_id=810_700_100,
+            profile_id=_OWNER_PROFILE_ID,
+            status=CaptureStatus.FAILED,
+            capture_deadline_at=completed_at + timedelta(days=21),
+            source=CaptureSource.AUTOMATIC,
+        )
+    )
+    await db_session.commit()
+    store = _TimedObjectStore()
+    client.app.dependency_overrides[get_object_store] = lambda: store  # type: ignore[attr-defined]
+    row_key = replay_object_key(810_700_100, _OWNER_PROFILE_ID)
+    for key in (played, row_key):
+        await store.put(key, b"FAKE-REPLAY-BYTES")
+
+    token = _get_confirmation_token(client)
+    response = client.post(_ERASE_PATH, json={"confirmation_token": token})
+
+    assert response.status_code == 503, f"Got {response.status_code}: {response.text}"
+    assert store.deleted == []
+    assert sorted(await store.list_keys()) == sorted([played, row_key])
 
 
 async def test_erasure_exactly_at_the_wave_budget_is_erased_as_before(
