@@ -832,12 +832,13 @@ async def erase_account(
     deterministic key on any row whose `object_key` is NULL, so a drain that wrote the object can
     still name it on a row that survives a rolled-back erasure, and that row must not be left
     naming a deleted object. Their keys go in pass 3, after the commit, on the commit path only: a
-    rolled-back erasure keeps those objects. A failure in pass 3 is logged (a count, never a key)
-    and not raised, the erasure having committed. What pass 3 does not cover: a drain that writes
-    after pass 3 has run leaves an object no row names, which that drain removes only if it is the
-    one that wrote it (`capture.py`, `_pair_has_row`). A drain that wrote, died, and wrote
-    nothing more is covered only if its write came before pass 3; the object a failed pass 3
-    leaves is T459n's scope. A retry repeats the idempotent deletes.
+    rolled-back erasure keeps those objects. A failure in pass 3 is logged (a count and the
+    exception's type name, never a key) and not raised, the erasure having committed.
+    What pass 3 does not cover: a drain that writes after pass 3 has run leaves an object no row
+    names, which that drain removes only if it is the one that wrote it (`capture.py`,
+    `_pair_has_row`). A drain that wrote, died, and wrote nothing more is covered only if its write
+    came before pass 3; the object a failed pass 3 leaves is T459n's scope.
+    A retry repeats the idempotent deletes.
 
     **Duration.** Erasure's route runs in `api/index.py`, whose limit is `maxDuration: 10` in
     `vercel.json` (`api/cron/ingest.py` and `api/analyze.py` are separate functions).
@@ -967,15 +968,17 @@ async def erase_account(
         # commit. The rows are gone, so a drain that writes after this point deletes what it wrote
         # itself (`_pair_has_row`); a drain that wrote before this delete ran is covered by it, one
         # that wrote and died after it is not. A failure here cannot undo the erasure: the object
-        # it leaves is T459n's scope. The warning carries a count, never a key.
+        # it leaves is T459n's scope. The warning carries a count and the exception's type name,
+        # never a key: no `exc_info`, because botocore's connection errors embed the request URL,
+        # which holds `replays/{game_id}/{profile_id}.zip`.
         await db_session.commit()
         try:
             await _delete_objects(object_store, sorted(post_commit_keys))
-        except Exception:
+        except Exception as exc:
             logger.warning(
-                "erasure committed; deleting %d post-commit object(s) failed",
+                "erasure committed; deleting %d post-commit object(s) failed: %s",
                 len(post_commit_keys),
-                exc_info=True,
+                type(exc).__name__,
             )
 
     return {"status": "erased"}

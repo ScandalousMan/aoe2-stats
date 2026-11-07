@@ -40,11 +40,13 @@ requester removes a link and not a subject and a published analysis must stay re
 from __future__ import annotations
 
 import asyncio
+import logging
 import secrets
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from botocore.exceptions import EndpointConnectionError
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -553,8 +555,9 @@ async def _seed_in_flight_and_stored(
     return user, replay_object_key(game_id, _OWNER_PROFILE_ID), named
 
 
-# Every status a row can have while its `object_key` is NULL. `stored` is absent: a row is marked
-# `stored` only together with the naming of its object (`_mark_stored`), so it never names nothing.
+# Statuses a row can have while its `object_key` is NULL. `stored` is absent: in the drain
+# (`capture.py`), `_commit_blob_metadata` names the object before `_mark_stored_by_drain` (which
+# calls `_mark_stored`) runs, so a row the drain marks `stored` already names its object.
 # `quarantined` is present: `_commit_blob_metadata` names the object on `object_key IS NULL`
 # whatever the status, and a drain can quarantine a row before it has named anything.
 _STATUSES_NAMING_NOTHING = [
@@ -662,7 +665,8 @@ class _FailingKeyStore(_RecordingObjectStore):
 
     async def delete(self, key: str) -> None:
         if key == self._failing_key:
-            raise RuntimeError("simulated DeleteObject failure")
+            # botocore builds this message from the request URL, which holds the replay key.
+            raise EndpointConnectionError(endpoint_url=f"https://example.invalid/bucket/{key}")
         await super().delete(key)
 
 
@@ -673,7 +677,8 @@ async def test_a_failed_post_commit_delete_leaves_the_erasure_committed_and_logs
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """T459q: the post-commit delete fails. The erasure has committed, so the answer is a 200 and
-    the user row is gone; the warning carries `exc_info` and a count, never a key. The object it
+    the user row is gone; the warning carries a count and the exception's type name, never a key
+    (T459r: botocore's message embeds the request URL, so no `exc_info`, no message). The object it
     leaves is T459n's scope."""
     # The test database's alembic run (`fileConfig`) disables loggers that already exist.
     monkeypatch.setattr(privacy.logger, "disabled", False)
@@ -696,10 +701,12 @@ async def test_a_failed_post_commit_delete_leaves_the_erasure_committed_and_logs
     assert await db_session.get(User, user_id) is None
     warnings = [r for r in caplog.records if r.name == "aoe2stats_api" and r.levelname == "WARNING"]
     assert len(warnings) == 1
-    assert warnings[0].exc_info is not None
-    assert warnings[0].args == (1,)
-    assert deterministic not in warnings[0].getMessage()
-    assert named not in warnings[0].getMessage()
+    formatted = logging.Formatter().format(warnings[0])
+    for secret in (deterministic, named, str(_OWNER_PROFILE_ID)):
+        assert secret not in formatted
+        assert secret not in caplog.text
+    assert "EndpointConnectionError" in formatted
+    assert warnings[0].exc_info is None
     assert deterministic in await store.list_keys()
 
 
