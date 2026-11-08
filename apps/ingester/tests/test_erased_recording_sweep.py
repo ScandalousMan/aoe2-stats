@@ -456,7 +456,7 @@ async def test_a_failing_store_is_contained_and_the_log_carries_no_key_and_no_ex
     store.fail_delete = True
 
     with caplog.at_level(logging.INFO):
-        assert await _sweep(session_factory, store, _Provider()) == 0
+        assert await _sweep(session_factory, store, _Provider()) == 1
 
     text_ = "\n".join(record.getMessage() for record in caplog.records)
     assert "ConnectionError" in text_
@@ -616,7 +616,7 @@ async def test_a_failing_key_is_marked_examined_and_the_keys_behind_it_are_still
 
     store.delete = delete_failing_on_the_first  # type: ignore[method-assign]
 
-    assert await _sweep(session_factory, store, _Provider()) == 2
+    assert await _sweep(session_factory, store, _Provider()) == 3
 
     assert store.deleted == keys[1:]
     assert store.objects == {keys[0]: _BYTES}
@@ -649,3 +649,26 @@ async def test_a_lock_timeout_does_not_mark_the_key_examined(
 
     assert store.deleted == [other]
     assert await _swept_at(session_factory) == {_KEY: False, other: True}
+
+
+async def test_failing_deletes_count_toward_the_cap_and_the_return_value(
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """T459u (B2): a store whose delete always fails, with more records than the cap: one sweep
+    call issues at most the cap's number of deletes and returns that number."""
+    monkeypatch.setattr(erased_recordings, "MAX_KEYS_SWEPT", 2)
+    keys = await _leave_recorded_objects(session_factory, 5)
+    attempts: list[str] = []
+    store = _Store(dict.fromkeys(keys, _BYTES))
+
+    async def always_fail(key: str) -> None:
+        attempts.append(key)
+        raise ConnectionError(f"https://bucket.example/{key} refused")
+
+    store.delete = always_fail  # type: ignore[method-assign]
+
+    assert await _sweep(session_factory, store, _Provider()) == 2
+    assert attempts == keys[:2]
+    assert await _records(session_factory) == sorted(keys)

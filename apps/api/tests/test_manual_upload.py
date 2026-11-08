@@ -301,7 +301,7 @@ async def _record_keys(db_session: AsyncSession) -> list[str]:
 async def test_upload_that_succeeds_deletes_its_keys_record_and_names_the_object(
     client: TestClient, db_session: AsyncSession
 ) -> None:
-    """T459u (1), happy path: the record's delete commits with the row that names the object."""
+    """T459u (1), happy path: the record is deleted and the row names the object."""
     game_id, profile_id = _FIXTURE_GAME_ID, _FIXTURE_PROFILE_ID
     await _seed_held_candidate(
         db_session, client, game_id=game_id, profile_id=profile_id, status=None, object_key=None
@@ -317,12 +317,13 @@ async def test_upload_that_succeeds_deletes_its_keys_record_and_names_the_object
     assert row is not None and row.object_key == key
 
 
-async def test_upload_refused_as_held_leaves_the_erased_objects_record(
+async def test_stated_residual_upload_refused_as_held_leaves_the_erased_object_without_a_record(
     client: TestClient, db_session: AsyncSession, fake_object_store: _FakeObjectStore
 ) -> None:
-    """T459u (1), sub-case held: a relinked user uploads a game whose erased object is still held
-    (other bytes). The answer is 409 `replay_held` and the object keeps its record, so the sweep
-    still reaches it."""
+    """T459u (1), the stated residual, sub-case held: the record delete commits before
+    `put_if_absent`, so a relinked user's upload of a game whose erased object is still held
+    answers 409 `replay_held` and leaves that object with no record. A later fix must flip the
+    last assertion."""
     game_id, profile_id = _FIXTURE_GAME_ID, _FIXTURE_PROFILE_ID
     key = replay_object_key(game_id, profile_id)
     await _seed_held_candidate(
@@ -336,17 +337,18 @@ async def test_upload_refused_as_held_leaves_the_erased_objects_record(
 
     assert response.status_code == 409
     assert response.json()["error"]["code"] == "replay_held"
-    assert await _record_keys(db_session) == [key]
+    assert await _record_keys(db_session) == []
 
 
-async def test_upload_failing_after_the_record_delete_leaves_the_erased_objects_record(
+async def test_stated_residual_upload_failing_after_the_record_delete_leaves_no_record(
     client: TestClient,
     db_session: AsyncSession,
     fake_object_store: _FakeObjectStore,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """T459u (1), sub-case failure after the delete: the row write raises. The request rolls back,
-    including the record's delete, so the object the put left keeps its record."""
+    """T459u (1), the stated residual, sub-case failure after the record delete: the row write
+    raises after the record delete committed, so the object the put left has no record. A later
+    fix must flip the record assertion."""
     game_id, profile_id = _FIXTURE_GAME_ID, _FIXTURE_PROFILE_ID
     key = replay_object_key(game_id, profile_id)
     await _seed_held_candidate(
@@ -365,7 +367,7 @@ async def test_upload_failing_after_the_record_delete_leaves_the_erased_objects_
         _upload(client, game_id)
 
     assert [k for k, _ in fake_object_store.put_calls] == [key]
-    assert await _record_keys(db_session) == [key]
+    assert await _record_keys(db_session) == []
     assert await _capture_row(db_session, game_id=game_id, profile_id=profile_id) is None
 
 

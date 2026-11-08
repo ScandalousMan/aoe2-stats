@@ -26,31 +26,32 @@ record lock is the only lock held while the object is deleted: no row is locked 
 deleted, since a row's existence is what stops the delete.
 
 **Exclusion with a manual upload.** `upload_replay` (`routers/replays.py`) deletes its key's record
-in the request's transaction before its `put_if_absent` and commits that delete with the capture
-row that names the object. The delete waits for a sweep holding the record, so an object the sweep
-deletes is deleted before the upload writes; while the delete is uncommitted the sweep waits for it
-and skips the key on its lock timeout. A refusal (`replay_held`) or a failure after the delete rolls
-the delete back, so the record stays and the sweep can still reach an object the request did not
-adopt. The store's `delete` succeeds on a key that holds nothing.
+and commits before its `put_if_absent`. That delete waits for a sweep holding the record, so an
+object the sweep deletes is deleted before the upload writes, and a sweep that starts after the
+delete finds no record. The store's `delete` succeeds on a key that holds nothing. Because that
+delete commits before `put_if_absent`, an upload of a game whose erased object is still held
+answers 409 `replay_held` and leaves that object with no record, and so does any failure after the
+record delete.
 
-**Aging and order.** A record is dropped when the database clock says it is older than the capture
-budget (`capture_budget_days`), checked against `now()` in SQL; younger records stay, so a stale
-drain's late write is still caught by a later run. A record is kept at least that long, and until
-the sweep next examines it: it is dropped only when an examination finds it aged. A record the
-sweep examined and kept gets `swept_at`, and batches are ordered `swept_at NULLS FIRST,
-recorded_at, key`, so records kept past a sweep are visited after the unexamined ones.
+**Aging and order.** A record is dropped by the first examination that does not fail once the
+database clock says it is older than the capture budget (`capture_budget_days`), checked against
+`now()` in SQL; younger records stay, so a stale drain's late write is still caught by a later
+run. A record is kept at least that long, and until the sweep next examines it. A record the sweep
+examined and kept gets `swept_at`, and batches are ordered `swept_at NULLS FIRST, recorded_at,
+key`, so records kept past a sweep are visited after the unexamined ones.
 
 **Bounds.** At most `MAX_RECORDS_EXAMINED` records are read and `MAX_KEYS_SWEPT` object deletes
-issued per call; the return value counts those deletes, not objects that existed. The sweep takes
-the drain's `Budget`, runs at the start of `CaptureDrain.__call__`, does nothing when the budget is
-already expired, and checks it before each key. One transaction and one delete in progress are not
+issued per call, a delete that raised included; the return value counts those deletes, not
+objects that existed. The sweep takes the drain's `Budget`, runs at the start of
+`CaptureDrain.__call__`, does nothing when the budget is already expired, and checks it before each
+key. One transaction and one delete in progress are not
 interrupted, and the drain is the third stage of a run, so the budget may be spent when it starts.
 
 **Not covered.** An erased user's own manual upload already in flight when the erasure ran: if its
 record delete (`upload_replay`) runs after the erasure committed and its `put_if_absent` follows,
 no record names the key and the object stays. The erasure's own records exist only for the keys it
 saw. A key whose delete fails on every run keeps its record past the capture budget, because the
-record is dropped only after an examination that did not fail.
+record is dropped only by an examination that does not fail.
 
 Every failure is contained: the sweep never raises into the drain, and its log line carries a count
 and the exception's type name, never a key and never `exc_info`, because the object store's
@@ -98,15 +99,13 @@ def _is_lock_timeout(exc: DBAPIError) -> bool:
 
 
 async def _fail_one(
-    session_factory: async_sessionmaker[AsyncSession], key: str, exc: Exception
+    session_factory: async_sessionmaker[AsyncSession], key: str, exc: Exception, *, issued: bool
 ) -> bool:
     """T459u: a key whose read or delete failed for any reason but a lock timeout is marked
     examined (`swept_at`, record kept) in a transaction of its own, so it moves behind the
-    unexamined keys and cannot stop every later key on each run. The log line carries the type
-    name only, never the key and never `exc_info`."""
-    logger.warning(
-        "erased-recording sweep: a key failed and was marked examined: %s", type(exc).__name__
-    )
+    unexamined keys and cannot stop every later key on each run. `issued` says whether an object
+    delete was attempted, and is returned. The log line is written after the marking commits and
+    carries the type name only, never the key and never `exc_info`."""
     async with session_factory() as session:
         await session.execute(
             update(ErasedRecordingKey)
@@ -114,7 +113,10 @@ async def _fail_one(
             .values(swept_at=func.clock_timestamp())
         )
         await session.commit()
-    return False
+    logger.warning(
+        "erased-recording sweep: a key failed and was marked examined: %s", type(exc).__name__
+    )
+    return issued
 
 
 async def _sweep_one(
@@ -125,9 +127,10 @@ async def _sweep_one(
     record_max_age_days: int,
     lock_timeout_ms: int,
 ) -> bool | None:
-    """One key, one transaction. Returns True if an object delete was issued, False if the key was
-    handled without one (a failure included, T459u), None if it was skipped (record gone, or a lock
-    timeout)."""
+    """One key, one transaction. Returns True if an object delete was issued (it may have raised,
+    T459u), False if the key was handled without one (a failed read included), None if it was
+    skipped (record gone, or a lock timeout)."""
+    issued = False
     async with session_factory() as session:
         try:
             await session.execute(
@@ -144,7 +147,6 @@ async def _sweep_one(
             if aged is None:
                 await session.rollback()
                 return None
-            issued = False
             match = _REPLAY_KEY.match(key)
             if match is not None:
                 game_id, profile_id = int(match.group(1)), int(match.group(2))
@@ -159,16 +161,16 @@ async def _sweep_one(
                     )
                 )
                 if has_row is None and linked is None:
-                    await store.delete(key)
                     issued = True
+                    await store.delete(key)
         except DBAPIError as exc:
             await session.rollback()
             if _is_lock_timeout(exc):
                 return None
-            return await _fail_one(session_factory, key, exc)
+            return await _fail_one(session_factory, key, exc, issued=issued)
         except Exception as exc:
             await session.rollback()
-            return await _fail_one(session_factory, key, exc)
+            return await _fail_one(session_factory, key, exc, issued=issued)
         if aged:
             await session.execute(delete(ErasedRecordingKey).where(ErasedRecordingKey.key == key))
         else:
@@ -225,5 +227,5 @@ async def sweep_erased_recordings(
             "erased-recording sweep stopped after %d key(s): %s", swept, type(exc).__name__
         )
     if swept:
-        logger.info("erased-recording sweep deleted the objects of %d key(s)", swept)
+        logger.info("erased-recording sweep issued object deletes for %d key(s)", swept)
     return swept

@@ -804,13 +804,13 @@ async def upload_replay(
 
     key = replay_object_key(game_id, profile_id)
     zip_sha256 = hashlib.sha256(content).hexdigest()
-    # T459t, T459u: delete this key's erased-recording record in the request's own transaction and
-    # do NOT commit here. The ingester's sweep holds that record `FOR UPDATE` across its checks and
-    # its object delete, so this delete waits for a sweep in progress; and while it is uncommitted
-    # the sweep waits for it (and skips the key on its lock timeout). The delete commits with the
-    # row write below, so a refusal or a failure anywhere after it rolls it back and the record, and
-    # with it the sweep's claim on an erased object this request did not adopt, stays.
+    # T459t: drop this key's erased-recording record, and commit, before the write. The ingester's
+    # sweep holds that record `FOR UPDATE` across its checks and its object delete, so this waits
+    # for a sweep in progress, and a later sweep finds no record. Nothing else is held here.
+    # Because this commits before the put, an upload refused or failing after this point leaves an
+    # erased object that is still held with no record (T459u).
     await db_session.execute(delete(ErasedRecordingKey).where(ErasedRecordingKey.key == key))
+    await db_session.commit()
     # T723: a conditional write; an object already under the key is never replaced. T730: it is
     # accepted only when it is this very file - for example an earlier attempt's object, whose row
     # write failed, or one the ingester wrote.
