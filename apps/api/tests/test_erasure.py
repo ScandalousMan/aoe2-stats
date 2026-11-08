@@ -44,6 +44,7 @@ import logging
 import secrets
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import pytest
 from botocore.exceptions import EndpointConnectionError
@@ -610,15 +611,17 @@ async def test_erasure_holds_the_users_row_lock_before_it_reads_the_users_profil
     """T459v, FR-037: a manual upload takes the user's row `FOR SHARE` before its
     `replay_captures` write, so the erasure must hold a conflicting lock on that row before it
     reads the user's captures, or an upload's row could commit after the erasure's captures delete.
-    Probed from another session with `NOWAIT` at the erasure's first pseudonymisation step."""
+    Probed from another session with `NOWAIT` at the start of `_owned_profile_ids`, the first read
+    of the user's data. The wait itself, erase_account against upload_replay, is covered by this
+    probe and the upload's, not by a two-transaction run."""
     user = await _seed_linked_user(
         db_session, profile_id=_OWNER_PROFILE_ID, steam_id64="76561197960280031"
     )
     await _sign_in(client, db_session, user)
     probed: list[bool] = []
-    real = privacy._pseudonymise_profile_ids
+    real = privacy._owned_profile_ids
 
-    async def probe_then_run(session: AsyncSession, profile_ids: object) -> object:
+    async def probe_then_run(session: AsyncSession, **kwargs: Any) -> Any:
         async with session_factory() as other:
             try:
                 await other.execute(
@@ -629,9 +632,9 @@ async def test_erasure_holds_the_users_row_lock_before_it_reads_the_users_profil
                 probed.append(False)
             except DBAPIError:
                 probed.append(True)
-        return await real(session, profile_ids)  # type: ignore[arg-type]
+        return await real(session, **kwargs)
 
-    monkeypatch.setattr(privacy, "_pseudonymise_profile_ids", probe_then_run)
+    monkeypatch.setattr(privacy, "_owned_profile_ids", probe_then_run)
 
     token = _get_confirmation_token(client)
     assert client.post(_ERASE_PATH, json={"confirmation_token": token}).status_code == 200

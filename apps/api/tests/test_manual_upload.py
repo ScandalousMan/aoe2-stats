@@ -402,7 +402,9 @@ async def test_upload_in_flight_when_the_erasure_commits_writes_no_row(
     """T459v, FR-037: the erasure commits between the upload's object write and its row write. The
     profile's `aoe_profiles` row survives the erasure, so only the user's own row says it ran: the
     upload answers 401 and writes no `replay_captures` row. The object it wrote stays, and its key
-    has a record for the ingester's sweep."""
+    has a record for the ingester's sweep. Not a two-transaction run: the real wait of
+    `erase_account` against `upload_replay` is covered by the `NOWAIT` lock probes, here and in
+    `test_erasure.py`."""
     game_id, profile_id = _FIXTURE_GAME_ID, _FIXTURE_PROFILE_ID
     key = replay_object_key(game_id, profile_id)
     user, _ = await _seed_held_candidate(
@@ -426,7 +428,7 @@ async def test_upload_in_flight_when_the_erasure_commits_writes_no_row(
     assert await _record_keys(db_session) == [key]
 
 
-async def test_upload_whose_record_delete_follows_the_erasures_record_leaves_a_record(
+async def test_upload_whose_user_is_erased_before_its_record_delete_deletes_no_record(
     client: TestClient,
     db_session: AsyncSession,
     session_factory: async_sessionmaker[AsyncSession],
@@ -434,8 +436,42 @@ async def test_upload_whose_record_delete_follows_the_erasures_record_leaves_a_r
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """T459v: the erasure commits, with its record of the key, after the upload's checks and before
-    the upload deletes that record. The delete removes the erasure's record and the object is then
-    written, so the refusal puts the record back: no row, and a record naming the object."""
+    its record delete, and different bytes then appear under the key. The upload finds the user
+    gone at its first lock, answers 401, and deletes nothing: no row, no put, the record stays.
+    Not a two-transaction run: the real wait is covered by the `NOWAIT` lock probes."""
+    game_id, profile_id = _FIXTURE_GAME_ID, _FIXTURE_PROFILE_ID
+    key = replay_object_key(game_id, profile_id)
+    user, _ = await _seed_held_candidate(
+        db_session, client, game_id=game_id, profile_id=profile_id, status=None, object_key=None
+    )
+    real_existing = replays_router._existing_capture
+
+    async def existing_then_erase(*args: Any, **kwargs: Any) -> ReplayCapture | None:
+        found = await real_existing(*args, **kwargs)
+        await _erase_user_like_the_erasure(session_factory, user_id=user.id, key=key)
+        fake_object_store.existing_objects[key] = b"other bytes"
+        return found
+
+    monkeypatch.setattr(replays_router, "_existing_capture", existing_then_erase)
+
+    response = _upload(client, game_id)
+
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "not_authenticated"
+    assert await _capture_row(db_session, game_id=game_id, profile_id=profile_id) is None
+    assert fake_object_store.put_calls == []
+    assert await _record_keys(db_session) == [key]
+
+
+async def test_erased_users_upload_with_a_raising_put_keeps_the_erasures_record(
+    client: TestClient,
+    db_session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
+    fake_object_store: _FakeObjectStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """T459v: as above, with a `put_if_absent` that raises. The erasure's record survives whether
+    or not the put is reached."""
     game_id, profile_id = _FIXTURE_GAME_ID, _FIXTURE_PROFILE_ID
     key = replay_object_key(game_id, profile_id)
     user, _ = await _seed_held_candidate(
@@ -448,14 +484,72 @@ async def test_upload_whose_record_delete_follows_the_erasures_record_leaves_a_r
         await _erase_user_like_the_erasure(session_factory, user_id=user.id, key=key)
         return found
 
+    async def raising_put(*args: object, **kwargs: object) -> bool:
+        raise RuntimeError("put failed")
+
     monkeypatch.setattr(replays_router, "_existing_capture", existing_then_erase)
+    monkeypatch.setattr(fake_object_store, "put_if_absent", raising_put)
+
+    try:
+        response = _upload(client, game_id)
+        assert response.status_code != 200
+    except RuntimeError:
+        pass
+
+    assert await _record_keys(db_session) == [key]
+
+
+async def test_erasure_after_the_record_delete_keeps_its_record_through_a_held_refusal(
+    client: TestClient,
+    db_session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
+    fake_object_store: _FakeObjectStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """T459v: the user is alive at the record delete and erased just after its commit, before the
+    put, and different bytes are held under the key. The upload answers 409 `replay_held` or 401
+    and the erasure's later record survives, because the upload deletes nothing after its commit."""
+    game_id, profile_id = _FIXTURE_GAME_ID, _FIXTURE_PROFILE_ID
+    key = replay_object_key(game_id, profile_id)
+    user, _ = await _seed_held_candidate(
+        db_session, client, game_id=game_id, profile_id=profile_id, status=None, object_key=None
+    )
+    real_put = fake_object_store.put_if_absent
+
+    async def erase_then_put(k: str, body: bytes, *, content_type: str = "application/zip") -> bool:
+        await _erase_user_like_the_erasure(session_factory, user_id=user.id, key=k)
+        fake_object_store.existing_objects[k] = b"other bytes"
+        return await real_put(k, body, content_type=content_type)
+
+    monkeypatch.setattr(fake_object_store, "put_if_absent", erase_then_put)
 
     response = _upload(client, game_id)
 
-    assert response.status_code == 401
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "replay_held"
     assert await _capture_row(db_session, game_id=game_id, profile_id=profile_id) is None
-    assert [k for k, _ in fake_object_store.put_calls] == [key]
     assert await _record_keys(db_session) == [key]
+
+
+async def test_live_users_upload_over_a_stale_record_deletes_it_and_stores_normally(
+    client: TestClient, db_session: AsyncSession, fake_object_store: _FakeObjectStore
+) -> None:
+    """T459u contrast: a live user's upload over a stale record deletes that record, puts the
+    object and writes the row."""
+    game_id, profile_id = _FIXTURE_GAME_ID, _FIXTURE_PROFILE_ID
+    key = replay_object_key(game_id, profile_id)
+    await _seed_held_candidate(
+        db_session, client, game_id=game_id, profile_id=profile_id, status=None, object_key=None
+    )
+    db_session.add(ErasedRecordingKey(key=key))
+    await db_session.commit()
+
+    assert _upload(client, game_id).status_code == 200
+
+    assert [k for k, _ in fake_object_store.put_calls] == [key]
+    assert await _record_keys(db_session) == []
+    row = await _capture_row(db_session, game_id=game_id, profile_id=profile_id)
+    assert row is not None and row.object_key == key
 
 
 async def test_upload_in_flight_when_another_user_is_erased_still_commits(

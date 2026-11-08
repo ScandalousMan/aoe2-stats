@@ -884,9 +884,10 @@ async def erase_account(
 
     # T459v: the user's own row, locked `FOR NO KEY UPDATE` before anything else is read or written
     # and held to the commit. A manual upload (`routers/replays.py`) takes it `FOR SHARE` before
-    # its `replay_captures` write, so an upload that began first commits its row before this
-    # erasure reads the user's captures, and one that follows waits for this commit and finds the
-    # user gone. It is the first lock this erasure takes, so it waits on no lock the upload holds.
+    # its `replay_captures` write, and whichever side takes the user-row lock first goes first: an
+    # upload holding it commits its row before this erasure reads the user's captures, and an upload
+    # arriving after this lock waits for this commit and finds the user gone. It is the first lock
+    # this erasure takes, so it waits on no lock the upload holds.
     if (
         await db_session.scalar(
             select(User.id).where(User.id == user_id).with_for_update(key_share=True)
