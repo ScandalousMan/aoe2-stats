@@ -509,7 +509,7 @@ async def test_erasure_after_the_record_delete_keeps_its_record_through_a_held_r
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """T459v: the user is alive at the record delete and erased just after its commit, before the
-    put, and different bytes are held under the key. The upload answers 409 `replay_held` or 401
+    put, and different bytes are held under the key. The upload answers 409 `replay_held`
     and the erasure's later record survives, because the upload deletes nothing after its commit."""
     game_id, profile_id = _FIXTURE_GAME_ID, _FIXTURE_PROFILE_ID
     key = replay_object_key(game_id, profile_id)
