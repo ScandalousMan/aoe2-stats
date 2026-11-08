@@ -47,11 +47,16 @@ objects that existed. The sweep takes the drain's `Budget`, runs at the start of
 key. One transaction and one delete in progress are not
 interrupted, and the drain is the third stage of a run, so the budget may be spent when it starts.
 
-**Not covered.** An erased user's own manual upload already in flight when the erasure ran: if its
-record delete (`upload_replay`) runs after the erasure committed and its `put_if_absent` follows,
-no record names the key and the object stays. The erasure's own records exist only for the keys it
-saw. A key whose delete fails on every run keeps its record past the capture budget, because the
-record is dropped only by an examination that does not fail.
+**Covered, T459v: an erased user's manual upload already in flight.** `upload_replay` re-checks
+its user's row `FOR SHARE` just before its row write, and `erase_account` takes that row `FOR NO
+KEY UPDATE` first. So an upload either commits its row before the erasure reads the user's
+captures, and the erasure deletes it, or finds the user gone and writes no row, answering 401. In
+the second case it inserts its key's record again and commits, so a record names the object it may
+have written before the check.
+
+**Not covered.** The erasure's own records exist only for the keys it saw. A key whose delete fails
+on every run keeps its record past the capture budget, because the record is dropped only by an
+examination that does not fail.
 
 Every failure is contained: the sweep never raises into the drain, and its log line carries a count
 and the exception's type name, never a key and never `exc_info`, because the object store's

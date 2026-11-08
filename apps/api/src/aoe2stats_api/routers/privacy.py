@@ -882,6 +882,21 @@ async def erase_account(
     ):
         raise _erasure_confirmation_invalid()
 
+    # T459v: the user's own row, locked `FOR NO KEY UPDATE` before anything else is read or written
+    # and held to the commit. A manual upload (`routers/replays.py`) takes it `FOR SHARE` before
+    # its `replay_captures` write, so an upload that began first commits its row before this
+    # erasure reads the user's captures, and one that follows waits for this commit and finds the
+    # user gone. It is the first lock this erasure takes, so it waits on no lock the upload holds.
+    if (
+        await db_session.scalar(
+            select(User.id).where(User.id == user_id).with_for_update(key_share=True)
+        )
+        is None
+    ):
+        raise APIError(
+            status_code=401, code="not_authenticated", message="Sign in to erase your account."
+        )
+
     profile_ids = await _owned_profile_ids(db_session, user_id=user_id)
 
     data_request = DataRequest(kind=DataRequestKind.ERASURE, subject_user_id=user_id)

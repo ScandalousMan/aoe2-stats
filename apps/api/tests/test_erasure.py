@@ -49,6 +49,7 @@ import pytest
 from botocore.exceptions import EndpointConnectionError
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from aoe2stats_api import security
@@ -598,6 +599,43 @@ async def test_a_rolled_back_erasure_keeps_the_original_of_every_row_naming_noth
     assert await db_session.scalar(select(func.count(User.id)).where(User.id == user.id)) == 1
     # T459s: the records are written in the erasure's transaction, so a rollback leaves none.
     assert await db_session.scalar(select(func.count()).select_from(ErasedRecordingKey)) == 0
+
+
+async def test_erasure_holds_the_users_row_lock_before_it_reads_the_users_profiles(
+    client: TestClient,
+    db_session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """T459v, FR-037: a manual upload takes the user's row `FOR SHARE` before its
+    `replay_captures` write, so the erasure must hold a conflicting lock on that row before it
+    reads the user's captures, or an upload's row could commit after the erasure's captures delete.
+    Probed from another session with `NOWAIT` at the erasure's first pseudonymisation step."""
+    user = await _seed_linked_user(
+        db_session, profile_id=_OWNER_PROFILE_ID, steam_id64="76561197960280031"
+    )
+    await _sign_in(client, db_session, user)
+    probed: list[bool] = []
+    real = privacy._pseudonymise_profile_ids
+
+    async def probe_then_run(session: AsyncSession, profile_ids: object) -> object:
+        async with session_factory() as other:
+            try:
+                await other.execute(
+                    select(User.id)
+                    .where(User.id == user.id)
+                    .with_for_update(read=True, nowait=True)
+                )
+                probed.append(False)
+            except DBAPIError:
+                probed.append(True)
+        return await real(session, profile_ids)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(privacy, "_pseudonymise_profile_ids", probe_then_run)
+
+    token = _get_confirmation_token(client)
+    assert client.post(_ERASE_PATH, json={"confirmation_token": token}).status_code == 200
+    assert probed == [True]
 
 
 async def test_a_rolled_back_erasure_still_deletes_the_key_of_a_played_pair_with_no_row(

@@ -822,6 +822,34 @@ async def upload_replay(
         if hashlib.sha256(held).hexdigest() != zip_sha256:
             raise _replay_held_error()
 
+    # T459v: the user is re-checked under a lock the erasure also takes. `erase_account` takes
+    # this row `FOR NO KEY UPDATE` before it reads the user's profiles and deletes the row at the
+    # end, so `FOR SHARE` here waits for an erasure in progress and then finds the row gone, and an
+    # erasure starting after this waits for this transaction to commit and then deletes the row
+    # written below with the rest of the user's captures. The aoe_profiles row survives an
+    # erasure, so only the user's own row says it ran. The lock is held to this request's commit.
+    if (
+        await db_session.scalar(
+            select(User.id).where(User.id == session_row.user_id).with_for_update(read=True)
+        )
+        is None
+    ):
+        # The record delete above may have run after the erasure's own record of this key, and
+        # the object may be written (or was already held): record the key again so the ingester's
+        # sweep removes it. No `replay_captures` row is written. Committed here because the
+        # request's session rolls back on an error.
+        await db_session.execute(
+            pg_insert(ErasedRecordingKey)
+            .values(key=key)
+            .on_conflict_do_nothing(index_elements=["key"])
+        )
+        await db_session.commit()
+        raise APIError(
+            status_code=401,
+            code="not_authenticated",
+            message="Sign in to upload a replay.",
+        )
+
     # A SAVEPOINT around the write alone: a twin upload's insert that wins `UNIQUE (game_id,
     # profile_id)` rolls back only this, and the answer is the `replay_held` it was before T730.
     try:
