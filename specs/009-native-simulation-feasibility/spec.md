@@ -164,11 +164,26 @@ documented), and which remain unknown, and the body of the report reflects those
 
 **Investigation scope**
 
-- **FR-001**: The investigation MUST assess three approaches: A, the official game engine reached
+- **FR-001**: The investigation MUST assess four approaches: A, the official game engine reached
   through the gRPC interface documented by LibreMatch and its relationship to CaptureAge; B, the
   `librematch/genie` engine; C, any other existing route that provides actual simulation or
-  access to actual game state. It MUST NOT spend effort cataloguing replay parsers that provide
-  neither.
+  access to actual game state; D, reverse engineering of the game's native executable with the
+  REA analysis environment (added by the owner on 2026-11-08), to learn whether a route to actual
+  state exists that A does not already cover. It MUST NOT spend effort cataloguing replay parsers
+  that provide neither simulation nor state. The letters name approaches; the recommendation
+  letters of FR-022 are a different list, and the report says which list a letter belongs to
+  whenever both appear.
+- **FR-001a**: Approach D MUST inspect only a lawfully held copy of the game's binaries, MUST
+  identify the exact build inspected, MUST NOT modify the executable, and MUST NOT develop any
+  injection, memory-modification or anti-tamper circumvention. Identifying an internal routine is
+  never read as proof that it can be called or observed externally. Where no binary is available,
+  the report documents the blocker (FR-008) and still answers, from published evidence, whether D
+  could reveal a route A does not cover. Its findings go to
+  `docs/research/native-engine-reverse-engineering.md` and MUST cover the analysis environment,
+  binary and build identification, routines and structures found with evidence and confidence,
+  potential external interfaces, the relationship with CaptureAge's interface, technical and
+  legal constraints, and recommendations. REA is not recommended as a runtime dependency unless a
+  concrete operational role has been demonstrated.
 - **FR-002**: For approach A the report MUST answer, each labelled as documented, demonstrated,
   inferred or unknown: whether an external application can connect while the game replays a
   recording; whether that is possible without CaptureAge; whether playback can be started,
@@ -287,8 +302,9 @@ documented), and which remain unknown, and the body of the report reflects those
 
 ### Key Entities
 
-- **Approach**: one candidate route to actual game state (A, B, C and the baseline D), with its
-  dependencies, environment needs and legal footing.
+- **Approach**: one candidate route to actual game state (A, B, C, D of FR-001, and the
+  command-log baseline they are compared against), with its dependencies, environment needs and
+  legal footing.
 - **Capability**: one gameplay fact the platform wants (unit death, building completion, …) as
   assessed under one approach: availability class (FR-004), exactness, extraction method, evidence,
   limitations.
