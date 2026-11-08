@@ -286,19 +286,19 @@ Both conditions above are met: a profile other than 2322168, eight weeks after 2
 196240 again, match list from `data.aoe2companion.com` (§3), each replay fetched in full (`HEAD` and
 `Range` are unusable, see the table above), first pass at `2026-10-23T12:02Z`:
 
-| gameId        | match end (UTC)      | result at 12:02Z                   |
-| ------------- | -------------------- | ---------------------------------- |
-| 515424817     | 2026-10-22 08:14     | 200 (0.61 MB)                      |
-| 511751559     | 2026-10-06 14:43     | 200 (2.57 MB)                      |
-| 509862159     | 2026-09-28 13:36     | 200 (1.40 MB)                      |
-| 509606039     | 2026-09-27 12:41     | 200 (0.71 MB)                      |
-| **509409788** | **2026-09-26 18:18** | **200 (0.75 MB)** — last available |
-| **509406408** | **2026-09-26 17:50** | **404** — first missing            |
-| 509403317     | 2026-09-26 17:35     | 404                                |
-| 508495143     | 2026-09-22 20:08     | 404                                |
-| 506610620     | 2026-09-14 11:11     | 404                                |
-| 459906922     | 2026-03-01 10:14     | 404                                |
-| 458240475     | 2026-02-22 15:54     | 404                                |
+| gameId        | match end (UTC)      | result at 12:02Z                    |
+| ------------- | -------------------- | ----------------------------------- |
+| 515424817     | 2026-10-22 08:14     | 200 (0.61 MB)                       |
+| 511751559     | 2026-10-06 14:43     | 200 (2.57 MB)                       |
+| 509862159     | 2026-09-28 13:36     | 200 (1.40 MB)                       |
+| 509606039     | 2026-09-27 12:41     | 200 (0.71 MB)                       |
+| **509409788** | **2026-09-26 18:18** | **200 (0.75 MB)** — last available  |
+| **509406408** | **2026-09-26 17:50** | **404** — first missing             |
+| 509403317     | 2026-09-26 17:35     | 404                                 |
+| 508495143     | 2026-09-22 20:08     | 404                                 |
+| 506610620     | 2026-09-14 11:11     | 404                                 |
+| 459906922     | 2026-03-01 10:14     | 404                                 |
+| 458240475     | 2026-02-22 15:54     | 404                                 |
 
 **It is rolling, and it moves in real time.** At `12:42Z` the same day, 509409788 — a 200 forty
 minutes earlier — answered 404. The boundary advanced past it inside the hour, which a fixed epoch
@@ -320,11 +320,11 @@ like an epoch, and it is not something capture may rely on.
 
 Measured while building `scripts/checks/retention_sentinel.py` (T821), at about `20:05Z`:
 
-| profile | oldest pair probed still `200` | first `404` probed | reading                                   |
-| ------- | ------------------------------ | ------------------ | ----------------------------------------- |
-| 196240  | 28.23 days                     | 28.26 days         | ~28.25 days, up from ~26.75 on 2026-10-23 |
-| 377935  | 66.1 days (every pair 25–66 d) | 1529 days          | window at least 66 days                   |
-| 9958277 | 26.0 days (Relic history ends) | none in range      | not bracketed                             |
+| profile | oldest pair probed still `200` | first `404` probed | reading                                    |
+| ------- | ------------------------------ | ------------------ | ------------------------------------------ |
+| 196240  | 28.23 days                     | 28.26 days         | ~28.25 days, up from ~26.75 on 2026-10-23  |
+| 377935  | 66.1 days (every pair 25–66 d) | 1529 days          | window at least 66 days                    |
+| 9958277 | 26.0 days (Relic history ends) | none in range      | not bracketed                              |
 
 So "the window" is a per-profile property, not a constant of the source, and it moves for one profile
 from day to day: 196240's grew by about a day and a half in three days. 196240 — a very active
@@ -375,18 +375,20 @@ recorded outcome.
 
 ### Settled: every recording carries the game's own per-player state checkpoint every 500 syncs
 
-Measured 2026-11-08 on the three committed reference recordings (builds 180059 and 185872), by
-`scripts/research/009-native-simulation/checkpoints.py` and asserted by
-`scripts/research/009-native-simulation/tests/test_checkpoints.py`: every 500th sync operation
-(the pregame record's `checksum_interval`, 500 on all three) carries eight lanes of eleven 32-bit
-words plus a world time, one lane per lobby slot, computed by the simulation from its live state at
-that instant. Word 1 is the four resource stocks summed after truncation, word 6 the live object
-count, word 8 the player id (semantics published by `librematch/genie`, read as a specification).
-344, 473 and 226 checkpoints on the three recordings; 6.5 s of game time apart in the two 1v1s,
-6.5 to 15 s in the 2v2. `aoe2rec-py` 0.1.24 exposes the block as an opaque `checksum` and skips
-332 of its 356 bytes; `aoc-mgz` treats it as padding. This narrows the finding of 2026-09-19 above:
+Measured 2026-11-08 on the three committed reference recordings (builds 180059 and 185872) by
+`scripts/research/009-native-simulation/checkpoints.py`, asserted by
+`scripts/research/009-native-simulation/tests/test_checkpoints.py`, which holds the numbers: every
+500th sync operation (the pregame record's `checksum_interval`) carries eight lanes of eleven
+32-bit words plus a world time, one lane per lobby slot, computed by the simulation from its live
+state at that instant. Word 8 is the player id (lane + 1, every checkpoint); word 1 is the four
+resource stocks summed after truncation, corroborated on seven of eight players, whose first
+checkpoint equals the header's starting stocks (the anchor below) minus the villagers and houses
+queued before it, to the unit; the eighth differs by 33 and is unexplained. The semantics of the
+other words are published by `librematch/genie` and are not corroborated here; word 6 is not a
+units-plus-buildings count. `aoe2rec-py` 0.1.24 exposes the block as an opaque `checksum` of five
+mislabelled fields; `aoc-mgz` treats it as padding. This narrows the finding of 2026-09-19 above:
 a recording carries no per-object outcome and no event, but it does carry an exact, coarse,
-per-player sample of engine state. The assessment and what it changes for reconstruction are in
+per-player sample of engine state. Assessment and consequences:
 `docs/research/native-simulation-feasibility.md` §6.
 
 ### Settled: each human player's starting-attribute array is reachable at a self-verifying anchor in the header
