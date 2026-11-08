@@ -1032,3 +1032,30 @@ class ReplayFetchMiss(Base):
     observed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+
+class ErasedRecordingKey(Base):
+    """`erased_recording_keys` — T459s, T459t: the replay object keys an erasure deleted or left
+    for after its commit, written in the erasure's own transaction (`routers/privacy.py`,
+    `erase_account`), so a rolled-back erasure rolls its records back with it.
+
+    **Personal data (constitution IX).** A key is `replays/{game_id}/{profile_id}.zip`, so a record
+    carries the erased user's profile id, and it is kept up to the capture budget
+    (`docs/privacy/processing-register.md`, activity 11).
+
+    The ingester's sweep (`aoe2stats_ingester.erased_recordings`) reads this table to remove an
+    object a dying writer left behind: the capture drain killed between its write and its cleanup,
+    or the erasure's own post-commit delete failing. `swept_at` is set by the sweep when it has
+    examined a record and kept it; unexamined records are visited first. A record is dropped by the
+    sweep once it is older than the capture budget, by the database clock. A manual upload deletes
+    the record of its own key before it writes (`routers/replays.py`). `ON CONFLICT DO NOTHING` on
+    the key, so a repeated erasure of the same key records it once.
+    """
+
+    __tablename__ = "erased_recording_keys"
+
+    key: Mapped[str] = mapped_column(Text, primary_key=True)
+    recorded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    swept_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

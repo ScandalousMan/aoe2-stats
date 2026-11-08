@@ -637,6 +637,9 @@ async def run_once(
     A stage that starts late in the budget can still overrun it slightly — that is the price of
     never leaving a claim, a download or an upload half-done, and is why the reclaim path (T055)
     exists for the one row a hard process kill can still catch.
+    The drain's erased-recording sweep (T459s) runs first inside the drain stage and takes this
+    same budget: it does nothing when the budget is already spent and checks it between records,
+    but one database read or object delete in progress is not interrupted.
 
     Nothing here catches an exception a stage raises to swallow it or change what the caller sees:
     it still propagates out of this call exactly as it would have before this task, leaving the

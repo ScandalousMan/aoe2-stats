@@ -79,6 +79,7 @@ from aoe2stats_storage.models import (
     AoeProfile,
     CaptureSource,
     CaptureStatus,
+    ErasedRecordingKey,
     Match,
     MatchPlayer,
     ProfileLink,
@@ -267,6 +268,29 @@ async def test_upload_for_an_expired_capture_stores_it_flagged_manual(
         "(T080's own task text), so the engine and version that vouched for the file must be "
         "recorded exactly as an automatic capture would (data-model.md's `validated_by` column)"
     )
+
+
+async def test_upload_drops_its_keys_erased_recording_record_before_it_writes(
+    client: TestClient, db_session: AsyncSession
+) -> None:
+    """T459t (1): the ingester's sweep holds a key's record `FOR UPDATE` across its object delete,
+    so an upload that drops the record first is held back until the sweep is done, and a later
+    sweep finds none. Only this upload's own key's record goes."""
+    user = await _seed_linked_profile(db_session, profile_id=_FIXTURE_PROFILE_ID)
+    await _sign_in(client, db_session, user)
+    completed_at = datetime.now(UTC) - timedelta(days=40)
+    await _seed_match(db_session, game_id=_FIXTURE_GAME_ID, completed_at=completed_at)
+    await _seed_match_player(db_session, game_id=_FIXTURE_GAME_ID, profile_id=_FIXTURE_PROFILE_ID)
+    own = replay_object_key(_FIXTURE_GAME_ID, _FIXTURE_PROFILE_ID)
+    other = replay_object_key(_FIXTURE_GAME_ID + 1, _FIXTURE_PROFILE_ID)
+    db_session.add_all([ErasedRecordingKey(key=own), ErasedRecordingKey(key=other)])
+    await db_session.commit()
+
+    response = _upload(client, _FIXTURE_GAME_ID)
+
+    assert response.status_code == 200, response.text
+    db_session.expire_all()
+    assert list((await db_session.scalars(select(ErasedRecordingKey.key))).all()) == [other]
 
 
 # --- Scenario 8.2: a text file renamed `.aoe2record` is rejected, nothing stored -----------------
