@@ -456,7 +456,7 @@ async def test_a_failing_store_is_contained_and_the_log_carries_no_key_and_no_ex
     store.fail_delete = True
 
     with caplog.at_level(logging.INFO):
-        assert await _sweep(session_factory, store, _Provider()) == 0
+        assert await _sweep(session_factory, store, _Provider()) == 1
 
     text_ = "\n".join(record.getMessage() for record in caplog.records)
     assert "ConnectionError" in text_
@@ -546,8 +546,9 @@ async def test_an_upload_landing_after_the_sweeps_checks_is_not_deleted(
             await session.commit()
         async with session_factory() as session:
             await session.execute(delete(ErasedRecordingKey).where(ErasedRecordingKey.key == _KEY))
+            # T459u: the record's delete is uncommitted while the object is put.
+            await store.put_if_absent(_KEY, uploaded)
             await session.commit()
-        await store.put_if_absent(_KEY, uploaded)
 
     real_delete = store.delete
 
@@ -590,3 +591,84 @@ async def test_records_kept_past_a_sweep_do_not_starve_a_new_one(
 
     assert await _sweep(session_factory, store, _Provider()) == 1
     assert store.objects == {}
+
+
+async def _swept_at(session_factory: async_sessionmaker[AsyncSession]) -> dict[str, bool]:
+    """Key -> whether the sweep has marked it examined."""
+    async with session_factory() as session:
+        rows = await session.execute(select(ErasedRecordingKey.key, ErasedRecordingKey.swept_at))
+        return {key: swept_at is not None for key, swept_at in rows.all()}
+
+
+async def test_a_failing_key_is_marked_examined_and_the_keys_behind_it_are_still_swept(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """T459u (3): the oldest key's delete always fails; the two healthy keys behind it are deleted
+    on the same run, the failing key is marked examined and keeps its record."""
+    keys = await _leave_recorded_objects(session_factory, 3)
+    store = _Store(dict.fromkeys(keys, _BYTES))
+    real_delete = store.delete
+
+    async def delete_failing_on_the_first(key: str) -> None:
+        if key == keys[0]:
+            raise ConnectionError(f"https://bucket.example/{key} refused")
+        await real_delete(key)
+
+    store.delete = delete_failing_on_the_first  # type: ignore[method-assign]
+
+    assert await _sweep(session_factory, store, _Provider()) == 3
+
+    assert store.deleted == keys[1:]
+    assert store.objects == {keys[0]: _BYTES}
+    assert await _records(session_factory) == sorted(keys)
+    assert await _swept_at(session_factory) == dict.fromkeys(keys, True)
+
+
+async def test_a_lock_timeout_does_not_mark_the_key_examined(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """T459u (3), contrast: a lock timeout still skips the key without marking it, and the keys
+    behind it are still handled."""
+    capture_id = await _seed(session_factory)
+    async with session_factory() as session:
+        await session.execute(delete(ProfileLink))
+        await session.commit()
+    await _record(session_factory, _KEY, age=timedelta(seconds=30))
+    other = replay_object_key(930_500, 8_500)
+    await _record(session_factory, other)
+    store = _Store({_KEY: _BYTES, other: _BYTES})
+    holder = session_factory()
+    try:
+        await holder.execute(
+            select(ReplayCapture).where(ReplayCapture.id == capture_id).with_for_update()
+        )
+        assert await _sweep(session_factory, store, _Provider(), lock_timeout_ms=200) == 1
+    finally:
+        await holder.rollback()
+        await holder.close()
+
+    assert store.deleted == [other]
+    assert await _swept_at(session_factory) == {_KEY: False, other: True}
+
+
+async def test_failing_deletes_count_toward_the_cap_and_the_return_value(
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """T459u (B2): a store whose delete always fails, with more records than the cap: one sweep
+    call issues at most the cap's number of deletes and returns that number."""
+    monkeypatch.setattr(erased_recordings, "MAX_KEYS_SWEPT", 2)
+    keys = await _leave_recorded_objects(session_factory, 5)
+    attempts: list[str] = []
+    store = _Store(dict.fromkeys(keys, _BYTES))
+
+    async def always_fail(key: str) -> None:
+        attempts.append(key)
+        raise ConnectionError(f"https://bucket.example/{key} refused")
+
+    store.delete = always_fail  # type: ignore[method-assign]
+
+    assert await _sweep(session_factory, store, _Provider()) == 2
+    assert attempts == keys[:2]
+    assert await _records(session_factory) == sorted(keys)

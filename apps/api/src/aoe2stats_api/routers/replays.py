@@ -807,6 +807,8 @@ async def upload_replay(
     # T459t: drop this key's erased-recording record, and commit, before the write. The ingester's
     # sweep holds that record `FOR UPDATE` across its checks and its object delete, so this waits
     # for a sweep in progress, and a later sweep finds no record. Nothing else is held here.
+    # Because this commits before the put, an upload refused or failing after this point leaves an
+    # erased object that is still held with no record (T459u).
     await db_session.execute(delete(ErasedRecordingKey).where(ErasedRecordingKey.key == key))
     await db_session.commit()
     # T723: a conditional write; an object already under the key is never replaced. T730: it is
