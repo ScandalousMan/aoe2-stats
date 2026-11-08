@@ -293,6 +293,82 @@ async def test_upload_drops_its_keys_erased_recording_record_before_it_writes(
     assert list((await db_session.scalars(select(ErasedRecordingKey.key))).all()) == [other]
 
 
+async def _record_keys(db_session: AsyncSession) -> list[str]:
+    db_session.expire_all()
+    return sorted((await db_session.scalars(select(ErasedRecordingKey.key))).all())
+
+
+async def test_upload_that_succeeds_deletes_its_keys_record_and_names_the_object(
+    client: TestClient, db_session: AsyncSession
+) -> None:
+    """T459u (1), happy path: the record's delete commits with the row that names the object."""
+    game_id, profile_id = _FIXTURE_GAME_ID, _FIXTURE_PROFILE_ID
+    await _seed_held_candidate(
+        db_session, client, game_id=game_id, profile_id=profile_id, status=None, object_key=None
+    )
+    key = replay_object_key(game_id, profile_id)
+    db_session.add(ErasedRecordingKey(key=key))
+    await db_session.commit()
+
+    assert _upload(client, game_id).status_code == 200
+
+    assert await _record_keys(db_session) == []
+    row = await _capture_row(db_session, game_id=game_id, profile_id=profile_id)
+    assert row is not None and row.object_key == key
+
+
+async def test_upload_refused_as_held_leaves_the_erased_objects_record(
+    client: TestClient, db_session: AsyncSession, fake_object_store: _FakeObjectStore
+) -> None:
+    """T459u (1), sub-case held: a relinked user uploads a game whose erased object is still held
+    (other bytes). The answer is 409 `replay_held` and the object keeps its record, so the sweep
+    still reaches it."""
+    game_id, profile_id = _FIXTURE_GAME_ID, _FIXTURE_PROFILE_ID
+    key = replay_object_key(game_id, profile_id)
+    await _seed_held_candidate(
+        db_session, client, game_id=game_id, profile_id=profile_id, status=None, object_key=None
+    )
+    fake_object_store.existing_objects[key] = b"the erased user's bytes"
+    db_session.add(ErasedRecordingKey(key=key))
+    await db_session.commit()
+
+    response = _upload(client, game_id)
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "replay_held"
+    assert await _record_keys(db_session) == [key]
+
+
+async def test_upload_failing_after_the_record_delete_leaves_the_erased_objects_record(
+    client: TestClient,
+    db_session: AsyncSession,
+    fake_object_store: _FakeObjectStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """T459u (1), sub-case failure after the delete: the row write raises. The request rolls back,
+    including the record's delete, so the object the put left keeps its record."""
+    game_id, profile_id = _FIXTURE_GAME_ID, _FIXTURE_PROFILE_ID
+    key = replay_object_key(game_id, profile_id)
+    await _seed_held_candidate(
+        db_session, client, game_id=game_id, profile_id=profile_id, status=None, object_key=None
+    )
+    db_session.add(ErasedRecordingKey(key=key))
+    await db_session.commit()
+
+    async def fail(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("row write failed")
+
+    monkeypatch.setattr(
+        "aoe2stats_api.routers.replays.CapturesRepository.record_manual_upload", fail
+    )
+    with pytest.raises(RuntimeError, match="row write failed"):
+        _upload(client, game_id)
+
+    assert [k for k, _ in fake_object_store.put_calls] == [key]
+    assert await _record_keys(db_session) == [key]
+    assert await _capture_row(db_session, game_id=game_id, profile_id=profile_id) is None
+
+
 # --- Scenario 8.2: a text file renamed `.aoe2record` is rejected, nothing stored -----------------
 
 

@@ -1040,15 +1040,17 @@ class ErasedRecordingKey(Base):
     `erase_account`), so a rolled-back erasure rolls its records back with it.
 
     **Personal data (constitution IX).** A key is `replays/{game_id}/{profile_id}.zip`, so a record
-    carries the erased user's profile id, and it is kept up to the capture budget
-    (`docs/privacy/processing-register.md`, activity 11).
+    carries the erased user's profile id, and it is kept at least the capture budget
+    and until the sweep next examines it (`docs/privacy/processing-register.md`, activity 11).
 
     The ingester's sweep (`aoe2stats_ingester.erased_recordings`) reads this table to remove an
     object a dying writer left behind: the capture drain killed between its write and its cleanup,
     or the erasure's own post-commit delete failing. `swept_at` is set by the sweep when it has
     examined a record and kept it; unexamined records are visited first. A record is dropped by the
     sweep once it is older than the capture budget, by the database clock. A manual upload deletes
-    the record of its own key before it writes (`routers/replays.py`). `ON CONFLICT DO NOTHING` on
+    the record of its own key in its request's transaction before it writes, and the delete commits
+    with the capture row that names the object; a refused or failed upload rolls it back
+    (`routers/replays.py`). `ON CONFLICT DO NOTHING` on
     the key, so a repeated erasure of the same key records it once.
     """
 
