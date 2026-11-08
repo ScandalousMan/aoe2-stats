@@ -470,8 +470,9 @@ async def test_erased_users_upload_with_a_raising_put_keeps_the_erasures_record(
     fake_object_store: _FakeObjectStore,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """T459v: as above, with a `put_if_absent` that raises. The erasure's record survives whether
-    or not the put is reached."""
+    """T459v: the erasure commits before the upload's first user-row lock. The lock finds the row
+    gone and answers 401 before the put, so the raising `put_if_absent` is never called and the
+    erasure's record survives."""
     game_id, profile_id = _FIXTURE_GAME_ID, _FIXTURE_PROFILE_ID
     key = replay_object_key(game_id, profile_id)
     user, _ = await _seed_held_candidate(
@@ -484,18 +485,19 @@ async def test_erased_users_upload_with_a_raising_put_keeps_the_erasures_record(
         await _erase_user_like_the_erasure(session_factory, user_id=user.id, key=key)
         return found
 
+    put_calls: list[str] = []
+
     async def raising_put(*args: object, **kwargs: object) -> bool:
+        put_calls.append("called")
         raise RuntimeError("put failed")
 
     monkeypatch.setattr(replays_router, "_existing_capture", existing_then_erase)
     monkeypatch.setattr(fake_object_store, "put_if_absent", raising_put)
 
-    try:
-        response = _upload(client, game_id)
-        assert response.status_code != 200
-    except RuntimeError:
-        pass
+    response = _upload(client, game_id)
 
+    assert response.status_code == 401
+    assert put_calls == []
     assert await _record_keys(db_session) == [key]
 
 

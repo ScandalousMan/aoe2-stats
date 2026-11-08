@@ -56,8 +56,9 @@ after the record delete commits, its records are inserted after that delete, so 
 record whatever the upload then does (409 `replay_held`, a raising put, a crash). If the erasure
 runs between the put and the second lock, the upload finds the row gone and writes no row,
 answering 401, and the erasure's record names the object. Otherwise the upload commits its row
-before the erasure reads the user's captures, and the erasure deletes it. The record is dropped
-only by the sweep, once it is older than the capture budget, so these records outlast an upload.
+before the erasure reads the user's captures, and the erasure deletes it. The erased user's own
+upload never deletes the erasure's record, because its user-row lock comes before its delete. A
+live user's upload of the same key is the T459u case above.
 
 **Not covered.** The erasure's own records exist only for the keys it saw. A key whose delete fails
 on every run keeps its record past the capture budget, because the record is dropped only by an

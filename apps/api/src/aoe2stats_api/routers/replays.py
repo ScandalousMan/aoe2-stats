@@ -822,10 +822,9 @@ async def upload_replay(
     # T459v: the user's row is locked `FOR SHARE` in the transaction that deletes the record below.
     # `erase_account` takes that row `FOR NO KEY UPDATE` first, which conflicts, so this waits for
     # an erasure in progress and then finds the row gone: 401, and the record is not deleted. An
-    # erasure that starts after the commit below inserts its own record after this delete, so a
-    # record of the key survives the delete whatever follows (a `replay_held`, a raising put, a
-    # crash). Nothing else deletes a record but the ingester's sweep, and only once it is older than
-    # the capture budget (`erased_recordings.py`).
+    # erasure that starts after the commit below inserts its own record after this delete, so this
+    # upload's own delete never removes that record, whatever this request does next (a
+    # `replay_held`, a raising put, a crash). A live user's upload over a stale record is T459u.
     await _require_user_row_for_upload(db_session, session_row.user_id)
     # T459t: drop this key's erased-recording record, and commit, before the write. The ingester's
     # sweep holds that record `FOR UPDATE` across its checks and its object delete, so this waits
