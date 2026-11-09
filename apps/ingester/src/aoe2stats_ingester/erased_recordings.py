@@ -25,13 +25,14 @@ failing key cannot stop the keys behind it; if that marking itself fails, the sw
 record lock is the only lock held while the object is deleted: no row is locked when the object is
 deleted, since a row's existence is what stops the delete.
 
-**Exclusion with a manual upload.** `upload_replay` (`routers/replays.py`) deletes its key's record
-and commits before its `put_if_absent`. That delete waits for a sweep holding the record, so an
-object the sweep deletes is deleted before the upload writes, and a sweep that starts after the
-delete finds no record. The store's `delete` succeeds on a key that holds nothing. Because that
-delete commits before `put_if_absent`, an upload of a game whose erased object is still held
-answers 409 `replay_held` and leaves that object with no record, and so does any failure after the
-record delete.
+**Exclusion with a manual upload.** `upload_replay` (`routers/replays.py`) locks its user's row
+`FOR SHARE`, deletes its key's record in that transaction and commits before its `put_if_absent`.
+That delete waits for a sweep holding the record, so an object the sweep deletes is deleted before
+the upload writes, and a sweep that starts after the delete finds no record. The store's `delete`
+succeeds on a key that holds nothing. Because that delete commits before `put_if_absent`, an upload
+by a user who is not erased, relinked to a profile whose erased object is still held, answers 409
+`replay_held` and leaves that object with no record, and so does any failure after the record
+delete.
 
 **Aging and order.** A record is dropped by the first examination that does not fail once the
 database clock says it is older than the capture budget (`capture_budget_days`), checked against
@@ -47,11 +48,21 @@ objects that existed. The sweep takes the drain's `Budget`, runs at the start of
 key. One transaction and one delete in progress are not
 interrupted, and the drain is the third stage of a run, so the budget may be spent when it starts.
 
-**Not covered.** An erased user's own manual upload already in flight when the erasure ran: if its
-record delete (`upload_replay`) runs after the erasure committed and its `put_if_absent` follows,
-no record names the key and the object stays. The erasure's own records exist only for the keys it
-saw. A key whose delete fails on every run keeps its record past the capture budget, because the
-record is dropped only by an examination that does not fail.
+**Covered, T459v: an erased user's manual upload already in flight.** `erase_account` takes the
+user's row `FOR NO KEY UPDATE` first and inserts its records in its own transaction. `upload_replay`
+takes that row `FOR SHARE` before it deletes the record, and again before its row write. If the
+row is gone at the first lock, the upload answers 401 and deletes nothing. If the erasure starts
+after the record delete commits, its records are inserted after that delete, so the key keeps a
+record whatever the upload then does (409 `replay_held`, a raising put, a crash). If the erasure
+runs between the put and the second lock, the upload finds the row gone and writes no row,
+answering 401, and the erasure's record names the object. Otherwise the upload commits its row
+before the erasure reads the user's captures, and the erasure deletes it. The erased user's own
+upload never deletes the erasure's record, because its user-row lock comes before its delete. A
+live user's upload of the same key is the T459u case above.
+
+**Not covered.** The erasure's own records exist only for the keys it saw. A key whose delete fails
+on every run keeps its record past the capture budget, because the record is dropped only by an
+examination that does not fail.
 
 Every failure is contained: the sweep never raises into the drain, and its log line carries a count
 and the exception's type name, never a key and never `exc_info`, because the object store's

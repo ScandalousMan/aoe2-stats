@@ -682,6 +682,21 @@ def _archival_objected_error() -> APIError:
     )
 
 
+async def _require_user_row_for_upload(db_session: AsyncSession, user_id: Any) -> None:
+    """Lock the user's row `FOR SHARE` to this transaction's end; 401 when it is gone (erased)."""
+    if (
+        await db_session.scalar(
+            select(User.id).where(User.id == user_id).with_for_update(read=True)
+        )
+        is None
+    ):
+        raise APIError(
+            status_code=401,
+            code="not_authenticated",
+            message="Sign in to upload a replay.",
+        )
+
+
 def _replay_held_error() -> APIError:
     """T723: the store or the row already holds a file for this pair (module docstring's "Already
     archived" and "Write ordering" paragraphs)."""
@@ -804,11 +819,19 @@ async def upload_replay(
 
     key = replay_object_key(game_id, profile_id)
     zip_sha256 = hashlib.sha256(content).hexdigest()
+    # T459v: the user's row is locked `FOR SHARE` in the transaction that deletes the record below.
+    # `erase_account` takes that row `FOR NO KEY UPDATE` first, which conflicts, so this waits for
+    # an erasure in progress and then finds the row gone: 401, and the record is not deleted. An
+    # erasure that starts after the commit below inserts its own record after this delete, so this
+    # upload's own delete never removes that record, whatever this request does next (a
+    # `replay_held`, a raising put, a crash). A live user's upload over a stale record is T459u.
+    await _require_user_row_for_upload(db_session, session_row.user_id)
     # T459t: drop this key's erased-recording record, and commit, before the write. The ingester's
     # sweep holds that record `FOR UPDATE` across its checks and its object delete, so this waits
-    # for a sweep in progress, and a later sweep finds no record. Nothing else is held here.
-    # Because this commits before the put, an upload refused or failing after this point leaves an
-    # erased object that is still held with no record (T459u).
+    # for a sweep in progress, and a later sweep finds no record. Because this commits before the
+    # put, an upload of a non-erased user refused or failing after this point leaves an erased
+    # object that is still held with no record (T459u): the user was relinked to a profile whose
+    # erased object is still held.
     await db_session.execute(delete(ErasedRecordingKey).where(ErasedRecordingKey.key == key))
     await db_session.commit()
     # T723: a conditional write; an object already under the key is never replaced. T730: it is
@@ -821,6 +844,14 @@ async def upload_replay(
             raise _replay_held_error() from None
         if hashlib.sha256(held).hexdigest() != zip_sha256:
             raise _replay_held_error()
+
+    # T459v: the user is re-checked under the same lock, now just before the row write. The commit
+    # above released the first lock, so an erasure may have run since: it then deleted the row and
+    # inserted the record after this upload's record delete, so the record already names the object
+    # this upload may have written, and nothing is inserted here. The aoe_profiles row survives an
+    # erasure, so only the user's own row says it ran. A user found here is locked to this
+    # request's commit, so an erasure starting now waits and then deletes the row written below.
+    await _require_user_row_for_upload(db_session, session_row.user_id)
 
     # A SAVEPOINT around the write alone: a twin upload's insert that wins `UNIQUE (game_id,
     # profile_id)` rolls back only this, and the answer is the `replay_held` it was before T730.
