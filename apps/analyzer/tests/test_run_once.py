@@ -1687,6 +1687,41 @@ async def test_a_new_parser_version_still_triggers_a_recompute_and_a_new_key(
     assert after.parser_version == _ENGINE_VERSION_2
 
 
+async def test_a_recompute_keeps_a_pseudonymised_point_of_view_joined_to_its_retained_recording(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """T843 (FR-046, ruling of 2026-11-10): erasure rewrites the row's point of view and the
+    retained row's profile to the same placeholder. A recompute finds the recording through that
+    pair and must not write the document's original id back over the placeholder."""
+    published = await _publish_once(session_factory, game_id=500_843_001)
+    placeholder = -published.profile_id
+    async with session_scope(session_factory) as session:
+        await session.execute(
+            update(MatchAnalysis)
+            .where(MatchAnalysis.game_id == published.game_id)
+            .values(point_of_view_profile_id=placeholder)
+        )
+        await session.execute(
+            update(RetainedRecording)
+            .where(
+                RetainedRecording.game_id == published.game_id,
+                RetainedRecording.profile_id == published.profile_id,
+            )
+            .values(profile_id=placeholder)
+        )
+
+    extractor = await _ask_again(
+        session_factory, published, engine_version=_ENGINE_VERSION_2, max_calls=1
+    )
+
+    assert len(extractor.calls) == 1, "the placeholder pair must still find the retained bytes"
+    after = await _get_analysis(session_factory, published.game_id)
+    assert after is not None
+    assert after.state == MatchAnalysisState.PUBLISHED
+    assert after.parser_version == _ENGINE_VERSION_2
+    assert after.point_of_view_profile_id == placeholder
+
+
 async def test_an_unchanged_identity_is_fresh_and_never_puts_a_key_twice(
     session_factory: async_sessionmaker[AsyncSession], clean_database: None
 ) -> None:

@@ -176,6 +176,16 @@ def _chunk(items: Sequence[int], size: int) -> Iterator[Sequence[int]]:
 # `ReconcileStage` enqueue captures once the batch is written, and `erase_account` deletes them
 # once the pseudonymisation has taken its locks. Neither goes back to an earlier one of the four.
 #
+# **T843: the analyses table and `retained_recordings` sit between `match_players` and
+# `replay_captures`.** `_pseudonymise_profile_ids` (`apps/api/.../routers/privacy.py`) rewrites a
+# pseudonymised person's analysis point of view and retained row after `match_players` and before
+# its caller reaches `replay_captures`: the analyses table ascending by `game_id`, then
+# `retained_recordings` ascending by `(game_id, profile_id)`. (The analyses table is not named
+# here: `apps/analyzer/tests/test_claim.py` greps this package for that name, FR-044. Its name and
+# the analyzer's transactions on it are in that function's docstring.) Those transactions never
+# wait on `aoe_profiles`, `match_players` or `replay_captures` while holding one of these rows, so
+# they take no part in the order beyond staying behind those tables.
+#
 # Each table is written with **one multi-row `INSERT ... ON CONFLICT` statement** (split only past
 # `_BULK_ROW_LIMIT` rows, to stay under the driver's bind-parameter ceiling), its rows sorted per
 # the order above: Postgres takes a multi-row insert's row locks in `VALUES` order. The same

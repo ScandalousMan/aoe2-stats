@@ -39,7 +39,17 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from aoe2stats_storage.models import AoeProfile, DataRequest, DataRequestKind, Match, MatchPlayer
+from aoe2stats_core.privacy.erasure import pseudonymise_profile
+from aoe2stats_storage.models import (
+    AoeProfile,
+    DataRequest,
+    DataRequestKind,
+    Match,
+    MatchAnalysis,
+    MatchAnalysisState,
+    MatchPlayer,
+    RetainedRecording,
+)
 
 pytestmark = [pytest.mark.usefixtures("environment")]
 
@@ -212,3 +222,82 @@ async def test_resolving_an_objection_with_a_stored_non_positive_subject_is_refu
     with pytest.raises(ValueError, match="non-positive"):
         await resolve_third_party_objection(db_session, data_request.id)
     assert data_request.completed_at is None
+
+
+async def test_resolving_an_objection_pseudonymises_the_retained_row_and_point_of_view(
+    db_session: AsyncSession,
+) -> None:
+    """T843 (FR-046, ruling of 2026-11-10): resolution rewrites the objector's retained row and
+    the analysis's point of view to the placeholder, keeps `object_key`, leaves the other
+    participant's row alone, and a second resolution changes nothing."""
+    from aoe2stats_api.routers.privacy import resolve_third_party_objection
+
+    objecting_profile_id = 900_000_401
+    other_profile_id = 900_000_402
+    game_id = await _seed_third_party_match(
+        db_session,
+        objecting_profile_id=objecting_profile_id,
+        other_profile_id=other_profile_id,
+    )
+    keys = {
+        profile_id: f"retained/{game_id}/{profile_id}"
+        for profile_id in (objecting_profile_id, other_profile_id)
+    }
+    for profile_id, key in keys.items():
+        db_session.add(
+            RetainedRecording(
+                game_id=game_id,
+                profile_id=profile_id,
+                object_key=key,
+                zip_bytes=10,
+                zip_sha256="d" * 64,
+            )
+        )
+    db_session.add(
+        MatchAnalysis(
+            game_id=game_id,
+            state=MatchAnalysisState.PUBLISHED,
+            point_of_view_profile_id=objecting_profile_id,
+            parser_name="aoe2rec-py",
+            parser_version="1.0.0",
+            requested_at=datetime.now(UTC),
+            finished_at=datetime.now(UTC),
+            result_key=f"analyses/{game_id}/{objecting_profile_id}.json",
+        )
+    )
+    first_request = DataRequest(
+        kind=DataRequestKind.THIRD_PARTY_OBJECTION, subject_profile_id=objecting_profile_id
+    )
+    second_request = DataRequest(
+        kind=DataRequestKind.THIRD_PARTY_OBJECTION, subject_profile_id=objecting_profile_id
+    )
+    db_session.add_all([first_request, second_request])
+    await db_session.flush()
+    first_request_id, second_request_id = first_request.id, second_request.id
+    await db_session.commit()
+
+    placeholder = pseudonymise_profile(objecting_profile_id).pseudonymous_profile_id
+
+    async def snapshot() -> tuple[dict[str, int], int, dict[str, str]]:
+        db_session.expire_all()
+        rows = (await db_session.execute(select(RetainedRecording))).scalars().all()
+        analysis = await db_session.get(MatchAnalysis, game_id)
+        assert analysis is not None
+        return (
+            {row.object_key: row.profile_id for row in rows},
+            analysis.point_of_view_profile_id,
+            {row.object_key: row.zip_sha256 for row in rows},
+        )
+
+    await resolve_third_party_objection(db_session, first_request_id)
+    await db_session.commit()
+    first = await snapshot()
+    assert first[0] == {
+        keys[objecting_profile_id]: placeholder,
+        keys[other_profile_id]: other_profile_id,
+    }
+    assert first[1] == placeholder
+
+    await resolve_third_party_objection(db_session, second_request_id)
+    await db_session.commit()
+    assert await snapshot() == first

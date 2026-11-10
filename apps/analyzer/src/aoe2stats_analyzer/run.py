@@ -600,6 +600,10 @@ async def _publish(
     was not written. The cost is one row lock held across the put, taken by the one request that is
     publishing this match.
 
+    **A pseudonymised point of view is kept (T843).** The row's `point_of_view_profile_id` is the
+    join key to its retained recording; when it is a placeholder (negative) it is not overwritten
+    by the id the document parsed from the recording.
+
     **A key is never written twice (T666d).** The put is a conditional create: when the key already
     exists nothing is written and the row is published at it, so the bytes a reader or a
     reproduction already saw cannot change under a second request or a retry.
@@ -609,7 +613,11 @@ async def _publish(
         if analysis is None:  # pragma: no cover - defensive: this row was just claimed above
             raise LookupError(f"no match_analyses row for game_id={game_id} to publish")
         analysis.state = MatchAnalysisState.PUBLISHED
-        analysis.point_of_view_profile_id = document["point_of_view_profile_id"]
+        # T843: a negative value is a pseudonymisation placeholder (erasure or an objection
+        # rewrote it, together with the retained row's `profile_id`, which is how the recording is
+        # found). Writing the document's original id back would unjoin the two.
+        if analysis.point_of_view_profile_id >= 0:
+            analysis.point_of_view_profile_id = document["point_of_view_profile_id"]
         analysis.parser_name = document["engine"]["name"]
         analysis.parser_version = document["engine"]["version"]
         analysis.engine_deps = dict(document["engine"]["deps"])

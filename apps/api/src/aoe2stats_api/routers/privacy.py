@@ -142,6 +142,7 @@ from aoe2stats_storage.models import (
     MatchPlayer,
     ProfileLink,
     ReplayCapture,
+    RetainedRecording,
     SteamIdentity,
     User,
 )
@@ -600,10 +601,35 @@ async def _pseudonymise_profile_ids(
        that participant's `match_players` row, and that upsert waits on the lock step 1 holds, so a
        batch using it cannot add a row for an original between the read and the writes below.
 
+    3. **T843:** every `match_analyses` row whose `point_of_view_profile_id` is one of the
+       originals, locked `FOR NO KEY UPDATE` in ascending `game_id` order, then every
+       `retained_recordings` row whose `profile_id` is one of them, in ascending
+       `(game_id, profile_id)` order. Both come after `match_players` and before
+       `replay_captures` (which `erase_account` locks once this returns). Neither analyzer
+       transaction that writes them (`claim_for_analysis`, `_publish`, `_record_point_of_view`,
+       `_mark_unavailable`, `_mark_failed`, `retain_recording`) holds one of these rows while
+       waiting on `aoe_profiles`, `match_players` or `replay_captures`, so the order between the
+       two tables is free; `match_analyses` goes first. A `matches` foreign-key check on an insert
+       takes only `FOR KEY SHARE`, which `FOR NO KEY UPDATE` does not conflict with, and no
+       placeholder is ever the `profile_id` of an inserted retained row (nothing retains a
+       negative id), so the rewrite cannot collide with the unique pair.
+
     The writes that follow touch only rows already held. `UPDATE match_players SET profile_id`
     moves each held `(game_id, original)` to `(game_id, placeholder)`;
     `persist_matches_and_profiles` would reach that new key only after upserting the
     placeholder's `aoe_profiles` row, which step 1 holds.
+
+    **T843 (FR-046, owner's ruling 2026-11-10): the retained recording is pseudonymised, its
+    object is not renamed.** `retained_recordings.profile_id` and
+    `match_analyses.point_of_view_profile_id` move from each original to its placeholder together:
+    the two are the join key (`routers/matches.py`, the analyzer's `_retained_recording_row`), and
+    rewriting one alone would leave the analysis with no recording to recompute from (constitution
+    IV). `object_key` and the object are left as they are: the key embeds the original id, and
+    renaming it is a copy followed by a delete of the original, which constitution IV forbids. No
+    store call is made here. Rewriting these columns does not change an analysis's identity
+    digest, so no recompute follows from it. The published analysis document carries the point of
+    view parsed from the recording and is not rewritten (T666d). A second call over the same ids
+    matches no row and changes nothing.
 
     **T426: `avatar_hash` needs no pseudonym.** Unlike `alias`/`country`, which must survive as
     plausible values (`pseudonymise_profile`'s own plan computes a masked pair for exactly that
@@ -650,10 +676,47 @@ async def _pseudonymise_profile_ids(
     pairs = [(game_id, owner) for game_id, owner in held]
     await discover.lock_match_players(db_session, pairs)
 
+    analysis_game_ids = (
+        (
+            await db_session.execute(
+                select(MatchAnalysis.game_id)
+                .where(MatchAnalysis.point_of_view_profile_id.in_(list(plans)))
+                .order_by(MatchAnalysis.game_id)
+                .with_for_update(key_share=True)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    retained_pairs = (
+        await db_session.execute(
+            select(RetainedRecording.game_id, RetainedRecording.profile_id)
+            .where(RetainedRecording.profile_id.in_(list(plans)))
+            .order_by(RetainedRecording.game_id, RetainedRecording.profile_id)
+            .with_for_update(key_share=True)
+        )
+    ).all()
+
     for profile_id, plan in plans.items():
         await db_session.execute(
             update(MatchPlayer)
             .where(MatchPlayer.profile_id == profile_id)
+            .values(profile_id=plan.pseudonymous_profile_id)
+        )
+        await db_session.execute(
+            update(MatchAnalysis)
+            .where(
+                MatchAnalysis.game_id.in_(list(analysis_game_ids)),
+                MatchAnalysis.point_of_view_profile_id == profile_id,
+            )
+            .values(point_of_view_profile_id=plan.pseudonymous_profile_id)
+        )
+        await db_session.execute(
+            update(RetainedRecording)
+            .where(
+                RetainedRecording.profile_id == profile_id,
+                RetainedRecording.game_id.in_([game_id for game_id, _ in retained_pairs]),
+            )
             .values(profile_id=plan.pseudonymous_profile_id)
         )
 
@@ -806,10 +869,15 @@ async def erase_account(
 
     **Cleared, row retained**: `match_analyses.requested_by_user_id` and
     `retained_recordings.requested_by_user_id` — `ondelete="SET NULL"` on both, fired by the same
-    `DELETE FROM users`. Neither row nor, for `retained_recordings`, its object is ever touched
-    here: a published analysis must stay recomputable (constitution IV), and deleting a retained
-    recording is T092's objection route on the person it depicts, never this one on whoever merely
-    asked for it.
+    `DELETE FROM users`. Neither row nor, for `retained_recordings`, its object is deleted here:
+    a published analysis must stay recomputable (constitution IV), and whoever merely asked for a
+    recording is not the person it depicts.
+
+    **Pseudonymised in place, object kept (T843)**: a `retained_recordings` row whose `profile_id`
+    is one of this user's own profiles, and a `match_analyses` row whose point of view is one,
+    are rewritten to the placeholder by `_pseudonymise_profile_ids`. The row's `object_key` and
+    the object it names are not touched: the key embeds the original id, and renaming it deletes
+    the original (constitution IV).
 
     **Pseudonymised in place, row and match retained**: every `match_players` row naming one of
     this user's own profiles, via `_pseudonymise_profile_ids` — `matches` itself carries no

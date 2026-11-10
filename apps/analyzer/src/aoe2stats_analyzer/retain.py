@@ -30,11 +30,13 @@ and a third party's match go through the exact same call, which is what makes th
 consequence of the code rather than a branch someone could have skipped.
 
 Neither function deletes anything, ever — there is no delete call anywhere in this module. Erasure
-of the requester and pseudonymisation of a person appearing in the recording are both handled
-entirely by the tables they touch (`users.id` cascading via `requested_by_user_id`'s own
-`ondelete="SET NULL"`, `match_players.profile_id` elsewhere): `retained_recordings` carries no
-foreign key to either `aoe_profiles` or `match_players` (`data-model.md`, R9), precisely so neither
-act can reach this table at all.
+of the requester is handled entirely by the schema (`users.id` cascading via
+`requested_by_user_id`'s own `ondelete="SET NULL"`). Pseudonymisation of a person appearing in the
+recording (T843, FR-046) rewrites this table's `profile_id`, and `match_analyses`'s point of view,
+to that person's placeholder in `_pseudonymise_profile_ids` (`apps/api`); `retained_recordings`
+carries no foreign key to `aoe_profiles` or `match_players` (`data-model.md`, R9), so the schema
+does not do it and that function does. It never touches `object_key` or the object: renaming
+the key would delete the original (constitution IV).
 """
 
 from __future__ import annotations

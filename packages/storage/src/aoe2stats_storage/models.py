@@ -925,9 +925,11 @@ class RetainedRecording(Base):
     - erasure of the *requester* clears `requested_by_user_id` (`ondelete="SET NULL"`) and keeps
       the object and the row — the bytes are an already-public recording, not the requester's data,
       and deleting them would leave a published analysis nothing can recompute;
-    - erasure or objection by a person *appearing in* the recording deletes the object and the row,
-      and withdraws every analysis derived from it. That is the only route by which these bytes are
-      ever deleted (FR-046, constitution IV).
+    - erasure or objection by a person *appearing in* the recording rewrites the row's `profile_id`
+      and the analysis's `point_of_view_profile_id` to that person's pseudonymisation placeholder
+      (T843, FR-046, owner's ruling 2026-11-10) and deletes nothing: `object_key` embeds the
+      original id, and renaming it would copy the object and delete the original, which
+      constitution IV forbids. The key is never served and is read only by the analyzer.
     """
 
     __tablename__ = "retained_recordings"

@@ -948,3 +948,39 @@ SC-004, US3 scenario 4, research R8, `specs/003-player-search-match-analysis/con
   before this task, with the output in the hand-back. **Done**: the tests pass, the captures at 375,
   768 and 1280 in both themes show none of the three deviations, every `run:` step of `pr.yml`'s web
   job exits 0 apart from the missing-baseline steps, and spec_lint on every feature exits 0.
+
+## FR-046 ruling (2026-11-10)
+
+- [x] T843 Implement the owner's FR-046 ruling of 2026-11-10 (option b) in
+  `apps/api/src/aoe2stats_api/routers/privacy.py` and `apps/analyzer/src/aoe2stats_analyzer/run.py`.
+  Before this task, erasure and the resolution of a third-party objection left a
+  `retained_recordings` row whose `profile_id` is the subject's own as it was, and `docs/risks.md`
+  recorded that as an open question for FR-046. Ruling: the row's id is pseudonymised and the object
+  key is kept. (1) `_pseudonymise_profile_ids` rewrites `retained_recordings.profile_id` from each
+  original to its placeholder from `pseudonymise_profile`, so erasure and objection resolution both
+  do it. (2) It rewrites `match_analyses.point_of_view_profile_id` the same way:
+  `apps/api/src/aoe2stats_api/routers/matches.py` and `run.py` find a published analysis's retained recording by `(game_id,
+  point_of_view_profile_id)`, so rewriting one column without the other leaves the analysis with no
+  recording to recompute from (constitution IV), and that route serves the column to every
+  viewer. (3) `object_key` and the object stay as they are. The key contains the original id, and
+  renaming it means copying the object and deleting the original, which constitution IV forbids. (4)
+  `_publish` does not overwrite a negative `point_of_view_profile_id` with the id the document parsed
+  from the recording, so a recompute after a pseudonymisation keeps the row joined to its retained
+  recording. (5) The new row locks follow the global lock order: after `match_players` and before
+  `replay_captures`, each table in ascending key order, and the module notes in
+  `apps/ingester/src/aoe2stats_ingester/discover.py` name both tables' place in it. Texts:
+  `docs/risks.md` reads the question as settled, `docs/privacy/processing-register.md` activity 9
+  says the id is rewritten and the key kept, and why, and every text stating that this row stands
+  untouched by an erasure or an objection of the person it names says what this task does instead,
+  among them the `RetainedRecording` docstring in `packages/storage/src/aoe2stats_storage/models.py`
+  and the module docstring of `apps/analyzer/src/aoe2stats_analyzer/retain.py`. What stays out: the
+  published analysis document carries the point of view id parsed from the recording, and a key is
+  never written twice (T666d), so this task does not rewrite it; `docs/risks.md` says so. Tests in
+  `apps/api/tests/test_erasure.py`, `apps/api/tests/test_third_party_objection.py` and
+  `apps/analyzer/tests/test_run_once.py`, each failing against the tree before this task, with the
+  output in the hand-back: erasure rewrites the row's id and the analysis's point of view to the
+  placeholder, leaves `object_key` and the stored bytes unchanged, and leaves another participant's
+  row in the same match as it was; objection resolution does the same and a second resolution
+  changes nothing; a recompute of a published row whose point of view is a placeholder publishes
+  with the placeholder kept. **Done**: the tests pass, the whole suite is green, and spec_lint is
+  green on every feature.

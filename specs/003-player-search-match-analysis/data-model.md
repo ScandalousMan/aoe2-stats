@@ -217,8 +217,11 @@ prevent.
 
 *Erasure or objection by a person appearing in the recording* pseudonymises every identifier this
 service holds about them — the same instrument 001's erasure applies to `matches` and `match_players`,
-called with an arbitrary `profile_id` — and leaves the object and the row intact. **No analysis is
-withdrawn.** A `.aoe2record` cannot be pseudonymised without being modified, and modifying it destroys
+called with an arbitrary `profile_id` — and leaves the object intact. The row is kept too, with its
+`profile_id` rewritten to that person's placeholder and `match_analyses.point_of_view_profile_id`
+rewritten with it, since the two are the join key to the recording (owner's ruling 2026-11-10, T843);
+`object_key` is not renamed, because renaming it deletes the original (constitution IV). **No
+analysis is withdrawn.** A `.aoe2record` cannot be pseudonymised without being modified, and modifying it destroys
 both its checksum and the recomputability principle IV requires. Constitution IX orders IV above
 deletion here, deliberately, and `docs/privacy/processing-register.md` carries that ordering in its
 balancing test.

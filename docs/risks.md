@@ -183,11 +183,15 @@ jurisdiction, `<account>.r2...` does not).
       bucket now fails correctly. What those two routes must be verified to do there is
       **pseudonymise every identifier this service holds** about a person appearing in a recording,
       leaving the object and its checksum intact. Tested against an in-memory store whose listing
-      is a dict (`apps/api/tests/test_erasure.py`), never by listing R2 after a real erasure. One
-      identifier is left as it is: a `retained_recordings` row whose `profile_id` is the erased
-      person's own keeps that id, and so does its object key. `docs/privacy/processing-register.md`
-      activity 9 decides the row stands untouched; whether that squares with "every identifier" is
-      an open question for 003's FR-046, not settled here
+      is a dict (`apps/api/tests/test_erasure.py`), never by listing R2 after a real erasure.
+      Settled by the owner's ruling of 2026-11-10 (003's FR-046, T843): a `retained_recordings`
+      row whose `profile_id` is the erased person's own, and the `match_analyses` row's
+      `point_of_view_profile_id`, are rewritten to the same placeholder as the rest of the
+      pseudonymisation. The object key keeps the original id, because renaming it means copying
+      the object and deleting the original, which constitution IV forbids. Two things stay out:
+      the published analysis document carries the point-of-view id parsed from the recording and
+      is never rewritten (T666d: a key is never written twice), and the object key above, which
+      still holds the original id
 - [ ] Recordings retained under FR-045/046/047 stay under `ANALYSIS_RETENTION_CAP_BYTES`, and growth
       against that cap is observable rather than discovered by a refusal — the free-tier watch
       counts the retained-recording prefix separately from 001's capture prefix and warns at 70 %

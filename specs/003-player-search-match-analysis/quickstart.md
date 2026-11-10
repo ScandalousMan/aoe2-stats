@@ -243,8 +243,9 @@ is ever retained, not after. It is part of this feature's definition of done, no
 3. Object as a third party appearing in a retained recording. Expect every identifier this service
    holds about that person pseudonymised — the same instrument erasure applies to `matches` and
    `match_players` — and expect **the recording and the analyses derived from it to remain**
-   (FR-046 as amended 2026-08-24, constitution IX 3.0.0). Confirm the object is still in the bucket
-   and its checksum still verifies. This is where an implementation that quietly kept the old
+   (FR-046 as amended 2026-08-24, constitution IX 3.0.0). The retained row's `profile_id` and the
+   analysis's point of view are rewritten to the placeholder; the object key keeps the original id
+   (T843). Confirm the object is still in the bucket and its checksum still verifies. This is where an implementation that quietly kept the old
    deletion path would show, which is why it is walked rather than assumed.
 4. Confirm `docs/privacy/processing-register.md` carries retention of analysed third-party recordings
    as its own activity, with its own legal basis (FR-045). This one is checkable **today** and should
