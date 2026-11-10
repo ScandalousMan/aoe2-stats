@@ -109,6 +109,7 @@ from aoe2stats_storage.models import (
     Match,
     MatchPlayer,
     ProfileLink,
+    RatingSnapshot,
     ReplayCapture,
     SteamIdentity,
     User,
@@ -2473,3 +2474,268 @@ async def test_recorder_refuses_a_not_in_on_a_locking_statement(
                 await connection.execute(statement)
             await connection.rollback()
     assert recorder.count() == 0
+
+
+# --- T459h: a writer that waited on an erasure writes nothing about the erased profile ------------
+#
+# Owner's ruling of 2026-11-10 (option b): only the race window is closed. A writer whose first
+# read of a profile's `aoe_profiles` row preceded an erasure that commits before the writer's own
+# write to that row writes nothing about that profile. A writer that starts after the erasure
+# committed writes as for any non-user - the contrast tests below pin that, so nobody turns the
+# guard into a durable "this id was erased" block.
+
+_T459H_NOT_YET = "T459h not implemented yet"
+
+
+class _ErasureWindowRace(_Rendezvous):
+    """The interleave in which a writer's first persist statement runs before an erasure commits
+    and its `aoe_profiles` upsert then waits on the erasure's locks. Two parks, each released by
+    the other side's progress or by Postgres reporting a lock wait, never by a duration:
+
+    - the erasure, after its `UPDATE match_players` (the key rewrite, which comes after every
+      `aoe_profiles` lock it takes), waits until the writer has executed `INSERT INTO matches`;
+    - the writer, before its `INSERT INTO aoe_profiles`, waits until that key rewrite ran.
+
+    So the writer's anchor read and its `matches` upsert precede the erasure's commit, and its
+    `aoe_profiles` upsert is issued while the erasure still holds the row locks."""
+
+    def __init__(self, engine: AsyncEngine) -> None:
+        super().__init__(engine)
+        self.rewrote_keys = asyncio.Event()
+        self.wrote_matches = asyncio.Event()
+
+    def install(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        real_execute = AsyncSession.execute
+
+        async def spy(self_session: AsyncSession, statement: Any, *args: Any, **kwargs: Any) -> Any:
+            name = getattr(getattr(statement, "table", None), "name", None)
+            is_insert = getattr(statement, "is_insert", False)
+            is_key_rewrite = name == "match_players" and getattr(statement, "is_update", False)
+            is_match_insert = name == "matches" and is_insert
+            is_profile_insert = name == "aoe_profiles" and is_insert
+            if is_profile_insert:
+                await self._park_until(self.rewrote_keys)
+            result = await real_execute(self_session, statement, *args, **kwargs)
+            if is_match_insert:
+                self.wrote_matches.set()
+            if is_key_rewrite:
+                self.rewrote_keys.set()
+                await self._park_until(self.wrote_matches)
+            return result
+
+        monkeypatch.setattr(AsyncSession, "execute", spy)
+
+
+async def _match_player_rows(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> set[tuple[int, int]]:
+    async with session_factory() as session:
+        rows = await session.execute(select(MatchPlayer.game_id, MatchPlayer.profile_id))
+        return {(game_id, profile_id) for game_id, profile_id in rows.all()}
+
+
+async def _stored_profile(
+    session_factory: async_sessionmaker[AsyncSession], profile_id: int
+) -> AoeProfile:
+    async with session_factory() as session:
+        row = await session.get(AoeProfile, profile_id)
+        assert row is not None
+        return row
+
+
+async def _seed_viewer(
+    http: httpx.AsyncClient, session_factory: async_sessionmaker[AsyncSession]
+) -> str:
+    """A second signed-in caller, whose cookie is returned as a header value so that it can view
+    a profile after the owner's own session is gone with their account."""
+    await _seed_signed_in_caller(http, session_factory)
+    cookie = http.cookies.get(SESSION_COOKIE_NAME)
+    assert cookie is not None
+    http.cookies.clear()
+    return f"{SESSION_COOKIE_NAME}={cookie}"
+
+
+class _StandingFor:
+    """`ProfileProvider.personal_stats` answering one ladder standing for the profile asked."""
+
+    async def personal_stats(self, profile_ids: Sequence[int]) -> list[Any]:
+        from aoe2stats_providers.base import LeaderboardSnapshot
+
+        return [
+            LeaderboardSnapshot(profile_id=profile_id, leaderboard_id=3, rating=1500)
+            for profile_id in profile_ids
+        ]
+
+
+def _install_viewing_providers(monkeypatch: pytest.MonkeyPatch, relic: _FakeRelic) -> None:
+    _install_fake_providers(monkeypatch, relic)
+    monkeypatch.setattr(players_router, "_build_profile_provider", lambda _s: _StandingFor())
+    monkeypatch.setattr(matches_router, "_build_enrichment_provider", lambda _s: _FakeCompanion({}))
+
+
+_REAL_SUBJECT = RawProfile(profile_id=_SUBJECT, alias="RealSubject", country="SE")
+
+
+async def _view_subject(http: httpx.AsyncClient, cookie: str) -> httpx.Response:
+    return await http.get(f"/api/players/{_SUBJECT}/matches", headers={"Cookie": cookie})
+
+
+async def test_a_discovery_batch_that_waited_on_an_erasure_writes_nothing_about_the_erased(
+    http: httpx.AsyncClient,
+    engine: AsyncEngine,
+    session_factory: async_sessionmaker[AsyncSession],
+    fast_deadlock_detection: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """T459h (a): the batch fetched its match before the erasure committed, so its `aoe_profiles`
+    upsert waits on the erasure and then finds SUBJECT masked. It must add no `match_players` row
+    under SUBJECT, leave the mask alone, and still write ALPHA (the guard is per profile)."""
+    await _seed_stored_matches(session_factory, _STORED_OLD_GAMES, completed_at=_MATCH_COMPLETED_AT)
+    await _seed_owner_of(http, session_factory, (_SUBJECT,))
+    race = _ErasureWindowRace(engine)
+    race.install(monkeypatch)
+    stage = DiscoverStage(
+        session_factory=session_factory,
+        match_history_provider=_IngesterRelic(_raw_match(_STORED_OLD_GAMES[0], (_SUBJECT, _ALPHA))),
+        capture_budget_days=21,
+    )
+
+    outcomes = await asyncio.gather(stage(Budget(seconds=30)), _erase(http), return_exceptions=True)
+
+    assert not [o for o in outcomes if isinstance(o, BaseException)], outcomes
+    report, response = outcomes
+    assert isinstance(response, httpx.Response) and response.status_code == 200, response
+    assert isinstance(report, dict) and report["matches_discovered"] == 1, report
+    assert report["captures_enqueued"] == 0, report
+    assert race.rewrote_keys.is_set() and race.wrote_matches.is_set()
+
+    rows = await _match_player_rows(session_factory)
+    assert not {key for key in rows if key[1] == _SUBJECT}, rows
+    assert (_STORED_OLD_GAMES[0], -_SUBJECT) in rows
+    assert (_STORED_OLD_GAMES[0], _ALPHA) in rows
+    assert (await _stored_profile(session_factory, _SUBJECT)).alias == PSEUDONYMISED_ALIAS
+    async with session_factory() as session:
+        assert (await session.execute(select(ReplayCapture))).all() == []
+
+
+async def test_an_on_view_refresh_that_waited_on_an_erasure_writes_nothing_about_the_erased(
+    http: httpx.AsyncClient,
+    engine: AsyncEngine,
+    session_factory: async_sessionmaker[AsyncSession],
+    fast_deadlock_detection: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """T459h (b): the same interleave with `GET /api/players/{SUBJECT}/matches`, whose Relic
+    answer names SUBJECT with a real alias and country and whose standings answer one rating.
+    The row keeps its mask, no `match_players` row appears under SUBJECT, no rating snapshot is
+    written for SUBJECT, and the view still answers 200."""
+    await _seed_stored_matches(session_factory, _STORED_OLD_GAMES, completed_at=_MATCH_COMPLETED_AT)
+    viewer_cookie = await _seed_viewer(http, session_factory)
+    await _seed_owner_of(http, session_factory, (_SUBJECT,))
+    _install_viewing_providers(
+        monkeypatch,
+        _FakeRelic([_raw_match(_STORED_OLD_GAMES[0], (_SUBJECT, _ALPHA))], [_REAL_SUBJECT]),
+    )
+    race = _ErasureWindowRace(engine)
+    race.install(monkeypatch)
+
+    outcomes = await asyncio.gather(
+        _view_subject(http, viewer_cookie), _erase(http), return_exceptions=True
+    )
+
+    assert not [o for o in outcomes if isinstance(o, BaseException)], outcomes
+    view, erasure = outcomes
+    assert isinstance(erasure, httpx.Response) and erasure.status_code == 200, erasure
+    assert isinstance(view, httpx.Response) and view.status_code == 200, view
+    assert race.rewrote_keys.is_set() and race.wrote_matches.is_set()
+
+    row = await _stored_profile(session_factory, _SUBJECT)
+    assert (row.alias, row.country, row.avatar_hash) == (PSEUDONYMISED_ALIAS, None, None)
+    rows = await _match_player_rows(session_factory)
+    assert not {key for key in rows if key[1] == _SUBJECT}, rows
+    async with session_factory() as session:
+        snapshots = (
+            await session.execute(
+                select(RatingSnapshot.profile_id).where(RatingSnapshot.profile_id == _SUBJECT)
+            )
+        ).all()
+    assert snapshots == []
+
+
+async def test_a_discovery_batch_that_starts_after_an_erasure_writes_the_profile_again(
+    http: httpx.AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """T459h (c), owner's ruling: no durable block. A later sighting of the erased profile is
+    written exactly as for any non-user."""
+    await _seed_stored_matches(session_factory, _STORED_OLD_GAMES, completed_at=_MATCH_COMPLETED_AT)
+    await _seed_owner_of(http, session_factory, (_SUBJECT,))
+    assert (await _erase(http)).status_code == 200
+
+    async with session_scope(session_factory) as session:
+        await discover.persist_matches_and_profiles(
+            session, [_raw_match(_STORED_OLD_GAMES[0], (_SUBJECT, _ALPHA))]
+        )
+
+    assert (_STORED_OLD_GAMES[0], _SUBJECT) in await _match_player_rows(session_factory)
+
+
+async def test_an_on_view_refresh_that_starts_after_an_erasure_writes_the_alias_again(
+    http: httpx.AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """T459h (c), owner's ruling: no durable block on the on-view refresh either."""
+    await _seed_stored_matches(session_factory, _STORED_OLD_GAMES, completed_at=_MATCH_COMPLETED_AT)
+    viewer_cookie = await _seed_viewer(http, session_factory)
+    await _seed_owner_of(http, session_factory, (_SUBJECT,))
+    assert (await _erase(http)).status_code == 200
+    _install_viewing_providers(monkeypatch, _FakeRelic([], [_REAL_SUBJECT]))
+
+    assert (await _view_subject(http, viewer_cookie)).status_code == 200
+
+    row = await _stored_profile(session_factory, _SUBJECT)
+    assert (row.alias, row.country) == ("RealSubject", "SE")
+
+
+async def test_a_batch_racing_a_second_pseudonymisation_of_a_masked_row_adds_no_row(
+    http: httpx.AsyncClient,
+    engine: AsyncEngine,
+    session_factory: async_sessionmaker[AsyncSession],
+    fast_deadlock_detection: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """T459h (d): SUBJECT was erased, a later sighting re-added `(INGEST, SUBJECT)` (allowed), and
+    a second pseudonymisation of SUBJECT now races a batch that read the row while it was already
+    masked. The batch must still add no `(game, SUBJECT)` row: the anchor is per row version, not
+    per masked state."""
+    await _seed_stored_matches(session_factory, _STORED_OLD_GAMES, completed_at=_MATCH_COMPLETED_AT)
+    await _seed_owner_of(http, session_factory, (_BRAVO,))
+    async with session_scope(session_factory) as session:
+        await privacy_router._pseudonymise_profile_ids(session, [_SUBJECT])
+    async with session_scope(session_factory) as session:
+        await discover.persist_matches_and_profiles(
+            session, [_raw_match(_INGEST_GAME_ID, (_SUBJECT, _ALPHA))]
+        )
+    assert (_INGEST_GAME_ID, _SUBJECT) in await _match_player_rows(session_factory)
+    race = _ErasureWindowRace(engine)
+    race.install(monkeypatch)
+    stage = DiscoverStage(
+        session_factory=session_factory,
+        match_history_provider=_IngesterRelic(_raw_match(_STORED_OLD_GAMES[0], (_SUBJECT, _ALPHA))),
+        capture_budget_days=21,
+    )
+
+    async def second_pseudonymisation() -> None:
+        async with session_scope(session_factory) as session:
+            await privacy_router._pseudonymise_profile_ids(session, [_SUBJECT])
+
+    outcomes = await asyncio.gather(
+        stage(Budget(seconds=30)), second_pseudonymisation(), return_exceptions=True
+    )
+
+    assert not [o for o in outcomes if isinstance(o, BaseException)], outcomes
+    assert race.rewrote_keys.is_set() and race.wrote_matches.is_set()
+    rows = await _match_player_rows(session_factory)
+    assert not {key for key in rows if key[1] == _SUBJECT}, rows
+    assert (_INGEST_GAME_ID, -_SUBJECT) in rows

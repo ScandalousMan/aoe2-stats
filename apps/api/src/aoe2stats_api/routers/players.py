@@ -379,6 +379,10 @@ async def _persist_on_view_refresh(
     profile's own `aoe_profiles` row — present in the batch, since an avatar is only searched for
     when the identity block named that profile.
 
+    **T459h.** A profile `persist_matches_and_profiles` withheld (an erasure committed while it
+    waited) gets no later write here either: no `rating_snapshots` row and no avatar hash. The
+    result is `PersistedBatch.withheld`; nothing else in this function writes for a profile.
+
     A deadlock, a serialisation failure or a lock wait past the timeout rolls the savepoint back
     (`discover.savepoint_tolerating_lock_conflicts`) and the route answers from storage; every
     other database error propagates. Nothing fetched is persisted in that case, which is correct:
@@ -395,11 +399,13 @@ async def _persist_on_view_refresh(
         return
 
     async with discover.savepoint_tolerating_lock_conflicts(db_session):
-        await discover.persist_matches_and_profiles(
+        persisted = await discover.persist_matches_and_profiles(
             db_session, list(raw_matches), identity.raw_profiles, colour_fills
         )
         ratings_repo = RatingsRepository(db_session)
         for snapshot in identity.snapshots:
+            if snapshot.profile_id in persisted.withheld:
+                continue
             await ratings_repo.record_snapshot(
                 profile_id=snapshot.profile_id,
                 leaderboard_id=snapshot.leaderboard_id,
@@ -413,8 +419,13 @@ async def _persist_on_view_refresh(
                 # never `snapshot.last_match_at` — exactly as `routers/auth.py`'s sign-in flow and
                 # `discover.py`'s `_refresh_ratings` both already choose, for the identical reason.
             )
-        if identity.avatar_results:
-            await persist_avatar_hashes(db_session, identity.avatar_results)
+        avatar_results = [
+            result
+            for result in identity.avatar_results
+            if result.profile_id not in persisted.withheld
+        ]
+        if avatar_results:
+            await persist_avatar_hashes(db_session, avatar_results)
 
 
 # FR-005's own bucket name (`RateLimitCounter`'s docstring, `ratelimit.py`) and the fixed window

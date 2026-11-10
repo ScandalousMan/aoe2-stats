@@ -80,8 +80,9 @@ class with, which is T059's job (`run.py`'s own module docstring), not this one'
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Iterable, Iterator, Mapping, Sequence
+from collections.abc import AsyncIterator, Collection, Iterable, Iterator, Mapping, Sequence
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -90,21 +91,27 @@ from sqlalchemy import (
     Select,
     SmallInteger,
     Text,
+    all_,
+    and_,
     case,
     cast,
     column,
     func,
     literal,
+    literal_column,
+    not_,
     select,
     text,
     tuple_,
     update,
     values,
 )
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from aoe2stats_core.privacy.erasure import PSEUDONYMISED_ALIAS
 from aoe2stats_ingester.budget import Budget, iter_within_budget
 from aoe2stats_providers.base import MatchHistoryProvider, ProfileProvider, RawMatch, RawProfile
 from aoe2stats_storage.models import (
@@ -174,6 +181,25 @@ def _chunk(items: Sequence[int], size: int) -> Iterator[Sequence[int]]:
 # the order above: Postgres takes a multi-row insert's row locks in `VALUES` order. The same
 # change is what makes the work bounded — a 177-match, 770-player, 400-profile response is three
 # statements, not ~2,100 sequential round trips that no serverless request can finish.
+#
+# **T459h: a writer that waited on an erasure writes nothing about the erased profile.** An erasure
+# (`routers/privacy.py::_pseudonymise_profile_ids`) holds the `aoe_profiles` row lock of the
+# profile it masks until commit. A writer that fetched from Relic before that commit and then
+# waits on the lock would, once it gets it, write `match_players` under the original id and
+# overwrite the masked `alias`/`country`. So `persist_matches_and_profiles` makes a plain,
+# non-locking read of every `aoe_profiles` row it will touch as its very first statement (the
+# anchor: the rows already masked, each with its row version `xmin`), and the one `aoe_profiles`
+# statement re-checks, in its `DO UPDATE ... WHERE`, whether a row is masked now under a version
+# the anchor did not hold. That test uses only the target row's own columns: a subquery there
+# would read the statement's snapshot, taken before the erasure committed, and miss it. A row the
+# `WHERE` rejects is still locked, so the lock order is unchanged; it is not updated and not
+# returned, and the caller writes nothing else for it. Error direction: the guard can only
+# withhold writes. Any other transaction that touched a masked row inside the window changes its
+# version too and the row is withheld as well, which errs toward writing less about an erased
+# person. Residue, a fact and not a gap this code means to close: an erasure that commits before
+# the writer's anchor read is not detected, and the writer writes as a later sighting of any
+# non-user does (owner's ruling of 2026-11-10: only the race window is closed, nothing is
+# remembered about an erased id).
 
 #: Rows per bulk statement. `match_players` binds 8 columns and `matches` 9 per row; psycopg's
 #: ceiling is 65,535 bind parameters per statement, so 5,000 rows stays well inside it. A batch
@@ -229,7 +255,39 @@ def merge_sightings(
     return merged
 
 
-async def touch_aoe_profiles(session: AsyncSession, sightings: Iterable[RawProfile]) -> None:
+def _row_version() -> Any:
+    """`"<profile_id>:<xmin>"` of the stored `aoe_profiles` row, the same injective encoding the
+    anchor holds (`read_masked_anchor`): the id and the row version, so one string names one
+    version of one row."""
+    return (
+        cast(AoeProfile.profile_id, Text)
+        .concat(":")
+        .concat(literal_column("aoe_profiles.xmin::text", Text))
+    )
+
+
+async def read_masked_anchor(session: AsyncSession, profile_ids: Iterable[int]) -> frozenset[str]:
+    """T459h: the anchor. A plain, non-locking read of the `aoe_profiles` rows among `profile_ids`
+    that are masked right now (`alias = PSEUDONYMISED_ALIAS`), each as `"<profile_id>:<xmin>"`.
+    It takes no row lock, so it never waits on another transaction, and it must be the first
+    statement of the transaction's write path. See the module notes."""
+    anchor: set[str] = set()
+    for chunk in _chunks(sorted(set(profile_ids))):
+        rows = await session.execute(
+            select(AoeProfile.profile_id, literal_column("aoe_profiles.xmin::text", Text)).where(
+                AoeProfile.profile_id.in_(list(chunk)), AoeProfile.alias == PSEUDONYMISED_ALIAS
+            )
+        )
+        anchor.update(f"{profile_id}:{xmin}" for profile_id, xmin in rows.all())
+    return frozenset(anchor)
+
+
+async def touch_aoe_profiles(
+    session: AsyncSession,
+    sightings: Iterable[RawProfile],
+    *,
+    masked_anchor: Collection[str] | None = None,
+) -> frozenset[int]:
     """Ensure an `aoe_profiles` row exists for every sighting and record that it was seen just now
     — one multi-row `INSERT ... ON CONFLICT`, rows ascending by `profile_id` (module notes above).
     Sightings of the same profile are merged first (`merge_sightings`).
@@ -242,6 +300,19 @@ async def touch_aoe_profiles(session: AsyncSession, sightings: Iterable[RawProfi
     `last_seen_at` moves on every sighting. The "is this alias real" test runs in SQL against
     `excluded` (`excluded.alias <> excluded.profile_id::text`), so one statement serves a batch
     that mixes both kinds — splitting it in two would break the single ascending order.
+
+    **T459h, opt-in.** With `masked_anchor` (`read_masked_anchor`'s result, read before any
+    statement of this transaction that could wait on a lock), the `DO UPDATE` carries a `WHERE`
+    that skips a row masked now (`alias = PSEUDONYMISED_ALIAS`) whose `"<profile_id>:<xmin>"` is
+    not in the anchor: it was masked, or masked again, after the anchor. Postgres still locks such
+    a conflicting row to commit but neither updates nor returns it, so the lock order is
+    unchanged. The `WHERE` reads only the target row's own columns: a subquery would read the
+    statement's snapshot, taken before an erasure that this statement waited on committed. The
+    profile ids that were sent and not returned are returned as the withheld set; the caller
+    writes nothing else for them. The guard can only withhold: a masked row any other transaction
+    touched inside the window is withheld too, which errs toward writing less about an erased
+    person. An erasure that committed before the anchor was read is not detected (owner's ruling
+    of 2026-11-10). Without `masked_anchor` nothing is withheld and the statement is as before.
     """
     merged = merge_sightings((), sightings)
     now = datetime.now(UTC)
@@ -258,11 +329,22 @@ async def touch_aoe_profiles(session: AsyncSession, sightings: Iterable[RawProfi
                 "last_seen_at": now,
             }
         )
+    guard = (
+        None
+        if masked_anchor is None
+        else not_(
+            and_(
+                AoeProfile.alias == PSEUDONYMISED_ALIAS,
+                _row_version() != all_(literal(sorted(masked_anchor), ARRAY(Text))),
+            )
+        )
+    )
+    withheld: set[int] = set()
     for chunk in _chunks(rows):
         insert = pg_insert(AoeProfile).values(list(chunk))
         excluded = insert.excluded
         incoming_is_real = excluded.alias != cast(excluded.profile_id, Text)
-        await session.execute(
+        result = await session.execute(
             insert.on_conflict_do_update(
                 index_elements=[AoeProfile.profile_id],
                 set_={
@@ -270,8 +352,13 @@ async def touch_aoe_profiles(session: AsyncSession, sightings: Iterable[RawProfi
                     "country": case((incoming_is_real, excluded.country), else_=AoeProfile.country),
                     "last_seen_at": excluded.last_seen_at,
                 },
-            )
+                where=guard,
+            ).returning(AoeProfile.profile_id)
         )
+        if guard is not None:
+            written = set(result.scalars().all())
+            withheld.update(row["profile_id"] for row in chunk if row["profile_id"] not in written)
+    return frozenset(withheld)
 
 
 async def touch_aoe_profile(
@@ -303,6 +390,9 @@ async def touch_aoe_profile(
     newer name for must never clobber a real alias a prior sighting (T453's on-view refresh)
     already established back down to the numeric id. `last_seen_at` moves on every sighting
     regardless, insert or conflict, real alias or none.
+
+    **T459h.** No anchor is passed, so the erasure guard of `touch_aoe_profiles` is off here: this
+    call behaves exactly as it did before it existed (the objection route's placeholder touch).
     """
     await touch_aoe_profiles(
         session, [RawProfile(profile_id=profile_id, alias=alias, country=country)]
@@ -445,12 +535,23 @@ async def fill_missing_colours(session: AsyncSession, fills: Mapping[tuple[int, 
         )
 
 
+@dataclass(frozen=True)
+class PersistedBatch:
+    """What `persist_matches_and_profiles` wrote: the `(raw_match, profile_id)` pairs now in
+    `match_players`, ascending by `(game_id, profile_id)`, and the profile ids it withheld (T459h)
+    because an erasure committed while the call waited. A caller writes nothing more about a
+    withheld id."""
+
+    pairs: tuple[tuple[RawMatch, int], ...]
+    withheld: frozenset[int] = frozenset()
+
+
 async def persist_matches_and_profiles(
     session: AsyncSession,
     raw_matches: Sequence[RawMatch],
     identities: Iterable[RawProfile] = (),
     colour_fills: Mapping[tuple[int, int], int] | None = None,
-) -> list[tuple[RawMatch, int]]:
+) -> PersistedBatch:
     """T459: the one place a batch of raw matches and identity rows is written, in the global lock
     order (module notes above): `matches` ascending by `game_id`, then `aoe_profiles` ascending by
     `profile_id` — deduplicated, every participant of every match plus every identity row, a real
@@ -468,33 +569,49 @@ async def persist_matches_and_profiles(
     same transaction has just upserted into `matches`, so two writers of one new key meet on
     `matches` first and no cycle forms.
 
+    **T459h: nothing is written about a profile erased while this call waited.** The first
+    statement is a non-locking read of the rows this call will touch that are already masked
+    (`read_masked_anchor`), before `upsert_matches` or anything else that can wait on another
+    transaction. `touch_aoe_profiles` re-checks under the row lock, in the same statement that
+    takes it, and withholds a row that became masked after the anchor. For a withheld profile this
+    call writes no `aoe_profiles` update, no `match_players` row and no colour fill, and leaves it
+    out of the result, so `DiscoverStage` and `ReconcileStage` enqueue no capture for it; the
+    caller must likewise skip its own later writes for `PersistedBatch.withheld`. The guard can
+    only withhold (module notes). An erasure that commits before the anchor read is not detected:
+    the call writes that profile as a later sighting of any non-user is written (owner's ruling of
+    2026-11-10).
+
     Nothing in the caller's transaction may write an earlier table or a lower key afterwards; a
     caller that needs more rows (a capture enqueue, a rating snapshot) writes them after this
     returns, and only rows whose parents this call already locked.
 
-    Returns the `(raw_match, profile_id)` pairs written to `match_players`, ascending by
+    Returns the pairs written to `match_players` (`PersistedBatch.pairs`), ascending by
     `(game_id, profile_id)`, so a caller that goes on to enqueue captures does so in the same order.
     """
-    await upsert_matches(session, raw_matches)
     by_game = {raw_match.game_id: raw_match for raw_match in raw_matches}
     participants = [
         profile_id for raw_match in by_game.values() for profile_id in raw_match.player_profile_ids
     ]
-    await touch_aoe_profiles(session, merge_sightings(participants, identities).values())
+    merged = merge_sightings(participants, identities)
+    anchor = await read_masked_anchor(session, merged)
+    await upsert_matches(session, raw_matches)
+    withheld = await touch_aoe_profiles(session, merged.values(), masked_anchor=anchor)
     pairs = sorted(
         {
             (game_id, profile_id): (raw_match, profile_id)
             for game_id, raw_match in by_game.items()
             for profile_id in raw_match.player_profile_ids
+            if profile_id not in withheld
         }.items()
     )
     ordered = [pair for _, pair in pairs]
-    if colour_fills:
-        await lock_match_players(session, {*(key for key, _ in pairs), *colour_fills})
+    fills = {key: colour for key, colour in (colour_fills or {}).items() if key[1] not in withheld}
+    if fills:
+        await lock_match_players(session, {*(key for key, _ in pairs), *fills})
     await upsert_match_players(session, ordered)
-    if colour_fills:
-        await fill_missing_colours(session, colour_fills)
-    return ordered
+    if fills:
+        await fill_missing_colours(session, fills)
+    return PersistedBatch(pairs=tuple(ordered), withheld=withheld)
 
 
 @asynccontextmanager
@@ -595,7 +712,7 @@ class DiscoverStage:
             async with session_scope(self._session_factory) as session:
                 written = await persist_matches_and_profiles(session, raw_matches)
                 matches_discovered += len(raw_matches)
-                for raw_match, player_profile_id in written:
+                for raw_match, player_profile_id in written.pairs:
                     if player_profile_id in archiving_profile_ids:
                         enqueued = await self._enqueue_capture(
                             session, raw_match, player_profile_id

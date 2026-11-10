@@ -657,11 +657,18 @@ async def _pseudonymise_profile_ids(
             .values(profile_id=plan.pseudonymous_profile_id)
         )
 
+    # T459h: an explicit `UPDATE`, not attribute assignment. Assigning the values a row already
+    # holds (a profile masked by an earlier erasure) makes no `UPDATE` at all, so the row keeps
+    # its version and a writer that read it while it was already masked cannot tell that this
+    # erasure ran (`discover.read_masked_anchor` compares row versions). Postgres writes a new
+    # version for every `UPDATE`, whether or not a value changes.
     for original_profile in originals:
         plan = plans[original_profile.profile_id]
-        original_profile.alias = plan.alias
-        original_profile.country = plan.country
-        original_profile.avatar_hash = None
+        await db_session.execute(
+            update(AoeProfile)
+            .where(AoeProfile.profile_id == original_profile.profile_id)
+            .values(alias=plan.alias, country=plan.country, avatar_hash=None)
+        )
 
     return pairs
 

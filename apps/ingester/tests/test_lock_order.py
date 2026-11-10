@@ -120,8 +120,8 @@ async def test_statement_count_is_constant_for_a_large_batch(
     db_session: AsyncSession, recorder: _Recorder
 ) -> None:
     """177 matches of 4-5 players each, drawn from 400 distinct profiles (the production shape):
-    three INSERT statements, and nothing else, whatever the size. Listed in descending order on
-    purpose — the helper, not the caller, owns the order."""
+    one anchor SELECT (T459h) and three INSERT statements, and nothing else, whatever the size.
+    Listed in descending order on purpose — the helper, not the caller, owns the order."""
     profile_ids = list(range(500_000, 500_400))
     matches = [
         _match(700_000 + n, tuple(profile_ids[(n * 7 + k) % 400] for k in range(5, 0, -1)))
@@ -132,7 +132,7 @@ async def test_statement_count_is_constant_for_a_large_batch(
 
     await persist_matches_and_profiles(db_session, matches)
 
-    assert len(recorder.statements) == 3, recorder.statements
+    assert len(recorder.statements) == 4, recorder.statements
     _assert_global_order(recorder)
     stored = (await db_session.execute(select(Match.game_id))).scalars().all()
     assert len(stored) == 177
@@ -147,7 +147,7 @@ async def test_statement_count_does_not_grow_with_the_batch(
     await persist_matches_and_profiles(
         db_session, [_match(10 + n, (n + 100, n + 101)) for n in range(150)]
     )
-    assert len(recorder.statements) == small == 3
+    assert len(recorder.statements) == small == 4
 
 
 async def test_rows_are_written_in_the_global_order_and_deduplicated(
@@ -163,7 +163,8 @@ async def test_rows_are_written_in_the_global_order_and_deduplicated(
         RawProfile(profile_id=3, alias="Three"),
     ]
 
-    pairs = await persist_matches_and_profiles(db_session, matches, identities)
+    batch = await persist_matches_and_profiles(db_session, matches, identities)
+    pairs = batch.pairs
 
     _assert_global_order(recorder)
     profile_rows = dict(recorder.inserts)["aoe_profiles"]
@@ -331,8 +332,9 @@ async def test_colour_fills_add_two_statements_whatever_their_number(
     db_session: AsyncSession, recorder: _Recorder
 ) -> None:
     """The fills are one ascending lock pass (`SELECT ... ORDER BY ... FOR UPDATE`) and one
-    `UPDATE ... FROM (VALUES ...)`: five statements for a batch plus 400 fills, the same five for
-    a batch plus 4. Supplied in descending order — the helper owns the order."""
+    `UPDATE ... FROM (VALUES ...)`: six statements (the T459h anchor read first) for a batch plus
+    400 fills, the same six for a batch plus 4.
+    Supplied in descending order — the helper owns the order."""
     games = list(range(600_000, 600_200))
     await _stored_match_players(db_session, games, (11, 12), colour=None)
 
@@ -347,8 +349,9 @@ async def test_colour_fills_add_two_statements_whatever_their_number(
     many = await run(200)
     few = await run(2)
 
-    assert len(many) == len(few) == 5, many
-    lock, upsert, update = many[2], many[3], many[4]
+    assert len(many) == len(few) == 6, many
+    assert many[0].startswith("SELECT aoe_profiles.profile_id")
+    lock, upsert, update = many[3], many[4], many[5]
     assert upsert.startswith("INSERT INTO match_players")
     assert lock.startswith("SELECT") and "ORDER BY match_players.game_id" in lock
     assert lock.rstrip().endswith("FOR UPDATE")

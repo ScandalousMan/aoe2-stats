@@ -134,7 +134,7 @@ class ReconcileStage:
             async with session_scope(self._session_factory) as session:
                 written = await persist_matches_and_profiles(session, raw_matches)
                 matches_discovered += len(raw_matches)
-                for raw_match, player_profile_id in written:
+                for raw_match, player_profile_id in written.pairs:
                     if player_profile_id in archiving_profile_ids:
                         enqueued = await self._discover._enqueue_capture(
                             session, raw_match, player_profile_id
