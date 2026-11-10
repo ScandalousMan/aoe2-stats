@@ -300,7 +300,8 @@ requirement that one exist.
 - **Buildings controlled** (Saxons' discount per Town Center or Castle, the Cumans' second Town
   Center in the Feudal Age). **P2** proves a building standing at each order issued from it, and
   nothing proves a completion or a destruction. Candidate **D-CONTROL-1**, written by applying the
-  owner's FR-007a discipline to this condition and awaiting the owner's yes: a building counts as
+  owner's FR-007a discipline to this condition, deferred by the owner on 2026-11-10 until it is
+  re-derived in the light of feature 009's findings: a building counts as
   controlled at an order's time when an earlier order issued from it proves it stood, and no enemy
   command has targeted it since that proof; a building targeted since its last proof counts again
   only from its next proof; the starting Town Center counts from the start. A placed building from
