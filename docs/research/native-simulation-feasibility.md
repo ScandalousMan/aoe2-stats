@@ -562,6 +562,12 @@ FR-012 (population, idle time) gain nothing from them and keep their open method
 of one exact value per datum is unaffected for what the log proves, and the deductive rules remain
 deductions.
 
+**Owner's decision, 2026-11-10.** The spike closes in this state.
+
+- Route A, the conditional half, is on hold: the owner is waiting for information from the CaptureAge team. A follow-up spike will be specified when it arrives; no work on route A happens before then.
+- The GO-now half is not adopted on its own here. It goes to feature 008, where D-CONTROL-1 is re-derived in the light of this report's findings before it is put to the owner again (008 plan, Complexity Tracking).
+- §13's second review pass is not awaited.
+
 ## 12. Remaining unknowns
 
 - Whether the macOS native build serves `:4341` at run time (its images carry no gRPC code; the
@@ -610,7 +616,7 @@ Proton assumption; the "projectiles and dopplegangers" gloss on word 6; the docs
 genie's engine crate (AGPL-3.0-only); the duplicated 006 and 008 figures (now cited, not copied);
 and the formatter's unrelated re-padding of two `data-sources.md` tables (reverted).
 
-**Second pass**: appended below when it returns.
+**Second pass**: not run. The owner closed the spike on 2026-11-10 in the state the first pass left it (§11).
 
 ## Sources
 
