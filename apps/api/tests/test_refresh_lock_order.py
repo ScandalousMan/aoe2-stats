@@ -2484,25 +2484,53 @@ async def test_recorder_refuses_a_not_in_on_a_locking_statement(
 # committed writes as for any non-user - the contrast tests below pin that, so nobody turns the
 # guard into a durable "this id was erased" block.
 
-_T459H_NOT_YET = "T459h not implemented yet"
-
 
 class _ErasureWindowRace(_Rendezvous):
     """The interleave in which a writer's first persist statement runs before an erasure commits
-    and its `aoe_profiles` upsert then waits on the erasure's locks. Two parks, each released by
-    the other side's progress or by Postgres reporting a lock wait, never by a duration:
+    and its `aoe_profiles` upsert then blocks on the erasure's row locks. Two parks:
 
-    - the erasure, after its `UPDATE match_players` (the key rewrite, which comes after every
-      `aoe_profiles` lock it takes), waits until the writer has executed `INSERT INTO matches`;
-    - the writer, before its `INSERT INTO aoe_profiles`, waits until that key rewrite ran.
+    - the writer, before its `INSERT INTO aoe_profiles`, waits until the erasure's key rewrite
+      (`UPDATE match_players`, which comes after every `aoe_profiles` lock the erasure takes) ran;
+    - the erasure, after that key rewrite, waits until a backend running `INSERT INTO aoe_profiles`
+      is blocked on a lock. Its only other release is `upsert_returned`, set once the writer's
+      upsert has returned, which cannot happen while the erasure holds the row, so a run that
+      reaches it did not form the interleave. The park fails loudly past the guard deadline.
 
-    So the writer's anchor read and its `matches` upsert precede the erasure's commit, and its
-    `aoe_profiles` upsert is issued while the erasure still holds the row locks."""
+    `released_by` records the path taken: "lock_wait" (the writer was blocked on the erasure's
+    row; what each race test asserts), "event" or None (the erasure never parked).
+
+    The probe is narrowed to `INSERT INTO aoe_profiles` statements so that no other lock wait in
+    the test (the erasure's own, a second reader's) can release the park."""
 
     def __init__(self, engine: AsyncEngine) -> None:
         super().__init__(engine)
         self.rewrote_keys = asyncio.Event()
-        self.wrote_matches = asyncio.Event()
+        self.upsert_returned = asyncio.Event()
+        self.released_by: str | None = None
+
+    async def _park_until_writer_is_blocked(self) -> None:
+        deadline = asyncio.get_running_loop().time() + _RENDEZVOUS_GUARD_SECONDS
+        while True:
+            if await self._profile_upsert_is_blocked():
+                self.released_by = "lock_wait"
+                return
+            if self.upsert_returned.is_set():
+                self.released_by = "event"
+                return
+            if asyncio.get_running_loop().time() > deadline:
+                raise AssertionError("no aoe_profiles upsert ever blocked on the erasure's row")
+            await asyncio.sleep(0.01)
+
+    async def _profile_upsert_is_blocked(self) -> bool:
+        async with self._engine.connect() as connection:
+            waiting = await connection.execute(
+                text(
+                    "SELECT count(*) FROM pg_stat_activity "
+                    "WHERE datname = current_database() AND wait_event_type = 'Lock' "
+                    "AND query ILIKE 'INSERT INTO aoe_profiles%'"
+                )
+            )
+            return bool(waiting.scalar_one())
 
     def install(self, monkeypatch: pytest.MonkeyPatch) -> None:
         real_execute = AsyncSession.execute
@@ -2511,16 +2539,15 @@ class _ErasureWindowRace(_Rendezvous):
             name = getattr(getattr(statement, "table", None), "name", None)
             is_insert = getattr(statement, "is_insert", False)
             is_key_rewrite = name == "match_players" and getattr(statement, "is_update", False)
-            is_match_insert = name == "matches" and is_insert
             is_profile_insert = name == "aoe_profiles" and is_insert
             if is_profile_insert:
                 await self._park_until(self.rewrote_keys)
             result = await real_execute(self_session, statement, *args, **kwargs)
-            if is_match_insert:
-                self.wrote_matches.set()
+            if is_profile_insert:
+                self.upsert_returned.set()
             if is_key_rewrite:
                 self.rewrote_keys.set()
-                await self._park_until(self.wrote_matches)
+                await self._park_until_writer_is_blocked()
             return result
 
         monkeypatch.setattr(AsyncSession, "execute", spy)
@@ -2607,7 +2634,7 @@ async def test_a_discovery_batch_that_waited_on_an_erasure_writes_nothing_about_
     assert isinstance(response, httpx.Response) and response.status_code == 200, response
     assert isinstance(report, dict) and report["matches_discovered"] == 1, report
     assert report["captures_enqueued"] == 0, report
-    assert race.rewrote_keys.is_set() and race.wrote_matches.is_set()
+    assert race.rewrote_keys.is_set() and race.released_by == "lock_wait", race.released_by
 
     rows = await _match_player_rows(session_factory)
     assert not {key for key in rows if key[1] == _SUBJECT}, rows
@@ -2647,7 +2674,7 @@ async def test_an_on_view_refresh_that_waited_on_an_erasure_writes_nothing_about
     view, erasure = outcomes
     assert isinstance(erasure, httpx.Response) and erasure.status_code == 200, erasure
     assert isinstance(view, httpx.Response) and view.status_code == 200, view
-    assert race.rewrote_keys.is_set() and race.wrote_matches.is_set()
+    assert race.rewrote_keys.is_set() and race.released_by == "lock_wait", race.released_by
 
     row = await _stored_profile(session_factory, _SUBJECT)
     assert (row.alias, row.country, row.avatar_hash) == (PSEUDONYMISED_ALIAS, None, None)
@@ -2735,7 +2762,7 @@ async def test_a_batch_racing_a_second_pseudonymisation_of_a_masked_row_adds_no_
     )
 
     assert not [o for o in outcomes if isinstance(o, BaseException)], outcomes
-    assert race.rewrote_keys.is_set() and race.wrote_matches.is_set()
+    assert race.rewrote_keys.is_set() and race.released_by == "lock_wait", race.released_by
     rows = await _match_player_rows(session_factory)
     assert not {key for key in rows if key[1] == _SUBJECT}, rows
     assert (_INGEST_GAME_ID, -_SUBJECT) in rows
