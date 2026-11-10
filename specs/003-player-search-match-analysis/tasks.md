@@ -837,3 +837,58 @@ choice "only has to be stable, not special", which is false when a participant's
   seed a match two days old, inside the grace in the test settings, and assert a miss row or
   `never_recorded` are re-seeded past the grace, so each still tests what its name says. **Done**:
   the tests pass, the whole suite is green, and spec_lint is green on every feature.
+
+---
+
+## Phase 17: past the budget, try anyway (owner ruling 2026-11-10)
+
+Added 2026-11-10. `derive_availability` said `expired` once a match was older than
+`capture_budget_days`, a capture setting shorter than the window of every profile measured. For a
+profile whose window is longer, the source still served the recording while the page said expired
+and offered no download, so SC-004 was not claimable by construction. On 2026-11-10 the owner chose
+to replace that state with one the user can click, which asks the source at that moment. FR-025,
+SC-004, US3 scenario 4, research R8, `specs/003-player-search-match-analysis/contracts/http-api.md`
+  and `specs/003-player-search-match-analysis/quickstart.md` carry the
+2026-11-10 amendment.
+
+- [ ] T842 Replace the arithmetic `expired` with `beyond_window` and a click that asks the source, in
+  `apps/api/src/aoe2stats_api/availability.py`, `apps/api/src/aoe2stats_api/routers/matches.py`,
+  `apps/api/src/aoe2stats_api/routers/replays.py`, `apps/api/tests/test_replay_availability.py`,
+  `apps/api/tests/test_replay_download.py`, the match-detail API tests that assert `availability`
+  or `download_path`, `packages/storage/src/aoe2stats_storage/models.py` (the `ReplayFetchMiss`
+  docstring only), `specs/003-player-search-match-analysis/data-model.md` (the T337 paragraph),
+  `apps/web/src/features/matches/api.ts`, `apps/web/src/features/replays/availability.ts`,
+  `apps/web/src/features/replays/downloadFailure.ts`, `apps/web/src/features/replays/MatchDetailContainer.tsx`,
+  their tests, `packages/design-system/src/composites/ReplayAvailabilityList/` and the stories and
+  state-coverage records a new story requires. (1) `derive_availability` returns a fifth state,
+  `beyond_window`, where it returned `expired`: no `stored` capture, no `unavailable` capture, no
+  recorded `404`, and the match completed more than `capture_budget_days` before `now`. (2) Its
+  `recorded_404: bool` parameter becomes the recorded `404`'s `observed_at`, or `None`. A recorded
+  `404` observed more than `capture_budget_days` after `completed_at` derives `expired`; one observed
+  at or before that derives `never_recorded`, as every recorded `404` did before this task. An
+  `unavailable` capture still derives `never_recorded` and `archived` is unchanged; the evaluation
+  order stays `archived`, then `never_recorded` from a capture, then the recorded `404`, then the age.
+  (3) `GET /api/matches/{game_id}` reads `observed_at` with the miss rows it already queries and
+  returns a `download_path` for `beyond_window`. (4) The download route handles `beyond_window` as it
+  handles `obtainable`: one fetch through the replay provider it already builds, the same rate limit,
+  the bytes streamed and not stored. On a `NotFound` for `beyond_window` it records the miss, as T830
+  does past the publication grace, with `observed_at` set to the `now` the route derived availability
+  from, and answers `404` `expired`. On an `obtainable` row a `NotFound` keeps T830's behaviour
+  exactly. No call to the source is added outside `packages/providers`, and nothing is fetched to
+  render the match page. (5) The web contract's list of availability values in `api.ts` adds `beyond_window`.
+  `ReplayAvailabilityList` renders it with the label, tone, secondary line and action label that
+  `packages/design-system/specs/replay-availability.md` specifies (product-designer, before this
+  task); the action is a download, so it is present and pressable. A redirect back with
+  `replay_error=expired` on a row renders that row `expired` with the plain expired reason and no
+  failure callout. Test-first, against the green-tree gate, each failing against the tree before
+  this task with the output in the hand-back: a match past the budget with no evidence derives
+  `beyond_window`, and the derivation still issues no outbound request; a recorded `404` observed
+  past the budget derives `expired`, and one observed inside it derives `never_recorded`; the match
+  detail returns a `download_path` for `beyond_window`; a `beyond_window` download the source serves
+  streams the bytes and writes no object and no `retained_recordings` row; a `beyond_window`
+  download the source answers `404` answers `expired`, writes one miss row whose `observed_at` is
+  past the budget, and a second request answers `expired` with no fetch; the web contract accepts
+  `beyond_window`; the list renders it with its action, and a `replay_error=expired` row renders
+  `expired` without a callout. **Done**: the tests pass, the whole suite, `tsc -b`, every `run:`
+  step of `pr.yml`'s web job and spec_lint on every feature exit 0, and the PR's visual job is green
+  after `baselines.yml` is dispatched.

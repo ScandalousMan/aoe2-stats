@@ -373,12 +373,22 @@ by browsing — which constitution IX forbids in the same sentence FR-012 restat
 
 So the four states FR-025 requires are each derived from something this service already knows:
 
-| State                          | Derived from                                                          |
-| ------------------------------ | --------------------------------------------------------------------- |
-| held in this service's archive | a `replay_captures` row in `stored` — that row only, see below        |
-| obtainable now                 | the match completed inside the capture budget (`capture_budget_days`) |
-| expired                        | the match completed outside it                                        |
-| never recorded by the game     | a prior attempt that answered 404 while inside the window             |
+| State                          | Derived from                                                                       |
+| ------------------------------ | ---------------------------------------------------------------------------------- |
+| held in this service's archive | a `replay_captures` row in `stored` — that row only, see below                     |
+| obtainable now                 | the match completed inside the capture budget (`capture_budget_days`)              |
+| beyond the capture window      | no evidence either way, and the match completed outside the budget                 |
+| expired                        | a recorded 404 observed more than `capture_budget_days` after the match completed  |
+| never recorded by the game     | a recorded 404 observed earlier than that, or a `replay_captures` row `unavailable` |
+
+> **Amended 2026-11-10 (T842, owner ruling).** The table had four rows, and `expired` read "the match
+> completed outside the budget". That claimed expiry by arithmetic, which is wrong for a profile whose
+> window is longer than the budget (below). Past the budget with no evidence, the derivation now says
+> `beyond_window`, and the page offers that point of view as a download to try anyway. The click is
+> the one request this section permits: one recording, asked for by a person, at that moment — the
+> same request an `obtainable` download already makes. The page itself still never asks. A `404` on
+> that click is recorded in `replay_fetch_misses`, and its `observed_at`, past the budget, is what
+> makes the row read `expired`. See "Live reading, 2026-11-10" at the end of this section.
 
 ### History (2026-08-29): the retention window is not settled, and this table assumed it was
 
@@ -432,7 +442,21 @@ fails by construction, not by implementation error. *(History, 2026-08-29: the s
 written against the fixed-epoch reading.)*
 
 This reverses when `docs/data-sources.md` records as settled what sets a profile's window. This
-paragraph is the reason a reader does not have to re-derive any of it from the diff.
+paragraph is the reason a reader does not have to re-derive any of it from the diff. *(History,
+2026-11-10: the paragraph above is superseded by the one below. The defect it accepts was removed
+without probing.)*
+
+**Live reading, 2026-11-10 — the cost removed by asking on click (T842).** The third option the
+paragraph above says does not exist is the click itself. Past the budget, the service no longer
+states a fact it does not have: it says the point of view is outside its capture window and offers
+the download as an attempt. Nothing is fetched to render the page. A click fetches one recording, as
+an `obtainable` download does, under the same per-user limit (FR-028) and without storing the bytes
+(FR-027). If the source serves it, it downloads; if it answers `404`, the user is told it is gone and
+the outcome is recorded, so the page does not offer it again. SC-004 becomes measurable on that basis
+(spec, SC-004's 2026-11-10 amendment). What a `404` means depends on when it is observed, with the
+same discipline the download route applies since T830: inside `REPLAY_PUBLICATION_GRACE_HOURS` it is
+not evidence; past the grace and inside the budget it reads `never_recorded`; past the budget it reads
+`expired`.
 
 **A retained recording is not an archive for this purpose** — decided 2026-08-23. Deriving `archived`
 from a `retained_recordings` row is tempting: the bytes are right there, and past 31 days they are the
@@ -444,8 +468,9 @@ party's recording after the source destroyed its own, which is a second processi
 basis and no register entry. FR-026 says "the signed-in user's **own** point of view", and a retained
 recording generally is not one.
 
-So a match whose recording this service holds only because someone analysed it renders as `expired`,
-with an analysis available. That is the honest answer, and it is the shape of the whole feature: the
+So a match whose recording this service holds only because someone analysed it renders as
+`beyond_window` past the budget, or `expired` once the source has answered `404`, with an analysis
+available. A `beyond_window` click asks the source, never the retained copy. That is the honest answer, and it is the shape of the whole feature: the
 facts survive, the file does not.
 
 The last one is the only state that requires evidence rather than arithmetic, and the evidence

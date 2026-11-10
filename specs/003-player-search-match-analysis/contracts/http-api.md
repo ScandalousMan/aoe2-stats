@@ -124,7 +124,7 @@ established for `civ_name` and `leaderboard_name`.
 
 ```json
 { "profile_id": 196240,
-  "availability": "archived" | "obtainable" | "expired" | "never_recorded",
+  "availability": "archived" | "obtainable" | "beyond_window" | "expired" | "never_recorded",
   "obtainable_until": null,
   "download_path": "/api/matches/500546441/replay/196240" }
 ```
@@ -143,8 +143,10 @@ profile, so no date can be derived that the source will honour; it stays null un
 above shows the null, because an example carrying a date is the way this amendment gets reverted by
 someone reading the shape rather than the sentence.
 
-The four states are exactly FR-025's four. `download_path` and `obtainable_until` are `null` for the
+The states are exactly FR-025's. `download_path` and `obtainable_until` are `null` for the
 two that are not obtainable, so an unobtainable download cannot be rendered as a button that fails.
+**Amended 2026-11-10 (T842)**: five states, not four. `beyond_window` carries a `download_path`;
+`expired` and `never_recorded` are the two without one, and both stand on a recorded `404`.
 
 Behaviour per state:
 
@@ -155,6 +157,11 @@ Behaviour per state:
 - `obtainable` — fetched from the source and streamed to the caller. **The bytes are not stored**
   (FR-027): downloading is not analysing, and constitution IX permits retention only where a person
   deliberately asks for a match to be analysed.
+- `beyond_window` — past `capture_budget_days` with no recorded `404` (FR-025, amended 2026-11-10).
+  Fetched from the source on the click and streamed as `obtainable` is, under the same rate limit
+  and with the bytes not stored. A `404` from the source answers `404` `expired` and records the
+  outcome; the recorded `404`'s `observed_at`, past the budget, makes the point of view read
+  `expired` from then on.
 - `expired`, `never_recorded` — `404` with the distinguishing `code`, if called anyway.
 
 The boundary race is named rather than hidden: a recording offered as `obtainable` that answers 404
@@ -245,6 +252,7 @@ signed-in person and must not be retained by a shared cache or found by a crawle
 | `favourites_limit_reached` | FR-016                                                                            |
 | `rate_limited`             | FR-005, FR-028, FR-040 — carries `retry_after` seconds when known (below)         |
 | `never_recorded`           | the source has no recording for this point of view                                |
+| `expired`                  | the source answered 404 for it later than the capture budget (amended 2026-11-10) |
 | `expired_since_page_load`  | it was obtainable when the page rendered and is not now                           |
 | `analysis_unavailable`     | the window closed and it was never analysed                                       |
 | `analysis_cap_reached`     | FR-047                                                                            |
