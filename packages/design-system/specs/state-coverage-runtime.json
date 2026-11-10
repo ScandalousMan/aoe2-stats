@@ -4028,9 +4028,9 @@
       }
     }
   },
-  "composite-replayavailabilitylist--all-four-states": {
+  "composite-replayavailabilitylist--all-five-states": {
     "importPath": "./src/composites/ReplayAvailabilityList/ReplayAvailabilityList.stories.tsx",
-    "exportName": "AllFourStates",
+    "exportName": "AllFiveStates",
     "files": [
       "packages/design-system/src/composites/ReplayAvailabilityList/index.tsx",
       "packages/design-system/src/primitives/Badge/index.tsx",
@@ -4042,6 +4042,7 @@
         "fullPage": false,
         "mounts": [
           { "component": "Button", "variant": "secondary", "size": "lg", "disabledAt": [] },
+          { "component": "Button", "variant": "secondary", "size": "lg", "disabledAt": [] },
           { "component": "Button", "variant": "secondary", "size": "lg", "disabledAt": [] }
         ]
       },
@@ -4050,6 +4051,7 @@
         "fullPage": false,
         "mounts": [
           { "component": "Button", "variant": "secondary", "size": "lg", "disabledAt": [] },
+          { "component": "Button", "variant": "secondary", "size": "lg", "disabledAt": [] },
           { "component": "Button", "variant": "secondary", "size": "lg", "disabledAt": [] }
         ]
       },
@@ -4057,6 +4059,7 @@
         "clip": false,
         "fullPage": false,
         "mounts": [
+          { "component": "Button", "variant": "secondary", "size": "lg", "disabledAt": [] },
           { "component": "Button", "variant": "secondary", "size": "lg", "disabledAt": [] },
           { "component": "Button", "variant": "secondary", "size": "lg", "disabledAt": [] }
         ]
@@ -4091,6 +4094,86 @@
         "fullPage": false,
         "mounts": [
           { "component": "Button", "variant": "secondary", "size": "lg", "disabledAt": [] }
+        ]
+      }
+    }
+  },
+  "composite-replayavailabilitylist--beyond-window": {
+    "importPath": "./src/composites/ReplayAvailabilityList/ReplayAvailabilityList.stories.tsx",
+    "exportName": "BeyondWindow",
+    "files": [
+      "packages/design-system/src/composites/ReplayAvailabilityList/index.tsx",
+      "packages/design-system/src/primitives/Badge/index.tsx",
+      "packages/design-system/src/primitives/Button/index.tsx"
+    ],
+    "widths": {
+      "375": {
+        "clip": false,
+        "fullPage": false,
+        "mounts": [
+          { "component": "Button", "variant": "secondary", "size": "lg", "disabledAt": [] }
+        ]
+      },
+      "768": {
+        "clip": false,
+        "fullPage": false,
+        "mounts": [
+          { "component": "Button", "variant": "secondary", "size": "lg", "disabledAt": [] }
+        ]
+      },
+      "1280": {
+        "clip": false,
+        "fullPage": false,
+        "mounts": [
+          { "component": "Button", "variant": "secondary", "size": "lg", "disabledAt": [] }
+        ]
+      }
+    }
+  },
+  "composite-replayavailabilitylist--beyond-window-asking": {
+    "importPath": "./src/composites/ReplayAvailabilityList/ReplayAvailabilityList.stories.tsx",
+    "exportName": "BeyondWindowAsking",
+    "files": [
+      "packages/design-system/src/composites/ReplayAvailabilityList/index.tsx",
+      "packages/design-system/src/lib/Spinner.tsx",
+      "packages/design-system/src/primitives/Badge/index.tsx",
+      "packages/design-system/src/primitives/Button/index.tsx"
+    ],
+    "widths": {
+      "375": {
+        "clip": false,
+        "fullPage": false,
+        "mounts": [
+          {
+            "component": "Button",
+            "variant": "secondary",
+            "size": "lg",
+            "disabledAt": ["packages/design-system/src/primitives/Button/index.tsx:252"]
+          }
+        ]
+      },
+      "768": {
+        "clip": false,
+        "fullPage": false,
+        "mounts": [
+          {
+            "component": "Button",
+            "variant": "secondary",
+            "size": "lg",
+            "disabledAt": ["packages/design-system/src/primitives/Button/index.tsx:252"]
+          }
+        ]
+      },
+      "1280": {
+        "clip": false,
+        "fullPage": false,
+        "mounts": [
+          {
+            "component": "Button",
+            "variant": "secondary",
+            "size": "lg",
+            "disabledAt": ["packages/design-system/src/primitives/Button/index.tsx:252"]
+          }
         ]
       }
     }
@@ -4558,6 +4641,7 @@
         "mounts": [
           { "component": "Button", "variant": "secondary", "size": "lg", "disabledAt": [] },
           { "component": "Button", "variant": "secondary", "size": "lg", "disabledAt": [] },
+          { "component": "Button", "variant": "secondary", "size": "lg", "disabledAt": [] },
           { "component": "Button", "variant": "secondary", "size": "lg", "disabledAt": [] }
         ]
       },
@@ -4567,6 +4651,7 @@
         "mounts": [
           { "component": "Button", "variant": "secondary", "size": "lg", "disabledAt": [] },
           { "component": "Button", "variant": "secondary", "size": "lg", "disabledAt": [] },
+          { "component": "Button", "variant": "secondary", "size": "lg", "disabledAt": [] },
           { "component": "Button", "variant": "secondary", "size": "lg", "disabledAt": [] }
         ]
       },
@@ -4574,6 +4659,7 @@
         "clip": false,
         "fullPage": false,
         "mounts": [
+          { "component": "Button", "variant": "secondary", "size": "lg", "disabledAt": [] },
           { "component": "Button", "variant": "secondary", "size": "lg", "disabledAt": [] },
           { "component": "Button", "variant": "secondary", "size": "lg", "disabledAt": [] },
           { "component": "Button", "variant": "secondary", "size": "lg", "disabledAt": [] }
@@ -4597,6 +4683,7 @@
         "mounts": [
           { "component": "Button", "variant": "secondary", "size": "lg", "disabledAt": [] },
           { "component": "Button", "variant": "secondary", "size": "lg", "disabledAt": [] },
+          { "component": "Button", "variant": "secondary", "size": "lg", "disabledAt": [] },
           { "component": "Button", "variant": "secondary", "size": "lg", "disabledAt": [] }
         ]
       },
@@ -4606,6 +4693,7 @@
         "mounts": [
           { "component": "Button", "variant": "secondary", "size": "lg", "disabledAt": [] },
           { "component": "Button", "variant": "secondary", "size": "lg", "disabledAt": [] },
+          { "component": "Button", "variant": "secondary", "size": "lg", "disabledAt": [] },
           { "component": "Button", "variant": "secondary", "size": "lg", "disabledAt": [] }
         ]
       },
@@ -4613,6 +4701,7 @@
         "clip": false,
         "fullPage": false,
         "mounts": [
+          { "component": "Button", "variant": "secondary", "size": "lg", "disabledAt": [] },
           { "component": "Button", "variant": "secondary", "size": "lg", "disabledAt": [] },
           { "component": "Button", "variant": "secondary", "size": "lg", "disabledAt": [] },
           { "component": "Button", "variant": "secondary", "size": "lg", "disabledAt": [] }

@@ -307,15 +307,16 @@ export function matchesQueryOptions(profileId: number, cursor: string | null = n
 // uses (T070e), so this route and the list route answer with one vocabulary, not two.
 
 /** `matches.py`'s `_replay_json` (T338, FR-023) — one per participant, exactly `contracts/
- * http-api.md`'s "Recorded games, per point of view" shape. `download_path` and
- * `obtainable_until` are `null` for `expired` and `never_recorded` (FR-025's whole point: an
- * unobtainable download must not be renderable as a button that then fails), and
+ * http-api.md`'s "Recorded games, per point of view" shape. `download_path` is `null` for
+ * `expired` and `never_recorded` (FR-025's whole point: an unobtainable download must not be
+ * renderable as a button that then fails) and present for `beyond_window` (T842: past the capture
+ * budget with nothing observed — the click asks the source), and
  * `obtainable_until` is `null` in every state today (FR-024, re-derived 2026-10-27 — the
  * retention window belongs to each profile, so no date can be promised) — never invented
  * client-side either way. */
 export interface ApiReplayAvailability {
   profile_id: number
-  availability: 'archived' | 'obtainable' | 'expired' | 'never_recorded'
+  availability: 'archived' | 'obtainable' | 'beyond_window' | 'expired' | 'never_recorded'
   obtainable_until: string | null
   download_path: string | null
 }
@@ -374,7 +375,13 @@ export class MatchDetailResponseShapeError extends Error {
   }
 }
 
-const REPLAY_AVAILABILITIES = ['archived', 'obtainable', 'expired', 'never_recorded'] as const
+const REPLAY_AVAILABILITIES = [
+  'archived',
+  'obtainable',
+  'beyond_window',
+  'expired',
+  'never_recorded',
+] as const
 
 function assertReplayAvailability(
   value: unknown,
@@ -391,7 +398,7 @@ function assertReplayAvailability(
     typeof replay.availability !== 'string' ||
     !REPLAY_AVAILABILITIES.includes(replay.availability as (typeof REPLAY_AVAILABILITIES)[number])
   ) {
-    throw new MatchDetailResponseShapeError(`${path}.availability was not one of the four states`)
+    throw new MatchDetailResponseShapeError(`${path}.availability was not one of the five states`)
   }
   if (!isNullableString(replay.obtainable_until)) {
     throw new MatchDetailResponseShapeError(`${path}.obtainable_until was not string|null`)

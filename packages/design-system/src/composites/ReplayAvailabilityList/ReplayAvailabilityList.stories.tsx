@@ -87,6 +87,21 @@ export const ObtainableNoDate: Story = {
   },
 }
 
+// §5.1 (T842): past the capture budget with nothing observed — an attempt, labelled as one. Badge
+// `warning`, the caveat line, and an enabled "Try to download"; no countdown, no `Callout`.
+export const BeyondWindow: Story = {
+  args: {
+    rows: [{ id: '1', alias: 'DauT', availability: 'beyond_window' }],
+  },
+}
+
+// §5.1 loading: the same row while the source is being asked.
+export const BeyondWindowAsking: Story = {
+  args: {
+    rows: [{ id: '1', alias: 'DauT', availability: 'beyond_window', downloadState: 'loading' }],
+  },
+}
+
 export const Expired: Story = {
   args: {
     rows: [{ id: '1', alias: 'Liereyy', availability: 'expired' }],
@@ -108,10 +123,11 @@ export const NeverRecorded: Story = {
   },
 }
 
-// §11 acceptance: all four states in one frame, each identifiable by label text alone — no two
+// §11 acceptance: all five states in one frame, each identifiable by label text alone — no two
 // sharing a label — and `expired`/`never_recorded` distinct from each other by tone as well
-// (`danger` vs `neutral`), the same as `archived`/`obtainable` (`success` vs `info`).
-export const AllFourStates: Story = {
+// (`danger` vs `neutral`), the same as `archived`/`obtainable` (`success` vs `info`), and
+// `beyond_window` (`warning`) distinct from `obtainable` without colour (§5.1).
+export const AllFiveStates: Story = {
   args: {
     rows: [
       { id: '1', alias: 'GL.TheViper', availability: 'archived' },
@@ -121,8 +137,9 @@ export const AllFourStates: Story = {
         availability: 'obtainable',
         obtainableUntil: inFromNow(6 * DAY_MS),
       },
-      { id: '3', alias: 'Liereyy', availability: 'expired' },
-      { id: '4', alias: 'Yo', availability: 'never_recorded' },
+      { id: '3', alias: 'DauT', availability: 'beyond_window' },
+      { id: '4', alias: 'Liereyy', availability: 'expired' },
+      { id: '5', alias: 'Yo', availability: 'never_recorded' },
     ],
   },
 }
@@ -239,8 +256,9 @@ const realisticRows: ReplayAvailabilityRowData[] = [
     downloadState: 'rate_limited',
     retryAfterSeconds: 17,
   },
-  { id: '4', alias: 'Liereyy', availability: 'expired' },
-  { id: '5', alias: 'Yo', availability: 'never_recorded' },
+  { id: '4', alias: 'F1Re', availability: 'beyond_window' },
+  { id: '5', alias: 'Liereyy', availability: 'expired' },
+  { id: '6', alias: 'Yo', availability: 'never_recorded' },
 ]
 
 export const RealisticMatch: Story = {

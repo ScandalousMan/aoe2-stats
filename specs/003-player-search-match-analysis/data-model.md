@@ -269,6 +269,8 @@ grace a 404 is not read as evidence, since the recording may not be published ye
 is recorded); this table is that record, and
 `derive_availability`'s `recorded_404` parameter reads it.
 
+**Amended 2026-11-10, by T842.** `observed_at` now carries meaning: `derive_availability`'s `recorded_404_at` parameter reads it, a miss observed more than `capture_budget_days` after the match completed derives `expired`, an earlier one `never_recorded`, and a download of a `beyond_window` point of view that the source answers 404 writes the row with `observed_at` set to that request's clock.
+
 **Why not a `replay_captures` row**, which is where the evidence would naturally go. That table is
 claimed by 001's automatic capture pipeline with no ownership filter, so both available statuses are
 forbidden here, in opposite directions: a `pending` row would have the pipeline fetch and **store** a

@@ -122,6 +122,57 @@ describe('toReplayAvailabilityRows', () => {
     expect(rows[0]?.downloadState).toBe('idle')
   })
 
+  // T842: `expired` is an answer, not a failure. A "Try to download" on a `beyond_window` row that
+  // the source answers "not found" comes back with `replay_error=expired` for that row, which
+  // renders the plain `expired` row with no error `Callout` and no boundary-race sentence.
+  it('renders replay_error=expired as the named expired row, with no failure state', () => {
+    const rows = toReplayAvailabilityRows(
+      [
+        participant({
+          profile_id: 1,
+          replay: {
+            profile_id: 1,
+            availability: 'beyond_window',
+            obtainable_until: null,
+            download_path: '/api/matches/700800900/replay/1',
+          },
+        }),
+        participant({
+          profile_id: 2,
+          replay: {
+            profile_id: 2,
+            availability: 'beyond_window',
+            obtainable_until: null,
+            download_path: '/api/matches/700800900/replay/2',
+          },
+        }),
+      ],
+      {},
+      { code: 'expired', profileId: '1' },
+    )
+    expect(rows[0]?.availability).toBe('expired')
+    expect(rows[0]?.expiredSincePageLoad).toBeUndefined()
+    expect(rows[0]?.downloadState).toBe('idle')
+    // Only the row the failure names; its sibling stays an attempt.
+    expect(rows[1]?.availability).toBe('beyond_window')
+  })
+
+  it('carries a beyond_window availability straight off the wire', () => {
+    const rows = toReplayAvailabilityRows([
+      participant({
+        profile_id: 1,
+        replay: {
+          profile_id: 1,
+          availability: 'beyond_window',
+          obtainable_until: null,
+          download_path: '/api/matches/700800900/replay/1',
+        },
+      }),
+    ])
+    expect(rows[0]?.availability).toBe('beyond_window')
+    expect(rows[0]?.downloadState).toBe('idle')
+  })
+
   it('renders rate_limited with the exact retry_after the redirect carried', () => {
     const rows = toReplayAvailabilityRows(
       [participant({ profile_id: 1 })],

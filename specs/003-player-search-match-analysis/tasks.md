@@ -851,7 +851,7 @@ SC-004, US3 scenario 4, research R8, `specs/003-player-search-match-analysis/con
   and `specs/003-player-search-match-analysis/quickstart.md` carry the
 2026-11-10 amendment.
 
-- [ ] T842 Replace the arithmetic `expired` with `beyond_window` and a click that asks the source, in
+- [x] T842 Replace the arithmetic `expired` with `beyond_window` and a click that asks the source, in
   `apps/api/src/aoe2stats_api/availability.py`, `apps/api/src/aoe2stats_api/routers/matches.py`,
   `apps/api/src/aoe2stats_api/routers/replays.py`, `apps/api/tests/test_replay_availability.py`,
   `apps/api/tests/test_replay_download.py`, the match-detail API tests that assert `availability`
@@ -889,6 +889,9 @@ SC-004, US3 scenario 4, research R8, `specs/003-player-search-match-analysis/con
   download the source answers `404` answers `expired`, writes one miss row whose `observed_at` is
   past the budget, and a second request answers `expired` with no fetch; the web contract accepts
   `beyond_window`; the list renders it with its action, and a `replay_error=expired` row renders
-  `expired` without a callout. **Done**: the tests pass, the whole suite, `tsc -b`, every `run:`
+  `expired` without a callout. The existing tests that seed a match past the budget with no recorded
+  `404` and assert `expired`, in the derivation, download, redirect and rate-limit tests, are
+  re-seeded with a miss row observed past the budget, so each still tests what its name says.
+  **Done**: the tests pass, the whole suite, `tsc -b`, every `run:`
   step of `pr.yml`'s web job and spec_lint on every feature exit 0, and the PR's visual job is green
   after `baselines.yml` is dispatched.

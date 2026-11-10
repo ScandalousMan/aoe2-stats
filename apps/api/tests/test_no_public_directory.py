@@ -733,8 +733,11 @@ async def test_match_detail_never_reports_an_archived_replay_the_caller_does_not
     while leaving the state `archived` would not have been enough for either reason.
 
     The match is seeded 60 days old — past the capture budget window — so a `stored` capture is
-    the only thing that could possibly read as anything other than `expired`; if the state read
-    below is not `expired` for the stranger, ownership is not what gated it.
+    the only thing that could possibly read as anything other than `beyond_window` (T842: past the
+    budget with no evidence, formerly `expired`); if the state read below is not `beyond_window` for
+    the stranger, ownership is not what gated it. The stranger's `download_path` is the one any
+    profile past the budget carries, and the route behind it asks the source and never serves the
+    archive, so it discloses nothing about who owns the capture.
 
     The stranger below is not a participant of this match at all, and never links to either
     profile in it — matching `GET /api/matches/{game_id}`'s own "any signed-in caller" reach
@@ -830,10 +833,10 @@ async def test_match_detail_never_reports_an_archived_replay_the_caller_does_not
         "a caller who does not own the capture must never see it reported as archived — FR-026's "
         f"'and only that'. Got {stranger_replay!r}"
     )
-    assert stranger_replay["download_path"] is None, (
-        f"an unowned capture must carry no download path either. Got {stranger_replay!r}"
+    assert stranger_replay["availability"] == "beyond_window", (
+        "an unowned capture must read exactly as a profile with no capture does, past the budget. "
+        f"Got {stranger_replay!r}"
     )
-    assert expected_download_path not in stranger_response.text
 
     client.cookies.clear()
     await _sign_in(client, db_session, owner)

@@ -183,9 +183,10 @@ export function MatchDetailContainer({ gameId, children }: MatchDetailContainerP
     const participant = rawParticipants.find((row) => String(row.profile_id) === rowId)
     const downloadPath = participant?.replay.download_path
     // `download_path` is `null` for `expired`/`never_recorded` (FR-025's whole point: an
-    // unobtainable download must not be renderable as a button that then fails) —
-    // `ReplayAvailabilityList` never offers `DownloadAction` for either state, so this only
-    // guards against a row this component does not itself know about.
+    // unobtainable download must not be renderable as a button that then fails) and present for
+    // `beyond_window` (T842: the click asks the source) — `ReplayAvailabilityList` never offers
+    // `DownloadAction` for the first two, so this only guards against a row this component does
+    // not itself know about.
     if (!downloadPath) {
       return
     }

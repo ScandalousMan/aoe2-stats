@@ -422,8 +422,11 @@ _T335_ACCEPT_HTML_FALLBACK_GAME_ID = 850_100_014
 _T335_CORS_FETCH_GAME_ID = 850_100_015
 
 #: FR-024, amended 2026-08-29 (`research.md` R8): a match far older than the source's rolling,
-#: per-profile retention window (`docs/data-sources.md` §2), which the capture budget sits below —
-#: so a match this old renders `expired` for any profile, whatever its window is on a given day.
+#: per-profile retention window (`docs/data-sources.md` §2), which the capture budget sits below.
+#: T842 (2026-11-10): age alone no longer renders `expired` — a match this old with no evidence
+#: renders `beyond_window` and the click asks the source. It renders `expired` only with a recorded
+#: miss observed past the budget (`_seed_past_budget_miss`), which is how every test below that
+#: asserts `expired` seeds it.
 _T335_DEFINITELY_EXPIRED_AGE = timedelta(days=400)
 
 #: Comfortably inside every credible reading of the retention window.
@@ -446,6 +449,12 @@ _T830_YOUNG_GAME_ID = 850_100_025
 _T830_PAST_GRACE_GAME_ID = 850_100_026
 _T830_AT_BOUNDARY_GAME_ID = 850_100_027
 _T830_JUST_INSIDE_GAME_ID = 850_100_028
+
+#: T842: one game per new test.
+_T842_BEYOND_WINDOW_STREAM_GAME_ID = 850_100_030
+_T842_BEYOND_WINDOW_404_GAME_ID = 850_100_031
+_T842_MISS_INSIDE_BUDGET_GAME_ID = 850_100_032
+_T842_MATCH_DETAIL_GAME_ID = 850_100_033
 
 #: B3 remediation (third-round review): a source 5xx or timeout, both API-caller and browser-
 #: navigation shapes, plus the M12 oracle test's `unavailable` extension below — each gets its own
@@ -525,6 +534,21 @@ async def _seed_open_match(
             completed_at=completed_at,
             source="relic",
             raw_payload={},
+        )
+    )
+
+
+async def _seed_past_budget_miss(
+    db_session: AsyncSession, *, game_id: int, profile_id: int, completed_at: datetime
+) -> None:
+    """T842: the recorded `404` that makes a match past the budget render `expired` rather than
+    `beyond_window` — a `replay_fetch_misses` row whose `observed_at` is more than
+    `capture_budget_days` after `completed_at`."""
+    db_session.add(
+        ReplayFetchMiss(
+            game_id=game_id,
+            profile_id=profile_id,
+            observed_at=completed_at + timedelta(days=get_settings().capture_budget_days, hours=1),
         )
     )
 
@@ -720,6 +744,47 @@ async def test_match_detail_replay_object_offers_one_download_per_participant_po
         other_replay = replay_by_profile[profile_id]
         assert other_replay["availability"] == "obtainable"
         assert other_replay["download_path"] == f"/api/matches/{game_id}/replay/{profile_id}"
+
+
+async def test_match_detail_offers_a_download_path_for_beyond_window_and_none_for_expired(
+    client: TestClient, db_session: AsyncSession
+) -> None:
+    """T842: a match past the budget with no evidence reads `beyond_window` and carries a
+    `download_path` (the click asks the source); a participant whose recorded miss was observed past
+    the budget reads `expired` and carries none. Rendering the page fetches nothing."""
+    game_id = _T842_MATCH_DETAIL_GAME_ID
+    completed_at = datetime.now(UTC) - _T335_DEFINITELY_EXPIRED_AGE
+    caller = await _seed_bare_user(db_session)
+    await _sign_in(client, db_session, caller)
+    await _seed_participant_profile(
+        db_session, profile_id=_T335_PARTICIPANT_A_PROFILE_ID, alias="BeyondWindowDetail"
+    )
+    await _seed_participant_profile(
+        db_session, profile_id=_T335_PARTICIPANT_B_PROFILE_ID, alias="ExpiredDetail"
+    )
+    await _seed_open_match(db_session, game_id=game_id, completed_at=completed_at)
+    for profile_id in (_T335_PARTICIPANT_A_PROFILE_ID, _T335_PARTICIPANT_B_PROFILE_ID):
+        await _seed_match_player(db_session, game_id=game_id, profile_id=profile_id)
+    await _seed_past_budget_miss(
+        db_session,
+        game_id=game_id,
+        profile_id=_T335_PARTICIPANT_B_PROFILE_ID,
+        completed_at=completed_at,
+    )
+    await db_session.commit()
+
+    response = client.get(f"/api/matches/{game_id}")
+
+    assert response.status_code == 200, f"Got {response.status_code}: {response.text}"
+    replay_by_profile = {p["profile_id"]: p["replay"] for p in response.json()["participants"]}
+    beyond = replay_by_profile[_T335_PARTICIPANT_A_PROFILE_ID]
+    assert beyond["availability"] == "beyond_window"
+    assert beyond["download_path"] == (
+        f"/api/matches/{game_id}/replay/{_T335_PARTICIPANT_A_PROFILE_ID}"
+    )
+    expired = replay_by_profile[_T335_PARTICIPANT_B_PROFILE_ID]
+    assert expired["availability"] == "expired"
+    assert expired["download_path"] is None
 
 
 async def test_archived_point_of_view_is_served_from_the_archive_and_logs_access(
@@ -978,7 +1043,8 @@ async def test_two_participants_get_different_filenames_with_no_upstream_name_at
 async def test_expired_point_of_view_answers_404_with_a_distinguishing_code(
     client: TestClient, db_session: AsyncSession
 ) -> None:
-    """FR-025: a point of view whose match completed outside the retention window answers `404`
+    """FR-025: a point of view whose source answered `404` past the capture budget (a recorded miss
+    observed more than `capture_budget_days` after the match completed, T842) answers `404`
     with a `code` that names the reason as `expired` — distinct from `never_recorded`, proven
     alongside it below."""
     game_id = _T335_EXPIRED_GAME_ID
@@ -987,10 +1053,15 @@ async def test_expired_point_of_view_answers_404_with_a_distinguishing_code(
     await _seed_participant_profile(
         db_session, profile_id=_T335_PARTICIPANT_A_PROFILE_ID, alias="ExpiredPointOfView"
     )
-    await _seed_open_match(
-        db_session, game_id=game_id, completed_at=datetime.now(UTC) - _T335_DEFINITELY_EXPIRED_AGE
-    )
+    completed_at = datetime.now(UTC) - _T335_DEFINITELY_EXPIRED_AGE
+    await _seed_open_match(db_session, game_id=game_id, completed_at=completed_at)
     await _seed_match_player(db_session, game_id=game_id, profile_id=_T335_PARTICIPANT_A_PROFILE_ID)
+    await _seed_past_budget_miss(
+        db_session,
+        game_id=game_id,
+        profile_id=_T335_PARTICIPANT_A_PROFILE_ID,
+        completed_at=completed_at,
+    )
     await db_session.commit()
 
     response = client.get(f"/api/matches/{game_id}/replay/{_T335_PARTICIPANT_A_PROFILE_ID}")
@@ -1246,10 +1317,15 @@ async def test_replay_download_rate_limit_applies_on_a_refused_path(
     await _seed_participant_profile(
         db_session, profile_id=_T335_PARTICIPANT_A_PROFILE_ID, alias="RateLimitRefused"
     )
-    await _seed_open_match(
-        db_session, game_id=game_id, completed_at=datetime.now(UTC) - _T335_DEFINITELY_EXPIRED_AGE
-    )
+    completed_at = datetime.now(UTC) - _T335_DEFINITELY_EXPIRED_AGE
+    await _seed_open_match(db_session, game_id=game_id, completed_at=completed_at)
     await _seed_match_player(db_session, game_id=game_id, profile_id=_T335_PARTICIPANT_A_PROFILE_ID)
+    await _seed_past_budget_miss(
+        db_session,
+        game_id=game_id,
+        profile_id=_T335_PARTICIPANT_A_PROFILE_ID,
+        completed_at=completed_at,
+    )
     await db_session.commit()
 
     window_seconds = 60
@@ -1671,10 +1747,15 @@ async def test_expired_point_of_view_redirects_a_browser_to_the_match_page_with_
     await _seed_participant_profile(
         db_session, profile_id=_T335_PARTICIPANT_A_PROFILE_ID, alias="BrowserExpired"
     )
-    await _seed_open_match(
-        db_session, game_id=game_id, completed_at=datetime.now(UTC) - _T335_DEFINITELY_EXPIRED_AGE
-    )
+    completed_at = datetime.now(UTC) - _T335_DEFINITELY_EXPIRED_AGE
+    await _seed_open_match(db_session, game_id=game_id, completed_at=completed_at)
     await _seed_match_player(db_session, game_id=game_id, profile_id=_T335_PARTICIPANT_A_PROFILE_ID)
+    await _seed_past_budget_miss(
+        db_session,
+        game_id=game_id,
+        profile_id=_T335_PARTICIPANT_A_PROFILE_ID,
+        completed_at=completed_at,
+    )
     await db_session.commit()
 
     browser_response = client.get(
@@ -1808,10 +1889,15 @@ async def test_expired_point_of_view_with_accept_html_and_no_sec_fetch_mode_redi
     await _seed_participant_profile(
         db_session, profile_id=_T335_PARTICIPANT_A_PROFILE_ID, alias="AcceptHtmlFallback"
     )
-    await _seed_open_match(
-        db_session, game_id=game_id, completed_at=datetime.now(UTC) - _T335_DEFINITELY_EXPIRED_AGE
-    )
+    completed_at = datetime.now(UTC) - _T335_DEFINITELY_EXPIRED_AGE
+    await _seed_open_match(db_session, game_id=game_id, completed_at=completed_at)
     await _seed_match_player(db_session, game_id=game_id, profile_id=_T335_PARTICIPANT_A_PROFILE_ID)
+    await _seed_past_budget_miss(
+        db_session,
+        game_id=game_id,
+        profile_id=_T335_PARTICIPANT_A_PROFILE_ID,
+        completed_at=completed_at,
+    )
     await db_session.commit()
 
     response = client.get(
@@ -1847,10 +1933,15 @@ async def test_expired_point_of_view_with_sec_fetch_mode_cors_answers_json_never
     await _seed_participant_profile(
         db_session, profile_id=_T335_PARTICIPANT_A_PROFILE_ID, alias="CorsFetch"
     )
-    await _seed_open_match(
-        db_session, game_id=game_id, completed_at=datetime.now(UTC) - _T335_DEFINITELY_EXPIRED_AGE
-    )
+    completed_at = datetime.now(UTC) - _T335_DEFINITELY_EXPIRED_AGE
+    await _seed_open_match(db_session, game_id=game_id, completed_at=completed_at)
     await _seed_match_player(db_session, game_id=game_id, profile_id=_T335_PARTICIPANT_A_PROFILE_ID)
+    await _seed_past_budget_miss(
+        db_session,
+        game_id=game_id,
+        profile_id=_T335_PARTICIPANT_A_PROFILE_ID,
+        completed_at=completed_at,
+    )
     await db_session.commit()
 
     response = client.get(
@@ -1862,6 +1953,110 @@ async def test_expired_point_of_view_with_sec_fetch_mode_cors_answers_json_never
     assert response.status_code == 404, f"Got {response.status_code}: {response.text}"
     assert "location" not in response.headers
     assert response.json()["error"]["code"] == "expired"
+
+
+# ================================================================================================
+# T842 (2026-11-10) - `beyond_window`: past the budget with no evidence, the click asks the source.
+# ================================================================================================
+
+
+async def test_beyond_window_download_the_source_serves_streams_and_stores_nothing(
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A match past the budget with no evidence is `beyond_window`; the route handles it as
+    `obtainable`: one fetch, the bytes streamed, no object written, no `retained_recordings` row,
+    and no miss row."""
+    game_id = _T842_BEYOND_WINDOW_STREAM_GAME_ID
+    await _seed_obtainable_pov(
+        client,
+        db_session,
+        game_id=game_id,
+        completed_at=datetime.now(UTC) - _T335_DEFINITELY_EXPIRED_AGE,
+    )
+    fake_bytes = b"FAKE-AOE2RECORD-ZIP-BYTES-FOR-T842"
+    fake_upstream = _FakeAoemsUpstream(
+        httpx.Response(
+            200,
+            content=fake_bytes,
+            headers={
+                "content-disposition": f"attachment; filename=AgeIIDE_Replay_{game_id}.zip",
+                "content-type": "application/zip",
+            },
+        )
+    )
+    _install_fake_aoems_upstream(monkeypatch, fake_upstream)
+    tracking_store = _TrackingObjectStore()
+    client.app.dependency_overrides[get_object_store] = lambda: tracking_store  # type: ignore[attr-defined]
+
+    response = client.get(f"/api/matches/{game_id}/replay/{_T335_PARTICIPANT_A_PROFILE_ID}")
+
+    assert response.status_code == 200, f"Got {response.status_code}: {response.text}"
+    assert response.content == fake_bytes
+    assert fake_upstream.request_count == 1
+    assert tracking_store.put_calls == []
+    retained_count = (
+        await db_session.execute(
+            select(func.count())
+            .select_from(RetainedRecording)
+            .where(RetainedRecording.game_id == game_id)
+        )
+    ).scalar_one()
+    assert retained_count == 0
+    assert await _count_fetch_misses(db_session, game_id=game_id) == 0
+
+
+async def test_beyond_window_download_the_source_404s_answers_expired_and_records_one_miss(
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The source answering `404` for a `beyond_window` point of view settles it: `expired` (not
+    `expired_since_page_load`), one miss row observed past the budget, and a second request answers
+    `expired` from that row with no fetch."""
+    game_id = _T842_BEYOND_WINDOW_404_GAME_ID
+    completed_at = datetime.now(UTC) - _T335_DEFINITELY_EXPIRED_AGE
+    await _seed_obtainable_pov(client, db_session, game_id=game_id, completed_at=completed_at)
+    fake_upstream = _FakeAoemsUpstream(httpx.Response(404, text="Not Found"))
+    _install_fake_aoems_upstream(monkeypatch, fake_upstream)
+
+    url = f"/api/matches/{game_id}/replay/{_T335_PARTICIPANT_A_PROFILE_ID}"
+    first = client.get(url)
+    assert first.status_code == 404, f"Got {first.status_code}: {first.text}"
+    assert first.json()["error"]["code"] == "expired"
+    assert fake_upstream.request_count == 1
+    assert await _count_fetch_misses(db_session, game_id=game_id) == 1
+    observed_at = (
+        await db_session.execute(
+            select(ReplayFetchMiss.observed_at).where(ReplayFetchMiss.game_id == game_id)
+        )
+    ).scalar_one()
+    assert observed_at - completed_at > timedelta(days=get_settings().capture_budget_days)
+
+    second = client.get(url)
+    assert second.status_code == 404, f"Got {second.status_code}: {second.text}"
+    assert second.json()["error"]["code"] == "expired"
+    assert fake_upstream.request_count == 1, "a recorded miss past the budget must not fetch again"
+
+
+async def test_a_miss_observed_inside_the_budget_on_an_old_match_answers_never_recorded(
+    client: TestClient, db_session: AsyncSession
+) -> None:
+    """The contrast case: a recorded miss observed inside the budget is `never_recorded`, however
+    old the match is now."""
+    game_id = _T842_MISS_INSIDE_BUDGET_GAME_ID
+    completed_at = datetime.now(UTC) - _T335_DEFINITELY_EXPIRED_AGE
+    await _seed_obtainable_pov(client, db_session, game_id=game_id, completed_at=completed_at)
+    db_session.add(
+        ReplayFetchMiss(
+            game_id=game_id,
+            profile_id=_T335_PARTICIPANT_A_PROFILE_ID,
+            observed_at=completed_at + timedelta(days=1),
+        )
+    )
+    await db_session.commit()
+
+    response = client.get(f"/api/matches/{game_id}/replay/{_T335_PARTICIPANT_A_PROFILE_ID}")
+
+    assert response.status_code == 404, f"Got {response.status_code}: {response.text}"
+    assert response.json()["error"]["code"] == "never_recorded"
 
 
 # ================================================================================================

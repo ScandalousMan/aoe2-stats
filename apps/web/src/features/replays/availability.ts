@@ -14,6 +14,9 @@ import type { ReplayDownloadFailure } from './downloadFailure'
 //: other failure code fall back to `ReplayAvailabilityList`'s two `Callout` states instead.
 const BOUNDARY_RACE_CODE = 'expired_since_page_load'
 const RATE_LIMITED_CODE = 'rate_limited'
+//: T842: a "Try to download" on a `beyond_window` row that the source answered "not found". An
+//: answer, not a failure: the row renders `expired` with the plain reason and no `Callout`.
+const EXPIRED_CODE = 'expired'
 
 /**
  * `ApiMatchParticipant[]` (`matches/api.ts`, carrying T338's per-participant `replay` object) to
@@ -44,7 +47,11 @@ const RATE_LIMITED_CODE = 'rate_limited'
  *   (M9, 2026-08-29): entering that state without the figure it documents would be honoured only
  *   by accident, on the strength of the component's own null-check silently choosing the right
  *   words rather than this mapping choosing them on purpose.
- * - every other code (`never_recorded`, `expired`, `not_found`, `source_unavailable`) renders the
+ * - `expired` (T842) is an answer, not a failure: the source was asked for a `beyond_window`
+ *   recording and said "not found". It overrides that row's `availability` to `'expired'` with
+ *   `expiredSincePageLoad` unset (the plain "no longer available" reason, not the boundary-race
+ *   sentence), `downloadState` `'idle'` and no `Callout`; the action is absent for `expired`.
+ * - every other code (`never_recorded`, `not_found`, `source_unavailable`) renders the
  *   generic "could not start that download" `Callout` — the request never reached a state worth a
  *   more specific message of its own. `source_unavailable` in particular (2026-08-29) is a source
  *   5xx or timeout from `aoe.ms`, never evidence the recording itself is gone — folding it into
@@ -70,6 +77,7 @@ export function toReplayAvailabilityRows(
     }
     const rowFailure = failure && failure.profileId === id ? failure : undefined
     const isBoundaryRace = rowFailure?.code === BOUNDARY_RACE_CODE
+    const isExpiredAnswer = rowFailure?.code === EXPIRED_CODE
     // M9: `rate_limited` only when the server actually sent a figure to show — see this
     // function's own docstring. Without one, `rowFailure` still exists and still isn't the
     // boundary race, so it falls through to the generic `'error'` branch below on its own.
@@ -80,12 +88,13 @@ export function toReplayAvailabilityRows(
       {
         id,
         alias: participant.alias ?? 'Unknown player',
-        availability: isBoundaryRace ? 'expired' : participant.replay.availability,
+        availability:
+          isBoundaryRace || isExpiredAnswer ? 'expired' : participant.replay.availability,
         obtainableUntil: participant.replay.obtainable_until,
         expiredSincePageLoad: isBoundaryRace ? true : undefined,
         downloadState: isRateLimited
           ? 'rate_limited'
-          : rowFailure && !isBoundaryRace
+          : rowFailure && !isBoundaryRace && !isExpiredAnswer
             ? 'error'
             : (downloadStates[id] ?? 'idle'),
         retryAfterSeconds: isRateLimited ? rowFailure.retryAfterSeconds : undefined,

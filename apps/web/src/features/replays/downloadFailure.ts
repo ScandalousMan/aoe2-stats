@@ -46,9 +46,9 @@ const KNOWN_REPLAY_ERROR_CODES = new Set([
 
 export interface ReplayDownloadFailure {
   /** `contracts/http-api.md`'s stable `code` — `expired_since_page_load`, `rate_limited`, or any
-   * other failure this route can raise (`never_recorded`, `expired`, `not_found`,
-   * `source_unavailable`), all folded into the same generic "could not start" alert by
-   * `availability.ts`'s own mapping. */
+   * other failure this route can raise (`never_recorded`, `not_found`, `source_unavailable`),
+   * all folded into the same generic "could not start" alert by `availability.ts`'s own mapping.
+   * `expired` is the one exception (T842): an answer, rendered as the named `expired` row. */
   code: string
   /** `ReplayAvailabilityRowData.id` — `String(profile_id)`, matching `availability.ts`'s own key
    * (`toReplayAvailabilityRows`), never rebuilt or re-derived from anything else on this page. */

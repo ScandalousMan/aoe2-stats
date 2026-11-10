@@ -19,14 +19,105 @@ describe('ReplayAvailabilityList', () => {
     expect(screen.getAllByRole('listitem')).toHaveLength(2)
   })
 
-  it('gives all four states their own, never-shared label', () => {
+  describe('beyond_window (T842, replay-availability.md §5.1)', () => {
+    const BEYOND_LINE =
+      'This match is outside our capture window; trying asks the game for this recording now, and it may no longer be available.'
+
+    it('renders the exact label, the exact SecondaryLine and a pressable "Try to download"', () => {
+      render(
+        <ReplayAvailabilityList
+          rows={[{ id: '1', alias: 'Hera', availability: 'beyond_window' }]}
+        />,
+      )
+      expect(screen.getByText('Outside capture window')).toBeInTheDocument()
+      expect(screen.getByText(BEYOND_LINE)).toBeInTheDocument()
+      const button = screen.getByRole('button', { name: 'Try to download' })
+      expect(button).not.toBeDisabled()
+      expect(screen.queryByRole('button', { name: 'Download' })).toBeNull()
+      expect(screen.queryByRole('alert')).toBeNull()
+    })
+
+    it('describes the action by the SecondaryLine, and the badge by it too', () => {
+      render(
+        <ReplayAvailabilityList
+          rows={[{ id: '1', alias: 'Hera', availability: 'beyond_window' }]}
+        />,
+      )
+      const line = screen.getByText(BEYOND_LINE)
+      const button = screen.getByRole('button', { name: 'Try to download' })
+      expect(button).toHaveAttribute('aria-describedby', line.id)
+      const badgeWrapper = screen
+        .getByText('Outside capture window')
+        .closest('span[aria-describedby]')
+      expect(badgeWrapper).toHaveAttribute('aria-describedby', line.id)
+    })
+
+    it('ignores obtainableUntil: no countdown, ever', () => {
+      render(
+        <ReplayAvailabilityList
+          rows={[
+            {
+              id: '1',
+              alias: 'Hera',
+              availability: 'beyond_window',
+              obtainableUntil: inFromNow(60_000),
+            },
+          ]}
+        />,
+      )
+      expect(screen.queryByText(/left/)).toBeNull()
+      expect(screen.getByText(BEYOND_LINE)).toBeInTheDocument()
+    })
+
+    it('shows the asking label while loading, never "Preparing your download…"', () => {
+      render(
+        <ReplayAvailabilityList
+          rows={[
+            { id: '1', alias: 'Hera', availability: 'beyond_window', downloadState: 'loading' },
+          ]}
+        />,
+      )
+      expect(screen.getByText('Asking the game for this recording…')).toBeInTheDocument()
+      expect(screen.queryByText('Preparing your download…')).toBeNull()
+    })
+
+    it('keeps "Download" for obtainable and archived rows beside it', () => {
+      render(
+        <ReplayAvailabilityList
+          rows={[
+            { id: '1', alias: 'GL.TheViper', availability: 'archived' },
+            { id: '2', alias: 'Hera', availability: 'obtainable', obtainableUntil: null },
+            { id: '3', alias: 'DauT', availability: 'beyond_window' },
+          ]}
+        />,
+      )
+      expect(screen.getAllByRole('button', { name: 'Download' })).toHaveLength(2)
+      expect(screen.getAllByRole('button', { name: 'Try to download' })).toHaveLength(1)
+    })
+
+    it('calls onDownload with the row id', async () => {
+      const onDownload = vi.fn()
+      render(
+        <ReplayAvailabilityList
+          rows={[{ id: 'row-7', alias: 'Hera', availability: 'beyond_window' }]}
+          onDownload={onDownload}
+        />,
+      )
+      await userEvent.click(screen.getByRole('button', { name: 'Try to download' }))
+      expect(onDownload).toHaveBeenCalledWith('row-7')
+    })
+  })
+
+  it('gives all five states their own, never-shared label', () => {
     const rows: ReplayAvailabilityRowData[] = [
       { id: '1', alias: 'GL.TheViper', availability: 'archived' },
       { id: '2', alias: 'Hera', availability: 'obtainable', obtainableUntil: inFromNow(60_000) },
       { id: '3', alias: 'Liereyy', availability: 'expired' },
       { id: '4', alias: 'Yo', availability: 'never_recorded' },
+      { id: '5', alias: 'DauT', availability: 'beyond_window' },
     ]
     render(<ReplayAvailabilityList rows={rows} />)
+    expect(screen.getByText('Outside capture window')).toBeInTheDocument()
     expect(screen.getByText('In our archive')).toBeInTheDocument()
     expect(screen.getByText('Obtainable')).toBeInTheDocument()
     expect(screen.getByText('Expired')).toBeInTheDocument()

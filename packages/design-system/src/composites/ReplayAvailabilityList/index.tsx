@@ -11,9 +11,11 @@ import { Skeleton } from '../../primitives/Skeleton'
 
 // packages/design-system/specs/replay-availability.md
 
-/** FR-025's four, exactly — never collapsed the way `CaptureStateBadge` collapses its own seven
- * raw statuses (§3: "the four states never share a label"). */
-export type ReplayAvailability = 'archived' | 'obtainable' | 'expired' | 'never_recorded'
+/** FR-025's five, exactly — never collapsed the way `CaptureStateBadge` collapses its own seven
+ * raw statuses (§3: "the states never share a label"). `beyond_window` (T842, §5.1) is past the
+ * capture budget with nothing observed: an attempt, labelled as one. */
+export type ReplayAvailability =
+  'archived' | 'obtainable' | 'beyond_window' | 'expired' | 'never_recorded'
 
 /** The state of this row's own download attempt — independent of `availability`. `idle` covers
  * both "never tried" and "tried, then returned to default" (§5's own rule: a failed attempt
@@ -60,19 +62,25 @@ export interface ReplayAvailabilityListProps {
   className?: string
 }
 
-// §3 — one label and one tone per state, never chosen by the caller. `expired` and
+// §3 — one label and one tone per state, never chosen by the caller. `beyond_window` is `warning`
+// (unknown, may or may not — §5.1). `expired` and
 // `never_recorded` differ in tone (danger vs neutral), not only in label (§3's own "belt and
 // braces" note); `archived` and `obtainable` differ too (success vs info), even though both show a
 // `DownloadAction`.
 const STATE_META: Record<ReplayAvailability, { label: string; variant: BadgeVariant }> = {
   archived: { label: 'In our archive', variant: 'success' },
   obtainable: { label: 'Obtainable', variant: 'info' },
+  beyond_window: { label: 'Outside capture window', variant: 'warning' },
   expired: { label: 'Expired', variant: 'danger' },
   never_recorded: { label: 'Never recorded', variant: 'neutral' },
 }
 
 // §3.1 — exact strings, not placeholders. Neither implies fault or invites an upload (FR-027);
 // neither promises the fact could ever have been otherwise.
+// §5.1 — exact string: it does not promise the file exists, implies no fault, and says what the
+// click does.
+const BEYOND_WINDOW_REASON =
+  'This match is outside our capture window; trying asks the game for this recording now, and it may no longer be available.'
 const EXPIRED_REASON = 'This recording is no longer available from the game.'
 const NEVER_RECORDED_REASON = 'The game did not record this point of view.'
 // §5 "the boundary race" — distinct from `EXPIRED_REASON` above: the recording existed a moment
@@ -118,6 +126,8 @@ function secondaryLineFor(row: ReplayAvailabilityRowData, now: number): string |
       if (remainingMs <= 0) return undefined
       return describeCaptureCountdown(row.obtainableUntil, now, 'compact')
     }
+    case 'beyond_window':
+      return BEYOND_WINDOW_REASON
     case 'expired':
       return row.expiredSincePageLoad ? EXPIRED_SINCE_PAGE_LOAD_REASON : EXPIRED_REASON
     case 'never_recorded':
@@ -180,8 +190,13 @@ function ReplayAvailabilityRow({
   const secondaryId = useId()
   const meta = STATE_META[row.availability]
   const secondary = secondaryLineFor(row, now)
-  // §3: present only for `archived` and `obtainable`, absent — never disabled — otherwise (§5).
-  const canDownload = row.availability === 'archived' || row.availability === 'obtainable'
+  // §3: present for `archived`, `obtainable` and `beyond_window`, absent — never disabled —
+  // otherwise (§5).
+  const canDownload =
+    row.availability === 'archived' ||
+    row.availability === 'obtainable' ||
+    row.availability === 'beyond_window'
+  const isAttempt = row.availability === 'beyond_window'
   const downloadState = row.downloadState ?? 'idle'
   const showFailure = downloadState === 'error' || downloadState === 'rate_limited'
 
@@ -211,11 +226,15 @@ function ReplayAvailabilityRow({
             variant="secondary"
             size="lg"
             loading={downloadState === 'loading'}
-            loadingLabel="Preparing your download…"
+            loadingLabel={
+              isAttempt ? 'Asking the game for this recording…' : 'Preparing your download…'
+            }
+            // §10: the caveat is heard before pressing "Try to download".
+            aria-describedby={isAttempt && secondary ? secondaryId : undefined}
             onClick={() => onDownload?.(row.id)}
             className={cx(!isMd && 'w-full', isMd && 'shrink-0')}
           >
-            Download
+            {isAttempt ? 'Try to download' : 'Download'}
           </Button>
         )}
       </div>
