@@ -96,6 +96,8 @@ from aoe2stats_ingester.discover import DiscoverStage
 from aoe2stats_providers.base import (
     EnrichedParticipant,
     MatchEnrichment,
+    PlayerSearchPage,
+    PlayerSearchResult,
     RawMatch,
     RawProfile,
 )
@@ -2723,6 +2725,98 @@ async def test_an_on_view_refresh_that_starts_after_an_erasure_writes_the_alias_
 
     row = await _stored_profile(session_factory, _SUBJECT)
     assert (row.alias, row.country) == ("RealSubject", "SE")
+
+
+_SUBJECT_AVATAR_HASH = "ab" * 20
+
+
+class _AvatarCompanion:
+    """`PlayerSearchProvider` that is not degraded and answers one hit carrying an avatar hash for
+    `_SUBJECT`, so that `_fetch_profile_identity` reaches its avatar step. `searches` records the
+    queries it was asked."""
+
+    def __init__(self) -> None:
+        self.searches: list[str] = []
+
+    def is_degraded(self) -> bool:
+        return False
+
+    async def search_players(self, query: str, *, limit: int) -> PlayerSearchPage:
+        self.searches.append(query)
+        hit = PlayerSearchResult(
+            profile_id=_SUBJECT,
+            alias=query,
+            country="SE",
+            games_played=None,
+            clan=None,
+            unverified_steam_id=None,
+            avatar_hash=_SUBJECT_AVATAR_HASH,
+        )
+        return PlayerSearchPage(results=[hit], has_more=False)
+
+
+def _install_avatar_companion(monkeypatch: pytest.MonkeyPatch) -> _AvatarCompanion:
+    companion = _AvatarCompanion()
+    monkeypatch.setattr(players_router, "_build_search_provider", lambda _s: companion)
+    return companion
+
+
+async def test_an_on_view_refresh_that_waited_on_an_erasure_withholds_the_avatar_hash(
+    http: httpx.AsyncClient,
+    engine: AsyncEngine,
+    session_factory: async_sessionmaker[AsyncSession],
+    fast_deadlock_detection: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """T459x: the race of (b) with a companion search that answers a hash for SUBJECT, so the
+    avatar step of `_persist_on_view_refresh` is reached. The hash was fetched before the erasure
+    committed, so it must not be written onto the masked row."""
+    await _seed_stored_matches(session_factory, _STORED_OLD_GAMES, completed_at=_MATCH_COMPLETED_AT)
+    viewer_cookie = await _seed_viewer(http, session_factory)
+    await _seed_owner_of(http, session_factory, (_SUBJECT,))
+    _install_viewing_providers(
+        monkeypatch,
+        _FakeRelic([_raw_match(_STORED_OLD_GAMES[0], (_SUBJECT, _ALPHA))], [_REAL_SUBJECT]),
+    )
+    companion = _install_avatar_companion(monkeypatch)
+    race = _ErasureWindowRace(engine)
+    race.install(monkeypatch)
+
+    outcomes = await asyncio.gather(
+        _view_subject(http, viewer_cookie), _erase(http), return_exceptions=True
+    )
+
+    assert not [o for o in outcomes if isinstance(o, BaseException)], outcomes
+    view, erasure = outcomes
+    assert isinstance(erasure, httpx.Response) and erasure.status_code == 200, erasure
+    assert isinstance(view, httpx.Response) and view.status_code == 200, view
+    assert race.rewrote_keys.is_set() and race.released_by == "lock_wait", race.released_by
+    # The avatar step was reached: the fetch asked for the real alias and got the hash back.
+    assert companion.searches == [_REAL_SUBJECT.alias], companion.searches
+
+    row = await _stored_profile(session_factory, _SUBJECT)
+    assert (row.alias, row.country, row.avatar_hash) == (PSEUDONYMISED_ALIAS, None, None)
+
+
+async def test_an_on_view_refresh_that_starts_after_an_erasure_writes_the_avatar_hash_again(
+    http: httpx.AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """T459x contrast, owner's ruling of 2026-11-10: a later sighting is written, so the hash the
+    race test withholds is what this route writes when no erasure was in flight."""
+    await _seed_stored_matches(session_factory, _STORED_OLD_GAMES, completed_at=_MATCH_COMPLETED_AT)
+    viewer_cookie = await _seed_viewer(http, session_factory)
+    await _seed_owner_of(http, session_factory, (_SUBJECT,))
+    assert (await _erase(http)).status_code == 200
+    _install_viewing_providers(monkeypatch, _FakeRelic([], [_REAL_SUBJECT]))
+    companion = _install_avatar_companion(monkeypatch)
+
+    assert (await _view_subject(http, viewer_cookie)).status_code == 200
+
+    assert companion.searches == [_REAL_SUBJECT.alias], companion.searches
+    row = await _stored_profile(session_factory, _SUBJECT)
+    assert row.avatar_hash == _SUBJECT_AVATAR_HASH
 
 
 async def test_a_batch_racing_a_second_pseudonymisation_of_a_masked_row_adds_no_row(
