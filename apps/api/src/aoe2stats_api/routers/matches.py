@@ -396,8 +396,7 @@ async def fetch_colour_fills(
 async def persist_colour_fills(db_session: AsyncSession, fills: dict[tuple[int, int], int]) -> None:
     """T459a: write `fills` alone, with no batch beside them. One savepoint, one ascending lock
     pass, one update; a lock conflict rolls the fills back and the page is served as stored, like
-    every other on-view write. T459h: a profile `persist_matches_and_profiles` withholds (an erasure
-    committed while it waited) gets no fill; this route writes nothing else after that call."""
+    every other on-view write."""
     if not fills:
         return
     async with discover.savepoint_tolerating_lock_conflicts(db_session):

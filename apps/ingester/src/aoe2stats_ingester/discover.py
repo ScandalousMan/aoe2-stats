@@ -194,12 +194,16 @@ def _chunk(items: Sequence[int], size: int) -> Iterator[Sequence[int]]:
 # would read the statement's snapshot, taken before the erasure committed, and miss it. A row the
 # `WHERE` rejects is still locked, so the lock order is unchanged; it is not updated and not
 # returned, and the caller writes nothing else for it. Error direction: the guard can only
-# withhold writes. Any other transaction that touched a masked row inside the window changes its
-# version too and the row is withheld as well, which errs toward writing less about an erased
-# person. Residue, a fact and not a gap this code means to close: an erasure that commits before
-# the writer's anchor read is not detected, and the writer writes as a later sighting of any
-# non-user does (owner's ruling of 2026-11-10: only the race window is closed, nothing is
-# remembered about an erased id).
+# withhold writes. A profile already masked before the anchor read whose row any other
+# transaction touches inside the window (for example a concurrent discovery or reconcile batch
+# re-sighting it, which keeps the masked alias, or the objection route's `touch_aoe_profile`) gets
+# a new row version and is withheld too. That writer then writes no `match_players` row for it,
+# and the row is written only when the match is fetched again. This only ever errs toward writing
+# less about an erased person. A Relic player whose real alias equals `PSEUDONYMISED_ALIAS` is
+# treated as masked by the guard, with the same consequence. Residue, a fact and not a gap this
+# code means to close: an erasure that commits before the writer's anchor read is not detected,
+# and the writer writes as a later sighting of any non-user does (owner's ruling of 2026-11-10:
+# only the race window is closed, nothing is remembered about an erased id).
 
 #: Rows per bulk statement. `match_players` binds 8 columns and `matches` 9 per row; psycopg's
 #: ceiling is 65,535 bind parameters per statement, so 5,000 rows stays well inside it. A batch
@@ -309,10 +313,14 @@ async def touch_aoe_profiles(
     unchanged. The `WHERE` reads only the target row's own columns: a subquery would read the
     statement's snapshot, taken before an erasure that this statement waited on committed. The
     profile ids that were sent and not returned are returned as the withheld set; the caller
-    writes nothing else for them. The guard can only withhold: a masked row any other transaction
-    touched inside the window is withheld too, which errs toward writing less about an erased
-    person. An erasure that committed before the anchor was read is not detected (owner's ruling
-    of 2026-11-10). Without `masked_anchor` nothing is withheld and the statement is as before.
+    writes nothing else for them. The guard can only withhold: a profile already masked before the
+    anchor read whose row any other transaction touches inside the window (for example a
+    concurrent discovery or reconcile batch re-sighting it, or the objection route's
+    `touch_aoe_profile`) gets a new row version and is withheld too. That writer writes no
+    `match_players` row for it, and the row is written only when the match is fetched again. This
+    only ever errs toward writing less about an erased person. An erasure that committed before the
+    anchor was read is not detected (owner's ruling of 2026-11-10). Without `masked_anchor` nothing
+    is withheld and the statement is as before.
     """
     merged = merge_sightings((), sightings)
     now = datetime.now(UTC)
@@ -577,9 +585,11 @@ async def persist_matches_and_profiles(
     call writes no `aoe_profiles` update, no `match_players` row and no colour fill, and leaves it
     out of the result, so `DiscoverStage` and `ReconcileStage` enqueue no capture for it; the
     caller must likewise skip its own later writes for `PersistedBatch.withheld`. The guard can
-    only withhold (module notes). An erasure that commits before the anchor read is not detected:
-    the call writes that profile as a later sighting of any non-user is written (owner's ruling of
-    2026-11-10).
+    only withhold, and that includes a profile already masked before the anchor that another
+    transaction touched inside the window: no `match_players` row is written for it until the
+    match is fetched again (module notes). An erasure that commits before the anchor read is not
+    detected: the call writes that profile as a later sighting of any non-user is written (owner's
+    ruling of 2026-11-10).
 
     Nothing in the caller's transaction may write an earlier table or a lower key afterwards; a
     caller that needs more rows (a capture enqueue, a rating snapshot) writes them after this
