@@ -199,9 +199,9 @@ against).
      carry no semantic weight at all, while `Callout` always does. The four members the two scales
      share (`info`/`success`/`warning`/`danger`) are already spelled identically in both
      (`capture-state-badge.md` §5).
-   - `ReplayAvailabilityList`'s `ReplayAvailability`/`ReplayDownloadState` carry `never_recorded`
-     and `rate_limited` in `snake_case`, against this rule's own kebab-case default, because both
-     values are deliberately the API's own wire spelling passed straight through
+   - `ReplayAvailabilityList`'s `ReplayAvailability`/`ReplayDownloadState` carry `never_recorded`,
+     `beyond_window` and `rate_limited` in `snake_case`, against the kebab-case default, because all
+     are deliberately the API's own wire spelling passed straight through
      (`availability.py`'s `Availability` enum; the `rate_limited` error `code`) rather than
      translated — `replay-availability.md` §3 documents the same string being read on both sides
      of the wire. `SearchBoxState`'s `rate-limited` is the ordinary case: UI-invented vocabulary with
