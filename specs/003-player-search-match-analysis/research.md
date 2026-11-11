@@ -371,7 +371,7 @@ cheap existence probe. Asking the source means downloading the whole recording, 
 every participant of every match a user opens would be a bulk read of third-party recordings driven
 by browsing — which constitution IX forbids in the same sentence FR-012 restates.
 
-So the four states FR-025 requires are each derived from something this service already knows:
+So the five states FR-025 requires are each derived from something this service already knows:
 
 | State                          | Derived from                                                                       |
 | ------------------------------ | ---------------------------------------------------------------------------------- |

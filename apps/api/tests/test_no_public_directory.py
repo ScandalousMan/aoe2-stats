@@ -92,6 +92,7 @@ from datetime import UTC, datetime, timedelta
 import httpx
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from aoe2stats_api import security
@@ -105,6 +106,7 @@ from aoe2stats_storage.models import (
     ProfileLink,
     RatingSnapshot,
     ReplayCapture,
+    ReplayFetchMiss,
     SteamIdentity,
     User,
 )
@@ -598,35 +600,70 @@ async def test_a_profiles_history_never_discloses_its_owners_other_profiles(
     assert _MULTI_OPPONENT_ALIAS_TWO not in response.text
 
 
+_AOEMS_HOST = "aoe.ms"
+
+
+class _FakeAoemsUpstream404:
+    """Answers every call to the replay source with `404`, counting the calls. A minimal mirror of
+    `test_replay_download.py`'s `_FakeAoemsUpstream` (test modules here are not a package, so it is
+    not imported)."""
+
+    def __init__(self) -> None:
+        self.request_count = 0
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        self.request_count += 1
+        return httpx.Response(404, text="Not Found")
+
+
+def _install_fake_aoems_upstream(
+    monkeypatch: pytest.MonkeyPatch, fake: _FakeAoemsUpstream404
+) -> None:
+    async def fake_send(
+        self: httpx.AsyncClient, request: httpx.Request, **kwargs: object
+    ) -> httpx.Response:
+        if request.url.host != _AOEMS_HOST:
+            raise AssertionError(f"unexpected outbound request to {request.url}")
+        return fake(request)
+
+    monkeypatch.setattr(httpx.AsyncClient, "send", fake_send)
+
+
+async def _count_fetch_misses(db_session: AsyncSession, *, game_id: int) -> int:
+    result = await db_session.execute(
+        select(func.count()).select_from(ReplayFetchMiss).where(ReplayFetchMiss.game_id == game_id)
+    )
+    return result.scalar_one()
+
+
 async def test_replay_download_ownership_survives_the_match_detail_widening(
-    client: TestClient, db_session: AsyncSession
+    client: TestClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """FR-008a property 4 (FR-026, FR-012): `GET /api/matches/{game_id}` is now open to any
     signed-in caller (T327), but `GET /api/matches/{game_id}/replay/{profile_id}` — the download
     route T337 adds — must not follow it there. FR-026 is explicit that `archived` is "the
     caller's own captured replay, and only that": a `replay_captures` row *the caller owns*,
-    regardless of the match's age. This seeds a match old enough that the source can no longer
-    supply it either, so the archive is the only copy that exists at all — a stranger reaching for
-    it anyway must still be refused, exactly as `test_replay_download.py` (T071) already proves
-    for 001's own `GET /api/replays/{game_id}/download`; this is the identical property, for the
-    route this feature adds instead.
+    regardless of the match's age. This seeds a match 60 days old, past the capture budget, with
+    the owner's `stored` capture; a stranger reaching for it anyway must still be refused, exactly
+    as `test_replay_download.py` (T071) already proves for 001's own `GET /api/replays/{game_id}/
+    download`; this is the identical property, for the route this feature adds instead.
 
     Positive control kept deliberately, and load-bearing here specifically: without it, "the
     stranger is refused" would be indistinguishable from "the route does not exist yet, so nobody
     can download anything" — the same collision `test_replay_download.py`'s own equivalent test
     names as its reason for asserting the owner's download first, in the same test.
 
-    **The stranger's own `code` is `expired`, not `not_found` (B1 remediation, 2026-08-29).**
-    `_capture_for_point_of_view` (`replays.py`) now filters a `stored` capture the caller does not
-    own out to `None` *before* `derive_availability` ever runs, so the stranger's request falls
-    through to the identical age comparison this 60-day-old match would answer for any caller with
-    no capture at all — `expired`. That is deliberate, not a regression: before this fix, the
-    unowned capture made `derive_availability` answer `archived`, which this route then refused
-    with `not_found` — a code a caller never sees for an old match with *no* capture, which is
-    exactly the account-existence oracle `test_replay_download_oracle_closed_for_a_strangers_
-    unowned_stored_capture` (below) names directly. `not_found` here would reintroduce it; `expired`
-    is what makes the stranger's refusal genuinely indistinguishable from a stranger asking about
-    any other old match, capture or no capture — the property this test is actually about.
+    **The stranger's answer is the one a match of the same age with no capture gets (B1
+    remediation, 2026-08-29; restated for T842).** `_capture_for_point_of_view` (`replays.py`)
+    filters a `stored` capture the caller does not own out to `None` *before* `derive_availability`
+    runs, so the stranger's point of view of this 60-day-old match reads `beyond_window` exactly as
+    it does for a match of that age that was never captured: past the budget, with no recorded
+    `404`. The route therefore asks the source (a fake answering `404` here), writes one
+    `replay_fetch_misses` row and answers `404` `expired`. Both shapes read `beyond_window` and
+    fetch, which is why no asymmetry can appear. A `not_found` here would be the account-existence
+    oracle `test_replay_download_oracle_closed_for_a_strangers_unowned_stored_capture` (below)
+    names directly; the test pins that the stranger's response equals the no-capture control's,
+    after exactly one fetch and one miss row each.
     """
     owner = await _seed_user(db_session)
     await _seed_profile(db_session, profile_id=_REPLAY_OWNER_PROFILE_ID, alias="ReplayOwnerAlias")
@@ -692,8 +729,24 @@ async def test_replay_download_ownership_survives_the_match_detail_widening(
     )
     assert object_key in owner_response.headers.get("location", "")
 
+    # A match of the same age that nobody captured: the control the stranger's response must equal.
+    control_game_id = _REPLAY_GAME_ID + 1
+    await _seed_match(db_session, game_id=control_game_id, completed_at=now - timedelta(days=60))
+    await _seed_match_player(
+        db_session,
+        game_id=control_game_id,
+        profile_id=_REPLAY_OWNER_PROFILE_ID,
+        team_id=1,
+        civ_id=5,
+        result="win",
+        rating_diff=15,
+    )
+    await db_session.commit()
+
     client.cookies.clear()
     await _sign_in(client, db_session, stranger)
+    fake_upstream = _FakeAoemsUpstream404()
+    _install_fake_aoems_upstream(monkeypatch, fake_upstream)
     stranger_response = client.get(download_path, follow_redirects=False)
 
     assert stranger_response.status_code == 404, (
@@ -703,10 +756,24 @@ async def test_replay_download_ownership_survives_the_match_detail_widening(
     )
     assert stranger_response.json()["error"]["code"] == "expired", (
         "B1 remediation: an unowned stored capture must read identically to no capture at all — "
-        "the same `expired` a stranger gets for this 60-day-old match either way, never a "
-        "differentiated `not_found` that would itself disclose the archive's existence (this "
-        "docstring's own paragraph, FR-045)"
+        "`beyond_window`, one fetch, then the source's 404 answered `expired`, never a "
+        "differentiated `not_found` that would itself disclose the archive's existence (FR-045)"
     )
+    assert fake_upstream.request_count == 1
+    assert await _count_fetch_misses(db_session, game_id=_REPLAY_GAME_ID) == 1
+
+    control_fake = _FakeAoemsUpstream404()
+    _install_fake_aoems_upstream(monkeypatch, control_fake)
+    control_response = client.get(
+        f"/api/matches/{control_game_id}/replay/{_REPLAY_OWNER_PROFILE_ID}",
+        follow_redirects=False,
+    )
+    assert control_fake.request_count == 1
+    assert await _count_fetch_misses(db_session, game_id=control_game_id) == 1
+    assert (stranger_response.status_code, stranger_response.json()) == (
+        control_response.status_code,
+        control_response.json(),
+    ), "the stranger's response must equal the response for an uncaptured match of the same age"
     assert object_key not in stranger_response.text
     assert "location" not in stranger_response.headers
 
@@ -928,8 +995,8 @@ async def test_replay_download_oracle_closed_for_a_strangers_unowned_stored_capt
     Both matches below are seeded recent — inside the obtainable window, the shape `_capture_for_
     point_of_view`'s own remediation targets — because `test_replay_download_ownership_survives_
     the_match_detail_widening` above seeds its match 60 days old, past the capture budget, where
-    the stranger's row already reads `expired` regardless of ownership and this asymmetry cannot
-    appear at all; that is the gap this test exists to close, not a duplicate of that one.
+    both shapes there read `beyond_window` and fetch, so this asymmetry cannot appear at all; that
+    is the gap this test exists to close, not a duplicate of that one.
 
     The assertion is equality: the same `status_code` and the same `error.code`, not merely "not
     `not_found`" — anything narrower would leave room for the fixed route to introduce a *different*
@@ -1070,10 +1137,11 @@ async def test_replay_download_oracle_closed_for_a_strangers_unowned_unavailable
     `unavailable`.
 
     Both matches are seeded recent, exactly as the `stored` oracle test above requires — inside the
-    obtainable window, never `expired` by age alone, since a match old enough to read `expired`
-    regardless of ownership cannot show this asymmetry at all. The fake source below answers every
-    request with a fixed 404, so what distinguishes the two responses can only be this route's own
-    logic, never the upstream's answer — identically to the `stored` test's own reasoning."""
+    obtainable window, never `beyond_window` by age alone, since a match old enough to read
+    `beyond_window` in both shapes fetches in both and cannot show this asymmetry at all. The fake
+    source below answers every request with a fixed 404, so what distinguishes the two responses can
+    only be this route's own logic, never the upstream's answer — identically to the `stored`
+    test's own reasoning."""
     caller = await _seed_user(db_session)
     await _seed_profile(
         db_session,

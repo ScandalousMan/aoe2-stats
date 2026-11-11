@@ -161,21 +161,21 @@ Per-state behaviour (`contracts/http-api.md`):
   requirement, and it does so *before* that row ever reaches `derive_availability`.
   `_capture_for_point_of_view` filters *any* row the caller does not own out to `None` (B1
   remediation, widened at M12 — its own docstring), so `derive_availability` falls through to the
-  ordinary age comparison for it instead — `archived` therefore cannot be reached here for a
-  capture the caller does not own, and the branch below still raises `_replay_not_found()` if that
-  ever stops being true (L20 remediation, third-round review: a real, raised check, never a bare
+  ordinary age comparison for it instead — `archived` therefore cannot be reached here for a capture
+  the caller does not own, and the branch below still raises `_replay_not_found()` if that ever
+  stops being true (L20 remediation, third-round review: a real, raised check, never a bare
   `assert`, which is a no-op under `python -O` and would turn a regression in the filtering above
   into a stranger's replay served silently instead of failing loudly). FR-026 is explicit that
   `archived` is "the caller's own captured replay, and only that", and
-  `test_no_public_directory.py`'s own property-4
-  test seeds a *stranger's* `stored` capture, old enough that the source has long since lost it
-  too, and still requires a `404 not_found` — never `expired`, which would itself disclose that an
-  archive exists for someone else's account. A caller who owns it gets the identical
-  302-to-a-signed-URL-and-log shape 001's own route above already implements, including its
-  `filename=_point_of_view_filename(game_id, profile_id)` argument to `signed_get_url` (2026-08-29
-  fix, same one 001's route above carries) — so this route's own filename agrees with the
-  `obtainable` branch immediately below whether the recording is fetched from the archive or from
-  the source.
+  `test_no_public_directory.py`'s own property-4 test seeds a *stranger's* `stored` capture on a
+  match past the budget and requires the stranger's response to equal the one for an uncaptured
+  match of that age (both read `beyond_window`, fetch once, and answer `404` `expired`) — never
+  `not_found`, which would itself disclose that an archive exists for someone else's account. A
+  caller who owns it gets the identical 302-to-a-signed-URL-and-log shape 001's own route above
+  already implements, including its `filename=_point_of_view_filename(game_id, profile_id)` argument
+  to `signed_get_url` (2026-08-29 fix, same one 001's route above carries) — so this route's own
+  filename agrees with the `obtainable` branch immediately below whether the recording is fetched
+  from the archive or from the source.
 - `obtainable` — fetched from the source and returned to the caller as a plain response body,
   **never through `ObjectStore.put`** (FR-027, asserted directly against a tracking fake in
   `test_replay_download.py`: downloading is not analysing, and constitution IX permits retention

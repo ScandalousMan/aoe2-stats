@@ -851,7 +851,7 @@ SC-004, US3 scenario 4, research R8, `specs/003-player-search-match-analysis/con
   and `specs/003-player-search-match-analysis/quickstart.md` carry the
 2026-11-10 amendment.
 
-- [x] T842 Replace the arithmetic `expired` with `beyond_window` and a click that asks the source, in
+- [ ] T842 Replace the arithmetic `expired` with `beyond_window` and a click that asks the source, in
   `apps/api/src/aoe2stats_api/availability.py`, `apps/api/src/aoe2stats_api/routers/matches.py`,
   `apps/api/src/aoe2stats_api/routers/replays.py`, `apps/api/tests/test_replay_availability.py`,
   `apps/api/tests/test_replay_download.py`, the match-detail API tests that assert `availability`
@@ -895,3 +895,39 @@ SC-004, US3 scenario 4, research R8, `specs/003-player-search-match-analysis/con
   **Done**: the tests pass, the whole suite, `tsc -b`, every `run:`
   step of `pr.yml`'s web job and spec_lint on every feature exit 0, and the PR's visual job is green
   after `baselines.yml` is dispatched.
+- [ ] T844 Remediate PR #229's review of T842, in `apps/api/tests/test_no_public_directory.py`,
+  `apps/api/tests/test_replay_availability.py`, `apps/api/src/aoe2stats_api/availability.py`,
+  `apps/api/src/aoe2stats_api/routers/matches.py`, `apps/api/src/aoe2stats_api/routers/replays.py`,
+  `apps/web/src/features/replays/api.ts`, `specs/003-player-search-match-analysis/research.md`,
+  `specs/003-player-search-match-analysis/data-model.md`, `specs/003-player-search-match-analysis/spec.md`,
+  `docs/privacy/processing-register.md`, and
+  `packages/design-system/src/composites/ReplayAvailabilityList/` (component, test, stories). (1)
+  `test_replay_download_ownership_survives_the_match_detail_widening` asks for a stranger's point of
+  view of a match past the budget; since T842 that point of view is `beyond_window` and the route
+  fetches from the replay source, and the test installs no fake upstream, so under
+  `PYTEST_DISABLE_NETWORK=1`, which CI sets, it fails on a blocked connection. It installs the fake
+  upstream `test_replay_download.py` uses, answering `404`, and asserts the stranger's response
+  equals the response for a match of the same age with no capture: `404` `expired` after one
+  fetch, and one miss row. Its docstring and the two passages in that file saying an old match
+  reads `expired` regardless of ownership state that both shapes read `beyond_window` and fetch.
+  (2) Sentences that T842 made false are restated: in `availability.py` the retained-recording
+  paragraph (`beyond_window` past the budget, `expired` after a recorded `404`); in `matches.py` the
+  count of states carrying a path and the "comes back `expired` or `obtainable`" sentence; in
+  `replays.py` the property-4 sentence claiming the test requires `not_found`; in `research.md` R8
+  "the four states"; in `data-model.md` the `recorded_404` parameter name; in
+  `test_replay_availability.py` the docstrings and names that still describe an arithmetic
+  `expired`; in the web `api.ts` the count of unobtainable codes. (3) SC-004's 2026-11-10 amendment
+  says a `404` is not offered again; it says so for a `404` observed past
+  `REPLAY_PUBLICATION_GRACE_HOURS`, since inside the grace nothing is recorded. (4)
+  `docs/privacy/processing-register.md`'s activity naming `obtainable` as the state in which a third
+  party's recording is streamed names `beyond_window` too, wherever it names that state (activity 4
+  and the balancing test's amendment), and activity 8's sentence that a caller sees the derived
+  `never_recorded` state names `expired` too, keeping each table row on one line. (5) The alias and badge line of a
+  `ReplayAvailabilityList` row wraps, with a row gap of `space-1`, as
+  `packages/design-system/specs/replay-availability.md` §9 requires; the `beyond_window` row of
+  `StackedRowsBelowMd` carries a long alias. (6) A test asserts that a `beyond_window` row in
+  `error` and in `rate_limited` keeps its pressable "Try to download" with the callout beneath. Tests,
+  with the output in the hand-back: (1) fails against the tree before this task under
+  `PYTEST_DISABLE_NETWORK=1`; (6) pins behaviour already present. **Done**: the tests pass, the whole
+  suite under `PYTEST_DISABLE_NETWORK=1`, `tsc -b`, every `run:` step of `pr.yml`'s web job and
+  spec_lint on every feature exit 0.

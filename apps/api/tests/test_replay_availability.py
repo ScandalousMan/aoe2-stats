@@ -31,15 +31,15 @@ its own configured budget.
 below**, only against the parameter it is given. `docs/data-sources.md` §2 records the retention
 window as rolling and different per profile, and gives no length that holds for every profile.
 (History, 2026-08-29: R8's amendment, written while the window was recorded as contradicted, kept
-the expired split conservative without giving the window a length.) The module this fix landed in
-owns no constant claiming one. Most `completed_at` values below are therefore chosen to be
-unambiguous regardless of `capture_budget_days`: days for "obviously still inside whatever budget
-the caller supplies" and well over a year for "obviously outside it". The one exception is the
-dedicated `capture_budget_days` section below, where `_CAPTURE_BUDGET_DAYS` mirrors `.env.example`'s
-own `CAPTURE_BUDGET_DAYS=18` — supplied as any caller would, through the parameter, never restated
-as an assertion about what `derive_availability` computes internally. That restraint is the same one
-`research.md`'s own header states for itself: a number that exists in two files is wrong in one of
-them.
+the obtainable/beyond-window split conservative without giving the window a length.) The module this
+fix landed in owns no constant claiming one. Most `completed_at` values below are therefore chosen
+to be unambiguous regardless of `capture_budget_days`: days for "obviously still inside whatever
+budget the caller supplies" and well over a year for "obviously outside it". The one exception is
+the dedicated `capture_budget_days` section below, where `_CAPTURE_BUDGET_DAYS` mirrors
+`.env.example`'s own `CAPTURE_BUDGET_DAYS=18` — supplied as any caller would, through the parameter,
+never restated as an assertion about what `derive_availability` computes internally. That restraint
+is the same one `research.md`'s own header states for itself: a number that exists in two files is
+wrong in one of them.
 
 **`obtainable_until` is asserted `None` in every state**, not just the two FR-025 already required
 it null for. FR-024, re-derived 2026-10-27 (T823), gives the reason: the window belongs to each
@@ -134,7 +134,7 @@ async def _provider_call_count(db_session: AsyncSession) -> int:
 def test_archived_comes_only_from_a_stored_capture_row_regardless_of_match_age() -> None:
     """R8's table: "held in this service's archive — a `replay_captures` row in `stored` — that
     row only." FR-026: served regardless of the match's age, so an ancient completion still
-    reports `archived` rather than falling through to `expired`."""
+    reports `archived` rather than falling through to `beyond_window`."""
     from aoe2stats_api.availability import Availability, derive_availability
 
     view = derive_availability(
@@ -177,7 +177,7 @@ def test_a_capture_row_that_is_not_stored_does_not_yield_archived(
     assert view.state == Availability.OBTAINABLE
 
 
-# --- `obtainable` / `expired`: arithmetic over the match's completion time ----------------------
+# --- `obtainable` / `beyond_window`: arithmetic over the match's completion time ---------------
 
 
 def test_obtainable_for_a_recent_match_with_no_capture_and_no_recorded_404() -> None:
@@ -198,10 +198,10 @@ def test_obtainable_for_a_recent_match_with_no_capture_and_no_recorded_404() -> 
 
 
 def test_beyond_window_for_an_ancient_match_with_no_capture_and_no_recorded_404() -> None:
-    """R8's table: "expired — the match completed outside it" (the capture budget). A match far
-    older than any budget a caller could configure renders expired whatever the source's window
-    is for any profile. (History, 2026-08-29: R8 first stated this against two candidate readings
-    of a window then recorded as contradicted.)"""
+    """R8's table (amended by T842): a match completed outside the capture budget, with no capture
+    and no recorded 404, renders `beyond_window` — not `expired`, which needs a recorded 404
+    observed past the budget. A match far older than any budget a caller could configure reads the
+    same whatever the source's window is for any profile."""
     from aoe2stats_api.availability import Availability, derive_availability
 
     view = derive_availability(
@@ -319,9 +319,9 @@ async def test_a_retained_recording_never_yields_archived_and_is_not_a_parameter
     """Decided 2026-08-23, strengthened 3.0.0 (R8): "a `retained_recordings` row is not an
     archive for this purpose ... it is refused". A match whose only surviving bytes are a
     `retained_recordings` row — no `replay_captures` row for this caller, no other evidence —
-    still renders `expired`, exactly what R8 states in its own words: "a match whose only copy is
-    retained renders as `expired` with an analysis available". Handing those bytes to any
-    signed-in caller would redistribute a third party's public-basis recording with no basis for
+    still renders `beyond_window` past the budget (T842; R8 first said `expired`: "a match whose
+    only copy is retained renders as `expired` with an analysis available"). Handing those bytes to
+    any signed-in caller would redistribute a third party's public-basis recording with no basis for
     doing so.
 
     The `retained_recordings` row below is persisted for the *same* `(game_id, profile_id)` this
@@ -445,7 +445,7 @@ def test_derive_availability_requires_capture_budget_days_with_no_default() -> N
     )
 
 
-def test_the_obtainable_expired_split_moves_only_with_capture_budget_days() -> None:
+def test_the_obtainable_beyond_window_split_moves_only_with_capture_budget_days() -> None:
     """The parameter is not decorative: the identical `completed_at` renders `beyond_window` under
     one `capture_budget_days` and `obtainable` under a wider one, with nothing else about the
     call changing. This is what makes a `docs/data-sources.md` re-measurement a matter of
@@ -482,10 +482,10 @@ def test_the_configured_budget_leaves_real_margin_under_the_shortest_measured_re
     `_CAPTURE_BUDGET_DAYS` (18, mirroring `.env.example`) is configured shorter than the shortest
     retention window measured on any profile (`docs/data-sources.md` §2: the window is rolling and
     differs per profile), with room to spare: a match completed 25 days ago can sit inside the
-    source's window, and still renders `expired` once the configured budget is applied, precisely
-    the margin the old, unconfigured constant had none of. The margin holds for every profile
-    measured and not beyond; for a profile whose window is shorter than the budget, if one exists,
-    the same match would read `obtainable` for a purged recording. Nothing here asserts what
+    source's window, and still renders `beyond_window` once the configured budget is applied,
+    precisely the margin the old, unconfigured constant had none of. The margin holds for every
+    profile measured and not beyond; for a profile whose window is shorter than the budget, if one
+    exists, the same match would read `obtainable` for a purged recording. Nothing here asserts what
     `derive_availability` computes equals `timedelta(days=_CAPTURE_BUDGET_DAYS)` — a fixed day-count
     check on this module's own math would recreate the defect being fixed one layer up; this instead
     pins that the configured value is what decides the split, and that this configured value is

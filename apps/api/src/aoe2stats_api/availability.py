@@ -29,8 +29,9 @@ a recorded 404 observed past the budget says `expired`.
 
 **A `retained_recordings` row is not an input, and cannot become one by accident.** R8, decided
 2026-08-23 and strengthened by constitution IX 4.0.0: a match whose only surviving copy is a
-`retained_recordings` row still renders `expired`, with an analysis available — handing those bytes
-to any signed-in caller would redistribute a third party's public-basis recording with no legal
+`retained_recordings` row still renders `beyond_window` past the budget (and `expired` only once a
+404 is recorded for that point of view), with an analysis available — handing those bytes to any
+signed-in caller would redistribute a third party's public-basis recording with no legal
 basis for doing so. `derive_availability` is given no session and no query, so it cannot reach that
 table regardless of what its caller holds; its parameter list carries nothing that names it either,
 which is what makes that refusal structural rather than a discipline an implementer has to remember

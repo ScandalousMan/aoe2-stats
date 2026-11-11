@@ -764,10 +764,12 @@ their current standing and reachable in one click.
   derived state claims expiry without the source's own `404` (FR-025): `obtainable` and
   `beyond_window` are both offered as downloads, and `expired` and `never_recorded` both stand on a
   recorded `404`. The criterion reads: a download offered as `obtainable` or `beyond_window` that the
-  source serves at that moment succeeds; one the source answers `404` tells the user it is gone and is
-  not offered again; a point of view stated `expired` or `never_recorded` is not clickable. A `404` on
-  an `obtainable` row is the boundary race, reported as such (`expired_since_page_load`). The
-  2026-10-27 "not claimable" reading above is history.
+  source serves at that moment succeeds; one the source answers `404` tells the user it is gone, and
+  is not offered again once that `404` is recorded, which it is only when observed past
+  `REPLAY_PUBLICATION_GRACE_HOURS` after the match completed (inside the grace nothing is recorded,
+  so the row stays offered); a point of view stated `expired` or `never_recorded` is not clickable.
+  A `404` on an `obtainable` row is the boundary race, reported as such
+  (`expired_since_page_load`). The 2026-10-27 "not claimable" reading above is history.
 - **SC-005**: A user can obtain any participant's point of view of a match inside the retention
   window in at most two actions from the match page.
 - **SC-006**: A match is parsed at most once: for any match, the number of times its recorded game is

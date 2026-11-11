@@ -270,14 +270,19 @@ export const RealisticMatch: Story = {
 // (unchanged again at `xl`, per the same comment). Pinned toward the narrow shape with the declared
 // `reviewWidthNarrow` viewport via `globals.viewport` (see `MatchRow.stories.tsx`'s identical
 // rationale for why a declared option rather than a Storybook device preset) — `RealisticMatch`
-// above already reads at the wide, one-line shape.
-// visual-equivalence: composite-replayavailabilitylist--realistic-match: the reviewWidthNarrow
-// viewport pin is overridden by the visual suite's own 375/768/1280 capture axis (T504), and the
-// rows are identical to RealisticMatch's, so all six baselines match.
+// above already reads at the wide, one-line shape. The `beyond_window` row carries a long alias so
+// the badge wraps beneath it with a `space-1` row gap at 375 (§9), which `RealisticMatch`'s short
+// aliases never exercise.
+const stackedRows: ReplayAvailabilityRowData[] = realisticRows.map((row) =>
+  row.availability === 'beyond_window'
+    ? { ...row, alias: 'TheLongestAliasASignedInPlayerCouldReasonablyHaveHere' }
+    : row,
+)
+
 export const StackedRowsBelowMd: Story = {
   name: 'Stacked row below md, one line from it (§9)',
   globals: { viewport: { value: 'reviewWidthNarrow' } },
-  args: { rows: realisticRows },
+  args: { rows: stackedRows },
 }
 
 // replay-availability.md §5 "hover / focus-visible / active — `AvailabilityBadge`: none, per

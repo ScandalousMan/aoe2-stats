@@ -82,7 +82,8 @@ participant, because this route answers with every participant already and a que
 be exactly the N+1 the task text warns against. `_replay_json` then turns each `AvailabilityView`
 into the wire shape `contracts/http-api.md` fixes, with `download_path` `None` for the two states
 FR-025 forbids offering as an action — `expired` and `never_recorded` — and pointing at
-`replays.py`'s `GET /api/matches/{game_id}/replay/{profile_id}` (T337) for the two that are.
+`replays.py`'s `GET /api/matches/{game_id}/replay/{profile_id}` (T337) for the three that
+carry one (`archived`, `obtainable` and `beyond_window`).
 `obtainable_until` is carried through from `derive_availability` unmodified: it is already `None`
 in every state (FR-024, amended 2026-08-29 — see `availability.py`'s own module docstring), so no
 date arithmetic happens here either.
@@ -94,7 +95,8 @@ profile_id) IN participants` says nothing about who owns it, so `_replay_by_prof
 `owner_profile_ids` — the same list `get_match_detail` already computed for FR-022's own archival
 state, not a new query — and refuses to let *any* capture row the caller does not own read as
 anything but absent: it falls through to `derive_availability`'s ordinary age comparison instead,
-exactly as if no capture existed, and comes back `expired` or `obtainable` on its own merits.
+exactly as if no capture existed, and comes back `beyond_window` or `obtainable` on its own merits
+(or a state derived from a recorded miss).
 Nulling only `_replay_json`'s `download_path` while leaving the state `archived` would not be
 enough — FR-026's "and only that" is about the state itself, not merely the click it enables,
 because `availability: "archived"` on a stranger's point of view is already the disclosure

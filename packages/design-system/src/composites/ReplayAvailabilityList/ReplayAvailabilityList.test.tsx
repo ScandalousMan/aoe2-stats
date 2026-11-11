@@ -306,6 +306,49 @@ describe('ReplayAvailabilityList', () => {
       ).toBeInTheDocument()
     })
 
+    it('keeps a beyond_window row pressable as "Try to download", with the callout beneath, after an error', () => {
+      render(
+        <ReplayAvailabilityList
+          rows={[
+            {
+              id: '1',
+              alias: 'GL.TheViper',
+              availability: 'beyond_window',
+              downloadState: 'error',
+            },
+          ]}
+        />,
+      )
+      const button = screen.getByRole('button', { name: 'Try to download' })
+      expect(button).not.toBeDisabled()
+      expect(
+        within(screen.getByRole('alert')).getByText('We could not start that download. Try again.'),
+      ).toBeInTheDocument()
+    })
+
+    it('keeps a rate-limited beyond_window row pressable as "Try to download", naming retry_after', () => {
+      render(
+        <ReplayAvailabilityList
+          rows={[
+            {
+              id: '1',
+              alias: 'GL.TheViper',
+              availability: 'beyond_window',
+              downloadState: 'rate_limited',
+              retryAfterSeconds: 17,
+            },
+          ]}
+        />,
+      )
+      const button = screen.getByRole('button', { name: 'Try to download' })
+      expect(button).not.toBeDisabled()
+      expect(
+        within(screen.getByRole('alert')).getByText(
+          'You are downloading too quickly. Try again in 17 seconds.',
+        ),
+      ).toBeInTheDocument()
+    })
+
     it('shows the Button loading state while a download is being prepared', () => {
       render(
         <ReplayAvailabilityList

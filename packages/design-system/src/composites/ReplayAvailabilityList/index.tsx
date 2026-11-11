@@ -206,7 +206,7 @@ function ReplayAvailabilityRow({
         className={cx('flex flex-col gap-4', isMd && 'flex-row items-center justify-between gap-4')}
       >
         <div className={cx('flex flex-col gap-1', isMd && 'flex-row items-center gap-3')}>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <span className="font-sans text-sm text-text-primary">{row.alias}</span>
             <span aria-describedby={secondary ? secondaryId : undefined}>
               <Badge variant={meta.variant}>{meta.label}</Badge>
