@@ -294,9 +294,9 @@ Insert-only, `ON CONFLICT DO NOTHING` on the primary key: two callers racing the
 the same fact and the first wins. Never updated, never swept (FR-044).
 
 **Erasure**: nothing to do — the row is a fact about a match and a point of view, not about the
-requester, on the same footing as `replay_captures.status = unavailable`, and constitution IX's
-pseudonymisation of `match_players` and `aoe_profiles` already reaches whichever profile the
-`profile_id` names. **Export**: not included; it is not the requester's data.
+requester, on the same footing as `replay_captures.status = unavailable`. Erasure and objection
+leave the row's `profile_id` as it was; they mask the `aoe_profiles` row that id names (alias,
+country, avatar hash) but do not rewrite the id here. **Export**: not included; it is not the requester's data.
 
 ---
 

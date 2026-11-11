@@ -1028,8 +1028,8 @@ class ReplayFetchMiss(Base):
 
     **Erasure/export**: not personal data about the requester — it names a match and a participant's
     point of view, the same footing `replay_captures.status = unavailable` already stands on for a
-    linked user, and constitution IX's per-person pseudonymisation of `match_players`/`aoe_profiles`
-    already reaches whichever profile this table's `profile_id` refers to.
+    linked user. Erasure and objection leave this table's `profile_id` as it was: they mask the
+    `aoe_profiles` row it names (alias, country, avatar hash) but do not rewrite the id here.
     """
 
     __tablename__ = "replay_fetch_misses"
