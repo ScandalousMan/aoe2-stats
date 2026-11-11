@@ -82,7 +82,8 @@ participant, because this route answers with every participant already and a que
 be exactly the N+1 the task text warns against. `_replay_json` then turns each `AvailabilityView`
 into the wire shape `contracts/http-api.md` fixes, with `download_path` `None` for the two states
 FR-025 forbids offering as an action — `expired` and `never_recorded` — and pointing at
-`replays.py`'s `GET /api/matches/{game_id}/replay/{profile_id}` (T337) for the two that are.
+`replays.py`'s `GET /api/matches/{game_id}/replay/{profile_id}` (T337) for the three that
+carry one (`archived`, `obtainable` and `beyond_window`).
 `obtainable_until` is carried through from `derive_availability` unmodified: it is already `None`
 in every state (FR-024, amended 2026-08-29 — see `availability.py`'s own module docstring), so no
 date arithmetic happens here either.
@@ -94,7 +95,8 @@ profile_id) IN participants` says nothing about who owns it, so `_replay_by_prof
 `owner_profile_ids` — the same list `get_match_detail` already computed for FR-022's own archival
 state, not a new query — and refuses to let *any* capture row the caller does not own read as
 anything but absent: it falls through to `derive_availability`'s ordinary age comparison instead,
-exactly as if no capture existed, and comes back `expired` or `obtainable` on its own merits.
+exactly as if no capture existed, and comes back `beyond_window` or `obtainable` on its own merits
+(or a state derived from a recorded miss).
 Nulling only `_replay_json`'s `download_path` while leaving the state `archived` would not be
 enough — FR-026's "and only that" is about the state itself, not merely the click it enables,
 because `availability: "archived"` on a stranger's point of view is already the disclosure
@@ -618,11 +620,11 @@ async def _replay_by_profile(
     }
 
     misses_result = await db_session.execute(
-        select(ReplayFetchMiss.profile_id).where(
+        select(ReplayFetchMiss.profile_id, ReplayFetchMiss.observed_at).where(
             ReplayFetchMiss.game_id == game_id, ReplayFetchMiss.profile_id.in_(profile_ids)
         )
     )
-    recorded_404_profiles = set(misses_result.scalars().all())
+    recorded_404_at_by_profile = dict(misses_result.tuples().all())
 
     now = datetime.now(UTC)
     return {
@@ -630,7 +632,7 @@ async def _replay_by_profile(
             completed_at=completed_at,
             now=now,
             capture=capture_by_profile.get(profile_id),
-            recorded_404=profile_id in recorded_404_profiles,
+            recorded_404_at=recorded_404_at_by_profile.get(profile_id),
             capture_budget_days=capture_budget_days,
         )
         for profile_id in profile_ids
@@ -642,13 +644,18 @@ def _replay_json(
 ) -> dict[str, Any]:
     """`contracts/http-api.md`'s per-participant `replay` object (FR-023): one entry per
     participant point of view. `download_path` is `None` for the two states FR-025 forbids
-    presenting as an action that then fails — `expired` and `never_recorded` — a null path being
-    the mechanism that makes rendering one impossible rather than merely discouraged (T338's own
-    task text); for the other two it points at `replays.py`'s `GET /api/matches/{game_id}/replay/
+    presenting as an action — `expired` and `never_recorded` — a null path being the mechanism
+    that makes rendering one impossible rather than merely discouraged (T338's own task text); for
+    the other three (`archived`, `obtainable`, and since T842 `beyond_window`, whose click asks the
+    source) it points at `replays.py`'s `GET /api/matches/{game_id}/replay/
     {profile_id}` (T337). `obtainable_until` is carried through from `derive_availability`
     unmodified — already `None` in every state, FR-024 amended 2026-08-29 — so no date is derived
     here either."""
-    obtainable = availability.state in (Availability.ARCHIVED, Availability.OBTAINABLE)
+    obtainable = availability.state in (
+        Availability.ARCHIVED,
+        Availability.OBTAINABLE,
+        Availability.BEYOND_WINDOW,
+    )
     return {
         "profile_id": profile_id,
         "availability": availability.state.value,

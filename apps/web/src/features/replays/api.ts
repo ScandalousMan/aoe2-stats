@@ -58,11 +58,13 @@ export function triggerReplayDownload(gameId: number): void {
  * straight through, never stored). A plain top-level navigation is the one mechanism that serves
  * both without a second, divergent code path per state.
  *
- * A failure of this same route (any of the four unobtainable codes, or FR-028's rate limit)
- * answers a `303` back to this exact match page instead of a JSON body, for a browser navigation
- * (`routers/replays.py`'s `_match_page_redirect_for_download_failure`) — the browser follows it as
+ * A failure of this same route (`not_found`, `never_recorded`, `expired_since_page_load`,
+ * `source_unavailable`, or FR-028's `rate_limited`) answers a `303` back to this exact match page
+ * instead of a JSON body, for a browser navigation (`routers/replays.py`'s `_match_page_redirect_for_download_failure`) — the browser follows it as
  * an ordinary continuation of this same navigation, and `downloadFailure.ts` is what the reloaded
- * page reads to render `replay-availability.md` §5's row-level alert.
+ * page reads to render `replay-availability.md` §5's row-level alert. `expired` is raised too (a
+ * `beyond_window` recording the source answered `404` for), but it is an answer rendered as the
+ * row's state, not a failure alert (`availability.ts`).
  */
 export function triggerReplayPointOfViewDownload(path: string): void {
   window.location.assign(path)

@@ -135,7 +135,7 @@ one is reachable for *any* participant's point of view of *any* match this servi
 view"). `apps/api/tests/test_replay_download.py`'s `T335`-authored section is this route's own
 specification; `specs/003-player-search-match-analysis/research.md` R8 is the state derivation it
 implements to, through `availability.py`'s `derive_availability` (T336) — this router never
-re-derives the four states itself.
+re-derives the five states itself.
 
 **`profile_id` must itself be a recorded participant of `game_id`, checked before any state is
 derived.** FR-023 is "one download per participant point of view" — the *participant* half of that
@@ -161,21 +161,21 @@ Per-state behaviour (`contracts/http-api.md`):
   requirement, and it does so *before* that row ever reaches `derive_availability`.
   `_capture_for_point_of_view` filters *any* row the caller does not own out to `None` (B1
   remediation, widened at M12 — its own docstring), so `derive_availability` falls through to the
-  ordinary age comparison for it instead — `archived` therefore cannot be reached here for a
-  capture the caller does not own, and the branch below still raises `_replay_not_found()` if that
-  ever stops being true (L20 remediation, third-round review: a real, raised check, never a bare
+  ordinary age comparison for it instead — `archived` therefore cannot be reached here for a capture
+  the caller does not own, and the branch below still raises `_replay_not_found()` if that ever
+  stops being true (L20 remediation, third-round review: a real, raised check, never a bare
   `assert`, which is a no-op under `python -O` and would turn a regression in the filtering above
   into a stranger's replay served silently instead of failing loudly). FR-026 is explicit that
   `archived` is "the caller's own captured replay, and only that", and
-  `test_no_public_directory.py`'s own property-4
-  test seeds a *stranger's* `stored` capture, old enough that the source has long since lost it
-  too, and still requires a `404 not_found` — never `expired`, which would itself disclose that an
-  archive exists for someone else's account. A caller who owns it gets the identical
-  302-to-a-signed-URL-and-log shape 001's own route above already implements, including its
-  `filename=_point_of_view_filename(game_id, profile_id)` argument to `signed_get_url` (2026-08-29
-  fix, same one 001's route above carries) — so this route's own filename agrees with the
-  `obtainable` branch immediately below whether the recording is fetched from the archive or from
-  the source.
+  `test_no_public_directory.py`'s own property-4 test seeds a *stranger's* `stored` capture on a
+  match past the budget and requires the stranger's response to equal the one for an uncaptured
+  match of that age (both read `beyond_window`, fetch once, and answer `404` `expired`) — never
+  `not_found`, which would itself disclose that an archive exists for someone else's account. A
+  caller who owns it gets the identical 302-to-a-signed-URL-and-log shape 001's own route above
+  already implements, including its `filename=_point_of_view_filename(game_id, profile_id)` argument
+  to `signed_get_url` (2026-08-29 fix, same one 001's route above carries) — so this route's own
+  filename agrees with the `obtainable` branch immediately below whether the recording is fetched
+  from the archive or from the source.
 - `obtainable` — fetched from the source and returned to the caller as a plain response body,
   **never through `ObjectStore.put`** (FR-027, asserted directly against a tracking fake in
   `test_replay_download.py`: downloading is not analysing, and constitution IX permits retention
@@ -188,7 +188,15 @@ Per-state behaviour (`contracts/http-api.md`):
   path when the source sends a well-formed name, so the collision survived it — this fix is the one
   that actually reaches the branch production hit.
 - `expired`, `never_recorded` — `404` with the distinguishing `code`, no fetch attempted at all
-  (`derive_availability` already decided this from rows and a clock — R8's whole point).
+  (`derive_availability` already decided this from rows and a clock — R8's whole point). `expired`
+  now means the source itself answered 404 past the budget (a recorded miss whose `observed_at` is
+  more than `capture_budget_days` after the match completed), never age alone.
+- `beyond_window` (T842, 2026-11-10) — handled exactly as `obtainable` is: one fetch through the
+  same provider, the same rate limit, the bytes streamed and nothing stored. The click is how the
+  source gets asked, since the budget is a floor this project chose and not the source's deadline.
+  On a `NotFound` it records the miss with `observed_at` set to the route's own `now` and answers
+  `404` `expired`; the next request then derives `expired` from the row and makes no fetch. An
+  `obtainable` row's `NotFound` keeps answering `expired_since_page_load`.
 
 **The boundary race (FR-025, R8) needed a table of its own, `replay_fetch_misses` — see
 `ReplayFetchMiss`'s docstring in `packages/storage/src/aoe2stats_storage/models.py` for why
@@ -201,12 +209,14 @@ FR-012 and FR-027) or permanently block the real capture that
 pipeline owes that profile's owner if they later link an account (any terminal status —
 `discover.py`'s `_enqueue_capture` no-ops on `ON CONFLICT DO NOTHING` against a row that already
 exists). `replay_fetch_misses` is read-only evidence with none of `replay_captures`' readers:
-`_has_recorded_fetch_miss` below feeds `derive_availability`'s own `recorded_404` parameter, and
-`_record_fetch_miss` writes it, once, the moment a point of view offered as `obtainable` answers
+`_recorded_fetch_miss_at` below feeds `derive_availability`'s own `recorded_404_at` parameter, and
+`_record_fetch_miss` writes it, once, the moment a point of view offered as `obtainable` or
+`beyond_window` answers
 404 at fetch time for a match that completed at least `REPLAY_PUBLICATION_GRACE_HOURS` ago (inside
 the grace a 404 is not read as evidence, since the recording may not be published yet, and no row
-is written) — so the identical next request reads `never_recorded` from the row instead of
-probing the source a second time. **`data-model.md` now names this table explicitly as the
+is written) — so the identical next request reads `never_recorded` (or, past the budget,
+`expired`) from the row instead of probing the source a second time. **`data-model.md` now names
+this table explicitly as the
 sixth (amended 2026-08-29, carrying its own section) — this table is no longer an
 undocumented gap between the code and the artifact.**
 
@@ -243,7 +253,8 @@ a free-tier hosting concern, `docs/adr/0002-hosting.md`) rather than eliminating
 own `replay_download` bucket (`data-model.md`'s `rate_limit_counters` section) — `contracts/
 http-api.md` states it applies to the whole route, not only the `obtainable` branch.
 `test_replay_download_rate_limit_applies_on_a_refused_path` exhausts it against a caller's own
-`expired` point of view — a refusal that makes no outbound call at all — to prove the limit reaches
+`expired` point of view (a recorded miss past the budget) — a refusal that makes no outbound
+call at all — to prove the limit reaches
 every refusal, not only a success. `test_boundary_race_path_still_consumes_the_rate_limit` proves
 the one refusal that *does* make a real outbound call is metered too, the case that actually
 matters. `test_replay_download_rate_limit_applies_per_user` is the contrast case: a caller's own
@@ -991,30 +1002,33 @@ async def _caller_owns_profile(db_session: AsyncSession, *, profile_id: int, use
     return result.scalar_one_or_none() is not None
 
 
-async def _has_recorded_fetch_miss(
+async def _recorded_fetch_miss_at(
     db_session: AsyncSession, *, game_id: int, profile_id: int
-) -> bool:
-    """Whether `replay_fetch_misses` already carries evidence for this exact point of view —
-    `derive_availability`'s own `recorded_404` parameter (module docstring, `ReplayFetchMiss`'s
+) -> datetime | None:
+    """The `observed_at` of the `replay_fetch_misses` row for this exact point of view, or `None`
+    — `derive_availability`'s own `recorded_404_at` parameter (module docstring, `ReplayFetchMiss`'s
     docstring in `models.py`)."""
     result = await db_session.execute(
-        select(ReplayFetchMiss.game_id).where(
+        select(ReplayFetchMiss.observed_at).where(
             ReplayFetchMiss.game_id == game_id, ReplayFetchMiss.profile_id == profile_id
         )
     )
-    return result.scalar_one_or_none() is not None
+    return result.scalar_one_or_none()
 
 
-async def _record_fetch_miss(db_session: AsyncSession, *, game_id: int, profile_id: int) -> None:
+async def _record_fetch_miss(
+    db_session: AsyncSession, *, game_id: int, profile_id: int, observed_at: datetime
+) -> None:
     """Persists the boundary-race evidence on its own short-lived session (`_audit_session`),
-    since this call always precedes an `expired_since_page_load` `404` (module docstring). The
-    route calls it only for a match that completed at least `replay_publication_grace_hours` ago.
+    since this call always precedes a `404` (`expired_since_page_load` or `expired`, module
+    docstring). The route calls it only for a match that completed at least
+    `replay_publication_grace_hours` ago.
     `ON CONFLICT DO NOTHING` on the primary key: two callers racing the same boundary each try to
     record the same fact, and the first one wins with no error for the second."""
     async with _audit_session(db_session) as audit_session:
         statement = (
             pg_insert(ReplayFetchMiss)
-            .values(game_id=game_id, profile_id=profile_id)
+            .values(game_id=game_id, profile_id=profile_id, observed_at=observed_at)
             .on_conflict_do_nothing(
                 index_elements=[ReplayFetchMiss.game_id, ReplayFetchMiss.profile_id]
             )
@@ -1310,7 +1324,7 @@ async def download_replay_point_of_view(
 ) -> Response:
     """FR-023, FR-025, FR-026, FR-027, FR-028, FR-029 (module docstring): one download per
     participant point of view, of any match this service holds. `derive_availability` (T336)
-    decides which of the four states applies; this route only supplies the rows it needs, checks
+    decides which of the five states applies; this route only supplies the rows it needs, checks
     participation and ownership for the states that require it, and carries out the state's own
     action.
 
@@ -1346,7 +1360,7 @@ async def download_replay_point_of_view(
             profile_id=profile_id,
             caller_owns_profile=caller_owns_profile,
         )
-        recorded_404 = await _has_recorded_fetch_miss(
+        recorded_404_at = await _recorded_fetch_miss_at(
             db_session, game_id=game_id, profile_id=profile_id
         )
         now = datetime.now(UTC)
@@ -1354,7 +1368,7 @@ async def download_replay_point_of_view(
             completed_at=completed_at,
             now=now,
             capture=capture,
-            recorded_404=recorded_404,
+            recorded_404_at=recorded_404_at,
             capture_budget_days=settings.capture_budget_days,
         )
 
@@ -1390,8 +1404,9 @@ async def download_replay_point_of_view(
         if availability.state is Availability.EXPIRED:
             raise _expired_error()
 
-        # Availability.OBTAINABLE: fetch from the source and stream it straight through — FR-027
-        # forbids storing it (module docstring).
+        # Availability.OBTAINABLE and Availability.BEYOND_WINDOW: fetch from the source and stream
+        # it straight through — FR-027 forbids storing it (module docstring). `BEYOND_WINDOW` is
+        # past the capture budget only, not known gone: the click is what asks the source.
         provider = _build_replay_provider(db_session)
         try:
             result = await provider.fetch_replay(game_id, profile_id)
@@ -1429,7 +1444,14 @@ async def download_replay_point_of_view(
             # `expired_since_page_load` on both sides.
             publication_grace = timedelta(hours=settings.replay_publication_grace_hours)
             if now >= completed_at + publication_grace:
-                await _record_fetch_miss(db_session, game_id=game_id, profile_id=profile_id)
+                await _record_fetch_miss(
+                    db_session, game_id=game_id, profile_id=profile_id, observed_at=now
+                )
+            if availability.state is Availability.BEYOND_WINDOW:
+                # The source answered for itself: the recording is gone. `observed_at=now` is past
+                # `completed_at + capture_budget_days` (that is what `BEYOND_WINDOW` means), so the
+                # next derivation reads `expired` from the row and no longer fetches.
+                raise _expired_error()
             raise _expired_since_page_load_error()
 
         filename = _point_of_view_filename(game_id=game_id, profile_id=profile_id)

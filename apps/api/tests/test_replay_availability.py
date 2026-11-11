@@ -1,6 +1,6 @@
 """Tests for the availability derivation (T336), `apps/api/src/aoe2stats_api/availability.py` —
 `research.md` R8 and `contracts/http-api.md`'s per-participant `replay` object: `"availability":
-"archived" | "obtainable" | "expired" | "never_recorded"`.
+"archived" | "obtainable" | "beyond_window" | "expired" | "never_recorded"`.
 
 `aoe2stats_api.availability` does not exist until T336 lands, so every test below carries
 `@pytest.mark.xfail(strict=True, reason="T336 not implemented yet")` per CLAUDE.md's test-first
@@ -10,12 +10,14 @@ whole workspace suite down, which is a different and worse failure than an expec
 
 **The interface under test is designed here, not merely exercised**, following the shape T307's
 own first test file (`test_rate_limits.py`) used for the same reason: `derive_availability(*,
-completed_at, now, capture, recorded_404, capture_budget_days)` returning an
+completed_at, now, capture, recorded_404_at, capture_budget_days)` returning an
 `AvailabilityView(state, obtainable_until)` — `state` one of `Availability.ARCHIVED / OBTAINABLE /
-EXPIRED / NEVER_RECORDED`, matching `contracts/http-api.md`'s four literal strings exactly.
+BEYOND_WINDOW / EXPIRED / NEVER_RECORDED`, matching `contracts/http-api.md`'s five literal strings
+exactly.
 `capture` is a `ReplayCapture | None` — the row for this exact `(game_id, profile_id)` pair, or
 `None` when this service never attempted to capture it, which is the normal case for a third
-party. `recorded_404` is a plain `bool`: the caller's own evidence, from wherever it was recorded
+party. `recorded_404_at` is the `observed_at` of a recorded 404, or `None` (T842; it was a
+`bool`): the caller's own evidence, from wherever it was recorded
 (an analysis fetch that 404'd, for a third party — T337's job, not this module's), that the source
 has no recording for this point of view. `capture_budget_days` is the caller's own
 `Settings.capture_budget_days` (`CAPTURE_BUDGET_DAYS`) — required, with no default, so this
@@ -29,15 +31,15 @@ its own configured budget.
 below**, only against the parameter it is given. `docs/data-sources.md` §2 records the retention
 window as rolling and different per profile, and gives no length that holds for every profile.
 (History, 2026-08-29: R8's amendment, written while the window was recorded as contradicted, kept
-the expired split conservative without giving the window a length.) The module this fix landed in
-owns no constant claiming one. Most `completed_at` values below are therefore chosen to be
-unambiguous regardless of `capture_budget_days`: days for "obviously still inside whatever budget
-the caller supplies" and well over a year for "obviously outside it". The one exception is the
-dedicated `capture_budget_days` section below, where `_CAPTURE_BUDGET_DAYS` mirrors `.env.example`'s
-own `CAPTURE_BUDGET_DAYS=18` — supplied as any caller would, through the parameter, never restated
-as an assertion about what `derive_availability` computes internally. That restraint is the same one
-`research.md`'s own header states for itself: a number that exists in two files is wrong in one of
-them.
+the obtainable/beyond-window split conservative without giving the window a length.) The module this
+fix landed in owns no constant claiming one. Most `completed_at` values below are therefore chosen
+to be unambiguous regardless of `capture_budget_days`: days for "obviously still inside whatever
+budget the caller supplies" and well over a year for "obviously outside it". The one exception is
+the dedicated `capture_budget_days` section below, where `_CAPTURE_BUDGET_DAYS` mirrors
+`.env.example`'s own `CAPTURE_BUDGET_DAYS=18` — supplied as any caller would, through the parameter,
+never restated as an assertion about what `derive_availability` computes internally. That restraint
+is the same one `research.md`'s own header states for itself: a number that exists in two files is
+wrong in one of them.
 
 **`obtainable_until` is asserted `None` in every state**, not just the two FR-025 already required
 it null for. FR-024, re-derived 2026-10-27 (T823), gives the reason: the window belongs to each
@@ -49,8 +51,9 @@ claimable is a `research.md` R8 decision, not a change owed here.
 
 **A `retained_recordings` row is not an input, asserted two ways.** Behaviourally: a match whose
 only surviving copy is a `retained_recordings` row (no `replay_captures` row, no other evidence)
-still renders `expired`, never `archived` — R8's own words: "a match whose only copy is retained
-renders as `expired` with an analysis available", because handing those bytes to any signed-in
+still renders `beyond_window` past the budget, never `archived` — R8's own words: "a match whose
+only copy is retained renders as `expired` with an analysis available" (since T842 that reads
+`beyond_window` past the budget), because handing those bytes to any signed-in
 caller would redistribute a third party's public-basis recording with no legal basis for doing so.
 Structurally: `derive_availability`'s own parameter names are inspected and none of them may
 mention "retained" — a keyword argument would be the shape an implementer reaches for first if they
@@ -102,6 +105,9 @@ _RECENT_COMPLETION = _NOW - timedelta(days=5)
 # near any specific day-count T336 might choose.
 _ANCIENT_COMPLETION = _NOW - timedelta(days=400)
 
+# A recorded 404 observed one day after a recent match completed: inside any budget.
+_INSIDE_BUDGET_404 = _RECENT_COMPLETION + timedelta(days=1)
+
 
 def _capture(
     *, status: CaptureStatus, capture_deadline_at: datetime = _NOW + timedelta(days=16)
@@ -128,14 +134,14 @@ async def _provider_call_count(db_session: AsyncSession) -> int:
 def test_archived_comes_only_from_a_stored_capture_row_regardless_of_match_age() -> None:
     """R8's table: "held in this service's archive — a `replay_captures` row in `stored` — that
     row only." FR-026: served regardless of the match's age, so an ancient completion still
-    reports `archived` rather than falling through to `expired`."""
+    reports `archived` rather than falling through to `beyond_window`."""
     from aoe2stats_api.availability import Availability, derive_availability
 
     view = derive_availability(
         completed_at=_ANCIENT_COMPLETION,
         now=_NOW,
         capture=_capture(status=CaptureStatus.STORED),
-        recorded_404=False,
+        recorded_404_at=None,
         capture_budget_days=_CAPTURE_BUDGET_DAYS,
     )
 
@@ -163,7 +169,7 @@ def test_a_capture_row_that_is_not_stored_does_not_yield_archived(
         completed_at=_RECENT_COMPLETION,
         now=_NOW,
         capture=_capture(status=status),
-        recorded_404=False,
+        recorded_404_at=None,
         capture_budget_days=_CAPTURE_BUDGET_DAYS,
     )
 
@@ -171,7 +177,7 @@ def test_a_capture_row_that_is_not_stored_does_not_yield_archived(
     assert view.state == Availability.OBTAINABLE
 
 
-# --- `obtainable` / `expired`: arithmetic over the match's completion time ----------------------
+# --- `obtainable` / `beyond_window`: arithmetic over the match's completion time ---------------
 
 
 def test_obtainable_for_a_recent_match_with_no_capture_and_no_recorded_404() -> None:
@@ -184,29 +190,84 @@ def test_obtainable_for_a_recent_match_with_no_capture_and_no_recorded_404() -> 
         completed_at=_RECENT_COMPLETION,
         now=_NOW,
         capture=None,
-        recorded_404=False,
+        recorded_404_at=None,
         capture_budget_days=_CAPTURE_BUDGET_DAYS,
     )
 
     assert view.state == Availability.OBTAINABLE
 
 
-def test_expired_for_an_ancient_match_with_no_capture_and_no_recorded_404() -> None:
-    """R8's table: "expired — the match completed outside it" (the capture budget). A match far
-    older than any budget a caller could configure renders expired whatever the source's window
-    is for any profile. (History, 2026-08-29: R8 first stated this against two candidate readings
-    of a window then recorded as contradicted.)"""
+def test_beyond_window_for_an_ancient_match_with_no_capture_and_no_recorded_404() -> None:
+    """R8's table (amended by T842): a match completed outside the capture budget, with no capture
+    and no recorded 404, renders `beyond_window` — not `expired`, which needs a recorded 404
+    observed past the budget. A match far older than any budget a caller could configure reads the
+    same whatever the source's window is for any profile."""
     from aoe2stats_api.availability import Availability, derive_availability
 
     view = derive_availability(
         completed_at=_ANCIENT_COMPLETION,
         now=_NOW,
         capture=None,
-        recorded_404=False,
+        recorded_404_at=None,
+        capture_budget_days=_CAPTURE_BUDGET_DAYS,
+    )
+
+    assert view.state == Availability.BEYOND_WINDOW
+    assert view.state.value == "beyond_window"
+
+
+def test_a_recorded_404_observed_past_the_budget_derives_expired() -> None:
+    """T842 (2) / R8 2026-11-10: the source itself answered 404 more than `capture_budget_days`
+    after the match completed, so the recording is gone and the state is `expired`."""
+    from aoe2stats_api.availability import Availability, derive_availability
+
+    view = derive_availability(
+        completed_at=_ANCIENT_COMPLETION,
+        now=_NOW,
+        capture=None,
+        recorded_404_at=_ANCIENT_COMPLETION + timedelta(days=_CAPTURE_BUDGET_DAYS, seconds=1),
         capture_budget_days=_CAPTURE_BUDGET_DAYS,
     )
 
     assert view.state == Availability.EXPIRED
+
+
+def test_a_recorded_404_inside_the_budget_derives_never_recorded_for_an_old_match() -> None:
+    """The contrast case: a 404 observed at or before `completed_at + capture_budget_days` is
+    `never_recorded`, as every recorded 404 was before T842, however old the match is now."""
+    from aoe2stats_api.availability import Availability, derive_availability
+
+    at_the_boundary = derive_availability(
+        completed_at=_ANCIENT_COMPLETION,
+        now=_NOW,
+        capture=None,
+        recorded_404_at=_ANCIENT_COMPLETION + timedelta(days=_CAPTURE_BUDGET_DAYS),
+        capture_budget_days=_CAPTURE_BUDGET_DAYS,
+    )
+    inside = derive_availability(
+        completed_at=_ANCIENT_COMPLETION,
+        now=_NOW,
+        capture=None,
+        recorded_404_at=_ANCIENT_COMPLETION + timedelta(days=1),
+        capture_budget_days=_CAPTURE_BUDGET_DAYS,
+    )
+
+    assert at_the_boundary.state == Availability.NEVER_RECORDED
+    assert inside.state == Availability.NEVER_RECORDED
+
+
+def test_an_unavailable_capture_stays_never_recorded_past_the_budget() -> None:
+    from aoe2stats_api.availability import Availability, derive_availability
+
+    view = derive_availability(
+        completed_at=_ANCIENT_COMPLETION,
+        now=_NOW,
+        capture=_capture(status=CaptureStatus.UNAVAILABLE),
+        recorded_404_at=None,
+        capture_budget_days=_CAPTURE_BUDGET_DAYS,
+    )
+
+    assert view.state == Availability.NEVER_RECORDED
 
 
 # --- `never_recorded`: the one state that needs evidence rather than arithmetic (R8) ------------
@@ -224,7 +285,7 @@ def test_never_recorded_from_explicit_evidence_even_inside_the_window() -> None:
         completed_at=_RECENT_COMPLETION,
         now=_NOW,
         capture=None,
-        recorded_404=True,
+        recorded_404_at=_INSIDE_BUDGET_404,
         capture_budget_days=_CAPTURE_BUDGET_DAYS,
     )
 
@@ -235,14 +296,14 @@ def test_never_recorded_from_the_callers_own_unavailable_capture_row() -> None:
     """R8: "1 records exactly this outcome on `replay_captures` for a user's own matches" —
     `CaptureStatus.UNAVAILABLE` is 001's own recorded 404 for the point of view this service tried
     to capture automatically, and it must read as `never_recorded` even with no separate
-    `recorded_404` flag set, and even inside the window."""
+    recorded 404 set, and even inside the window."""
     from aoe2stats_api.availability import Availability, derive_availability
 
     view = derive_availability(
         completed_at=_RECENT_COMPLETION,
         now=_NOW,
         capture=_capture(status=CaptureStatus.UNAVAILABLE),
-        recorded_404=False,
+        recorded_404_at=None,
         capture_budget_days=_CAPTURE_BUDGET_DAYS,
     )
 
@@ -258,9 +319,9 @@ async def test_a_retained_recording_never_yields_archived_and_is_not_a_parameter
     """Decided 2026-08-23, strengthened 3.0.0 (R8): "a `retained_recordings` row is not an
     archive for this purpose ... it is refused". A match whose only surviving bytes are a
     `retained_recordings` row — no `replay_captures` row for this caller, no other evidence —
-    still renders `expired`, exactly what R8 states in its own words: "a match whose only copy is
-    retained renders as `expired` with an analysis available". Handing those bytes to any
-    signed-in caller would redistribute a third party's public-basis recording with no basis for
+    still renders `beyond_window` past the budget (T842; R8 first said `expired`: "a match whose
+    only copy is retained renders as `expired` with an analysis available"). Handing those bytes to
+    any signed-in caller would redistribute a third party's public-basis recording with no basis for
     doing so.
 
     The `retained_recordings` row below is persisted for the *same* `(game_id, profile_id)` this
@@ -298,11 +359,11 @@ async def test_a_retained_recording_never_yields_archived_and_is_not_a_parameter
         completed_at=_ANCIENT_COMPLETION,
         now=_NOW,
         capture=None,
-        recorded_404=False,
+        recorded_404_at=None,
         capture_budget_days=_CAPTURE_BUDGET_DAYS,
     )
 
-    assert view.state == Availability.EXPIRED
+    assert view.state == Availability.BEYOND_WINDOW
     assert view.state != Availability.ARCHIVED
 
     parameter_names = set(inspect.signature(derive_availability).parameters)
@@ -316,22 +377,25 @@ async def test_a_retained_recording_never_yields_archived_and_is_not_a_parameter
 
 
 @pytest.mark.parametrize(
-    ("completed_at", "capture", "recorded_404"),
+    ("completed_at", "capture", "recorded_404_at"),
     [
         pytest.param(
-            _ANCIENT_COMPLETION, _capture(status=CaptureStatus.STORED), False, id="archived"
+            _ANCIENT_COMPLETION, _capture(status=CaptureStatus.STORED), None, id="archived"
         ),
-        pytest.param(_RECENT_COMPLETION, None, False, id="obtainable"),
-        pytest.param(_ANCIENT_COMPLETION, None, False, id="expired"),
-        pytest.param(_RECENT_COMPLETION, None, True, id="never_recorded"),
+        pytest.param(_RECENT_COMPLETION, None, None, id="obtainable"),
+        pytest.param(_ANCIENT_COMPLETION, None, None, id="beyond_window"),
+        pytest.param(
+            _ANCIENT_COMPLETION, None, _ANCIENT_COMPLETION + timedelta(days=300), id="expired"
+        ),
+        pytest.param(_RECENT_COMPLETION, None, _INSIDE_BUDGET_404, id="never_recorded"),
     ],
 )
 def test_obtainable_until_is_null_in_every_state_because_the_window_belongs_to_each_profile(
-    completed_at: datetime, capture: ReplayCapture | None, recorded_404: bool
+    completed_at: datetime, capture: ReplayCapture | None, recorded_404_at: datetime | None
 ) -> None:
     """FR-024, re-derived 2026-10-27 (T823): the date stays null because the window belongs to each
     profile and no date can be derived that the source will honour. This holds for every one of the
-    four states, not only the two `contracts/http-api.md` already required it null for — an
+    five states, not only the two `contracts/http-api.md` already required it null for — an
     `archived` or `obtainable` point of view has no honest expiry date to state either, for
     exactly the reason `research.md` R8 gives. (History: the 2026-08-29 amendment gave an
     unresolved window as the reason.)"""
@@ -341,7 +405,7 @@ def test_obtainable_until_is_null_in_every_state_because_the_window_belongs_to_e
         completed_at=completed_at,
         now=_NOW,
         capture=capture,
-        recorded_404=recorded_404,
+        recorded_404_at=recorded_404_at,
         capture_budget_days=_CAPTURE_BUDGET_DAYS,
     )
 
@@ -381,12 +445,12 @@ def test_derive_availability_requires_capture_budget_days_with_no_default() -> N
     )
 
 
-def test_the_obtainable_expired_split_moves_only_with_capture_budget_days() -> None:
-    """The parameter is not decorative: the identical `completed_at` renders `expired` under one
-    `capture_budget_days` and `obtainable` under a wider one, with nothing else about the call
-    changing. This is what makes a `docs/data-sources.md` re-measurement a matter of changing
-    `CAPTURE_BUDGET_DAYS` — a setting — rather than editing this module, exactly the property
-    constitution I states for this number."""
+def test_the_obtainable_beyond_window_split_moves_only_with_capture_budget_days() -> None:
+    """The parameter is not decorative: the identical `completed_at` renders `beyond_window` under
+    one `capture_budget_days` and `obtainable` under a wider one, with nothing else about the
+    call changing. This is what makes a `docs/data-sources.md` re-measurement a matter of
+    changing `CAPTURE_BUDGET_DAYS` — a setting — rather than editing this module, exactly the
+    property constitution I states for this number."""
     from aoe2stats_api.availability import Availability, derive_availability
 
     completed_at = _NOW - timedelta(days=25)
@@ -395,18 +459,18 @@ def test_the_obtainable_expired_split_moves_only_with_capture_budget_days() -> N
         completed_at=completed_at,
         now=_NOW,
         capture=None,
-        recorded_404=False,
+        recorded_404_at=None,
         capture_budget_days=_CAPTURE_BUDGET_DAYS,
     )
     wider = derive_availability(
         completed_at=completed_at,
         now=_NOW,
         capture=None,
-        recorded_404=False,
+        recorded_404_at=None,
         capture_budget_days=40,
     )
 
-    assert narrower.state == Availability.EXPIRED
+    assert narrower.state == Availability.BEYOND_WINDOW
     assert wider.state == Availability.OBTAINABLE
 
 
@@ -418,10 +482,10 @@ def test_the_configured_budget_leaves_real_margin_under_the_shortest_measured_re
     `_CAPTURE_BUDGET_DAYS` (18, mirroring `.env.example`) is configured shorter than the shortest
     retention window measured on any profile (`docs/data-sources.md` §2: the window is rolling and
     differs per profile), with room to spare: a match completed 25 days ago can sit inside the
-    source's window, and still renders `expired` once the configured budget is applied, precisely
-    the margin the old, unconfigured constant had none of. The margin holds for every profile
-    measured and not beyond; for a profile whose window is shorter than the budget, if one exists,
-    the same match would read `obtainable` for a purged recording. Nothing here asserts what
+    source's window, and still renders `beyond_window` once the configured budget is applied,
+    precisely the margin the old, unconfigured constant had none of. The margin holds for every
+    profile measured and not beyond; for a profile whose window is shorter than the budget, if one
+    exists, the same match would read `obtainable` for a purged recording. Nothing here asserts what
     `derive_availability` computes equals `timedelta(days=_CAPTURE_BUDGET_DAYS)` — a fixed day-count
     check on this module's own math would recreate the defect being fixed one layer up; this instead
     pins that the configured value is what decides the split, and that this configured value is
@@ -441,11 +505,11 @@ def test_the_configured_budget_leaves_real_margin_under_the_shortest_measured_re
         completed_at=completed_at,
         now=_NOW,
         capture=None,
-        recorded_404=False,
+        recorded_404_at=None,
         capture_budget_days=_CAPTURE_BUDGET_DAYS,
     )
 
-    assert view.state == Availability.EXPIRED
+    assert view.state == Availability.BEYOND_WINDOW
 
 
 # --- The assertion this file exists for: no outbound request, ever ------------------------------
@@ -473,35 +537,35 @@ async def test_deriving_availability_issues_no_outbound_request(db_session: Asyn
         completed_at=_ANCIENT_COMPLETION,
         now=_NOW,
         capture=_capture(status=CaptureStatus.STORED),
-        recorded_404=False,
+        recorded_404_at=None,
         capture_budget_days=_CAPTURE_BUDGET_DAYS,
     )
     derive_availability(
         completed_at=_RECENT_COMPLETION,
         now=_NOW,
         capture=None,
-        recorded_404=False,
+        recorded_404_at=None,
         capture_budget_days=_CAPTURE_BUDGET_DAYS,
     )
     derive_availability(
         completed_at=_ANCIENT_COMPLETION,
         now=_NOW,
         capture=None,
-        recorded_404=False,
+        recorded_404_at=None,
         capture_budget_days=_CAPTURE_BUDGET_DAYS,
     )
     derive_availability(
         completed_at=_RECENT_COMPLETION,
         now=_NOW,
         capture=None,
-        recorded_404=True,
+        recorded_404_at=_INSIDE_BUDGET_404,
         capture_budget_days=_CAPTURE_BUDGET_DAYS,
     )
     derive_availability(
         completed_at=_RECENT_COMPLETION,
         now=_NOW,
         capture=_capture(status=CaptureStatus.UNAVAILABLE),
-        recorded_404=False,
+        recorded_404_at=None,
         capture_budget_days=_CAPTURE_BUDGET_DAYS,
     )
 

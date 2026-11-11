@@ -346,7 +346,9 @@ of view, and confirm both files open in the game and show the game from the expe
    the match's age.
 4. **Given** a match the user played whose own point of view is archived but which is beyond the
    window, **When** they open it, **Then** their own point of view is offered and the other
-   participants' are shown as expired — the difference is visible and explained.
+   participants' are shown as outside this service's capture window, offered to try anyway — the
+   difference is visible and explained. **Amended 2026-11-10 (T842)**: "shown as expired" became
+   "outside the capture window, try anyway"; see FR-025.
 5. **Given** a participant's recording that the source does not have, **When** the user requests it,
    **Then** they are told it was not obtainable, distinctly from "it expired".
 6. **Given** a match still inside the window, **When** the user views it, **Then** the remaining time
@@ -588,6 +590,17 @@ their current standing and reachable in one click.
   approximate, so for those profiles it does not claim obtainable for a recording that has actually
   expired. The bound is exact: a profile whose window is shorter than the budget, if one exists,
   would see `obtainable` for a purged recording.
+  **Amended 2026-11-10 (T842, owner ruling)**: past `capture_budget_days`, with no evidence either
+  way, the derivation no longer claims expiry. It states `beyond_window`: outside this service's
+  capture window, offered as a download to try anyway. The click asks the source at that moment. A
+  recording the source serves downloads; a `404` is shown to the user as gone, and is recorded, so the
+  point of view reads `expired` from then on. `expired` is therefore evidence, not arithmetic: a
+  recorded `404` observed later than `capture_budget_days` after the match completed. A recorded `404`
+  observed earlier, and past the publication grace, still reads `never_recorded`, and `archived` is
+  unchanged. A `beyond_window` download is not an unobtainable download presented as an action that
+  then fails: it is labelled as an attempt before the click, and a `404` is the answer it said it
+  would ask for. The 2026-08-29 paragraph above, on `expired` being derived from the budget, is
+  history.
 - **FR-026**: System MUST serve the signed-in user's own point of view from this service's archive
   when it holds one, so that it remains available regardless of the match's age (001 FR-028).
 - **FR-027**: System MUST NOT store a recorded game obtained solely to serve a download. Downloading
@@ -747,7 +760,16 @@ their current standing and reachable in one click.
   derivation says `expired` for a recording the source would still serve, and SC-004 is **not
   claimable** — it fails by construction rather than by implementation error. It becomes measurable
   when `docs/data-sources.md` records as settled what sets a profile's window. (2026-08-29 gave the
-  fixed-epoch reading as the cause; that is history.)
+  fixed-epoch reading as the cause; that is history.) **Amended 2026-11-10 (T842)**: measurable. No
+  derived state claims expiry without the source's own `404` (FR-025): `obtainable` and
+  `beyond_window` are both offered as downloads, and `expired` and `never_recorded` both stand on a
+  recorded `404`. The criterion reads: a download offered as `obtainable` or `beyond_window` that the
+  source serves at that moment succeeds; one the source answers `404` tells the user it is gone, and
+  is not offered again once that `404` is recorded, which it is only when observed past
+  `REPLAY_PUBLICATION_GRACE_HOURS` after the match completed (inside the grace nothing is recorded,
+  so the row stays offered); a point of view stated `expired` or `never_recorded` is not clickable.
+  A `404` on an `obtainable` row is the boundary race, reported as such
+  (`expired_since_page_load`). The 2026-10-27 "not claimable" reading above is history.
 - **SC-005**: A user can obtain any participant's point of view of a match inside the retention
   window in at most two actions from the match page.
 - **SC-006**: A match is parsed at most once: for any match, the number of times its recorded game is

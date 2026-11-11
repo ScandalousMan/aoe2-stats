@@ -977,8 +977,11 @@ class ReplayFetchMiss(Base):
     `contracts/http-api.md`: the call records the outcome only once the match completed at least
     `REPLAY_PUBLICATION_GRACE_HOURS` ago; inside the grace a 404 is not read as evidence, since the
     recording may not be published yet, and no row is written). `derive_availability`'s
-    `recorded_404` parameter (`availability.py`, T336) is this table,
-    read by `(game_id, profile_id)`.
+    `recorded_404_at` parameter (`availability.py`, T336, amended T842) is this table's
+    `observed_at`, read by `(game_id, profile_id)`: `observed_at` matters, since a miss observed
+    more than `capture_budget_days` after the match completed derives `expired` and an earlier one
+    `never_recorded`. A download of a `beyond_window` point of view that the source answers 404
+    writes the row with `observed_at` set to that request's clock.
 
     **Deliberately not a `replay_captures` row, and not a fourth column bolted onto it** — a
     decision this table's whole existence is, not an oversight `data-model.md`'s "this feature adds

@@ -276,8 +276,14 @@ describe('assertMatchDetailResponse', () => {
   // T338/T341: the per-participant `replay` object (FR-023, `contracts/http-api.md`'s "Recorded
   // games, per point of view").
 
-  it('accepts each of the four replay availability states', () => {
-    for (const availability of ['archived', 'obtainable', 'expired', 'never_recorded']) {
+  it('accepts each of the five replay availability states', () => {
+    for (const availability of [
+      'archived',
+      'obtainable',
+      'beyond_window',
+      'expired',
+      'never_recorded',
+    ]) {
       const body = validDetail()
       body.participants = [{ ...validParticipant(), replay: validReplay({ availability }) }]
       expect(() => assertMatchDetailResponse(body)).not.toThrow()

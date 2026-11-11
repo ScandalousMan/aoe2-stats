@@ -146,14 +146,19 @@ different scenario. There is nothing to walk here.
    the budget renders `expired` on every row even though the source may still serve it; that
    is the accepted cost R8 states, not a defect to chase while walking this scenario. Pick a match
    completed inside `CAPTURE_BUDGET_DAYS` to see `obtainable` at all.
+   **Amended 2026-11-10 (T842)**: a match older than the budget now renders `beyond_window` on every
+   row with no recorded `404` — "outside our capture window, try anyway" — not `expired`. Click one:
+   it downloads if the source still serves it, and otherwise the page says it is gone and, from then
+   on, renders that row `expired`. The "accepted cost" sentence above is history.
 2. Download two different participants' points of view. Open both in the game and confirm each shows
    the match from the expected player's side (US3 independent test).
 3. Check the object store and `retained_recordings`. **Expect zero new bytes and zero new rows**
    (FR-027, SC-009). This is the assertion that separates downloading from analysing, and it is easy
    to lose to a helpful cache.
 4. Take a match you played whose replay this service archived and which is beyond the window. Expect
-   your own point of view offered from the archive, the others shown as expired, and the difference
-   explained (US3 scenario 4). Confirm a `replay_access_log` row for the archived one (FR-029).
+   your own point of view offered from the archive, the others shown as outside the capture window
+   with "try anyway" (amended 2026-11-10, T842; `expired` only where a `404` was recorded), and the
+   difference explained (US3 scenario 4). Confirm a `replay_access_log` row for the archived one (FR-029).
 
 ## Scenario 7 — The analysis runs once, and says what it found
 
