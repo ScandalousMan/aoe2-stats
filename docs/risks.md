@@ -191,7 +191,10 @@ jurisdiction, `<account>.r2...` does not).
       `point_of_view_profile_id`, are rewritten to the same placeholder as the rest of the
       pseudonymisation. The object key keeps the original id, because renaming it means copying
       the object and deleting the original, which constitution IV forbids. T845 closes the race in
-      which an analysis in flight wrote the original id into either column after the erasure.
+      which an analysis in flight wrote the original id into either column after the erasure,
+      unless a later sighting has written the original's `match_players` row again (the T459h
+      residue, owner's ruling of 2026-11-10), in which case the original id is written to both
+      columns, joined, as for any person who is not a user.
       What stays, listed exactly: every published analysis document, in every version of it,
       carries each participant's `profile_id`, the point of view and `source_recording.object_key`
       (never rewritten, T666d: a key is never written twice), and

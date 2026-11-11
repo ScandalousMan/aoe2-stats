@@ -624,20 +624,19 @@ async def _publish(
     `resolve_profile_id` of the old id would find that row and return the original, unjoined from
     the retained row.
 
-    **Lock, then read, then lock again if the id moved.** (1) An unlocked read of the retained
-    row's `profile_id` only names which `match_players` row to lock first; it is a hint and nothing
-    is decided from it. (2) `resolve_profile_id` locks that `match_players` row `FOR KEY SHARE`,
-    before any `match_analyses` or `retained_recordings` row is locked, the global order. (3) The
-    retained row is read again by primary key. Its `profile_id` can only be rewritten by a
-    transaction holding `FOR UPDATE` on `match_players (game_id, that profile_id)`
-    (`discover.lock_match_players`), so once this transaction holds that row, the read cannot go
-    stale. When the id read in (3) is the one locked in (2), the read is safe: an erasure in flight
-    on it held the lock first, so (2) waited for its commit and (3) read its rewrite. When it
-    differs (the hint was X, an erasure has made the row say -X, and a re-sighting has restored
-    `(game_id, X)`, so (2) was granted on X), the lock on X says nothing about -X: the `(game_id,
-    -X)` row is locked now, by a second `resolve_profile_id`, before `match_analyses` is touched,
-    and the id written is -X. The read in (1) is safe only as a hint; the read in (3) is safe only
-    for the id whose `match_players` row is held. `LookupError` when a row to lock does not exist.
+    **Lock, then read.** (1) An unlocked read of the retained row's `profile_id` only names which
+    `match_players` row to lock; it is a hint and nothing is decided from it. (2)
+    `resolve_profile_id` locks a `match_players` row for the hint `FOR KEY SHARE`, before any
+    `match_analyses` or `retained_recordings` row is locked, the global order; `LookupError` when
+    neither the hint's row nor its placeholder's exists. (3) The retained row is read again by
+    primary key, and its `profile_id` is written. A retained `profile_id` is rewritten only from a
+    positive id X to its placeholder -X, by a transaction holding `FOR UPDATE` on `match_players
+    (game_id, X)` (`discover.lock_match_players`): erasure pseudonymises a user's own profiles, and
+    `resolve_third_party_objection` refuses a non-positive id. So when (3) reads the hint X, this
+    transaction holds `(game_id, X)` and an erasure of X waits for its commit; when (3) reads -X,
+    the value is final and needs no lock of its own. T847 first locked `(game_id, -X)` a second time
+    in that case; it changed no outcome, so no test could fail without it, and it took the second
+    `match_players` lock in descending order against the ascending rule above, so it was removed.
 
     **The `match_players` lock is held across the object-store put below.** It is taken at the
     start of this transaction and released at its commit, which follows the put, so an erasure or
@@ -655,8 +654,6 @@ async def _publish(
         hint = (await session.execute(retained_id_statement)).scalar_one()
         await resolve_profile_id(session, game_id=game_id, profile_id=hint)
         point_of_view_profile_id = (await session.execute(retained_id_statement)).scalar_one()
-        if point_of_view_profile_id != hint:
-            await resolve_profile_id(session, game_id=game_id, profile_id=point_of_view_profile_id)
         analysis = await session.get(MatchAnalysis, game_id)
         if analysis is None:  # pragma: no cover - defensive: this row was just claimed above
             raise LookupError(f"no match_analyses row for game_id={game_id} to publish")
