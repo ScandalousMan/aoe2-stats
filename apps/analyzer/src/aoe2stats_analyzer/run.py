@@ -104,6 +104,7 @@ from aoe2stats_analyzer.extract import (
     validate_document,
     verify_deployment,
 )
+from aoe2stats_analyzer.profile_id import resolve_profile_id
 from aoe2stats_analyzer.retain import (
     RecordingIntegrityError,
     retain_recording,
@@ -319,8 +320,13 @@ async def _record_point_of_view(
     point of view of its own) names the recording it actually read. The guards sit in the
     statement: `state` keeps a published row untouched, as `_mark_failed` does, and `claimed_at`
     keeps the write to the run that still holds the claim (T827) - a run whose lease was taken
-    over writes nothing, so it cannot rename the point of view of a row now held by another run."""
+    over writes nothing, so it cannot rename the point of view of a row now held by another run.
+
+    **The id written is `resolve_profile_id`'s (T845):** the walk read its participants before this
+    transaction, so a participant erased since is written as their placeholder. The lock on their
+    `match_players` row is taken first in this transaction, before the `match_analyses` row."""
     async with session_scope(session_factory) as session:
+        profile_id = await resolve_profile_id(session, game_id=game_id, profile_id=profile_id)
         await session.execute(
             update(MatchAnalysis)
             .where(
@@ -460,8 +466,15 @@ async def _mark_unavailable(
     **Never unpublishes (T666i, FR-042).** A `published` row is a served analysis; whatever route
     reached here - none does today, the first-analysis path claims only a `queued` or expired
     `running` row - it is left exactly as it was.
+
+    **The point of view of a row it inserts is `resolve_profile_id`'s (T845),** and the lock on that
+    participant's `match_players` row is taken before the `match_analyses` row is touched, on the
+    insert and on the update alike, so the order is the same whichever branch the statement takes.
     """
     async with session_scope(session_factory) as session:
+        point_of_view_profile_id = await resolve_profile_id(
+            session, game_id=game_id, profile_id=point_of_view_profile_id
+        )
         # The guard is in the statement, not in a read before it: a publish that commits between a
         # read and this write would otherwise be overwritten (T666n).
         result = await session.execute(
@@ -561,6 +574,7 @@ async def _publish(
     *,
     object_store: ObjectStore,
     game_id: int,
+    profile_id: int,
     document: Mapping[str, Any],
     payload: bytes,
     result_key: str,
@@ -600,24 +614,29 @@ async def _publish(
     was not written. The cost is one row lock held across the put, taken by the one request that is
     publishing this match.
 
-    **A pseudonymised point of view is kept (T843).** The row's `point_of_view_profile_id` is the
-    join key to its retained recording; when it is a placeholder (negative) it is not overwritten
-    by the id the document parsed from the recording.
+    **The point of view is the retained row's id, resolved (T843, T845).** The row's
+    `point_of_view_profile_id` is the join key to its retained recording, so what is written is
+    `profile_id`, the `profile_id` of the retained row this run read, passed through
+    `resolve_profile_id`: unchanged while that person's `match_players` row exists, their
+    placeholder once an erasure or an objection has moved it (which has then rewritten the retained
+    row to the same placeholder). The document's own `point_of_view_profile_id` is not written to
+    the column. The `match_players` lock is the first statement of this transaction, before the
+    `match_analyses` row is read and so before it is held across the put below: an erasure that
+    starts meanwhile waits for this commit, then rewrites the row this transaction published.
 
     **A key is never written twice (T666d).** The put is a conditional create: when the key already
     exists nothing is written and the row is published at it, so the bytes a reader or a
     reproduction already saw cannot change under a second request or a retry.
     """
     async with session_scope(session_factory) as session:
+        point_of_view_profile_id = await resolve_profile_id(
+            session, game_id=game_id, profile_id=profile_id
+        )
         analysis = await session.get(MatchAnalysis, game_id)
         if analysis is None:  # pragma: no cover - defensive: this row was just claimed above
             raise LookupError(f"no match_analyses row for game_id={game_id} to publish")
         analysis.state = MatchAnalysisState.PUBLISHED
-        # T843: a negative value is a pseudonymisation placeholder (erasure or an objection
-        # rewrote it, together with the retained row's `profile_id`, which is how the recording is
-        # found). Writing the document's original id back would unjoin the two.
-        if analysis.point_of_view_profile_id >= 0:
-            analysis.point_of_view_profile_id = document["point_of_view_profile_id"]
+        analysis.point_of_view_profile_id = point_of_view_profile_id
         analysis.parser_name = document["engine"]["name"]
         analysis.parser_version = document["engine"]["version"]
         analysis.engine_deps = dict(document["engine"]["deps"])
@@ -805,6 +824,7 @@ async def _extract_and_publish(
     object_store: ObjectStore,
     extractor: AnalysisExtractor,
     game_id: int,
+    profile_id: int,
     zip_bytes: bytes,
     object_key: str,
     zip_sha256: str,
@@ -914,6 +934,7 @@ async def _extract_and_publish(
             session_factory,
             object_store=object_store,
             game_id=game_id,
+            profile_id=profile_id,
             document=document,
             payload=payload,
             result_key=result_key,
@@ -962,6 +983,7 @@ async def _recompute(
             )
             return
         object_key, zip_sha256 = retained.object_key, retained.zip_sha256
+        retained_profile_id = retained.profile_id
 
         async def log_read(row: RetainedRecording) -> None:
             # FR-029: written when the bytes arrive, before their checksum is judged, and before
@@ -1000,6 +1022,7 @@ async def _recompute(
         object_store=object_store,
         extractor=extractor,
         game_id=game_id,
+        profile_id=retained_profile_id,
         zip_bytes=zip_bytes,
         object_key=object_key,
         zip_sha256=zip_sha256,
@@ -1206,6 +1229,7 @@ async def run_once(
         object_store=object_store,
         extractor=extractor,
         game_id=game_id,
+        profile_id=retained.profile_id,
         zip_bytes=blob.content,
         object_key=retained.object_key,
         zip_sha256=retained.zip_sha256,

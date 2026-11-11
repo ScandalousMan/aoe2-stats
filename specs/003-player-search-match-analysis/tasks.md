@@ -984,3 +984,44 @@ SC-004, US3 scenario 4, research R8, `specs/003-player-search-match-analysis/con
   changes nothing; a recompute of a published row whose point of view is a placeholder publishes
   with the placeholder kept. **Done**: the tests pass, the whole suite is green, and spec_lint is
   green on every feature.
+- [x] T845 Remediate PR #231's first review, of T843, in
+  `apps/analyzer/src/aoe2stats_analyzer/run.py`, `apps/analyzer/src/aoe2stats_analyzer/retain.py`,
+  `apps/analyzer/src/aoe2stats_analyzer/claim.py`, `apps/api/src/aoe2stats_api/routers/privacy.py`
+  and the texts T843 edited. (1) An erasure that commits while an analysis of a match it names is
+  in flight is not serialised against the analyzer: `run_once` reads the participants and claims
+  before the erasure, then `retain_recording` inserts a row under the original id, and T843's sign
+  guard in `_publish` keeps the placeholder on `match_analyses`, so the two columns no longer join
+  and the original id stays in `retained_recordings`. A walk that reaches the erased participant
+  writes the original id into both columns. Remove the sign guard: `_publish` writes the
+  `profile_id` of the retained row the run read, on the first-analysis and the recompute path. Every
+  analyzer write of a point of view or of a retained `profile_id` (`claim_for_analysis`,
+  `_record_point_of_view`, `_mark_unavailable`, `retain_recording`, `_publish`) locks the
+  `match_players` row `(game_id, profile_id)` `FOR KEY SHARE` in its own transaction, before any
+  `match_analyses` or `retained_recordings` row (the global order in
+  `apps/ingester/src/aoe2stats_ingester/discover.py`). If the row is gone and the placeholder's
+  `(game_id, placeholder)` row exists, it writes the placeholder from `pseudonymise_profile`. If
+  neither exists, it raises. `discover.lock_match_players` takes `FOR UPDATE`, which conflicts with
+  `FOR KEY SHARE`, so an erasure either waits for the analyzer's commit and then finds its row, or
+  commits first and the analyzer then writes the placeholder. The object key of a row retained after
+  the erasure still embeds the original id, as it does for every retained row. (2) Texts. The key is
+  served: the published document carries `source_recording.object_key`
+  (`apps/analyzer/src/aoe2stats_analyzer/extract.py`), and
+  `apps/api/src/aoe2stats_api/routers/analysis.py` serves the document to every signed-in viewer.
+  The sentence that it is never served and read only by the analyzer is removed from
+  `docs/privacy/processing-register.md` and `packages/storage/src/aoe2stats_storage/models.py`.
+  What stays in a published document, in every version of it, is listed exactly where T843 named
+  only the point of view, in `docs/risks.md` and the register: each participant's `profile_id`, the
+  point of view and the object key, all served. "Every identifier" is replaced by the list of what is
+  rewritten, with the exceptions named (published documents, `replay_fetch_misses`), wherever the
+  claim is made about erasure or objection: `docs/privacy/processing-register.md`, `docs/risks.md`,
+  and the sentences T843 edited in `specs/003-player-search-match-analysis/data-model.md` and
+  `specs/003-player-search-match-analysis/quickstart.md`. T843's sentence that nothing retains a
+  negative id is reworded to what holds now: a negative id is retained only as a placeholder this
+  task writes, and a fetch of a negative id from the source is not measured. Tests, each failing
+  against the tree before this task, with the output in the hand-back: an erasure committed between
+  the claim and `retain_recording` leaves the retained row and the analysis both on the placeholder,
+  joined; a walk that reaches an erased participant writes the placeholder into both; an erasure in
+  a second session while `retain_recording`'s transaction holds its lock waits, then rewrites the
+  committed row; an analysis whose point of view is another participant is left untouched by an
+  erasure (contrast). **Done**: the tests pass, the whole suite is green, and spec_lint is green on
+  every feature.

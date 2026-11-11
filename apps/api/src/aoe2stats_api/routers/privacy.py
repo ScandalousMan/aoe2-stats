@@ -601,18 +601,29 @@ async def _pseudonymise_profile_ids(
        that participant's `match_players` row, and that upsert waits on the lock step 1 holds, so a
        batch using it cannot add a row for an original between the read and the writes below.
 
-    3. **T843:** every `match_analyses` row whose `point_of_view_profile_id` is one of the
-       originals, locked `FOR NO KEY UPDATE` in ascending `game_id` order, then every
+    3. **T843, T845:** every `match_analyses` row whose `point_of_view_profile_id` is one of the
+       originals, selected `FOR KEY SHARE` in ascending `game_id` order, then every
        `retained_recordings` row whose `profile_id` is one of them, in ascending
-       `(game_id, profile_id)` order. Both come after `match_players` and before
-       `replay_captures` (which `erase_account` locks once this returns). Neither analyzer
-       transaction that writes them (`claim_for_analysis`, `_publish`, `_record_point_of_view`,
-       `_mark_unavailable`, `_mark_failed`, `retain_recording`) holds one of these rows while
-       waiting on `aoe_profiles`, `match_players` or `replay_captures`, so the order between the
-       two tables is free; `match_analyses` goes first. A `matches` foreign-key check on an insert
-       takes only `FOR KEY SHARE`, which `FOR NO KEY UPDATE` does not conflict with, and no
-       placeholder is ever the `profile_id` of an inserted retained row (nothing retains a
-       negative id), so the rewrite cannot collide with the unique pair.
+       `(game_id, profile_id)` order; the `UPDATE`s below take `FOR NO KEY UPDATE` on them. Both
+       selects run after step 2's locks are granted, so they see every row an analyzer transaction
+       committed while step 2 waited. Both come after `match_players` and before
+       `replay_captures` (which `erase_account` locks once this returns). Each analyzer transaction
+       that writes one of the two columns (`claim_for_analysis`, `_record_point_of_view`,
+       `_mark_unavailable`, `retain_recording`, `_publish`) first locks the `match_players` row
+       `(game_id, profile_id)` it writes `FOR KEY SHARE` and holds it to its commit
+       (`aoe2stats_analyzer.profile_id.resolve_profile_id`, T845), and takes no lock on
+       `aoe_profiles` or `replay_captures`; `_mark_failed` writes neither column. Step 2's
+       `FOR UPDATE` conflicts with that lock, so for each such row either this transaction waits
+       for the analyzer's commit and then finds the row it wrote, or it commits first and the
+       analyzer's lock finds the original gone and writes the placeholder instead. The order
+       between `match_analyses` and `retained_recordings` is free for the same reason it was in
+       T843; `match_analyses` goes first. A `matches` foreign-key check on an insert takes only
+       `FOR KEY SHARE`, which `FOR NO KEY UPDATE` does not conflict with. A negative id is
+       retained only as a placeholder `resolve_profile_id` wrote, which is the one this function
+       writes. The rewrite would meet the unique `(game_id, profile_id)` pair only if an original
+       and its placeholder were both retained for one game, which needs the original's
+       `match_players` row to have been inserted again after an erasure; nothing here handles
+       that. Whether the source answers a fetch of a negative id with `NotFound` is not measured.
 
     The writes that follow touch only rows already held. `UPDATE match_players SET profile_id`
     moves each held `(game_id, original)` to `(game_id, placeholder)`;
@@ -627,9 +638,10 @@ async def _pseudonymise_profile_ids(
     IV). `object_key` and the object are left as they are: the key embeds the original id, and
     renaming it is a copy followed by a delete of the original, which constitution IV forbids. No
     store call is made here. Rewriting these columns does not change an analysis's identity
-    digest, so no recompute follows from it. The published analysis document carries the point of
-    view parsed from the recording and is not rewritten (T666d). A second call over the same ids
-    matches no row and changes nothing.
+    digest, so no recompute follows from it. A published analysis document is not rewritten (a key
+    is never written twice, T666d), so every version of it keeps each participant's `profile_id`,
+    the point of view and `source_recording.object_key`, all served to every signed-in viewer by
+    `routers/analysis.py`. A second call over the same ids matches no row and changes nothing.
 
     **T426: `avatar_hash` needs no pseudonym.** Unlike `alias`/`country`, which must survive as
     plausible values (`pseudonymise_profile`'s own plan computes a masked pair for exactly that

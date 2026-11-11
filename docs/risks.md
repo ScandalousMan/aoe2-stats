@@ -181,17 +181,24 @@ jurisdiction, `<account>.r2...` does not).
       oversight: constitution IX 3.0.0 (2026-08-24, and unchanged by 4.0.0) stopped erasure and third-party objection from
       deleting a recording retained under its public-recording basis, so a check that lists the whole
       bucket now fails correctly. What those two routes must be verified to do there is
-      **pseudonymise every identifier this service holds** about a person appearing in a recording,
-      leaving the object and its checksum intact. Tested against an in-memory store whose listing
+      rewrite a person appearing in a recording to their placeholder in `match_players`,
+      `retained_recordings.profile_id` and `match_analyses.point_of_view_profile_id`, and mask
+      the original `aoe_profiles` row's `alias`, `country` and `avatar_hash`, leaving the object
+      and its checksum intact. Tested against an in-memory store whose listing
       is a dict (`apps/api/tests/test_erasure.py`), never by listing R2 after a real erasure.
       Settled by the owner's ruling of 2026-11-10 (003's FR-046, T843): a `retained_recordings`
       row whose `profile_id` is the erased person's own, and the `match_analyses` row's
       `point_of_view_profile_id`, are rewritten to the same placeholder as the rest of the
       pseudonymisation. The object key keeps the original id, because renaming it means copying
-      the object and deleting the original, which constitution IV forbids. Two things stay out:
-      the published analysis document carries the point-of-view id parsed from the recording and
-      is never rewritten (T666d: a key is never written twice), and the object key above, which
-      still holds the original id
+      the object and deleting the original, which constitution IV forbids. T845 closes the race in
+      which an analysis in flight wrote the original id into either column after the erasure.
+      What stays, listed exactly: every published analysis document, in every version of it,
+      carries each participant's `profile_id`, the point of view and `source_recording.object_key`
+      (never rewritten, T666d: a key is never written twice), and
+      `GET /api/matches/{game_id}/analysis` serves all of them to every signed-in viewer; the
+      object key, which holds the original id, is that same value and the API also reads it for the
+      staleness verdict; and `replay_fetch_misses (game_id, profile_id)`, which neither route
+      touches
 - [ ] Recordings retained under FR-045/046/047 stay under `ANALYSIS_RETENTION_CAP_BYTES`, and growth
       against that cap is observable rather than discovered by a refusal — the free-tier watch
       counts the retained-recording prefix separately from 001's capture prefix and warns at 70 %

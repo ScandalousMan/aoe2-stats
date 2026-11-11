@@ -929,7 +929,11 @@ class RetainedRecording(Base):
       and the analysis's `point_of_view_profile_id` to that person's pseudonymisation placeholder
       (T843, FR-046, owner's ruling 2026-11-10) and deletes nothing: `object_key` embeds the
       original id, and renaming it would copy the object and delete the original, which
-      constitution IV forbids. The key is never served and is read only by the analyzer.
+      constitution IV forbids. The key is served: a published analysis document carries it as
+      `source_recording.object_key`, `GET /api/matches/{game_id}/analysis` serves that document
+      to every signed-in viewer, and the API reads the row's key for the staleness verdict. A row
+      the analyzer retains after the erasure is written under the placeholder too (T845) and its
+      key still embeds the original id.
     """
 
     __tablename__ = "retained_recordings"

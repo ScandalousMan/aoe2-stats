@@ -36,7 +36,9 @@ recording (T843, FR-046) rewrites this table's `profile_id`, and `match_analyses
 to that person's placeholder in `_pseudonymise_profile_ids` (`apps/api`); `retained_recordings`
 carries no foreign key to `aoe_profiles` or `match_players` (`data-model.md`, R9), so the schema
 does not do it and that function does. It never touches `object_key` or the object: renaming
-the key would delete the original (constitution IV).
+the key would delete the original (constitution IV). A row retained after that pseudonymisation is
+written under the placeholder (T845, `aoe2stats_analyzer.profile_id`) and its key still embeds the
+original id.
 """
 
 from __future__ import annotations
@@ -49,6 +51,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from aoe2stats_analyzer.profile_id import resolve_profile_id
 from aoe2stats_storage.models import RetainedRecording
 from aoe2stats_storage.objects import ObjectStore, retained_recording_object_key
 
@@ -88,22 +91,34 @@ async def retain_recording(
     already-retained bytes cost nothing here beyond the lookup, and never risk a second, divergent
     write to the object the row's checksum was computed against.
 
+    **The row's `profile_id` is `resolve_profile_id`'s (T845):** `profile_id` while the person's
+    `match_players` row exists, their placeholder once erasure or an objection has moved it, and
+    `LookupError` when neither exists. The idempotence key is the resolved pair, so a second call
+    after an erasure finds the row the erasure rewrote.
+
     `requested_by_user_id` is recorded only on the row's first write, matching
     `retained_recordings.requested_by_user_id`'s own meaning — who caused the *first* retention,
     never who caused a later read (that is `replay_access_log.retained_recording_id`'s job,
     T365).
     """
-    existing = await _existing_row(session, game_id=game_id, profile_id=profile_id)
+    # T845: settled and locked before any `retained_recordings` row is read or written, and held
+    # to the commit below (across the put): an erasure that commits between the caller's read of
+    # the participants and this call has moved the person to their placeholder, which is then the
+    # id the row is written under; one that starts while this transaction is open waits for it.
+    row_profile_id = await resolve_profile_id(session, game_id=game_id, profile_id=profile_id)
+    existing = await _existing_row(session, game_id=game_id, profile_id=row_profile_id)
     if existing is not None:
         return existing
 
+    # The key embeds the id the caller passed, for a row retained after an erasure as for any other
+    # (constitution IV): a key is a function of the pair the recording was fetched under.
     object_key = retained_recording_object_key(game_id, profile_id)
     zip_sha256 = hashlib.sha256(zip_bytes).hexdigest()
     await object_store.put(object_key, zip_bytes)
 
     retained = RetainedRecording(
         game_id=game_id,
-        profile_id=profile_id,
+        profile_id=row_profile_id,
         object_key=object_key,
         zip_bytes=len(zip_bytes),
         zip_sha256=zip_sha256,
@@ -119,7 +134,7 @@ async def retain_recording(
         # winner's row back and return it, the same idempotence `replay_object_key`'s callers
         # (capture, manual upload) already rely on for their own dedup.
         await session.rollback()
-        winner = await _existing_row(session, game_id=game_id, profile_id=profile_id)
+        winner = await _existing_row(session, game_id=game_id, profile_id=row_profile_id)
         if winner is None:  # pragma: no cover - defensive: the conflict just proved a row exists
             raise
         return winner

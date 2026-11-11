@@ -1696,6 +1696,18 @@ async def test_a_recompute_keeps_a_pseudonymised_point_of_view_joined_to_its_ret
     published = await _publish_once(session_factory, game_id=500_843_001)
     placeholder = -published.profile_id
     async with session_scope(session_factory) as session:
+        # T845: a publish resolves the id through `match_players`, so the placeholder pair needs
+        # the placeholder's participant row as well, as the real pseudonymisation leaves it.
+        session.add(AoeProfile(profile_id=placeholder, alias="Erased player"))
+        await session.flush()
+        await session.execute(
+            update(MatchPlayer)
+            .where(
+                MatchPlayer.game_id == published.game_id,
+                MatchPlayer.profile_id == published.profile_id,
+            )
+            .values(profile_id=placeholder)
+        )
         await session.execute(
             update(MatchAnalysis)
             .where(MatchAnalysis.game_id == published.game_id)
@@ -3909,3 +3921,108 @@ async def test_the_grace_is_a_keyword_and_its_boundary_is_the_ingesters(
     assert row is not None
     assert row.state == MatchAnalysisState.UNAVAILABLE
     assert len(await _miss_rows(session_factory, game_id)) == 4
+
+
+# --- T845: a pseudonymisation that commits while an analysis is in flight --------------------
+
+
+async def _erase_profile(
+    session_factory: async_sessionmaker[AsyncSession], profile_id: int
+) -> None:
+    """The erasure's own pseudonymisation (`routers/privacy.py`), committed in its own transaction,
+    exactly as `POST /api/privacy/erase` and the resolution of an objection run it."""
+    from aoe2stats_api.routers.privacy import _pseudonymise_profile_ids
+
+    async with session_scope(session_factory) as session:
+        await _pseudonymise_profile_ids(session, [profile_id])
+
+
+async def _retained_profile_ids(
+    session_factory: async_sessionmaker[AsyncSession], game_id: int
+) -> list[int]:
+    async with session_scope(session_factory) as session:
+        result = await session.execute(
+            select(RetainedRecording.profile_id).where(RetainedRecording.game_id == game_id)
+        )
+        return sorted(result.scalars().all())
+
+
+async def _assert_both_columns_hold_the_placeholder(
+    session_factory: async_sessionmaker[AsyncSession], *, game_id: int, original: int
+) -> None:
+    placeholder = -original
+    row = await _get_analysis(session_factory, game_id)
+    assert row is not None
+    assert row.state == MatchAnalysisState.PUBLISHED
+    assert row.point_of_view_profile_id == placeholder
+    assert await _retained_profile_ids(session_factory, game_id) == [placeholder]
+    async with session_scope(session_factory) as session:
+        joined = await run_module._retained_recording_row(
+            session, game_id=game_id, profile_id=row.point_of_view_profile_id
+        )
+    assert joined is not None, "the analysis must still find its retained recording"
+
+
+async def test_an_erasure_after_the_claim_leaves_both_columns_on_the_placeholder(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """T845: `run_once` read the participants and claimed with the first one as the point of view;
+    that person's erasure then committed (the analysis row already named them, so it moved to the
+    placeholder; no retained row existed yet). `retain_recording` then wrote a row. It must write it
+    under the placeholder, and the publish must keep the two joined."""
+    game_id = 500_845_001
+    (first, _second, _third, _fourth), requester = await _seed_four_participants(
+        session_factory, game_id=game_id
+    )
+    blob = ReplayBlob(content=b"first's bytes", filename="r.zip", content_type="application/zip")
+
+    async def the_first_participant_erases(profile_id: int) -> None:
+        if profile_id == first:
+            await _erase_profile(session_factory, first)
+
+    provider = _HookedReplayProvider({first: blob}, on_fetch=the_first_participant_erases)
+
+    await _run_with(
+        session_factory,
+        game_id=game_id,
+        requester=requester,
+        provider=provider,
+        extractor=_BuildNamingExtractor(point_of_view_profile_id=first, max_calls=1),
+    )
+
+    await _assert_both_columns_hold_the_placeholder(
+        session_factory, game_id=game_id, original=first
+    )
+
+
+async def test_a_walk_that_reaches_an_erased_participant_writes_the_placeholder_into_both_columns(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """T845: the participant list was read before the erasure. The first participant's fetch
+    answers `NotFound`; while it is in flight the second participant's erasure commits; the walk
+    then reaches the second, whose recording the source serves. The point of view, the retained row
+    and the published row must name the placeholder, never the original."""
+    game_id = 500_845_002
+    (first, second, _third, _fourth), requester = await _seed_four_participants(
+        session_factory, game_id=game_id
+    )
+    blob = ReplayBlob(content=b"second's bytes", filename="r.zip", content_type="application/zip")
+
+    async def the_second_participant_erases(profile_id: int) -> None:
+        if profile_id == first:
+            await _erase_profile(session_factory, second)
+
+    provider = _HookedReplayProvider({second: blob}, on_fetch=the_second_participant_erases)
+
+    await _run_with(
+        session_factory,
+        game_id=game_id,
+        requester=requester,
+        provider=provider,
+        extractor=_BuildNamingExtractor(point_of_view_profile_id=second, max_calls=1),
+    )
+
+    assert [call.profile_id for call in provider.calls] == [first, second]
+    await _assert_both_columns_hold_the_placeholder(
+        session_factory, game_id=game_id, original=second
+    )

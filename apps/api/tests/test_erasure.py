@@ -1801,6 +1801,74 @@ async def test_confirmed_erasure_pseudonymises_the_retained_row_and_the_analysis
     assert own_key in await store.list_keys()
 
 
+async def test_confirmed_erasure_leaves_an_analysis_whose_point_of_view_is_another_participant(
+    client: TestClient, db_session: AsyncSession
+) -> None:
+    """T845, the contrast to the test above: the analysis names another participant as its point
+    of view, so erasing the owner leaves that column as it was, together with the other
+    participant's retained row. The owner's own retained row, which no analysis names, still moves
+    to the placeholder."""
+    user = await _seed_linked_user(
+        db_session, profile_id=_OWNER_PROFILE_ID, steam_id64="76561197960280012"
+    )
+    db_session.add(AoeProfile(profile_id=_OTHER_USERS_PROFILE_ID, alias="Other", country="DE"))
+    db_session.add(
+        Match(
+            game_id=_OWN_RECORDING_GAME_ID,
+            leaderboard_id=3,
+            completed_at=datetime.now(UTC) - timedelta(days=2),
+            source="relic",
+            raw_payload={},
+        )
+    )
+    await db_session.flush()
+    keys = {
+        profile_id: retained_recording_object_key(_OWN_RECORDING_GAME_ID, profile_id)
+        for profile_id in (_OWNER_PROFILE_ID, _OTHER_USERS_PROFILE_ID)
+    }
+    for profile_id, key in keys.items():
+        db_session.add(
+            RetainedRecording(
+                game_id=_OWN_RECORDING_GAME_ID,
+                profile_id=profile_id,
+                object_key=key,
+                zip_bytes=10,
+                zip_sha256="c" * 64,
+            )
+        )
+    db_session.add(
+        MatchAnalysis(
+            game_id=_OWN_RECORDING_GAME_ID,
+            state=MatchAnalysisState.PUBLISHED,
+            point_of_view_profile_id=_OTHER_USERS_PROFILE_ID,
+            parser_name="aoe2rec-py",
+            parser_version="1.0.0",
+            requested_at=datetime.now(UTC),
+            finished_at=datetime.now(UTC),
+            result_key=f"analyses/{_OWN_RECORDING_GAME_ID}/{_OTHER_USERS_PROFILE_ID}.json",
+        )
+    )
+    await db_session.commit()
+
+    await _sign_in(client, db_session, user)
+    _install_recording_object_store(client)
+    token = _get_confirmation_token(client)
+    response = client.post(_ERASE_PATH, json={"confirmation_token": token})
+    assert response.status_code == 200, f"Got {response.status_code}: {response.text}"
+
+    placeholder = pseudonymise_profile(_OWNER_PROFILE_ID).pseudonymous_profile_id
+    db_session.expire_all()
+    rows = {
+        row.object_key: row
+        for row in (await db_session.execute(select(RetainedRecording))).scalars().all()
+    }
+    assert rows[keys[_OWNER_PROFILE_ID]].profile_id == placeholder
+    assert rows[keys[_OTHER_USERS_PROFILE_ID]].profile_id == _OTHER_USERS_PROFILE_ID
+    analysis = await db_session.get(MatchAnalysis, _OWN_RECORDING_GAME_ID)
+    assert analysis is not None
+    assert analysis.point_of_view_profile_id == _OTHER_USERS_PROFILE_ID
+
+
 # ================================================================================================
 # The accountability record itself (data-model.md's `data_requests` section, SC-008)
 # ================================================================================================
