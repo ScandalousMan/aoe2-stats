@@ -49,7 +49,13 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from tests.db import clean_database, database_url, db_session, engine, session_factory
 
 from aoe2stats_analyzer.claim import ClaimOutcome
-from aoe2stats_storage.models import Match, MatchAnalysis, MatchAnalysisState
+from aoe2stats_storage.models import (
+    AoeProfile,
+    Match,
+    MatchAnalysis,
+    MatchAnalysisState,
+    MatchPlayer,
+)
 
 # Re-exported so ruff sees these names used: pytest discovers a fixture imported into a test
 # module exactly as if it had been defined there (see `apps/ingester/tests/conftest.py`'s own
@@ -74,6 +80,20 @@ async def _seed_match(session: AsyncSession, *, game_id: int, completed_at: date
             duration_seconds=1800,
             source="relic",
             raw_payload={"matchHistoryId": game_id},
+        )
+    )
+    # T845: the claim resolves the point of view through the participant's `match_players` row.
+    if await session.get(AoeProfile, _POV_PROFILE_ID) is None:
+        session.add(AoeProfile(profile_id=_POV_PROFILE_ID, alias="Player"))
+    await session.flush()
+    session.add(
+        MatchPlayer(
+            game_id=game_id,
+            profile_id=_POV_PROFILE_ID,
+            team_id=0,
+            civ_id=1,
+            color_id=0,
+            result="win",
         )
     )
     await session.commit()

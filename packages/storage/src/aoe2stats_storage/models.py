@@ -925,9 +925,17 @@ class RetainedRecording(Base):
     - erasure of the *requester* clears `requested_by_user_id` (`ondelete="SET NULL"`) and keeps
       the object and the row — the bytes are an already-public recording, not the requester's data,
       and deleting them would leave a published analysis nothing can recompute;
-    - erasure or objection by a person *appearing in* the recording deletes the object and the row,
-      and withdraws every analysis derived from it. That is the only route by which these bytes are
-      ever deleted (FR-046, constitution IV).
+    - erasure or objection by a person *appearing in* the recording rewrites the row's `profile_id`
+      and the analysis's `point_of_view_profile_id` to that person's pseudonymisation placeholder
+      (T843, FR-046, owner's ruling 2026-11-10) and deletes nothing: `object_key` embeds the
+      original id, and renaming it would copy the object and delete the original, which
+      constitution IV forbids. The key is served: a published analysis document carries it as
+      `source_recording.object_key`, `GET /api/matches/{game_id}/analysis` serves that document
+      to every signed-in viewer, and the API reads the row's key for the staleness verdict. A row
+      the analyzer retains after the erasure is written under the placeholder too (T845), unless
+      a later sighting has written the original's `match_players` row again (T459h's residue,
+      owner's ruling of 2026-11-10), in which case it is written under the original id, as for any
+      person who is not a user (T847); its key embeds the original id either way.
     """
 
     __tablename__ = "retained_recordings"
@@ -1020,8 +1028,8 @@ class ReplayFetchMiss(Base):
 
     **Erasure/export**: not personal data about the requester — it names a match and a participant's
     point of view, the same footing `replay_captures.status = unavailable` already stands on for a
-    linked user, and constitution IX's per-person pseudonymisation of `match_players`/`aoe_profiles`
-    already reaches whichever profile this table's `profile_id` refers to.
+    linked user. Erasure and objection leave this table's `profile_id` as it was: they mask the
+    `aoe_profiles` row it names (alias, country, avatar hash) but do not rewrite the id here.
     """
 
     __tablename__ = "replay_fetch_misses"

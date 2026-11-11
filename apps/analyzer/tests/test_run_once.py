@@ -1687,6 +1687,53 @@ async def test_a_new_parser_version_still_triggers_a_recompute_and_a_new_key(
     assert after.parser_version == _ENGINE_VERSION_2
 
 
+async def test_a_recompute_keeps_a_pseudonymised_point_of_view_joined_to_its_retained_recording(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """T843 (FR-046, ruling of 2026-11-10): erasure rewrites the row's point of view and the
+    retained row's profile to the same placeholder. A recompute finds the recording through that
+    pair and must not write the document's original id back over the placeholder."""
+    published = await _publish_once(session_factory, game_id=500_843_001)
+    placeholder = -published.profile_id
+    async with session_scope(session_factory) as session:
+        # T845: a publish resolves the id through `match_players`, so the placeholder pair needs
+        # the placeholder's participant row as well, as the real pseudonymisation leaves it.
+        session.add(AoeProfile(profile_id=placeholder, alias="Erased player"))
+        await session.flush()
+        await session.execute(
+            update(MatchPlayer)
+            .where(
+                MatchPlayer.game_id == published.game_id,
+                MatchPlayer.profile_id == published.profile_id,
+            )
+            .values(profile_id=placeholder)
+        )
+        await session.execute(
+            update(MatchAnalysis)
+            .where(MatchAnalysis.game_id == published.game_id)
+            .values(point_of_view_profile_id=placeholder)
+        )
+        await session.execute(
+            update(RetainedRecording)
+            .where(
+                RetainedRecording.game_id == published.game_id,
+                RetainedRecording.profile_id == published.profile_id,
+            )
+            .values(profile_id=placeholder)
+        )
+
+    extractor = await _ask_again(
+        session_factory, published, engine_version=_ENGINE_VERSION_2, max_calls=1
+    )
+
+    assert len(extractor.calls) == 1, "the placeholder pair must still find the retained bytes"
+    after = await _get_analysis(session_factory, published.game_id)
+    assert after is not None
+    assert after.state == MatchAnalysisState.PUBLISHED
+    assert after.parser_version == _ENGINE_VERSION_2
+    assert after.point_of_view_profile_id == placeholder
+
+
 async def test_an_unchanged_identity_is_fresh_and_never_puts_a_key_twice(
     session_factory: async_sessionmaker[AsyncSession], clean_database: None
 ) -> None:
@@ -3874,3 +3921,229 @@ async def test_the_grace_is_a_keyword_and_its_boundary_is_the_ingesters(
     assert row is not None
     assert row.state == MatchAnalysisState.UNAVAILABLE
     assert len(await _miss_rows(session_factory, game_id)) == 4
+
+
+# --- T845: a pseudonymisation that commits while an analysis is in flight --------------------
+
+
+async def _erase_profile(
+    session_factory: async_sessionmaker[AsyncSession], profile_id: int
+) -> None:
+    """The erasure's own pseudonymisation (`routers/privacy.py`), committed in its own transaction,
+    exactly as `POST /api/privacy/erase` and the resolution of an objection run it."""
+    from aoe2stats_api.routers.privacy import _pseudonymise_profile_ids
+
+    async with session_scope(session_factory) as session:
+        await _pseudonymise_profile_ids(session, [profile_id])
+
+
+async def _retained_profile_ids(
+    session_factory: async_sessionmaker[AsyncSession], game_id: int
+) -> list[int]:
+    async with session_scope(session_factory) as session:
+        result = await session.execute(
+            select(RetainedRecording.profile_id).where(RetainedRecording.game_id == game_id)
+        )
+        return sorted(result.scalars().all())
+
+
+async def _assert_both_columns_hold_the_placeholder(
+    session_factory: async_sessionmaker[AsyncSession], *, game_id: int, original: int
+) -> None:
+    placeholder = -original
+    row = await _get_analysis(session_factory, game_id)
+    assert row is not None
+    assert row.state == MatchAnalysisState.PUBLISHED
+    assert row.point_of_view_profile_id == placeholder
+    assert await _retained_profile_ids(session_factory, game_id) == [placeholder]
+    async with session_scope(session_factory) as session:
+        joined = await run_module._retained_recording_row(
+            session, game_id=game_id, profile_id=row.point_of_view_profile_id
+        )
+    assert joined is not None, "the analysis must still find its retained recording"
+
+
+async def test_an_erasure_after_the_claim_leaves_both_columns_on_the_placeholder(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """T845: `run_once` read the participants and claimed with the first one as the point of view;
+    that person's erasure then committed (the analysis row already named them, so it moved to the
+    placeholder; no retained row existed yet). `retain_recording` then wrote a row. It must write it
+    under the placeholder, and the publish must keep the two joined."""
+    game_id = 500_845_001
+    (first, _second, _third, _fourth), requester = await _seed_four_participants(
+        session_factory, game_id=game_id
+    )
+    blob = ReplayBlob(content=b"first's bytes", filename="r.zip", content_type="application/zip")
+
+    async def the_first_participant_erases(profile_id: int) -> None:
+        if profile_id == first:
+            await _erase_profile(session_factory, first)
+
+    provider = _HookedReplayProvider({first: blob}, on_fetch=the_first_participant_erases)
+
+    await _run_with(
+        session_factory,
+        game_id=game_id,
+        requester=requester,
+        provider=provider,
+        extractor=_BuildNamingExtractor(point_of_view_profile_id=first, max_calls=1),
+    )
+
+    await _assert_both_columns_hold_the_placeholder(
+        session_factory, game_id=game_id, original=first
+    )
+
+
+async def test_a_walk_that_reaches_an_erased_participant_writes_the_placeholder_into_both_columns(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """T845: the participant list was read before the erasure. The first participant's fetch
+    answers `NotFound`; while it is in flight the second participant's erasure commits; the walk
+    then reaches the second, whose recording the source serves. The point of view, the retained row
+    and the published row must name the placeholder, never the original."""
+    game_id = 500_845_002
+    (first, second, _third, _fourth), requester = await _seed_four_participants(
+        session_factory, game_id=game_id
+    )
+    blob = ReplayBlob(content=b"second's bytes", filename="r.zip", content_type="application/zip")
+
+    async def the_second_participant_erases(profile_id: int) -> None:
+        if profile_id == first:
+            await _erase_profile(session_factory, second)
+
+    provider = _HookedReplayProvider({second: blob}, on_fetch=the_second_participant_erases)
+
+    await _run_with(
+        session_factory,
+        game_id=game_id,
+        requester=requester,
+        provider=provider,
+        extractor=_BuildNamingExtractor(point_of_view_profile_id=second, max_calls=1),
+    )
+
+    assert [call.profile_id for call in provider.calls] == [first, second]
+    await _assert_both_columns_hold_the_placeholder(
+        session_factory, game_id=game_id, original=second
+    )
+
+
+# --- T847: an erasure and a re-sighting between the retention and the publish ----------------
+
+
+async def _resight(
+    session_factory: async_sessionmaker[AsyncSession], *, game_id: int, profile_id: int
+) -> None:
+    """A discovery batch that sights the match again after an erasure committed: it upserts the
+    original's `match_players` row (the T459h residue, owner's ruling of 2026-11-10)."""
+    async with session_scope(session_factory) as session:
+        session.add(
+            MatchPlayer(
+                game_id=game_id,
+                profile_id=profile_id,
+                team_id=0,
+                civ_id=1,
+                color_id=0,
+                result="win",
+            )
+        )
+
+
+def _erase_and_resight_before_the_publish(
+    monkeypatch: pytest.MonkeyPatch,
+    session_factory: async_sessionmaker[AsyncSession],
+    *,
+    game_id: int,
+    profile_id: int,
+) -> None:
+    """Runs the erasure, then the re-sighting, at the one point both paths pass between the
+    retained row being read or written and `_publish`: the access-log write."""
+    real = run_module._log_access
+
+    async def erase_then_log(*args: Any, **kwargs: Any) -> None:
+        await real(*args, **kwargs)
+        await _erase_profile(session_factory, profile_id)
+        await _resight(session_factory, game_id=game_id, profile_id=profile_id)
+
+    monkeypatch.setattr(run_module, "_log_access", erase_then_log)
+
+
+async def _assert_the_analysis_joins_the_retained_row_under(
+    session_factory: async_sessionmaker[AsyncSession], *, game_id: int, expected: int
+) -> None:
+    row = await _get_analysis(session_factory, game_id)
+    assert row is not None
+    assert row.state == MatchAnalysisState.PUBLISHED
+    assert await _retained_profile_ids(session_factory, game_id) == [expected]
+    assert row.point_of_view_profile_id == expected
+    async with session_scope(session_factory) as session:
+        joined = await run_module._retained_recording_row(
+            session, game_id=game_id, profile_id=row.point_of_view_profile_id
+        )
+    assert joined is not None, "the analysis must still find its retained recording"
+
+
+async def test_an_erasure_and_a_resighting_before_the_publish_leave_the_first_analysis_joined(
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """T847: the retention commits under X, the erasure rewrites the retained row to -X, and a
+    discovery batch writes `(game_id, X)` again. `_publish` must write the retained row's current
+    `profile_id` (-X), not the X that resolves again."""
+    game_id = 500_847_001
+    (first, *_rest), requester = await _seed_four_participants(session_factory, game_id=game_id)
+    _erase_and_resight_before_the_publish(
+        monkeypatch, session_factory, game_id=game_id, profile_id=first
+    )
+    blob = ReplayBlob(content=b"first's bytes", filename="r.zip", content_type="application/zip")
+
+    await _run_with(
+        session_factory,
+        game_id=game_id,
+        requester=requester,
+        provider=_ScriptedReplayProvider({first: blob}),
+        extractor=_BuildNamingExtractor(point_of_view_profile_id=first, max_calls=1),
+    )
+
+    await _assert_the_analysis_joins_the_retained_row_under(
+        session_factory, game_id=game_id, expected=-first
+    )
+
+
+async def test_an_erasure_and_a_resighting_before_the_publish_leave_a_recompute_joined(
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """T847, recompute path: the same sequence between the retained row's read and `_publish`."""
+    published = await _publish_once(session_factory, game_id=500_847_002)
+    _erase_and_resight_before_the_publish(
+        monkeypatch, session_factory, game_id=published.game_id, profile_id=published.profile_id
+    )
+
+    extractor = await _ask_again(
+        session_factory, published, engine_version=_ENGINE_VERSION_2, max_calls=1
+    )
+
+    assert len(extractor.calls) == 1
+    await _assert_the_analysis_joins_the_retained_row_under(
+        session_factory, game_id=published.game_id, expected=-published.profile_id
+    )
+
+
+async def test_with_no_erasure_the_original_id_is_written_to_both_columns(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """T847 contrast: nothing pseudonymised, so the original is what both columns hold, on the
+    first analysis and on a recompute."""
+    published = await _publish_once(session_factory, game_id=500_847_003)
+    await _assert_the_analysis_joins_the_retained_row_under(
+        session_factory, game_id=published.game_id, expected=published.profile_id
+    )
+
+    await _ask_again(session_factory, published, engine_version=_ENGINE_VERSION_2, max_calls=1)
+
+    await _assert_the_analysis_joins_the_retained_row_under(
+        session_factory, game_id=published.game_id, expected=published.profile_id
+    )

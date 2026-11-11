@@ -32,9 +32,11 @@ text: `favourites` and `rate_limit_counters` are deleted with the user (both car
 part of their primary key, `ondelete="CASCADE"`); `match_analyses.requested_by_user_id` is cleared
 while the row and its `state`/`result_key` are retained (`ondelete="SET NULL"` — the analysis is
 derived from a public match record and is shown to every viewer, so it survives; who asked for it
-does not); `retained_recordings` is **kept whole**, object and row both, because erasing the
-requester removes a link and not a subject and a published analysis must stay recomputable
-(constitution IV) — deleting a retained recording is T092's objection route, never this one.
+does not); `retained_recordings` is **kept whole**, object and row both, when only the requester
+is erased, because that removes a link and not a subject and a published analysis must stay
+recomputable (constitution IV). Erasing a person the recording names (T843, ruling of 2026-11-10)
+rewrites the row's `profile_id` and the analysis's point of view to the placeholder and still
+deletes nothing: `object_key` and the bytes stay.
 """
 
 from __future__ import annotations
@@ -58,6 +60,7 @@ from aoe2stats_api.deps import get_object_store
 from aoe2stats_api.routers import privacy
 from aoe2stats_api.routers.privacy import _ERASURE_DELETE_CONCURRENCY
 from aoe2stats_api.settings import get_settings
+from aoe2stats_core.privacy.erasure import pseudonymise_profile
 from aoe2stats_storage.models import (
     AoeProfile,
     CaptureSource,
@@ -108,6 +111,7 @@ _ANALYSIS_GAME_ID = 810_200_002
 _RETAINED_GAME_ID = 810_200_003
 _BYSTANDER_MATCH_GAME_ID = 810_200_004
 _ORPHAN_GAME_ID = 810_200_010  # four consecutive ids
+_OWN_RECORDING_GAME_ID = 810_200_020
 
 
 class _RecordingObjectStore:
@@ -1722,6 +1726,147 @@ async def test_confirmed_erasure_keeps_retained_recordings_whole(
         "the retained recording's own object must never be deleted by erasing the requester — "
         f"bucket holds: {remaining_keys}"
     )
+
+
+async def test_confirmed_erasure_pseudonymises_the_retained_row_and_the_analysis_point_of_view(
+    client: TestClient, db_session: AsyncSession
+) -> None:
+    """T843 (FR-046, owner's ruling 2026-11-10): erasing the person a retained recording names
+    rewrites the row's `profile_id` and the analysis's `point_of_view_profile_id` to the same
+    placeholder the rest of the pseudonymisation uses. `object_key` and the stored bytes stay
+    (renaming would delete the original, constitution IV); another participant's row in the same
+    match is untouched."""
+    user = await _seed_linked_user(
+        db_session, profile_id=_OWNER_PROFILE_ID, steam_id64="76561197960280012"
+    )
+    db_session.add(AoeProfile(profile_id=_OTHER_USERS_PROFILE_ID, alias="Other", country="DE"))
+    db_session.add(
+        Match(
+            game_id=_OWN_RECORDING_GAME_ID,
+            leaderboard_id=3,
+            completed_at=datetime.now(UTC) - timedelta(days=2),
+            source="relic",
+            raw_payload={},
+        )
+    )
+    await db_session.flush()
+    own_key = retained_recording_object_key(_OWN_RECORDING_GAME_ID, _OWNER_PROFILE_ID)
+    other_key = retained_recording_object_key(_OWN_RECORDING_GAME_ID, _OTHER_USERS_PROFILE_ID)
+    for profile_id, key in ((_OWNER_PROFILE_ID, own_key), (_OTHER_USERS_PROFILE_ID, other_key)):
+        db_session.add(
+            RetainedRecording(
+                game_id=_OWN_RECORDING_GAME_ID,
+                profile_id=profile_id,
+                object_key=key,
+                zip_bytes=10,
+                zip_sha256="c" * 64,
+            )
+        )
+    db_session.add(
+        MatchAnalysis(
+            game_id=_OWN_RECORDING_GAME_ID,
+            state=MatchAnalysisState.PUBLISHED,
+            point_of_view_profile_id=_OWNER_PROFILE_ID,
+            parser_name="aoe2rec-py",
+            parser_version="1.0.0",
+            requested_at=datetime.now(UTC),
+            finished_at=datetime.now(UTC),
+            result_key=f"analyses/{_OWN_RECORDING_GAME_ID}/{_OWNER_PROFILE_ID}.json",
+        )
+    )
+    await db_session.commit()
+
+    await _sign_in(client, db_session, user)
+    store = _install_recording_object_store(client)
+    await store.put(own_key, b"OWN-BYTES")
+    await store.put(other_key, b"OTHER-BYTES")
+
+    token = _get_confirmation_token(client)
+    response = client.post(_ERASE_PATH, json={"confirmation_token": token})
+    assert response.status_code == 200, f"Got {response.status_code}: {response.text}"
+
+    placeholder = pseudonymise_profile(_OWNER_PROFILE_ID).pseudonymous_profile_id
+    db_session.expire_all()
+    rows = {
+        row.object_key: row
+        for row in (await db_session.execute(select(RetainedRecording))).scalars().all()
+    }
+    assert rows[own_key].profile_id == placeholder
+    assert rows[other_key].profile_id == _OTHER_USERS_PROFILE_ID
+    analysis = await db_session.get(MatchAnalysis, _OWN_RECORDING_GAME_ID)
+    assert analysis is not None
+    assert analysis.point_of_view_profile_id == placeholder
+    assert await store.get(own_key) == b"OWN-BYTES"
+    assert await store.get(other_key) == b"OTHER-BYTES"
+    assert own_key in await store.list_keys()
+
+
+async def test_confirmed_erasure_leaves_an_analysis_whose_point_of_view_is_another_participant(
+    client: TestClient, db_session: AsyncSession
+) -> None:
+    """T845, the contrast to the test above: the analysis names another participant as its point
+    of view, so erasing the owner leaves that column as it was, together with the other
+    participant's retained row. The owner's own retained row, which no analysis names, still moves
+    to the placeholder."""
+    user = await _seed_linked_user(
+        db_session, profile_id=_OWNER_PROFILE_ID, steam_id64="76561197960280012"
+    )
+    db_session.add(AoeProfile(profile_id=_OTHER_USERS_PROFILE_ID, alias="Other", country="DE"))
+    db_session.add(
+        Match(
+            game_id=_OWN_RECORDING_GAME_ID,
+            leaderboard_id=3,
+            completed_at=datetime.now(UTC) - timedelta(days=2),
+            source="relic",
+            raw_payload={},
+        )
+    )
+    await db_session.flush()
+    keys = {
+        profile_id: retained_recording_object_key(_OWN_RECORDING_GAME_ID, profile_id)
+        for profile_id in (_OWNER_PROFILE_ID, _OTHER_USERS_PROFILE_ID)
+    }
+    for profile_id, key in keys.items():
+        db_session.add(
+            RetainedRecording(
+                game_id=_OWN_RECORDING_GAME_ID,
+                profile_id=profile_id,
+                object_key=key,
+                zip_bytes=10,
+                zip_sha256="c" * 64,
+            )
+        )
+    db_session.add(
+        MatchAnalysis(
+            game_id=_OWN_RECORDING_GAME_ID,
+            state=MatchAnalysisState.PUBLISHED,
+            point_of_view_profile_id=_OTHER_USERS_PROFILE_ID,
+            parser_name="aoe2rec-py",
+            parser_version="1.0.0",
+            requested_at=datetime.now(UTC),
+            finished_at=datetime.now(UTC),
+            result_key=f"analyses/{_OWN_RECORDING_GAME_ID}/{_OTHER_USERS_PROFILE_ID}.json",
+        )
+    )
+    await db_session.commit()
+
+    await _sign_in(client, db_session, user)
+    _install_recording_object_store(client)
+    token = _get_confirmation_token(client)
+    response = client.post(_ERASE_PATH, json={"confirmation_token": token})
+    assert response.status_code == 200, f"Got {response.status_code}: {response.text}"
+
+    placeholder = pseudonymise_profile(_OWNER_PROFILE_ID).pseudonymous_profile_id
+    db_session.expire_all()
+    rows = {
+        row.object_key: row
+        for row in (await db_session.execute(select(RetainedRecording))).scalars().all()
+    }
+    assert rows[keys[_OWNER_PROFILE_ID]].profile_id == placeholder
+    assert rows[keys[_OTHER_USERS_PROFILE_ID]].profile_id == _OTHER_USERS_PROFILE_ID
+    analysis = await db_session.get(MatchAnalysis, _OWN_RECORDING_GAME_ID)
+    assert analysis is not None
+    assert analysis.point_of_view_profile_id == _OTHER_USERS_PROFILE_ID
 
 
 # ================================================================================================

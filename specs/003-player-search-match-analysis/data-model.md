@@ -215,10 +215,20 @@ data, and not necessarily a match they played in — and deleting them would lea
 that nothing can recompute, which is the unfalsifiable conclusion Q2 and principle IV exist to
 prevent.
 
-*Erasure or objection by a person appearing in the recording* pseudonymises every identifier this
-service holds about them — the same instrument 001's erasure applies to `matches` and `match_players`,
-called with an arbitrary `profile_id` — and leaves the object and the row intact. **No analysis is
-withdrawn.** A `.aoe2record` cannot be pseudonymised without being modified, and modifying it destroys
+*Erasure or objection by a person appearing in the recording* rewrites their `match_players` rows to
+their placeholder and masks the original `aoe_profiles` row's `alias`, `country` and `avatar_hash` —
+the same instrument 001's erasure applies, called with an arbitrary `profile_id` — and leaves the
+object intact. The row is kept too, with its
+`profile_id` rewritten to that person's placeholder and `match_analyses.point_of_view_profile_id`
+rewritten with it, since the two are the join key to the recording (owner's ruling 2026-11-10, T843;
+an analyzer write after the erasure writes the placeholder too, T845, unless a later sighting has
+written the original's `match_players` row again, in which case it writes the original id, as for
+any person who is not a user, T847);
+`object_key` is not renamed, because renaming it deletes the original (constitution IV). What stays:
+every published analysis document carries each participant's `profile_id`, the point of view and
+`source_recording.object_key` in every version of it, all served to every signed-in viewer, and
+`replay_fetch_misses (game_id, profile_id)` is not touched. **No
+analysis is withdrawn.** A `.aoe2record` cannot be pseudonymised without being modified, and modifying it destroys
 both its checksum and the recomputability principle IV requires. Constitution IX orders IV above
 deletion here, deliberately, and `docs/privacy/processing-register.md` carries that ordering in its
 balancing test.
@@ -284,9 +294,9 @@ Insert-only, `ON CONFLICT DO NOTHING` on the primary key: two callers racing the
 the same fact and the first wins. Never updated, never swept (FR-044).
 
 **Erasure**: nothing to do — the row is a fact about a match and a point of view, not about the
-requester, on the same footing as `replay_captures.status = unavailable`, and constitution IX's
-pseudonymisation of `match_players` and `aoe_profiles` already reaches whichever profile the
-`profile_id` names. **Export**: not included; it is not the requester's data.
+requester, on the same footing as `replay_captures.status = unavailable`. Erasure and objection
+leave the row's `profile_id` as it was; they mask the `aoe_profiles` row that id names (alias,
+country, avatar hash) but do not rewrite the id here. **Export**: not included; it is not the requester's data.
 
 ---
 

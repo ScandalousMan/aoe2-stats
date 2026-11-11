@@ -176,6 +176,23 @@ def _chunk(items: Sequence[int], size: int) -> Iterator[Sequence[int]]:
 # `ReconcileStage` enqueue captures once the batch is written, and `erase_account` deletes them
 # once the pseudonymisation has taken its locks. Neither goes back to an earlier one of the four.
 #
+# **T843: the analyses table and `retained_recordings` sit between `match_players` and
+# `replay_captures`.** `_pseudonymise_profile_ids` (`apps/api/.../routers/privacy.py`) rewrites a
+# pseudonymised person's analysis point of view and retained row after `match_players` and before
+# its caller reaches `replay_captures`: the analyses table ascending by `game_id`, then
+# `retained_recordings` ascending by `(game_id, profile_id)`. (The analyses table is not named
+# here: `apps/analyzer/tests/test_claim.py` greps this package for that name, FR-044. Its name and
+# the analyzer's transactions on it are in that function's docstring.)
+#
+# **T845: an analyzer transaction that writes a point of view or a retained `profile_id` takes the
+# `match_players` row it names `FOR KEY SHARE` first**, before it touches either of those two
+# tables (`resolve_profile_id`, in the analyzer package), and holds it to its commit. That is a
+# `match_players` lock taken in the global order, ahead of the analyses table and
+# `retained_recordings`, and it conflicts with the `FOR UPDATE` that `lock_match_players` takes for
+# an erasure: of the two, one waits for the other's commit, and the one that waited sees what the
+# other wrote. Those transactions take no `aoe_profiles` or `replay_captures` lock at all, so
+# nothing waits on one of these rows while holding a later table.
+#
 # Each table is written with **one multi-row `INSERT ... ON CONFLICT` statement** (split only past
 # `_BULK_ROW_LIMIT` rows, to stay under the driver's bind-parameter ceiling), its rows sorted per
 # the order above: Postgres takes a multi-row insert's row locks in `VALUES` order. The same

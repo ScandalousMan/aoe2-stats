@@ -168,6 +168,15 @@ def _object_store(client: _FakeS3Client) -> ObjectStore:
     )
 
 
+#: The participant each game's recording is retained for. `retain_recording` resolves the profile id
+#: through the participant's `match_players` row (T845), so `_seed_match` seeds that row.
+_PARTICIPANT_OF = {
+    _GAME_ID: _PROFILE_ID,
+    _OTHER_GAME_ID: _OTHER_PROFILE_ID,
+    _OWN_MATCH_GAME_ID: _OWNER_PROFILE_ID,
+}
+
+
 async def _seed_match(db_session: AsyncSession, *, game_id: int) -> None:
     db_session.add(
         Match(
@@ -179,9 +188,15 @@ async def _seed_match(db_session: AsyncSession, *, game_id: int) -> None:
         )
     )
     await db_session.commit()
+    participant = _PARTICIPANT_OF.get(game_id)
+    if participant is not None:
+        await _seed_profile(db_session, profile_id=participant, alias=f"Player {participant}")
+        await _seed_match_player(db_session, game_id=game_id, profile_id=participant)
 
 
 async def _seed_profile(db_session: AsyncSession, *, profile_id: int, alias: str) -> None:
+    if await db_session.get(AoeProfile, profile_id) is not None:
+        return
     db_session.add(
         AoeProfile(
             profile_id=profile_id,
@@ -194,6 +209,8 @@ async def _seed_profile(db_session: AsyncSession, *, profile_id: int, alias: str
 
 
 async def _seed_match_player(db_session: AsyncSession, *, game_id: int, profile_id: int) -> None:
+    if await db_session.get(MatchPlayer, (game_id, profile_id)) is not None:
+        return
     db_session.add(MatchPlayer(game_id=game_id, profile_id=profile_id))
     await db_session.commit()
 

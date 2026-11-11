@@ -35,6 +35,7 @@ from sqlalchemy import Text, and_, cast, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from aoe2stats_analyzer.profile_id import resolve_profile_id
 from aoe2stats_storage.models import MatchAnalysis, MatchAnalysisState
 
 #: The fixed reason a row ends `failed` when a claim would exceed the configured maximum number of
@@ -77,7 +78,9 @@ async def claim_for_analysis(
     `lease_expires_at=now + lease_seconds`, and increments `attempts` by one — a re-claim of an
     abandoned lease is a new attempt, not a continuation of the one that was dropped
     (`data-model.md`'s retry bound). `point_of_view_profile_id` and `requested_by_user_id` are
-    recorded against the caller now driving the work.
+    recorded against the caller now driving the work; the point of view is written through
+    `resolve_profile_id` (T845), so a participant pseudonymised since the caller read them is
+    recorded as their placeholder, and `LookupError` is raised for an id that is neither.
 
     **The retry bound (T706a).** An eligible row that already has `max_attempts` attempts is not
     claimed: it ends `failed` (`error_class` `AttemptsExhausted`, a fixed message carrying the
@@ -134,37 +137,41 @@ async def claim_for_analysis(
         )
     )
 
-    statement = (
-        update(MatchAnalysis)
-        .where(MatchAnalysis.game_id.in_(eligible_game_ids))
-        .values(
-            state=MatchAnalysisState.RUNNING,
-            point_of_view_profile_id=point_of_view_profile_id,
-            requested_by_user_id=requested_by_user_id,
-            claimed_at=now,
-            lease_expires_at=now + timedelta(seconds=lease_seconds),
-            attempts=MatchAnalysis.attempts + 1,
-        )
-        .returning(
-            MatchAnalysis.state,
-            MatchAnalysis.attempts,
-            MatchAnalysis.claimed_at,
-            MatchAnalysis.lease_expires_at,
-        )
-    )
-
-    insert_if_missing = (
-        pg_insert(MatchAnalysis)
-        .values(
-            game_id=game_id,
-            state=MatchAnalysisState.QUEUED,
-            point_of_view_profile_id=point_of_view_profile_id,
-            requested_by_user_id=requested_by_user_id,
-        )
-        .on_conflict_do_nothing(index_elements=[MatchAnalysis.game_id])
-    )
-
     async with session_factory() as session:
+        # T845: the id is settled, and its `match_players` row locked, before this transaction
+        # touches `match_analyses`: an erasure that committed since the caller read the
+        # participants has moved the row to the placeholder, and the placeholder is what is written.
+        point_of_view_profile_id = await resolve_profile_id(
+            session, game_id=game_id, profile_id=point_of_view_profile_id
+        )
+        statement = (
+            update(MatchAnalysis)
+            .where(MatchAnalysis.game_id.in_(eligible_game_ids))
+            .values(
+                state=MatchAnalysisState.RUNNING,
+                point_of_view_profile_id=point_of_view_profile_id,
+                requested_by_user_id=requested_by_user_id,
+                claimed_at=now,
+                lease_expires_at=now + timedelta(seconds=lease_seconds),
+                attempts=MatchAnalysis.attempts + 1,
+            )
+            .returning(
+                MatchAnalysis.state,
+                MatchAnalysis.attempts,
+                MatchAnalysis.claimed_at,
+                MatchAnalysis.lease_expires_at,
+            )
+        )
+        insert_if_missing = (
+            pg_insert(MatchAnalysis)
+            .values(
+                game_id=game_id,
+                state=MatchAnalysisState.QUEUED,
+                point_of_view_profile_id=point_of_view_profile_id,
+                requested_by_user_id=requested_by_user_id,
+            )
+            .on_conflict_do_nothing(index_elements=[MatchAnalysis.game_id])
+        )
         await session.execute(insert_if_missing)
         result = await session.execute(statement)
         claimed_row = result.one_or_none()
