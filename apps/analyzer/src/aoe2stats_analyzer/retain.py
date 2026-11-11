@@ -37,8 +37,10 @@ to that person's placeholder in `_pseudonymise_profile_ids` (`apps/api`); `retai
 carries no foreign key to `aoe_profiles` or `match_players` (`data-model.md`, R9), so the schema
 does not do it and that function does. It never touches `object_key` or the object: renaming
 the key would delete the original (constitution IV). A row retained after that pseudonymisation is
-written under the placeholder (T845, `aoe2stats_analyzer.profile_id`) and its key still embeds the
-original id.
+written under the placeholder (T845, `aoe2stats_analyzer.profile_id`), unless a later sighting has
+written the original's `match_players` row again (T459h's residue, owner's ruling of 2026-11-10),
+in which case it is written under the original id, as for any person who is not a user (T847); its
+key embeds the original id either way.
 """
 
 from __future__ import annotations

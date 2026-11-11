@@ -4026,3 +4026,124 @@ async def test_a_walk_that_reaches_an_erased_participant_writes_the_placeholder_
     await _assert_both_columns_hold_the_placeholder(
         session_factory, game_id=game_id, original=second
     )
+
+
+# --- T847: an erasure and a re-sighting between the retention and the publish ----------------
+
+
+async def _resight(
+    session_factory: async_sessionmaker[AsyncSession], *, game_id: int, profile_id: int
+) -> None:
+    """A discovery batch that sights the match again after an erasure committed: it upserts the
+    original's `match_players` row (the T459h residue, owner's ruling of 2026-11-10)."""
+    async with session_scope(session_factory) as session:
+        session.add(
+            MatchPlayer(
+                game_id=game_id,
+                profile_id=profile_id,
+                team_id=0,
+                civ_id=1,
+                color_id=0,
+                result="win",
+            )
+        )
+
+
+def _erase_and_resight_before_the_publish(
+    monkeypatch: pytest.MonkeyPatch,
+    session_factory: async_sessionmaker[AsyncSession],
+    *,
+    game_id: int,
+    profile_id: int,
+) -> None:
+    """Runs the erasure, then the re-sighting, at the one point both paths pass between the
+    retained row being read or written and `_publish`: the access-log write."""
+    real = run_module._log_access
+
+    async def erase_then_log(*args: Any, **kwargs: Any) -> None:
+        await real(*args, **kwargs)
+        await _erase_profile(session_factory, profile_id)
+        await _resight(session_factory, game_id=game_id, profile_id=profile_id)
+
+    monkeypatch.setattr(run_module, "_log_access", erase_then_log)
+
+
+async def _assert_the_analysis_joins_the_retained_row_under(
+    session_factory: async_sessionmaker[AsyncSession], *, game_id: int, expected: int
+) -> None:
+    row = await _get_analysis(session_factory, game_id)
+    assert row is not None
+    assert row.state == MatchAnalysisState.PUBLISHED
+    assert await _retained_profile_ids(session_factory, game_id) == [expected]
+    assert row.point_of_view_profile_id == expected
+    async with session_scope(session_factory) as session:
+        joined = await run_module._retained_recording_row(
+            session, game_id=game_id, profile_id=row.point_of_view_profile_id
+        )
+    assert joined is not None, "the analysis must still find its retained recording"
+
+
+async def test_an_erasure_and_a_resighting_before_the_publish_leave_the_first_analysis_joined(
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """T847: the retention commits under X, the erasure rewrites the retained row to -X, and a
+    discovery batch writes `(game_id, X)` again. `_publish` must write the retained row's current
+    `profile_id` (-X), not the X that resolves again."""
+    game_id = 500_847_001
+    (first, *_rest), requester = await _seed_four_participants(session_factory, game_id=game_id)
+    _erase_and_resight_before_the_publish(
+        monkeypatch, session_factory, game_id=game_id, profile_id=first
+    )
+    blob = ReplayBlob(content=b"first's bytes", filename="r.zip", content_type="application/zip")
+
+    await _run_with(
+        session_factory,
+        game_id=game_id,
+        requester=requester,
+        provider=_ScriptedReplayProvider({first: blob}),
+        extractor=_BuildNamingExtractor(point_of_view_profile_id=first, max_calls=1),
+    )
+
+    await _assert_the_analysis_joins_the_retained_row_under(
+        session_factory, game_id=game_id, expected=-first
+    )
+
+
+async def test_an_erasure_and_a_resighting_before_the_publish_leave_a_recompute_joined(
+    session_factory: async_sessionmaker[AsyncSession],
+    clean_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """T847, recompute path: the same sequence between the retained row's read and `_publish`."""
+    published = await _publish_once(session_factory, game_id=500_847_002)
+    _erase_and_resight_before_the_publish(
+        monkeypatch, session_factory, game_id=published.game_id, profile_id=published.profile_id
+    )
+
+    extractor = await _ask_again(
+        session_factory, published, engine_version=_ENGINE_VERSION_2, max_calls=1
+    )
+
+    assert len(extractor.calls) == 1
+    await _assert_the_analysis_joins_the_retained_row_under(
+        session_factory, game_id=published.game_id, expected=-published.profile_id
+    )
+
+
+async def test_with_no_erasure_the_original_id_is_written_to_both_columns(
+    session_factory: async_sessionmaker[AsyncSession], clean_database: None
+) -> None:
+    """T847 contrast: nothing pseudonymised, so the original is what both columns hold, on the
+    first analysis and on a recompute."""
+    published = await _publish_once(session_factory, game_id=500_847_003)
+    await _assert_the_analysis_joins_the_retained_row_under(
+        session_factory, game_id=published.game_id, expected=published.profile_id
+    )
+
+    await _ask_again(session_factory, published, engine_version=_ENGINE_VERSION_2, max_calls=1)
+
+    await _assert_the_analysis_joins_the_retained_row_under(
+        session_factory, game_id=published.game_id, expected=published.profile_id
+    )

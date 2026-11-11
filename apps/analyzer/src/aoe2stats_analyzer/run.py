@@ -574,7 +574,7 @@ async def _publish(
     *,
     object_store: ObjectStore,
     game_id: int,
-    profile_id: int,
+    retained_recording_id: UUID,
     document: Mapping[str, Any],
     payload: bytes,
     result_key: str,
@@ -614,24 +614,49 @@ async def _publish(
     was not written. The cost is one row lock held across the put, taken by the one request that is
     publishing this match.
 
-    **The point of view is the retained row's id, resolved (T843, T845).** The row's
-    `point_of_view_profile_id` is the join key to its retained recording, so what is written is
-    `profile_id`, the `profile_id` of the retained row this run read, passed through
-    `resolve_profile_id`: unchanged while that person's `match_players` row exists, their
-    placeholder once an erasure or an objection has moved it (which has then rewritten the retained
-    row to the same placeholder). The document's own `point_of_view_profile_id` is not written to
-    the column. The `match_players` lock is the first statement of this transaction, before the
-    `match_analyses` row is read and so before it is held across the put below: an erasure that
-    starts meanwhile waits for this commit, then rewrites the row this transaction published.
+    **The point of view is the retained row's current id (T843, T845, T847).** The row's
+    `point_of_view_profile_id` is the join key to its retained recording, so what is written is the
+    `profile_id` the retained row `retained_recording_id` holds when this transaction reads it, not
+    the id the caller read earlier and not the document's own `point_of_view_profile_id`. The caller
+    passes the primary key because an erasure can rewrite `profile_id` between the caller's read and
+    this transaction, and a later sighting can then write the original's `match_players` row again
+    (T459h's residue in `apps/ingester/.../discover.py`, owner's ruling of 2026-11-10), so
+    `resolve_profile_id` of the old id would find that row and return the original, unjoined from
+    the retained row.
+
+    **Lock, then read, then lock again if the id moved.** (1) An unlocked read of the retained
+    row's `profile_id` only names which `match_players` row to lock first; it is a hint and nothing
+    is decided from it. (2) `resolve_profile_id` locks that `match_players` row `FOR KEY SHARE`,
+    before any `match_analyses` or `retained_recordings` row is locked, the global order. (3) The
+    retained row is read again by primary key. Its `profile_id` can only be rewritten by a
+    transaction holding `FOR UPDATE` on `match_players (game_id, that profile_id)`
+    (`discover.lock_match_players`), so once this transaction holds that row, the read cannot go
+    stale. When the id read in (3) is the one locked in (2), the read is safe: an erasure in flight
+    on it held the lock first, so (2) waited for its commit and (3) read its rewrite. When it
+    differs (the hint was X, an erasure has made the row say -X, and a re-sighting has restored
+    `(game_id, X)`, so (2) was granted on X), the lock on X says nothing about -X: the `(game_id,
+    -X)` row is locked now, by a second `resolve_profile_id`, before `match_analyses` is touched,
+    and the id written is -X. The read in (1) is safe only as a hint; the read in (3) is safe only
+    for the id whose `match_players` row is held. `LookupError` when a row to lock does not exist.
+
+    **The `match_players` lock is held across the object-store put below.** It is taken at the
+    start of this transaction and released at its commit, which follows the put, so an erasure or
+    an objection touching that row waits for the put to finish, then rewrites the row this
+    transaction published.
 
     **A key is never written twice (T666d).** The put is a conditional create: when the key already
     exists nothing is written and the row is published at it, so the bytes a reader or a
     reproduction already saw cannot change under a second request or a retry.
     """
     async with session_scope(session_factory) as session:
-        point_of_view_profile_id = await resolve_profile_id(
-            session, game_id=game_id, profile_id=profile_id
+        retained_id_statement = select(RetainedRecording.profile_id).where(
+            RetainedRecording.id == retained_recording_id
         )
+        hint = (await session.execute(retained_id_statement)).scalar_one()
+        await resolve_profile_id(session, game_id=game_id, profile_id=hint)
+        point_of_view_profile_id = (await session.execute(retained_id_statement)).scalar_one()
+        if point_of_view_profile_id != hint:
+            await resolve_profile_id(session, game_id=game_id, profile_id=point_of_view_profile_id)
         analysis = await session.get(MatchAnalysis, game_id)
         if analysis is None:  # pragma: no cover - defensive: this row was just claimed above
             raise LookupError(f"no match_analyses row for game_id={game_id} to publish")
@@ -824,7 +849,7 @@ async def _extract_and_publish(
     object_store: ObjectStore,
     extractor: AnalysisExtractor,
     game_id: int,
-    profile_id: int,
+    retained_recording_id: UUID,
     zip_bytes: bytes,
     object_key: str,
     zip_sha256: str,
@@ -934,7 +959,7 @@ async def _extract_and_publish(
             session_factory,
             object_store=object_store,
             game_id=game_id,
-            profile_id=profile_id,
+            retained_recording_id=retained_recording_id,
             document=document,
             payload=payload,
             result_key=result_key,
@@ -983,7 +1008,7 @@ async def _recompute(
             )
             return
         object_key, zip_sha256 = retained.object_key, retained.zip_sha256
-        retained_profile_id = retained.profile_id
+        retained_recording_id = retained.id
 
         async def log_read(row: RetainedRecording) -> None:
             # FR-029: written when the bytes arrive, before their checksum is judged, and before
@@ -1022,7 +1047,7 @@ async def _recompute(
         object_store=object_store,
         extractor=extractor,
         game_id=game_id,
-        profile_id=retained_profile_id,
+        retained_recording_id=retained_recording_id,
         zip_bytes=zip_bytes,
         object_key=object_key,
         zip_sha256=zip_sha256,
@@ -1229,7 +1254,7 @@ async def run_once(
         object_store=object_store,
         extractor=extractor,
         game_id=game_id,
-        profile_id=retained.profile_id,
+        retained_recording_id=retained.id,
         zip_bytes=blob.content,
         object_key=retained.object_key,
         zip_sha256=retained.zip_sha256,

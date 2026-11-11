@@ -18,8 +18,11 @@ things happens:
   analyzer committed;
 - erasure commits first: the row now has a different key. A `SELECT ... FOR KEY SHARE` that was
   waiting on it re-evaluates its `WHERE` against the updated row under READ COMMITTED and returns
-  nothing, and a `SELECT` that starts afterwards finds no such row. Either way the original id is
-  gone, the placeholder's row `(game_id, -abs(profile_id))` exists, and that is the id written.
+  nothing, and a `SELECT` that starts afterwards finds no such row. Unless a later sighting has
+  written the original's row again (T459h's residue, `apps/ingester/.../discover.py`, owner's
+  ruling of 2026-11-10), the original id is gone, the placeholder's row
+  `(game_id, -abs(profile_id))` exists, and that is the id written. If it has, the original id is
+  found and written, as for any person who is not a user (T847).
 
 **Lock order.** The lock comes before any `match_analyses` or `retained_recordings` row the
 transaction locks or writes, as the global order in `apps/ingester/.../discover.py` requires

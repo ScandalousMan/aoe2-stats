@@ -932,8 +932,10 @@ class RetainedRecording(Base):
       constitution IV forbids. The key is served: a published analysis document carries it as
       `source_recording.object_key`, `GET /api/matches/{game_id}/analysis` serves that document
       to every signed-in viewer, and the API reads the row's key for the staleness verdict. A row
-      the analyzer retains after the erasure is written under the placeholder too (T845) and its
-      key still embeds the original id.
+      the analyzer retains after the erasure is written under the placeholder too (T845), unless
+      a later sighting has written the original's `match_players` row again (T459h's residue,
+      owner's ruling of 2026-11-10), in which case it is written under the original id, as for any
+      person who is not a user (T847); its key embeds the original id either way.
     """
 
     __tablename__ = "retained_recordings"

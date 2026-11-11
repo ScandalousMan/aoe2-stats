@@ -623,7 +623,11 @@ async def _pseudonymise_profile_ids(
        writes. The rewrite would meet the unique `(game_id, profile_id)` pair only if an original
        and its placeholder were both retained for one game, which needs the original's
        `match_players` row to have been inserted again after an erasure; nothing here handles
-       that. Whether the source answers a fetch of a negative id with `NotFound` is not measured.
+       that. In that state a second pseudonymisation of the same original already fails on the
+       `match_players` primary key, whether or not a retained row exists: `UPDATE match_players
+       SET profile_id = -X` for the re-inserted `(game_id, X)` collides with the existing
+       `(game_id, -X)`, which predates T845. Whether the source answers a fetch of a negative id
+       with `NotFound` is not measured.
 
     The writes that follow touch only rows already held. `UPDATE match_players SET profile_id`
     moves each held `(game_id, original)` to `(game_id, placeholder)`;

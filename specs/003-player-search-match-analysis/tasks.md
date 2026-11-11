@@ -1025,3 +1025,28 @@ SC-004, US3 scenario 4, research R8, `specs/003-player-search-match-analysis/con
   committed row; an analysis whose point of view is another participant is left untouched by an
   erasure (contrast). **Done**: the tests pass, the whole suite is green, and spec_lint is green on
   every feature.
+- [x] T847 Remediate PR #231's second review, of T845, in
+  `apps/analyzer/src/aoe2stats_analyzer/run.py` and the texts T845 edited. (1) `_publish` resolves
+  the `profile_id` of a retained row read before its transaction. If an erasure rewrites that row to
+  the placeholder in between, and a later sighting then writes the original's `match_players` row
+  again (the residue `apps/ingester/src/aoe2stats_ingester/discover.py` documents for T459h, owner's
+  ruling of 2026-11-10), `resolve_profile_id` returns the original and the analysis no longer joins
+  its retained row. After its `match_players` lock, `_publish` reads the retained row by primary key
+  and writes that row's current `profile_id`, locking its `match_players` row first when it differs
+  from the id already locked. The recompute and the first-analysis path both pass the row's primary
+  key, not its `profile_id`. The `_publish` docstring states that the `match_players` lock is held
+  across the object-store put, so an erasure of that row waits for the put. (2) Texts. The sentences
+  saying an analyzer write after an erasure writes the placeholder name the exception: once a later
+  sighting has written the original's `match_players` row again, the original id is written, as for
+  any person who is not a user. These sentences are in
+  `specs/003-player-search-match-analysis/data-model.md`,
+  `packages/storage/src/aoe2stats_storage/models.py`,
+  `apps/analyzer/src/aoe2stats_analyzer/retain.py` and
+  `apps/analyzer/src/aoe2stats_analyzer/profile_id.py`. The residual paragraph in the
+  `_pseudonymise_profile_ids` docstring also says that in that state, a second pseudonymisation of
+  the same id fails on the `match_players` primary key whether or not a retained row exists. Tests,
+  failing against the tree before this task, with the output in the hand-back: an erasure and a
+  re-sighting between the retention and `_publish` leave the analysis on the retained row's current
+  `profile_id`, joined, on the first-analysis and the recompute path. Contrast: with no erasure, the
+  original is written. **Done**: the tests pass, the whole suite is green, and spec_lint is green on
+  every feature.

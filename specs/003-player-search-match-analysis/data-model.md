@@ -221,7 +221,9 @@ the same instrument 001's erasure applies, called with an arbitrary `profile_id`
 object intact. The row is kept too, with its
 `profile_id` rewritten to that person's placeholder and `match_analyses.point_of_view_profile_id`
 rewritten with it, since the two are the join key to the recording (owner's ruling 2026-11-10, T843;
-an analyzer write after the erasure writes the placeholder too, T845);
+an analyzer write after the erasure writes the placeholder too, T845, unless a later sighting has
+written the original's `match_players` row again, in which case it writes the original id, as for
+any person who is not a user, T847);
 `object_key` is not renamed, because renaming it deletes the original (constitution IV). What stays:
 every published analysis document carries each participant's `profile_id`, the point of view and
 `source_recording.object_key` in every version of it, all served to every signed-in viewer, and
