@@ -851,7 +851,7 @@ SC-004, US3 scenario 4, research R8, `specs/003-player-search-match-analysis/con
   and `specs/003-player-search-match-analysis/quickstart.md` carry the
 2026-11-10 amendment.
 
-- [ ] T842 Replace the arithmetic `expired` with `beyond_window` and a click that asks the source, in
+- [x] T842 Replace the arithmetic `expired` with `beyond_window` and a click that asks the source, in
   `apps/api/src/aoe2stats_api/availability.py`, `apps/api/src/aoe2stats_api/routers/matches.py`,
   `apps/api/src/aoe2stats_api/routers/replays.py`, `apps/api/tests/test_replay_availability.py`,
   `apps/api/tests/test_replay_download.py`, the match-detail API tests that assert `availability`
@@ -895,7 +895,7 @@ SC-004, US3 scenario 4, research R8, `specs/003-player-search-match-analysis/con
   **Done**: the tests pass, the whole suite, `tsc -b`, every `run:`
   step of `pr.yml`'s web job and spec_lint on every feature exit 0, and the PR's visual job is green
   after `baselines.yml` is dispatched.
-- [ ] T844 Remediate PR #229's review of T842, in `apps/api/tests/test_no_public_directory.py`,
+- [x] T844 Remediate PR #229's review of T842, in `apps/api/tests/test_no_public_directory.py`,
   `apps/api/tests/test_replay_availability.py`, `apps/api/src/aoe2stats_api/availability.py`,
   `apps/api/src/aoe2stats_api/routers/matches.py`, `apps/api/src/aoe2stats_api/routers/replays.py`,
   `apps/web/src/features/replays/api.ts`, `specs/003-player-search-match-analysis/research.md`,
@@ -931,7 +931,7 @@ SC-004, US3 scenario 4, research R8, `specs/003-player-search-match-analysis/con
   `PYTEST_DISABLE_NETWORK=1`; (6) pins behaviour already present. **Done**: the tests pass, the whole
   suite under `PYTEST_DISABLE_NETWORK=1`, `tsc -b`, every `run:` step of `pr.yml`'s web job and
   spec_lint on every feature exit 0.
-- [ ] T846 Remediate PR #229's visual review of T842 and T844, in
+- [x] T846 Remediate PR #229's visual review of T842 and T844, in
   `packages/design-system/src/composites/ReplayAvailabilityList/` (component, test, stories). A
   captured run on 2026-11-11 showed three deviations from
   `packages/design-system/specs/replay-availability.md` §4, §8 and §9. (1) At 375, the long alias of
