@@ -118,6 +118,7 @@ testpaths = [
   "scripts/checks/tests",
   "scripts/hooks/tests",
   "scripts/ops/tests",
+  "scripts/research/009-native-simulation/tests",
   "tests/architecture",
   "tests/test_reference_recordings.py",
   "tests/test_starting_state_anchor.py",

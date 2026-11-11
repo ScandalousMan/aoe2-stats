@@ -373,6 +373,24 @@ nothing may be built on their being present. What V2 derives, it derives from wh
 carry (`operations`, `game_settings`, the command log), and it must not present a derivation as a
 recorded outcome.
 
+### Settled: every recording carries the game's own per-player state checkpoint every 500 syncs
+
+Measured 2026-11-08 on the three committed reference recordings (builds 180059 and 185872) by
+`scripts/research/009-native-simulation/checkpoints.py`, asserted by
+`scripts/research/009-native-simulation/tests/test_checkpoints.py`, which holds the numbers: every
+500th sync operation (the pregame record's `checksum_interval`) carries eight lanes of eleven
+32-bit words plus a world time, one lane per lobby slot, computed by the simulation from its live
+state at that instant. Word 8 is the player id (lane + 1, every checkpoint); word 1 is the four
+resource stocks summed after truncation, corroborated on seven of eight players, whose first
+checkpoint equals the header's starting stocks (the anchor below) minus the villagers and houses
+queued before it, to the unit; the eighth differs by 33 and is unexplained. The semantics of the
+other words are published by `librematch/genie` and are not corroborated here; word 6 is not a
+units-plus-buildings count. `aoe2rec-py` 0.1.24 exposes the block as an opaque `checksum` of five
+mislabelled fields; `aoc-mgz` treats it as padding. This narrows the finding of 2026-09-19 above:
+a recording carries no per-object outcome and no event, but it does carry an exact, coarse,
+per-player sample of engine state. Assessment and consequences:
+`docs/research/native-simulation-feasibility.md` §6.
+
 ### Settled: each human player's starting-attribute array is reachable at a self-verifying anchor in the header
 
 **Settled, within the scope below.** The recording's initial state is not unreadable. The header is
