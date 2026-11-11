@@ -205,10 +205,20 @@ function ReplayAvailabilityRow({
       <div
         className={cx('flex flex-col gap-4', isMd && 'flex-row items-center justify-between gap-4')}
       >
-        <div className={cx('flex flex-col gap-1', isMd && 'flex-row items-center gap-3')}>
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <span className="font-sans text-sm text-text-primary">{row.alias}</span>
-            <span aria-describedby={secondary ? secondaryId : undefined}>
+        <div
+          className={cx(
+            'flex min-w-0 flex-col gap-1',
+            isMd && 'flex-1 flex-row flex-wrap items-center gap-x-3 gap-y-1',
+          )}
+        >
+          <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="min-w-0 font-sans text-sm text-text-primary [overflow-wrap:anywhere]">
+              {row.alias}
+            </span>
+            <span
+              className="shrink-0 whitespace-nowrap"
+              aria-describedby={secondary ? secondaryId : undefined}
+            >
               <Badge variant={meta.variant}>{meta.label}</Badge>
             </span>
           </div>

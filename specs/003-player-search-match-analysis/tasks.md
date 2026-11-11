@@ -931,3 +931,20 @@ SC-004, US3 scenario 4, research R8, `specs/003-player-search-match-analysis/con
   `PYTEST_DISABLE_NETWORK=1`; (6) pins behaviour already present. **Done**: the tests pass, the whole
   suite under `PYTEST_DISABLE_NETWORK=1`, `tsc -b`, every `run:` step of `pr.yml`'s web job and
   spec_lint on every feature exit 0.
+- [ ] T846 Remediate PR #229's visual review of T842 and T844, in
+  `packages/design-system/src/composites/ReplayAvailabilityList/` (component, test, stories). A
+  captured run on 2026-11-11 showed three deviations from
+  `packages/design-system/specs/replay-availability.md` §4, §8 and §9. (1) At 375, the long alias of
+  `StackedRowsBelowMd`'s `beyond_window` row is one unbreakable string and overflows the viewport
+  (page `scrollWidth` 440 against 375); §9 and §10 forbid truncation and horizontal scroll. The alias
+  breaks inside an unbroken word (`[overflow-wrap:anywhere]`) and its flex item can shrink below its
+  content width. (2) At 768, the badge's label "Outside capture window" wraps onto three lines inside
+  the pill, because the badge shrinks against the `SecondaryLine`; §4 and §9 forbid shrinking a
+  badge below its one size. The badge does not shrink and its label does not wrap. (3) At 1280 and
+  768, a long `SecondaryLine` pushes the badge beneath a short alias; §9 keeps the alias and badge
+  on one line at those widths and moves the `SecondaryLine` to its own line when it does not fit. The
+  alias and badge group keeps its content width and the `SecondaryLine` wraps to the next line
+  instead. Tokens only. Tests assert the classes that carry each rule, and each fails against the tree
+  before this task, with the output in the hand-back. **Done**: the tests pass, the captures at 375,
+  768 and 1280 in both themes show none of the three deviations, every `run:` step of `pr.yml`'s web
+  job exits 0 apart from the missing-baseline steps, and spec_lint on every feature exits 0.

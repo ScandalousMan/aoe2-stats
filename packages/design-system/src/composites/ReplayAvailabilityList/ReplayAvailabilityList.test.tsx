@@ -414,4 +414,59 @@ describe('ReplayAvailabilityList', () => {
     )
     expect(screen.getByRole('list')).not.toHaveAttribute('aria-busy')
   })
+
+  describe('row layout rules (T846, replay-availability.md §4, §8, §9)', () => {
+    function mockMatchMediaAt(widthPx: number): () => void {
+      const original = window.matchMedia
+      window.matchMedia = (query: string) => {
+        const m = /min-width:\s*(\d+)px/.exec(query)
+        const threshold = m ? Number(m[1]) : Infinity
+        return {
+          matches: widthPx >= threshold,
+          media: query,
+          onchange: null,
+          addListener: () => {},
+          removeListener: () => {},
+          addEventListener: () => {},
+          removeEventListener: () => {},
+          dispatchEvent: () => false,
+        } as MediaQueryList
+      }
+      return () => {
+        window.matchMedia = original
+      }
+    }
+
+    const renderRow = () =>
+      render(
+        <ReplayAvailabilityList
+          rows={[{ id: '1', alias: 'Hera', availability: 'beyond_window' }]}
+        />,
+      )
+
+    it('lets the alias break inside an unbroken word and shrink below its content width', () => {
+      renderRow()
+      const alias = screen.getByText('Hera')
+      expect(alias).toHaveClass('min-w-0')
+      expect(alias).toHaveClass('[overflow-wrap:anywhere]')
+    })
+
+    it('never shrinks the badge pill nor wraps its label', () => {
+      renderRow()
+      const wrapper = screen.getByText('Outside capture window').closest('span[aria-describedby]')
+      expect(wrapper).toHaveClass('shrink-0')
+      expect(wrapper).toHaveClass('whitespace-nowrap')
+    })
+
+    it('from md, wraps the text block so a long SecondaryLine drops beneath the alias and badge', () => {
+      const restore = mockMatchMediaAt(768)
+      renderRow()
+      const alias = screen.getByText('Hera')
+      const group = alias.parentElement as HTMLElement
+      const block = group.parentElement as HTMLElement
+      expect(block).toHaveClass('flex-row', 'flex-wrap', 'min-w-0', 'flex-1')
+      expect(group).toHaveClass('min-w-0')
+      restore()
+    })
+  })
 })
