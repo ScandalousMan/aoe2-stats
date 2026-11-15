@@ -145,7 +145,7 @@ the measurements that guard the plan are tests. Nothing here publishes.
 - [ ] T912 [P] File the Sicilian age-requirement defect through 006's mechanism: add the request to
       `specs/006-replay-analysis-foundations/owner-readings.md`, citing research R3 and this feature's
       reading O3, so that 006's T746 carries the fix. No value is written there.
-- [ ] T912a Add to `packages/core/src/aoe2stats_core/truth/register.toml`, as `planned`, every datum
+- [x] T912a Add to `packages/core/src/aoe2stats_core/truth/register.toml`, as `planned`, every datum
       this feature intends to publish and the register lacks, and regenerate the view (006 FR-005;
       FR-001a, FR-027): the exact population and the exact Town Center idle time at `reconstructed`;
       `event.unit_queued.building_objects`, `participant.units_seen` and
