@@ -379,8 +379,8 @@ the reconstructed values are byte-identical whether the estimates are computed o
   `military`; Monks, Missionaries, transport ships and the King are `neither` (Clarifications,
   Session 2026-11-06). A unit with no class is a knowledge gap that withholds the military share.
 - **FR-001a**: The system MUST also publish, for each participant, the population over the match and
-  each Town Center's idle time, both as exact figures, and both added to the register as `planned` in
-  the change that files their tasks. The method is chosen by FR-012. Until it is, the only population
+  each Town Center's idle time, both as exact figures, and both added to the register as `planned` by
+  the population phase's first register change. The method is chosen by FR-012. Until it is, the only population
   and idle figures published are the estimates of FR-034 and FR-035, under their own names and at
   their own tier.
 - **FR-002**: Every reconstructed value MUST be computed from the canonical event stream and the
