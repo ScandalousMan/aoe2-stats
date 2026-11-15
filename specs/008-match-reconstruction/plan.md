@@ -51,7 +51,7 @@ owner asked for imperfect values while the exact ones wait on readings and on fe
 Clarifications, Session 2026-11-15; US6, FR-027 to FR-040). Four rules were proposed and measured
 on the committed recordings (research R16): the first command cannot count units, so units entering
 are counted from the queue; "attacked, then silent" finds a minority of the silent units, so the
-population limit adds an excess nothing identifies. Seven data are published: two exact `derived`
+population limit adds an excess nothing identifies. Seven data are published: two exact `observed`
 ones (when each unit and producing building was first and last seen) and five estimates at 006's
 `inferred` tier, computed in a sub-package the exact code never imports, under interim policies
 until the rules that replace them are adopted (research R17). The estimates do not read explicit
@@ -153,7 +153,7 @@ specs/008-match-reconstruction/
 │   ├── reconstruction-document.md   # The `reconstructed` block, identity, validator rules 11..14
 │   ├── rules.md                     # The proof and deduction registry and its initial set
 │   ├── canonical-events-amendment.md# Every producing building; population limit; starting attributes
-│   ├── estimates.md                 # Two `derived` seen data, five `inferred` estimates, isolation, rules 15..16
+│   ├── estimates.md                 # Two `observed` seen data, five `inferred` estimates, isolation, rules 15..16
 │   └── playback-readings.md         # Readings, goldens, and what the tests assert
 ├── checklists/
 └── tasks.md             # /speckit-tasks — NOT created here
@@ -178,7 +178,7 @@ packages/reconstruction/                     # NEW PACKAGE — depends on core a
 │   ├── arrivals.py                          # modelled age-up arrivals
 │   ├── invariants.py                        # the closed invariant set and the breach
 │   ├── document.py                          # the `reconstructed` block, untied deletions included
-│   ├── seen.py                              # US6 — the two `derived` seen data (FR-030)
+│   ├── seen.py                              # US6 — the two `observed` seen data (FR-030)
 │   └── estimates/                           # US6 — imported by nothing above (FR-028)
 │       ├── policies.py                      # the four interim policies (research R17)
 │       ├── losses.py                        # identified unit losses; buildings destroyed
@@ -287,4 +287,4 @@ rather than a ruling).
 | Estimates are published at `inferred`, beside values the owner's rule requires exact | The owner's ruling of 2026-11-15: imperfect values are wanted now, and 006's `inferred` tier is where a value that is not exact may live. The exact rule is untouched because nothing reads an estimate (FR-028). Settled. | Relaxing the exact rule puts spending, age-ups and guesses at one confidence level and ends FR-019's equality. Keeping the rules as candidates publishes nothing until readings exist, which is what the owner asked not to wait for. |
 | The estimates run on interim policies that are known to be wrong in stated directions | G1 is not closed and the estimates must not wait for it (FR-031). Each policy is in the register entry's method, each error direction in its non-claim (research R16, R17). Decided in planning and stated to the owner on 2026-11-15; not a ruling. | Waiting for G1 makes phase 10 a gated phase. Using the interim policies in the exact path is what research R2 forbids. |
 | The estimates do not read explicit deletions | 006's FR-014 keeps deletions out of every inferred quantity, and its register entry repeats it (FR-036). A deleted unit stays in the living population; the non-claim says so. Decided in planning; lifting FR-014 is the owner's. | Reading them is more accurate and breaks 006's letter. Quoting half of FR-014 to claim compliance is what the review of this change caught. |
-| When an object was first and last seen is published as `derived`, not as an estimate | It is computed exactly from observed commands, and 006's FR-010 requires an inferred value to be worded so it cannot be read as a measurement (research R17). Decided in planning. | Publishing a measurement at `inferred` under an estimate's name mislabels it the other way. |
+| When an object was first and last seen is published as `observed`, not as an estimate | It is computed exactly from observed commands, as 006's own first-occurrence reading of age-up commands is, and 006's FR-010 requires an inferred value to be worded so it cannot be read as a measurement (research R17). Decided in planning. | Publishing a measurement at `inferred` under an estimate's name mislabels it the other way. |

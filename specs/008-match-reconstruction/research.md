@@ -437,7 +437,7 @@ order. So an id from which an order is issued is a building, whatever lists name
 A building that produces nothing and is named in a unit list cannot be told from a unit.
 
 **Decision.** The first and last command naming a unit are published as the interval it was _seen_
-(P3 already adopts "alive when commanded"): an exact fact about commands, so a derived datum and
+(P3 already adopts "alive when commanded"): an exact fact about commands, so an observed datum and
 not an estimate (R17). Units entering are counted from the production queue (strategy S4 of R5),
 which gives a count and a modelled time for every unit ordered, named or not.
 
@@ -517,7 +517,9 @@ candidate's "from its next proof". Twelve buildings in the goldens are in that c
 ## R17 — Where an estimate lives, and what keeps it away from the exact values
 
 **What is exact is not an estimate.** When an object was first and last seen is computed exactly
-from observed commands, so it is a `derived` datum: 006's FR-010 requires an inferred value to be
+from observed commands, so it is an `observed` datum, as 006 classes its own first-occurrence
+reading of age-up commands; `derived` is 006's word for what is computed from reconstructed state.
+006's FR-010 requires an inferred value to be
 worded so it cannot be read as a measurement, and this is one. The two seen data are published
 beside the participant's other data, computed outside the estimates sub-package, and the estimates
 read them.
@@ -542,8 +544,7 @@ commands were executed and how a command spreads over its buildings are policies
 takes them from adopted rules (G1), the estimates take interim ones until then (spec FR-031). The
 shared queue item therefore holds whether it was executed as a plain value its caller supplies; the
 settlement that decided it belongs to the exact path alone. The interim policies are four, each
-stated in the register entry and each replaced by the adopted rule
-when its gate closes:
+stated in the register entry and each replaced by what its row names:
 
 | Interim policy | States | Replaced by |
 | -------------- | ------ | ----------- |
@@ -578,7 +579,9 @@ else.
 SC-008 bounds the analysis at twice today's time, and **no baseline exists**: the repository measures
 peak memory over the stream (`packages/replay-engine/tests/test_extract_limits.py`) and no elapsed
 time. The first phase records the baseline over the committed recordings before any reconstruction
-code lands, in a test that later phases must keep green. The reconstruction is one pass over the
+code lands, in a test that later phases must keep green. [2026-11-15: no figure is committed; the
+first phase builds the timing harness, and later phases compare the same run with and without the
+new code, since a timing taken on one machine cannot be compared on another (T909).] The reconstruction is one pass over the
 stream plus a knowledge query per distinct (entity, civilisation, state), memoised; the memory
 ceiling of 003's analysis contract binds it as it binds the stream.
 

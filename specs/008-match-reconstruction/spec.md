@@ -79,7 +79,7 @@ FR-010 and FR-010a). The owner's rule above is untouched: no reconstructed value
 and an estimate that disagrees with a playback reading is a measured error to record, not a defect
 that blocks publication. The unit-loss count itself stays non-determinable (006, FR-004); what is
 published is a named approximation of it. What the commands show exactly, when an object was first
-and last seen, is published as what it is: a derived fact, not an estimate.
+and last seen, is published as what it is: an observed fact, not an estimate.
 
 The owner's four starting rules (2026-11-15), as the committed recordings amended them
 (`specs/008-match-reconstruction/research.md` R16):
@@ -93,7 +93,8 @@ The owner's four starting rules (2026-11-15), as the committed recordings amende
   time a building's modelled queue is empty between its orders.
 - **A unit or producing building that was attacked and does nothing afterwards is dead or
   destroyed.** Kept, with "attacked" read as the one thing a recording shows of an attack, an enemy
-  command that targets the object. It finds few of the losses, so the population limit adds an excess no command identifies.
+  command that targets the object. It finds few of the losses, so the population limit adds an
+  excess no command identifies.
 
 ## Clarifications
 
@@ -121,6 +122,7 @@ The owner's four starting rules (2026-11-15), as the committed recordings amende
 - Q: Do the estimates read explicit deletions? → A: No. Decided in planning: 006's FR-014 keeps
   deletions out of every inferred quantity, and lifting it is the owner's to ask for. A deleted
   unit stays in the estimated living population, and the non-claim says so (FR-036).
+
 ### Session 2026-11-06
 
 - Q: The military share needs a class per unit, and the knowledge base has none. Villagers, fishing
@@ -310,7 +312,8 @@ the reconstructed values are byte-identical whether the estimates are computed o
 
 **Acceptance Scenarios**:
 
-1. **Given** a unit first named by its owner's command at minute 9 and last named at minute 14,   **When** it is analysed, **Then** it is published as seen from minute 9 to minute 14, and it is
+1. **Given** a unit first named by its owner's command at minute 9 and last named at minute 14,
+   **When** it is analysed, **Then** it is published as seen from minute 9 to minute 14, and it is
    not counted lost.
 2. **Given** a unit an enemy command targets at 14:10, which no command of its owner names again,
    **When** it is analysed, **Then** it is counted as an identified estimated loss at 14:10.
@@ -528,8 +531,8 @@ the reconstructed values are byte-identical whether the estimates are computed o
 
 ### Estimates (the `inferred` tier) and what they are computed from
 
-- **FR-027**: The system MUST publish, for each participant of an analysed match, two derived data
-  and five estimates. The derived data are the units its commands name and the producing buildings
+- **FR-027**: The system MUST publish, for each participant of an analysed match, two observed data
+  and five estimates. The observed data are the units its commands name and the producing buildings
   it issues orders from, each with the first and last clock at which it was seen (FR-030). The
   estimates, at 006's `inferred` tier, are the estimated unit losses (FR-032), the estimated
   producing buildings destroyed (FR-032), the estimated population excess (FR-033), the estimated
@@ -538,10 +541,10 @@ the reconstructed values are byte-identical whether the estimates are computed o
   confidence method and its non-claim (006, FR-010). All seven MUST be in the register as `planned`
   from this feature's first register change (006, FR-005), and each moves to `published` in the
   change that publishes it.
-- **FR-028**: No reconstructed or derived datum of this feature MAY read an estimate or anything
-  computed only for one. The reconstructed values MUST be byte-identical whether the estimates are
-  computed or not, and an automated check MUST fail when the code that produces a reconstructed or
-  derived value depends on the code that produces an estimate. An estimate MAY read observed,
+- **FR-028**: No datum of this feature at a stronger tier than `inferred` MAY read an estimate or
+  anything computed only for one. The reconstructed values MUST be byte-identical whether the estimates are
+  computed or not, and an automated check MUST fail when the code that produces such a datum depends
+  on the code that produces an estimate. An estimate MAY read observed,
   decoded, derived and reconstructed inputs, and carries the weaker tier (006, FR-008).
 - **FR-029**: Every estimate MUST be named and worded as an estimate, MUST carry a confidence from
   006's closed levels with its basis, and MUST carry a non-claim that states the direction in which
@@ -553,8 +556,8 @@ the reconstructed values are byte-identical whether the estimates are computed o
   which they name it. For every building a participant issues an order from, counting every
   building a command names, it MUST publish the first and the last clock of those orders. Where
   another participant's commands later name the same unit, the datum MUST say who and from when.
-  These are exact facts about commands, published at the `derived` tier under names that say what
-  was measured (006, FR-012). Neither is a birth, a completion or a death.
+  These are exact facts about commands, published at the `observed` tier, as 006 classes its own
+  first-occurrence reading of commands, under names that say what was measured (006, FR-012). Neither is a birth, a completion or a death.
 - **FR-031**: The units that enter a participant's estimated living population MUST be: the
   starting units of FR-026; each unit ordered, at the modelled completion of its queue item, less
   the cancellations the recording shows; and a unit another participant's commands named first, at
@@ -642,9 +645,9 @@ the reconstructed values are byte-identical whether the estimates are computed o
   queue or a housing pause; its method is chosen under FR-012.
 
 - **Estimate**: one published value at the `inferred` tier: its datum, its participant, its value,
-  its confidence with its basis, and its non-claim. Never read by a reconstructed or derived value.
+  its confidence with its basis, and its non-claim. Never read by a value at a stronger tier.
 - **Seen interval**: per participant and object id, the first and last clock at which the object
-  was seen (a unit named by a command, a building issuing an order). An exact, derived fact.
+  was seen (a unit named by a command, a building issuing an order). An exact fact, at `observed`.
 - **Estimated loss**: the object, the enemy command that dates it and the owner's last sighting
   before it.
 - **Estimated population excess**: a clock and the population by which the estimated living

@@ -110,7 +110,7 @@ the measurements that guard the plan are tests. Nothing here publishes.
       `building_object`. Type test in `packages/core/tests/test_events.py`; adapter test over every
       committed recording in `packages/replay-engine/tests/test_canonical.py`
       (contracts/canonical-events-amendment.md, research R1).
-- [ ] T906 Widen the vocabulary and the adapter, and delete T905's markers:
+- [ ] T906 After T912a. Widen the vocabulary and the adapter, and delete T905's markers:
       `packages/core/src/aoe2stats_core/replay/events.py` and
       `packages/replay-engine/src/aoe2stats_replay_engine/canonical.py`. Regenerate the canonical
       goldens with `scripts/ops/canonical_golden.py`. Before regenerating, record beside the test a
@@ -149,10 +149,10 @@ the measurements that guard the plan are tests. Nothing here publishes.
 - [ ] T912a Add to `packages/core/src/aoe2stats_core/truth/register.toml`, as `planned`, every datum
       this feature intends to publish and the register lacks, and regenerate the view (006 FR-005;
       FR-001a, FR-027): the exact population and the exact Town Center idle time at `reconstructed`;
-      `participant.units_seen` and `participant.producing_buildings_seen` at `derived`; and the five
+      `participant.units_seen` and `participant.producing_buildings_seen` at `observed`; and the five
       estimates of contracts/estimates.md at `inferred`. Each `requires_knowledge` names only fields
       the knowledge base has today; T955 adds the population fields. This is the feature's first
-      register change and adds nothing else.
+      register change, so it lands before T906, and it adds nothing else.
 
 ---
 
@@ -550,7 +550,7 @@ data, each with a confidence and a non-claim, computed by code the exact path ne
       key, the five estimate entries are `published` at `inferred`, each with a method carrying a
       version label and each interim policy in force, a confidence method, no `calibration` yet, and
       a non-claim that states a direction of error (FR-027, FR-029), and the two seen entries are
-      `published` at `derived`; and `participant.units_lost` is still `non-determinable`, its
+      `published` at `observed`; and `participant.units_lost` is still `non-determinable`, its
       approximation naming `participant.estimated_unit_losses`, with the existing assertion that its
       approximation is not acceptable changed to `yes` on the owner's ruling of 2026-11-15 (FR-039).
       No other assertion of 006 is weakened.
@@ -558,7 +558,8 @@ data, each with a confidence and a non-claim, computed by code the exact path ne
       register entry and the code that publishes it are never separately true: the seven entries
       moved to `published` and the amended `participant.units_lost` in
       `packages/core/src/aoe2stats_core/truth/register.toml` with the regenerated view; the
-      `calibration` key in the register loader; rules 15 and 16 and rule 14's amendment in
+      `calibration` key in the register loader; rules 15 and 16, rule 14's amendment and
+      `estimates_withheld` among the keys rule 1 exempts, in
       `packages/core/src/aoe2stats_core/truth/validate.py`;
       `packages/reconstruction/src/aoe2stats_reconstruction/estimates/document.py`; the seven data,
       each with its `provenance` entry, written by `apps/analyzer/src/aoe2stats_analyzer/extract.py`;
@@ -573,8 +574,9 @@ data, each with a confidence and a non-claim, computed by code the exact path ne
       twice the same run's path without them, through T909's harness (SC-015). Add a dated bracket
       note to the unit-loss clarification of `specs/006-replay-analysis-foundations/spec.md` pointing
       at FR-039, and one to `specs/006-replay-analysis-foundations/contracts/analysis-document.md`
-      saying `estimates_withheld` joins the keys rule 1 exempts, as those files' earlier dated notes
-      do. Every non-claim is written from research R16's table and claims nothing beyond it.
+      saying `estimates_withheld` joins the keys rule 1 exempts, and one to the units-lost example of
+      `specs/006-replay-analysis-foundations/contracts/register.md`, as those files' earlier dated
+      notes do. Every non-claim is written from research R16's table and claims nothing beyond it.
 - [ ] T976 [US6] Add to `specs/008-match-reconstruction/owner-readings.md`, under O6.3, a few
       stretches the golden estimates call idle and a few they call busy, each a Town Center to select
       at a stated time and its queue to read.
@@ -608,8 +610,9 @@ data, each with a confidence and a non-claim, computed by code the exact path ne
 
 ## Dependencies and execution order
 
-- **Phase 1** tasks are independent of each other, except T906 after T905, then T907, then T908
-  (one test file, one adapter, one set of goldens), and T912a alone on the register. The owner
+- **Phase 1** tasks are independent of each other, except T912a first on the register, then T906
+  after T905, then T907, then T908 (one test file, one adapter, one set of goldens, and the
+  register after T912a). The owner
   tasks T901 to T904 are requested at once; the first two are the critical path.
 - **Phase 2** waits on T906 and T908 only, never on a reading (T924 lands its test first).
 - **Phases 3 to 7** are sequential, and phase 3 waits on T901.

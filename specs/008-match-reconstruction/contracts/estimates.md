@@ -3,7 +3,7 @@
 **Covers**: FR-027 to FR-040, US6, SC-011 to SC-015 | **Model**: [data-model.md](../data-model.md)
 §12 to §15 | **Research**: R16, R17
 
-Seven data. Two are `derived`: exact facts about which objects the commands named. Five are
+Seven data. Two are `observed`: exact facts about which objects the commands named. Five are
 estimates at 006's `inferred` tier. The estimates use the place, the confidence and the validator
 rules 006 already has for that tier
 (`specs/006-replay-analysis-foundations/contracts/analysis-document.md`), and add nothing to the
@@ -52,14 +52,14 @@ rules 006 already has for that tier
       "at_ms": 0 }
   ],
   "provenance": {
-    "participant.units_seen": { "tier": "derived", "method": "…", "inputs": [] },
+    "participant.units_seen": { "tier": "observed", "method": "…", "inputs": [] },
     "participant.estimated_unit_losses": { "tier": "inferred", "method": "…", "inputs": [] }
   }
 }
 ```
 
 - **The two seen data** are the register data `participant.units_seen` and
-  `participant.producing_buildings_seen`, at `derived`, published under each participant beside
+  `participant.producing_buildings_seen`, at `observed`, published under each participant beside
   006's own participant data. A unit is an object id named in a unit list from which no order is
   issued as a building; a building is seen at every order that names it, every building of a
   command included (FR-030). `later_named_by` is present only when another participant's commands
@@ -95,7 +95,7 @@ FR-005) and move to `published` in the change that publishes them. An estimate's
 | `confidence_method` | How the level is assigned, in prose, as for 006's group-silence entry. |
 | `calibration` | New, optional: the playback readings that measured the estimate's error. Absent until they exist. |
 | `non_claim` | What the estimate is not, and the direction in which it errs, from research R16's table (FR-029). |
-| `depends_on` | The data it reads. The estimated unit losses depend on `participant.units_seen`; the living population on the population excess. No estimate lists the deletion datum (FR-036). |
+| `depends_on` | The data it reads. The estimated unit losses depend on `participant.units_seen`; the living population on the estimated unit losses and the population excess. No estimate lists the deletion datum (FR-036). |
 
 The `participant.units_lost` entry stays `non-determinable`. Its `approximation` names
 `participant.estimated_unit_losses` and says it is a separately named `inferred` datum, never the
@@ -105,7 +105,7 @@ The existing assertion that it is `no` changes in that same change and nowhere e
 ## Isolation (FR-028, SC-012)
 
 1. The estimates are computed by a sub-package of the reconstruction package that no module
-   producing a reconstructed or derived value imports. The seen data are computed outside it. A
+   producing a datum at a stronger tier imports. The seen data are computed outside it. A
    test walks the package's imports and fails on one.
 2. For each committed recording, the `reconstructed` block and the seen data are byte-identical
    with the estimates computed and with them switched off.
@@ -143,6 +143,6 @@ The view of FR-040 comes later and reads them through typed assertions.
 
 - Publish an estimate whose name or label lacks the word that marks it as an estimate, or word an
   estimated loss as units lost.
-- Let a reconstructed or derived value, a settlement or a rule cite an estimate.
+- Let a value at a stronger tier, a settlement or a rule cite an estimate.
 - Read an explicit deletion.
 - Refuse a document because an estimate broke a bound.

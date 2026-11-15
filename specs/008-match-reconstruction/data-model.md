@@ -193,7 +193,7 @@ period of section 14 is another datum, at another tier, and is not its draft.
 
 ## 12. Seen interval
 
-Per participant and object id (FR-030). Exact, at `derived`: computed from observed commands and
+Per participant and object id (FR-030). Exact, at `observed`: computed from observed commands and
 nothing else, outside the estimates sub-package.
 
 | Field | Type | Rule |
@@ -218,7 +218,7 @@ instance per datum and participant.
 | `confidence` | 006's Confidence | `low` while the register entry has no `calibration`; a non-empty basis (FR-029). |
 | `non_claim` | non-empty text | From the register entry (FR-029). |
 
-An estimate has no `settled_by`: nothing settles it. No reconstructed or derived value, settlement
+An estimate has no `settled_by`: nothing settles it. No value at a stronger tier, settlement
 or rule holds a reference to one (FR-028). No estimate reads an explicit deletion (FR-036).
 
 **A bound, not an invariant.** The estimated living population is never negative (FR-034). A series

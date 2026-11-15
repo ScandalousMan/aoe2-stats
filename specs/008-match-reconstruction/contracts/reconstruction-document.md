@@ -88,8 +88,8 @@ one breach per invariant in a synthetic stream and asserts nothing is published.
 ## Estimates are not in this block
 
 The estimates of US6 are `inferred` data and sit under the document's `inferred` key, specified in
-[estimates.md](./estimates.md), with the two `derived` seen data they read. Rule 11 already keeps
-them out of `reconstructed`. Rule 14 was amended on 2026-11-15 to count them: they are computed by
+[estimates.md](./estimates.md). The two seen data they read are `observed` and sit under each
+participant, beside 006's own participant data. Rule 11 keeps both kinds out of `reconstructed`. Rule 14 was amended on 2026-11-15 to count them: they are computed by
 the reconstruction package, so `reconstruction_engine` names that package's version as soon as any
 of them is present, and a changed estimation method bumps it (FR-038).
 
