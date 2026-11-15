@@ -38,5 +38,9 @@
   clarification markers, because each is a measurement, not a choice: whether a recorded queue
   command proves payment, and which playback figures equal resources spent. `/speckit-clarify`
   should confirm the owner can take both readings.
+- Amended 2026-11-15 for US6 (estimates at the `inferred` tier, FR-027 to FR-040, SC-011 to
+  SC-015). No clarification marker was added: the three questions the amendment raised were put to
+  the owner and answered in the same session (spec, Clarifications, Session 2026-11-15). The items
+  above were re-read against the amended spec and still hold.
 - SC-008 (analysis time at most double today's) is a budget guard for the on-demand path, measured
   on the committed recordings.
