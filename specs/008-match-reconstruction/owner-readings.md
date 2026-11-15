@@ -94,11 +94,42 @@ and **which placement it came from** (when it was placed).
 
 Checks D-TIE-1 and D-REFUND-1 (research R6).
 
-## O6 — Population and idle time (requested by the population phase)
+## O6 — Population, losses and idle time
 
-Not requested yet. The population phase (plan.md) adds its requests here, each a population figure
-or a Town Center's idle stretch at a stated time, once its candidate rules are written (research
-R5).
+Requested 2026-11-15 for the estimates of US6 (research R16): these readings measure how far each
+estimate is from the game. They close no gate, and an estimate that differs from a reading is
+recorded with the difference, not failed. The population phase (plan.md, phase 8) reuses the same
+readings to check its candidate rules, and adds its own here once they are written (research R5).
+
+**O6.1 — The end-of-match statistics.** In each recording, let the replay run to its end and open
+the statistics screen. For each slot, from the military statistics, read **units lost** and
+**buildings lost**, and also **units killed** and **buildings razed**. If the replay shows no
+statistics screen at its end, answer `unreadable` and say what it shows instead.
+
+| Request | Recording | Slots |
+| ------- | --------- | ----- |
+| O6.1.1 | 500546441 | 1, 2 |
+| O6.1.2 | 504695319 | 1, 2, 3, 4 |
+| O6.1.3 | 511523321 | 1, 2 |
+
+Measures the estimated unit losses and the estimated buildings destroyed.
+
+**O6.2 — Population at stated times.** In each recording, pause at each time below and, for each
+slot, read the **population figure as "current / cap"** shown at the top of the screen when that
+player is selected.
+
+| Request | Recording | Pause at |
+| ------- | --------- | -------- |
+| O6.2.1 | 500546441 | 10:00, 20:00, 30:00, 40:00, 50:00 |
+| O6.2.2 | 504695319 | 10:00, 20:00, 30:00, 40:00, 50:00 |
+| O6.2.3 | 511523321 | 10:00, 20:00, 30:00 |
+
+Measures the estimated living units, and tells whether the lobby's population limit or the houses
+bound the player at that moment.
+
+**O6.3 — Idle Town Centers.** Not requested yet. Once the estimates' goldens exist, the estimates
+phase adds here a few stretches the estimate calls idle and a few it calls busy, each a Town Center
+to select at a stated time and its queue to read.
 
 ## O7 — A recording that carries a cancellation (optional, no fixture has one)
 

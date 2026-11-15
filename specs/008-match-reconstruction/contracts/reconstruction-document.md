@@ -85,6 +85,14 @@ document is built. A breach raises; the analyzer's existing barrier turns it int
 breach as the message (a first analysis fails, a recompute keeps the prior document). A test plants
 one breach per invariant in a synthetic stream and asserts nothing is published.
 
+## Estimates are not in this block
+
+The estimates of US6 are `inferred` data and sit under the document's `inferred` key, specified in
+[estimates.md](./estimates.md). Rule 11 already keeps them out of `reconstructed`. Rule 14 is
+unchanged in letter and wider in effect: the estimates are computed by the reconstruction package,
+so `reconstruction_engine` names that package's version as soon as either the `reconstructed` block
+or an estimate datum is present, and a changed estimation method bumps it (FR-038).
+
 ## The reader
 
 `apps/web/src/features/analysis/api.ts` accepts version 3 structurally, as it accepted version 2.

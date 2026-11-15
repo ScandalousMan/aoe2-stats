@@ -115,6 +115,29 @@ Idle time by empty queue publishes once its readings agree. Population publishes
 rule of research R5 agrees with every O6 reading; otherwise the two data stay `planned` and the owner
 is asked, as the plan states.
 
+## Phase 10 — Estimates
+
+Runs after phase 2 and waits on neither gate.
+
+```bash
+uv run pytest packages/reconstruction -k estimates
+uv run pytest packages/core -k "truth or register"
+```
+
+Each committed recording's estimates reproduce `tests/fixtures/replays/<recording>.estimates.json`
+byte for byte. The isolation tests pass: no module producing a reconstructed value imports the
+estimates sub-package, and the `reconstructed` block is byte-identical with the estimates switched
+off. The six estimate data are in the register at `inferred`, each with a method, a confidence
+method and a non-claim, and the regenerated view matches. Every O6 reading that exists has its
+`estimate_error` recorded; a large difference is reported and fails nothing.
+
+```bash
+pnpm --filter design-system storybook
+```
+
+The estimate stories render each estimate labelled as an estimate, apart from the observed and the
+modelled values, with its confidence and its non-claim reachable, in light and dark themes.
+
 ## Closing
 
 ```bash

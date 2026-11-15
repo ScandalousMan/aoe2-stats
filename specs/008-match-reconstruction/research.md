@@ -23,6 +23,8 @@ outside world into `docs/data-sources.md` (R13). It restates nothing that file a
 | Population can be priced by the knowledge base (FR-001a) | **The knowledge base has no population field.** | R5 |
 | The refuted death heuristic is recorded in `docs/data-sources.md` §2 (FR-012) | **Wrong citation.** It is recorded in 006's spec, User Story and Clarifications on the group-silence observable. | R5 |
 | A unit cancellation can be attributed to a building (FR-011) | **No committed recording carries one**, so the rule is written and tested synthetically only. | R7 |
+| A unit can be dated from the first command that names it (the owner's rule, 2026-11-15) | **Only as "seen alive".** Many units are never named and the others are named late; births come from the queue. | R16 |
+| A unit an enemy attacked and that then does nothing is dead (the owner's rule, 2026-11-15) | **Finds a minority of the silent units.** It is kept as the identified part of an estimate, never as a count. | R16 |
 
 ## R1 — Queue commands name several buildings, and the canonical stream keeps one
 
@@ -375,11 +377,171 @@ unit is ordered before its upgrade. The recording names the button pressed, not 
   economic-unit list (R10). The reconstruction then prices and times an order at the stage every
   upgrade counted researched (D-TECH-1) by that moment selects.
 
+## R16 — The owner's four estimation rules, measured (2026-11-15)
+
+The owner asked (2026-11-15) for imperfect values while the exact ones wait: a unit exists from its
+first command, a producing building from its first order, idle time follows, and an object that was
+attacked and does nothing afterwards is dead or destroyed. Each was measured on the three committed
+canonical goldens before the spec was amended (spec, Clarifications, Session 2026-11-15). The
+script was throwaway, like the others; each row says what it counted.
+
+**What "named" and "targeted" mean here.** A unit is _named_ when its object id is in the unit list
+of a `units-commanded` event of its owner. Only three command classes ever carry a non-empty list:
+`move`, `interact` and `order`; in the three goldens no other class does. A unit is _targeted_ when
+an `interact` event of a participant of another team has its object id as the target. A producing
+building is named by each `unit-queued` or `research-queued` event that states it.
+
+**Rule 1, a unit exists from its first command.**
+
+| Recording | `move` with an empty unit list | `interact` with an empty unit list | Commands with ids that name several units |
+| --------- | ------------------------------ | ---------------------------------- | ----------------------------------------- |
+| 500546441 | 3,032 of 5,272 | 510 of 1,135 | 2,013 of 3,109 |
+| 504695319 | 1,985 of 2,827 | 432 of 1,096 | 910 of 1,556 |
+| 511523321 | 932 of 2,038 | 199 of 661 | 885 of 1,708 |
+
+Per participant, the distinct units ever named against the units ordered (the sum of `count` over
+`unit-queued`, refused commands included, so the true share named is higher than the ratio shown;
+the named side includes the starting units):
+
+| Recording | Slot | Units ordered | Distinct units named | Named exactly once |
+| --------- | ---- | ------------- | -------------------- | ------------------ |
+| 500546441 | 1 | 399 | 342 | 20 |
+| 500546441 | 2 | 509 | 399 | 55 |
+| 504695319 | 1 | 435 | 202 | 38 |
+| 504695319 | 2 | 316 | 235 | 40 |
+| 504695319 | 3 | 236 | 198 | 41 |
+| 504695319 | 4 | 277 | 200 | 26 |
+| 511523321 | 1 | 174 | 143 | 12 |
+| 511523321 | 2 | 236 | 169 | 26 |
+
+So the first command cannot count units, and it dates them late. How late is visible without any
+other source: for each named unit, take the earliest clock at which any object with a higher id
+appears anywhere in the stream (as a commanded unit, the target of an `interact`, a producing
+building or a deleted object). Where that clock precedes the unit's own first command, the unit's
+first command came after a later-numbered object was already in play:
+
+| Recording | Named units with a higher id seen earlier | Median gap | Ninetieth percentile |
+| --------- | ----------------------------------------- | ---------- | -------------------- |
+| 500546441 | 483 of 741 | 38 s | 505 s |
+| 504695319 | 642 of 835 | 69 s | 489 s |
+| 511523321 | 205 of 312 | 41 s | 311 s |
+
+That gap is a lateness only if object ids are allocated in increasing order of creation. The
+recordings are consistent with it (each later Town Center has a higher id than the starting one) and
+nothing here proves it, so it is filed as an open question and no estimate rests on it.
+
+**Decision.** The first and last command naming a unit are published as the interval it was _seen
+alive_ (P3 already adopts "alive when commanded"). Births are counted from the production queue
+(strategy S4 of R5), which gives a count and a modelled time for every unit, named or not.
+
+**Rule 2, a producing building exists from its first order.** It is proof P2, already adopted. The
+goldens hold 33, 72 and 32 producing buildings. A building that produces nothing never issues an
+order, so the rule gives no house and no population capacity; the estimates use the lobby's
+population limit instead, which is observed.
+
+**Rule 4, attacked and then silent.** Per participant: the named units an enemy command ever
+targets; of those, the ones their owner names again after the last targeting, and the ones never
+named again, which the rule counts lost; then the named units whose last naming is more than five
+minutes before their owner's exit, and how many of those no enemy command targeted at or after that
+last naming.
+
+| Recording | Slot | Named | Ever targeted | Named again after | Never again (rule: lost) | Silent over 5 min before exit | Of those, never targeted since |
+| --------- | ---- | ----- | ------------- | ----------------- | ------------------------ | ----------------------------- | ------------------------------ |
+| 500546441 | 1 | 342 | 77 | 52 | 25 | 160 | 144 |
+| 500546441 | 2 | 399 | 89 | 58 | 31 | 242 | 214 |
+| 504695319 | 1 | 202 | 67 | 25 | 42 | 155 | 122 |
+| 504695319 | 2 | 235 | 48 | 19 | 29 | 135 | 109 |
+| 504695319 | 3 | 198 | 52 | 13 | 39 | 133 | 105 |
+| 504695319 | 4 | 200 | 50 | 34 | 16 | 139 | 126 |
+| 511523321 | 1 | 143 | 51 | 29 | 22 | 67 | 58 |
+| 511523321 | 2 | 169 | 58 | 24 | 34 | 89 | 67 |
+
+The rule is not the one 006 refuted. That one needed damage, which is unobservable, and then counted
+every silent unit; this one needs an enemy command on the unit, which is observed. But it errs both
+ways and the table shows the larger way: three quarters or more of the long-silent units were never
+targeted, and a silent unit is a Villager left to gather as readily as a dead soldier. Losses to
+automatic target acquisition, patrols, attack-moves and fire from buildings carry no target at all.
+The smaller way: a targeted unit that survived and was never individually selected again is counted
+lost.
+
+For producing buildings, an enemy command targets 11, 14 and 9 of them. Four in each recording
+issue an order after the last targeting; 7, 10 and 5 never do, and the rule counts them destroyed.
+A building that fell out of use and was targeted once is among them.
+
+**A second, independent trace of losses.** A participant cannot hold more population than the
+lobby's limit. Counting births from the queue and removing only the identified losses, a
+participant who keeps producing at the limit must have lost units that nothing identifies. That
+excess is the unidentified component of the estimate (spec FR-033). It needs the population each
+unit occupies, a knowledge field R5 already says is missing.
+
+**Nothing in the recording scores these estimates.** The checkpoints feature 009 found carry a
+truncated sum of stocks; their sixth word is not a count of a player's units and buildings
+(`docs/data-sources.md` §2). The only oracle is the game's playback: the population figure at
+stated times, and the units and buildings lost that the end-of-match statistics report. Those are
+owner readings O6, requested now.
+
+**Where each estimate errs**, which its non-claim must state (spec FR-029):
+
+| Estimate | Errs high when | Errs low when |
+| -------- | -------------- | ------------- |
+| Units entering, from the queue | refused commands are counted (R2), until G1 | never, for ordered units; units gained by conversion enter only when named |
+| Identified losses | a targeted unit survives and is never named again | the loss has no targeting command: most of them |
+| Unidentified losses | births are overcounted (refused commands) or dated early (a housing pause) | the participant is below the limit: nothing is forced |
+| Living units | losses are missed below the limit | refused commands are counted and losses forced at the limit |
+| Idle periods | never by construction | refused commands fill a queue that was in fact empty, until G1 |
+| Buildings destroyed | an obsolete building was targeted once | the building fell to units that were never ordered onto it |
+
+**What this gives D-CONTROL-1, without re-deriving it.** The owner deferred that rule until after
+feature 009. One measurement is recorded for that day: a building that issues an order after an
+enemy targeting stood throughout, if an object id is never reused, which is stronger than the
+candidate's "from its next proof". Twelve buildings in the goldens are in that case.
+
+## R17 — Where an estimate lives, and what keeps it away from the exact values
+
+**The tier and the block already exist.** 006 publishes one inferred datum, the group-silence
+episodes, under the document's inferred data, with a confidence and a non-claim, and its validator
+already confines such data there and keeps stronger tiers out. The estimates are new data in that
+place. No new block, no new validator rule for the tier.
+
+**The method lives in the register entry**, as the group-silence thresholds do, and not in the rules
+registry: that registry holds rules that settle an exact value, and its contract refuses a rule that
+names a confidence. An estimation method is neither a proof nor a deduction.
+
+**The code lives in the reconstruction package, behind a one-way wall.** The estimates need the
+order fold, the queue mechanics and the knowledge base's production times, all of which the package
+has or will have. They sit in their own sub-package, which the modules producing reconstructed
+values never import; a test walks the imports and fails if one does, and a second test compares the
+reconstructed block with the estimates computed and not computed (spec FR-028, SC-012).
+
+**The queue mechanics are shared, the policies are not.** How a queue advances is arithmetic. Which
+commands were executed and how a command spreads over its buildings are policies: the exact path
+takes them from adopted rules (G1), the estimates take interim ones until then (spec FR-031). The
+interim policies are three, each stated in the register entry and each replaced by the adopted rule
+when its gate closes:
+
+| Interim policy | States | Replaced by |
+| -------------- | ------ | ----------- |
+| execution | every recorded unit order is counted; a research counts once, at its first occurrence (006 FR-018) | D-EXEC-1 |
+| distribution | each unit of a command goes to the named building whose modelled queue ends soonest | D-DIST-1 |
+| state | an age is in force from its click plus its research time; no other condition changes a production time | D-AGE-1 and the settled state |
+
+None of the three is evidence about the game. Each is a stated assumption of an estimate, which is
+what the `inferred` tier is for, and each error direction is in R16's table.
+
+**A breach withholds the estimate, not the document.** The reconstruction's invariants refuse a
+document; an estimate that goes negative or over the population limit is dropped and the document
+says why (spec FR-034). Otherwise a defect in an estimate would block an exact value, which is the
+dependency FR-028 forbids, by another road.
+
+**The error is recorded, not asserted.** A playback reading that differs from an estimate is
+written beside the reading with the difference (spec FR-037). The test fails when a reading has no
+recorded difference, never when the difference is large.
+
 ## R13 — Where the new measurements live
 
 The measurements in R1 (queue commands naming several buildings), R2 (refused commands kept in the
-recording), R5 (empty unit-id lists, deletions naming unseen objects) and R15 (orders name the
-line's base unit) describe the recording format, an outside-world subject, so a task moves each into `docs/data-sources.md` §2 under a test
+recording), R5 (empty unit-id lists, deletions naming unseen objects), R15 (orders name the
+line's base unit) and R16 (which command classes carry unit ids) describe the recording format, an outside-world subject, so a task moves each into `docs/data-sources.md` §2 under a test
 that asserts it, and this file becomes their record of origin. The age-proof consistency of R3 is a
 property of the knowledge base against the recordings, asserted by its test and recorded nowhere
 else.
@@ -403,3 +565,7 @@ ceiling of 003's analysis contract binds it as it binds the stream.
   (R4). Owner reading O4 and a referenced source.
 - Whether any candidate population rule survives the readings (R5). Owner readings O6.
 - Why so many move and interact commands carry no unit ids (R5).
+- Whether object ids are allocated in increasing order of creation, and never reused (R16). A test
+  over the goldens can refute it; only the game can confirm it.
+- How an object id gets a unit type (R16). Without it the estimates count units of no type.
+- How far each estimate is from the game (R16). Owner readings O6.

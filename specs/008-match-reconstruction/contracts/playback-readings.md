@@ -1,6 +1,6 @@
 # Contract — playback readings and golden reconstructions
 
-**Covers**: FR-018, FR-019, FR-012, FR-026, SC-001, SC-009, SC-010 | **Model**:
+**Covers**: FR-018, FR-019, FR-012, FR-026, FR-037, SC-001, SC-009, SC-010, SC-014 | **Model**:
 [data-model.md](../data-model.md) §9, §10
 
 ## Three files, three roles
@@ -26,6 +26,11 @@ reconstructed value; the test reads both and compares.
    the golden files record that table, so a rule that carries much is visible as a number.
 4. **Readings are well-formed.** Every reading names a request in the owner-readings file, a build
    the fixtures README lists for that recording, a reader and a date.
+5. **Every estimate with a reading has its error recorded** (FR-037, SC-014). A reading whose
+   quantity corresponds to an estimate, not to a reconstructed datum, carries an `estimate_error`
+   table ([estimates.md](./estimates.md)). The test asserts the table is present and that its
+   estimated value is the one the analysis produces. It never asserts the difference is small:
+   assertion 2's equality is for reconstructed values only.
 
 ## Units of time
 

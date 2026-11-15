@@ -2,8 +2,9 @@
 
 **Spec**: [spec.md](./spec.md) | **Plan**: [plan.md](./plan.md) | **Research**: [research.md](./research.md)
 
-Eleven entities. Ten are pure values computed per analysis and stored nowhere but in the published
-document; one, the rule, is a record in a file shipped with the package. No table and no migration:
+Fourteen entities. Thirteen are pure values computed per analysis and stored nowhere but in the published
+document; one, the rule, is a record in a file shipped with the package. Sections 12 to 14 are the
+estimates of US6, which are not reconstructed values and are kept apart from sections 1 to 11. No table and no migration:
 the published document already has an identity-addressed key, and 003's row already points at it
 (006 data-model §8).
 
@@ -185,4 +186,58 @@ the share of conditions it settled (SC-009).
 
 Deferred to the population phase (research R5). Declared here so the document's shape does not
 change when it lands: a building, a start, an end, a cause from the closed set `empty-queue`,
-`housed`, and the settlement of its cause.
+`housed`, and the settlement of its cause. This is the exact datum of FR-001a. The estimated idle
+period of section 14 is another datum, at another tier, and is not its draft.
+
+## 12. Estimate
+
+One published value at the `inferred` tier (spec, Key Entities; contracts/estimates.md). One
+instance per datum and participant.
+
+| Field | Type | Rule |
+| ----- | ---- | ---- |
+| `datum` | register id | Must resolve to a `published` register entry at `inferred` (FR-027). |
+| `participant` | slot | |
+| payload | per datum | The intervals, losses, series or periods of sections 13 and 14. |
+| `confidence` | 006's Confidence | Level from the closed set, never above what the register entry's confidence method allows; a non-empty basis (FR-029). |
+| `non_claim` | non-empty text | From the register entry (FR-029). |
+
+An estimate has no `settled_by`: nothing settles it. No reconstructed value, settlement or rule
+holds a reference to one (FR-028).
+
+**Bounds, not invariants.** The estimated living series is never negative and never above the
+population limit (FR-034). A series that breaks a bound is withheld with an entry in
+`estimates_withheld`; it raises nothing, and the document is published.
+
+## 13. Object lifetime and estimated loss
+
+Per participant and object id (FR-030, FR-032, FR-036).
+
+| Field | Type | Rule |
+| ----- | ---- | ---- |
+| `object` | object id | A unit named by the participant's commands, or a building the participant issued an order from. |
+| `first_ms`, `last_ms` | integer | The first and last clock at which the object was seen: named by a command, or issuing an order. The starting Town Center's first is 0. Published as `first_named_ms` and `last_named_ms` for a unit, `first_order_ms` and `last_order_ms` for a building (contracts/estimates.md). |
+| `left` | closed: `none`, `estimated-lost`, `estimated-destroyed`, `deleted`, `changed-owner` | How the object left the estimates. |
+| `left_ms` | integer, optional | Present unless `left` is `none`. For an estimated loss, the clock of the last enemy command targeting the object after `last_ms`. |
+| `dated_by` | stream index, optional | That enemy command. |
+
+**State.** `seen` → `estimated-lost` or `estimated-destroyed` (an enemy targeting after the last
+sighting, the owner not yet out) | `deleted` (an explicit deletion of the object) | `changed-owner`
+(another participant names it as their unit). A later sighting by the owner cancels a pending
+estimated loss; the state is computed over the whole stream, so nothing is published and then
+withdrawn.
+
+An **unidentified loss** (FR-033) is not an object lifetime: it is a clock and a population in
+excess of the limit, with no object.
+
+## 14. Estimated idle period
+
+Per producing building (FR-035).
+
+| Field | Type | Rule |
+| ----- | ---- | ---- |
+| `building` | object id | A building the participant issued an order from. |
+| `from_ms`, `to_ms` | integer | A stretch inside the building's first-to-last-order interval during which its modelled queue is empty. `to_ms` is the clock of the next order. |
+
+The queue is section 2's, advanced under the interim policies until G1 adopts the rules (research
+R17). The time after the last order is the lifetime's `unused_after_ms`, never a period.

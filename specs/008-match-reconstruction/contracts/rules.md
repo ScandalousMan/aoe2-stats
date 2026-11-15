@@ -73,6 +73,17 @@ FR-003b's hypothesis is **not** in the set as a usable rule. Research R2 records
 recordings themselves, so it could enter only as `refuted`, citing that evidence. D-EXEC-1 replaces
 it once G1 closes.
 
+## What the registry does not hold: estimation methods
+
+The estimates of US6 (FR-027 to FR-038) adopt no rule here. An estimation method is neither a proof
+nor a deduction, it settles no condition of a reconstructed value, and it carries a confidence,
+which this registry refuses. Its method is written in its register entry
+([estimates.md](./estimates.md)). The interim policies an estimate uses until G1 closes (research
+R17) are likewise not rules, and they are never cited by a settlement.
+
+P3 is unchanged by them: a unit commanded with its id is alive then. The estimates read it as the
+interval a unit was seen alive (FR-030).
+
 ## Every deduction demonstrates absence (FR-007a)
 
 A deduction rule that counts a state as holding enumerates, in its `statement`, every obstacle the

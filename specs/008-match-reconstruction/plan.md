@@ -46,6 +46,16 @@ Population and idle time get no method in this plan, as FR-012 requires: the str
 (research R5), each is a candidate, and their phase is filed behind the knowledge fields and the
 readings it needs.
 
+**Amended 2026-11-15: estimates are published beside the exact values, and wait on no gate.** The
+owner asked for imperfect values while the exact ones wait on readings and on feature 009 (spec,
+Clarifications, Session 2026-11-15; US6, FR-027 to FR-040). Four rules were proposed and measured
+on the committed recordings (research R16): the first command dates a unit late and misses many, so
+births are counted from the queue; "attacked, then silent" finds a minority of the silent units, so
+the population limit adds the losses nothing identifies. The estimates are six data at 006's
+`inferred` tier, computed in a sub-package the exact code never imports, under interim policies
+until G1 adopts the real ones (research R17). They are phase 10, numbered last so that no existing
+reference moves, and scheduled right after phase 2.
+
 Full reasoning and every measurement: [research.md](./research.md).
 
 ## Technical Context
@@ -86,11 +96,12 @@ limit and budget are unchanged. No scheduled job, no network call, nothing on th
 API's rows is not read even where it would help (research R8). No interval, midpoint or probability
 anywhere in the published types (FR-008).
 
-**Scale/Scope**: 5 user stories, 29 functional requirements, 10 success criteria. One new package,
+**Scale/Scope**: 6 user stories, 45 functional requirements, 15 success criteria. One new package,
 three existing packages touched (`packages/core`, `packages/replay-engine`, `packages/knowledge`
 through new snapshots: population fields, unit classes, the line table, starting objects) and one application (`apps/analyzer`), one front-end feature directory and
 one design-system composite. Three committed recordings; 22 age-ups; 14 rules in the initial registry, 6 adopted at
-entry (contracts/rules.md). Nine phases, two of them gates.
+entry (contracts/rules.md); six estimate data in the register (contracts/estimates.md). Ten phases,
+two of them gates.
 
 ## Constitution Check
 
@@ -117,6 +128,14 @@ itself, not from 006's table._
 was added to X when research R10 and R5 showed the knowledge base must grow; it is the same
 discipline 006 follows, named so a task carries it.
 
+**Re-check for the estimates (2026-11-15).** The twelve principles were walked again for US6. No
+verdict changes. I, III, VIII, IX, XI and XII: the estimates add no call, no job, no capture-path
+work, no secret, no personal data and no platform dependency. IV: they are derived, recomputable,
+and versioned through the same identity component (FR-038). V: they read the canonical vocabulary
+only. VI and VII: the estimate label and its confidence indicator get a product-designer spec and
+baselines in both themes, inside phase 10. X: the population field the unidentified losses need is
+the one research R5 already obliges a lawful source for; nothing new is transcribed.
+
 ## Project Structure
 
 ### Documentation (this feature)
@@ -124,7 +143,7 @@ discipline 006 follows, named so a task carries it.
 ```text
 specs/008-match-reconstruction/
 ├── plan.md              # This file
-├── research.md          # Phase 0 — R1..R14: the measurements and the decisions
+├── research.md          # Phase 0 — R1..R17: the measurements and the decisions
 ├── data-model.md        # Phase 1 — orders, queue items, conditions, settlements, rules, values
 ├── quickstart.md        # Phase 1 — how to verify each phase
 ├── owner-readings.md    # What to read in the game, O1..O6; asks, never answers
@@ -132,6 +151,7 @@ specs/008-match-reconstruction/
 │   ├── reconstruction-document.md   # The `reconstructed` block, identity, validator rules 11..14
 │   ├── rules.md                     # The proof and deduction registry and its initial set
 │   ├── canonical-events-amendment.md# Every producing building; population limit; starting attributes
+│   ├── estimates.md                 # The six `inferred` estimates, isolation, validator rules 15..16
 │   └── playback-readings.md         # Readings, goldens, and what the tests assert
 ├── checklists/
 └── tasks.md             # /speckit-tasks — NOT created here
@@ -155,15 +175,22 @@ packages/reconstruction/                     # NEW PACKAGE — depends on core a
 │   ├── spending.py                          # resources spent, military share, production per building
 │   ├── arrivals.py                          # modelled age-up arrivals
 │   ├── invariants.py                        # the closed invariant set and the breach
-│   └── document.py                          # the `reconstructed` block, untied deletions included
+│   ├── document.py                          # the `reconstructed` block, untied deletions included
+│   └── estimates/                           # US6 — imported by nothing above (FR-028)
+│       ├── policies.py                      # the three interim policies (research R17)
+│       ├── lifetimes.py                     # seen intervals; identified losses; owner changes
+│       ├── population.py                    # entries from the queue; the population-limit losses; the series
+│       ├── idle.py                          # empty-queue periods per producing building
+│       └── document.py                      # the six `inferred` data and `estimates_withheld`
 └── tests/                                   # synthetic streams per civilisation and effect state
 
 packages/core/src/aoe2stats_core/
 ├── replay/events.py                         # `building_objects` on unit-queued (additive)
 └── truth/
-    ├── register.toml                        # new data; status moves; FR-003 method amendment
+    ├── register.toml                        # new data; status moves; FR-003 method amendment;
+    │                                        # the six estimates; the units-lost approximation (FR-039)
     ├── REGISTER.md                          # regenerated
-    └── validate.py                          # rules 11..14
+    └── validate.py                          # rules 11..16
 
 packages/replay-engine/src/aoe2stats_replay_engine/
 ├── canonical.py                             # every producing building; population limit; starting attributes
@@ -185,7 +212,8 @@ packages/design-system/src/composites/AnalysisTimeline/   # modelled values besi
 tests/fixtures/replays/
 ├── <recording>.canonical.json               # regenerated (unit-queued lines only)
 ├── <recording>.reconstruction.json          # NEW — golden reconstructions
-└── <recording>.playback.toml                # NEW — the owner's readings
+├── <recording>.estimates.json               # NEW — golden estimates (US6)
+└── <recording>.playback.toml                # NEW — the owner's readings, and each estimate's error
 
 docs/
 ├── data-sources.md                          # §2: multi-building commands, refused commands kept,
@@ -221,10 +249,13 @@ in the registry, and what follows them does not start until that decision is mad
 | 7 | The view | US4 | The product designer's spec, then the component, stories and baselines in both themes, then the mappers. Last of the published work because it only renders what phases 4 and 5 publish. |
 | 8 | **Gate G2: population and idle time** | — | FR-001a and FR-012. The two population fields added to the knowledge base, the candidate rules of research R5 written, O6 requested and transcribed. Idle time by empty queue first (it needs only G1); population only if a candidate survives the readings. The two register entries are added as `planned` in the change that files this phase's tasks. |
 | 9 | Closing | — | The research measurements moved into `docs/data-sources.md` §2 under tests, the risk register, the quickstart run end to end, and the lint over every feature. |
+| 10 | Estimates | US6 | Numbered last so no existing phase number moves; **runs right after phase 2 and waits on neither gate**. Needs from phase 1 the widened vocabulary and the population limit, and from phase 8 only the population field, which is transcribed here first if phase 8 has not started. Builds the queue mechanics with injected policies if phase 3 has not, the lifetimes, the losses, the living series and the idle periods, their six register entries, validator rules 15 and 16, the isolation tests, the golden estimates, the errors against O6, and its own view step (designer spec, component, baselines). When G1 closes, a task swaps the interim policies for the adopted rules. |
 
 **What can run in parallel.** Phase 1's tasks are independent of each other. Phase 2 does not wait
 for the readings. Phase 8's knowledge fields can be transcribed at any point after phase 1. Phases 3
-to 7 are sequential.
+to 7 are sequential. Phase 10 runs beside phases 3 to 7 once phase 2 is merged; it shares one file
+with them, the queue mechanics, which whichever of phase 3 and phase 10 lands first creates and the
+other extends.
 
 **No migration.** Nothing here changes a table, so no deploy sequencing applies. A deploy of phases 4
 and 5 makes every published analysis stale by identity (the reconstruction engine changes), and the
@@ -232,9 +263,10 @@ staleness test recomputes each on its next request, as it did for 006's knowledg
 
 ## Complexity Tracking
 
-No constitution violation. Five decisions depart from the spec's text or from the path of least
+No constitution violation. Eight decisions depart from the spec's text or from the path of least
 resistance; each is recorded so a reader does not take it for an oversight. One needs the
-owner's yes; two were settled by the owner's rulings of 2026-11-06 and the rest by evidence in this
+owner's yes; two were settled by the owner's rulings of 2026-11-06, two by the ruling of 2026-11-15,
+and the rest by evidence in this
 change (the spec's FR-003b and FR-012 amended, D-WIN-1 adopted, D-CANCEL-1 blocked on a recording
 rather than a ruling).
 
@@ -246,3 +278,5 @@ rather than a ruling).
 | Units carry three classes, not two | The owner ruled (2026-11-06) that Monks, Missionaries, transports and the King are neither economic nor military (FR-001b). Settled. | A two-class list silently decides where those units go. |
 | A technology counts researched only when nothing observable prevented it | The owner ruled (2026-11-06) that neither "completed unless resigned" nor "never" is exact; the rule enumerates the obstacles and shows each absent (FR-007a). Settled; D-TECH-1 adopted. | Either default is an assumption the owner's rule forbids. |
 | D-CONTROL-1 applies the same discipline to buildings controlled | Written as FR-007a's application (research R9); affects Saxons and Cumans only, none in the committed recordings, but production analyses every civilisation, so it is needed before phase 5 ships. **The one arbitration left.** The owner deferred it on 2026-11-10: D-CONTROL-1 is to be re-derived in the light of feature 009 (PR #227), which found that every recording carries the engine's own per-player checkpoints, and is put to the owner again after that. It stays a candidate until then. | Counting a placed building as finished, or a used one as standing forever, assumes what the recording does not show. |
+| Estimates are published at `inferred`, beside values the owner's rule requires exact | The owner's ruling of 2026-11-15: imperfect values are wanted now, and 006's `inferred` tier is where a value that is not exact may live. The exact rule is untouched because nothing reads an estimate (FR-028). Settled. | Relaxing the exact rule puts spending, age-ups and guesses at one confidence level and ends FR-019's equality. Keeping the rules as candidates publishes nothing until readings exist, which is what the owner asked not to wait for. |
+| The estimates run on interim policies that are known to be wrong in stated directions | G1 is not closed and the estimates must not wait for it (FR-031). Each policy is in the register entry's method, each error direction in its non-claim (research R16, R17). Settled by the same ruling. | Waiting for G1 makes phase 10 a gated phase. Using the interim policies in the exact path is what research R2 forbids. |
