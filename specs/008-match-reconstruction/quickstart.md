@@ -125,7 +125,7 @@ uv run pytest packages/reconstruction -k estimates
 uv run pytest packages/core -k "truth or register"
 ```
 
-Each committed recording's seen data and estimates reproduce `tests/fixtures/replays/<recording>.estimates.json`
+Each committed recording's seen data and estimates reproduce `tests/fixtures/replays/<recording>.seen-estimates.json`
 byte for byte. The isolation tests pass: no module producing a reconstructed value imports the
 estimates sub-package, and the `reconstructed` block is byte-identical with the estimates switched
 off. The two seen data are in the register at `observed` and the five estimates at `inferred`, each

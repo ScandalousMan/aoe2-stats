@@ -215,7 +215,7 @@ packages/design-system/src/composites/AnalysisTimeline/   # modelled values besi
 tests/fixtures/replays/
 ├── <recording>.canonical.json               # regenerated (unit-queued lines only)
 ├── <recording>.reconstruction.json          # NEW — golden reconstructions
-├── <recording>.estimates.json               # NEW — golden estimates (US6)
+├── <recording>.seen-estimates.json          # NEW — golden seen data and estimates (US6)
 └── <recording>.playback.toml                # NEW — the owner's readings, and each estimate's error
 
 docs/

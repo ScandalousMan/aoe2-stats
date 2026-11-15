@@ -118,9 +118,8 @@ the measurements that guard the plan are tests. Nothing here publishes.
       `packages/replay-engine/tests/test_canonical_golden.py` removes `building_objects` from each
       regenerated `unit-queued` event and finds the same digest, so the comparison with the previous
       stream stays true after later tasks add other events. 006's golden
-      timeline must compare byte-identical. Add the register datum `event.unit_queued.building_objects`
-      to `packages/core/src/aoe2stats_core/truth/register.toml` and regenerate the view (FR-002, FR-011,
-      FR-013). Never separately green from T905's removal of its markers.
+      timeline must compare byte-identical. The register datum `event.unit_queued.building_objects`
+      already exists (T912a); this task adds nothing to the register (FR-002, FR-011, FR-013). Never separately green from T905's removal of its markers.
 - [ ] T907 After T906, which edits the same test file and adapter. Test first, `xfail(strict=True)`: `match-started` carries `population_limit` in
       `lobby_presets`, a decimal string read from the engine's lobby settings, for every committed
       recording, in `packages/replay-engine/tests/test_canonical.py`.
@@ -149,8 +148,11 @@ the measurements that guard the plan are tests. Nothing here publishes.
 - [ ] T912a Add to `packages/core/src/aoe2stats_core/truth/register.toml`, as `planned`, every datum
       this feature intends to publish and the register lacks, and regenerate the view (006 FR-005;
       FR-001a, FR-027): the exact population and the exact Town Center idle time at `reconstructed`;
-      `participant.units_seen` and `participant.producing_buildings_seen` at `observed`; and the five
-      estimates of contracts/estimates.md at `inferred`. Each `requires_knowledge` names only fields
+      `event.unit_queued.building_objects`, `participant.units_seen` and
+      `participant.producing_buildings_seen` at `observed`, the two seen data depending on the first;
+      and the five estimates of contracts/estimates.md at `inferred`. The loader refuses a
+      dependency on an id the register lacks, which is why the event datum is registered here and not
+      by T906. Each `requires_knowledge` names only fields
       the knowledge base has today; T955 adds the population fields. This is the feature's first
       register change, so it lands before T906, and it adds nothing else.
 
@@ -565,7 +567,7 @@ data, each with a confidence and a non-claim, computed by code the exact path ne
       each with its `provenance` entry, written by `apps/analyzer/src/aoe2stats_analyzer/extract.py`;
       `apps/web/src/features/analysis/api.ts` accepting them structurally, with its test, so no
       published document reaches a reader that rejects it; and the goldens of each committed recording
-      (`tests/fixtures/replays/<recording>.estimates.json`). Tests in
+      (`tests/fixtures/replays/<recording>.seen-estimates.json`). Tests in
       `apps/analyzer/tests/test_estimates_document.py` assert: each golden reproduces byte for byte
       and twice over (FR-038); no estimate appears outside `inferred` or without a confidence and a
       non-claim, and every level is the lowest (SC-011); the `reconstructed` block and the seen data

@@ -126,7 +126,7 @@ keep stronger tiers out. Two rules are added beside the reconstruction's:
 
 | File | Role |
 | ---- | ---- |
-| `tests/fixtures/replays/<recording>.estimates.json` | The golden seen data and estimates of each committed recording, compared byte for byte. |
+| `tests/fixtures/replays/<recording>.seen-estimates.json` | The golden seen data and estimates of each committed recording, compared byte for byte. |
 | `tests/fixtures/replays/<recording>.playback.toml` | Already the one place a reading is written. Each reading that corresponds to an estimate gains an `estimate_error` table: the estimate datum, the estimated value, the difference, and how the game's figure and the estimate differ in what they measure. |
 
 The test asserts that every such reading has its `estimate_error` and that the recorded estimated
