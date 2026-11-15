@@ -137,14 +137,16 @@ the measurements that guard the plan are tests. Nothing here publishes.
 - [x] T910 [P] The age-proof consistency of research R3 as a permanent test in
       `packages/knowledge/tests/test_age_proof_consistency.py`: over every committed canonical golden,
       no order requires an age its participant has not yet clicked. The one known defect, the Sicilian
-      unit, is held as a strict expected failure naming 006's task T746, so the suite turns red on the
+      unit, is held as a strict expected failure naming 006's task T851, so the suite turns red on the
       day the superseding snapshot fixes it.
 - [x] T911 [P] The base-unit measurement of research R15 as a test in
       `packages/knowledge/tests/test_orders_name_base_unit.py`: across the committed goldens, no
       upgrade research is followed by an order of the upgraded unit.
 - [ ] T912 [P] File the Sicilian age-requirement defect through 006's mechanism: add the request to
       `specs/006-replay-analysis-foundations/owner-readings.md`, citing research R3 and this feature's
-      reading O3, so that 006's T746 carries the fix. No value is written there.
+      reading O3, so that 006's T851 carries the fix. No value is written there. The build 185872
+      sheet is closed and its test counts answered rows, so narrow that test to admit an open row only
+      when it names its carrier task (owner's arbitration, 2026-11-15).
 - [x] T912a Add to `packages/core/src/aoe2stats_core/truth/register.toml`, as `planned`, every datum
       this feature intends to publish and the register lacks, and regenerate the view (006 FR-005;
       FR-001a, FR-027): the exact population and the exact Town Center idle time at `reconstructed`;
