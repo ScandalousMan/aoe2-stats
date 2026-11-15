@@ -103,8 +103,10 @@ readings to check its candidate rules, and adds its own here once they are writt
 
 **O6.1 — The end-of-match statistics.** In each recording, let the replay run to its end and open
 the statistics screen. For each slot, from the military statistics, read **units lost** and
-**buildings lost**, and also **units killed** and **buildings razed**. If the replay shows no
-statistics screen at its end, answer `unreadable` and say what it shows instead.
+**buildings lost**, and also **units killed**, **buildings razed** and **units converted** if the
+screen shows them. If the replay shows no statistics screen at its end, answer `unreadable` and say
+what it shows instead. Whether the playback shows this screen is not established; that is part of
+what is asked.
 
 | Request | Recording | Slots |
 | ------- | --------- | ----- |
@@ -112,7 +114,9 @@ statistics screen at its end, answer `unreadable` and say what it shows instead.
 | O6.1.2 | 504695319 | 1, 2, 3, 4 |
 | O6.1.3 | 511523321 | 1, 2 |
 
-Measures the estimated unit losses and the estimated buildings destroyed.
+Measures the estimated unit losses and the estimated buildings destroyed. The game's figures are
+wider than the estimates (every building, not only producing ones), and each recorded error says
+so.
 
 **O6.2 — Population at stated times.** In each recording, pause at each time below and, for each
 slot, read the **population figure as "current / cap"** shown at the top of the screen when that
@@ -124,7 +128,7 @@ player is selected.
 | O6.2.2 | 504695319 | 10:00, 20:00, 30:00, 40:00, 50:00 |
 | O6.2.3 | 511523321 | 10:00, 20:00, 30:00 |
 
-Measures the estimated living units, and tells whether the lobby's population limit or the houses
+Measures the estimated living population, and tells whether the lobby's population limit or the houses
 bound the player at that moment.
 
 **O6.3 — Idle Town Centers.** Not requested yet. Once the estimates' goldens exist, the estimates

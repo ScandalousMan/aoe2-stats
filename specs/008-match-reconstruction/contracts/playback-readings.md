@@ -28,8 +28,9 @@ reconstructed value; the test reads both and compares.
    the fixtures README lists for that recording, a reader and a date.
 5. **Every estimate with a reading has its error recorded** (FR-037, SC-014). A reading whose
    quantity corresponds to an estimate, not to a reconstructed datum, carries an `estimate_error`
-   table ([estimates.md](./estimates.md)). The test asserts the table is present and that its
-   estimated value is the one the analysis produces. It never asserts the difference is small:
+   table ([estimates.md](./estimates.md)) that also says how the game's figure and the estimate
+   differ in what they measure. The test asserts the table is present and that its estimated value
+   is the one the analysis produces. It never asserts the difference is small:
    assertion 2's equality is for reconstructed values only.
 
 ## Units of time

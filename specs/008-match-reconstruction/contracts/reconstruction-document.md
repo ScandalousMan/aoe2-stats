@@ -73,7 +73,7 @@ Run before the object is written, like the first ten.
 | 11 | Every datum inside `reconstructed` is a `published` register entry at `reconstructed` or `derived`; no such datum appears anywhere else, and no datum of another tier appears inside it. | FR-014, FR-015 |
 | 12 | Every `settled_by` entry names a rule that exists in the registry the identity's engine names, with status `adopted`, and of the family its `by` states. | FR-006, FR-007, SC-005 |
 | 13 | Every instance carries exactly its datum's declared keys, and every `value` is an integer. | FR-008, SC-002, FR-003a |
-| 14 | `reconstruction_engine` is not `not-applicable` when `reconstructed` is present, and is `not-applicable` when it is absent. | FR-021 |
+| 14 | `reconstruction_engine` is not `not-applicable` when `reconstructed` or any datum of [estimates.md](./estimates.md) is present, and is `not-applicable` when none is. | FR-021, FR-038 |
 
 Rule 11 is tested the way 006 tested rule 6: a reconstructed value placed at an observed path, and
 an observed value placed inside `reconstructed`, each rejected.
@@ -88,10 +88,10 @@ one breach per invariant in a synthetic stream and asserts nothing is published.
 ## Estimates are not in this block
 
 The estimates of US6 are `inferred` data and sit under the document's `inferred` key, specified in
-[estimates.md](./estimates.md). Rule 11 already keeps them out of `reconstructed`. Rule 14 is
-unchanged in letter and wider in effect: the estimates are computed by the reconstruction package,
-so `reconstruction_engine` names that package's version as soon as either the `reconstructed` block
-or an estimate datum is present, and a changed estimation method bumps it (FR-038).
+[estimates.md](./estimates.md), with the two `derived` seen data they read. Rule 11 already keeps
+them out of `reconstructed`. Rule 14 was amended on 2026-11-15 to count them: they are computed by
+the reconstruction package, so `reconstruction_engine` names that package's version as soon as any
+of them is present, and a changed estimation method bumps it (FR-038).
 
 ## The reader
 

@@ -17,7 +17,7 @@ family = "proof"
 settles = "age"
 statement = "an order of an entity whose age requirement, for the participant's civilisation and team, is N proves that the participant had reached age N by the order's clock"
 evidence = "specs/008-match-reconstruction/research.md R3"
-readings = ["511523321.O3"]
+readings = []            # gains "511523321.O3" in the change that transcribes that reading
 status = "adopted"
 
 [rule."D-AGE-1"]
@@ -81,8 +81,8 @@ which this registry refuses. Its method is written in its register entry
 ([estimates.md](./estimates.md)). The interim policies an estimate uses until G1 closes (research
 R17) are likewise not rules, and they are never cited by a settlement.
 
-P3 is unchanged by them: a unit commanded with its id is alive then. The estimates read it as the
-interval a unit was seen alive (FR-030).
+P3 is unchanged by them: a unit commanded with its id is alive then. The seen data publish the same
+fact as an interval (FR-030).
 
 ## Every deduction demonstrates absence (FR-007a)
 

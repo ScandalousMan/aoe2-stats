@@ -69,29 +69,31 @@ rule is not allowed. This supersedes the interval rule recorded in 006's Clarifi
 The exact figures wait on a person: gate G1 on playback readings, and anything engine-exact on
 feature 009. Meanwhile the owner wants to understand most of what happened in a match, and accepts
 values that are not perfect for that. So this feature also publishes a small set of **estimates**:
-how long each object a participant commanded was seen alive, how many units and producing buildings
-they probably lost, roughly how many units they had, and when their producing buildings stood idle.
+when each object a participant commanded was first and last seen, how many units and producing buildings
+they probably lost, roughly how much population they had, and when their producing buildings stood
+idle.
 
 An estimate is not a weaker reconstructed value. It is published at 006's `inferred` tier, under a
 name that says it is an estimate, with a confidence and a statement of what it does not claim (006,
 FR-010 and FR-010a). The owner's rule above is untouched: no reconstructed value reads an estimate,
 and an estimate that disagrees with a playback reading is a measured error to record, not a defect
 that blocks publication. The unit-loss count itself stays non-determinable (006, FR-004); what is
-published is a named approximation of it.
+published is a named approximation of it. What the commands show exactly, when an object was first
+and last seen, is published as what it is: a derived fact, not an estimate.
 
 The owner's four starting rules (2026-11-15), as the committed recordings amended them
 (`specs/008-match-reconstruction/research.md` R16):
 
-- **A unit exists from the first command that names it.** Kept, as the interval the unit was seen
-  alive. It is not a birth: many units are never named, and those that are get named late. The
-  count and time of births come from the production queue instead.
+- **A unit exists from the first command that names it.** Kept, as the span over which commands
+  name the unit. It is not a birth: a unit is first named at or after it appears, by how much is
+  not established, and a unit no command names is never seen. The count and time of units entering
+  come from the production queue instead.
 - **A producing building exists from the first order issued from it.** Kept as written.
 - **Idle time follows from those two.** Kept for producing buildings, the Town Center first: the
   time a building's modelled queue is empty between its orders.
 - **A unit or producing building that was attacked and does nothing afterwards is dead or
   destroyed.** Kept, with "attacked" read as the one thing a recording shows of an attack, an enemy
-  command that targets the object. It finds few of the losses, so the population limit adds the
-  losses no command identifies.
+  command that targets the object. It finds few of the losses, so the population limit adds an excess no command identifies.
 
 ## Clarifications
 
@@ -106,13 +108,19 @@ The owner's four starting rules (2026-11-15), as the committed recordings amende
   Scope).
 - Q: "A unit an enemy attacked and that does nothing afterwards is dead" marks few units on the
   committed recordings (research R16). How are losses estimated? → A: That rule gives the identified
-  losses; the population limit adds unidentified losses wherever the estimated living count would
-  exceed it. The two are published as components of one estimate, never as a count of units lost
-  (FR-032, FR-033).
-- Q: Is a unit born at the first command that names it? → A: No. Put to the owner with the
-  measurement in the same session and not contested: births are counted from the production queue,
-  and the first command gives a unit the identity a loss needs (FR-030, FR-031, research R16).
-
+  losses; the population limit adds an estimated population excess wherever the estimated living
+  population would pass it. Each is published as an estimate of its own, never as a count of units
+  lost (FR-032, FR-033).
+- Q: Is a unit born at the first command that names it? → A: No. Decided in planning on the
+  measurement, stated to the owner in the same session and not contested: units entering are
+  counted from the production queue, and the first command gives a unit the identity a loss needs
+  (FR-030, FR-031, research R16).
+- Q: 006's register records that an approximation of unit losses is not acceptable. Is one now? →
+  A: Yes, under its own name and tier. The owner chose to publish the estimates when asked with
+  that record stated. The count itself stays non-determinable (FR-039).
+- Q: Do the estimates read explicit deletions? → A: No. Decided in planning: 006's FR-014 keeps
+  deletions out of every inferred quantity, and lifting it is the owner's to ask for. A deleted
+  unit stays in the estimated living population, and the non-claim says so (FR-036).
 ### Session 2026-11-06
 
 - Q: The military share needs a class per unit, and the knowledge base has none. Villagers, fishing
@@ -288,8 +296,8 @@ reconstruction version and confirm both analyses are kept and resolvable.
 ### User Story 6 - See roughly what each player had, lost and left idle (Priority: P2)
 
 A player opens the analysis of a match and sees, for each participant and labelled as estimates:
-roughly how many units they had alive over the match, how many units and producing buildings they
-probably lost and when, and for each producing building the periods its queue stood empty. Each
+roughly how much population they had alive over the match, how many units and producing buildings
+they probably lost and when, and for each producing building the periods its queue stood empty. Each
 estimate carries a confidence and says what it does not claim.
 
 **Why this priority**: it is what lets a player read the shape of a game (a boom, a fight, an idle
@@ -302,16 +310,16 @@ the reconstructed values are byte-identical whether the estimates are computed o
 
 **Acceptance Scenarios**:
 
-1. **Given** a unit first named by its owner's command at minute 9 and last named at minute 14,
-   **When** it is analysed, **Then** its lifetime is published as seen alive from minute 9 to
-   minute 14, and it is not counted lost.
+1. **Given** a unit first named by its owner's command at minute 9 and last named at minute 14,   **When** it is analysed, **Then** it is published as seen from minute 9 to minute 14, and it is
+   not counted lost.
 2. **Given** a unit an enemy command targets at 14:10, which no command of its owner names again,
    **When** it is analysed, **Then** it is counted as an identified estimated loss at 14:10.
 3. **Given** a unit an enemy command targets, which its owner's command names again afterwards,
    **When** it is analysed, **Then** that targeting counts no loss.
-4. **Given** a participant whose estimated living units would exceed the lobby's population limit,
-   **When** it is analysed, **Then** the excess is counted as unidentified estimated losses, apart
-   from the identified ones, and the estimated living count never exceeds the limit.
+4. **Given** a participant whose estimated living population would exceed the lobby's population
+   limit, **When** it is analysed, **Then** the excess is published as the estimated population
+   excess, apart from the identified losses, and the estimated living population never exceeds the
+   limit.
 5. **Given** a producing building with orders at minutes 5 and 9 whose modelled queue empties at
    minute 6, **When** it is analysed, **Then** an estimated idle period from minute 6 to minute 9 is
    published for that building.
@@ -347,22 +355,26 @@ the reconstructed values are byte-identical whether the estimates are computed o
   or not (a finished building, a unit); the written refund hypothesis settles it (FR-003a).
 - **A free or zero-cost order.** Priced at what the knowledge base answers, zero included; never
   skipped.
-- **A unit no command ever names.** It has no lifetime. It enters the estimated living count through
-  its queue order (FR-031) and can leave it only through the population limit (FR-033).
+- **A unit no command ever names.** It is never seen. It enters the estimated living population
+  through its queue order (FR-031) and leaves it only through the population limit (FR-033).
 - **An object named by two participants.** A converted unit is named by its first owner, then by
-  another participant. It leaves the first owner's estimates at the other's first command, with the
-  cause `changed-owner`, and is not counted lost (FR-032).
-- **An explicit deletion of a unit.** It leaves the estimated living count at the deletion and is
-  never counted as a loss; the deletion itself stays the exact datum 006 publishes (FR-036).
+  another participant. It is published as seen by each, leaves the first owner's estimated living
+  population at the other's first command and enters the other's, and is not counted lost (FR-031,
+  FR-032).
+- **An explicit deletion of a unit.** The estimates do not read it (FR-036). The unit stays in the
+  estimated living population, and a deleted unit an enemy command had targeted is counted lost;
+  the non-claims state both.
 - **A building that produces nothing.** A house, a farm, a wall or a tower issues no order, so it
-  has no lifetime, no idle time and no estimated destruction.
+  is never seen as a building, has no idle time and no estimated destruction. One that a command
+  names in its unit list cannot be told from a unit and is counted as one (research R16).
 - **Time after a building's last order.** Whether the building was idle, obsolete or gone is not
   shown, so that time is published apart and never summed into idle time (FR-035).
-- **A participant who resigns.** Nothing is estimated after the resignation, and an object silent
-  at that moment is not counted lost.
-- **A build whose knowledge carries no population.** The estimated living count and the
-  unidentified losses are withheld by that knowledge gap; lifetimes, identified losses and idle
-  periods are still published.
+- **Estimates and a resignation.** Nothing is estimated after a participant's resignation. An object
+  that no enemy command targeted between its owner's last sighting of it and the resignation is not
+  counted lost.
+- **A build whose knowledge carries no population.** The estimated living population and the
+  estimated population excess are withheld by that knowledge gap; the seen data, the identified
+  losses, the buildings destroyed and the idle periods are still published.
 
 ## Requirements _(mandatory)_
 
@@ -379,8 +391,9 @@ the reconstructed values are byte-identical whether the estimates are computed o
   `military`; Monks, Missionaries, transport ships and the King are `neither` (Clarifications,
   Session 2026-11-06). A unit with no class is a knowledge gap that withholds the military share.
 - **FR-001a**: The system MUST also publish, for each participant, the population over the match and
-  each Town Center's idle time, both as exact figures, and both added to the register as `planned` by
-  the population phase's first register change. The method is chosen by FR-012. Until it is, the only population
+  each Town Center's idle time, both as exact figures, and both added to the register as `planned` in
+  this feature's first register change, with every other datum it intends to publish (006,
+  FR-005). The method is chosen by FR-012. Until it is, the only population
   and idle figures published are the estimates of FR-034 and FR-035, under their own names and at
   their own tier.
 - **FR-002**: Every reconstructed value MUST be computed from the canonical event stream and the
@@ -513,76 +526,87 @@ the reconstructed values are byte-identical whether the estimates are computed o
   knowledge base. Where a mode or a civilisation leaves a doubt, the value MUST be verified by the
   owner in the game, with the exact values to read, before it is used; nothing is guessed.
 
-### Estimates (the `inferred` tier)
+### Estimates (the `inferred` tier) and what they are computed from
 
-- **FR-027**: The system MUST publish, for each participant of an analysed match, the estimates of
-  this section at 006's `inferred` tier: the lifetime of each unit its commands name (FR-030), the
-  lifetime of each producing building (FR-030), estimated unit losses (FR-032, FR-033), estimated
-  producing buildings destroyed (FR-032), estimated living units over the match (FR-034) and
-  estimated production idle periods (FR-035). Each is a datum with its own register entry, carrying
-  its method, its confidence method and its non-claim (006, FR-002 and FR-010), added to the
-  register in the change that publishes it.
+- **FR-027**: The system MUST publish, for each participant of an analysed match, two derived data
+  and five estimates. The derived data are the units its commands name and the producing buildings
+  it issues orders from, each with the first and last clock at which it was seen (FR-030). The
+  estimates, at 006's `inferred` tier, are the estimated unit losses (FR-032), the estimated
+  producing buildings destroyed (FR-032), the estimated population excess (FR-033), the estimated
+  living population (FR-034) and the estimated production idle periods (FR-035). Each of the seven
+  is a datum with its own register entry (006, FR-002); an estimate's entry carries its method, its
+  confidence method and its non-claim (006, FR-010). All seven MUST be in the register as `planned`
+  from this feature's first register change (006, FR-005), and each moves to `published` in the
+  change that publishes it.
 - **FR-028**: No reconstructed or derived datum of this feature MAY read an estimate or anything
   computed only for one. The reconstructed values MUST be byte-identical whether the estimates are
-  computed or not, and an automated check MUST fail when the code that produces a reconstructed
-  value depends on the code that produces an estimate. An estimate MAY read observed, decoded and
-  reconstructed inputs, and carries the weaker tier (006, FR-008).
+  computed or not, and an automated check MUST fail when the code that produces a reconstructed or
+  derived value depends on the code that produces an estimate. An estimate MAY read observed,
+  decoded, derived and reconstructed inputs, and carries the weaker tier (006, FR-008).
 - **FR-029**: Every estimate MUST be named and worded as an estimate, MUST carry a confidence from
   006's closed levels with its basis, and MUST carry a non-claim that states the direction in which
-  it errs. The highest level MUST NOT be assigned to an estimate until playback readings have
-  measured its error and the register records them as its calibration source (006, FR-010a).
-- **FR-030**: For every object id that a participant's commands name as a commanded unit, the
-  system MUST publish the first and the last match clock at which they name it: the interval the
-  unit was seen alive. For every building a participant issues an order from, it MUST publish the
-  first and the last clock of those orders; the starting Town Center of FR-026 counts from the
-  start of the match. Neither interval is a birth, a completion or a death, and the non-claim MUST
-  say so.
-- **FR-031**: The units that enter a participant's estimated living count MUST come from
-  production: the starting units of FR-026, plus each unit ordered at the modelled completion of
-  its queue item, less the cancellations the recording shows. Until gate G1 adopts the rules that
-  tell an executed command from a refused one and that distribute a command over its buildings, the
-  estimate MUST use interim methods written in its register entry, and its non-claim MUST state
-  that commands the game refused are counted. Once those rules are adopted the estimate MUST read
-  them instead, in a change that bumps the reconstruction version (FR-021).
+  it errs. Its level MUST be the lowest until playback readings have measured its error (FR-037)
+  and its register entry names them as its calibration; what level a measured error earns is
+  written in the entry's confidence method in the change that records the error.
+- **FR-030**: For every object id that a participant's commands name in a unit list, and from which
+  no order is issued as a building, the system MUST publish the first and the last match clock at
+  which they name it. For every building a participant issues an order from, counting every
+  building a command names, it MUST publish the first and the last clock of those orders. Where
+  another participant's commands later name the same unit, the datum MUST say who and from when.
+  These are exact facts about commands, published at the `derived` tier under names that say what
+  was measured (006, FR-012). Neither is a birth, a completion or a death.
+- **FR-031**: The units that enter a participant's estimated living population MUST be: the
+  starting units of FR-026; each unit ordered, at the modelled completion of its queue item, less
+  the cancellations the recording shows; and a unit another participant's commands named first, at
+  this participant's first command naming it. The queue is modelled under interim methods written
+  in the estimate's register entry, each until the rule that replaces it is adopted: which commands
+  the game executed and how a command spreads over its buildings, until gate G1; which age is in
+  force, until the age-up rule of FR-010. Meanwhile the non-claim MUST state that commands the game
+  refused are counted. Each replacement is a change that bumps the reconstruction version (FR-021).
 - **FR-032**: A unit MUST be counted as an identified estimated loss when a command of a
   participant of another team targets its object id after the last command of its owner that names
-  it, and its owner has not resigned by then; the loss is dated at the last such command. A
-  targeting that is followed by a command of the owner naming the unit counts no loss. The same
-  rule, with the orders issued from a building in place of the commands naming a unit, counts a
-  producing building as estimated destroyed. An object that another participant's commands later
-  name as their own commanded unit leaves its first owner's estimates with the cause
-  `changed-owner` and is not a loss.
-- **FR-033**: Where a participant's estimated living units, each counted for the population the
-  knowledge base says it occupies, would exceed the lobby's population limit, the excess MUST be
-  counted as unidentified estimated losses at that clock. They MUST be published as a component
-  apart from the identified losses, and MUST NOT be attributed to an object id or to a unit type.
-- **FR-034**: The system MUST publish each participant's estimated living units over the match, as
-  the value after each change: FR-031's entries, less the units explicitly deleted (FR-036), less
-  the estimated losses (FR-032, FR-033), less the units that changed owner. It MUST never be
-  negative and MUST never exceed the population limit. An estimate that breaks either bound is
-  withheld and the document says why; it never refuses the document, since an estimate must not
-  block an exact value.
+  it and before its owner's resignation; the loss is dated at the last such command. A targeting
+  that is followed by a command of the owner naming the unit counts no loss. The same rule, with
+  the orders issued from a building in place of the commands naming a unit, counts a producing
+  building as estimated destroyed. A unit that another participant's commands later name as their
+  own is not a loss.
+- **FR-033**: Where a participant's estimated living population would exceed the lobby's population
+  limit, the excess MUST be published as the estimated population excess at that clock, and removed
+  from the living population. It is an estimate of its own, and MUST NOT be attributed to an object
+  id or to a unit type. An ordered unit counts for the population the knowledge base says it
+  occupies; an identified loss or a change of owner, whose object has no unit type in the
+  recording, counts for one, an interim method written in the register entry.
+- **FR-034**: The system MUST publish each participant's estimated living population over the
+  match, as the value after each change: FR-031's entries, less the identified losses (FR-032),
+  less the population excess (FR-033), less the units that changed owner. By FR-033 it never
+  exceeds the population limit. It MUST never be negative: a series that goes negative is withheld
+  together with the population excess, and the document says why. That never refuses the document,
+  since an estimate must not block an exact value.
 - **FR-035**: For every producing building, the system MUST publish its estimated idle periods: the
   stretches between its first and its last order during which its modelled queue, built by FR-031's
-  method, is empty. The time between a building's last order and its estimated destruction, or
-  otherwise its owner's exit or the end of the match, MUST be published apart and MUST NOT be summed
-  into idle time. A pause for want of housing is not estimated.
-- **FR-036**: A unit a participant explicitly deletes MUST leave the estimated living count at the
-  deletion, with the cause `deleted`, and MUST NOT be counted as a loss. The deletion remains the
-  exact datum 006 publishes and is unchanged by being read here (006, FR-014: the deletion datum is
-  kept exact and apart; an estimate that reads it carries its own tier, 006, FR-008).
+  method, is empty. The time from a building's last order to its estimated destruction, or
+  otherwise its owner's exit or the end of the match, MUST be published apart, under a name that
+  says it includes the production of the last items ordered, and MUST NOT be summed into idle time.
+  A pause for want of housing is not modelled, and the non-claim MUST say that it reads as an empty
+  queue.
+- **FR-036**: The estimates MUST NOT read explicit deletions: 006's FR-014 keeps them out of every
+  inferred quantity. A deleted unit therefore stays in the estimated living population, and a
+  deleted object an enemy command had targeted is counted lost; the non-claims MUST state both. The
+  decoded deletion datum is unchanged.
 - **FR-037**: Every estimate for which the game's playback offers a figure MUST be compared with the
   owner's readings, and the difference recorded per recording beside those readings. A difference
   is a measured error, reported by the test, and is not a failure: FR-019's equality applies to
-  reconstructed values only. The register's confidence method for the estimate MUST cite those
-  recorded errors once they exist.
+  reconstructed values only. Where the game's figure and the estimate do not measure the same
+  thing, the recorded error MUST say how they differ. The register's confidence method for the
+  estimate MUST cite those recorded errors once they exist.
 - **FR-038**: Identical inputs MUST produce byte-identical estimates. A change to an estimation
   method MUST change the method's version in its register entry and bump the reconstruction version
   (FR-021), so that an analysis published before it still reproduces (FR-022).
 - **FR-039**: The register's `participant.units_lost` entry MUST stay non-determinable (006,
-  FR-004). In the change that publishes the estimated losses, its approximation fields MUST be
-  amended to name that estimate and to record the owner's ruling of 2026-11-15: an approximation is
-  accepted as a separately named `inferred` datum, never as the count.
+  FR-004). In the change that publishes the estimated losses, its approximation MUST name that
+  estimate and its approximation-acceptable field MUST become `yes`, on the owner's ruling of
+  2026-11-15: an approximation is accepted as a separately named `inferred` datum, never as the
+  count.
 
 ### Presentation
 
@@ -618,17 +642,17 @@ the reconstructed values are byte-identical whether the estimates are computed o
   queue or a housing pause; its method is chosen under FR-012.
 
 - **Estimate**: one published value at the `inferred` tier: its datum, its participant, its value,
-  its confidence with its basis, and its non-claim. Never read by a reconstructed value.
-- **Object lifetime**: per participant and object id, the first and last clock at which the object
-  was seen (a unit named by a command, a building issuing an order), and how it left the estimates:
-  not at all, `estimated-lost`, `deleted` or `changed-owner`.
-- **Estimated loss**: an identified one names the object, the enemy command that dates it and the
-  owner's last command before it; an unidentified one names only the clock and the excess over the
-  population limit.
+  its confidence with its basis, and its non-claim. Never read by a reconstructed or derived value.
+- **Seen interval**: per participant and object id, the first and last clock at which the object
+  was seen (a unit named by a command, a building issuing an order). An exact, derived fact.
+- **Estimated loss**: the object, the enemy command that dates it and the owner's last sighting
+  before it.
+- **Estimated population excess**: a clock and the population by which the estimated living
+  population would have passed the lobby's limit. It names no object.
 - **Estimated idle period**: a producing building, a start and an end between two of its orders,
   during which its modelled queue is empty.
 - **Estimate error**: per recording and estimate, the difference between the estimate and a playback
-  reading, recorded beside the reading.
+  reading, and how the two differ in what they measure, recorded beside the reading.
 
 ## Success Criteria _(mandatory)_
 
@@ -660,9 +684,9 @@ the reconstructed values are byte-identical whether the estimates are computed o
   confidence and a non-claim, is zero.
 - **SC-012**: For each committed reference recording, the reconstructed values are byte-identical
   with the estimates computed and without them.
-- **SC-013**: For each committed reference recording, every participant has published lifetimes,
-  estimated losses and estimated idle periods; an estimated living count is absent only where a
-  knowledge gap withholds it.
+- **SC-013**: For each committed reference recording, every participant has published seen data,
+  estimated losses and estimated idle periods; an estimated living population is absent only where
+  a knowledge gap or FR-034 withholds it.
 - **SC-014**: Every estimate that has a playback reading has its error recorded beside that reading:
   zero estimates with a reading and no recorded error.
 - **SC-015**: The estimates are inside SC-008's bound: analysing a recording with them takes no more
@@ -707,7 +731,8 @@ the reconstructed values are byte-identical whether the estimates are computed o
   that gives it one has been measured (research R16).
 - Idle Villagers: a gather command has no end event, so the time a Villager stood idle is not in
   the recording.
-- Housing pauses, and the lifetime of buildings that produce nothing, in the estimates.
+- Housing pauses, buildings that produce nothing, and explicit deletions (006, FR-014), in the
+  estimates.
 - Changes to capture, retention or the parse-once pipeline (003, constitution I).
 - Re-specifying the knowledge base: 006 owns it, including Phase 8's coverage of every civilisation.
 
@@ -752,6 +777,10 @@ the reconstructed values are byte-identical whether the estimates are computed o
   asserts it.
 - **How an object id gets a unit type.** Without it the estimates count units, never Villagers or
   soldiers. The plan files the question as research, not as a method.
+- **Whether 006's FR-014 should be lifted for the estimated living population.** The estimates do
+  not read deletions (FR-036), which keeps a deleted unit alive in them. Reading them would be more
+  accurate and is forbidden by 006 as written; lifting it is the owner's decision, not this
+  feature's.
 - **How far the interim methods are off.** Until G1 closes, the estimates count commands the game
   refused (FR-031). The first playback readings of FR-037 measure it.
 

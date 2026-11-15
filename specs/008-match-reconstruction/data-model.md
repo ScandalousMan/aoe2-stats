@@ -2,9 +2,10 @@
 
 **Spec**: [spec.md](./spec.md) | **Plan**: [plan.md](./plan.md) | **Research**: [research.md](./research.md)
 
-Fourteen entities. Thirteen are pure values computed per analysis and stored nowhere but in the published
-document; one, the rule, is a record in a file shipped with the package. Sections 12 to 14 are the
-estimates of US6, which are not reconstructed values and are kept apart from sections 1 to 11. No table and no migration:
+Fifteen entities. Fourteen are pure values computed per analysis and stored nowhere but in the published
+document; one, the rule, is a record in a file shipped with the package. Sections 12 to 15 are the
+seen data and the estimates of US6, which are not reconstructed values and are kept apart from
+sections 1 to 11. No table and no migration:
 the published document already has an identity-addressed key, and 003's row already points at it
 (006 data-model §8).
 
@@ -41,7 +42,7 @@ One unit of work in one building's queue: the production of one unit, or one res
 | `enqueued_ms` | integer | The order's clock. |
 | `started_ms`, `finished_ms` | integer | Modelled. `started_ms` is the later of `enqueued_ms` and the previous item's `finished_ms`, plus any idle time the adopted rules place before it. |
 | `duration_ms` | integer | The knowledge base's production time for the participant's civilisation, team and settled state at `started_ms`. |
-| `executed` | Settlement | Whether the game executed the order (G1). An item not executed occupies no time and costs nothing. |
+| `executed` | boolean | Whether the game executed the order, supplied by the caller's execution policy. An item not executed occupies no time and costs nothing. On the exact path the caller is an adopted rule (G1) and records the Settlement that decided it (section 5); the estimates supply an interim policy and record none (research R17). |
 
 **State.** `enqueued` → `started` → `finished`, or `enqueued` → `cancelled` (an attributed
 cancellation removes unstarted items only), or `enqueued` → `refused` (G1's rule). Forward only.
@@ -100,7 +101,7 @@ A record of the closed rules registry (contracts/rules.md). Lives in
 | ----- | ---- | ---- |
 | `id` | `P<n>` or `D-<NAME>-<n>` | Unique, stable. A changed rule is a new id; the old one is retired, never edited. |
 | `family` | closed: `proof`, `deduction` | |
-| `settles` | closed: the condition kinds of section 4, plus `refund`, `cancellation`, `tie`, `distribution`, `winner`, `housing` | What it can settle. |
+| `settles` | closed: the condition kinds of section 4, plus `alive`, `refund`, `cancellation`, `tie`, `distribution`, `winner`, `housing` | What it can settle. |
 | `statement` | text | The rule, precisely enough to recompute. |
 | `evidence` | reference | Into this research, `docs/data-sources.md`, or a playback reading. Never a restated number. |
 | `ruling` | reference, optional | The owner's ruling it rests on (spec Clarifications, or a later dated ruling). A deduction rule needs `ruling` or `evidence` that the game behaves that way (FR-007). |
@@ -177,6 +178,7 @@ recording: `tests/fixtures/replays/<recording>.playback.toml`, one table per rea
 | `quantity` | What was read: an age-up arrival, a queue's contents, a stockpile, a population. |
 | `value` | As read. `unreadable` is allowed and says where it was looked for. |
 | `read_by`, `read_on`, `build_shown` | Who, when, and the build the game reported. |
+| `estimate_error` | Optional table, on a reading that corresponds to an estimate (section 15). |
 
 A reading is the one place its value is written. The request list asks; this file answers; a test
 asserts every reconstructed value with a reading equals it (SC-001, SC-010) and reports, per rule,
@@ -189,7 +191,21 @@ change when it lands: a building, a start, an end, a cause from the closed set `
 `housed`, and the settlement of its cause. This is the exact datum of FR-001a. The estimated idle
 period of section 14 is another datum, at another tier, and is not its draft.
 
-## 12. Estimate
+## 12. Seen interval
+
+Per participant and object id (FR-030). Exact, at `derived`: computed from observed commands and
+nothing else, outside the estimates sub-package.
+
+| Field | Type | Rule |
+| ----- | ---- | ---- |
+| `object` | object id | A unit: an id named in a unit list of the participant's commands, from which no order is issued as a building. A building: an id the participant issued an order from, every building of a command counted. |
+| `first_named_ms`, `last_named_ms` | integer | For a unit, the first and last clock at which the participant's commands name it. |
+| `first_order_ms`, `last_order_ms` | integer | For a building, the first and last clock of the orders that name it. |
+| `later_named_by` | participant and clock, optional | For a unit, the other participant whose commands name it afterwards, and from when. |
+
+Neither interval is a birth, a completion or a death.
+
+## 13. Estimate
 
 One published value at the `inferred` tier (spec, Key Entities; contracts/estimates.md). One
 instance per datum and participant.
@@ -198,46 +214,38 @@ instance per datum and participant.
 | ----- | ---- | ---- |
 | `datum` | register id | Must resolve to a `published` register entry at `inferred` (FR-027). |
 | `participant` | slot | |
-| payload | per datum | The intervals, losses, series or periods of sections 13 and 14. |
-| `confidence` | 006's Confidence | Level from the closed set, never above what the register entry's confidence method allows; a non-empty basis (FR-029). |
+| payload | per datum | The losses, destroyed buildings, excess, series or periods of section 14. |
+| `confidence` | 006's Confidence | `low` while the register entry has no `calibration`; a non-empty basis (FR-029). |
 | `non_claim` | non-empty text | From the register entry (FR-029). |
 
-An estimate has no `settled_by`: nothing settles it. No reconstructed value, settlement or rule
-holds a reference to one (FR-028).
+An estimate has no `settled_by`: nothing settles it. No reconstructed or derived value, settlement
+or rule holds a reference to one (FR-028). No estimate reads an explicit deletion (FR-036).
 
-**Bounds, not invariants.** The estimated living series is never negative and never above the
-population limit (FR-034). A series that breaks a bound is withheld with an entry in
-`estimates_withheld`; it raises nothing, and the document is published.
+**A bound, not an invariant.** The estimated living population is never negative (FR-034). A series
+that goes negative is withheld with the population excess and an entry in `estimates_withheld`; it
+raises nothing, and the document is published. It cannot pass the population limit, because the
+excess is removed as it arises (FR-033).
 
-## 13. Object lifetime and estimated loss
+## 14. The five estimates
 
-Per participant and object id (FR-030, FR-032, FR-036).
+| Estimate | Entry | Rule |
+| -------- | ----- | ---- |
+| Unit losses | `object`, `at_ms`, `dated_by`, `last_named` | A unit of section 12 that a participant of another team targets after its owner's last naming and before its owner's resignation, and that no other participant later names. Dated at the last such command (FR-032). |
+| Buildings destroyed | `object`, `at_ms`, `dated_by`, `last_order` | The same rule over a building of section 12 and its orders (FR-032). |
+| Population excess | `at_ms`, `population` | The population by which the living population would pass the lobby's limit at that clock. No object (FR-033). |
+| Living population | `at_ms`, `population` | The value after each change: units entering (FR-031), less the losses, the excess and the units that changed owner. An ordered unit counts for the population the knowledge base says it occupies; an object of no known type counts for one (FR-033, FR-034). |
+| Production idle | `building`, `from_ms`, `to_ms` | A stretch inside a building's first-to-last-order interval during which its modelled queue is empty, ending at the next order. The stretch after the last order is listed apart with what ended it (FR-035). |
 
-| Field | Type | Rule |
-| ----- | ---- | ---- |
-| `object` | object id | A unit named by the participant's commands, or a building the participant issued an order from. |
-| `first_ms`, `last_ms` | integer | The first and last clock at which the object was seen: named by a command, or issuing an order. The starting Town Center's first is 0. Published as `first_named_ms` and `last_named_ms` for a unit, `first_order_ms` and `last_order_ms` for a building (contracts/estimates.md). |
-| `left` | closed: `none`, `estimated-lost`, `estimated-destroyed`, `deleted`, `changed-owner` | How the object left the estimates. |
-| `left_ms` | integer, optional | Present unless `left` is `none`. For an estimated loss, the clock of the last enemy command targeting the object after `last_ms`. |
-| `dated_by` | stream index, optional | That enemy command. |
+The queue is section 2's, advanced under the interim policies until the rules that replace them are
+adopted (research R17).
 
-**State.** `seen` → `estimated-lost` or `estimated-destroyed` (an enemy targeting after the last
-sighting, the owner not yet out) | `deleted` (an explicit deletion of the object) | `changed-owner`
-(another participant names it as their unit). A later sighting by the owner cancels a pending
-estimated loss; the state is computed over the whole stream, so nothing is published and then
-withdrawn.
+## 15. Estimate error
 
-An **unidentified loss** (FR-033) is not an object lifetime: it is a clock and a population in
-excess of the limit, with no object.
+Per reading that corresponds to an estimate (FR-037), a table inside the reading (section 10).
 
-## 14. Estimated idle period
-
-Per producing building (FR-035).
-
-| Field | Type | Rule |
-| ----- | ---- | ---- |
-| `building` | object id | A building the participant issued an order from. |
-| `from_ms`, `to_ms` | integer | A stretch inside the building's first-to-last-order interval during which its modelled queue is empty. `to_ms` is the clock of the next order. |
-
-The queue is section 2's, advanced under the interim policies until G1 adopts the rules (research
-R17). The time after the last order is the lifetime's `unused_after_ms`, never a period.
+| Field | Rule |
+| ----- | ---- |
+| `datum` | The estimate's register id. |
+| `estimated` | The value the analysis produces, asserted by the test. |
+| `difference` | Estimated less read. Its size fails nothing. |
+| `differs_in` | How the game's figure and the estimate differ in what they measure; empty only when they measure the same thing. |

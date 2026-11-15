@@ -27,12 +27,13 @@ export PYTEST_DISABLE_NETWORK=1
 
    Expected: green, including the golden timeline and the field-by-field comparison of the old and
    regenerated streams (contracts/canonical-events-amendment.md).
-2. **The baseline exists.** The analysis-time test over the three committed recordings runs and
-   records today's figure before any reconstruction code exists (research R14).
+2. **The timing harness exists.** The analysis-time test over the three committed recordings times
+   today's path, and later phases compare the path with and without the reconstruction in the same
+   run, so no figure from one machine is compared on another (research R14).
 3. **The age-proof consistency test knows its one defect.** It finds the Sicilian unit of research
    R3 and nothing else, held as a strict expected failure, so the suite turns red on the day 006's
    superseding snapshot fixes the age requirement, and the expectation is removed in that change.
-4. **The owner has the requests.** `specs/008-match-reconstruction/owner-readings.md` lists O1 to O5
+4. **The owner has the requests.** `specs/008-match-reconstruction/owner-readings.md` lists O1 to O7
    with times; nothing in it is an answer.
 
 ## Phase 2 — The spine
@@ -124,11 +125,11 @@ uv run pytest packages/reconstruction -k estimates
 uv run pytest packages/core -k "truth or register"
 ```
 
-Each committed recording's estimates reproduce `tests/fixtures/replays/<recording>.estimates.json`
+Each committed recording's seen data and estimates reproduce `tests/fixtures/replays/<recording>.estimates.json`
 byte for byte. The isolation tests pass: no module producing a reconstructed value imports the
 estimates sub-package, and the `reconstructed` block is byte-identical with the estimates switched
-off. The six estimate data are in the register at `inferred`, each with a method, a confidence
-method and a non-claim, and the regenerated view matches. Every O6 reading that exists has its
+off. The two seen data are in the register at `derived` and the five estimates at `inferred`, each
+estimate with a method, a confidence method and a non-claim, and the regenerated view matches. Every O6 reading that exists has its
 `estimate_error` recorded; a large difference is reported and fails nothing.
 
 ```bash
@@ -144,6 +145,6 @@ modelled values, with its confidence and its non-claim reachable, in light and d
 uv run scripts/checks/spec_lint.py --feature specs/008-match-reconstruction
 ```
 
-Expected exit code 0. Then the three measurements of research R13 are present in
+Expected exit code 0. Then the measurements research R13 lists are present in
 `docs/data-sources.md` §2, each asserted by a test, and this feature's research names them as its
 record of origin.
