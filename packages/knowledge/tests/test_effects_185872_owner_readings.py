@@ -824,17 +824,53 @@ _WEAK_FIELDS = [
 # ---------------------------------------------------------------------------------- the sheet
 
 
+def _split_rows(table_text: str) -> tuple[list[list[str]], list[list[str]]]:
+    """Split the build 185872 rows of a table into (answered, open-with-a-carrier).
+
+    A row is answered when its four answer columns are filled. An open row is admitted only when
+    its "Sources searched" cell names a carrier task (a T-id after "carried by"); an open row
+    without one raises, so a request cannot sit on the sheet with nobody to close it.
+    """
+    answered: list[list[str]] = []
+    carried: list[list[str]] = []
+    for line in table_text.splitlines():
+        if not line.startswith("| 185872 |"):
+            continue
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if all(cells[-4:]):
+            answered.append(cells)
+        elif re.search(r"carried by [^|]*?\bT\d+\b", cells[-5]):
+            carried.append(cells)
+        else:
+            raise AssertionError(f"open build 185872 row with no carrier task: {line[:80]}")
+    return answered, carried
+
+
+def test_an_open_row_without_a_carrier_task_is_refused() -> None:
+    answered = (
+        "| 185872 | Slavs | e | cost | none | why | src | v | w | not a game reading | 2026-10-31 |"
+    )
+    open_row = (
+        "| 185872 | Sicilians | e | age_requirement | none | why | src, filed by T912 |  |  |  |  |"
+    )
+    assert len(_split_rows(answered)[0]) == 1 and _split_rows(answered)[1] == []
+    with pytest.raises(AssertionError, match="no carrier"):
+        _split_rows(open_row)
+    carried_row = open_row.replace("filed by T912", "carried by 006's T851")
+    assert len(_split_rows(carried_row)[1]) == 1
+
+
 def test_the_sheet_says_the_snapshot_closed_every_build_185872_row_and_keeps_the_readings() -> None:
     sheet = _OWNER_READINGS.read_text(encoding="utf-8")
     assert "T772" in sheet
     assert _DIRECTORY in sheet
     open_values = sheet[sheet.index("## Open values") : sheet.index("## Validation sample")]
+    answered, _carried = _split_rows(open_values)
     rows = [line for line in open_values.splitlines() if line.startswith("| 185872 |")]
-    assert len(rows) == 28
-    for line in rows:
-        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
-        assert cells[-4], line[:80]  # a value read
-        assert cells[-3], line[:80]  # where it was read
-        assert cells[-2] == "not a game reading" or cells[-1] == "2026-10-22", line[:80]
+    assert len(answered) == 28
+    for cells in answered:
+        assert cells[-4], cells[0]  # a value read
+        assert cells[-3], cells[0]  # where it was read
+        assert cells[-2] == "not a game reading" or cells[-1] == "2026-10-22", cells[0]
     # Nothing was reported unreadable: no FR-022b entry exists for the build.
     assert "unreadable" not in "\n".join(rows).replace("write `unreadable`", "")

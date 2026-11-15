@@ -142,7 +142,7 @@ the measurements that guard the plan are tests. Nothing here publishes.
 - [x] T911 [P] The base-unit measurement of research R15 as a test in
       `packages/knowledge/tests/test_orders_name_base_unit.py`: across the committed goldens, no
       upgrade research is followed by an order of the upgraded unit.
-- [ ] T912 [P] File the Sicilian age-requirement defect through 006's mechanism: add the request to
+- [x] T912 [P] File the Sicilian age-requirement defect through 006's mechanism: add the request to
       `specs/006-replay-analysis-foundations/owner-readings.md`, citing research R3 and this feature's
       reading O3, so that 006's T851 carries the fix. No value is written there. The build 185872
       sheet is closed and its test counts answered rows, so narrow that test to admit an open row only

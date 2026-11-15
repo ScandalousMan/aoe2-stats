@@ -16,7 +16,7 @@ measurement: the goldens and the knowledge base are read, and the assertion is t
 
 **The one known defect.** One participant orders a Sicilian unit before the Castle Age click, and
 the knowledge base answers Castle Age for it. It is a knowledge defect, fixed by a superseding
-snapshot (006's task T746), not worked around here. It is held as a strict expected failure scoped
+snapshot (006's task T851), not worked around here. It is held as a strict expected failure scoped
 to that single (recording, participant, entity): every other case, and every other entity of that
 participant, asserts normally. The day the superseding snapshot corrects the answer, the strict
 `xfail` XPASSes and the suite turns red; the fix is then to delete `_KNOWN_DEFECT` and the test
@@ -61,7 +61,7 @@ class _KnownDefect:
     entity: query.EntityRef
 
 
-#: The Sicilian unit the knowledge base answers Castle Age for (006's T746). Scoped to exactly one
+#: The Sicilian unit the knowledge base answers Castle Age for (006's T851). Scoped to exactly one
 #: participant of one recording and one entity.
 _KNOWN_DEFECT: Final[_KnownDefect] = _KnownDefect(
     recording="AgeIIDE_Replay_511523321",
@@ -168,7 +168,7 @@ def test_no_order_requires_an_age_not_yet_clicked(golden_name: str, participant:
     strict=True,
     raises=AssertionError,
     reason=(
-        "knowledge defect, 006's task T746: age_requirement answers Castle Age for a Sicilian "
+        "knowledge defect, 006's task T851: age_requirement answers Castle Age for a Sicilian "
         "unit its participant ordered before clicking Castle Age; strict, so the suite turns red "
         "when the superseding snapshot fixes it"
     ),
