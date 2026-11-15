@@ -105,7 +105,7 @@ the measurements that guard the plan are tests. Nothing here publishes.
 - [ ] T904 **Owner task (information), optional.** Reading O7: name one of your recorded matches in
       which you cancel a queued unit, or play one as the request describes. Nothing waits on it; without
       it D-CANCEL-1 stays a candidate tested on synthetic streams only.
-- [ ] T905 [P] Test first, `xfail(strict=True)`: `unit-queued` carries `building_objects`, every
+- [x] T905 [P] Test first, `xfail(strict=True)`: `unit-queued` carries `building_objects`, every
       producing building the command names in the engine's order, non-empty, whose first element equals
       `building_object`. Type test in `packages/core/tests/test_events.py`; adapter test over every
       committed recording in `packages/replay-engine/tests/test_canonical.py`
@@ -128,18 +128,18 @@ the measurements that guard the plan are tests. Nothing here publishes.
       the canonical goldens, and name the new key in the method text of
       `event.match_started.lobby_presets` in `packages/core/src/aoe2stats_core/truth/register.toml`
       (research R4).
-- [ ] T909 [P] Build the timing harness SC-008 and SC-015 are measured with, before any
+- [x] T909 [P] Build the timing harness SC-008 and SC-015 are measured with, before any
       reconstruction code exists: `apps/analyzer/tests/test_analysis_time.py` times the analysis of
       each committed recording along today's path and exposes a comparison that later tasks (T950,
       T975) call with the reconstruction and the estimates on and off **in the same run**. No timing is
       committed: a figure taken on one machine cannot be compared on another, so research R14's
       baseline is the same run's own path without the new code.
-- [ ] T910 [P] The age-proof consistency of research R3 as a permanent test in
+- [x] T910 [P] The age-proof consistency of research R3 as a permanent test in
       `packages/knowledge/tests/test_age_proof_consistency.py`: over every committed canonical golden,
       no order requires an age its participant has not yet clicked. The one known defect, the Sicilian
       unit, is held as a strict expected failure naming 006's task T746, so the suite turns red on the
       day the superseding snapshot fixes it.
-- [ ] T911 [P] The base-unit measurement of research R15 as a test in
+- [x] T911 [P] The base-unit measurement of research R15 as a test in
       `packages/knowledge/tests/test_orders_name_base_unit.py`: across the committed goldens, no
       upgrade research is followed by an order of the upgraded unit.
 - [ ] T912 [P] File the Sicilian age-requirement defect through 006's mechanism: add the request to

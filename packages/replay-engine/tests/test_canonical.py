@@ -1068,3 +1068,22 @@ def test_raw_actions_count_before_collapse_and_before_the_exit_rule() -> None:
     list(canonical_events(stream, accounting))
     # Player 9 is unseated: not counted. Player 1's collapsed and post-exit commands are.
     assert accounting.raw_actions == {1: 5, 2: 1}
+
+
+@pytest.mark.xfail(strict=True, reason="T906 not implemented yet")
+def test_unit_queued_carries_every_named_building_in_the_engines_order(
+    parsed: _Parsed, canonical_stream: list[CanonicalEvent]
+) -> None:
+    queued = [e for e in canonical_stream if e.kind is EventKind.UNIT_QUEUED]
+    named = [
+        [int(i) for i in cast(Sequence[int], payload["building_ids"])]
+        for _, label, payload in _timed_actions(parsed)
+        if label == "DeQueue"
+    ]
+    assert len(queued) == len(named)
+    for event, expected in zip(queued, named, strict=True):
+        payload = cast(UnitQueuedPayload, event.payload)
+        objects = payload.building_objects  # type: ignore[attr-defined]
+        assert len(objects) > 0
+        assert objects[0] == payload.building_object
+        assert list(objects) == expected

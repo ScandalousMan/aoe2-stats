@@ -120,3 +120,24 @@ def test_chat_payload_carries_no_text() -> None:
     names = {f.name for f in fields(payload_type)}
     assert "channel" in names
     assert not names & {"text", "message", "content", "body"}
+
+
+@pytest.mark.xfail(strict=True, reason="T906 not implemented yet")
+def test_unit_queued_carries_every_producing_building_in_the_engines_order() -> None:
+    from dataclasses import fields
+
+    from aoe2stats_core.replay.events import UnitQueuedPayload
+
+    names = {f.name for f in fields(UnitQueuedPayload)}
+    assert "building_objects" in names
+    assert "building_object" in names
+    payload = UnitQueuedPayload(
+        unit_id=83,
+        building_type=109,
+        building_object=500,
+        building_objects=(500, 501, 499),  # type: ignore[call-arg]
+        count=1,
+    )
+    assert payload.building_objects == (500, 501, 499)  # type: ignore[attr-defined]
+    assert payload.building_objects  # type: ignore[attr-defined]
+    assert payload.building_objects[0] == payload.building_object  # type: ignore[attr-defined]
