@@ -840,9 +840,10 @@ def _split_rows(table_text: str) -> tuple[list[list[str]], list[list[str]]]:
     """Split the build 185872 rows of a table into (answered, open-with-a-carrier).
 
     A row is answered when its four answer columns are filled. An open row is admitted only when
-    all four answer cells are empty and its "Sources searched" cell says "carried by" (not
-    negated) and names a task id that exists in 006's tasks.md and is still unchecked; any other
-    open row raises, so a request cannot sit on the sheet with nobody left to close it.
+    all four answer cells are empty and its "Sources searched" cell holds the exact shape
+    `; carried by 006's T<digits>` and that id is a task that exists in 006's tasks.md and is
+    still unchecked; any other open row raises, so a request cannot sit on the sheet with nobody
+    left to close it.
     """
     answered: list[list[str]] = []
     carried: list[list[str]] = []
@@ -854,8 +855,7 @@ def _split_rows(table_text: str) -> tuple[list[list[str]], list[list[str]]]:
         if all(cells[-4:]):
             answered.append(cells)
             continue
-        phrase = re.search(r"(?<!no longer )carried by ([^|]*)", cells[-5])
-        named = set(re.findall(r"\bT\d+\b", phrase.group(1))) if phrase else set()
+        named = set(re.findall(r"; carried by 006's (T\d+)\b", cells[-5]))
         if not any(cells[-4:]) and named & open_ids:
             carried.append(cells)
         else:
@@ -875,7 +875,7 @@ def test_an_open_row_counts_as_carried_only_by_an_open_task_and_with_no_answer_c
     assert len(_split_rows(answered)[0]) == 1 and _split_rows(answered)[1] == []
     with pytest.raises(AssertionError, match="no open carrier"):
         _split_rows(open_row)
-    carried_row = open_row.replace("filed by T912", "carried by 006's T851")
+    carried_row = open_row.replace("filed by T912", "filed by T912; carried by 006's T851")
     tasks = tmp_path / "tasks.md"
     tasks.write_text("- [ ] T851 [US2] open\n- [x] T746 [US2] closed\n", encoding="utf-8")
     monkeypatch.setattr(sys.modules[__name__], "_CARRIER_TASKS", tasks)
@@ -883,13 +883,23 @@ def test_an_open_row_counts_as_carried_only_by_an_open_task_and_with_no_answer_c
     assert len(_split_rows(carried_row)[1]) == 1
     # a task id that does not exist
     with pytest.raises(AssertionError, match="carrier"):
-        _split_rows(open_row.replace("filed by T912", "carried by 006's T999"))
+        _split_rows(open_row.replace("filed by T912", "filed by T912; carried by 006's T999"))
     # a closed task id
     with pytest.raises(AssertionError, match="carrier"):
-        _split_rows(open_row.replace("filed by T912", "carried by 006's T746"))
-    # a negated phrase
-    with pytest.raises(AssertionError, match="carrier"):
-        _split_rows(open_row.replace("filed by T912", "no longer carried by T851"))
+        _split_rows(open_row.replace("filed by T912", "filed by T912; carried by 006's T746"))
+    # negated or reshaped phrases
+    for phrase in (
+        "no longer carried by T851",
+        "not carried by T851",
+        "; not carried by 006's T851",
+    ):
+        with pytest.raises(AssertionError, match="carrier"):
+            _split_rows(open_row.replace("filed by T912", phrase))
+    # the real row's phrasing
+    real = open_row.replace(
+        "filed by T912", "Filed by 008's T912; carried by 006's T851 in a snapshot"
+    )
+    assert len(_split_rows(real)[1]) == 1
     # a half-answered row, even with an open existing carrier
     with pytest.raises(AssertionError, match="carrier"):
         _split_rows(carried_row.replace("|  |  |  |  |", "| 7 |  |  |  |"))

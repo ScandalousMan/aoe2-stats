@@ -114,11 +114,10 @@ def test_no_upgrade_research_is_followed_by_an_order_of_the_upgraded_unit(
 
 
 def test_goldens_hold_upgrades_followed_by_base_line_orders(upgrades: list[_Upgrade]) -> None:
-    """Non-vacuity: some upgrade research whose `upgrades_unit` entry is right (the research and
-    the unit it names carry the same name) is followed by orders of a unit the same participant
-    was already ordering before it (the base line), and the upgraded unit itself is not among
-    them. A relation pointing at unrelated units fails this, so the main test cannot pass over a
-    corrupted relation or over goldens holding no upgrade at all."""
+    """Non-vacuity: some upgrade research's relation unit agrees by name with its research, and
+    some unit ordered before the research is also ordered after it (the upgraded unit itself is
+    not among them). A relation pointing at unrelated units fails this, so the main test cannot
+    pass over a corrupted relation or over goldens holding no upgrade at all."""
     assert upgrades, "the goldens hold no unit-upgrade research"
     with_base_line = [
         u

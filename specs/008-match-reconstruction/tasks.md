@@ -133,7 +133,10 @@ the measurements that guard the plan are tests. Nothing here publishes.
       each committed recording along today's path and exposes a comparison that later tasks (T950,
       T975) call with the reconstruction and the estimates on and off **in the same run**. No timing is
       committed: a figure taken on one machine cannot be compared on another, so research R14's
-      baseline is the same run's own path without the new code.
+      baseline is the same run's own path without the new code. The comparison lives in
+      `tests/analysis_time.py`, imported as `tests.analysis_time`, because a test module under
+      `apps/analyzer/tests/` cannot be imported by another package's tests (review of pull request
+      #232); T950 and T975 import it from there.
 - [x] T910 [P] The age-proof consistency of research R3 as a permanent test in
       `packages/knowledge/tests/test_age_proof_consistency.py`: over every committed canonical golden,
       no order requires an age its participant has not yet clicked. The one known defect, the Sicilian

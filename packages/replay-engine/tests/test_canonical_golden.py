@@ -24,6 +24,22 @@ _RECORDINGS = recordings()
 _UNIT_QUEUED_DIGESTS = json.loads(
     (Path(__file__).parent / "unit_queued_digests.json").read_text(encoding="utf-8")
 )["recordings"]
+# The event kinds the stream held at c1f85aa7, the parent of T906's commit, besides `unit-queued`:
+# read once from the goldens of that commit and never recomputed. A kind added after it is not here.
+_KINDS_BEFORE_T906 = frozenset(
+    {
+        "building-placed",
+        "chat",
+        "market-transaction",
+        "match-ended",
+        "match-started",
+        "object-deleted",
+        "participant-resigned",
+        "research-queued",
+        "undecoded",
+        "units-commanded",
+    }
+)
 
 
 def _first_difference(live: str, committed: str) -> str:
@@ -84,6 +100,8 @@ def _other_events_digest(serialisation: str) -> str:
         if '"kind":"unit-queued"' in line:
             continue
         record = json.loads(line.rstrip(","))
+        if record["kind"] not in _KINDS_BEFORE_T906:
+            continue
         if record["kind"] == "match-started":
             record["payload"]["lobby_presets"].pop("population_limit", None)
         lines.append(json.dumps(record, separators=(",", ":"), sort_keys=False))
@@ -94,7 +112,9 @@ def _other_events_digest(serialisation: str) -> str:
 def test_every_other_event_equals_the_stream_before_t906(zip_path: Path) -> None:
     """T906 touched unit-queued lines only; every other line is pinned against c1f85aa7.
 
-    Only `population_limit` (T908) is stripped from the match-started line.
+    Only lines whose kind existed before T906 are compared (`_KINDS_BEFORE_T906`); lines of any
+    kind a later task adds are excluded, so adding an event kind never turns this red. Only
+    `population_limit` (T908) is stripped from the match-started line.
     """
     committed = golden_path(zip_path).read_text()
     expected = _UNIT_QUEUED_DIGESTS[zip_path.stem]["other_events_sha256"]
