@@ -14,7 +14,8 @@ export PYTEST_DISABLE_NETWORK=1
 ## Phase 1 — Evidence and vocabulary
 
 1. **The widening is additive.** Regenerate the canonical goldens and confirm only `unit-queued`
-   lines changed, each gaining `building_objects` whose first element equals `building_object`;
+   lines changed, each gaining `building_objects` whose first element equals `building_object`
+   (T906), and each golden's `match-started` line, gaining `population_limit` (T908);
    006's golden timeline must still compare byte-identical.
 
    ```bash

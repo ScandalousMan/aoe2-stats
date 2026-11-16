@@ -224,9 +224,8 @@ def _building_placed(clock: int, player: int, payload: _Payload, _: _Exits) -> C
 
 
 def _unit_queued(clock: int, player: int, payload: _Payload, _: _Exits) -> CanonicalEvent | None:
-    # One command is one event. A command may name several producing buildings; the payload
-    # carries one `building_object`, so the first one the wheel lists is kept and the rest are
-    # not represented — a known narrowing of the vocabulary, reported at hand-back.
+    # One command is one event. A command may name several producing buildings: all of them are
+    # carried in `building_objects`, in the engine's order, and `building_object` is the first.
     building_objects = _ints(payload["building_ids"])
     if not building_objects:
         # No producing building to name: undecoded rather than dropped (FR-019).
@@ -240,6 +239,7 @@ def _unit_queued(clock: int, player: int, payload: _Payload, _: _Exits) -> Canon
             building_type=cast(int, payload["building_type"]),
             building_object=building_objects[0],
             count=cast(int, payload["amount"]),
+            building_objects=tuple(building_objects),
         ),
     )
 
@@ -440,7 +440,12 @@ def _seated(parsed: Mapping[str, object]) -> frozenset[int]:
 # resolved map (which gets `MatchStartedPayload.map_name`, T629a). Carried as decimal strings, like
 # the chat channel above: naming what these integers mean is the knowledge base's job, not this
 # adapter's, so nothing here is translated, only read.
-_LOBBY_PRESET_FIELDS: tuple[str, ...] = ("starting_resources_id", "starting_age_id", "map_size")
+_LOBBY_PRESET_FIELDS: tuple[str, ...] = (
+    "starting_resources_id",
+    "starting_age_id",
+    "map_size",
+    "population_limit",
+)
 
 
 #: The DE lobby's own sentinel for "no team" (`resolved_team_id`) — measured directly against

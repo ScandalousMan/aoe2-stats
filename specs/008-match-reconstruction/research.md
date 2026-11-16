@@ -139,7 +139,7 @@ Castle Age for it.
   game's own interface, which offers no command for an entity whose age has not been reached; owner
   reading O3 confirms the Sicilians case in the game.
 - The disagreement is a knowledge defect, filed through 006's owner-readings mechanism and fixed by
-  a superseding snapshot (006, T746), not worked around here. And the measurement becomes a
+  a superseding snapshot (006, T851), not worked around here. And the measurement becomes a
   permanent test over every committed recording, because it is a free cross-check of
   `age_requirement` that no other test performs. FR-020 makes `age_requirement` required, so this
   feature also adds it to the `requires_knowledge` of the age-up datum, which turns its gaps

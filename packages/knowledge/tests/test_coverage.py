@@ -192,7 +192,7 @@ def _payload_from_json(kind: EventKind, raw: Mapping[str, Any] | None) -> Any:
             building_id=raw["building_id"], position=Position(**raw["position"])
         )
     if kind is EventKind.UNIT_QUEUED:
-        return UnitQueuedPayload(**raw)
+        return UnitQueuedPayload(**{**raw, "building_objects": tuple(raw["building_objects"])})
     if kind is EventKind.UNIT_UNQUEUED:
         return UnitUnqueuedPayload(**raw)
     if kind is EventKind.RESEARCH_QUEUED:
@@ -1105,6 +1105,7 @@ def test_a_stream_with_no_build_at_all_records_a_blocking_gap() -> None:
                 building_type=12,
                 building_object=5001,
                 count=1,
+                building_objects=(5001,),
             ),
         ),
     ]
@@ -1159,6 +1160,7 @@ def test_an_unresolvable_build_reports_exactly_one_gap_not_one_per_entity_field_
                 building_type=12,
                 building_object=5001,
                 count=1,
+                building_objects=(5001,),
             ),
         ),
         CanonicalEvent(
@@ -1170,6 +1172,7 @@ def test_an_unresolvable_build_reports_exactly_one_gap_not_one_per_entity_field_
                 building_type=87,
                 building_object=5002,
                 count=1,
+                building_objects=(5002,),
             ),
         ),
     ]

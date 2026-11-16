@@ -3369,6 +3369,29 @@ this phase, code comments included; only its commits name the old id.
       `uv run scripts/checks/spec_lint.py --feature specs/006-replay-analysis-foundations` and
       confirm it exits 0; then run the whole suite by exit code
 
+## Phase 10: A defect reported by feature 008 (filed 2026-11-15, owner's arbitration)
+
+**Purpose**: feature 008's research R3 (`specs/008-match-reconstruction/research.md`) cross-checks
+`age_requirement` against every committed recording and finds one disagreement, for a Sicilian
+unit; R3 states the case and this phase does not restate it. The request is filed as an open row of
+[owner-readings.md](./owner-readings.md) by 008's T912. T746, which 008's artifacts first named as
+the carrier, had already closed, and so had the build 185872 sheet; the owner's arbitration of
+2026-11-15 files this phase instead.
+
+**Numbering**: Phase 10 takes T851, the first id above T850, the highest any feature defined
+before feature 008 took T901 onward on 2026-11-15.
+
+- [ ] T851 [US2] Correct the `age_requirement` of the Sicilian unit research R3 names in a superseding build 185872
+      snapshot, with the build 185872 sheet's chain rules: the value is transcribed from a source the
+      row cites (the pack's strings, publisher patch notes), corroborated by 008's owner reading O3 once
+      008's T924 has transcribed it, and never from a reading an agent took. Check the build 188329
+      snapshot's answer for the same unit and correct it in the same change if it disagrees. Close the
+      open row T912 filed. 008's
+      `packages/knowledge/tests/test_age_proof_consistency.py` holds the defect as a strict expected
+      failure, so this task deletes that case in the same commit; run
+      `uv run scripts/checks/spec_lint.py --feature specs/006-replay-analysis-foundations` and the whole
+      suite by exit code
+
 ## Dependencies and execution order
 
 ### Phase dependencies
@@ -3389,6 +3412,8 @@ this phase, code comments included; only its commits name the old id.
 - **Phase 9** depends on phase 8's T772, whose snapshot its rows are carried from. Inside it: T834
   and T835 land together (the pinned-commit check refuses a pack no snapshot names); T836 after
   T835 is deployed; T837 last.
+- **Phase 10** depends on feature 008's T924, which transcribes the owner reading T851 is
+  corroborated by, and on phase 8's T772, whose build 185872 snapshot T851 supersedes.
 
 ### Within phases
 

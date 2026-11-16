@@ -123,6 +123,23 @@ def test_the_first_event_of_every_stream_is_match_started(
     assert first.payload.build == _BUILD_BY_RECORDING.get(recording_path.stem, _FIXTURE_BUILD)
 
 
+def test_match_started_carries_the_lobbys_population_limit_as_a_decimal_string(
+    parsed: _Parsed, canonical_stream: list[CanonicalEvent]
+) -> None:
+    """T907: `lobby_presets["population_limit"]` is the engine's own lobby setting
+    (`game_settings["population_limit"]`), a decimal string like the other presets, read
+    unchanged and never derived (research.md R4)."""
+    zheader = cast(Mapping[str, object], parsed["zheader"])
+    game_settings = cast(Mapping[str, object], zheader["game_settings"])
+    first = next(iter(canonical_stream))
+
+    assert isinstance(first.payload, MatchStartedPayload)
+    assert "population_limit" in first.payload.lobby_presets
+    value = first.payload.lobby_presets["population_limit"]
+    assert value.isascii() and value.isdigit()
+    assert value == str(game_settings["population_limit"])
+
+
 #: The DE lobby's own "no team" sentinel (`resolved_team_id`) — see `canonical.py`'s own
 #: `_TEAM_SENTINEL_NO_TEAM` docstring for where this is measured against (`mgz`'s
 #: `summary/teams.py`: "0: empty slot, 1: no team, n: n - 1 = team number").
@@ -180,6 +197,7 @@ def test_a_participant_with_the_no_team_sentinel_reads_as_no_team_at_all() -> No
                 "resolved_map_id": 9,
                 "starting_resources_id": 0,
                 "starting_age_id": 2,
+                "population_limit": 200,
                 "map_size": 120,
                 "players": [
                     {"player_number": 1, "civ_id": 1, "resolved_team_id": 1},
@@ -215,6 +233,7 @@ def test_the_sentinel_translation_does_not_disturb_real_team_ids_in_the_same_mat
                 "resolved_map_id": 9,
                 "starting_resources_id": 0,
                 "starting_age_id": 2,
+                "population_limit": 200,
                 "map_size": 120,
                 "players": [
                     {"player_number": 1, "civ_id": 1, "resolved_team_id": 1},
@@ -391,6 +410,7 @@ def _settings(*numbers: int) -> dict[str, object]:
                 "resolved_map_id": 9,
                 "starting_resources_id": 0,
                 "starting_age_id": 2,
+                "population_limit": 200,
                 "map_size": 120,
                 "players": [
                     {"player_number": n, "civ_id": n, "resolved_team_id": n + 1} for n in numbers
@@ -504,7 +524,9 @@ def test_queueing_repeated_identically_is_never_collapsed() -> None:
 
     assert len(events) == 3
     payload = events[0].payload
-    assert payload == UnitQueuedPayload(unit_id=83, building_type=109, building_object=500, count=1)
+    assert payload == UnitQueuedPayload(
+        unit_id=83, building_type=109, building_object=500, count=1, building_objects=(500, 501)
+    )
 
 
 def test_a_movement_command_with_no_decoded_units_keeps_an_empty_list() -> None:
@@ -1068,3 +1090,21 @@ def test_raw_actions_count_before_collapse_and_before_the_exit_rule() -> None:
     list(canonical_events(stream, accounting))
     # Player 9 is unseated: not counted. Player 1's collapsed and post-exit commands are.
     assert accounting.raw_actions == {1: 5, 2: 1}
+
+
+def test_unit_queued_carries_every_named_building_in_the_engines_order(
+    parsed: _Parsed, canonical_stream: list[CanonicalEvent]
+) -> None:
+    queued = [e for e in canonical_stream if e.kind is EventKind.UNIT_QUEUED]
+    named = [
+        [int(i) for i in cast(Sequence[int], payload["building_ids"])]
+        for _, label, payload in _timed_actions(parsed)
+        if label == "DeQueue"
+    ]
+    assert len(queued) == len(named)
+    for event, expected in zip(queued, named, strict=True):
+        payload = cast(UnitQueuedPayload, event.payload)
+        objects = payload.building_objects
+        assert len(objects) > 0
+        assert objects[0] == payload.building_object
+        assert list(objects) == expected

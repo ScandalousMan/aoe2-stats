@@ -6,6 +6,7 @@ A failure here means the stream moved. Do not regenerate to make it pass: find o
 
 from __future__ import annotations
 
+import hashlib
 import itertools
 import json
 from pathlib import Path
@@ -18,6 +19,27 @@ from scripts.ops.canonical_golden import (
 )
 
 _RECORDINGS = recordings()
+# sha256 of each recording's `unit-queued` golden lines as committed before T906 widened that
+# payload; data recorded once, never recomputed from the current goldens.
+_UNIT_QUEUED_DIGESTS = json.loads(
+    (Path(__file__).parent / "unit_queued_digests.json").read_text(encoding="utf-8")
+)["recordings"]
+# The event kinds the stream held at c1f85aa7, the parent of T906's commit, besides `unit-queued`:
+# read once from the goldens of that commit and never recomputed. A kind added after it is not here.
+_KINDS_BEFORE_T906 = frozenset(
+    {
+        "building-placed",
+        "chat",
+        "market-transaction",
+        "match-ended",
+        "match-started",
+        "object-deleted",
+        "participant-resigned",
+        "research-queued",
+        "undecoded",
+        "units-commanded",
+    }
+)
 
 
 def _first_difference(live: str, committed: str) -> str:
@@ -54,3 +76,46 @@ def test_the_golden_is_valid_json_and_carries_no_text_or_names(zip_path: Path) -
         assert event["participant"] is None or isinstance(event["participant"], int)
         if event["kind"] == "chat":
             assert list(event["payload"]) == ["channel"]
+
+
+@pytest.mark.parametrize("zip_path", _RECORDINGS, ids=lambda p: p.stem)
+def test_unit_queued_events_equal_the_previous_stream_without_building_objects(
+    zip_path: Path,
+) -> None:
+    """The comparison with the stream before T906 stays true after later tasks add other events."""
+    lines = []
+    for line in live_serialisation(zip_path).splitlines():
+        if '"kind":"unit-queued"' not in line:
+            continue
+        record = json.loads(line.rstrip(","))
+        del record["payload"]["building_objects"]
+        lines.append(json.dumps(record, separators=(",", ":"), sort_keys=False))
+    expected = _UNIT_QUEUED_DIGESTS[zip_path.stem]
+    assert hashlib.sha256("\n".join(lines).encode()).hexdigest() == expected["sha256"]
+
+
+def _other_events_digest(serialisation: str) -> str:
+    lines = []
+    for line in serialisation.splitlines()[1:-1]:
+        if '"kind":"unit-queued"' in line:
+            continue
+        record = json.loads(line.rstrip(","))
+        if record["kind"] not in _KINDS_BEFORE_T906:
+            continue
+        if record["kind"] == "match-started":
+            record["payload"]["lobby_presets"].pop("population_limit", None)
+        lines.append(json.dumps(record, separators=(",", ":"), sort_keys=False))
+    return hashlib.sha256("\n".join(lines).encode()).hexdigest()
+
+
+@pytest.mark.parametrize("zip_path", _RECORDINGS, ids=lambda p: p.stem)
+def test_every_other_event_equals_the_stream_before_t906(zip_path: Path) -> None:
+    """T906 touched unit-queued lines only; every other line is pinned against c1f85aa7.
+
+    Only lines whose kind existed before T906 are compared (`_KINDS_BEFORE_T906`); lines of any
+    kind a later task adds are excluded, so adding an event kind never turns this red. Only
+    `population_limit` (T908) is stripped from the match-started line.
+    """
+    committed = golden_path(zip_path).read_text()
+    expected = _UNIT_QUEUED_DIGESTS[zip_path.stem]["other_events_sha256"]
+    assert _other_events_digest(committed) == expected
