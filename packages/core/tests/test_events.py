@@ -122,7 +122,6 @@ def test_chat_payload_carries_no_text() -> None:
     assert not names & {"text", "message", "content", "body"}
 
 
-@pytest.mark.xfail(strict=True, reason="T906 not implemented yet")
 def test_unit_queued_carries_every_producing_building_in_the_engines_order() -> None:
     from dataclasses import fields
 
@@ -135,9 +134,9 @@ def test_unit_queued_carries_every_producing_building_in_the_engines_order() -> 
         unit_id=83,
         building_type=109,
         building_object=500,
-        building_objects=(500, 501, 499),  # type: ignore[call-arg]
+        building_objects=(500, 501, 499),
         count=1,
     )
-    assert payload.building_objects == (500, 501, 499)  # type: ignore[attr-defined]
-    assert payload.building_objects  # type: ignore[attr-defined]
-    assert payload.building_objects[0] == payload.building_object  # type: ignore[attr-defined]
+    assert payload.building_objects == (500, 501, 499)
+    assert payload.building_objects
+    assert payload.building_objects[0] == payload.building_object

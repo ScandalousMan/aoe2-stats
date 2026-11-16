@@ -214,13 +214,18 @@ def test_a_genuinely_repeated_unit_queue_command_is_not_collapsed(
         f"training, typically); the most repeated command found was issued only {raw_count} times"
     )
 
-    expected_payload = UnitQueuedPayload(
-        unit_id=unit_id, building_type=building_type, building_object=building_object, count=count
-    )
     matching = [
         e
         for e in _unit_queued_events(canonical_stream)
-        if e.participant == player and e.payload == expected_payload
+        if e.participant == player
+        and isinstance(e.payload, UnitQueuedPayload)
+        and (
+            e.payload.unit_id,
+            e.payload.building_type,
+            e.payload.building_object,
+            e.payload.count,
+        )
+        == (unit_id, building_type, building_object, count)
     ]
 
     assert len(matching) == raw_count, (

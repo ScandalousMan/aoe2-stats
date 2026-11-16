@@ -6,6 +6,7 @@ A failure here means the stream moved. Do not regenerate to make it pass: find o
 
 from __future__ import annotations
 
+import hashlib
 import itertools
 import json
 from pathlib import Path
@@ -18,6 +19,11 @@ from scripts.ops.canonical_golden import (
 )
 
 _RECORDINGS = recordings()
+# sha256 of each recording's `unit-queued` golden lines as committed before T906 widened that
+# payload; data recorded once, never recomputed from the current goldens.
+_UNIT_QUEUED_DIGESTS = json.loads(
+    (Path(__file__).parent / "unit_queued_digests.json").read_text(encoding="utf-8")
+)["recordings"]
 
 
 def _first_difference(live: str, committed: str) -> str:
@@ -54,3 +60,20 @@ def test_the_golden_is_valid_json_and_carries_no_text_or_names(zip_path: Path) -
         assert event["participant"] is None or isinstance(event["participant"], int)
         if event["kind"] == "chat":
             assert list(event["payload"]) == ["channel"]
+
+
+@pytest.mark.parametrize("zip_path", _RECORDINGS, ids=lambda p: p.stem)
+def test_unit_queued_events_equal_the_previous_stream_without_building_objects(
+    zip_path: Path,
+) -> None:
+    """The comparison with the stream before T906 stays true after later tasks add other events."""
+    lines = []
+    for line in live_serialisation(zip_path).splitlines():
+        if '"kind":"unit-queued"' not in line:
+            continue
+        record = json.loads(line.rstrip(","))
+        del record["payload"]["building_objects"]
+        lines.append(json.dumps(record, separators=(",", ":"), sort_keys=False))
+    expected = _UNIT_QUEUED_DIGESTS[zip_path.stem]
+    assert len(lines) == expected["count"]
+    assert hashlib.sha256("\n".join(lines).encode()).hexdigest() == expected["sha256"]

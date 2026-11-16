@@ -110,7 +110,7 @@ the measurements that guard the plan are tests. Nothing here publishes.
       `building_object`. Type test in `packages/core/tests/test_events.py`; adapter test over every
       committed recording in `packages/replay-engine/tests/test_canonical.py`
       (contracts/canonical-events-amendment.md, research R1).
-- [ ] T906 After T912a. Widen the vocabulary and the adapter, and delete T905's markers:
+- [x] T906 After T912a. Widen the vocabulary and the adapter, and delete T905's markers:
       `packages/core/src/aoe2stats_core/replay/events.py` and
       `packages/replay-engine/src/aoe2stats_replay_engine/canonical.py`. Regenerate the canonical
       goldens with `scripts/ops/canonical_golden.py`. Before regenerating, record beside the test a

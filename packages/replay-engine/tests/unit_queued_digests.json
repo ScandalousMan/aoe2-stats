@@ -1,0 +1,17 @@
+{
+  "comment": "sha256 of each recording's unit-queued golden lines (compact JSON, one per line, joined by newline) as committed before T906 widened the payload. Data, not recomputed.",
+  "recordings": {
+    "AgeIIDE_Replay_500546441": {
+      "count": 899,
+      "sha256": "813be5a9df4410b65eb8ecc55b73ab3d950be7c2a367a8c285d33b7f24ada7cf"
+    },
+    "AgeIIDE_Replay_504695319": {
+      "count": 810,
+      "sha256": "3a856aa2de0e2da73f9fc2d1b27621239148eb4d13bd9c56a5402e9ee6809e40"
+    },
+    "AgeIIDE_Replay_511523321": {
+      "count": 410,
+      "sha256": "f069cb1e6e97d91fd3764cbbad6287c702bbd90aa36bf25d4ad3978c55c4f5d2"
+    }
+  }
+}

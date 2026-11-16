@@ -504,7 +504,9 @@ def test_queueing_repeated_identically_is_never_collapsed() -> None:
 
     assert len(events) == 3
     payload = events[0].payload
-    assert payload == UnitQueuedPayload(unit_id=83, building_type=109, building_object=500, count=1)
+    assert payload == UnitQueuedPayload(
+        unit_id=83, building_type=109, building_object=500, count=1, building_objects=(500, 501)
+    )
 
 
 def test_a_movement_command_with_no_decoded_units_keeps_an_empty_list() -> None:
@@ -1070,7 +1072,6 @@ def test_raw_actions_count_before_collapse_and_before_the_exit_rule() -> None:
     assert accounting.raw_actions == {1: 5, 2: 1}
 
 
-@pytest.mark.xfail(strict=True, reason="T906 not implemented yet")
 def test_unit_queued_carries_every_named_building_in_the_engines_order(
     parsed: _Parsed, canonical_stream: list[CanonicalEvent]
 ) -> None:
@@ -1083,7 +1084,7 @@ def test_unit_queued_carries_every_named_building_in_the_engines_order(
     assert len(queued) == len(named)
     for event, expected in zip(queued, named, strict=True):
         payload = cast(UnitQueuedPayload, event.payload)
-        objects = payload.building_objects  # type: ignore[attr-defined]
+        objects = payload.building_objects
         assert len(objects) > 0
         assert objects[0] == payload.building_object
         assert list(objects) == expected

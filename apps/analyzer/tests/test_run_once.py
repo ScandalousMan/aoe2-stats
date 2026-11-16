@@ -1487,7 +1487,11 @@ class _BuildNamingExtractor(_FakeExtractor):
                     kind=EventKind.UNIT_QUEUED,
                     participant=1,
                     payload=UnitQueuedPayload(
-                        unit_id=self._queued_unit_id, building_type=87, building_object=1, count=1
+                        unit_id=self._queued_unit_id,
+                        building_type=87,
+                        building_object=1,
+                        count=1,
+                        building_objects=(1,),
                     ),
                 )
             )

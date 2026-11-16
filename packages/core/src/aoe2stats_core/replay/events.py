@@ -114,6 +114,9 @@ class UnitQueuedPayload:
     building_type: int
     building_object: int
     count: int
+    # Every producing building the command names, in the engine's order; never empty, and the
+    # first one is `building_object`.
+    building_objects: tuple[int, ...]
 
 
 @dataclass(frozen=True, slots=True)
