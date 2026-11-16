@@ -171,12 +171,14 @@ document with an empty `reconstructed` block.
 
 **Independent test**: quickstart, Phase 2.
 
-- [ ] T913 Create the package: `packages/reconstruction/pyproject.toml` (depends on
+- [x] T913 Create the package: `packages/reconstruction/pyproject.toml` (depends on
       `aoe2stats-core` and `aoe2stats-knowledge` only), `packages/reconstruction/src/aoe2stats_reconstruction/__init__.py`
       with the package version, the workspace member, test paths and mypy entry in the root
       `pyproject.toml`, the python path filter in `.github/workflows/pr.yml`, and the dependency
       declared on `apps/analyzer/pyproject.toml` itself, not inherited (research R12). A packaging test
-      in `packages/reconstruction/tests/test_packaging.py` asserts the analyzer declares it.
+      in `packages/reconstruction/tests/test_reconstruction_packaging.py` asserts the analyzer declares it
+      (not `test_packaging.py`: that basename exists in `packages/knowledge/tests/` and two test
+      modules sharing a basename abort collection in the one workspace session).
 - [ ] T914 [P] [US3] Test first, `xfail(strict=True)`, in `packages/reconstruction/tests/test_orders.py`:
       one fold over a canonical stream yields the orders of data-model §1, with every producing
       building, the source event index, and nothing attributed after a participant's resignation

@@ -45,6 +45,8 @@ jobs:
               # what a job verifies must be able to trigger that job. Without this line, a pull
               # request touching only `packages/knowledge/` runs no Python job at all.
               - 'packages/knowledge/**'
+              # 008 T913: same rule as the line above, for the reconstruction package.
+              - 'packages/reconstruction/**'
               - 'api/**'
               - 'scripts/**'
               - 'pyproject.toml'
