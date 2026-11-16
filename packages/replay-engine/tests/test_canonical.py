@@ -123,6 +123,24 @@ def test_the_first_event_of_every_stream_is_match_started(
     assert first.payload.build == _BUILD_BY_RECORDING.get(recording_path.stem, _FIXTURE_BUILD)
 
 
+@pytest.mark.xfail(strict=True, reason="T908 not implemented yet")
+def test_match_started_carries_the_lobbys_population_limit_as_a_decimal_string(
+    parsed: _Parsed, canonical_stream: list[CanonicalEvent]
+) -> None:
+    """T907: `lobby_presets["population_limit"]` is the engine's own lobby setting
+    (`game_settings["population_limit"]`), a decimal string like the other presets, read
+    unchanged and never derived (research.md R4)."""
+    zheader = cast(Mapping[str, object], parsed["zheader"])
+    game_settings = cast(Mapping[str, object], zheader["game_settings"])
+    first = next(iter(canonical_stream))
+
+    assert isinstance(first.payload, MatchStartedPayload)
+    assert "population_limit" in first.payload.lobby_presets
+    value = first.payload.lobby_presets["population_limit"]
+    assert value.isascii() and value.isdigit()
+    assert value == str(game_settings["population_limit"])
+
+
 #: The DE lobby's own "no team" sentinel (`resolved_team_id`) — see `canonical.py`'s own
 #: `_TEAM_SENTINEL_NO_TEAM` docstring for where this is measured against (`mgz`'s
 #: `summary/teams.py`: "0: empty slot, 1: no team, n: n - 1 = team number").

@@ -120,7 +120,7 @@ the measurements that guard the plan are tests. Nothing here publishes.
       stream stays true after later tasks add other events. 006's golden
       timeline must compare byte-identical. The register datum `event.unit_queued.building_objects`
       already exists (T912a); this task adds nothing to the register (FR-002, FR-011, FR-013). Never separately green from T905's removal of its markers.
-- [ ] T907 After T906, which edits the same test file and adapter. Test first, `xfail(strict=True)`: `match-started` carries `population_limit` in
+- [x] T907 After T906, which edits the same test file and adapter. Test first, `xfail(strict=True)`: `match-started` carries `population_limit` in
       `lobby_presets`, a decimal string read from the engine's lobby settings, for every committed
       recording, in `packages/replay-engine/tests/test_canonical.py`.
 - [ ] T908 Read the population limit in
