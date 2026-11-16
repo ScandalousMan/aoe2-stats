@@ -75,5 +75,27 @@ def test_unit_queued_events_equal_the_previous_stream_without_building_objects(
         del record["payload"]["building_objects"]
         lines.append(json.dumps(record, separators=(",", ":"), sort_keys=False))
     expected = _UNIT_QUEUED_DIGESTS[zip_path.stem]
-    assert len(lines) == expected["count"]
     assert hashlib.sha256("\n".join(lines).encode()).hexdigest() == expected["sha256"]
+
+
+def _other_events_digest(serialisation: str) -> str:
+    lines = []
+    for line in serialisation.splitlines()[1:-1]:
+        if '"kind":"unit-queued"' in line:
+            continue
+        record = json.loads(line.rstrip(","))
+        if record["kind"] == "match-started":
+            record["payload"]["lobby_presets"].pop("population_limit", None)
+        lines.append(json.dumps(record, separators=(",", ":"), sort_keys=False))
+    return hashlib.sha256("\n".join(lines).encode()).hexdigest()
+
+
+@pytest.mark.parametrize("zip_path", _RECORDINGS, ids=lambda p: p.stem)
+def test_every_other_event_equals_the_stream_before_t906(zip_path: Path) -> None:
+    """T906 touched unit-queued lines only; every other line is pinned against c1f85aa7.
+
+    Only `population_limit` (T908) is stripped from the match-started line.
+    """
+    committed = golden_path(zip_path).read_text()
+    expected = _UNIT_QUEUED_DIGESTS[zip_path.stem]["other_events_sha256"]
+    assert _other_events_digest(committed) == expected

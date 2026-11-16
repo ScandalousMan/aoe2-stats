@@ -35,6 +35,7 @@ class _Upgrade:
     clock_ms: int
     later_orders: tuple[int, ...]  # unit ids ordered by that participant after the research
     earlier_orders: tuple[int, ...]  # unit ids ordered by that participant before it
+    names_agree: bool  # the research and the unit the relation names carry the same name
 
 
 def _upgrade_relation(build: int) -> dict[int, int]:
@@ -48,10 +49,22 @@ def _upgrade_relation(build: int) -> dict[int, int]:
     }
 
 
+def _names(build: int) -> tuple[dict[int, str | None], dict[int, str | None]]:
+    """Technology and unit names of the build's rules, keyed by id."""
+    snap = snapshot.snapshot_for(build)
+    assert not isinstance(snap, KnowledgeGap), f"no snapshot for build {build}"
+    entities: dict[str, dict[str, Any]] = query._rules(snap.directory)["entities"]
+    return (
+        {int(i): r.get("name") for i, r in entities["technology"].items()},
+        {int(i): r.get("name") for i, r in entities["unit"].items()},
+    )
+
+
 def _upgrades_in(path: Path) -> list[_Upgrade]:
     events = json.loads(path.read_text(encoding="utf-8"))["events"]
     build = next(e["payload"]["build"] for e in events if e["kind"] == "match-started")
     relation = _upgrade_relation(build)
+    technology_names, unit_names = _names(build)
     found: list[_Upgrade] = []
     for index, event in enumerate(events):
         if event["kind"] != "research-queued":
@@ -74,6 +87,10 @@ def _upgrades_in(path: Path) -> list[_Upgrade]:
                 clock_ms=event["clock_ms"],
                 later_orders=tuple(u for i, u in orders if i > index),
                 earlier_orders=tuple(u for i, u in orders if i < index),
+                names_agree=(
+                    technology_names.get(tech) is not None
+                    and technology_names.get(tech) == unit_names.get(relation[tech])
+                ),
             )
         )
     return found
@@ -97,13 +114,17 @@ def test_no_upgrade_research_is_followed_by_an_order_of_the_upgraded_unit(
 
 
 def test_goldens_hold_upgrades_followed_by_base_line_orders(upgrades: list[_Upgrade]) -> None:
-    """Non-vacuity: some upgrade research is followed by orders of a unit that the same
-    participant was already ordering before it (the base line), and which is not the upgraded
-    unit. Without this the main test could pass over goldens holding no upgrade at all."""
+    """Non-vacuity: some upgrade research whose `upgrades_unit` entry is right (the research and
+    the unit it names carry the same name) is followed by orders of a unit the same participant
+    was already ordering before it (the base line), and the upgraded unit itself is not among
+    them. A relation pointing at unrelated units fails this, so the main test cannot pass over a
+    corrupted relation or over goldens holding no upgrade at all."""
     assert upgrades, "the goldens hold no unit-upgrade research"
     with_base_line = [
         u
         for u in upgrades
-        if {x for x in u.later_orders if x in u.earlier_orders} - {u.upgraded_unit}
+        if u.names_agree
+        and u.upgraded_unit not in u.later_orders
+        and {x for x in u.later_orders if x in u.earlier_orders} - {u.upgraded_unit}
     ]
     assert with_base_line, "no upgrade research is followed by orders of an earlier-ordered unit"

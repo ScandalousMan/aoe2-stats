@@ -354,7 +354,7 @@ Read directly from the recording.
 
 - status: planned
 - source: the training-queue command's list of producing-building object ids
-- method: the first id in the list is kept; a command naming several producing buildings still yields one event, and the rest are not represented — a narrowing of the vocabulary, not a re-decoding of the omitted ones
+- method: the first id of event.unit_queued.building_objects, which carries every producing building the command names; kept unchanged so no consumer moves, and no longer a narrowing since the rest are carried in building_objects (specs/008-match-reconstruction/contracts/canonical-events-amendment.md)
 - requires knowledge: none
 - depends on: none
 - validation: packages/replay-engine/tests — golden canonical stream (feature 006 phase 3)
@@ -812,7 +812,7 @@ Rebuilt from several recorded facts.
 - source: the participant's ordered units, the starting state and the knowledge base; the deduction strategy for what the recording does not carry is chosen by FR-012
 - method: the exact population of a participant over the match; the method is chosen by FR-012 and adopted only after the candidate rules are checked against the game's playback (FR-019); until then only the estimates of FR-034 are published, under their own names
 - requires knowledge: `production_time`, `produced_at`
-- depends on: `event.unit_queued.unit_id`, `event.unit_queued.count`, `event.unit_queued.building_object`, `event.match_started.participants`
+- depends on: `event.unit_queued.unit_id`, `event.unit_queued.count`, `event.unit_queued.building_objects`, `event.unit_unqueued.unit_id`, `event.unit_unqueued.count`, `event.research_queued.technology_id`, `event.research_queued.researching_building`, `event.match_started.participants`
 - validation: feature 008 golden reconstruction fixtures and reconstruction invariants
 - evidence: specs/008-match-reconstruction/spec.md FR-001a, FR-012
 
@@ -822,7 +822,7 @@ Rebuilt from several recorded facts.
 - source: the orders attributed to each Town Center and the knowledge base's production times
 - method: the exact idle time of each Town Center, from an empty queue to its next order; the method is chosen by FR-012 and checked against the game's playback (FR-019); until then only the estimated idle periods of FR-035 are published, under their own name
 - requires knowledge: `production_time`, `produced_at`
-- depends on: `event.unit_queued.unit_id`, `event.unit_queued.count`, `event.unit_queued.building_object`, `event.research_queued.technology_id`, `event.research_queued.researching_building`, `event.match_started.participants`
+- depends on: `event.unit_queued.unit_id`, `event.unit_queued.count`, `event.unit_queued.building_objects`, `event.unit_unqueued.unit_id`, `event.unit_unqueued.count`, `event.research_queued.technology_id`, `event.research_queued.researching_building`, `event.match_started.participants`
 - validation: feature 008 golden reconstruction fixtures and reconstruction invariants
 - evidence: specs/008-match-reconstruction/spec.md FR-001a, FR-012
 
@@ -915,7 +915,7 @@ A signal read from behaviour, not a recorded fact.
 
 - status: planned
 - source: enemy commands that target a unit object id, and the participant's own commands naming it
-- method: estimated-unit-losses v1: a unit is an identified estimated loss when a command of a participant of another team targets its object id after the last command of its owner naming it and before the owner's resignation, dated at the last such command; a later command of the owner naming it counts no loss; a unit another participant later names as their own is not a loss (FR-032); explicit deletions are not read (FR-036)
+- method: estimated-unit-losses v1: a unit is an identified estimated loss when a command of a participant of another team targets its object id after the last command of its owner naming it and before the owner's resignation, dated at the last such command; a later command of the owner naming it counts no loss; a unit another participant later names as their own is not a loss (FR-032); explicit deletions are not read (FR-036); interim policies of research R17: none applies, since this estimate reads no queue model, so neither execution, distribution, state nor occupancy is in force
 - non-claim: an estimate, never a count of units lost: it finds a minority of the units that died, a unit that was attacked and then silent is counted lost whether or not it died, a deleted unit stays alive in the living population and a deleted object an enemy command had targeted is counted lost
 - confidence method: level is low until playback readings have measured the estimate's error and the entry names them as its calibration (FR-029); what level a measured error earns is written here in the change that records the error
 - requires knowledge: none
@@ -927,7 +927,7 @@ A signal read from behaviour, not a recorded fact.
 
 - status: planned
 - source: enemy commands that target a producing-building object id, and the orders issued from it
-- method: estimated-buildings-destroyed v1: the rule of FR-032 with the orders issued from a building in place of the commands naming a unit; a building never ordered from is never seen and has no estimated destruction; explicit deletions are not read (FR-036)
+- method: estimated-buildings-destroyed v1: the rule of FR-032 with the orders issued from a building in place of the commands naming a unit; a building never ordered from is never seen and has no estimated destruction; explicit deletions are not read (FR-036); interim policies of research R17: none applies, since this estimate reads no queue model, so neither execution, distribution, state nor occupancy is in force
 - non-claim: an estimate, not a count of buildings destroyed: an attacked building that then orders nothing may have been idle, obsolete or captured; it errs toward counting a surviving building destroyed and toward missing a destroyed one that was never targeted
 - confidence method: level is low until playback readings have measured the estimate's error and the entry names them as its calibration (FR-029); what level a measured error earns is written here in the change that records the error
 - requires knowledge: none
@@ -939,11 +939,11 @@ A signal read from behaviour, not a recorded fact.
 
 - status: planned
 - source: the estimated living population series and the lobby's population limit
-- method: estimated-population-excess v1: where the estimated living population would exceed the lobby's population limit, the excess is published at that clock and removed from the living population; it names no object and no unit type; an identified loss or a change of owner counts for one population (FR-033)
+- method: estimated-population-excess v1: where the estimated living population would exceed the lobby's population limit, the excess is published at that clock and removed from the living population; it names no object and no unit type; an identified loss or a change of owner counts for one population (FR-033); interim policies of research R17 in force, all four, because the living population it reads is built by the queue model: execution (research R17: 'every recorded unit order is counted; a research counts once, at its first occurrence (006 FR-018)', until D-EXEC-1); distribution ('each unit of a command goes to the named building whose modelled queue ends soonest', until D-DIST-1); state ('an age is in force from the modelled completion of its age-up item in the same queue model; no other condition changes a production time', until D-AGE-1 and the settled state); occupancy ('an object of no known unit type (an identified loss, a unit that changed owner) occupies one population', until a method that gives an object id a unit type, if one is ever measured)
 - non-claim: an estimate of the population the model counted that the game's limit would not have allowed, not a count of units that died; commands the game refused are counted, so it errs toward a larger excess
 - confidence method: level is low until playback readings have measured the estimate's error and the entry names them as its calibration (FR-029); what level a measured error earns is written here in the change that records the error
 - requires knowledge: `production_time`, `produced_at`
-- depends on: `event.match_started.participants`, `event.unit_queued.unit_id`, `event.unit_queued.count`, `participant.estimated_unit_losses`
+- depends on: `event.match_started.participants`, `event.match_started.lobby_presets`, `event.unit_queued.unit_id`, `event.unit_queued.count`, `event.unit_queued.building_objects`, `event.research_queued.technology_id`, `event.research_queued.researching_building`, `participant.estimated_unit_losses`
 - validation: feature 008 golden seen-data and estimates fixtures (contracts/estimates.md)
 - evidence: specs/008-match-reconstruction/research.md R16, R17
 
@@ -951,11 +951,11 @@ A signal read from behaviour, not a recorded fact.
 
 - status: planned
 - source: the starting state, the queue model, the estimated unit losses and the estimated population excess
-- method: estimated-living-population v1: the value after each change of the starting units, each unit ordered at the modelled completion of its queue item less the cancellations shown, and a unit another participant named first at this participant's first command naming it, less the identified losses, the population excess and the units that changed owner; never negative, withheld with the population excess if it would be (FR-031, FR-034); interim policies: which commands the game executed and how a command spreads over its buildings until gate G1, which age is in force until the age-up rule of FR-010; explicit deletions are not read (FR-036)
+- method: estimated-living-population v1: the value after each change of the starting units, each unit ordered at the modelled completion of its queue item less the cancellations shown, and a unit another participant named first at this participant's first command naming it, less the identified losses, the population excess and the units that changed owner; never negative, withheld with the population excess if it would be (FR-031, FR-034); interim policies: which commands the game executed and how a command spreads over its buildings until gate G1, which age is in force until the age-up rule of FR-010; interim policies of research R17 in force, all four: execution (research R17: 'every recorded unit order is counted; a research counts once, at its first occurrence (006 FR-018)', until D-EXEC-1); distribution ('each unit of a command goes to the named building whose modelled queue ends soonest', until D-DIST-1); state ('an age is in force from the modelled completion of its age-up item in the same queue model; no other condition changes a production time', until D-AGE-1 and the settled state); occupancy ('an object of no known unit type (an identified loss, a unit that changed owner) occupies one population', until a method that gives an object id a unit type, if one is ever measured); explicit deletions are not read (FR-036)
 - non-claim: an estimate, not the game's population: commands the game refused are counted, a deleted unit stays in it, a unit no command names enters only through its queue order and leaves only through the population limit, and a pause for want of housing is not modelled
 - confidence method: level is low until playback readings have measured the estimate's error and the entry names them as its calibration (FR-029); what level a measured error earns is written here in the change that records the error
 - requires knowledge: `production_time`, `produced_at`
-- depends on: `participant.estimated_unit_losses`, `participant.estimated_population_excess`, `participant.units_seen`, `event.unit_queued.unit_id`, `event.unit_queued.count`, `event.unit_queued.building_objects`
+- depends on: `participant.estimated_unit_losses`, `participant.estimated_population_excess`, `participant.units_seen`, `event.match_started.participants`, `event.unit_queued.unit_id`, `event.unit_queued.count`, `event.unit_queued.building_objects`, `event.research_queued.technology_id`, `event.research_queued.researching_building`
 - validation: feature 008 golden seen-data and estimates fixtures (contracts/estimates.md)
 - evidence: specs/008-match-reconstruction/research.md R16, R17
 
@@ -963,7 +963,7 @@ A signal read from behaviour, not a recorded fact.
 
 - status: planned
 - source: each producing building's orders and its modelled queue
-- method: estimated-production-idle v1: the stretches between a building's first and last order during which its modelled queue, built by the method of FR-031, is empty; the time from the last order to its estimated destruction, the owner's exit or the match end is published apart as after_last_order and never summed into idle time (FR-035); explicit deletions are not read (FR-036)
+- method: estimated-production-idle v1: the stretches between a building's first and last order during which its modelled queue, built by the method of FR-031, is empty; the time from the last order to its estimated destruction, the owner's exit or the match end is published apart as after_last_order and never summed into idle time (FR-035); explicit deletions are not read (FR-036); interim policies of research R17 in force: execution (research R17: 'every recorded unit order is counted; a research counts once, at its first occurrence (006 FR-018)', until D-EXEC-1); distribution ('each unit of a command goes to the named building whose modelled queue ends soonest', until D-DIST-1); state ('an age is in force from the modelled completion of its age-up item in the same queue model; no other condition changes a production time', until D-AGE-1 and the settled state); not in force: occupancy, since no population is counted
 - non-claim: an estimate, not an exact idle time: a pause for want of housing reads as an empty queue, refused commands are counted as production, and the stretch after the last order includes the production of the last items ordered
 - confidence method: level is low until playback readings have measured the estimate's error and the entry names them as its calibration (FR-029); what level a measured error earns is written here in the change that records the error
 - requires knowledge: `production_time`, `produced_at`

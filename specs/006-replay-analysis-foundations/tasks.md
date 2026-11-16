@@ -3372,17 +3372,16 @@ this phase, code comments included; only its commits name the old id.
 ## Phase 10: A defect reported by feature 008 (filed 2026-11-15, owner's arbitration)
 
 **Purpose**: feature 008's research R3 (`specs/008-match-reconstruction/research.md`) cross-checks
-`age_requirement` against every committed recording and finds one disagreement: the Sicilians'
-unit 1658 (Serjeant) is answered Castle Age, and recording 511523321 orders it before its
-participant clicks Castle Age. The request is filed as an open row of
+`age_requirement` against every committed recording and finds one disagreement, for a Sicilian
+unit; R3 states the case and this phase does not restate it. The request is filed as an open row of
 [owner-readings.md](./owner-readings.md) by 008's T912. T746, which 008's artifacts first named as
 the carrier, had already closed, and so had the build 185872 sheet; the owner's arbitration of
 2026-11-15 files this phase instead.
 
-**Numbering**: Phase 10 takes T851, the first id above the highest any feature defined on
-2026-11-15.
+**Numbering**: Phase 10 takes T851, the first id above T850, the highest any feature defined
+before feature 008 took T901 onward on 2026-11-15.
 
-- [ ] T851 [US2] Correct the Sicilians' unit 1658 `age_requirement` in a superseding build 185872
+- [ ] T851 [US2] Correct the `age_requirement` of the Sicilian unit research R3 names in a superseding build 185872
       snapshot, with the build 185872 sheet's chain rules: the value is transcribed from a source the
       row cites (the pack's strings, publisher patch notes), corroborated by 008's owner reading O3 once
       008's T924 has transcribed it, and never from a reading an agent took. Check the build 188329

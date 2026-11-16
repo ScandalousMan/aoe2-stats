@@ -90,8 +90,8 @@ def _cases() -> list[Any]:
     ]
 
 
-def _violations(golden: Path, participant: int) -> list[_Order]:
-    """Every order of `participant` that needs an age the participant had not yet clicked."""
+def _scan(golden: Path, participant: int) -> tuple[list[_Order], list[_Order]]:
+    """(violations, every order needing an age above the first) of one participant."""
     document = _load(golden)
     events = document["events"]
     started = events[0]["payload"]
@@ -118,6 +118,7 @@ def _violations(golden: Path, participant: int) -> list[_Order]:
                 clicks.setdefault(age, event["clock_ms"])
 
     found: list[_Order] = []
+    demanding: list[_Order] = []
     for event in events:
         shape = _ORDERS.get(event["kind"])
         if shape is None or event["participant"] != participant:
@@ -132,10 +133,26 @@ def _violations(golden: Path, participant: int) -> list[_Order]:
         needed = answer.value
         if needed <= 1:
             continue
+        demanding.append(_Order(event["clock_ms"], entity, needed))
         clicked_at = clicks.get(needed)
         if clicked_at is None or event["clock_ms"] < clicked_at:
             found.append(_Order(event["clock_ms"], entity, needed))
-    return found
+    return found, demanding
+
+
+def _violations(golden: Path, participant: int) -> list[_Order]:
+    """Every order of `participant` that needs an age the participant had not yet clicked."""
+    return _scan(golden, participant)[0]
+
+
+def _demanding_ages(golden: Path) -> list[int]:
+    """The age every order above the first needs, over all participants, known defect excluded."""
+    return [
+        order.required_age
+        for _, slot in _participants(golden)
+        for order in _scan(golden, slot)[1]
+        if not _is_known_defect(golden.name, slot, order)
+    ]
 
 
 def _is_known_defect(golden_name: str, participant: int, order: _Order) -> bool:
@@ -149,6 +166,20 @@ def _is_known_defect(golden_name: str, participant: int, order: _Order) -> bool:
 def test_goldens_are_present() -> None:
     # A glob that finds nothing would make every test below vacuously absent, not green.
     assert _GOLDENS, f"no canonical golden under {_FIXTURES}"
+
+
+@pytest.mark.parametrize("golden", _GOLDENS, ids=lambda g: g.name)
+def test_some_order_needs_an_age_above_dark(golden: Path) -> None:
+    """Guard against a vacuous pass: `age_requirement` answering Dark Age for everything."""
+    assert any(age >= 2 for age in _demanding_ages(golden)), (
+        f"{golden.name}: no order needs age 2 (Feudal) or later; the age proof would hold vacuously"
+    )
+
+
+def test_some_order_needs_age_three_or_later_across_goldens() -> None:
+    assert any(age >= 3 for g in _GOLDENS for age in _demanding_ages(g)), (
+        "no golden order needs age 3 (Castle) or later"
+    )
 
 
 @pytest.mark.parametrize(("golden_name", "participant"), _cases())

@@ -32,6 +32,7 @@ import dataclasses
 import json
 import math
 import re
+import sys
 import tomllib
 from importlib import resources
 from pathlib import Path
@@ -824,29 +825,47 @@ _WEAK_FIELDS = [
 # ---------------------------------------------------------------------------------- the sheet
 
 
+_CARRIER_TASKS = (
+    Path(__file__).resolve().parents[3] / "specs" / "006-replay-analysis-foundations" / "tasks.md"
+)
+
+
+def _open_carrier_ids() -> set[str]:
+    """The ids of the still-unchecked tasks of 006's tasks.md, read at call time."""
+    text = _CARRIER_TASKS.read_text(encoding="utf-8")
+    return set(re.findall(r"^- \[ \] (T\d+)\b", text, flags=re.MULTILINE))
+
+
 def _split_rows(table_text: str) -> tuple[list[list[str]], list[list[str]]]:
     """Split the build 185872 rows of a table into (answered, open-with-a-carrier).
 
     A row is answered when its four answer columns are filled. An open row is admitted only when
-    its "Sources searched" cell names a carrier task (a T-id after "carried by"); an open row
-    without one raises, so a request cannot sit on the sheet with nobody to close it.
+    all four answer cells are empty and its "Sources searched" cell says "carried by" (not
+    negated) and names a task id that exists in 006's tasks.md and is still unchecked; any other
+    open row raises, so a request cannot sit on the sheet with nobody left to close it.
     """
     answered: list[list[str]] = []
     carried: list[list[str]] = []
+    open_ids = _open_carrier_ids()
     for line in table_text.splitlines():
         if not line.startswith("| 185872 |"):
             continue
         cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
         if all(cells[-4:]):
             answered.append(cells)
-        elif re.search(r"carried by [^|]*?\bT\d+\b", cells[-5]):
+            continue
+        phrase = re.search(r"(?<!no longer )carried by ([^|]*)", cells[-5])
+        named = set(re.findall(r"\bT\d+\b", phrase.group(1))) if phrase else set()
+        if not any(cells[-4:]) and named & open_ids:
             carried.append(cells)
         else:
-            raise AssertionError(f"open build 185872 row with no carrier task: {line[:80]}")
+            raise AssertionError(f"open build 185872 row with no open carrier task: {line[:80]}")
     return answered, carried
 
 
-def test_an_open_row_without_a_carrier_task_is_refused() -> None:
+def test_an_open_row_counts_as_carried_only_by_an_open_task_and_with_no_answer_cell(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     answered = (
         "| 185872 | Slavs | e | cost | none | why | src | v | w | not a game reading | 2026-10-31 |"
     )
@@ -854,13 +873,32 @@ def test_an_open_row_without_a_carrier_task_is_refused() -> None:
         "| 185872 | Sicilians | e | age_requirement | none | why | src, filed by T912 |  |  |  |  |"
     )
     assert len(_split_rows(answered)[0]) == 1 and _split_rows(answered)[1] == []
-    with pytest.raises(AssertionError, match="no carrier"):
+    with pytest.raises(AssertionError, match="no open carrier"):
         _split_rows(open_row)
     carried_row = open_row.replace("filed by T912", "carried by 006's T851")
+    tasks = tmp_path / "tasks.md"
+    tasks.write_text("- [ ] T851 [US2] open\n- [x] T746 [US2] closed\n", encoding="utf-8")
+    monkeypatch.setattr(sys.modules[__name__], "_CARRIER_TASKS", tasks)
+    # open row + open existing task id: carried
     assert len(_split_rows(carried_row)[1]) == 1
+    # a task id that does not exist
+    with pytest.raises(AssertionError, match="carrier"):
+        _split_rows(open_row.replace("filed by T912", "carried by 006's T999"))
+    # a closed task id
+    with pytest.raises(AssertionError, match="carrier"):
+        _split_rows(open_row.replace("filed by T912", "carried by 006's T746"))
+    # a negated phrase
+    with pytest.raises(AssertionError, match="carrier"):
+        _split_rows(open_row.replace("filed by T912", "no longer carried by T851"))
+    # a half-answered row, even with an open existing carrier
+    with pytest.raises(AssertionError, match="carrier"):
+        _split_rows(carried_row.replace("|  |  |  |  |", "| 7 |  |  |  |"))
 
 
-def test_the_sheet_says_the_snapshot_closed_every_build_185872_row_and_keeps_the_readings() -> None:
+def test_the_sheet_records_the_28_answered_build_185872_rows_with_their_readings() -> None:
+    """The sheet names T772 and the directory, and exactly 28 rows are answered, each with a value,
+    where it was read, and a form or date; the open rows (each held by an open carrier task) are
+    not counted, and nothing is reported unreadable."""
     sheet = _OWNER_READINGS.read_text(encoding="utf-8")
     assert "T772" in sheet
     assert _DIRECTORY in sheet
