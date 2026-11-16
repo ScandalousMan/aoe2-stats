@@ -3412,6 +3412,8 @@ before feature 008 took T901 onward on 2026-11-15.
 - **Phase 9** depends on phase 8's T772, whose snapshot its rows are carried from. Inside it: T834
   and T835 land together (the pinned-commit check refuses a pack no snapshot names); T836 after
   T835 is deployed; T837 last.
+- **Phase 10** depends on feature 008's T924, which transcribes the owner reading T851 is
+  corroborated by, and on phase 8's T772, whose build 185872 snapshot T851 supersedes.
 
 ### Within phases
 

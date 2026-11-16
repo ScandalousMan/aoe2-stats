@@ -130,7 +130,7 @@ the measurements that guard the plan are tests. Nothing here publishes.
       (research R4).
 - [x] T909 [P] Build the timing harness SC-008 and SC-015 are measured with, before any
       reconstruction code exists: `apps/analyzer/tests/test_analysis_time.py` times the analysis of
-      each committed recording along today's path and exposes a comparison that later tasks (T950,
+      each committed recording along today's path through a comparison that later tasks (T950,
       T975) call with the reconstruction and the estimates on and off **in the same run**. No timing is
       committed: a figure taken on one machine cannot be compared on another, so research R14's
       baseline is the same run's own path without the new code. The comparison lives in
