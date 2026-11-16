@@ -314,7 +314,7 @@ Read directly from the recording.
 
 - status: planned
 - source: the recording header's lobby preset fields
-- method: read unchanged
+- method: read unchanged: the starting resources, the starting age, the map size and the population limit, each as a decimal string
 - requires knowledge: none
 - depends on: none
 - validation: packages/replay-engine/tests — golden canonical stream (feature 006 phase 3)

@@ -123,7 +123,6 @@ def test_the_first_event_of_every_stream_is_match_started(
     assert first.payload.build == _BUILD_BY_RECORDING.get(recording_path.stem, _FIXTURE_BUILD)
 
 
-@pytest.mark.xfail(strict=True, reason="T908 not implemented yet")
 def test_match_started_carries_the_lobbys_population_limit_as_a_decimal_string(
     parsed: _Parsed, canonical_stream: list[CanonicalEvent]
 ) -> None:
@@ -198,6 +197,7 @@ def test_a_participant_with_the_no_team_sentinel_reads_as_no_team_at_all() -> No
                 "resolved_map_id": 9,
                 "starting_resources_id": 0,
                 "starting_age_id": 2,
+                "population_limit": 200,
                 "map_size": 120,
                 "players": [
                     {"player_number": 1, "civ_id": 1, "resolved_team_id": 1},
@@ -233,6 +233,7 @@ def test_the_sentinel_translation_does_not_disturb_real_team_ids_in_the_same_mat
                 "resolved_map_id": 9,
                 "starting_resources_id": 0,
                 "starting_age_id": 2,
+                "population_limit": 200,
                 "map_size": 120,
                 "players": [
                     {"player_number": 1, "civ_id": 1, "resolved_team_id": 1},
@@ -409,6 +410,7 @@ def _settings(*numbers: int) -> dict[str, object]:
                 "resolved_map_id": 9,
                 "starting_resources_id": 0,
                 "starting_age_id": 2,
+                "population_limit": 200,
                 "map_size": 120,
                 "players": [
                     {"player_number": n, "civ_id": n, "resolved_team_id": n + 1} for n in numbers

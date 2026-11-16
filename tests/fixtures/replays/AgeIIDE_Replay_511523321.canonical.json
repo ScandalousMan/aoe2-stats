@@ -1,5 +1,5 @@
 {"format":1,"recording":"AgeIIDE_Replay_511523321","event_count":4413,"events":[
-{"clock_ms":0,"kind":"match-started","participant":null,"payload":{"build":185872,"map_name":"216","lobby_presets":{"starting_resources_id":"0","starting_age_id":"2","map_size":"120"},"participants":[{"slot":1,"civilisation":23,"team":2},{"slot":2,"civilisation":37,"team":3}]}},
+{"clock_ms":0,"kind":"match-started","participant":null,"payload":{"build":185872,"map_name":"216","lobby_presets":{"starting_resources_id":"0","starting_age_id":"2","map_size":"120","population_limit":"200"},"participants":[{"slot":1,"civilisation":23,"team":2},{"slot":2,"civilisation":37,"team":3}]}},
 {"clock_ms":104,"kind":"chat","participant":2,"payload":{"channel":"0"}},
 {"clock_ms":104,"kind":"chat","participant":2,"payload":{"channel":"1"}},
 {"clock_ms":416,"kind":"undecoded","participant":2,"payload":{"operation":"FarmAutoqueue","payload_length":16}},

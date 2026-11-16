@@ -440,7 +440,12 @@ def _seated(parsed: Mapping[str, object]) -> frozenset[int]:
 # resolved map (which gets `MatchStartedPayload.map_name`, T629a). Carried as decimal strings, like
 # the chat channel above: naming what these integers mean is the knowledge base's job, not this
 # adapter's, so nothing here is translated, only read.
-_LOBBY_PRESET_FIELDS: tuple[str, ...] = ("starting_resources_id", "starting_age_id", "map_size")
+_LOBBY_PRESET_FIELDS: tuple[str, ...] = (
+    "starting_resources_id",
+    "starting_age_id",
+    "map_size",
+    "population_limit",
+)
 
 
 #: The DE lobby's own sentinel for "no team" (`resolved_team_id`) — measured directly against

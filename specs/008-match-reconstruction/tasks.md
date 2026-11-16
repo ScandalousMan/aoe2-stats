@@ -123,7 +123,7 @@ the measurements that guard the plan are tests. Nothing here publishes.
 - [x] T907 After T906, which edits the same test file and adapter. Test first, `xfail(strict=True)`: `match-started` carries `population_limit` in
       `lobby_presets`, a decimal string read from the engine's lobby settings, for every committed
       recording, in `packages/replay-engine/tests/test_canonical.py`.
-- [ ] T908 Read the population limit in
+- [x] T908 Read the population limit in
       `packages/replay-engine/src/aoe2stats_replay_engine/canonical.py`, delete T907's marker, regenerate
       the canonical goldens, and name the new key in the method text of
       `event.match_started.lobby_presets` in `packages/core/src/aoe2stats_core/truth/register.toml`

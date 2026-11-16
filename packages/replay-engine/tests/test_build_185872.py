@@ -144,6 +144,7 @@ def _chapter(
                 "resolved_map_id": 9,
                 "starting_resources_id": 0,
                 "starting_age_id": 2,
+                "population_limit": 200,
                 "map_size": 120,
                 "players": [
                     {
