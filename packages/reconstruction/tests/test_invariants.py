@@ -11,7 +11,9 @@ Assumed API of `aoe2stats_reconstruction.invariants` (T921 must provide it):
 - `check_invariants(stream) -> None`: runs every enabled check, raises the first breach, and
   returns nothing, so a caller that gets no return value has nothing to publish.
 
-A stream is a sequence of plain records, each with a `kind` and the fields of its datum.
+A stream is a sequence of plain records, each with a `kind`, a `participant` slot (an integer, as in
+data-model section 1) and the fields of its datum. An order record has an `OrderKind` value as its
+`kind` and the section 1 field `clock_ms`; a resignation is a `resign` record with `clock_ms`.
 """
 
 from __future__ import annotations
@@ -20,8 +22,6 @@ import contextlib
 from collections.abc import Mapping, Sequence
 
 import pytest
-
-_XFAIL = pytest.mark.xfail(strict=True, reason="T921 not implemented yet")
 
 _Stream = Sequence[Mapping[str, object]]
 
@@ -37,19 +37,19 @@ _ENABLED = [
 _POPULATION_OWNED = ["population-non-negative", "idle-bounded"]
 
 # invariant -> (stream that breaks exactly it, participant, datum, offending value)
-_BREACHES: dict[str, tuple[_Stream, str, str, object]] = {
+_BREACHES: dict[str, tuple[_Stream, int, str, object]] = {
     "spending-non-negative": (
-        [{"kind": "spend", "participant": "p1", "resource": "wood", "amount": -50}],
-        "p1",
+        [{"kind": "spend", "participant": 1, "resource": "wood", "amount": -50}],
+        1,
         "wood",
         -50,
     ),
     "cancellation-bounded": (
         [
-            {"kind": "queue", "participant": "p1", "unstarted": 2},
-            {"kind": "cancel", "participant": "p1", "count": 5},
+            {"kind": "queue", "participant": 1, "unstarted": 2},
+            {"kind": "cancel", "participant": 1, "count": 5},
         ],
-        "p1",
+        1,
         "cancel",
         5,
     ),
@@ -57,21 +57,21 @@ _BREACHES: dict[str, tuple[_Stream, str, str, object]] = {
         [
             {
                 "kind": "age-up",
-                "participant": "p2",
+                "participant": 2,
                 "click_at": 600,
                 "arrival_at": 590,
             }
         ],
-        "p2",
+        2,
         "age-up",
         590,
     ),
     "nothing-after-exit": (
         [
-            {"kind": "resign", "participant": "p2", "at": 300},
-            {"kind": "order", "participant": "p2", "at": 340},
+            {"kind": "resign", "participant": 2, "clock_ms": 300},
+            {"kind": "unit", "participant": 2, "clock_ms": 340, "count": 1},
         ],
-        "p2",
+        2,
         "order",
         340,
     ),
@@ -79,13 +79,13 @@ _BREACHES: dict[str, tuple[_Stream, str, str, object]] = {
         [
             {
                 "kind": "share",
-                "participant": "p1",
+                "participant": 1,
                 "resource": "gold",
                 "military": 120,
                 "total": 100,
             }
         ],
-        "p1",
+        1,
         "gold",
         120,
     ),
@@ -93,13 +93,13 @@ _BREACHES: dict[str, tuple[_Stream, str, str, object]] = {
         [
             {
                 "kind": "starting",
-                "participant": "p1",
+                "participant": 1,
                 "resource": "food",
                 "decoded": 250,
                 "derived": 200,
             }
         ],
-        "p1",
+        1,
         "food",
         250,
     ),
@@ -107,20 +107,19 @@ _BREACHES: dict[str, tuple[_Stream, str, str, object]] = {
         [
             {
                 "kind": "contradiction",
-                "participant": "p1",
+                "participant": 1,
                 "rule": "adopted-rule",
                 "condition": "age-not-reached",
                 "at": 450,
             }
         ],
-        "p1",
+        1,
         "age-not-reached",
         450,
     ),
 }
 
 
-@_XFAIL
 def test_the_closed_set_has_exactly_the_nine_invariants() -> None:
     from aoe2stats_reconstruction.invariants import CHECKS, Invariant
 
@@ -129,7 +128,6 @@ def test_the_closed_set_has_exactly_the_nine_invariants() -> None:
     assert set(CHECKS) == set(Invariant)
 
 
-@_XFAIL
 @pytest.mark.parametrize("name", _POPULATION_OWNED)
 def test_population_owned_invariants_are_declared_with_no_check(name: str) -> None:
     from aoe2stats_reconstruction.invariants import CHECKS, Invariant
@@ -138,7 +136,6 @@ def test_population_owned_invariants_are_declared_with_no_check(name: str) -> No
     assert CHECKS[Invariant(name)] is None
 
 
-@_XFAIL
 @pytest.mark.parametrize("name", _ENABLED)
 def test_every_other_invariant_has_a_check(name: str) -> None:
     from aoe2stats_reconstruction.invariants import CHECKS, Invariant
@@ -146,7 +143,6 @@ def test_every_other_invariant_has_a_check(name: str) -> None:
     assert callable(CHECKS[Invariant(name)])
 
 
-@_XFAIL
 @pytest.mark.parametrize("name", _ENABLED)
 def test_a_stream_breaking_one_invariant_names_it(name: str) -> None:
     from aoe2stats_reconstruction.invariants import Invariant, InvariantBreach, check_invariants
@@ -160,11 +156,10 @@ def test_a_stream_breaking_one_invariant_names_it(name: str) -> None:
     assert breach.datum == datum
     assert breach.value == value
     message = str(breach)
-    for part in (name, participant, datum, str(value)):
+    for part in (name, str(participant), datum, str(value)):
         assert part in message
 
 
-@_XFAIL
 @pytest.mark.parametrize("name", _ENABLED)
 def test_a_breach_publishes_nothing(name: str) -> None:
     from aoe2stats_reconstruction.invariants import InvariantBreach, check_invariants
@@ -176,14 +171,13 @@ def test_a_breach_publishes_nothing(name: str) -> None:
     assert published == []
 
 
-@_XFAIL
 def test_a_stream_breaking_nothing_passes() -> None:
     from aoe2stats_reconstruction.invariants import check_invariants
 
     stream: _Stream = [
-        {"kind": "spend", "participant": "p1", "resource": "wood", "amount": 50},
-        {"kind": "queue", "participant": "p1", "unstarted": 5},
-        {"kind": "cancel", "participant": "p1", "count": 2},
-        {"kind": "age-up", "participant": "p1", "click_at": 600, "arrival_at": 640},
+        {"kind": "spend", "participant": 1, "resource": "wood", "amount": 50},
+        {"kind": "queue", "participant": 1, "unstarted": 5},
+        {"kind": "cancel", "participant": 1, "count": 2},
+        {"kind": "age-up", "participant": 1, "click_at": 600, "arrival_at": 640},
     ]
     assert check_invariants(stream) is None

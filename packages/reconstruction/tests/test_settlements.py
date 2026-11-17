@@ -1,7 +1,6 @@
 """Settlements and the one-number rule (data-model §4, §5, §7; FR-008, SC-002).
 
-Test first: the modules under test (`state`, `settle`, `rules`) arrive with T919 and T917, so they
-are imported inside each test body and every test is a strict xfail until T919 deletes the markers.
+The modules under test are imported inside each test body through `_mod`.
 """
 
 from __future__ import annotations
@@ -14,10 +13,7 @@ from decimal import Decimal
 from fractions import Fraction
 from typing import Any
 
-import pytest
-
 PKG = "aoe2stats_reconstruction"
-NOT_YET = pytest.mark.xfail(strict=True, reason="T919 not implemented yet")
 
 # Types that admit a range, a set of alternatives, or a non-integer quantity.
 _FORBIDDEN_LEAVES: tuple[type, ...] = (float, Decimal, Fraction, complex, range, slice)
@@ -71,7 +67,6 @@ def _rejects(build: Any) -> bool:
     return False
 
 
-@NOT_YET
 def test_condition_has_exactly_one_value_and_a_required_settlement() -> None:
     state = _mod("state")
     condition = _condition(state)
@@ -101,10 +96,9 @@ def test_condition_has_exactly_one_value_and_a_required_settlement() -> None:
     assert _rejects(lambda: _condition(state, at_ms=1.5))
 
 
-@NOT_YET
 def test_settlement_resolves_to_an_adopted_rule_of_the_family_its_by_states() -> None:
     state, settle, rules = _mod("state"), _mod("settle"), _mod("rules")
-    registry = rules.load_rules()
+    registry = rules.RULES
 
     # Proof naming a proof rule, deduction naming a deduction rule: both adopted.
     proof = _settlement(state, "proof", "P1")
@@ -179,7 +173,6 @@ def _check(
             _walk(member, seen, problems)
 
 
-@NOT_YET
 def test_no_published_field_admits_a_pair_range_alternatives_share_or_probability() -> None:
     state = _mod("state")
     roots = [state.Condition, state.Settlement, state.ReconstructedValue]

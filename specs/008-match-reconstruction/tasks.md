@@ -203,7 +203,7 @@ document with an empty `reconstructed` block.
       required settlement; a settlement resolves to an adopted rule of the family its `by` states; and,
       by walking every type of the published block, no field admits a pair, a range, a list of
       alternatives, a float share or a probability (FR-008, SC-002).
-- [ ] T919 [US3] Implement the types of data-model §4, §5 and §7 in
+- [x] T919 [US3] Implement the types of data-model §4, §5 and §7 in
       `packages/reconstruction/src/aoe2stats_reconstruction/state.py` and
       `packages/reconstruction/src/aoe2stats_reconstruction/settle.py`, and delete T918's markers
       (FR-014).
@@ -211,7 +211,7 @@ document with an empty `reconstructed` block.
       `packages/reconstruction/tests/test_invariants.py`: one synthetic stream per invariant of
       data-model §8 breaks exactly that invariant, the breach names the invariant, the participant, the
       datum and the value, and nothing is published (FR-017, SC-007). The two invariants the population phase owns are declared with no check until T958 and T959 enable them.
-- [ ] T921 [US3] Implement `packages/reconstruction/src/aoe2stats_reconstruction/invariants.py` and
+- [x] T921 [US3] Implement `packages/reconstruction/src/aoe2stats_reconstruction/invariants.py` and
       delete T920's markers.
 - [ ] T922 [P] Test first, `xfail(strict=True)`, in `packages/replay-engine/tests/test_starting.py`:
       the Tier A decoder emits one `starting-attributes` event per human participant at clock 0 after
