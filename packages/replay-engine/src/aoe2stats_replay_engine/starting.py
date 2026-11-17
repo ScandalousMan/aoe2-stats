@@ -8,7 +8,9 @@ index is interpreted (research R4).
 
 The anchor is self-verifying because the framing must match exactly once. An absent anchor, a second
 framed copy, a truncated array, or a value that is not a finite non-negative whole number is refused
-with `EngineParseError`, never guessed at and never defaulted.
+with `EngineParseError`, never guessed at and never defaulted. The caller (`canonical.py`) treats
+that refusal as a gap for the one participant: the starting attributes are an optional datum, and
+their absence never refuses the recording (FR-009, FR-026).
 """
 
 from __future__ import annotations

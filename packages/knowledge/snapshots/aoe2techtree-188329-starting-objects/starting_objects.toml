@@ -19,15 +19,16 @@
 # (specs/008-match-reconstruction/owner-readings.md, O8). A consumer that needs a total reads a
 # non-empty `open` as a knowledge gap and adds nothing by default (FR-026).
 #
-# Objects the pack does not name as entities (Llama, Mule Cart, Horse, Forage Bush) have no
-# `unit_id`; the Villager is unit 83.
+# Every row is a `bonus`: it adds to a baseline and is never a full starting set. The pack's
+# bullets give no entity id ("Villagers" is not unit 83, the male Villager, by inference), so no
+# row carries a `unit_id`. A `baseline` row would name civilisation "*"; none exists (O8.1).
 
 [[starting_object]]
+role = "bonus"
 civilisation = "Chinese"
 preset = "any"
 kind = "unit"
 object = "Villager"
-unit_id = "83"
 count = 3
 applies = "always"
 source_key = "120155"
@@ -35,11 +36,11 @@ source_text = "Start with +3 Villagers, but -50 wood and -200 food"
 read_on = "2026-11-17"
 
 [[starting_object]]
+role = "bonus"
 civilisation = "Mayans"
 preset = "any"
 kind = "unit"
 object = "Villager"
-unit_id = "83"
 count = 1
 applies = "always"
 source_key = "120165"
@@ -47,6 +48,7 @@ source_text = "Start with +1 Villager, but -50 food"
 read_on = "2026-11-17"
 
 [[starting_object]]
+role = "bonus"
 civilisation = "Incas"
 preset = "any"
 kind = "unit"
@@ -58,6 +60,7 @@ source_text = "Start with a free Llama"
 read_on = "2026-11-17"
 
 [[starting_object]]
+role = "bonus"
 civilisation = "Gurjaras"
 preset = "any"
 kind = "resource-object"
@@ -69,6 +72,7 @@ source_text = "Start with 2 Forage Bushes"
 read_on = "2026-11-17"
 
 [[starting_object]]
+role = "bonus"
 civilisation = "Georgians"
 preset = "any"
 kind = "unit"
@@ -80,6 +84,7 @@ source_text = "Start with a Mule Cart"
 read_on = "2026-11-17"
 
 [[starting_object]]
+role = "bonus"
 civilisation = "Huns"
 preset = "any"
 kind = "unit"

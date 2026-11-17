@@ -4,7 +4,7 @@ Standard library only. The packaged ``rules.toml`` is loaded by :func:`load_rule
 module is imported, so a defective registry means the package does not import. Contract:
 ``specs/008-match-reconstruction/contracts/rules.md``; model: data-model section 6.
 
-Reading ids (guarantee 6) live in ``tests/fixtures/replays/*.playback.toml``, which is a repository
+Reading ids (guarantee 5) live in ``tests/fixtures/replays/*.playback.toml``, which is a repository
 path and is not shipped in the wheel. An installed package cannot discover them, so the packaged
 registry is loaded with no known readings: it may cite none, and every rule's ``readings`` is empty
 until a change that transcribes a reading also gives the packaged loader a way to know it. A test
@@ -101,6 +101,7 @@ def _filled(value: str | None) -> bool:
 
 
 def _build_rule(rule_id: str, raw: Mapping[str, Any], known_readings: frozenset[str]) -> Rule:
+    # Guarantee 1: the id is one of the two shapes (duplicates: see load_rules_text).
     if not _ID_SHAPE.fullmatch(rule_id):
         raise RuleError(f"invalid id {rule_id!r}: expected P<n> or D-<NAME>-<n>")
     unknown = sorted(set(raw) - _KNOWN)
@@ -121,6 +122,7 @@ def _build_rule(rule_id: str, raw: Mapping[str, Any], known_readings: frozenset[
         readings=tuple(readings),
         **{k: _text(rule_id, raw, k) for k in _OPTIONAL},
     )
+    # Guarantee 2: family, settles and status are in their closed sets.
     for name, value, closed in (
         ("family", rule.family, FAMILIES),
         ("settles", rule.settles, SETTLES),
@@ -128,24 +130,23 @@ def _build_rule(rule_id: str, raw: Mapping[str, Any], known_readings: frozenset[
     ):
         if value not in closed:
             raise RuleError(f"{rule_id}: {name} {value!r} is outside {sorted(closed)}")
+    # Guarantee 5: every cited reading is in a committed playback file.
     stray = [r for r in rule.readings if r not in known_readings]
     if stray:
         raise RuleError(f"{rule_id}: reading(s) {', '.join(stray)} are in no playback file")
-    if rule.status == "adopted":
-        # The loader cannot read prose: an evidence that states the game's own definition of a
-        # command is accepted as non-empty here, and its content is a reviewer's gate.
-        if not _filled(rule.evidence):
-            raise RuleError(f"{rule_id}: an adopted rule needs a non-empty evidence")
-        if rule.family == "deduction" and not (
-            _filled(rule.ruling) or rule.readings or _filled(rule.evidence)
-        ):
-            raise RuleError(f"{rule_id}: an adopted deduction has no ruling, reading or evidence")
+    # Guarantee 3: an adopted rule has an evidence. The loader cannot read prose, so whether an
+    # adopted deduction's basis is sound (a ruling, readings, or the game's own definition of a
+    # command) is a reviewer's gate, not a loader check.
+    if rule.status == "adopted" and not _filled(rule.evidence):
+        raise RuleError(f"{rule_id}: an adopted rule needs a non-empty evidence")
+    # Guarantee 4: a refuted rule cites the reading that refutes it.
     if rule.status == "refuted" and not rule.readings:
         raise RuleError(f"{rule_id}: a refuted rule must cite the reading that refutes it")
     return rule
 
 
 def _check_overlap(entries: Mapping[str, Rule]) -> None:
+    # Guarantee 6: no two adopted rules settle one kind with overlapping applicability.
     adopted: dict[str, list[Rule]] = {}
     for rule in entries.values():
         if rule.status == "adopted":
@@ -167,6 +168,7 @@ def _check_overlap(entries: Mapping[str, Rule]) -> None:
 
 def load_rules_text(text: str, *, known_readings: Collection[str] = ()) -> Rules:
     """Parse and validate rules TOML text; raise :class:`RuleError` on any refusal."""
+    # Guarantee 1: a duplicated id.
     seen: set[str] = set()
     for match in _HEADER.finditer(text):
         if match.group(1) in seen:

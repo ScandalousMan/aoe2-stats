@@ -24,7 +24,11 @@ _REQUIRED = ("id", "request", "read_by", "read_on", "build_shown")
 
 
 def _requests() -> set[str]:
-    return set(re.findall(r"^## (O\d+) ", _OWNER_READINGS.read_text(encoding="utf-8"), re.M))
+    """Top-level ids (`## O<n> `) and sub-request ids (`**O<n>.<m> —`) the file states."""
+    text = _OWNER_READINGS.read_text(encoding="utf-8")
+    top = re.findall(r"^## (O\d+) ", text, re.M)
+    sub = re.findall(r"^\*\*(O\d+\.\d+) \u2014", text, re.M)
+    return {*top, *sub}
 
 
 def _builds() -> dict[str, set[str]]:
@@ -140,6 +144,17 @@ def test_refuses_invalid_toml(tmp_path: Path) -> None:
 
 def test_refuses_a_request_absent_from_the_owner_readings(tmp_path: Path) -> None:
     assert _plant(tmp_path, _GOOD.replace('"O3"', '"O99"'))
+
+
+def test_accepts_a_sub_request_the_owner_readings_state(tmp_path: Path) -> None:
+    assert _plant(tmp_path, _GOOD.replace('"O3"', '"O8.1"')) == []
+
+
+@pytest.mark.parametrize("unknown", ["O8.9", "O99.1"])
+def test_refuses_a_sub_request_the_owner_readings_do_not_state(
+    tmp_path: Path, unknown: str
+) -> None:
+    assert _plant(tmp_path, _GOOD.replace('"O3"', f'"{unknown}"'))
 
 
 def test_refuses_a_missing_request(tmp_path: Path) -> None:

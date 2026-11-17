@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from aoe2stats_core.replay.events import (
     BuildingPlacedPayload,
     CanonicalEvent,
@@ -161,3 +163,72 @@ def test_source_event_indexes_the_stream_and_the_fold_is_one_pass() -> None:
         assert stream[order.source_event].clock_ms == order.clock_ms
         assert stream[order.source_event].participant == order.participant
     assert [o.source_event for o in orders] == sorted(o.source_event for o in orders)
+
+
+def _match_started(participants: tuple[ParticipantEntry, ...]) -> CanonicalEvent:
+    return CanonicalEvent(
+        0,
+        EventKind.MATCH_STARTED,
+        payload=MatchStartedPayload(build=_BUILD, map_name=None, participants=participants),
+    )
+
+
+def _queue(slot: int, clock_ms: int = 1000) -> CanonicalEvent:
+    return CanonicalEvent(
+        clock_ms,
+        EventKind.UNIT_QUEUED,
+        slot,
+        UnitQueuedPayload(
+            unit_id=83, building_type=109, building_object=500, count=1, building_objects=(500,)
+        ),
+    )
+
+
+def test_a_cancellation_carries_the_count_its_payload_states() -> None:
+    from aoe2stats_reconstruction.orders import fold_orders
+
+    listed = (ParticipantEntry(slot=_ONE, civilisation=1, team=None),)
+    events = [
+        _match_started(listed),
+        CanonicalEvent(1000, EventKind.UNIT_UNQUEUED, _ONE, UnitUnqueuedPayload(83, 5)),
+        CanonicalEvent(2000, EventKind.UNIT_UNQUEUED, _ONE, UnitUnqueuedPayload(83, 1)),
+    ]
+
+    five, one = fold_orders(events)
+
+    assert five.count == 5
+    assert one.count == 1
+
+
+def test_a_slot_the_match_start_does_not_list_yields_no_order() -> None:
+    from aoe2stats_reconstruction.orders import fold_orders
+
+    observer = 8
+    listed = (ParticipantEntry(slot=_ONE, civilisation=1, team=None),)
+    events = [
+        _match_started(listed),
+        _queue(observer, 1000),
+        CanonicalEvent(1500, EventKind.OBJECT_DELETED, observer, ObjectDeletedPayload(9)),
+        _queue(_ONE, 2000),
+    ]
+
+    orders = fold_orders(events)
+
+    assert [(o.participant, o.source_event) for o in orders] == [(_ONE, 3)]
+
+
+def test_an_empty_participant_list_accepts_every_slot() -> None:
+    """`MatchStartedPayload.participants` defaults to empty, so an empty list is a valid payload
+    that lists nobody: the fold then has no list to exclude against and accepts every slot."""
+    from aoe2stats_reconstruction.orders import fold_orders
+
+    orders = fold_orders([_match_started(()), _queue(_ONE), _queue(_TWO, 2000)])
+
+    assert [o.participant for o in orders] == [_ONE, _TWO]
+
+
+def test_an_entity_named_before_any_build_is_known_raises() -> None:
+    from aoe2stats_reconstruction.orders import fold_orders
+
+    with pytest.raises(ValueError, match="before any match start"):
+        fold_orders([_queue(_ONE)])

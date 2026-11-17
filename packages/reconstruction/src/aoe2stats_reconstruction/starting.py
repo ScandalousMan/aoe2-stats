@@ -3,14 +3,16 @@
 Per participant: the decoded stockpiles, the starting age, the starting objects and the population
 limit. **None is the gap**: an age-dependent value that is not confirmed is never a guess.
 
-- `resources` are the `starting-attributes` event's values, published as decoded.
+- `resources` are the `starting-attributes` event's values, published as decoded. A participant
+  with no such event (an AI, or one the decoder skipped) has `resources=None`: a gap.
 - `age` comes from the lobby's starting-age preset through `CONFIRMED_AGE_PRESETS`, which holds
   only what owner reading O4 has confirmed (empty until it is answered; this module never answers
   an owner reading). An unconfirmed preset gaps `age` and `objects`.
 - `objects` come from `Snapshot.starting_objects_for`. A non-empty `open` answer is a gap, never a
   default, and a bonus row alone is never a full starting set: the answer is used only when the
-  snapshot carries the table, the preset is confirmed, nothing is open for the pair, and every
-  stated row applies unconditionally.
+  snapshot carries the table, the preset is confirmed, nothing is open for the pair, a `baseline`
+  row applies, and every stated row applies unconditionally. The result is the baseline plus the
+  matching bonus rows.
 - `population_limit` is the lobby's, independent of the age preset.
 
 The lobby-and-civilisation derivation of the stockpiles (`derive_starting_resources`) is a
@@ -43,7 +45,7 @@ Derivation = Mapping[int, Mapping[str, int] | None]
 class StartingState:
     """One participant's starting state (data-model section 3); `None` is a gap."""
 
-    resources: Mapping[str, int]
+    resources: Mapping[str, int] | None
     age: int | None
     objects: Mapping[str, int] | None
     population_limit: int
@@ -88,7 +90,7 @@ def _objects(
     ):
         return None
     answer = snapshot.starting_objects_for(civilisation, preset)
-    if answer.open or not answer.added:
+    if answer.open or not answer.has_baseline:
         return None
     if any(row.applies != "always" for row in answer.added):
         return None
@@ -122,7 +124,7 @@ def starting_states(
     for participant in started["participants"]:
         slot = int(participant["slot"])
         states[slot] = StartingState(
-            resources=decoded[slot],
+            resources=decoded.get(slot),
             age=age,
             objects=_objects(
                 resolved, names.get(int(participant["civilisation"])), age_preset, age is not None
@@ -150,7 +152,8 @@ def starting_resource_records(
     derivation: Callable[[Mapping[str, Any]], Derivation] = derive_starting_resources,
 ) -> list[dict[str, Any]]:
     """One `starting` record per participant and resource, for the `starting-resources-agree`
-    check. A slot whose derivation is a gap yields no record: nothing is compared. `derivation`
+    check. A slot whose derivation is a gap yields no record, and a slot with no decoded
+    `starting-attributes` event is never iterated: nothing is compared. `derivation`
     replaces the knowledge-base derivation (used to test the check)."""
     derived = derivation(canonical)
     records: list[dict[str, Any]] = []

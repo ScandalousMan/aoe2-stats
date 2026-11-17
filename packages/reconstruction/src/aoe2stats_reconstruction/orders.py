@@ -117,7 +117,7 @@ def fold_orders(events: Iterable[CanonicalEvent]) -> tuple[Order, ...]:
                 event.clock_ms,
                 OrderKind.CANCELLATION,
                 entity("unit", payload.unit_id),
-                1,
+                payload.count,
                 (),
                 None,
                 index,

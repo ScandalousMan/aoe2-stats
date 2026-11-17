@@ -166,3 +166,98 @@ def test_a_value_that_is_not_a_non_negative_integer_is_refused(bad: float) -> No
     corrupted = header[:anchor] + struct.pack("<f", bad) + header[anchor + 4 :]
     with pytest.raises(EngineParseError):
         decode_starting_attributes(corrupted, name)
+
+
+# --- an unreadable starting datum is a gap, never a refusal of the recording (FR-009, FR-026) ---
+
+
+def _parsed_and_raw(zip_path: Path) -> tuple[dict[str, Any], bytes]:
+    with zipfile.ZipFile(io.BytesIO(zip_path.read_bytes())) as archive:
+        (member,) = archive.namelist()
+        raw = archive.read(member)
+    (chapter,) = _native.parse_rec(raw)["chapters"]
+    return chapter, raw
+
+
+def _recording_with_header(header: bytes) -> bytes:
+    """A recording whose inflated header is `header`: only the header framing is read from it."""
+    deflater = zlib.compressobj(wbits=-15)
+    stream = deflater.compress(header) + deflater.flush()
+    return struct.pack("<II", 8 + len(stream), 0) + stream
+
+
+def _events(parsed: dict[str, Any], recording: bytes) -> list[Any]:
+    from aoe2stats_replay_engine.canonical import canonical_events
+
+    return list(canonical_events(parsed, recording=recording))
+
+
+def _starting_slots(events: list[Any]) -> list[int]:
+    return [e.participant for e in events if e.kind.value == "starting-attributes"]
+
+
+def _altered(zip_path: Path, *, duplicate: bool) -> tuple[dict[str, Any], bytes, bytes, int]:
+    """(parsed, unaltered recording, altered recording, slot of the altered human)."""
+    parsed, raw = _parsed_and_raw(zip_path)
+    header, humans = _read(zip_path)
+    assert len(humans) >= 2
+    slot, name = humans[0]
+    frame = _frame(name)
+    if duplicate:
+        altered = header + frame + bytes(32)
+    else:
+        at = header.index(frame) + len(frame) - 1
+        altered = header[:at] + b"\x01" + header[at + 1 :]
+    return parsed, raw, _recording_with_header(altered), slot
+
+
+@pytest.mark.parametrize("duplicate", [True, False], ids=["name-twice", "name-absent"])
+@pytest.mark.parametrize("zip_path", _RECORDINGS, ids=lambda p: p.stem)
+def test_an_unanchored_name_drops_only_that_participants_starting_event(
+    zip_path: Path, duplicate: bool
+) -> None:
+    parsed, raw, altered, slot = _altered(zip_path, duplicate=duplicate)
+    baseline = _events(parsed, _recording_with_header(_read_header(raw)))
+    survived = _events(parsed, altered)
+
+    # (a) the whole stream survives; only the altered participant's event is missing
+    assert [e for e in survived if e.kind.value != "starting-attributes"] == [
+        e for e in baseline if e.kind.value != "starting-attributes"
+    ]
+    assert survived[0].kind.value == "match-started"
+    assert _starting_slots(baseline) and slot in _starting_slots(baseline)
+    assert slot not in _starting_slots(survived)
+    # (b) the other humans' events are present and unchanged
+    assert [e for e in survived if e.kind.value == "starting-attributes"] == [
+        e for e in baseline if e.kind.value == "starting-attributes" and e.participant != slot
+    ]
+
+
+def _read_header(raw: bytes) -> bytes:
+    (header_len,) = struct.unpack_from("<I", raw, 0)
+    return zlib.decompress(raw[8:header_len], -15)
+
+
+def test_an_uninflatable_header_yields_the_stream_without_starting_events() -> None:
+    parsed, raw = _parsed_and_raw(_RECORDINGS[0])
+    full = _events(parsed, raw)
+    broken = _events(parsed, struct.pack("<II", 16, 0) + b"\xff" * 8)
+    assert not _starting_slots(broken)
+    assert broken == [e for e in full if e.kind.value != "starting-attributes"]
+
+
+def test_a_one_character_name_colliding_with_a_framed_string_is_a_gap() -> None:
+    header, humans = _read(_RECORDINGS[0])
+    parsed, _ = _parsed_and_raw(_RECORDINGS[0])
+    slot, _ = humans[0]
+    # Rename the human to a one-character name whose frame occurs twice in the header.
+    collision = "D"
+    padded = header + _frame(collision) + bytes(32) + _frame(collision) + bytes(32)
+    renamed = json.loads(json.dumps(parsed))
+    for player in renamed["zheader"]["game_settings"]["players"]:
+        if player["player_number"] == slot:
+            player["name"] = collision
+    events = _events(renamed, _recording_with_header(padded))
+    assert slot not in _starting_slots(events)
+    assert len(_starting_slots(events)) == len(humans) - 1
+    assert events[0].kind.value == "match-started"

@@ -18,7 +18,6 @@ data-model section 1) and the fields of its datum. An order record has an `Order
 
 from __future__ import annotations
 
-import contextlib
 from collections.abc import Mapping, Sequence
 
 import pytest
@@ -162,12 +161,18 @@ def test_a_stream_breaking_one_invariant_names_it(name: str) -> None:
 
 @pytest.mark.parametrize("name", _ENABLED)
 def test_a_breach_publishes_nothing(name: str) -> None:
+    """The publish step sits after the check, so it is reached only if the check returned."""
     from aoe2stats_reconstruction.invariants import InvariantBreach, check_invariants
 
     stream, _participant, _datum, _value = _BREACHES[name]
     published: list[object] = []
-    with contextlib.suppress(InvariantBreach):
-        published.append(check_invariants(stream))
+
+    def publish() -> None:
+        published.append(stream)
+
+    with pytest.raises(InvariantBreach):
+        check_invariants(stream)
+        publish()
     assert published == []
 
 

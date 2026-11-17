@@ -172,8 +172,9 @@ document with an empty `reconstructed` block.
 
 **Independent test**: quickstart, Phase 2.
 
-- [x] T913 Create the package: `packages/reconstruction/pyproject.toml` (depends on
-      `aoe2stats-core` and `aoe2stats-knowledge` only), `packages/reconstruction/src/aoe2stats_reconstruction/__init__.py`
+- [x] T913 Create the package: `packages/reconstruction/pyproject.toml` (depends, among workspace
+      packages, on `aoe2stats-core` and `aoe2stats-knowledge` only; third-party dependencies it
+      imports, such as pydantic, are declared too), `packages/reconstruction/src/aoe2stats_reconstruction/__init__.py`
       with the package version, the workspace member, test paths and mypy entry in the root
       `pyproject.toml`, the python path filter in `.github/workflows/pr.yml`, and the dependency
       declared on `apps/analyzer/pyproject.toml` itself, not inherited (research R12). A packaging test
@@ -188,7 +189,7 @@ document with an empty `reconstructed` block.
       delete T914's markers. The fold reads the canonical vocabulary only, never an engine shape
       (constitution V).
 - [x] T916 [P] [US3] Test first, `xfail(strict=True)`, in `packages/reconstruction/tests/test_rules.py`:
-      each of the seven loader guarantees of contracts/rules.md has a test that plants its violation
+      each of the six loader guarantees of contracts/rules.md has a test that plants its violation
       and sees loading fail; the generated view equals the committed
       `packages/reconstruction/src/aoe2stats_reconstruction/RULES.md` byte for byte; every initial rule
       enters at the status the contract's table states.
@@ -222,8 +223,8 @@ document with an empty `reconstructed` block.
 - [x] T923 Implement `packages/replay-engine/src/aoe2stats_replay_engine/starting.py`, emit the
       event from `packages/replay-engine/src/aoe2stats_replay_engine/canonical.py`, regenerate the
       canonical goldens, change 006's test that the adapter emits neither declared-only kind for this
-      kind only, move the register's two starting entries (the attributes and the resources) out of
-      `blocked`, and delete T922's markers. `reconstruction.income_model` stays `blocked` (FR-024);
+      kind only, move the register's three entries blocked on this decoder (the participant's
+      attributes and resources, and the event's values) out of `blocked`, and delete T922's markers. `reconstruction.income_model` stays `blocked` (FR-024);
       its `blocked_on` names this decoder, so it is re-stated to what it still waits on, an income
       method that no feature specifies. The decoder reads the inflated header bytes, never the engine's output.
 - [ ] T924 Transcribe readings O3 and O4 into each recording's playback file
@@ -240,8 +241,9 @@ document with an empty `reconstructed` block.
       `specs/008-match-reconstruction/owner-readings.md`, never guesses (FR-026).
 - [x] T926 [P] Test first, `xfail(strict=True)`, in
       `packages/reconstruction/tests/test_starting_state.py`: the starting state of data-model §3 for
-      each committed recording; the decoded resources agree with the lobby-and-civilisation derivation
-      and a planted disagreement is the `starting-resources-agree` breach; a starting-age preset whose
+      each committed recording; the lobby-and-civilisation derivation is a gap while no source states
+      a preset's stockpile (owner request O8.4), so the agreement compares nothing on real data, and a
+      planted disagreement against a synthetic derivation is the `starting-resources-agree` breach; a starting-age preset whose
       meaning O4 has not confirmed gaps every age-dependent value and guesses nothing (FR-026).
 - [x] T927 Implement `packages/reconstruction/src/aoe2stats_reconstruction/starting.py` and delete
       T926's markers. Depends on T923 and T925.

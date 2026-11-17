@@ -33,7 +33,7 @@ INITIAL_STATUS = {
     "D-CONTROL-1": "candidate",
     "D-CANCEL-1": "candidate",
     "D-TIE-1": "candidate",
-    "D-REFUND-1": "adopted",
+    "D-REFUND-1": "candidate",
     "D-WIN-1": "adopted",
 }
 
@@ -76,7 +76,11 @@ def test_a_well_formed_text_loads() -> None:
 
 
 def test_guarantee_1_a_duplicated_id_fails() -> None:
-    _refuses(_rule("P1") + _rule("P1"))
+    from aoe2stats_reconstruction.rules import RuleError, load_rules_text
+
+    # TOML itself rejects a repeated table, so the message is what shows the loader's own check ran.
+    with pytest.raises(RuleError, match="duplicate id 'P1'"):
+        load_rules_text(_rule("P1") + _rule("P1"))
 
 
 @pytest.mark.parametrize("bad_id", ["p1", "P", "X1", "D-AGE", "D-age-1", "P1a", "D--1"])
@@ -93,15 +97,13 @@ def test_guarantee_2_a_value_outside_its_closed_set_fails(key: str, value: str) 
     _refuses(_rule("P1", **kwargs))  # type: ignore[arg-type]
 
 
-def test_guarantee_3_an_adopted_deduction_with_no_basis_fails() -> None:
-    # No ruling, no readings, and an evidence that is not the game's own definition: empty text
-    # is refused by guarantee 4 as well, so the planted violation is the deduction-specific one,
-    # a deduction whose only support is absent.
-    text = _rule("D-WIN-1", family="deduction", settles="winner", status="adopted", evidence="")
-    _refuses(text)
+def test_guarantee_3_an_adopted_rule_with_an_empty_evidence_fails() -> None:
+    # One adopted proof, no readings, no sibling: only guarantee 3 can refuse it.
+    _refuses(_rule("P1", status="adopted", evidence=""))
+    _refuses(_rule("P1", status="adopted", evidence=None))  # type: ignore[arg-type]
 
 
-def test_guarantee_3_a_ruling_or_a_reading_is_a_basis() -> None:
+def test_guarantee_3_an_adopted_deduction_with_a_ruling_and_an_evidence_loads() -> None:
     from aoe2stats_reconstruction.rules import load_rules_text
 
     ruled = _rule(
@@ -114,16 +116,11 @@ def test_guarantee_3_a_ruling_or_a_reading_is_a_basis() -> None:
     assert load_rules_text(ruled)["D-REFUND-1"].status == "adopted"
 
 
-def test_guarantee_4_an_adopted_rule_with_an_empty_evidence_fails() -> None:
-    _refuses(_rule("P1", status="adopted", evidence=""))
-    _refuses(_rule("P1", status="adopted", evidence=None))  # type: ignore[arg-type]
-
-
-def test_guarantee_5_a_refuted_rule_with_no_reading_fails() -> None:
+def test_guarantee_4_a_refuted_rule_with_no_reading_fails() -> None:
     _refuses(_rule("D-AGE-1", family="deduction", status="refuted"))
 
 
-def test_guarantee_5_a_refuted_rule_citing_a_known_reading_loads() -> None:
+def test_guarantee_4_a_refuted_rule_citing_a_known_reading_loads() -> None:
     from aoe2stats_reconstruction.rules import load_rules_text
 
     text = _rule("D-AGE-1", family="deduction", status="refuted").replace(
@@ -132,13 +129,13 @@ def test_guarantee_5_a_refuted_rule_citing_a_known_reading_loads() -> None:
     assert load_rules_text(text, known_readings={"R1"})["D-AGE-1"].status == "refuted"
 
 
-def test_guarantee_6_a_reading_in_no_playback_file_fails() -> None:
+def test_guarantee_5_a_reading_in_no_playback_file_fails() -> None:
     text = _rule("P1").replace("readings = []", 'readings = ["511523321.O3"]')
     _refuses(text, known_readings={"another.O1"})
     _refuses(text)
 
 
-def test_guarantee_6_a_known_reading_loads() -> None:
+def test_guarantee_5_a_known_reading_loads() -> None:
     from aoe2stats_reconstruction.rules import load_rules_text
 
     text = _rule("P1").replace("readings = []", 'readings = ["511523321.O3"]')
@@ -147,11 +144,25 @@ def test_guarantee_6_a_known_reading_loads() -> None:
     )
 
 
-def test_guarantee_7_two_adopted_rules_settling_one_kind_overlap_and_fail() -> None:
+def test_guarantee_6_two_adopted_rules_settling_one_kind_overlap_and_fail() -> None:
     _refuses(_rule("P1", status="adopted") + _rule("D-AGE-1", family="deduction", status="adopted"))
 
 
-def test_guarantee_7_a_candidate_beside_an_adopted_rule_does_not_overlap() -> None:
+def test_guarantee_6_one_stated_applicability_is_not_disjoint() -> None:
+    _refuses(
+        _rule("P1", status="adopted", extra='applies = "case a"')
+        + _rule("D-AGE-1", family="deduction", status="adopted")
+    )
+
+
+def test_guarantee_6_equal_stated_applicability_overlaps() -> None:
+    _refuses(
+        _rule("P1", status="adopted", extra='applies = "case a"')
+        + _rule("D-AGE-1", family="deduction", status="adopted", extra='applies = "case a"')
+    )
+
+
+def test_guarantee_6_a_candidate_beside_an_adopted_rule_does_not_overlap() -> None:
     from aoe2stats_reconstruction.rules import load_rules_text
 
     rules = load_rules_text(
@@ -160,7 +171,7 @@ def test_guarantee_7_a_candidate_beside_an_adopted_rule_does_not_overlap() -> No
     assert len(rules) == 2
 
 
-def test_guarantee_7_disjoint_stated_applicability_does_not_overlap() -> None:
+def test_guarantee_6_disjoint_stated_applicability_does_not_overlap() -> None:
     from aoe2stats_reconstruction.rules import load_rules_text
 
     rules = load_rules_text(

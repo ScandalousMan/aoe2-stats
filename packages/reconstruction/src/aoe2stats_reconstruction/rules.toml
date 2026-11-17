@@ -93,7 +93,8 @@ statement = "an unstarted foundation that is deleted is refunded in full; any ot
 ruling = "specs/008-match-reconstruction/spec.md Clarifications, Session 2026-11-03"
 evidence = "the owner's ruling of spec Clarifications, Session 2026-11-03"
 readings = []
-status = "adopted"
+status = "candidate"
+limits = "the ruling fixes the hypothesis but not what in the recording shows that construction began, so that observable is not yet ruled and the rule cannot yet be recomputed from a recording"
 
 [rule."D-WIN-1"]
 family = "deduction"
@@ -102,4 +103,4 @@ statement = "the winner is the team with no resignation, when every other team's
 evidence = "the meaning of the Resign command (research R8)"
 readings = []
 status = "adopted"
-limits = "a match ended otherwise establishes no winner"
+limits = "a match ended otherwise establishes no winner; commands that name no object (a move or an interact with an empty unit list) show neither a team's survival nor its loss, so they are never read as either"

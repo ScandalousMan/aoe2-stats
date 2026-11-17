@@ -35,13 +35,19 @@ Loading fails, and the package does not import, when any of these holds:
 
 1. An id is duplicated or outside the two id shapes.
 2. `family`, `settles` or `status` is outside its closed set.
-3. A deduction rule with status `adopted` has neither `ruling` nor `readings` nor an `evidence`
-   that states the game's own definition of a command (D-WIN-1 rests on what resigning means).
-4. Any rule with status `adopted` has an empty `evidence`.
-5. A rule with status `refuted` has no reading in `readings`.
-6. A `readings` entry names no reading in any committed `playback.toml`.
-7. Two adopted rules settle the same condition kind with overlapping statements of applicability;
+3. Any rule with status `adopted` has an empty `evidence`.
+4. A rule with status `refuted` has no reading in `readings`.
+5. A `readings` entry names no reading in any committed `playback.toml`.
+6. Two adopted rules settle the same condition kind with overlapping statements of applicability;
    each condition kind has exactly one adopted rule per case, so no value can be settled two ways.
+   Applicability is the optional text field `applies`: two adopted rules on one kind overlap unless
+   both state an `applies` and the two differ.
+
+Whether an adopted deduction's basis is sound is not a loader check. A deduction resting on neither
+a `ruling` nor `readings` must carry an `evidence` that states the game's own definition of a
+command (D-WIN-1 rests on what resigning means); the loader can only see that `evidence` is
+non-empty, which guarantee 3 already requires, so this stays a reviewer's gate, like the absence
+demonstration below.
 
 ## The initial set
 
@@ -62,7 +68,7 @@ in the change that earns them (data-model §6).
 | D-CONTROL-1 | controlled | a building counts at an order's time when an earlier order from it proves it stood and no enemy command targeted it since; after a targeting, from its next proof; the starting Town Center from 0 | candidate | re-derived in the light of feature 009's findings (owner, 2026-11-10), then the owner's yes to this application of FR-007a (research R9) |
 | D-CANCEL-1 | cancellation | the building with the most recently queued unstarted items of that unit, from the end | candidate | a recording that carries a cancellation (O7); synthetic streams until then |
 | D-TIE-1 | tie | a deletion is the latest untied placement its owner targeted within a window | candidate | O5 |
-| D-REFUND-1 | refund | an unstarted foundation is refunded in full, anything else nothing | adopted | spec Clarifications, Session 2026-11-03 |
+| D-REFUND-1 | refund | an unstarted foundation is refunded in full, anything else nothing | candidate | spec Clarifications, Session 2026-11-03 rules the hypothesis; what in the recording shows that construction began is not yet ruled, so it is adopted only once that observable is stated |
 | D-WIN-1 | winner | the team with no resignation, when every other team's members all resigned; otherwise no winner | adopted | the meaning of the Resign command (research R8); limit: a match ended otherwise establishes no winner |
 
 No proof rule for a technology exists: research R15 measured that later orders name the line's

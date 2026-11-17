@@ -525,6 +525,13 @@ def _starting_attributes(
     The values come from `decode_starting_attributes` over the inflated header bytes of `recording`,
     not from the engine's output: only the human's name and slot are read from the engine. The
     header is inflated only when a human is seated, so a chapter with none needs no header at all.
+
+    The starting attributes are an optional datum, so an unreadable one is a gap and never a
+    refusal of the recording (FR-009, FR-026): a header that does not inflate yields no starting
+    events, and a participant whose name anchor is absent or ambiguous, or whose values are not
+    finite non-negative whole numbers, yields no event of their own. Every other event of the
+    stream is unaffected. Nothing is logged: the only candidates would be the header bytes and the
+    player's name.
     """
     zheader = cast(Mapping[str, object], parsed["zheader"])
     game_settings = cast(Mapping[str, object], zheader["game_settings"])
@@ -535,9 +542,15 @@ def _starting_attributes(
     )
     if not humans:
         return
-    header = inflate_header(recording)
+    try:
+        header = inflate_header(recording)
+    except EngineParseError:
+        return
     for player in humans:
-        values = decode_starting_attributes(header, cast(str, player["name"]))
+        try:
+            values = decode_starting_attributes(header, cast(str, player["name"]))
+        except EngineParseError:
+            continue
         yield CanonicalEvent(
             clock_ms=0,
             kind=EventKind.STARTING_ATTRIBUTES,

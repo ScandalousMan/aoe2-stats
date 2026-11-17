@@ -42,6 +42,7 @@ _RULES: dict[str, Any] = {
 def _row(**overrides: Any) -> str:
     values: dict[str, Any] = {
         "civilisation": "Chinese",
+        "role": "bonus",
         "preset": "any",
         "kind": "unit",
         "object": "Villager",
@@ -74,6 +75,10 @@ def test_a_well_formed_row_loads_and_answers_by_preset() -> None:
     [
         "not toml [",
         "[alias]\nx = 1\n",
+        _row(role="extra"),
+        _row(role=None),
+        _row(civilisation="*"),
+        _row(role="baseline", civilisation="Atlantis"),
         _row(count=0),
         _row(count=True),
         _row(count="3"),
@@ -86,6 +91,7 @@ def test_a_well_formed_row_loads_and_answers_by_preset() -> None:
         _row(source_text=""),
         _row(source_key=None),
         _row() + _row(),
+        _row(role="baseline") + _row(role="baseline"),
         _row() + "stray = 1\n",
     ],
 )
@@ -99,6 +105,31 @@ def test_an_object_the_pack_does_not_name_needs_no_unit_id() -> None:
         _row(object="Llama", unit_id=None, count=1, applies="team"), _RULES
     )
     assert rows[0].unit_id is None
+
+
+def test_a_baseline_row_may_name_every_civilisation_and_answers_for_all() -> None:
+    text = _row(role="baseline", civilisation="*", count=3) + _row(count=1, source_key="2")
+    rows, _ = parse_starting_objects(text, _RULES)
+    assert rows[0].civilisation == "*"
+    # The same object may be a baseline and a bonus: the role is part of a row's identity.
+    snap = snapshot_module.Snapshot(
+        directory="x",
+        identity=load_snapshot(_NEW).identity,
+        starting_objects=rows,
+        has_starting_objects=True,
+    )
+    answer = snap.starting_objects_for("Franks", "any")
+    assert answer.has_baseline
+    assert [row.count for row in answer.added] == [3]
+    chinese = snap.starting_objects_for("Chinese", "any")
+    assert sorted(row.count for row in chinese.added) == [1, 3]
+    bonus_only = snapshot_module.Snapshot(
+        directory="x",
+        identity=load_snapshot(_NEW).identity,
+        starting_objects=rows[1:],
+        has_starting_objects=True,
+    )
+    assert not bonus_only.starting_objects_for("Chinese", "any").has_baseline
 
 
 def test_open_rows_name_a_modelled_civilisation_or_star() -> None:
@@ -165,13 +196,16 @@ def test_the_table_states_exactly_the_six_object_bonuses() -> None:
         ("Georgians", "Mule Cart", 1, "always"),
         ("Huns", "Horse", 1, "nomadic-map"),
     }
-    assert {row.unit_id for row in rows if row.unit_id} == {"83"}
+    assert {row.role for row in rows} == {"bonus"}
+    # No source string gives an entity id, so none is stated (FR-026): 83 is only the male Villager.
+    assert all(row.unit_id is None for row in rows)
 
 
 def test_the_baseline_is_open_never_a_default() -> None:
     loaded = load_snapshot(_NEW)
     answer = loaded.starting_objects_for("Franks", "any")
     assert answer.added == ()
+    assert not answer.has_baseline
     assert {row.request for row in answer.open} == {"O8.1", "O8.2"}
     chinese = loaded.starting_objects_for("Chinese", "any")
     assert [row.object for row in chinese.added] == ["Villager"]

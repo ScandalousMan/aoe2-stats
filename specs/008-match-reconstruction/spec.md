@@ -724,8 +724,10 @@ the reconstructed values are byte-identical whether the estimates are computed o
 
 ## Out of Scope
 
-- The starting-attributes and starting-object-table decoders (006, research D1 tiers A and B), and
-  every datum blocked on them: income model, exploration coverage, map control.
+- The starting-object-table decoder (006, research D1 tier B), and every datum blocked on it:
+  exploration coverage, map control. The starting-attributes decoder (tier A) is in scope
+  (contracts/canonical-events-amendment.md, data-model §3); the income model stays out, blocked on an
+  income method no feature specifies.
 - The prerequisite order check, blocked on a lawful source of the game's prerequisites.
 - Any analytics, strategic inference or coaching built on these values.
 - Combat simulation and army value. The count of units lost stays non-determinable (006); US6

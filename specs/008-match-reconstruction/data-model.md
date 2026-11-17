@@ -108,6 +108,7 @@ A record of the closed rules registry (contracts/rules.md). Lives in
 | `readings` | list of reading ids | The playback readings that checked it (FR-019). |
 | `status` | closed: `candidate`, `adopted`, `retired`, `refuted` | Only `adopted` settles a published value. |
 | `limits` | text, optional | What the rule cannot see, stated (D-WIN-1's targetless commands, D-CONTROL-1's destructions). |
+| `applies` | text, optional | The case the rule covers, when two rules settle one kind. Two adopted rules on one kind overlap unless both state an `applies` and the two differ (contracts/rules.md). |
 
 **State.** `candidate` → `adopted` (needs its evidence and, for a deduction, its ruling or its
 readings) → `retired` (replaced by a new id). `candidate` → `refuted` when a reading disagrees. A

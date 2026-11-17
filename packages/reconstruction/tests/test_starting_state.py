@@ -170,9 +170,10 @@ def _table_snapshot(rows: tuple[StartingObject, ...], *, open_rows: bool) -> Any
     )
 
 
-def _row(civilisation: str, count: int) -> StartingObject:
+def _row(civilisation: str, count: int, *, role: str = "bonus") -> StartingObject:
     return StartingObject(
         civilisation=civilisation,
+        role=role,
         preset="any",
         kind="unit",
         object="Villager",
@@ -197,7 +198,7 @@ def test_open_rows_gap_the_objects_even_when_the_age_preset_is_confirmed() -> No
     assert all(state.objects is None for state in states.values())
 
 
-def test_a_table_with_no_open_rows_fills_the_objects() -> None:
+def test_a_bonus_only_table_with_no_open_rows_is_a_gap() -> None:
     from aoe2stats_reconstruction.starting import starting_states
 
     document = _load(_RECORDINGS[0])
@@ -205,10 +206,62 @@ def test_a_table_with_no_open_rows_fills_the_objects() -> None:
     names = _civilisation_names(document)
     snapshot = _table_snapshot(tuple(_row(name, 3) for name in names.values()), open_rows=False)
     states = starting_states(document, confirmed_age_presets={preset: 1}, snapshot=snapshot)
-    assert all(state.objects == {"Villager": 3} for state in states.values())
+    # A bonus states what is added, never the full set: without a baseline it is a gap.
+    assert all(state.objects is None for state in states.values())
+
+
+def test_a_baseline_row_plus_a_bonus_row_gives_the_sum() -> None:
+    from aoe2stats_reconstruction.starting import starting_states
+
+    document = _load(_RECORDINGS[0])
+    preset = _events(document, "match-started")[0]["payload"]["lobby_presets"]["starting_age_id"]
+    names = _civilisation_names(document)
+    rows = (_row("*", 3, role="baseline"), *(_row(name, 2) for name in names.values()))
+    snapshot = _table_snapshot(rows, open_rows=False)
+    states = starting_states(document, confirmed_age_presets={preset: 1}, snapshot=snapshot)
+    assert all(state.objects == {"Villager": 5} for state in states.values())
     # An unconfirmed preset still gaps them, whatever the table says.
     gapped = starting_states(document, confirmed_age_presets={}, snapshot=snapshot)
     assert all(state.objects is None for state in gapped.values())
+    # Open rows still gap them, baseline or not.
+    open_snapshot = _table_snapshot(rows, open_rows=True)
+    held = starting_states(document, confirmed_age_presets={preset: 1}, snapshot=open_snapshot)
+    assert all(state.objects is None for state in held.values())
+
+
+@pytest.mark.parametrize("path", _RECORDINGS, ids=lambda p: p.name)
+def test_a_participant_without_a_starting_attributes_event_has_a_resource_gap(
+    path: Path,
+) -> None:
+    from aoe2stats_reconstruction.starting import starting_resource_records, starting_states
+
+    document = copy.deepcopy(_load(path))
+    dropped = _events(document, "starting-attributes")[0]
+    slot = dropped["participant"]
+    document["events"].remove(dropped)
+    started = _events(document, "match-started")[0]["payload"]
+    assert slot in [p["slot"] for p in started["participants"]]
+
+    states = starting_states(document)
+    assert sorted(states) == sorted(p["slot"] for p in started["participants"])
+    assert states[slot].resources is None
+    for other, state in states.items():
+        if other == slot:
+            continue
+        kept = next(
+            e for e in _events(document, "starting-attributes") if e["participant"] == other
+        )
+        assert state.resources == {n: kept["payload"]["values"][n] for n in _RESOURCES}
+    records = starting_resource_records(document, derivation=_full_derivation(document, slot))
+    assert slot not in {r["participant"] for r in records}
+
+
+def _full_derivation(document: dict[str, Any], missing: int) -> Any:
+    """A derivation that states every participant, including the one with no decoded side."""
+    started = _events(document, "match-started")[0]["payload"]
+    stated = {p["slot"]: dict.fromkeys(_RESOURCES, 100) for p in started["participants"]}
+    assert missing in stated
+    return lambda _canonical: stated
 
 
 def _civilisation_names(document: dict[str, Any]) -> dict[int, str]:

@@ -285,12 +285,18 @@ STARTING_APPLIES: Final[tuple[str, ...]] = ("always", "team", "nomadic-map")
 #: What a starting object is: a unit, a building, or a resource object placed for the player.
 STARTING_OBJECT_KINDS: Final[tuple[str, ...]] = ("unit", "building", "resource-object")
 
+#: What a starting-object row is: the `baseline` every participant of its civilisation starts with
+#: (its civilisation may be `"*"`), or a `bonus` that adds to a baseline. A bonus alone is never a
+#: full starting set.
+STARTING_ROLES: Final[tuple[str, ...]] = ("baseline", "bonus")
+
 #: The preset value that stands for every lobby preset: the pack's bullet carries no preset
 #: qualifier, which is a statement about the bullet and not a verified fact about the game.
 ANY_PRESET: Final[str] = "any"
 
 _STARTING_OBJECT_KEYS: Final[tuple[str, ...]] = (
     "civilisation",
+    "role",
     "preset",
     "kind",
     "object",
@@ -305,13 +311,15 @@ _STARTING_OPEN_KEYS: Final[tuple[str, ...]] = ("civilisation", "preset", "what",
 
 @dataclass(frozen=True, slots=True)
 class StartingObject:
-    """An object a civilisation's bonus adds to what a participant starts with: `count` of
-    `object` (a `kind`), under lobby `preset` (`ANY_PRESET` when the source qualifies none),
+    """An object a participant starts with: `count` of `object` (a `kind`), stated as a `role`
+    (`STARTING_ROLES`): a `baseline`, whose civilisation may be `"*"`, or a civilisation's `bonus`
+    that adds to it. Under lobby `preset` (`ANY_PRESET` when the source qualifies none),
     `applies` as `STARTING_APPLIES` says. `unit_id` is `rules.json`'s identifier when it names the
     object, else `None` (a Llama, a Mule Cart, a Horse and a Forage Bush are not entities of the
     pack). `source_key` and `source_text` are the pack's help string key and the bullet verbatim."""
 
     civilisation: str
+    role: str
     preset: str
     kind: str
     object: str
@@ -337,12 +345,18 @@ class StartingObjectOpen:
 
 @dataclass(frozen=True, slots=True)
 class StartingObjectsAnswer:
-    """What `Snapshot.starting_objects_for` knows: the `added` objects the table states, and the
-    `open` values still owed to the owner that concern this pair. A caller that needs a total
-    must treat a non-empty `open` as a gap, whatever `added` holds."""
+    """What `Snapshot.starting_objects_for` knows: the `added` objects the table states (baseline
+    and bonus rows), and the `open` values still owed to the owner that concern this pair. A
+    caller that needs a total must treat a non-empty `open` as a gap, and a result with no
+    `baseline` row as a gap, whatever `added` holds."""
 
     added: tuple[StartingObject, ...]
     open: tuple[StartingObjectOpen, ...]
+
+    @property
+    def has_baseline(self) -> bool:
+        """Whether a `baseline` row applies to the pair."""
+        return any(row.role == "baseline" for row in self.added)
 
 
 @dataclass(frozen=True, slots=True)
@@ -375,14 +389,18 @@ class Snapshot:
 
     def starting_objects_for(self, civilisation: str, preset: str) -> StartingObjectsAnswer:
         """The table's answer for `civilisation` under `preset`: the rows whose civilisation
-        matches and whose preset is `preset` or `ANY_PRESET`, and the open rows whose civilisation
-        and preset match (`"*"` matches all). A snapshot without the table answers with nothing
-        added and nothing open, which is not a statement that nothing is owed: check
-        `has_starting_objects`."""
+        matches (a `baseline` row's `"*"` matches all) and whose preset is `preset` or
+        `ANY_PRESET`, and the open rows whose civilisation and preset match (`"*"` matches all). A
+        snapshot without the table answers with nothing added and nothing open, which is not a
+        statement that nothing is owed: check `has_starting_objects`."""
         added = tuple(
             row
             for row in self.starting_objects
-            if row.civilisation == civilisation and row.preset in (preset, ANY_PRESET)
+            if (
+                row.civilisation == civilisation
+                or (row.role == "baseline" and row.civilisation == "*")
+            )
+            and row.preset in (preset, ANY_PRESET)
         )
         owed = tuple(
             row
@@ -852,10 +870,11 @@ def parse_starting_objects(
     and `open` arrays of tables; an entry that is not a table, that carries a key outside its
     key set (`unit_id` is the one optional key of a `starting_object`), or lacks a required one;
     a non-blank-string key that is not one; a `count` that is not a positive integer (a bool is
-    refused); a `kind` outside `STARTING_OBJECT_KINDS`; an `applies` outside `STARTING_APPLIES`;
-    a `civilisation` that `rules.json` does not model; a `unit_id` that `rules.json` does not
-    name as a unit, or whose name differs from `object`; and a second row for one (civilisation,
-    preset, object, applies). An `[[open]]` row names a civilisation `rules.json` models, or `"*"`.
+    refused); a `role` outside `STARTING_ROLES`; a `kind` outside `STARTING_OBJECT_KINDS`; an
+    `applies` outside `STARTING_APPLIES`; a `civilisation` that `rules.json` does not model (`"*"`
+    is allowed for a `baseline` row only); a `unit_id` that `rules.json` does not name as a unit,
+    or whose name differs from `object`; and a second row for one (role, civilisation, preset,
+    object, applies). An `[[open]]` row names a civilisation `rules.json` models, or `"*"`.
     """
     try:
         data = tomllib.loads(text)
@@ -870,7 +889,7 @@ def parse_starting_objects(
     civilisations = rules.get("civilisations", {})
     units = rules.get("entities", {}).get("unit", {})
     rows: list[StartingObject] = []
-    seen: set[tuple[str, str, str, str]] = set()
+    seen: set[tuple[str, str, str, str, str]] = set()
     entries = data.get("starting_object", [])
     if not isinstance(entries, list):
         raise SnapshotError(f"{STARTING_OBJECTS_FILENAME}: 'starting_object' must be an array")
@@ -886,6 +905,10 @@ def parse_starting_objects(
         count = entry.get("count")
         if isinstance(count, bool) or not isinstance(count, int) or count < 1:
             raise SnapshotError(f"{where}: count must be a positive integer, got {count!r}")
+        if values["role"] not in STARTING_ROLES:
+            raise SnapshotError(
+                f"{where}: role must be one of {list(STARTING_ROLES)}, got {values['role']!r}"
+            )
         if values["kind"] not in STARTING_OBJECT_KINDS:
             raise SnapshotError(
                 f"{where}: kind must be one of {list(STARTING_OBJECT_KINDS)}, "
@@ -896,7 +919,8 @@ def parse_starting_objects(
                 f"{where}: applies must be one of {list(STARTING_APPLIES)}, "
                 f"got {values['applies']!r}"
             )
-        if values["civilisation"] not in civilisations:
+        star = values["role"] == "baseline" and values["civilisation"] == "*"
+        if values["civilisation"] not in civilisations and not star:
             raise SnapshotError(
                 f"{where}: civilisation {values['civilisation']!r} is not one rules.json models"
             )
@@ -911,7 +935,13 @@ def parse_starting_objects(
                     f"{where}: unit_id {unit_id!r} is {named.get('name')!r} in rules.json, "
                     f"not {values['object']!r}"
                 )
-        key = (values["civilisation"], values["preset"], values["object"], values["applies"])
+        key = (
+            values["role"],
+            values["civilisation"],
+            values["preset"],
+            values["object"],
+            values["applies"],
+        )
         if key in seen:
             raise SnapshotError(f"{where}: more than one row for {list(key)}")
         seen.add(key)

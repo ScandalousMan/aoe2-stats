@@ -93,12 +93,13 @@ This file is generated from `rules.toml`, the only place a rule is written. Rege
 
 ### `D-REFUND-1`
 
-- status: adopted
+- status: candidate
 - settles: refund
 - statement: an unstarted foundation that is deleted is refunded in full; any other deleted building is refunded nothing
 - evidence: the owner's ruling of spec Clarifications, Session 2026-11-03
 - ruling: specs/008-match-reconstruction/spec.md Clarifications, Session 2026-11-03
 - readings: none
+- limits: the ruling fixes the hypothesis but not what in the recording shows that construction began, so that observable is not yet ruled and the rule cannot yet be recomputed from a recording
 
 ### `D-WIN-1`
 
@@ -107,4 +108,4 @@ This file is generated from `rules.toml`, the only place a rule is written. Rege
 - statement: the winner is the team with no resignation, when every other team's members all resigned; otherwise there is no winner
 - evidence: the meaning of the Resign command (research R8)
 - readings: none
-- limits: a match ended otherwise establishes no winner
+- limits: a match ended otherwise establishes no winner; commands that name no object (a move or an interact with an empty unit list) show neither a team's survival nor its loss, so they are never read as either

@@ -7,6 +7,8 @@ import re
 import tomllib
 from pathlib import Path
 
+import pytest
+
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
@@ -36,7 +38,37 @@ def test_reconstruction_depends_on_core_and_knowledge_only() -> None:
     assert workspace == ["aoe2stats-core", "aoe2stats-knowledge"]
 
 
-def test_package_exposes_a_version() -> None:
+def _declared_version(manifest: dict[str, object]) -> str:
+    project = manifest["project"]
+    assert isinstance(project, dict)
+    version = project["version"]
+    assert isinstance(version, str)
+    return version
+
+
+def test_package_version_agrees_with_pyproject() -> None:
+    """FR-021's identity embeds `__version__`; the two declarations must not drift."""
     import aoe2stats_reconstruction
 
-    assert aoe2stats_reconstruction.__version__ == "0.1.0"
+    declared = _declared_version(_load("packages/reconstruction/pyproject.toml"))
+    assert aoe2stats_reconstruction.__version__ == declared
+
+
+def test_installed_metadata_agrees_with_pyproject() -> None:
+    import importlib.metadata
+
+    declared = _declared_version(_load("packages/reconstruction/pyproject.toml"))
+    try:
+        installed = importlib.metadata.version("aoe2stats-reconstruction")
+    except importlib.metadata.PackageNotFoundError:
+        pytest.skip("package metadata is not installed")
+    assert installed == declared
+
+
+def test_a_drifted_version_is_detected(monkeypatch: pytest.MonkeyPatch) -> None:
+    import aoe2stats_reconstruction
+
+    declared = _declared_version(_load("packages/reconstruction/pyproject.toml"))
+    monkeypatch.setattr(aoe2stats_reconstruction, "__version__", declared + ".drift")
+    with pytest.raises(AssertionError):
+        test_package_version_agrees_with_pyproject()
