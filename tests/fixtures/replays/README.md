@@ -116,3 +116,11 @@ running `uv run python scripts/ops/canonical_golden.py`, never by hand and never
 diff it produces has to be read and explained. Do not regenerate to make a failing test pass
 without first understanding why the stream moved: a moved event means something was lost or
 altered, which is the failure the golden exists to catch.
+
+## `AgeIIDE_Replay_<id>.playback.toml` (one per recording)
+
+What the owner read in the game's own playback of that recording (specs/008-match-reconstruction,
+contracts/playback-readings.md): a `recording` header and one `[[reading]]` table per reading, each
+naming its owner-readings request, the build the game showed, who read it and when. Transcribed
+from the owner's answer only; a value is never written anywhere else and never inferred. Until an
+answer arrives a file holds the header alone.

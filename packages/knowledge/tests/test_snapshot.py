@@ -717,11 +717,18 @@ def test_every_committed_snapshot_verifies_against_its_own_recorded_digest() -> 
         aliases_toml = (
             snapshot_module._snapshots_root().joinpath(loaded.directory).joinpath("aliases.toml")
         )
-        # T761: the digest covers `aliases.toml` when the snapshot has one (T767's is the first).
+        starting_toml = (
+            snapshot_module._snapshots_root()
+            .joinpath(loaded.directory)
+            .joinpath("starting_objects.toml")
+        )
+        # T761: the digest covers `aliases.toml` when the snapshot has one (T767's is the first);
+        # T925: and `starting_objects.toml` likewise.
         recomputed = compute_digest(
             rules_json.read_bytes(),
             effects_toml.read_bytes(),
             aliases_toml.read_bytes() if aliases_toml.is_file() else None,
+            starting_toml.read_bytes() if starting_toml.is_file() else None,
         )
         assert recomputed == loaded.identity.digest, (
             f"{loaded.directory}: committed rules.json/effects.toml (and aliases.toml, when "

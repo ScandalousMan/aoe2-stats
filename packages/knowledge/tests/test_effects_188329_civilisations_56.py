@@ -248,13 +248,18 @@ def _is_transcribed(row: Mapping[str, Any]) -> bool:
 # ------------------------------------------------------------------------------- resolution
 
 
-def test_build_188329_resolves_to_the_new_snapshot_and_the_others_resolve_as_before() -> None:
+def test_build_188329_resolves_to_the_starting_objects_snapshot_which_supersedes_this_one() -> None:
+    """T925 superseded this snapshot: resolution by build answers the newer one, and this one stays
+    installed, promoted and loadable by identity (SC-005)."""
     resolved = snapshot.snapshot_for(_BUILD)
     assert isinstance(resolved, snapshot.Snapshot)
-    assert resolved.directory == _DIRECTORY
+    assert resolved.directory == "aoe2techtree-188329-starting-objects"
     assert resolved.identity.describes_build == _BUILD
     assert resolved.identity.source_version == _THIRD_COMMIT
-    assert resolved.supersedes is None, "no snapshot of build 188329 existed to supersede"
+    original = snapshot.load_snapshot(_DIRECTORY)
+    assert original.supersedes is None, "no snapshot of build 188329 existed to supersede"
+    assert resolved.supersedes == original.identity.digest
+    assert original in snapshot.load_all_snapshots()
     for build, directory in (
         (185872, "aoe2techtree-185872-owner-readings"),
         (180059, "aoe2techtree-180059-owner-readings"),
@@ -614,7 +619,8 @@ def test_a_carried_row_answers_as_it_did() -> None:
 
 def test_the_whole_pack_has_one_current_snapshot_per_build_and_this_is_the_newest() -> None:
     current = {s.identity.describes_build: s.directory for s in snapshot.load_current_snapshots()}
-    assert current[_BUILD] == _DIRECTORY
+    # T925: the starting-objects snapshot (a byte-for-byte copy plus one table) is the newest.
+    assert current[_BUILD] == "aoe2techtree-188329-starting-objects"
     assert set(current) >= {185872, 180059, _BUILD}
 
 

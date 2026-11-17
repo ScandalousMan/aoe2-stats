@@ -775,7 +775,7 @@ def test_present_data_agrees_with_validate_about_rule_2() -> None:
 
 # T928: rules 11 to 14 of specs/008-match-reconstruction/contracts/reconstruction-document.md.
 #
-# API chosen here, which T929 must implement: ``validate(document, register, *, rules=None)``. The
+# API chosen here, implemented by T929: ``validate(document, register, *, rules=None)``. The
 # ``rules`` mapping is the rules registry the identity's engine names, resolved by the caller (core
 # cannot import the reconstruction package): rule id to an object exposing ``status`` and ``family``
 # (``"proof"`` or ``"deduction"``, as the data-model words it). Rule 12 reads it; ``None`` means no
@@ -784,7 +784,6 @@ def test_present_data_agrees_with_validate_about_rule_2() -> None:
 # datum ids below are the contract's.
 
 _ENGINE = "aoe2stats-reconstruction@1+rules:sha256:abc"
-_XFAIL = pytest.mark.xfail(strict=True, reason="T929 not implemented yet")
 
 
 @dataclass(frozen=True)
@@ -875,13 +874,11 @@ def _accepted3(doc: dict[str, Any]) -> None:
 # Contrast: the valid shape of each rule's subject, so a rejection below is the planted violation.
 
 
-@_XFAIL
 def test_a_version_3_document_with_a_reconstructed_block_is_accepted() -> None:
     # Fails today: the block is an unregistered top-level leaf (rule 1) and ``rules=`` is unknown.
     _accepted3(_v3())
 
 
-@_XFAIL
 def test_an_empty_reconstructed_block_with_the_engine_named_is_accepted() -> None:
     # Fails today: the ``reconstructed`` key is an unregistered leaf (rule 1).
     _accepted3(_v3({}))
@@ -899,7 +896,6 @@ def test_a_document_with_no_reconstruction_and_no_engine_is_accepted() -> None:
 # Rule 11
 
 
-@_XFAIL
 def test_rule_11_a_reconstructed_value_at_an_observed_path_is_rejected() -> None:
     doc = _v3()
     doc["participants"][0]["build_count"] = 3  # a reconstructed datum outside the block
@@ -907,7 +903,6 @@ def test_rule_11_a_reconstructed_value_at_an_observed_path_is_rejected() -> None
     _rejected3(doc, 11)
 
 
-@_XFAIL
 def test_rule_11_an_observed_value_inside_reconstructed_is_rejected() -> None:
     doc = _v3()
     doc["reconstructed"]["match.game_id"] = [{"participant": 1, "value": 7}]
@@ -915,7 +910,6 @@ def test_rule_11_an_observed_value_inside_reconstructed_is_rejected() -> None:
     _rejected3(doc, 11)
 
 
-@_XFAIL
 def test_rule_11_an_inferred_datum_inside_reconstructed_is_rejected() -> None:
     doc = _v3()
     doc["reconstructed"]["participant.estimated_unit_losses"] = [{"participant": 1}]
@@ -923,7 +917,6 @@ def test_rule_11_an_inferred_datum_inside_reconstructed_is_rejected() -> None:
     _rejected3(doc, 11)
 
 
-@_XFAIL
 def test_rule_11_a_datum_unknown_to_the_register_inside_reconstructed_is_rejected() -> None:
     doc = _v3()
     doc["reconstructed"]["reconstruction.mystery"] = [{"participant": 1, "value": 1}]
@@ -933,21 +926,18 @@ def test_rule_11_a_datum_unknown_to_the_register_inside_reconstructed_is_rejecte
 # Rule 12
 
 
-@_XFAIL
 def test_rule_12_a_rule_absent_from_the_registry_is_rejected() -> None:
     doc = _v3({"reconstruction.resources_spent": [_spent(settled_by=[_settlement(rule="D-NO-9")])]})
     _rejected3(doc, 12)
 
 
 @pytest.mark.parametrize("rule", ["D-OLD-1", "D-CAND-1"])
-@_XFAIL
 def test_rule_12_a_rule_that_is_not_adopted_is_rejected(rule: str) -> None:
     doc = _v3({"reconstruction.resources_spent": [_spent(settled_by=[_settlement(rule=rule)])]})
     _rejected3(doc, 12)
 
 
 @pytest.mark.parametrize(("by", "rule"), [("proof", "D-AGE-1"), ("rule", "P1")])
-@_XFAIL
 def test_rule_12_a_rule_of_the_other_family_is_rejected(by: str, rule: str) -> None:
     doc = _v3(
         {"reconstruction.resources_spent": [_spent(settled_by=[_settlement(by=by, rule=rule)])]}
@@ -959,27 +949,23 @@ def test_rule_12_a_rule_of_the_other_family_is_rejected(by: str, rule: str) -> N
 
 
 @pytest.mark.parametrize("key", ["participant", "resource", "value", "settled_by", "effects"])
-@_XFAIL
 def test_rule_13_an_instance_missing_a_declared_key_is_rejected(key: str) -> None:
     instance = _spent()
     del instance[key]
     _rejected3(_v3({"reconstruction.resources_spent": [instance]}), 13)
 
 
-@_XFAIL
 def test_rule_13_an_instance_with_an_undeclared_key_is_rejected() -> None:
     doc = _v3({"reconstruction.resources_spent": [_spent(range_low=1)]})
     _rejected3(doc, 13)
 
 
 @pytest.mark.parametrize("value", [1.5, "10", None, True, [10, 12], {"low": 1, "high": 2}])
-@_XFAIL
 def test_rule_13_a_value_that_is_not_an_integer_is_rejected(value: Any) -> None:
     doc = _v3({"reconstruction.resources_spent": [_spent(value=value)]})
     _rejected3(doc, 13)
 
 
-@_XFAIL
 def test_rule_13_an_untied_deletion_instance_is_accepted_without_value_or_settled_by() -> None:
     # The contract: its instances carry no ``value`` and no ``settled_by``.
     deletion = {
@@ -991,7 +977,6 @@ def test_rule_13_an_untied_deletion_instance_is_accepted_without_value_or_settle
     _accepted3(_v3({"reconstruction.untied_deletions": [deletion]}))
 
 
-@_XFAIL
 def test_rule_13_an_untied_deletion_carrying_a_value_is_rejected() -> None:
     deletion = {
         "participant": 1,
@@ -1006,21 +991,18 @@ def test_rule_13_an_untied_deletion_carrying_a_value_is_rejected() -> None:
 # Rule 14
 
 
-@_XFAIL
 def test_rule_14_a_reconstructed_block_with_the_engine_not_applicable_is_rejected() -> None:
     doc = _v3()
     _with_identity(doc, "not-applicable")
     _rejected3(doc, 14)
 
 
-@_XFAIL
 def test_rule_14_an_empty_reconstructed_block_with_the_engine_not_applicable_is_rejected() -> None:
     doc = _v3({})
     _with_identity(doc, "not-applicable")
     _rejected3(doc, 14)
 
 
-@_XFAIL
 def test_rule_14_an_estimate_with_the_engine_not_applicable_is_rejected() -> None:
     doc = _good()
     doc["provenance"]["participant.estimated_unit_losses"] = {
@@ -1039,7 +1021,6 @@ def test_rule_14_an_estimate_with_the_engine_not_applicable_is_rejected() -> Non
     _rejected3(doc, 14)
 
 
-@_XFAIL
 def test_rule_14_an_engine_named_with_no_reconstruction_and_no_estimate_is_rejected() -> None:
     doc = _good()
     _with_identity(doc, _ENGINE)

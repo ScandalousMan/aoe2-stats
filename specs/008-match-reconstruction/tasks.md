@@ -97,8 +97,9 @@ the measurements that guard the plan are tests. Nothing here publishes.
       one line per request id, `unreadable` where the game does not show the value, with the build the
       game displayed. These two close gate G1; T933 transcribes them.
 - [ ] T902 **Owner task (information).** Take readings O3 (the Sicilian unit), O4 (the starting
-      state at 0:00 of each recording) and O5 (three deletions) of
-      `specs/008-match-reconstruction/owner-readings.md`. T924 transcribes O3 and O4, T942 transcribes O5.
+      state at 0:00 of each recording), O5 (three deletions) and O8 (the starting-objects table's open
+      values, added by T925) of `specs/008-match-reconstruction/owner-readings.md`. T924 transcribes O3
+      and O4, T942 transcribes O5. No task yet transcribes O8 into a superseding snapshot.
 - [ ] T903 **Owner task (information).** Take readings O6.1 (the end-of-match military statistics)
       and O6.2 (population at the stated times) of `specs/008-match-reconstruction/owner-readings.md`.
       They measure the estimates of phase 10 and close no gate; T978 transcribes them.
@@ -231,13 +232,13 @@ document with an empty `reconstructed` block.
       the well-formedness test of that contract's assertion 4 in
       `packages/reconstruction/tests/test_playback_readings.py`. Until T902 is answered, land the test
       and the empty files only.
-- [ ] T925 Add the starting-objects knowledge table through 006's snapshot mechanism, as a
+- [x] T925 Add the starting-objects knowledge table through 006's snapshot mechanism, as a
       superseding snapshot under `packages/knowledge/snapshots/`: per build, civilisation and lobby
       preset, the units and buildings a participant starts with. Before transcribing, record the
       source's ruling in `docs/data-sources.md` §6 if that section does not already hold it
       (constitution X). Values the source leaves in doubt are requests added to
       `specs/008-match-reconstruction/owner-readings.md`, never guesses (FR-026).
-- [ ] T926 [P] Test first, `xfail(strict=True)`, in
+- [x] T926 [P] Test first, `xfail(strict=True)`, in
       `packages/reconstruction/tests/test_starting_state.py`: the starting state of data-model §3 for
       each committed recording; the decoded resources agree with the lobby-and-civilisation derivation
       and a planted disagreement is the `starting-resources-agree` breach; a starting-age preset whose
@@ -248,7 +249,7 @@ document with an empty `reconstructed` block.
       validator rules 11 to 14 of contracts/reconstruction-document.md each reject their planted
       violation, including a reconstructed value at an observed path and an observed value inside
       `reconstructed` (FR-015).
-- [ ] T929 [US3] Implement rules 11 to 14 in `packages/core/src/aoe2stats_core/truth/validate.py`
+- [x] T929 [US3] Implement rules 11 to 14 in `packages/core/src/aoe2stats_core/truth/validate.py`
       and delete T928's markers.
 - [x] T930 [P] [US5] Test first, `xfail(strict=True)`: in `apps/analyzer/tests/test_document_build.py`,
       a document from each committed recording is version 3, carries an empty `reconstructed` block,

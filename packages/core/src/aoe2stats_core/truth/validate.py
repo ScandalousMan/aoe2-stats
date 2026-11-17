@@ -1,4 +1,5 @@
-"""The document validator: the ten rules of ``contracts/analysis-document.md``.
+"""The document validator: the ten rules of ``contracts/analysis-document.md`` and the four of
+``specs/008-match-reconstruction/contracts/reconstruction-document.md`` (rules 11 to 14).
 
 Run by the analyzer before an analysis is written. It takes the register as a mapping of datum id
 to a duck-typed entry (``path``, ``tier``, ``status``, ``non_claim``, ``requires_knowledge``), so it
@@ -10,7 +11,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterator, Mapping
 from typing import Any, Protocol
 
-from aoe2stats_core.truth.identity import identity_digest
+from aoe2stats_core.truth.identity import NOT_APPLICABLE, identity_digest
 from aoe2stats_core.truth.tiers import Tier
 
 LEVELS = frozenset({"low", "medium", "high"})
@@ -22,6 +23,33 @@ LEVELS = frozenset({"low", "medium", "high"})
 # (FR-007).
 _EXEMPT = frozenset({"envelope", "extracted_at", "identity", "provenance", "knowledge_gaps"})
 _INFERRED = "inferred"
+_RECONSTRUCTED = "reconstructed"
+
+# The tiers a datum inside ``reconstructed`` may carry (rule 11).
+_BLOCK_TIERS = frozenset({Tier.RECONSTRUCTED, Tier.DERIVED})
+
+# The keys each reconstructed datum's instances carry, exactly (rule 13). Like ``_WILDCARD_VALUES``
+# the register states a datum, not its shape, so the shape is stated here: a datum not listed has no
+# declared shape and is refused, never silently accepted. ``value``, where declared, is an integer.
+_DECLARED_KEYS: dict[str, frozenset[str]] = {
+    "reconstruction.resources_spent": frozenset(
+        {"participant", "resource", "value", "settled_by", "effects"}
+    ),
+    "reconstruction.age_up_modelled_arrival_ms": frozenset(
+        {"participant", "age", "reached", "value", "settled_by", "effects"}
+    ),
+    "reconstruction.untied_deletions": frozenset(
+        {"participant", "order", "could_change", "candidates"}
+    ),
+}
+
+# A settlement's ``by`` and the rules-registry family it must name (data-model section 5).
+_FAMILY_OF_BY = {"proof": "proof", "rule": "deduction"}
+
+# The data of ``contracts/estimates.md``: the estimates (every id with this prefix, under
+# ``inferred``) and the two seen data. Their presence names the reconstruction engine (rule 14).
+_ESTIMATE_PREFIX = "participant.estimated_"
+_SEEN_DATA = frozenset({"participant.units_seen", "participant.producing_buildings_seen"})
 
 
 class Entry(Protocol):
@@ -37,6 +65,16 @@ class Entry(Protocol):
     def non_claim(self) -> str | None: ...
     @property
     def requires_knowledge(self) -> tuple[str, ...]: ...
+
+
+class RuleEntry(Protocol):
+    """What rule 12 reads of an entry of the reconstruction's rules registry. Core cannot import the
+    reconstruction package, so the caller resolves the registry and passes it in."""
+
+    @property
+    def status(self) -> str: ...
+    @property
+    def family(self) -> str: ...
 
 
 class DocumentInvalid(ValueError):
@@ -133,7 +171,7 @@ def _present_outside_inferred(
 
     present: set[str] = set()
     for key, value in document.items():
-        if key in _EXEMPT or key == _INFERRED:
+        if key in _EXEMPT or key in (_INFERRED, _RECONSTRUCTED):
             continue
         for leaf, empty_mapping in _leaves(value, str(key), wildcards):
             matches = resolve(leaf)
@@ -163,8 +201,102 @@ def present_data(document: Mapping[str, Any], register: Mapping[str, Entry]) -> 
     return frozenset(_present_outside_inferred(document, register, lambda _rule, _text: None))
 
 
-def validate(document: Mapping[str, Any], register: Mapping[str, Entry]) -> None:
-    """Raise ``DocumentInvalid`` naming every rule the document breaks; return None if none."""
+def _check_reconstructed(
+    document: Mapping[str, Any],
+    register: Mapping[str, Entry],
+    rules: Mapping[str, RuleEntry] | None,
+    fail: Callable[[int, str], None],
+) -> set[str]:
+    """Rules 11 to 13 on the ``reconstructed`` block; returns the data it validly carries."""
+    block = document.get(_RECONSTRUCTED, {})
+    carried: set[str] = set()
+    if not isinstance(block, Mapping):
+        fail(13, "the reconstructed block must be a mapping of datum id to instances")
+        return carried
+    for datum, instances in block.items():
+        entry = register.get(datum)
+        if entry is None or entry.status != "published":
+            fail(11, f"{datum!r} inside reconstructed is not a published register datum")
+            continue
+        if entry.tier not in _BLOCK_TIERS:
+            fail(11, f"{datum!r} is {entry.tier.value}; it may not appear inside reconstructed")
+            continue
+        if entry.path is not None:
+            fail(11, f"{datum!r} is published at {entry.path!r} and may not also be inside it")
+            continue
+        carried.add(datum)
+        declared = _DECLARED_KEYS.get(datum)
+        if declared is None:
+            fail(13, f"{datum!r} has no declared instance shape")
+            continue
+        if not isinstance(instances, list):
+            fail(13, f"{datum!r} must be a list of instances")
+            continue
+        for i, instance in enumerate(instances):
+            where = f"{datum!r} instance {i}"
+            if not isinstance(instance, Mapping):
+                fail(13, f"{where} must be a mapping")
+                continue
+            keys = set(instance)
+            if keys != declared:
+                fail(
+                    13,
+                    f"{where} carries keys {sorted(keys)}, declared {sorted(declared)} "
+                    f"(missing {sorted(declared - keys)}, extra {sorted(keys - declared)})",
+                )
+            if (
+                "value" in declared
+                and "value" in instance
+                and not _scalar_of_kind(instance["value"], int)
+            ):
+                fail(13, f"{where} has a value that is not an integer")
+            if "settled_by" not in declared or "settled_by" not in instance:
+                continue
+            settlements = instance["settled_by"]
+            if not isinstance(settlements, list):
+                fail(13, f"{where} settled_by must be a list")
+                continue
+            for settlement in settlements:
+                _check_settlement(settlement, rules, f"{where} settlement", fail)
+    return carried
+
+
+def _check_settlement(
+    settlement: object,
+    rules: Mapping[str, RuleEntry] | None,
+    where: str,
+    fail: Callable[[int, str], None],
+) -> None:
+    """Rule 12 on one settlement."""
+    if not isinstance(settlement, Mapping):
+        fail(12, f"{where} must be a mapping")
+        return
+    by = settlement.get("by")
+    rule_id = settlement.get("rule")
+    family = _FAMILY_OF_BY.get(by) if isinstance(by, str) else None
+    if family is None:
+        fail(12, f"{where} has a `by` outside {sorted(_FAMILY_OF_BY)}")
+    if not isinstance(rule_id, str) or rules is None or rule_id not in rules:
+        fail(12, f"{where} names rule {rule_id!r}, which is not in the registry supplied")
+        return
+    rule = rules[rule_id]
+    if rule.status != "adopted":
+        fail(12, f"{where} names rule {rule_id!r}, which is {rule.status}, not adopted")
+    if family is not None and rule.family != family:
+        fail(12, f"{where} says by {by!r} but {rule_id!r} is a {rule.family} rule")
+
+
+def validate(
+    document: Mapping[str, Any],
+    register: Mapping[str, Entry],
+    *,
+    rules: Mapping[str, RuleEntry] | None = None,
+) -> None:
+    """Raise ``DocumentInvalid`` naming every rule the document breaks; return None if none.
+
+    ``rules`` is the reconstruction's rules registry (rule id to an entry with ``status`` and
+    ``family``), resolved by the caller for the engine the identity names. Rule 12 reads it; with
+    none supplied, any settlement is refused."""
     found: list[tuple[int, str]] = []
 
     def fail(rule: int, text: str) -> None:
@@ -206,13 +338,19 @@ def validate(document: Mapping[str, Any], register: Mapping[str, Entry]) -> None
             if entry.non_claim is not None and _blank(instance.get("non_claim")):
                 fail(7, f"{where} does not carry the non-claim its register entry declares")
 
+    # Rules 11 to 13 on the reconstructed block.
+    reconstructed = _check_reconstructed(document, register, rules, fail)
+    for datum in sorted(present):
+        if register[datum].tier is Tier.RECONSTRUCTED:
+            fail(11, f"{datum!r} is reconstructed and appears outside the reconstructed block")
+
     # Rules 5 and 6, first halves: a weak datum outside ``inferred``.
     for datum in sorted(present):
         if register[datum].tier >= Tier.INFERRED:
             fail(5, f"{datum!r} is {register[datum].tier.value} and appears outside inferred")
             fail(6, f"{datum!r} is {register[datum].tier.value} and appears outside inferred")
 
-    everything = present | inferred_present
+    everything = present | inferred_present | reconstructed
 
     # Rules 2 to 4 on provenance.
     provenance = document.get("provenance", {})
@@ -309,6 +447,20 @@ def validate(document: Mapping[str, Any], register: Mapping[str, Entry]) -> None
             fail(9, "identity.parser_dependencies is empty")
         if identity.get("digest") != identity_digest(identity):
             fail(10, "identity.digest does not recompute from the other identity fields")
+
+    # Rule 14: the engine is named exactly when the reconstruction package computed something. A
+    # ``reconstructed`` key counts even when empty: the engine ran and found nothing to value.
+    computed = (
+        _RECONSTRUCTED in document
+        or bool(present & _SEEN_DATA)
+        or any(str(d).startswith(_ESTIMATE_PREFIX) for d in inferred)
+    )
+    if isinstance(identity, Mapping):
+        named = identity.get("reconstruction_engine") != NOT_APPLICABLE
+        if computed and not named:
+            fail(14, "reconstruction data is present but reconstruction_engine is not-applicable")
+        if named and not computed:
+            fail(14, "reconstruction_engine is named but nothing was reconstructed or estimated")
 
     if found:
         raise DocumentInvalid(found)

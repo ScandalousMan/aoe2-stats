@@ -1,0 +1,139 @@
+# Starting objects for build 188329 (T925, FR-026, 2026-11-17): the units and buildings a participant
+# starts with, per civilisation and lobby preset. The snapshot supersedes
+# `aoe2techtree-188329-civilisations-56`, whose `rules.json`, `effects.toml` and `aliases.toml` it
+# carries byte for byte; it adds this file and nothing else.
+#
+# **What is stated.** The vendored pack's civilisation help strings
+# (`packages/knowledge/packs/aoe2techtree-e56728e/strings.en.json`) state six bonuses that add an
+# object at the start; each is a `[[starting_object]]` with the string's key and the bullet
+# verbatim. The bonuses that change a stockpile ("Start with +50 gold") are not objects and are not
+# here: the decoded starting attributes carry them. A bullet that spawns objects later ("Town
+# Centers spawn 2 Villagers when the next Age is reached", "First Crusade") is not a starting
+# object and is not here. The pack's bullets carry no lobby preset, so each row's preset is
+# `any`: a statement about the bullet, not a verified fact about the game, which is why every
+# bonus also has an `[[open]]` row below.
+#
+# **What is not stated, and is therefore open.** The pack carries no baseline (what every
+# participant starts with) and no lobby preset. No source ruled in docs/data-sources.md section 6
+# states them, so each is an `[[open]]` row naming the owner request that reads it
+# (specs/008-match-reconstruction/owner-readings.md, O8). A consumer that needs a total reads a
+# non-empty `open` as a knowledge gap and adds nothing by default (FR-026).
+#
+# Objects the pack does not name as entities (Llama, Mule Cart, Horse, Forage Bush) have no
+# `unit_id`; the Villager is unit 83.
+
+[[starting_object]]
+civilisation = "Chinese"
+preset = "any"
+kind = "unit"
+object = "Villager"
+unit_id = "83"
+count = 3
+applies = "always"
+source_key = "120155"
+source_text = "Start with +3 Villagers, but -50 wood and -200 food"
+read_on = "2026-11-17"
+
+[[starting_object]]
+civilisation = "Mayans"
+preset = "any"
+kind = "unit"
+object = "Villager"
+unit_id = "83"
+count = 1
+applies = "always"
+source_key = "120165"
+source_text = "Start with +1 Villager, but -50 food"
+read_on = "2026-11-17"
+
+[[starting_object]]
+civilisation = "Incas"
+preset = "any"
+kind = "unit"
+object = "Llama"
+count = 1
+applies = "team"
+source_key = "120170"
+source_text = "Start with a free Llama"
+read_on = "2026-11-17"
+
+[[starting_object]]
+civilisation = "Gurjaras"
+preset = "any"
+kind = "resource-object"
+object = "Forage Bush"
+count = 2
+applies = "always"
+source_key = "120191"
+source_text = "Start with 2 Forage Bushes"
+read_on = "2026-11-17"
+
+[[starting_object]]
+civilisation = "Georgians"
+preset = "any"
+kind = "unit"
+object = "Mule Cart"
+count = 1
+applies = "always"
+source_key = "120194"
+source_text = "Start with a Mule Cart"
+read_on = "2026-11-17"
+
+[[starting_object]]
+civilisation = "Huns"
+preset = "any"
+kind = "unit"
+object = "Horse"
+count = 1
+applies = "nomadic-map"
+source_key = "120166"
+source_text = "On Nomadic maps, the first Town Center spawns a scouting Horse"
+read_on = "2026-11-17"
+
+[[open]]
+civilisation = "*"
+preset = "*"
+what = "the baseline units and buildings every participant starts with, which no ruled source states"
+request = "O8.1"
+
+[[open]]
+civilisation = "*"
+preset = "*"
+what = "which values of the lobby's starting-resources and starting-age settings change the starting units or buildings"
+request = "O8.2"
+
+[[open]]
+civilisation = "Chinese"
+preset = "*"
+what = "whether the bonus above holds, and holds unchanged, under every lobby preset; no committed recording has this civilisation"
+request = "O8.3"
+
+[[open]]
+civilisation = "Mayans"
+preset = "*"
+what = "whether the bonus above holds, and holds unchanged, under every lobby preset; no committed recording has this civilisation"
+request = "O8.3"
+
+[[open]]
+civilisation = "Incas"
+preset = "*"
+what = "whether the bonus above holds, and holds unchanged, under every lobby preset; no committed recording has this civilisation"
+request = "O8.3"
+
+[[open]]
+civilisation = "Gurjaras"
+preset = "*"
+what = "whether the bonus above holds, and holds unchanged, under every lobby preset; no committed recording has this civilisation"
+request = "O8.3"
+
+[[open]]
+civilisation = "Georgians"
+preset = "*"
+what = "whether the bonus above holds, and holds unchanged, under every lobby preset; no committed recording has this civilisation"
+request = "O8.3"
+
+[[open]]
+civilisation = "Huns"
+preset = "*"
+what = "whether the bonus above holds, and holds unchanged, under every lobby preset; no committed recording has this civilisation"
+request = "O8.3"

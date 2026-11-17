@@ -356,28 +356,96 @@ def other_document() -> dict[str, Any]:
     return _real_document(_WITHOUT)
 
 
-def _packaged_with_a_published_knowledge_datum() -> dict[str, Any]:
+def _packaged_with_a_published_knowledge_datum(path: str | None = None) -> dict[str, Any]:
+    """The packaged register with ``reconstruction.resources_spent`` flipped to published. Its own
+    entry has no path (a reconstructed datum lives inside the ``reconstructed`` block, rule 11);
+    ``path`` is only for the test that plants it at an observed path to see it refused."""
     from aoe2stats_analyzer.extract import _packaged_register
     from aoe2stats_core.truth.register import REGISTER
 
     register = dict(_packaged_register())
     entry = REGISTER[_KNOWLEDGE_DATUM]
     assert entry.requires_knowledge == ("cost",)  # the register's own, bare format
-    register[_KNOWLEDGE_DATUM] = dataclasses.replace(
-        entry, status="published", path="participants[].resources_spent"
-    )
+    assert entry.path is None
+    register[_KNOWLEDGE_DATUM] = dataclasses.replace(entry, status="published", path=path)
     return register
 
 
+@dataclasses.dataclass(frozen=True)
+class _AdoptedRule:
+    status: str = "adopted"
+    family: str = "deduction"
+
+
+_RULES = {"D-AGE-1": _AdoptedRule()}
+
+
+def _validate(document: dict[str, Any], register: dict[str, Any] | None = None) -> None:
+    """The analyzer's gate with the rules registry rule 12 reads supplied (``validate_document``
+    does not carry one yet)."""
+    from aoe2stats_analyzer.extract import _packaged_register
+    from aoe2stats_core.truth.validate import validate
+
+    validate(document, _packaged_register() if register is None else register, rules=_RULES)
+
+
 def _publishing_the_knowledge_datum(document: dict[str, Any]) -> dict[str, Any]:
+    """Publish ``reconstruction.resources_spent`` the way contracts/reconstruction-document.md
+    requires: inside ``reconstructed``, in the shape rule 13 declares, settled by a rule the
+    registry holds as adopted, with the engine named (rule 14)."""
+    from aoe2stats_core.truth.validate import identity_digest
+
     planted = copy.deepcopy(document)
+    planted["reconstructed"] = {
+        _KNOWLEDGE_DATUM: [
+            {
+                "participant": 1,
+                "resource": "wood",
+                "value": 10,
+                "settled_by": [
+                    {
+                        "condition": "age",
+                        "at_ms": 0,
+                        "by": "rule",
+                        "rule": "D-AGE-1",
+                        "orders": [0],
+                        "facts": {"computed_arrival_ms": 0},
+                    }
+                ],
+                "effects": [],
+            }
+        ]
+    }
+    planted["provenance"][_KNOWLEDGE_DATUM] = {
+        "tier": "reconstructed",
+        "method": "resources-spent@1",
+        "inputs": [],
+    }
+    planted["identity"]["reconstruction_engine"] = "aoe2stats-reconstruction@1+rules:sha256:abc"
+    planted["identity"]["digest"] = identity_digest(planted["identity"])
+    return planted
+
+
+def test_a_reconstructed_datum_at_an_observed_path_is_refused_by_rule_11(
+    other_document: dict[str, Any],
+) -> None:
+    """The behaviour change: this plant used to be how rule 8 was exercised; a reconstructed value
+    outside the ``reconstructed`` block is now refused (FR-015)."""
+    from aoe2stats_core.truth.validate import DocumentInvalid
+
+    planted = copy.deepcopy(other_document)
     planted["participants"][0]["resources_spent"] = 10
     planted["provenance"][_KNOWLEDGE_DATUM] = {
         "tier": "reconstructed",
         "method": "resources-spent@1",
         "inputs": [],
     }
-    return planted
+    register = _packaged_with_a_published_knowledge_datum("participants[].resources_spent")
+
+    with pytest.raises(DocumentInvalid) as info:
+        _validate(planted, register)
+
+    assert 11 in info.value.rules
 
 
 def _blocking(document: dict[str, Any]) -> list[dict[str, Any]]:
@@ -406,7 +474,6 @@ def _whole_build_gaps() -> list[dict[str, Any]]:
 def test_a_real_blocking_gap_refuses_the_datum_whose_knowledge_it_prevents(
     cost_gap_document: dict[str, Any],
 ) -> None:
-    from aoe2stats_analyzer.extract import validate_document
     from aoe2stats_core.truth.validate import DocumentInvalid
 
     blocking = _blocking(cost_gap_document)
@@ -414,7 +481,7 @@ def test_a_real_blocking_gap_refuses_the_datum_whose_knowledge_it_prevents(
     register = _packaged_with_a_published_knowledge_datum()
 
     with pytest.raises(DocumentInvalid) as info:
-        validate_document(_publishing_the_knowledge_datum(cost_gap_document), register)
+        _validate(_publishing_the_knowledge_datum(cost_gap_document), register)
 
     assert info.value.rules == frozenset({8})
     assert _KNOWLEDGE_DATUM in str(info.value)
@@ -423,20 +490,18 @@ def test_a_real_blocking_gap_refuses_the_datum_whose_knowledge_it_prevents(
 def test_the_same_gaps_leave_a_datum_that_needs_no_knowledge_alone(
     cost_gap_document: dict[str, Any],
 ) -> None:
-    from aoe2stats_analyzer.extract import validate_document
 
     assert _blocking(cost_gap_document)
     register = _packaged_with_a_published_knowledge_datum()
     assert register[_ALWAYS_THERE].requires_knowledge == ()
     assert _ALWAYS_THERE in cost_gap_document["provenance"]
 
-    validate_document(cost_gap_document, register)  # the datum is simply not in the document
+    _validate(cost_gap_document, register)  # the datum is simply not in the document
 
 
 def test_a_real_informational_gap_blocks_nothing(
     cost_gap_document: dict[str, Any], other_document: dict[str, Any]
 ) -> None:
-    from aoe2stats_analyzer.extract import validate_document
 
     informational = [
         g for g in other_document["knowledge_gaps"] if g["severity"] == "informational"
@@ -446,19 +511,18 @@ def test_a_real_informational_gap_blocks_nothing(
     register = _packaged_with_a_published_knowledge_datum()
     planted = _publishing_the_knowledge_datum(other_document)
 
-    validate_document(planted, register)
+    _validate(planted, register)
 
     only_informational = copy.deepcopy(cost_gap_document)
     only_informational["knowledge_gaps"] = [
         g for g in only_informational["knowledge_gaps"] if g["severity"] == "informational"
     ]
-    validate_document(_publishing_the_knowledge_datum(only_informational), register)
+    _validate(_publishing_the_knowledge_datum(only_informational), register)
 
 
 def test_a_whole_build_gap_blocks_every_knowledge_dependent_datum(
     other_document: dict[str, Any],
 ) -> None:
-    from aoe2stats_analyzer.extract import validate_document
     from aoe2stats_core.truth.validate import DocumentInvalid
 
     register = _packaged_with_a_published_knowledge_datum()
@@ -467,27 +531,26 @@ def test_a_whole_build_gap_blocks_every_knowledge_dependent_datum(
     planted = _publishing_the_knowledge_datum(other_document)
     planted["knowledge_gaps"] = gaps
     with pytest.raises(DocumentInvalid) as info:
-        validate_document(planted, register)
+        _validate(planted, register)
     assert info.value.rules == frozenset({8})
     assert _KNOWLEDGE_DATUM in str(info.value)
 
     # The contrast: the same gap, a document whose every datum needs no knowledge.
     plain = copy.deepcopy(other_document)
     plain["knowledge_gaps"] = gaps
-    validate_document(plain, register)
+    _validate(plain, register)
 
 
 def test_a_whole_build_gap_blocks_even_when_its_prevents_list_is_empty(
     other_document: dict[str, Any],
 ) -> None:
-    from aoe2stats_analyzer.extract import validate_document
     from aoe2stats_core.truth.validate import DocumentInvalid
 
     planted = _publishing_the_knowledge_datum(other_document)
     planted["knowledge_gaps"] = [{**_whole_build_gaps()[0], "prevents": []}]
 
     with pytest.raises(DocumentInvalid) as info:
-        validate_document(planted, _packaged_with_a_published_knowledge_datum())
+        _validate(planted, _packaged_with_a_published_knowledge_datum())
 
     assert info.value.rules == frozenset({8})
 
@@ -510,7 +573,6 @@ def test_real_gaps_mislabelled_informational_still_refuse_the_datum_they_are_abo
 ) -> None:
     """The validator does not trust the gap's own labels: ``resources_spent`` requires ``cost``,
     and a real gap on ``cost`` is on the document, so the datum is refused whatever the gap says."""
-    from aoe2stats_analyzer.extract import validate_document
     from aoe2stats_core.truth.validate import DocumentInvalid
 
     assert any(gap["field"] == "cost" for gap in cost_gap_document["knowledge_gaps"])
@@ -519,7 +581,7 @@ def test_real_gaps_mislabelled_informational_still_refuse_the_datum_they_are_abo
     )
 
     with pytest.raises(DocumentInvalid) as info:
-        validate_document(planted, _packaged_with_a_published_knowledge_datum())
+        _validate(planted, _packaged_with_a_published_knowledge_datum())
 
     assert info.value.rules == frozenset({8})
     assert _KNOWLEDGE_DATUM in str(info.value)
@@ -528,14 +590,13 @@ def test_real_gaps_mislabelled_informational_still_refuse_the_datum_they_are_abo
 def test_real_blocking_gaps_with_an_empty_prevents_still_refuse_the_datum_they_are_about(
     cost_gap_document: dict[str, Any],
 ) -> None:
-    from aoe2stats_analyzer.extract import validate_document
     from aoe2stats_core.truth.validate import DocumentInvalid
 
     planted = _publishing_the_knowledge_datum(_relabelled(cost_gap_document, prevents=[]))
     assert _blocking(planted)
 
     with pytest.raises(DocumentInvalid) as info:
-        validate_document(planted, _packaged_with_a_published_knowledge_datum())
+        _validate(planted, _packaged_with_a_published_knowledge_datum())
 
     assert info.value.rules == frozenset({8})
 
@@ -543,7 +604,6 @@ def test_real_blocking_gaps_with_an_empty_prevents_still_refuse_the_datum_they_a
 def test_gaps_on_other_fields_leave_the_datum_alone_whatever_they_say(
     cost_gap_document: dict[str, Any],
 ) -> None:
-    from aoe2stats_analyzer.extract import validate_document
 
     planted = copy.deepcopy(cost_gap_document)
     # The real recording keeps one blocking gap, about `cost`; the same gaps re-labelled as about a
@@ -554,7 +614,7 @@ def test_gaps_on_other_fields_leave_the_datum_alone_whatever_they_say(
     ]
     assert _blocking(planted)  # blocking gaps, none of them about cost
 
-    validate_document(
+    _validate(
         _publishing_the_knowledge_datum(planted), _packaged_with_a_published_knowledge_datum()
     )
 
