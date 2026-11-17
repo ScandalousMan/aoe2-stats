@@ -223,12 +223,14 @@ source = { editable = "packages/reconstruction" }
 dependencies = [
     { name = "aoe2stats-core" },
     { name = "aoe2stats-knowledge" },
+    { name = "pydantic" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "aoe2stats-core", editable = "packages/core" },
     { name = "aoe2stats-knowledge", editable = "packages/knowledge" },
+    { name = "pydantic", specifier = ">=2.9" },
 ]
 
 [[package]]
