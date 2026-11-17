@@ -1,8 +1,8 @@
 """T922: the Tier A decoder of the starting attributes (amendment contract, research R4).
 
-Assumed API (T923, `aoe2stats_replay_engine.starting`):
+API (T923, `aoe2stats_replay_engine.starting`):
 
-    decode_starting_attributes(header: bytes, name: str) -> Mapping[str, float]
+    decode_starting_attributes(header: bytes, name: str) -> Mapping[str, int]
 
 `header` is the inflated header, `name` a human player's name as the engine reports it. It returns
 `{"food", "wood", "stone", "gold"}` and nothing else, and raises `EngineParseError` when the name's
@@ -10,7 +10,7 @@ anchor is absent, ambiguous, or its four values are not finite non-negative inte
 
 The expected values are read here, independently, with the anchor framing documented in
 `tests/test_starting_state_anchor.py` (`u16 LE (len + 1)`, name, NUL, seven bytes, float32 array);
-no number is copied. Every test is a strict expected failure until T923 lands.
+no number is copied.
 """
 
 from __future__ import annotations
@@ -34,7 +34,6 @@ _RECORDINGS = recordings()
 _HUMAN_PLAYER_TYPE = 2
 _NAME_END_TO_ARRAY = 7
 _FIELDS = ("food", "wood", "stone", "gold")
-_XFAIL = pytest.mark.xfail(strict=True, reason="T923 not implemented yet")
 
 
 def _read(zip_path: Path) -> tuple[bytes, list[tuple[int, str]]]:
@@ -75,7 +74,6 @@ def _starting(zip_path: Path) -> list[tuple[int, dict[str, Any]]]:
     ]
 
 
-@_XFAIL
 @pytest.mark.parametrize("zip_path", _RECORDINGS, ids=lambda p: p.stem)
 def test_the_decoder_reads_the_four_stockpiles_of_every_human(zip_path: Path) -> None:
     from aoe2stats_replay_engine.starting import decode_starting_attributes
@@ -83,12 +81,11 @@ def test_the_decoder_reads_the_four_stockpiles_of_every_human(zip_path: Path) ->
     header, humans = _read(zip_path)
     assert humans
     for _, name in humans:
-        decoded: Mapping[str, float] = decode_starting_attributes(header, name)
+        decoded: Mapping[str, int] = decode_starting_attributes(header, name)
         assert tuple(decoded) == _FIELDS
         assert dict(decoded) == _expected(header, name)
 
 
-@_XFAIL
 @pytest.mark.parametrize("zip_path", _RECORDINGS, ids=lambda p: p.stem)
 def test_the_golden_holds_one_event_per_human_at_clock_zero_after_match_started(
     zip_path: Path,
@@ -107,7 +104,6 @@ def test_the_golden_holds_one_event_per_human_at_clock_zero_after_match_started(
         assert event["payload"]["values"] == _expected(header, name)
 
 
-@_XFAIL
 @pytest.mark.parametrize("zip_path", _RECORDINGS, ids=lambda p: p.stem)
 def test_the_live_stream_emits_the_golden_starting_events(zip_path: Path) -> None:
     from scripts.ops.canonical_golden import live_serialisation
@@ -126,7 +122,6 @@ def test_the_live_stream_emits_the_golden_starting_events(zip_path: Path) -> Non
     assert live == committed
 
 
-@_XFAIL
 def test_a_corrupted_terminator_removes_the_anchor() -> None:
     from aoe2stats_replay_engine.starting import decode_starting_attributes
 
@@ -138,7 +133,6 @@ def test_a_corrupted_terminator_removes_the_anchor() -> None:
         decode_starting_attributes(corrupted, name)
 
 
-@_XFAIL
 def test_a_second_framed_copy_makes_the_anchor_ambiguous() -> None:
     from aoe2stats_replay_engine.starting import decode_starting_attributes
 
@@ -148,7 +142,6 @@ def test_a_second_framed_copy_makes_the_anchor_ambiguous() -> None:
         decode_starting_attributes(header + _frame(name) + bytes(32), name)
 
 
-@_XFAIL
 def test_a_length_prefix_that_omits_the_terminator_is_not_an_anchor() -> None:
     from aoe2stats_replay_engine.starting import decode_starting_attributes
 
@@ -161,7 +154,6 @@ def test_a_length_prefix_that_omits_the_terminator_is_not_an_anchor() -> None:
         decode_starting_attributes(corrupted, name)
 
 
-@_XFAIL
 @pytest.mark.parametrize(
     "bad", [float("nan"), float("inf"), -1.0, 100.5], ids=["nan", "inf", "negative", "fractional"]
 )

@@ -654,8 +654,7 @@ evidence = "specs/006-replay-analysis-foundations/research.md D10"
 
 [datum."participant.starting_attributes"]
 classification = "decoded"
-status = "blocked"
-blocked_on = "the starting-attributes decoder (feature 008, research D1 tier A)"
+status = "planned"
 source = "the per-player attribute array in the decompressed header, present in the file and reachable by no working parser"
 method = "a repository-local decoder anchored on the participant's name string, golden-tested against committed recordings"
 requires_knowledge = []
@@ -665,8 +664,7 @@ evidence = "specs/006-replay-analysis-foundations/research.md D1"
 
 [datum."participant.starting_resources"]
 classification = "decoded"
-status = "blocked"
-blocked_on = "the starting-attributes decoder (feature 008, research D1 tier A)"
+status = "planned"
 source = "the first entries of the participant's starting attribute array: food, wood, stone and gold"
 method = "read from the decoded attribute array in the engine's own resource order"
 requires_knowledge = []
@@ -676,13 +674,12 @@ evidence = "specs/006-replay-analysis-foundations/research.md D1"
 
 [datum."event.starting_attributes.values"]
 classification = "decoded"
-status = "blocked"
-blocked_on = "the starting-attributes decoder (feature 008, research D1 tier A)"
-source = "the per-participant attribute values of the declared-only starting-attributes canonical event"
-method = "emitted by the starting-attributes decoder once it exists; the type is declared now so its arrival changes no type"
+status = "planned"
+source = "the per-participant attribute values of the starting-attributes canonical event"
+method = "emitted by the starting-attributes decoder, from Aoe2RecExtractor.events(), which supplies the recording bytes"
 requires_knowledge = []
 depends_on = ["participant.starting_attributes"]
-validation = "a test asserts the adapter emits no such event until the decoder lands"
+validation = "packages/replay-engine/tests/test_starting.py"
 evidence = "specs/006-replay-analysis-foundations/research.md D1"
 
 [datum."map.starting_objects"]
@@ -816,7 +813,7 @@ evidence = "specs/006-replay-analysis-foundations/spec.md (Out of Scope: feature
 [datum."reconstruction.income_model"]
 classification = "reconstructed"
 status = "blocked"
-blocked_on = "the starting-attributes decoder (feature 008, research D1 tier A)"
+blocked_on = "an income method that no feature specifies"
 source = "the reconstructed spending and the participant's decoded starting resources"
 method = "starting resources plus modelled income less modelled spending over the match clock"
 requires_knowledge = ["cost"]

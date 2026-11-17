@@ -90,12 +90,14 @@ from aoe2stats_core.replay.events import (
     ParticipantEntry,
     Position,
     ResearchQueuedPayload,
+    StartingAttributesPayload,
     UndecodedPayload,
     UnitQueuedPayload,
     UnitsCommandedPayload,
     UnitUnqueuedPayload,
 )
 from aoe2stats_core.replay.validation import EngineParseError
+from aoe2stats_replay_engine.starting import decode_starting_attributes, inflate_header
 
 # `Build.data[4:12]` is the placement position, two little-endian 32-bit floats in tiles. Found
 # empirically, like the building identifier at `[12:16]` in `aoe2rec.decode_build_action`: every
@@ -510,16 +512,58 @@ def _match_started(parsed: Mapping[str, object]) -> CanonicalEvent:
     )
 
 
+# The engine's `player_type` of a human participant: the only players with a name anchored in the
+# header, and the only ones that get a `starting-attributes` event.
+_HUMAN_PLAYER_TYPE = 2
+
+
+def _starting_attributes(
+    parsed: Mapping[str, object], recording: bytes
+) -> Iterator[CanonicalEvent]:
+    """One `starting-attributes` event per human participant, ordered by slot, at clock zero.
+
+    The values come from `decode_starting_attributes` over the inflated header bytes of `recording`,
+    not from the engine's output: only the human's name and slot are read from the engine. The
+    header is inflated only when a human is seated, so a chapter with none needs no header at all.
+    """
+    zheader = cast(Mapping[str, object], parsed["zheader"])
+    game_settings = cast(Mapping[str, object], zheader["game_settings"])
+    players = cast(Sequence[Mapping[str, object]], game_settings["players"])
+    humans = sorted(
+        (player for player in players if player.get("player_type") == _HUMAN_PLAYER_TYPE),
+        key=lambda player: cast(int, player["player_number"]),
+    )
+    if not humans:
+        return
+    header = inflate_header(recording)
+    for player in humans:
+        values = decode_starting_attributes(header, cast(str, player["name"]))
+        yield CanonicalEvent(
+            clock_ms=0,
+            kind=EventKind.STARTING_ATTRIBUTES,
+            participant=cast(int, player["player_number"]),
+            payload=StartingAttributesPayload(values=values),
+        )
+
+
 def canonical_events(
-    parsed: Mapping[str, object], accounting: Accounting | None = None
+    parsed: Mapping[str, object],
+    accounting: Accounting | None = None,
+    *,
+    recording: bytes | None = None,
 ) -> Iterator[CanonicalEvent]:
     """Yield the canonical events of one parsed replay, in stream order, in one pass.
 
     Pass an `Accounting` to have every deliberately dropped operation counted by reason.
     `match-started` (T629a) is always first, at clock zero: it comes from the header and
-    corresponds to no operation, so it is never counted in `tally`.
+    corresponds to no operation, so it is never counted in `tally`. When the `recording`'s bytes
+    are given, the `starting-attributes` events follow it (contracts/canonical-events-amendment.md);
+    they correspond to no operation either. Without them none are emitted: the header is not in
+    `parsed`.
     """
     yield _match_started(parsed)
+    if recording is not None:
+        yield from _starting_attributes(parsed, recording)
     tally = accounting if accounting is not None else Accounting()
     seated = _seated(parsed)
     state = _Exits()

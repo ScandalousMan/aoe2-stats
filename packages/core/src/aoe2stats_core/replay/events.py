@@ -60,9 +60,7 @@ MATCH_LEVEL_KINDS: frozenset[EventKind] = frozenset(
 )
 
 # Declared with no producer (FR-020): the day the decoder lands, no type changes.
-DECLARED_ONLY_KINDS: frozenset[EventKind] = frozenset(
-    {EventKind.STARTING_ATTRIBUTES, EventKind.STARTING_OBJECT}
-)
+DECLARED_ONLY_KINDS: frozenset[EventKind] = frozenset({EventKind.STARTING_OBJECT})
 
 
 @dataclass(frozen=True, slots=True)
@@ -177,7 +175,10 @@ class UndecodedPayload:
 
 @dataclass(frozen=True, slots=True)
 class StartingAttributesPayload:
-    """Declared only (FR-020): per-participant starting attribute values."""
+    """Per-participant starting attribute values.
+
+    Decoded by the replay engine's starting-attributes decoder.
+    """
 
     values: Mapping[str, float] = field(default_factory=dict)
 

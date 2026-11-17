@@ -10,8 +10,8 @@ Names T623 uses (the contract fixes the kinds and tiers, not the Python names):
   derived from the kind, never passed. Construction raises ``ValueError`` when ``participant``
   is None and the kind is not match-level.
 - ``StartingAttributesPayload``, ``StartingObjectPayload`` and ``ChatPayload``: payload
-  dataclasses; the first two are the declared-only kinds (FR-020), and ``ChatPayload`` carries a
-  channel and no text.
+  dataclasses; the first two are the starting kinds (only ``starting-object`` has no producer,
+  FR-020), and ``ChatPayload`` carries a channel and no text.
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ CONTRACT_TIERS = {
     "starting-object": "DECODED",
 }
 MATCH_LEVEL = {"match-started", "match-ended"}
-DECLARED_ONLY = {"starting-attributes", "starting-object"}
+STARTING_KINDS = {"starting-attributes", "starting-object"}
 
 
 def test_vocabulary_is_closed_and_matches_the_contract() -> None:
@@ -106,7 +106,7 @@ def test_declared_only_kinds_exist_as_types() -> None:
 
     assert isinstance(StartingAttributesPayload, type)
     assert isinstance(StartingObjectPayload, type)
-    for value in DECLARED_ONLY:
+    for value in STARTING_KINDS:
         assert KIND_TIER[EventKind(value)] is Tier.DECODED
 
 

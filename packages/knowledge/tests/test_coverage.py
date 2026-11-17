@@ -126,6 +126,7 @@ from aoe2stats_core.replay.events import (
     ParticipantEntry,
     Position,
     ResearchQueuedPayload,
+    StartingAttributesPayload,
     UndecodedPayload,
     UnitQueuedPayload,
     UnitsCommandedPayload,
@@ -213,6 +214,8 @@ def _payload_from_json(kind: EventKind, raw: Mapping[str, Any] | None) -> Any:
         return MatchEndedPayload(**raw)
     if kind is EventKind.UNDECODED:
         return UndecodedPayload(**raw)
+    if kind is EventKind.STARTING_ATTRIBUTES:
+        return StartingAttributesPayload(values=dict(raw["values"]))
     raise AssertionError(  # pragma: no cover - both goldens are exhaustively covered above
         f"golden fixture carries an event kind this deserialiser does not know: {kind!r}"
     )

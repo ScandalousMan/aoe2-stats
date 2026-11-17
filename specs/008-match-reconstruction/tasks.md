@@ -218,7 +218,7 @@ document with an empty `reconstructed` block.
       `match-started`, holding `food`, `wood`, `stone` and `gold` only, golden-tested over every
       committed recording, with the planted absences `tests/test_starting_state_anchor.py` already
       exercises (contracts/canonical-events-amendment.md, research R4).
-- [ ] T923 Implement `packages/replay-engine/src/aoe2stats_replay_engine/starting.py`, emit the
+- [x] T923 Implement `packages/replay-engine/src/aoe2stats_replay_engine/starting.py`, emit the
       event from `packages/replay-engine/src/aoe2stats_replay_engine/canonical.py`, regenerate the
       canonical goldens, change 006's test that the adapter emits neither declared-only kind for this
       kind only, move the register's two starting entries (the attributes and the resources) out of
