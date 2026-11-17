@@ -64,8 +64,8 @@ def fold_orders(events: Iterable[CanonicalEvent]) -> tuple[Order, ...]:
         payload = event.payload
         if event.kind is EventKind.MATCH_STARTED and isinstance(payload, MatchStartedPayload):
             build = payload.build
-            if payload.participants:
-                listed = frozenset(p.slot for p in payload.participants)
+            # An empty list lists nobody: no slot is a participant (never an observer).
+            listed = frozenset(p.slot for p in payload.participants)
             continue
         slot = event.participant
         if slot is None:

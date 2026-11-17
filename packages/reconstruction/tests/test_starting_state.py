@@ -229,6 +229,53 @@ def test_a_baseline_row_plus_a_bonus_row_gives_the_sum() -> None:
     assert all(state.objects is None for state in held.values())
 
 
+def _two_player_document(first: tuple[int, int], second: tuple[int, int]) -> dict[str, Any]:
+    """The first recording with its two participants set to (civilisation id, team) pairs."""
+    document = copy.deepcopy(_load(_RECORDINGS[0]))
+    started = _events(document, "match-started")[0]["payload"]
+    assert len(started["participants"]) == 2
+    for participant, (civilisation, team) in zip(
+        started["participants"], (first, second), strict=True
+    ):
+        participant["civilisation"] = civilisation
+        participant["team"] = team
+    return document
+
+
+def _team_row_snapshot() -> Any:
+    team_row = dataclasses.replace(_row("Incas", 1), object="Llama", applies="team")
+    return _table_snapshot((_row("*", 3, role="baseline"), team_row), open_rows=False)
+
+
+_FRANKS, _INCAS = 2, 21
+
+
+def test_a_teammate_of_a_team_bonus_civilisation_is_a_gap() -> None:
+    from aoe2stats_reconstruction.starting import starting_states
+
+    document = _two_player_document((_INCAS, 2), (_FRANKS, 2))
+    started = _events(document, "match-started")[0]["payload"]
+    preset = started["lobby_presets"]["starting_age_id"]
+    states = starting_states(
+        document, confirmed_age_presets={preset: 1}, snapshot=_team_row_snapshot()
+    )
+    assert states[1].objects is None  # the Inca: its own row is not unconditional
+    assert states[2].objects is None  # the Frank: the Inca's team row would reach it
+
+
+def test_a_participant_on_a_team_without_a_team_bonus_civilisation_gets_the_baseline() -> None:
+    from aoe2stats_reconstruction.starting import starting_states
+
+    document = _two_player_document((_INCAS, 2), (_FRANKS, 3))
+    started = _events(document, "match-started")[0]["payload"]
+    preset = started["lobby_presets"]["starting_age_id"]
+    states = starting_states(
+        document, confirmed_age_presets={preset: 1}, snapshot=_team_row_snapshot()
+    )
+    assert states[1].objects is None
+    assert states[2].objects == {"Villager": 3}
+
+
 @pytest.mark.parametrize("path", _RECORDINGS, ids=lambda p: p.name)
 def test_a_participant_without_a_starting_attributes_event_has_a_resource_gap(
     path: Path,

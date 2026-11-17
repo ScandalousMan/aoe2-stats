@@ -80,7 +80,11 @@ def _resolve_snapshot(build: object) -> Snapshot | None:
 
 
 def _objects(
-    snapshot: Snapshot | None, civilisation: str | None, preset: str, confirmed: bool
+    snapshot: Snapshot | None,
+    civilisation: str | None,
+    teammates: tuple[str | None, ...],
+    preset: str,
+    confirmed: bool,
 ) -> dict[str, int] | None:
     if (
         snapshot is None
@@ -94,6 +98,16 @@ def _objects(
         return None
     if any(row.applies != "always" for row in answer.added):
         return None
+    # A team row (the Inca Llama) goes to every member of the team, not only to its civilisation.
+    # Until team rows are applied to each member, a teammate of such a civilisation is a gap too,
+    # and so is a teammate whose civilisation is unknown.
+    for mate in teammates:
+        if mate is None:
+            return None
+        if any(
+            row.applies != "always" for row in snapshot.starting_objects_for(mate, preset).added
+        ):
+            return None
     counts: dict[str, int] = {}
     for row in answer.added:
         counts[row.object] = counts.get(row.object, 0) + row.count
@@ -121,13 +135,24 @@ def starting_states(
     decoded = _decoded_resources(canonical)
     limit = int(lobby["population_limit"])
     states: dict[int, StartingState] = {}
-    for participant in started["participants"]:
+    participants = started["participants"]
+    for participant in participants:
         slot = int(participant["slot"])
+        team = participant.get("team")
+        teammates = tuple(
+            names.get(int(other["civilisation"]))
+            for other in participants
+            if team is not None and other is not participant and other.get("team") == team
+        )
         states[slot] = StartingState(
             resources=decoded.get(slot),
             age=age,
             objects=_objects(
-                resolved, names.get(int(participant["civilisation"])), age_preset, age is not None
+                resolved,
+                names.get(int(participant["civilisation"])),
+                teammates,
+                age_preset,
+                age is not None,
             ),
             population_limit=limit,
         )

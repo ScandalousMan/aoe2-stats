@@ -217,14 +217,15 @@ def test_a_slot_the_match_start_does_not_list_yields_no_order() -> None:
     assert [(o.participant, o.source_event) for o in orders] == [(_ONE, 3)]
 
 
-def test_an_empty_participant_list_accepts_every_slot() -> None:
+def test_an_empty_participant_list_yields_no_orders() -> None:
     """`MatchStartedPayload.participants` defaults to empty, so an empty list is a valid payload
-    that lists nobody: the fold then has no list to exclude against and accepts every slot."""
+    that lists nobody. No slot is listed, so none is a participant (data-model section 1: never
+    an observer) and the fold yields no orders."""
     from aoe2stats_reconstruction.orders import fold_orders
 
     orders = fold_orders([_match_started(()), _queue(_ONE), _queue(_TWO, 2000)])
 
-    assert [o.participant for o in orders] == [_ONE, _TWO]
+    assert orders == ()
 
 
 def test_an_entity_named_before_any_build_is_known_raises() -> None:

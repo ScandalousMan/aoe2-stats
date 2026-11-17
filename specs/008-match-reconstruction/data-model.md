@@ -110,8 +110,9 @@ A record of the closed rules registry (contracts/rules.md). Lives in
 | `limits` | text, optional | What the rule cannot see, stated (D-WIN-1's targetless commands, D-CONTROL-1's destructions). |
 | `applies` | text, optional | The case the rule covers, when two rules settle one kind. Two adopted rules on one kind overlap unless both state an `applies` and the two differ (contracts/rules.md). |
 
-**State.** `candidate` → `adopted` (needs its evidence and, for a deduction, its ruling or its
-readings) → `retired` (replaced by a new id). `candidate` → `refuted` when a reading disagrees. A
+**State.** `candidate` → `adopted` (needs its evidence and, for a deduction, its ruling, its
+readings, or an evidence that states the game's own definition of a command, as D-WIN-1's does;
+contracts/rules.md) → `retired` (replaced by a new id). `candidate` → `refuted` when a reading disagrees. A
 change of status of an adopted rule bumps the reconstruction version (FR-021).
 
 ## 7. Reconstructed value
