@@ -179,14 +179,14 @@ document with an empty `reconstructed` block.
       in `packages/reconstruction/tests/test_reconstruction_packaging.py` asserts the analyzer declares it
       (not `test_packaging.py`: that basename exists in `packages/knowledge/tests/` and two test
       modules sharing a basename abort collection in the one workspace session).
-- [ ] T914 [P] [US3] Test first, `xfail(strict=True)`, in `packages/reconstruction/tests/test_orders.py`:
+- [x] T914 [P] [US3] Test first, `xfail(strict=True)`, in `packages/reconstruction/tests/test_orders.py`:
       one fold over a canonical stream yields the orders of data-model §1, with every producing
       building, the source event index, and nothing attributed after a participant's resignation
       (FR-002, FR-017's `nothing-after-exit`).
 - [ ] T915 [US3] Implement `packages/reconstruction/src/aoe2stats_reconstruction/orders.py` and
       delete T914's markers. The fold reads the canonical vocabulary only, never an engine shape
       (constitution V).
-- [ ] T916 [P] [US3] Test first, `xfail(strict=True)`, in `packages/reconstruction/tests/test_rules.py`:
+- [x] T916 [P] [US3] Test first, `xfail(strict=True)`, in `packages/reconstruction/tests/test_rules.py`:
       each of the seven loader guarantees of contracts/rules.md has a test that plants its violation
       and sees loading fail; the generated view equals the committed
       `packages/reconstruction/src/aoe2stats_reconstruction/RULES.md` byte for byte; every initial rule
@@ -198,7 +198,7 @@ document with an empty `reconstructed` block.
       generate
       `RULES.md`, and delete T916's markers (FR-005, FR-006, FR-007, FR-007a). The registry is read
       through `importlib.resources` (constitution XII).
-- [ ] T918 [P] [US3] Test first, `xfail(strict=True)`, in
+- [x] T918 [P] [US3] Test first, `xfail(strict=True)`, in
       `packages/reconstruction/tests/test_settlements.py`: a condition has exactly one value and a
       required settlement; a settlement resolves to an adopted rule of the family its `by` states; and,
       by walking every type of the published block, no field admits a pair, a range, a list of
@@ -207,7 +207,7 @@ document with an empty `reconstructed` block.
       `packages/reconstruction/src/aoe2stats_reconstruction/state.py` and
       `packages/reconstruction/src/aoe2stats_reconstruction/settle.py`, and delete T918's markers
       (FR-014).
-- [ ] T920 [P] [US3] Test first, `xfail(strict=True)`, in
+- [x] T920 [P] [US3] Test first, `xfail(strict=True)`, in
       `packages/reconstruction/tests/test_invariants.py`: one synthetic stream per invariant of
       data-model §8 breaks exactly that invariant, the breach names the invariant, the participant, the
       datum and the value, and nothing is published (FR-017, SC-007). The two invariants the population phase owns are declared with no check until T958 and T959 enable them.

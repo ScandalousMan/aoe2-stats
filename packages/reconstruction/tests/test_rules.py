@@ -1,0 +1,230 @@
+"""The rules registry loader and its generated view (FR-005 to FR-007, T916).
+
+Written first as strict xfails; T917 implements ``aoe2stats_reconstruction.rules`` and deletes the
+markers. The loader API these tests fix, for T917 to match:
+
+- ``RuleError(ValueError)``: raised by every refusal.
+- ``load_rules_text(text, *, known_readings=()) -> Rules``: parses and validates rules TOML text.
+  ``known_readings`` is the collection of reading ids found in committed ``playback.toml`` files;
+  the packaged loader supplies the real set.
+- ``Rules``: a mapping by id (``rules["P1"]``, ``len``, ``in``) iterating ``Rule`` records;
+  ``Rule`` has ``id, family, settles, statement, evidence, ruling, readings, status, limits,
+  applies`` (optional fields ``None``, ``readings`` a tuple).
+- ``RULES``: the packaged registry, loaded at import (constitution XII: ``importlib.resources``).
+- ``render_view(rules) -> str``, ``REGENERATE_COMMAND``, ``VIEW_FILENAME == "RULES.md"``.
+- ``applies`` is an optional text key stating a rule's applicability; two adopted rules settling the
+  same kind overlap unless both state an ``applies`` and the two differ.
+"""
+
+from __future__ import annotations
+
+from importlib import resources
+
+import pytest
+
+XFAIL = pytest.mark.xfail(strict=True, reason="T917 not implemented yet")
+
+# The contract's "Enters as" column, for the rules present in the initial set.
+INITIAL_STATUS = {
+    "P0": "adopted",
+    "P1": "adopted",
+    "P2": "adopted",
+    "P3": "adopted",
+    "D-AGE-1": "candidate",
+    "D-HOUSE-0": "candidate",
+    "D-TECH-1": "adopted",
+    "D-CONTROL-1": "candidate",
+    "D-CANCEL-1": "candidate",
+    "D-TIE-1": "candidate",
+    "D-REFUND-1": "adopted",
+    "D-WIN-1": "adopted",
+}
+
+
+def _rule(
+    rule_id: str = "P1",
+    *,
+    family: str = "proof",
+    settles: str = "age",
+    status: str = "candidate",
+    evidence: str = "research R3",
+    extra: str = "",
+) -> str:
+    evidence_line = f'evidence = "{evidence}"\n' if evidence is not None else ""
+    return (
+        f'[rule."{rule_id}"]\n'
+        f'family = "{family}"\n'
+        f'settles = "{settles}"\n'
+        'statement = "s"\n'
+        f"{evidence_line}"
+        "readings = []\n"
+        f'status = "{status}"\n'
+        f"{extra}\n"
+    )
+
+
+def _refuses(text: str, **kwargs: object) -> None:
+    from aoe2stats_reconstruction.rules import RuleError, load_rules_text
+
+    with pytest.raises(RuleError):
+        load_rules_text(text, **kwargs)  # type: ignore[arg-type]
+
+
+@XFAIL
+def test_a_well_formed_text_loads() -> None:
+    from aoe2stats_reconstruction.rules import load_rules_text
+
+    rules = load_rules_text(_rule("P1", status="adopted") + _rule("D-AGE-1", family="deduction"))
+    assert rules["P1"].status == "adopted"
+    assert rules["D-AGE-1"].family == "deduction"
+
+
+@XFAIL
+def test_guarantee_1_a_duplicated_id_fails() -> None:
+    _refuses(_rule("P1") + _rule("P1"))
+
+
+@pytest.mark.parametrize("bad_id", ["p1", "P", "X1", "D-AGE", "D-age-1", "P1a", "D--1"])
+@XFAIL
+def test_guarantee_1_an_id_outside_the_two_shapes_fails(bad_id: str) -> None:
+    _refuses(_rule(bad_id))
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [("family", "estimate"), ("settles", "mood"), ("status", "maybe")],
+)
+@XFAIL
+def test_guarantee_2_a_value_outside_its_closed_set_fails(key: str, value: str) -> None:
+    kwargs = {key: value}
+    _refuses(_rule("P1", **kwargs))  # type: ignore[arg-type]
+
+
+@XFAIL
+def test_guarantee_3_an_adopted_deduction_with_no_basis_fails() -> None:
+    # No ruling, no readings, and an evidence that is not the game's own definition: empty text
+    # is refused by guarantee 4 as well, so the planted violation is the deduction-specific one,
+    # a deduction whose only support is absent.
+    text = _rule("D-WIN-1", family="deduction", settles="winner", status="adopted", evidence="")
+    _refuses(text)
+
+
+@XFAIL
+def test_guarantee_3_a_ruling_or_a_reading_is_a_basis() -> None:
+    from aoe2stats_reconstruction.rules import load_rules_text
+
+    ruled = _rule(
+        "D-REFUND-1",
+        family="deduction",
+        settles="refund",
+        status="adopted",
+        extra='ruling = "spec Clarifications"',
+    )
+    assert load_rules_text(ruled)["D-REFUND-1"].status == "adopted"
+
+
+@XFAIL
+def test_guarantee_4_an_adopted_rule_with_an_empty_evidence_fails() -> None:
+    _refuses(_rule("P1", status="adopted", evidence=""))
+    _refuses(_rule("P1", status="adopted", evidence=None))  # type: ignore[arg-type]
+
+
+@XFAIL
+def test_guarantee_5_a_refuted_rule_with_no_reading_fails() -> None:
+    _refuses(_rule("D-AGE-1", family="deduction", status="refuted"))
+
+
+@XFAIL
+def test_guarantee_5_a_refuted_rule_citing_a_known_reading_loads() -> None:
+    from aoe2stats_reconstruction.rules import load_rules_text
+
+    text = _rule("D-AGE-1", family="deduction", status="refuted").replace(
+        "readings = []", 'readings = ["R1"]'
+    )
+    assert load_rules_text(text, known_readings={"R1"})["D-AGE-1"].status == "refuted"
+
+
+@XFAIL
+def test_guarantee_6_a_reading_in_no_playback_file_fails() -> None:
+    text = _rule("P1").replace("readings = []", 'readings = ["511523321.O3"]')
+    _refuses(text, known_readings={"another.O1"})
+    _refuses(text)
+
+
+@XFAIL
+def test_guarantee_6_a_known_reading_loads() -> None:
+    from aoe2stats_reconstruction.rules import load_rules_text
+
+    text = _rule("P1").replace("readings = []", 'readings = ["511523321.O3"]')
+    assert load_rules_text(text, known_readings={"511523321.O3"})["P1"].readings == (
+        "511523321.O3",
+    )
+
+
+@XFAIL
+def test_guarantee_7_two_adopted_rules_settling_one_kind_overlap_and_fail() -> None:
+    _refuses(_rule("P1", status="adopted") + _rule("D-AGE-1", family="deduction", status="adopted"))
+
+
+@XFAIL
+def test_guarantee_7_a_candidate_beside_an_adopted_rule_does_not_overlap() -> None:
+    from aoe2stats_reconstruction.rules import load_rules_text
+
+    rules = load_rules_text(
+        _rule("P1", status="adopted") + _rule("D-AGE-1", family="deduction", status="candidate")
+    )
+    assert len(rules) == 2
+
+
+@XFAIL
+def test_guarantee_7_disjoint_stated_applicability_does_not_overlap() -> None:
+    from aoe2stats_reconstruction.rules import load_rules_text
+
+    rules = load_rules_text(
+        _rule("P1", status="adopted", extra='applies = "case a"')
+        + _rule(
+            "D-AGE-1",
+            family="deduction",
+            status="adopted",
+            extra='applies = "case b"\nruling = "r"',
+        )
+    )
+    assert len(rules) == 2
+
+
+@XFAIL
+def test_the_packaged_registry_loads_with_every_initial_rule_at_its_status() -> None:
+    from aoe2stats_reconstruction.rules import RULES
+
+    assert {rule.id: rule.status for rule in RULES} == INITIAL_STATUS
+
+
+@XFAIL
+def test_d_exec_1_and_d_dist_1_are_absent_and_no_p4_exists() -> None:
+    from aoe2stats_reconstruction.rules import RULES
+
+    ids = {rule.id for rule in RULES}
+    assert ids.isdisjoint({"D-EXEC-1", "D-DIST-1", "P4"})
+
+
+@XFAIL
+def test_the_view_is_deterministic_and_lists_every_rule() -> None:
+    from aoe2stats_reconstruction.rules import RULES, render_view
+
+    view = render_view(RULES)
+    assert render_view(RULES) == view
+    assert view.endswith("\n") and not view.endswith("\n\n")
+    assert "rules.toml" in view.split("\n## ", 1)[0]
+    for rule in RULES:
+        assert f"`{rule.id}`" in view
+
+
+@XFAIL
+def test_the_committed_view_matches_the_registry_byte_for_byte() -> None:
+    from aoe2stats_reconstruction.rules import REGENERATE_COMMAND, RULES, VIEW_FILENAME, render_view
+
+    assert VIEW_FILENAME == "RULES.md"
+    committed = resources.files("aoe2stats_reconstruction").joinpath("RULES.md").read_text("utf-8")
+    assert committed == render_view(RULES), (
+        "RULES.md has drifted from rules.toml. Regenerate it with: " + REGENERATE_COMMAND
+    )

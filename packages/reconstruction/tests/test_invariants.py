@@ -1,0 +1,189 @@
+"""The closed invariant set of FR-017 (data-model section 8): one synthetic stream per invariant
+breaks exactly that invariant, the breach names it, and nothing is published (SC-007).
+
+Assumed API of `aoe2stats_reconstruction.invariants` (T921 must provide it):
+
+- `Invariant`: a `StrEnum` with the nine members of data-model section 8.
+- `CHECKS`: `Mapping[Invariant, Callable[[Sequence[Mapping[str, object]]], None] | None]`, one entry
+  per invariant; `None` means declared with no check (the two population-owned ones).
+- `InvariantBreach(Exception)`: attributes `invariant`, `participant`, `datum`, `value`; its
+  message names all four.
+- `check_invariants(stream) -> None`: runs every enabled check, raises the first breach, and
+  returns nothing, so a caller that gets no return value has nothing to publish.
+
+A stream is a sequence of plain records, each with a `kind` and the fields of its datum.
+"""
+
+from __future__ import annotations
+
+import contextlib
+from collections.abc import Mapping, Sequence
+
+import pytest
+
+_XFAIL = pytest.mark.xfail(strict=True, reason="T921 not implemented yet")
+
+_Stream = Sequence[Mapping[str, object]]
+
+_ENABLED = [
+    "spending-non-negative",
+    "cancellation-bounded",
+    "arrival-after-click",
+    "nothing-after-exit",
+    "military-within-total",
+    "starting-resources-agree",
+    "proof-not-contradicted",
+]
+_POPULATION_OWNED = ["population-non-negative", "idle-bounded"]
+
+# invariant -> (stream that breaks exactly it, participant, datum, offending value)
+_BREACHES: dict[str, tuple[_Stream, str, str, object]] = {
+    "spending-non-negative": (
+        [{"kind": "spend", "participant": "p1", "resource": "wood", "amount": -50}],
+        "p1",
+        "wood",
+        -50,
+    ),
+    "cancellation-bounded": (
+        [
+            {"kind": "queue", "participant": "p1", "unstarted": 2},
+            {"kind": "cancel", "participant": "p1", "count": 5},
+        ],
+        "p1",
+        "cancel",
+        5,
+    ),
+    "arrival-after-click": (
+        [
+            {
+                "kind": "age-up",
+                "participant": "p2",
+                "click_at": 600,
+                "arrival_at": 590,
+            }
+        ],
+        "p2",
+        "age-up",
+        590,
+    ),
+    "nothing-after-exit": (
+        [
+            {"kind": "resign", "participant": "p2", "at": 300},
+            {"kind": "order", "participant": "p2", "at": 340},
+        ],
+        "p2",
+        "order",
+        340,
+    ),
+    "military-within-total": (
+        [
+            {
+                "kind": "share",
+                "participant": "p1",
+                "resource": "gold",
+                "military": 120,
+                "total": 100,
+            }
+        ],
+        "p1",
+        "gold",
+        120,
+    ),
+    "starting-resources-agree": (
+        [
+            {
+                "kind": "starting",
+                "participant": "p1",
+                "resource": "food",
+                "decoded": 250,
+                "derived": 200,
+            }
+        ],
+        "p1",
+        "food",
+        250,
+    ),
+    "proof-not-contradicted": (
+        [
+            {
+                "kind": "contradiction",
+                "participant": "p1",
+                "rule": "adopted-rule",
+                "condition": "age-not-reached",
+                "at": 450,
+            }
+        ],
+        "p1",
+        "age-not-reached",
+        450,
+    ),
+}
+
+
+@_XFAIL
+def test_the_closed_set_has_exactly_the_nine_invariants() -> None:
+    from aoe2stats_reconstruction.invariants import CHECKS, Invariant
+
+    expected = set(_ENABLED) | set(_POPULATION_OWNED)
+    assert {member.value for member in Invariant} == expected
+    assert set(CHECKS) == set(Invariant)
+
+
+@_XFAIL
+@pytest.mark.parametrize("name", _POPULATION_OWNED)
+def test_population_owned_invariants_are_declared_with_no_check(name: str) -> None:
+    from aoe2stats_reconstruction.invariants import CHECKS, Invariant
+
+    assert Invariant(name) in CHECKS
+    assert CHECKS[Invariant(name)] is None
+
+
+@_XFAIL
+@pytest.mark.parametrize("name", _ENABLED)
+def test_every_other_invariant_has_a_check(name: str) -> None:
+    from aoe2stats_reconstruction.invariants import CHECKS, Invariant
+
+    assert callable(CHECKS[Invariant(name)])
+
+
+@_XFAIL
+@pytest.mark.parametrize("name", _ENABLED)
+def test_a_stream_breaking_one_invariant_names_it(name: str) -> None:
+    from aoe2stats_reconstruction.invariants import Invariant, InvariantBreach, check_invariants
+
+    stream, participant, datum, value = _BREACHES[name]
+    with pytest.raises(InvariantBreach) as raised:
+        check_invariants(stream)
+    breach = raised.value
+    assert breach.invariant == Invariant(name)
+    assert breach.participant == participant
+    assert breach.datum == datum
+    assert breach.value == value
+    message = str(breach)
+    for part in (name, participant, datum, str(value)):
+        assert part in message
+
+
+@_XFAIL
+@pytest.mark.parametrize("name", _ENABLED)
+def test_a_breach_publishes_nothing(name: str) -> None:
+    from aoe2stats_reconstruction.invariants import InvariantBreach, check_invariants
+
+    stream, _participant, _datum, _value = _BREACHES[name]
+    published: list[object] = []
+    with contextlib.suppress(InvariantBreach):
+        published.append(check_invariants(stream))
+    assert published == []
+
+
+@_XFAIL
+def test_a_stream_breaking_nothing_passes() -> None:
+    from aoe2stats_reconstruction.invariants import check_invariants
+
+    stream: _Stream = [
+        {"kind": "spend", "participant": "p1", "resource": "wood", "amount": 50},
+        {"kind": "queue", "participant": "p1", "unstarted": 5},
+        {"kind": "cancel", "participant": "p1", "count": 2},
+        {"kind": "age-up", "participant": "p1", "click_at": 600, "arrival_at": 640},
+    ]
+    assert check_invariants(stream) is None
