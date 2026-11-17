@@ -25,6 +25,7 @@ from typing import Any
 from aoe2stats_analyzer import extract, staleness
 from aoe2stats_core.truth.identity import AnalysisIdentity
 from aoe2stats_knowledge.snapshot import Snapshot, load_snapshot, snapshot_for
+from aoe2stats_reconstruction.document import reconstruction_engine
 from aoe2stats_storage.models import MatchAnalysis, MatchAnalysisState, RetainedRecording
 
 _BUILD = 188329
@@ -55,6 +56,7 @@ def _digest(knowledge: dict[str, Any]) -> str:
         parser_version=engine.engine_version,
         parser_dependencies=engine.engine_dependencies,
         knowledge=knowledge,
+        reconstruction_engine=reconstruction_engine(),
         analytics=extract.ANALYTICS_VERSION,
     ).digest
 

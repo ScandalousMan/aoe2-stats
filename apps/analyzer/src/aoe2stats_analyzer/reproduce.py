@@ -31,7 +31,9 @@ compared with the identity, and every difference is collected into one `Reproduc
   the banding method), and this package holds exactly one of it; there is no second implementation
   to run "as of" an older version, so claiming one would be a rebuild by the new code under the old
   name;
-- the reconstruction engine marker, which this build never fills in;
+- the reconstruction engine (package version and rules-registry digest): any value but the
+  installed one is refused, naming both, because the registry that produced a document is code
+  this package holds exactly one of (T931, FR-021);
 - the named snapshot: not installed at all, or installed under the same source, version and build
   with a different digest. A snapshot whose packaged files no longer match their own recorded digest
   is refused by the loader (FR-025), and that refusal is named too.
@@ -72,13 +74,14 @@ from aoe2stats_analyzer.extract import (
     validate_document,
 )
 from aoe2stats_core.replay.analysis import AnalysisExtractor
-from aoe2stats_core.truth.identity import NOT_APPLICABLE, AnalysisIdentity
+from aoe2stats_core.truth.identity import AnalysisIdentity
 from aoe2stats_knowledge.snapshot import (
     Snapshot,
     SnapshotError,
     load_all_snapshots,
     pinned_snapshot,
 )
+from aoe2stats_reconstruction.document import reconstruction_engine
 from aoe2stats_storage.objects import ObjectNotFound, ObjectReader, retained_recording_object_key
 
 __all__ = ["RecordingSource", "ReproductionRefused", "reproduce"]
@@ -264,10 +267,11 @@ def _installed_code_differences(
             f"the identity names analytics version {identity.analytics!r}, "
             f"but the installed analytics version is {ANALYTICS_VERSION!r}"
         )
-    if identity.reconstruction_engine != NOT_APPLICABLE:
+    installed_engine = reconstruction_engine()
+    if identity.reconstruction_engine != installed_engine:
         reasons.append(
             f"the identity names reconstruction engine {identity.reconstruction_engine!r}, "
-            "which is not installed here"
+            f"but the installed engine is {installed_engine!r}"
         )
     return reasons
 

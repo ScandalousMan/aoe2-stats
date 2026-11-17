@@ -1,6 +1,6 @@
-"""The starting state of data-model section 3 (FR-026), test first: T927 must make these pass.
+"""The starting state of data-model section 3 (FR-026).
 
-Assumed API of `aoe2stats_reconstruction.starting` (T927 must provide it):
+API of `aoe2stats_reconstruction.starting` (T927):
 
 - `starting_states(canonical, *, confirmed_age_presets=None) -> dict[int, StartingState]`, keyed by
   participant slot. `canonical` is a parsed `*.canonical.json` document. `confirmed_age_presets`
@@ -12,28 +12,37 @@ Assumed API of `aoe2stats_reconstruction.starting` (T927 must provide it):
   (`{name: count}` with count a positive int, or `None` as a gap) and `population_limit` (int from
   the lobby preset, age-independent). `None` is the gap: an age-dependent value that is not
   confirmed is never a guess.
-- `derive_starting_resources(canonical) -> dict[int, dict[str, int]]`: the lobby-and-civilisation
-  derivation of the starting stockpiles per slot, through the knowledge base.
+- `derive_starting_resources(canonical) -> dict[int, dict[str, int] | None]`: the
+  lobby-and-civilisation derivation of the starting stockpiles per slot, through the knowledge
+  base. The knowledge base states no preset's stockpile, so every slot is `None` (a gap) today.
 - `starting_resource_records(canonical) -> list[dict]`: one `starting` record per participant and
   resource (`participant`, `resource`, `decoded`, `derived`), the shape the
-  `starting-resources-agree` check of `invariants.py` reads.
+  `starting-resources-agree` check of `invariants.py` reads. A slot whose derivation is a gap yields
+  no record.
+
+`starting_states` and `starting_resource_records` also accept `snapshot=` and `derivation=` seams
+so the tests can state a table or a derivation the installed knowledge does not hold.
 """
 
 from __future__ import annotations
 
 import copy
+import dataclasses
 import json
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+from aoe2stats_knowledge.snapshot import (
+    StartingObject,
+    load_snapshot,
+)
 from aoe2stats_reconstruction.invariants import Invariant, InvariantBreach, check_invariants
 
 _REPLAYS = Path(__file__).resolve().parents[3] / "tests" / "fixtures" / "replays"
 _RECORDINGS = sorted(_REPLAYS.glob("*.canonical.json"))
 _RESOURCES = ("food", "wood", "stone", "gold")
-_XFAIL = pytest.mark.xfail(strict=True, reason="T927 not implemented yet")
 
 
 def _load(path: Path) -> dict[str, Any]:
@@ -45,11 +54,20 @@ def _events(document: dict[str, Any], kind: str) -> list[dict[str, Any]]:
     return [e for e in document["events"] if e["kind"] == kind]
 
 
+def _stated_derivation(document: dict[str, Any]) -> Any:
+    """A derivation standing in for a knowledge base that states the stockpiles: it is computed
+    from this document's unplanted decoded values, so it is the test's, not a constant."""
+    stated = {
+        e["participant"]: {n: e["payload"]["values"][n] for n in _RESOURCES}
+        for e in _events(document, "starting-attributes")
+    }
+    return lambda _canonical: stated
+
+
 def test_the_committed_recordings_are_found() -> None:
     assert len(_RECORDINGS) == 3
 
 
-@_XFAIL
 @pytest.mark.parametrize("path", _RECORDINGS, ids=lambda p: p.name)
 def test_the_starting_state_of_each_recording(path: Path) -> None:
     from aoe2stats_reconstruction.starting import starting_states
@@ -69,16 +87,14 @@ def test_the_starting_state_of_each_recording(path: Path) -> None:
         assert state.resources == {name: decoded[slot][name] for name in _RESOURCES}
         assert state.age == 1
         assert state.population_limit == int(started["lobby_presets"]["population_limit"])
-        assert state.objects is not None
-        assert state.objects, "a confirmed preset has starting objects"
-        assert all(
-            isinstance(n, str) and isinstance(c, int) and c > 0 for n, c in state.objects.items()
-        )
+        # AMENDED (T927): T926 asserted a non-empty `objects` here, written before T925's table
+        # existed. The table's baseline is an open owner request (O8.1) and FR-026 forbids a
+        # default, so `objects` is a gap while the table has open rows or the build has no table.
+        assert state.objects is None
 
 
-@_XFAIL
 @pytest.mark.parametrize("path", _RECORDINGS, ids=lambda p: p.name)
-def test_decoded_resources_agree_with_the_derivation(path: Path) -> None:
+def test_the_derivation_is_a_gap_until_the_knowledge_base_states_a_stockpile(path: Path) -> None:
     from aoe2stats_reconstruction.starting import (
         derive_starting_resources,
         starting_resource_records,
@@ -86,37 +102,46 @@ def test_decoded_resources_agree_with_the_derivation(path: Path) -> None:
 
     document = _load(path)
     derived = derive_starting_resources(document)
-    for event in _events(document, "starting-attributes"):
-        values = event["payload"]["values"]
-        assert {name: values[name] for name in _RESOURCES} == derived[event["participant"]]
+    slots = {e["participant"] for e in _events(document, "starting-attributes")}
+    # Not vacuous: every slot is named and each is an explicit gap, so nothing is "agreed".
+    assert set(derived) == slots
+    assert all(value is None for value in derived.values())
+    assert starting_resource_records(document) == []
 
-    records = starting_resource_records(document)
+
+@pytest.mark.parametrize("path", _RECORDINGS, ids=lambda p: p.name)
+def test_decoded_resources_agree_with_a_stated_derivation(path: Path) -> None:
+    from aoe2stats_reconstruction.starting import starting_resource_records
+
+    document = _load(path)
+    records = starting_resource_records(document, derivation=_stated_derivation(document))
     assert records
     assert {r["resource"] for r in records} == set(_RESOURCES)
     assert all(r["kind"] == "starting" and r["decoded"] == r["derived"] for r in records)
     assert check_invariants(records) is None
 
 
-@_XFAIL
 @pytest.mark.parametrize("path", _RECORDINGS, ids=lambda p: p.name)
 def test_a_planted_disagreement_is_the_starting_resources_breach(path: Path) -> None:
     from aoe2stats_reconstruction.starting import starting_resource_records
 
-    document = copy.deepcopy(_load(path))
+    original_document = _load(path)
+    document = copy.deepcopy(original_document)
     planted = _events(document, "starting-attributes")[0]
     slot = planted["participant"]
     original = planted["payload"]["values"]["wood"]
     planted["payload"]["values"]["wood"] = original + 1
 
     with pytest.raises(InvariantBreach) as raised:
-        check_invariants(starting_resource_records(document))
+        check_invariants(
+            starting_resource_records(document, derivation=_stated_derivation(original_document))
+        )
     assert raised.value.invariant is Invariant.STARTING_RESOURCES_AGREE
     assert raised.value.participant == slot
     assert raised.value.datum == "wood"
     assert raised.value.value == original + 1
 
 
-@_XFAIL
 @pytest.mark.parametrize("path", _RECORDINGS, ids=lambda p: p.name)
 def test_an_unconfirmed_age_preset_gaps_every_age_dependent_value(path: Path) -> None:
     from aoe2stats_reconstruction.starting import starting_states
@@ -132,3 +157,64 @@ def test_an_unconfirmed_age_preset_gaps_every_age_dependent_value(path: Path) ->
         # What does not depend on the age preset is still known, and never gapped by contagion.
         assert set(state.resources) == set(_RESOURCES)
         assert state.population_limit == int(started["lobby_presets"]["population_limit"])
+
+
+def _table_snapshot(rows: tuple[StartingObject, ...], *, open_rows: bool) -> Any:
+    """The starting-objects snapshot with its rows replaced: a synthetic table, never installed."""
+    real = load_snapshot("aoe2techtree-188329-starting-objects")
+    assert real.starting_objects_open, "the installed table still owes the owner its baseline"
+    return dataclasses.replace(
+        real,
+        starting_objects=rows,
+        starting_objects_open=real.starting_objects_open if open_rows else (),
+    )
+
+
+def _row(civilisation: str, count: int) -> StartingObject:
+    return StartingObject(
+        civilisation=civilisation,
+        preset="any",
+        kind="unit",
+        object="Villager",
+        count=count,
+        applies="always",
+        source_key="synthetic",
+        source_text="synthetic row, a test's own",
+        read_on="2026-11-17",
+        unit_id="83",
+    )
+
+
+def test_open_rows_gap_the_objects_even_when_the_age_preset_is_confirmed() -> None:
+    from aoe2stats_reconstruction.starting import starting_states
+
+    document = _load(_RECORDINGS[0])
+    preset = _events(document, "match-started")[0]["payload"]["lobby_presets"]["starting_age_id"]
+    names = _civilisation_names(document)
+    rows = tuple(_row(name, 3) for name in names.values())
+    snapshot = _table_snapshot(rows, open_rows=True)
+    states = starting_states(document, confirmed_age_presets={preset: 1}, snapshot=snapshot)
+    assert all(state.objects is None for state in states.values())
+
+
+def test_a_table_with_no_open_rows_fills_the_objects() -> None:
+    from aoe2stats_reconstruction.starting import starting_states
+
+    document = _load(_RECORDINGS[0])
+    preset = _events(document, "match-started")[0]["payload"]["lobby_presets"]["starting_age_id"]
+    names = _civilisation_names(document)
+    snapshot = _table_snapshot(tuple(_row(name, 3) for name in names.values()), open_rows=False)
+    states = starting_states(document, confirmed_age_presets={preset: 1}, snapshot=snapshot)
+    assert all(state.objects == {"Villager": 3} for state in states.values())
+    # An unconfirmed preset still gaps them, whatever the table says.
+    gapped = starting_states(document, confirmed_age_presets={}, snapshot=snapshot)
+    assert all(state.objects is None for state in gapped.values())
+
+
+def _civilisation_names(document: dict[str, Any]) -> dict[int, str]:
+    from aoe2stats_knowledge import effects
+
+    directory = "aoe2techtree-188329-starting-objects"
+    raw = effects.civilisation_id_names(directory)
+    participants = _events(document, "match-started")[0]["payload"]["participants"]
+    return {p["slot"]: raw[p["civilisation"]] for p in participants}

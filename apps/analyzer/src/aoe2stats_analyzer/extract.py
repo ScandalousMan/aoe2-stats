@@ -55,7 +55,7 @@ from aoe2stats_core.replay.events import (
     EventKind,
     MatchStartedPayload,
 )
-from aoe2stats_core.truth.identity import AnalysisIdentity
+from aoe2stats_core.truth.identity import NOT_APPLICABLE, AnalysisIdentity
 from aoe2stats_core.truth.placement import (
     InferredInstances,
     TierPlacementError,
@@ -75,6 +75,11 @@ from aoe2stats_knowledge.snapshot import (
     snapshot_for,
     verify_installed_snapshots,
 )
+from aoe2stats_reconstruction.document import (
+    SCHEMA_VERSION as RECONSTRUCTION_SCHEMA_VERSION,
+)
+from aoe2stats_reconstruction.document import reconstructed_block, reconstruction_engine
+from aoe2stats_reconstruction.rules import RULES
 from aoe2stats_replay_engine.dependencies import EngineDependencyError
 from aoe2stats_replay_engine.silence import GroupSilenceEpisode, compute_group_silence_episodes
 
@@ -82,7 +87,7 @@ from aoe2stats_replay_engine.silence import GroupSilenceEpisode, compute_group_s
 #: the JSON this module writes changes, never when `MatchTimeline` itself gains a field: the
 #: `dataclasses.asdict` conversion in `published_document` below carries every field through by
 #: name, so this module has no field list of its own to fall behind.
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = RECONSTRUCTION_SCHEMA_VERSION
 
 _SILENCE_DATUM = "participant.group_silence_episodes"
 _SILENCE_METHOD = "group-silence.banding@1"
@@ -229,7 +234,7 @@ def build_document(
     zip_sha256: str,
     extracted_at: datetime,
 ) -> dict[str, Any]:
-    """Parse one recording and build the complete version 2 document. Pure and synchronous.
+    """Parse one recording and build the complete version 3 document. Pure and synchronous.
 
     The recording is walked twice by the adapter (`extract` for the timeline, `events` for the
     canonical stream) and the stream is materialised once, so the coverage pass, the group-silence
@@ -260,10 +265,12 @@ def build_document(
         parser_version=timeline.engine_version,
         parser_dependencies=extractor.engine_dependencies,
         knowledge=_knowledge_identity(_recording_build(events), gaps),
+        reconstruction_engine=reconstruction_engine(),
         analytics=ANALYTICS_VERSION,
     )
 
     document["identity"] = identity.to_block()
+    document["reconstructed"] = reconstructed_block()
     document["inferred"] = _inferred_block(episodes)
     document["provenance"] = _provenance(document, episodes)
     document["knowledge_gaps"] = [_gap_record(gap) for gap in gaps]
@@ -277,8 +284,28 @@ def validate_document(
     `aoe2stats_core.truth.validate.validate` and lets its `DocumentInvalid` propagate unchanged, so
     the failure path records the validator's own message. `register` defaults to the packaged
     register's entries. Running it before the object is written is T656's.
+
+    The reconstruction's rules registry is always passed (T931): rule 12 refuses a settlement no
+    adopted rule backs, and with no registry it refuses every one. A document whose identity names
+    a reconstruction engine other than the installed one cannot be checked against this registry,
+    so it is refused here rather than judged by rules it was not built with (FR-021).
     """
-    validate(document, _packaged_register() if register is None else register)
+    engine = document.get("identity", {}).get("reconstruction_engine")
+    if isinstance(engine, str) and engine != NOT_APPLICABLE and engine != reconstruction_engine():
+        raise DocumentInvalid(
+            [
+                (
+                    14,
+                    f"the identity names reconstruction engine {engine!r}, but the installed "
+                    f"registry is {reconstruction_engine()!r}",
+                )
+            ]
+        )
+    validate(
+        document,
+        _packaged_register() if register is None else register,
+        rules=RULES.entries,
+    )
 
 
 def _packaged_register() -> Mapping[str, ValidatorEntry]:
@@ -392,6 +419,7 @@ def current_identity_digest(
         parser_version=extractor.engine_version,
         parser_dependencies=extractor.engine_dependencies,
         knowledge=_knowledge_record(snapshot_for(build)),
+        reconstruction_engine=reconstruction_engine(),
         analytics=ANALYTICS_VERSION,
     ).digest
 

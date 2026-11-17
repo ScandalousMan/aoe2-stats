@@ -381,8 +381,9 @@ _RULES = {"D-AGE-1": _AdoptedRule()}
 
 
 def _validate(document: dict[str, Any], register: dict[str, Any] | None = None) -> None:
-    """The analyzer's gate with the rules registry rule 12 reads supplied (``validate_document``
-    does not carry one yet)."""
+    """The core validator with a small, fixed rules registry, so the planted-settlement cases
+    below isolate one rule each. ``validate_document`` itself passes the packaged registry (T931,
+    tested at the end of this file)."""
     from aoe2stats_analyzer.extract import _packaged_register
     from aoe2stats_core.truth.validate import validate
 
@@ -659,3 +660,95 @@ def test_a_value_the_wildcards_do_not_take_is_refused_on_the_real_register(
 
     assert 1 in info.value.rules
     assert key in str(info.value)
+
+
+# --- T931: validate_document hands the validator the real rules registry -----------------------
+
+
+def _settled_by(document: dict[str, Any], by: str, rule: str) -> dict[str, Any]:
+    """The reconstructed-datum plant, settled by ``rule``, naming the installed engine."""
+    from aoe2stats_core.truth.validate import identity_digest
+    from aoe2stats_reconstruction.document import reconstruction_engine
+
+    planted = _publishing_the_knowledge_datum(document)
+    planted["reconstructed"][_KNOWLEDGE_DATUM][0]["settled_by"][0].update(by=by, rule=rule)
+    planted["identity"]["reconstruction_engine"] = reconstruction_engine()
+    planted["identity"]["digest"] = identity_digest(planted["identity"])
+    return planted
+
+
+def test_validate_document_receives_the_packaged_rules_registry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from aoe2stats_analyzer import extract
+    from aoe2stats_reconstruction.rules import RULES
+
+    seen: dict[str, Any] = {}
+
+    def spy(document: Any, register: Any, *, rules: Any = None) -> None:
+        seen["rules"] = rules
+
+    monkeypatch.setattr(extract, "validate", spy)
+    extract.validate_document(_document())
+
+    assert seen["rules"] is RULES.entries
+    assert "P0" in seen["rules"]
+
+
+def test_a_settled_value_is_accepted_when_the_real_registry_adopts_its_rule(
+    other_document: dict[str, Any],
+) -> None:
+    from aoe2stats_analyzer.extract import validate_document
+
+    planted = _settled_by(other_document, "proof", "P0")
+    register = _packaged_with_a_published_knowledge_datum()
+
+    validate_document(planted, register)
+
+
+def test_the_absence_of_the_registry_refuses_the_same_settled_value(
+    other_document: dict[str, Any],
+) -> None:
+    """The plant: the call the analyzer made before T931, with no ``rules``."""
+    from aoe2stats_core.truth.validate import DocumentInvalid, validate
+
+    planted = _settled_by(other_document, "proof", "P0")
+    register = _packaged_with_a_published_knowledge_datum()
+
+    with pytest.raises(DocumentInvalid) as info:
+        validate(planted, register)
+
+    assert 12 in info.value.rules
+
+
+def test_validate_document_refuses_a_settlement_by_a_rule_the_real_registry_does_not_adopt(
+    other_document: dict[str, Any],
+) -> None:
+    from aoe2stats_analyzer.extract import validate_document
+    from aoe2stats_core.truth.validate import DocumentInvalid
+    from aoe2stats_reconstruction.rules import RULES
+
+    assert RULES["D-AGE-1"].status != "adopted"
+    planted = _settled_by(other_document, "rule", "D-AGE-1")
+    register = _packaged_with_a_published_knowledge_datum()
+
+    with pytest.raises(DocumentInvalid) as info:
+        validate_document(planted, register)
+
+    assert 12 in info.value.rules
+
+
+def test_validate_document_refuses_an_identity_naming_another_reconstruction_engine(
+    other_document: dict[str, Any],
+) -> None:
+    from aoe2stats_analyzer.extract import validate_document
+    from aoe2stats_core.truth.validate import DocumentInvalid, identity_digest
+
+    planted = _settled_by(other_document, "proof", "P0")
+    planted["identity"]["reconstruction_engine"] = "aoe2stats-reconstruction@0.0.0+rules:sha256:ab"
+    planted["identity"]["digest"] = identity_digest(planted["identity"])
+
+    with pytest.raises(DocumentInvalid) as info:
+        validate_document(planted, _packaged_with_a_published_knowledge_datum())
+
+    assert 14 in info.value.rules

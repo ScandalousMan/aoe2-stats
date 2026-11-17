@@ -625,11 +625,10 @@ async def test_an_outage_while_building_is_not_a_refusal(
 
 # --- T930 (US5, FR-021, FR-022): the engine identity is reproduced or refused by name ----------
 #
-# Written `xfail(strict=True)` before T931. Identity shape assumed: `reconstruction_engine` is
+# Written test-first (T930), implemented by T931. Identity shape assumed: `reconstruction_engine` is
 # `aoe2stats-reconstruction@{version}+rules:sha256:{hex}` (contracts/reconstruction-document.md).
 
 
-@pytest.mark.xfail(strict=True, reason="T931 not implemented yet")
 async def test_a_document_reproduces_to_identical_bytes_from_its_engine_identity(
     original: _Original,
 ) -> None:
@@ -646,7 +645,6 @@ async def test_a_document_reproduces_to_identical_bytes_from_its_engine_identity
     assert json.loads(reproduced)["identity"] == original.document["identity"]
 
 
-@pytest.mark.xfail(strict=True, reason="T931 not implemented yet")
 @pytest.mark.parametrize(
     ("old_version", "old_digest"),
     [("0.0.1", None), (None, "0" * 64)],

@@ -243,7 +243,7 @@ document with an empty `reconstructed` block.
       each committed recording; the decoded resources agree with the lobby-and-civilisation derivation
       and a planted disagreement is the `starting-resources-agree` breach; a starting-age preset whose
       meaning O4 has not confirmed gaps every age-dependent value and guesses nothing (FR-026).
-- [ ] T927 Implement `packages/reconstruction/src/aoe2stats_reconstruction/starting.py` and delete
+- [x] T927 Implement `packages/reconstruction/src/aoe2stats_reconstruction/starting.py` and delete
       T926's markers. Depends on T923 and T925.
 - [x] T928 [P] [US3] Test first, `xfail(strict=True)`, in `packages/core/tests/test_validate.py`:
       validator rules 11 to 14 of contracts/reconstruction-document.md each reject their planted
@@ -258,7 +258,7 @@ document with an empty `reconstructed` block.
       yields identical bytes and reproducing one whose engine is not installed refuses and names what
       differs; in `apps/analyzer/tests/test_reproducibility.py`, two analyses are byte-identical outside
       the wall-clock set (FR-021, FR-022, SC-006).
-- [ ] T931 [US5] Implement `packages/reconstruction/src/aoe2stats_reconstruction/document.py`,
+- [x] T931 [US5] Implement `packages/reconstruction/src/aoe2stats_reconstruction/document.py`,
       version 3 and the identity component in `apps/analyzer/src/aoe2stats_analyzer/extract.py`, and
       the reproduce path in `apps/analyzer/src/aoe2stats_analyzer/reproduce.py`; accept version 3
       structurally in `apps/web/src/features/analysis/api.ts` with its test; delete T930's markers.

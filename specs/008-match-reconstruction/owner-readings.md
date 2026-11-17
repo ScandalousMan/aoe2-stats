@@ -109,6 +109,13 @@ objects standing**, and say whether the bonus differs under a preset other than 
 O8.1. If a civilisation cannot be started, answer `unreadable`; its row stays as the pack states it,
 unverified.
 
+**O8.4 — The stockpile each starting-resources value grants.** For each value the lobby's
+starting-resources setting offers (the list O8.2 asks for), read at 0:00 **the food, wood, stone and
+gold** of a slot whose civilisation has no stockpile bonus. The knowledge base states none of these,
+so the starting state's derived stockpile is a gap and the `starting-resources-agree` invariant
+compares nothing until this is answered (T927). The decoded stockpile of the committed recordings is
+not an answer: the invariant exists to check it against an independent source.
+
 ## O5 — Three deletions
 
 For each, pause just before the time given, find the object the player deletes, and read **what it

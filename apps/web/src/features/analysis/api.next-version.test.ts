@@ -180,6 +180,33 @@ describe('the reader against the next document version (contracts/analysis-docum
     expect(() => assertAnalysisDocument(document)).not.toThrow()
   })
 
+  it('types and tolerates the empty reconstructed block of a version 3 document', () => {
+    const document = { ...nextVersionDocument(), schema_version: 3, reconstructed: {} }
+    assertAnalysisDocument(document)
+
+    const typed: ApiAnalysisDocument = document
+    expect(typed.schema_version).toBe(3)
+    expect(typed.reconstructed).toEqual({})
+    expect(typed.participants).toHaveLength(1)
+  })
+
+  it('tolerates a populated reconstructed block it does not read', () => {
+    const document = {
+      ...nextVersionDocument(),
+      schema_version: 3,
+      reconstructed: { 'reconstruction.future_datum': [{ value: 1 }] },
+    }
+    expect(() => assertAnalysisDocument(document)).not.toThrow()
+  })
+
+  it('contrast: a reconstructed block that is not a mapping is refused', () => {
+    for (const reconstructed of [[], null, 'x', 3]) {
+      const document = { ...nextVersionDocument(), schema_version: 3, reconstructed }
+      expect(() => assertAnalysisDocument(document)).toThrow(AnalysisResponseShapeError)
+      expect(() => assertAnalysisDocument(document)).toThrow(/"reconstructed" was not an object/)
+    }
+  })
+
   // The contrast: the pin above is worthless if the reader simply accepts everything.
   describe('contrast: the reader is still strict about what it does require', () => {
     it('rejects a next-version document missing the legacy top-level extracted_at', () => {

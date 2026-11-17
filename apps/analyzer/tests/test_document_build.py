@@ -115,7 +115,7 @@ def document(extractor: Aoe2RecExtractor) -> dict[str, Any]:
 def test_the_document_is_the_next_schema_version_with_the_four_blocks_added(
     document: dict[str, Any],
 ) -> None:
-    assert document["schema_version"] == SCHEMA_VERSION == 2
+    assert document["schema_version"] == SCHEMA_VERSION == 3
     for block in ("identity", "provenance", "inferred", "knowledge_gaps", "envelope"):
         assert block in document
 
@@ -193,7 +193,7 @@ def test_the_identity_names_every_component_and_its_digest_recomputes(
         "name": extractor.engine_name,
         "version": extractor.engine_version,
     }
-    assert identity["reconstruction_engine"] == NOT_APPLICABLE
+    assert identity["reconstruction_engine"] == _expected_reconstruction_engine()
     assert identity["analytics"] == ANALYTICS_VERSION
     assert identity["analytics"] != NOT_APPLICABLE
     assert AnalysisIdentity.from_block(identity).digest == identity["digest"]
@@ -539,7 +539,7 @@ def test_the_builders_provenance_names_exactly_the_data_the_validator_finds_pres
 
 # --- T930 (US5, FR-021, FR-022): version 3, the empty reconstructed block, the engine identity ---
 #
-# Written `xfail(strict=True)` before T931. **Identity shape assumed** (contracts/
+# Written test-first (T930), implemented by T931. **Identity shape assumed** (contracts/
 # reconstruction-document.md, "Identity and version"):
 #   reconstruction_engine == f"aoe2stats-reconstruction@{__version__}+rules:sha256:{hex}"
 # where `__version__` is `aoe2stats_reconstruction.__version__` and `hex` is the sha256 of the bytes
@@ -562,7 +562,6 @@ def _expected_reconstruction_engine() -> str:
     return f"aoe2stats-reconstruction@{aoe2stats_reconstruction.__version__}+rules:sha256:{digest}"
 
 
-@pytest.mark.xfail(strict=True, reason="T931 not implemented yet")
 @pytest.mark.parametrize("recording", _COMMITTED_RECORDINGS, ids=lambda path: path.stem)
 def test_a_document_from_each_committed_recording_is_version_3_with_an_empty_reconstruction(
     recording: Path, extractor: Aoe2RecExtractor
@@ -589,7 +588,6 @@ def test_a_document_from_each_committed_recording_is_version_3_with_an_empty_rec
         assert path in document, path
 
 
-@pytest.mark.xfail(strict=True, reason="T931 not implemented yet")
 def test_the_identity_digest_moves_with_the_reconstruction_engine(
     document: dict[str, Any],
 ) -> None:

@@ -270,6 +270,10 @@ export interface ApiAnalysisDocument {
    * `knowledge` component, to check that a names block belongs to this document
    * (`readDocumentNames`), and asserts nothing else of it. */
   identity?: unknown
+  /** Version 3 (008, FR-021): the reconstruction block, a mapping of datum id to instances. It is
+   * empty while no rule is wired to a datum, and absent from a version 1 or 2 document. Typed only
+   * as a mapping here: US4's view reads each datum through its own typed assertions. */
+  reconstructed?: Record<string, unknown>
 }
 
 function assertAnalysisBuildEvent(
@@ -424,6 +428,14 @@ export function assertAnalysisDocument(payload: unknown): asserts payload is Api
   }
   if (!Array.isArray(body.participants)) {
     throw new AnalysisResponseShapeError('"participants" was not an array')
+  }
+  if (
+    body.reconstructed !== undefined &&
+    (typeof body.reconstructed !== 'object' ||
+      body.reconstructed === null ||
+      Array.isArray(body.reconstructed))
+  ) {
+    throw new AnalysisResponseShapeError('"reconstructed" was not an object')
   }
   body.participants.forEach((participant, index) =>
     assertAnalysisDocumentParticipant(participant, index),
