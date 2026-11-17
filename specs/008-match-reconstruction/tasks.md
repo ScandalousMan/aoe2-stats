@@ -213,7 +213,7 @@ document with an empty `reconstructed` block.
       datum and the value, and nothing is published (FR-017, SC-007). The two invariants the population phase owns are declared with no check until T958 and T959 enable them.
 - [x] T921 [US3] Implement `packages/reconstruction/src/aoe2stats_reconstruction/invariants.py` and
       delete T920's markers.
-- [ ] T922 [P] Test first, `xfail(strict=True)`, in `packages/replay-engine/tests/test_starting.py`:
+- [x] T922 [P] Test first, `xfail(strict=True)`, in `packages/replay-engine/tests/test_starting.py`:
       the Tier A decoder emits one `starting-attributes` event per human participant at clock 0 after
       `match-started`, holding `food`, `wood`, `stone` and `gold` only, golden-tested over every
       committed recording, with the planted absences `tests/test_starting_state_anchor.py` already
@@ -244,13 +244,13 @@ document with an empty `reconstructed` block.
       meaning O4 has not confirmed gaps every age-dependent value and guesses nothing (FR-026).
 - [ ] T927 Implement `packages/reconstruction/src/aoe2stats_reconstruction/starting.py` and delete
       T926's markers. Depends on T923 and T925.
-- [ ] T928 [P] [US3] Test first, `xfail(strict=True)`, in `packages/core/tests/test_validate.py`:
+- [x] T928 [P] [US3] Test first, `xfail(strict=True)`, in `packages/core/tests/test_validate.py`:
       validator rules 11 to 14 of contracts/reconstruction-document.md each reject their planted
       violation, including a reconstructed value at an observed path and an observed value inside
       `reconstructed` (FR-015).
 - [ ] T929 [US3] Implement rules 11 to 14 in `packages/core/src/aoe2stats_core/truth/validate.py`
       and delete T928's markers.
-- [ ] T930 [P] [US5] Test first, `xfail(strict=True)`: in `apps/analyzer/tests/test_document_build.py`,
+- [x] T930 [P] [US5] Test first, `xfail(strict=True)`: in `apps/analyzer/tests/test_document_build.py`,
       a document from each committed recording is version 3, carries an empty `reconstructed` block,
       and its identity's `reconstruction_engine` names the installed package version and the registry
       digest; in `apps/analyzer/tests/test_reproduce.py`, reproducing a document from its identity
@@ -263,7 +263,7 @@ document with an empty `reconstructed` block.
       structurally in `apps/web/src/features/analysis/api.ts` with its test; delete T930's markers.
       Never separately green from T929: a version 3 document must pass the validator the same commit
       ships.
-- [ ] T932 [P] An architecture test in `tests/architecture/test_reconstruction_boundaries.py`: the
+- [x] T932 [P] An architecture test in `tests/architecture/test_reconstruction_boundaries.py`: the
       reconstruction package opens no connection, registers no scheduled job, is imported by nothing on
       the capture path, and reads no input but the canonical stream and the knowledge base (FR-002,
       FR-023).
