@@ -1,10 +1,8 @@
 """One fold over a canonical stream yields the orders of data-model section 1 (FR-002, FR-017's
 `nothing-after-exit`). The fold's entry point is `fold_orders(events) -> tuple[Order, ...]`, in
-`aoe2stats_reconstruction.orders`; T915 writes it and deletes the markers below."""
+`aoe2stats_reconstruction.orders`; T915 wrote it."""
 
 from __future__ import annotations
-
-import pytest
 
 from aoe2stats_core.replay.events import (
     BuildingPlacedPayload,
@@ -23,8 +21,6 @@ from aoe2stats_core.replay.events import (
     UnitsCommandedPayload,
     UnitUnqueuedPayload,
 )
-
-_NOT_YET = pytest.mark.xfail(strict=True, reason="T915 not implemented yet")
 
 _BUILD = 99999
 _ONE, _TWO = 1, 2
@@ -97,7 +93,6 @@ def _stream() -> list[CanonicalEvent]:
     ]
 
 
-@_NOT_YET
 def test_one_fold_yields_one_order_per_ordering_event_kind() -> None:
     from aoe2stats_reconstruction.orders import fold_orders
 
@@ -113,7 +108,6 @@ def test_one_fold_yields_one_order_per_ordering_event_kind() -> None:
     ]
 
 
-@_NOT_YET
 def test_a_unit_order_names_every_producing_building_and_its_count() -> None:
     from aoe2stats_reconstruction.orders import fold_orders
 
@@ -125,7 +119,6 @@ def test_a_unit_order_names_every_producing_building_and_its_count() -> None:
     assert (unit.entity.kind, unit.entity.id, unit.entity.build) == ("unit", "83", _BUILD)
 
 
-@_NOT_YET
 def test_research_placement_cancellation_and_deletion_shapes() -> None:
     from aoe2stats_reconstruction.orders import fold_orders
 
@@ -147,7 +140,6 @@ def test_research_placement_cancellation_and_deletion_shapes() -> None:
     assert (deletion.count, deletion.buildings) == (1, ())
 
 
-@_NOT_YET
 def test_nothing_is_attributed_after_a_participants_resignation() -> None:
     from aoe2stats_reconstruction.orders import fold_orders
 
@@ -159,7 +151,6 @@ def test_nothing_is_attributed_after_a_participants_resignation() -> None:
     assert [o.source_event for o in orders if o.participant == _TWO] == [10]
 
 
-@_NOT_YET
 def test_source_event_indexes_the_stream_and_the_fold_is_one_pass() -> None:
     from aoe2stats_reconstruction.orders import fold_orders
 

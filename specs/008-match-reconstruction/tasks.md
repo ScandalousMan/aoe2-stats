@@ -183,7 +183,7 @@ document with an empty `reconstructed` block.
       one fold over a canonical stream yields the orders of data-model §1, with every producing
       building, the source event index, and nothing attributed after a participant's resignation
       (FR-002, FR-017's `nothing-after-exit`).
-- [ ] T915 [US3] Implement `packages/reconstruction/src/aoe2stats_reconstruction/orders.py` and
+- [x] T915 [US3] Implement `packages/reconstruction/src/aoe2stats_reconstruction/orders.py` and
       delete T914's markers. The fold reads the canonical vocabulary only, never an engine shape
       (constitution V).
 - [x] T916 [P] [US3] Test first, `xfail(strict=True)`, in `packages/reconstruction/tests/test_rules.py`:
@@ -191,7 +191,7 @@ document with an empty `reconstructed` block.
       and sees loading fail; the generated view equals the committed
       `packages/reconstruction/src/aoe2stats_reconstruction/RULES.md` byte for byte; every initial rule
       enters at the status the contract's table states.
-- [ ] T917 [US3] Implement `packages/reconstruction/src/aoe2stats_reconstruction/rules.py`, write
+- [x] T917 [US3] Implement `packages/reconstruction/src/aoe2stats_reconstruction/rules.py`, write
       `packages/reconstruction/src/aoe2stats_reconstruction/rules.toml` with the initial set of
       contracts/rules.md (D-EXEC-1 and D-DIST-1 absent, since they are not yet written; P1 with an
       empty `readings` list, since no playback file holds its reading yet, on research R3's evidence),

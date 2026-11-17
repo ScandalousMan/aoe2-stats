@@ -1,0 +1,105 @@
+# The proof and deduction rules registry (specs/008-match-reconstruction/contracts/rules.md).
+# The only place a rule is written. RULES.md beside it is generated: see its header.
+# Absent on purpose: D-EXEC-1 and D-DIST-1 (not yet written, gate G1), and P4 (refuted before it
+# was written, research R15).
+
+[rule."P0"]
+family = "proof"
+settles = "team"
+statement = "the team the header records for a participant is that participant's team"
+evidence = "006 canonical-events contract (team)"
+readings = []
+status = "adopted"
+
+[rule."P1"]
+family = "proof"
+settles = "age"
+statement = "an order of an entity whose age requirement, for the participant's civilisation and team, is N proves that the participant had reached age N by the order's clock"
+evidence = "specs/008-match-reconstruction/research.md R3"
+readings = []            # gains "511523321.O3" in the change that transcribes that reading
+status = "adopted"
+
+[rule."P2"]
+family = "proof"
+settles = "controlled"
+statement = "an order issued from a building proves that the building stands at the order's time, and is of the type the order states"
+evidence = "006 canonical-events contract (producing building)"
+readings = []
+status = "adopted"
+
+[rule."P3"]
+family = "proof"
+settles = "alive"
+statement = "a unit commanded with its id is alive at the command's time"
+evidence = "specs/008-match-reconstruction/research.md R5, S1"
+readings = []
+status = "adopted"
+
+[rule."D-AGE-1"]
+family = "deduction"
+settles = "age"
+statement = "an age-up is reached at its computed arrival when a later order proves the new age (P1); without one it is not reached, unless FR-010a's resignation clause holds"
+ruling = "specs/008-match-reconstruction/spec.md Clarifications, Session 2026-11-03"
+readings = []
+status = "candidate"
+
+[rule."D-HOUSE-0"]
+family = "deduction"
+settles = "housing"
+statement = "no housing pause precedes an age-up"
+evidence = "the age-up readings (owner reading O1)"
+readings = []
+status = "candidate"
+
+[rule."D-TECH-1"]
+family = "deduction"
+settles = "researched"
+statement = "an executed research counts completed at its modelled arrival when no observable obstacle occurred: no resignation of its owner before the arrival, no deletion of the building by its owner before the arrival, and no enemy command targeting the building between the click and the arrival, unless a later order from that building proves it stood (FR-007a)"
+ruling = "specs/008-match-reconstruction/spec.md Clarifications, Session 2026-11-06"
+readings = []
+status = "adopted"
+evidence = "the owner's ruling of spec Clarifications, Session 2026-11-06"
+limits = "an obstacle the recording cannot show: a destruction of the building by a fight, which the recording carries no outcome of"
+
+[rule."D-CONTROL-1"]
+family = "deduction"
+settles = "controlled"
+statement = "a building counts as controlled at an order's time when an earlier order from it proves it stood (P2) and no enemy command has targeted it since; after a targeting, from its next proof; the starting Town Center from time 0"
+ruling = "owner, 2026-11-10, re-derived in the light of feature 009's findings; then the owner's acceptance of this application of FR-007a (research R9)"
+readings = []
+status = "candidate"
+limits = "a destruction of the building that no command shows"
+
+[rule."D-CANCEL-1"]
+family = "deduction"
+settles = "cancellation"
+statement = "a cancellation of a unit applies to the building with the most recently queued unstarted items of that unit, taking them from the end of its queue"
+evidence = "synthetic streams until a recording carries a cancellation (owner reading O7)"
+readings = []
+status = "candidate"
+
+[rule."D-TIE-1"]
+family = "deduction"
+settles = "tie"
+statement = "a deletion is the latest untied placement its owner targeted within a window"
+evidence = "owner reading O5"
+readings = []
+status = "candidate"
+
+[rule."D-REFUND-1"]
+family = "deduction"
+settles = "refund"
+statement = "an unstarted foundation that is deleted is refunded in full; any other deleted building is refunded nothing"
+ruling = "specs/008-match-reconstruction/spec.md Clarifications, Session 2026-11-03"
+evidence = "the owner's ruling of spec Clarifications, Session 2026-11-03"
+readings = []
+status = "adopted"
+
+[rule."D-WIN-1"]
+family = "deduction"
+settles = "winner"
+statement = "the winner is the team with no resignation, when every other team's members all resigned; otherwise there is no winner"
+evidence = "the meaning of the Resign command (research R8)"
+readings = []
+status = "adopted"
+limits = "a match ended otherwise establishes no winner"

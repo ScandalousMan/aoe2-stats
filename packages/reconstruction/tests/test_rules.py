@@ -1,7 +1,6 @@
 """The rules registry loader and its generated view (FR-005 to FR-007, T916).
 
-Written first as strict xfails; T917 implements ``aoe2stats_reconstruction.rules`` and deletes the
-markers. The loader API these tests fix, for T917 to match:
+The loader API these tests fix (``aoe2stats_reconstruction.rules``, T917):
 
 - ``RuleError(ValueError)``: raised by every refusal.
 - ``load_rules_text(text, *, known_readings=()) -> Rules``: parses and validates rules TOML text.
@@ -21,8 +20,6 @@ from __future__ import annotations
 from importlib import resources
 
 import pytest
-
-XFAIL = pytest.mark.xfail(strict=True, reason="T917 not implemented yet")
 
 # The contract's "Enters as" column, for the rules present in the initial set.
 INITIAL_STATUS = {
@@ -70,7 +67,6 @@ def _refuses(text: str, **kwargs: object) -> None:
         load_rules_text(text, **kwargs)  # type: ignore[arg-type]
 
 
-@XFAIL
 def test_a_well_formed_text_loads() -> None:
     from aoe2stats_reconstruction.rules import load_rules_text
 
@@ -79,13 +75,11 @@ def test_a_well_formed_text_loads() -> None:
     assert rules["D-AGE-1"].family == "deduction"
 
 
-@XFAIL
 def test_guarantee_1_a_duplicated_id_fails() -> None:
     _refuses(_rule("P1") + _rule("P1"))
 
 
 @pytest.mark.parametrize("bad_id", ["p1", "P", "X1", "D-AGE", "D-age-1", "P1a", "D--1"])
-@XFAIL
 def test_guarantee_1_an_id_outside_the_two_shapes_fails(bad_id: str) -> None:
     _refuses(_rule(bad_id))
 
@@ -94,13 +88,11 @@ def test_guarantee_1_an_id_outside_the_two_shapes_fails(bad_id: str) -> None:
     ("key", "value"),
     [("family", "estimate"), ("settles", "mood"), ("status", "maybe")],
 )
-@XFAIL
 def test_guarantee_2_a_value_outside_its_closed_set_fails(key: str, value: str) -> None:
     kwargs = {key: value}
     _refuses(_rule("P1", **kwargs))  # type: ignore[arg-type]
 
 
-@XFAIL
 def test_guarantee_3_an_adopted_deduction_with_no_basis_fails() -> None:
     # No ruling, no readings, and an evidence that is not the game's own definition: empty text
     # is refused by guarantee 4 as well, so the planted violation is the deduction-specific one,
@@ -109,7 +101,6 @@ def test_guarantee_3_an_adopted_deduction_with_no_basis_fails() -> None:
     _refuses(text)
 
 
-@XFAIL
 def test_guarantee_3_a_ruling_or_a_reading_is_a_basis() -> None:
     from aoe2stats_reconstruction.rules import load_rules_text
 
@@ -123,18 +114,15 @@ def test_guarantee_3_a_ruling_or_a_reading_is_a_basis() -> None:
     assert load_rules_text(ruled)["D-REFUND-1"].status == "adopted"
 
 
-@XFAIL
 def test_guarantee_4_an_adopted_rule_with_an_empty_evidence_fails() -> None:
     _refuses(_rule("P1", status="adopted", evidence=""))
     _refuses(_rule("P1", status="adopted", evidence=None))  # type: ignore[arg-type]
 
 
-@XFAIL
 def test_guarantee_5_a_refuted_rule_with_no_reading_fails() -> None:
     _refuses(_rule("D-AGE-1", family="deduction", status="refuted"))
 
 
-@XFAIL
 def test_guarantee_5_a_refuted_rule_citing_a_known_reading_loads() -> None:
     from aoe2stats_reconstruction.rules import load_rules_text
 
@@ -144,14 +132,12 @@ def test_guarantee_5_a_refuted_rule_citing_a_known_reading_loads() -> None:
     assert load_rules_text(text, known_readings={"R1"})["D-AGE-1"].status == "refuted"
 
 
-@XFAIL
 def test_guarantee_6_a_reading_in_no_playback_file_fails() -> None:
     text = _rule("P1").replace("readings = []", 'readings = ["511523321.O3"]')
     _refuses(text, known_readings={"another.O1"})
     _refuses(text)
 
 
-@XFAIL
 def test_guarantee_6_a_known_reading_loads() -> None:
     from aoe2stats_reconstruction.rules import load_rules_text
 
@@ -161,12 +147,10 @@ def test_guarantee_6_a_known_reading_loads() -> None:
     )
 
 
-@XFAIL
 def test_guarantee_7_two_adopted_rules_settling_one_kind_overlap_and_fail() -> None:
     _refuses(_rule("P1", status="adopted") + _rule("D-AGE-1", family="deduction", status="adopted"))
 
 
-@XFAIL
 def test_guarantee_7_a_candidate_beside_an_adopted_rule_does_not_overlap() -> None:
     from aoe2stats_reconstruction.rules import load_rules_text
 
@@ -176,7 +160,6 @@ def test_guarantee_7_a_candidate_beside_an_adopted_rule_does_not_overlap() -> No
     assert len(rules) == 2
 
 
-@XFAIL
 def test_guarantee_7_disjoint_stated_applicability_does_not_overlap() -> None:
     from aoe2stats_reconstruction.rules import load_rules_text
 
@@ -192,14 +175,12 @@ def test_guarantee_7_disjoint_stated_applicability_does_not_overlap() -> None:
     assert len(rules) == 2
 
 
-@XFAIL
 def test_the_packaged_registry_loads_with_every_initial_rule_at_its_status() -> None:
     from aoe2stats_reconstruction.rules import RULES
 
     assert {rule.id: rule.status for rule in RULES} == INITIAL_STATUS
 
 
-@XFAIL
 def test_d_exec_1_and_d_dist_1_are_absent_and_no_p4_exists() -> None:
     from aoe2stats_reconstruction.rules import RULES
 
@@ -207,7 +188,6 @@ def test_d_exec_1_and_d_dist_1_are_absent_and_no_p4_exists() -> None:
     assert ids.isdisjoint({"D-EXEC-1", "D-DIST-1", "P4"})
 
 
-@XFAIL
 def test_the_view_is_deterministic_and_lists_every_rule() -> None:
     from aoe2stats_reconstruction.rules import RULES, render_view
 
@@ -219,7 +199,6 @@ def test_the_view_is_deterministic_and_lists_every_rule() -> None:
         assert f"`{rule.id}`" in view
 
 
-@XFAIL
 def test_the_committed_view_matches_the_registry_byte_for_byte() -> None:
     from aoe2stats_reconstruction.rules import REGENERATE_COMMAND, RULES, VIEW_FILENAME, render_view
 
