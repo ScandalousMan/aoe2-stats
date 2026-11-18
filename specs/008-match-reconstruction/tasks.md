@@ -277,7 +277,8 @@ document with an empty `reconstructed` block.
       vendored pack, and the stockpile each starting-resources value grants, from the O4 and O8
       readings taken on that build. Implement `derive_starting_resources` from that table, so
       `starting-resources-agree` compares real values for every build and preset so answered. Enter
-      the starting-age preset values O4 confirms in `CONFIRMED_AGE_PRESETS`. A value not answered
+      the starting-age preset values O4 confirms in the confirmed-presets table of
+      `packages/reconstruction/src/aoe2stats_reconstruction/starting.py`. A value not answered
       stays an open row and a gap (FR-026).
 
 **Checkpoint**: phase 10 may start here (T924's transcription and T982 wait on T902 and block nothing in this phase). Phases 3 to 7 continue in order.
