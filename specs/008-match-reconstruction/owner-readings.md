@@ -75,7 +75,7 @@ Checks P1 and the knowledge base's age requirement for that unit (research R3).
 
 In each recording, at **0:00** (or the first frame the replay shows), for each slot read: **food,
 wood, stone, gold**, **population and population cap** (the "current / cap" figure), **the units
-standing** (how many Villagers, which scout), and **the age**. Then read the lobby's starting age and
+and buildings standing** (how many Villagers, which scout, which buildings), and **the age**. Then read the lobby's starting age and
 starting resources settings, from the game's match information screen if it shows them.
 
 Checks the starting-state decoder and the starting-objects table (research R4, FR-026).
@@ -85,8 +85,12 @@ Checks the starting-state decoder and the starting-objects table (research R4, F
 Requested 2026-11-17 for the starting-objects table of the snapshot `aoe2techtree-188329-starting-objects`
 (research R4, FR-026, T925). The vendored pack states the objects a civilisation's bonus adds and
 states no baseline; the table therefore carries one `[[open]]` row per value below and guesses none
-(docs/data-sources.md section 6, "Starting objects"). Each answer is transcribed into
-`tests/fixtures/replays/<recording>.playback.toml` as O4's are, and then into a superseding snapshot.
+(docs/data-sources.md section 6, "Starting objects"). O8.1 is transcribed into
+`tests/fixtures/replays/<recording>.playback.toml` as O4 is; O8.2 to O8.4, read in custom games, into
+`tests/fixtures/replays/custom-games.playback.toml`; then T982 carries them into superseding
+snapshots. An answer holds for the build the game showed when it was read, and only that build. O8.1
+read from the committed recordings therefore feeds the tables of builds 180059 and 185872; build
+188329 needs its own reading.
 
 **O8.1 — The baseline.** For each recording's lobby preset (the same one for all three, research R4),
 O4's 0:00 reading of the units and buildings standing, with **how many Villagers, which scout, and

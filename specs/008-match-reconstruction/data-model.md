@@ -23,7 +23,7 @@ over 006's stream, never by re-parsing.
 | `clock_ms` | integer | The event's match clock. |
 | `kind` | closed: `unit`, `research`, `placement`, `cancellation`, `deletion` | One per source event kind. |
 | `entity` | knowledge entity reference | Kind and identifier, in the recording's build. Absent for a deletion. |
-| `count` | positive integer | Units only; 1 otherwise. |
+| `count` | positive integer | Units and cancellations carry the commanded count; 1 otherwise. |
 | `buildings` | ordered tuple of object ids | Every producing building the command names (research R1). Empty for a placement or a deletion. |
 | `object` | object id, optional | The deleted object, for a deletion. |
 | `source_event` | index into the stream | So that a settlement can name the order that proved something, and a reader can find it. |
@@ -56,9 +56,9 @@ Per participant (FR-026, research R4).
 
 | Field | Type | Tier | Rule |
 | ----- | ---- | ---- | ---- |
-| `resources` | food, wood, stone, gold | `decoded` | From the `starting-attributes` event (Tier A decoder). Cross-checked against the lobby preset and civilisation; a disagreement refuses the analysis as an invariant breach. |
+| `resources` | food, wood, stone, gold | `decoded` | From the `starting-attributes` event (Tier A decoder). Absent is a gap. Cross-checked against the lobby preset and civilisation when both sides are known; a disagreement refuses the analysis as an invariant breach. |
 | `age` | 1 to 4 | `observed` | From the lobby's starting-age preset, through a mapping confirmed by owner reading O4. An unconfirmed preset value is a knowledge gap, never a guess. |
-| `objects` | units and buildings with counts | `reconstructed` | From the knowledge table of starting objects for the build, civilisation and preset (research R4). |
+| `objects` | units and buildings with counts | `reconstructed` | From the knowledge table of starting objects for the build, civilisation and preset (research R4): the baseline row plus the matching bonus rows. A gap when no baseline applies, a row is open, or a row of the participant or a teammate is not `always`. |
 | `population_limit` | integer | `observed` | From the lobby. |
 
 ## 4. Condition
@@ -83,6 +83,8 @@ What settled one condition (US3, FR-006, FR-007, FR-014).
 
 | Field | Type | Rule |
 | ----- | ---- | ---- |
+| `condition` | the condition's `kind` (section 4) | Which condition this settles, so a reader can tell it apart from the value's other settlements (FR-025, SC-005). |
+| `at_ms` | integer | The moment the condition is asked at (section 4). |
 | `by` | closed: `proof`, `rule` | |
 | `rule` | rule id | A proof names a proof rule (P-family), a rule names a deduction rule (D-family). It must resolve to an **adopted** rule (section 6). |
 | `orders` | tuple of stream indices | The orders the rule used: the confirming order of an age, the order issued from a building, the resignation. Empty only for P0. |
@@ -123,7 +125,7 @@ One published number (spec, Key Entities).
 | ----- | ---- | ---- |
 | `datum` | register id | Must resolve to a `published` register entry at `reconstructed` or `derived` (FR-014). |
 | `participant` | slot | |
-| `key` | per datum | The resource, the building object, or the age. |
+| declared keys | per datum | The datum's declared keys: `resource`, or `age` with `reached` (contracts/reconstruction-document.md). |
 | `value` | integer | Milliseconds or resource units. One number; the type admits nothing else (FR-008, SC-002). |
 | `settled_by` | tuple of Settlement | One per condition the value depends on, in the order the computation met them. |
 | `effects` | tuple of effect references | The knowledge base's applied effects, from its answers (006 knowledge-base contract, `Answer.effects`). |
@@ -170,7 +172,8 @@ byte for byte with what the analysis produces. Regenerated only under the fixtur
 ## 10. Playback reading
 
 What a person read in the game, playing a committed recording back (FR-019). A file beside the
-recording: `tests/fixtures/replays/<recording>.playback.toml`, one table per reading.
+recording: `tests/fixtures/replays/<recording>.playback.toml`, one table per reading. A reading taken
+in a custom game goes to `tests/fixtures/replays/custom-games.playback.toml`.
 
 | Field | Rule |
 | ----- | ---- |

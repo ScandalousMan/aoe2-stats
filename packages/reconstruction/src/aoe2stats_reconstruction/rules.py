@@ -6,9 +6,10 @@ module is imported, so a defective registry means the package does not import. C
 
 Reading ids (guarantee 5) live in ``tests/fixtures/replays/*.playback.toml``, which is a repository
 path and is not shipped in the wheel. An installed package cannot discover them, so the packaged
-registry is loaded with no known readings: it may cite none, and every rule's ``readings`` is empty
-until a change that transcribes a reading also gives the packaged loader a way to know it. A test
-with the repository at hand supplies the real set through ``known_readings``.
+loader passes ``known_readings=None``, meaning "not checked": the packaged registry may cite a
+reading, and a repository test (``tests/test_rules.py``) loads the real ``rules.toml`` text with the
+real set of ids and fails on any it cannot find. ``known_readings`` has no default, so a caller that
+wants the check skipped says so with ``None`` and cannot skip it by forgetting the argument.
 """
 
 from __future__ import annotations
@@ -100,7 +101,9 @@ def _filled(value: str | None) -> bool:
     return bool((value or "").strip())
 
 
-def _build_rule(rule_id: str, raw: Mapping[str, Any], known_readings: frozenset[str]) -> Rule:
+def _build_rule(
+    rule_id: str, raw: Mapping[str, Any], known_readings: frozenset[str] | None
+) -> Rule:
     # Guarantee 1: the id is one of the two shapes (duplicates: see load_rules_text).
     if not _ID_SHAPE.fullmatch(rule_id):
         raise RuleError(f"invalid id {rule_id!r}: expected P<n> or D-<NAME>-<n>")
@@ -130,8 +133,8 @@ def _build_rule(rule_id: str, raw: Mapping[str, Any], known_readings: frozenset[
     ):
         if value not in closed:
             raise RuleError(f"{rule_id}: {name} {value!r} is outside {sorted(closed)}")
-    # Guarantee 5: every cited reading is in a committed playback file.
-    stray = [r for r in rule.readings if r not in known_readings]
+    # Guarantee 5: every cited reading is in a committed playback file (None: not checked here).
+    stray = [] if known_readings is None else [r for r in rule.readings if r not in known_readings]
     if stray:
         raise RuleError(f"{rule_id}: reading(s) {', '.join(stray)} are in no playback file")
     # Guarantee 3: an adopted rule has an evidence. The loader cannot read prose, so whether an
@@ -166,8 +169,12 @@ def _check_overlap(entries: Mapping[str, Rule]) -> None:
                     )
 
 
-def load_rules_text(text: str, *, known_readings: Collection[str] = ()) -> Rules:
-    """Parse and validate rules TOML text; raise :class:`RuleError` on any refusal."""
+def load_rules_text(text: str, *, known_readings: Collection[str] | None) -> Rules:
+    """Parse and validate rules TOML text; raise :class:`RuleError` on any refusal.
+
+    ``known_readings`` is required. A collection is checked against every rule's ``readings``
+    (guarantee 5); ``None`` means "not checked".
+    """
     # Guarantee 1: a duplicated id.
     seen: set[str] = set()
     for match in _HEADER.finditer(text):
@@ -184,7 +191,7 @@ def load_rules_text(text: str, *, known_readings: Collection[str] = ()) -> Rules
     table = data.get("rule", {})
     if not isinstance(table, dict):
         raise RuleError("rule must be a table of tables")
-    known = frozenset(known_readings)
+    known = None if known_readings is None else frozenset(known_readings)
     entries: dict[str, Rule] = {}
     for rule_id, raw in table.items():
         if not isinstance(raw, dict):
@@ -195,9 +202,9 @@ def load_rules_text(text: str, *, known_readings: Collection[str] = ()) -> Rules
 
 
 def load_packaged_rules() -> Rules:
-    """Load the ``rules.toml`` shipped beside this module (no known readings; see module doc)."""
+    """Load the ``rules.toml`` shipped beside this module (readings not checked; see module doc)."""
     text = resources.files("aoe2stats_reconstruction").joinpath("rules.toml").read_text("utf-8")
-    return load_rules_text(text)
+    return load_rules_text(text, known_readings=None)
 
 
 RULES = load_packaged_rules()

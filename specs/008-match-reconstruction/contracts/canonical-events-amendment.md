@@ -32,7 +32,8 @@ presets already there, as a decimal string. Its register datum is the existing
 The declared-only kind (006 FR-020) is emitted once per human participant at clock 0, after
 `match-started`, by the Tier A decoder (006 research D1; `docs/data-sources.md` §2). Its payload is
 006's, `values`, holding only the indices whose meaning is adopted (research R4): `food`, `wood`,
-`stone`, `gold` at first. 006's test that the adapter emits neither declared-only kind is the test
+`stone`, `gold` at first. A participant whose anchor is absent or ambiguous, or whose values are
+invalid, gets no event; the rest of the stream is unchanged. 006's test that the adapter emits neither declared-only kind is the test
 that changes, for this kind only; `starting-object` stays declared-only.
 
 The decoder is engine-independent by construction: it reads the inflated header bytes, not the

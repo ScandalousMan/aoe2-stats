@@ -9,6 +9,7 @@
 | ---- | ---- | ---------- |
 | `specs/008-match-reconstruction/owner-readings.md` | What to read, where and when in which recording, and why. Asks; holds no answer. | This feature's tasks |
 | `tests/fixtures/replays/<recording>.playback.toml` | What was read. The one place each reading's value is written. | Transcribed from the owner's answer |
+| `tests/fixtures/replays/custom-games.playback.toml` | What was read in a custom game started for a request (O8.2 to O8.4), which no committed recording can answer. | Transcribed from the owner's answer |
 | `tests/fixtures/replays/<recording>.reconstruction.json` | The hand-built expected reconstruction (FR-018). | By hand, from orders and the knowledge base |
 
 A value is never copied from the playback file into a golden or a rule. The golden carries the
@@ -25,7 +26,8 @@ reconstructed value; the test reads both and compares.
    conditions it settled across the committed recordings and how many a proof settled instead, and
    the golden files record that table, so a rule that carries much is visible as a number.
 4. **Readings are well-formed.** Every reading names a request in the owner-readings file, a build
-   the fixtures README lists for that recording, a reader and a date.
+   the fixtures README lists for that recording (a custom-game reading states the build the game
+   showed, which no recording constrains), a reader and a date.
 5. **Every estimate with a reading has its error recorded** (FR-037, SC-014). A reading whose
    quantity corresponds to an estimate, not to a reconstructed datum, carries an `estimate_error`
    table ([estimates.md](./estimates.md)) that also says how the game's figure and the estimate

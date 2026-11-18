@@ -5,6 +5,10 @@ recording and one ``[[reading]]`` table per reading. Every reading names a reque
 owner-readings file, a build the fixtures README lists for that recording, a reader and a date.
 The committed files hold no reading yet: this test passes over them vacuously until the owner
 answers, and each malformation below is planted inline to show it is refused.
+
+``custom-games.playback.toml`` is held to the same assertion with one difference: it names no
+recording (``source = "custom-games"``), so ``build_shown`` is required but matched to no README
+recording, and it is not counted among the recordings' files.
 """
 
 from __future__ import annotations
@@ -19,6 +23,8 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 _REPLAYS = _REPO_ROOT / "tests" / "fixtures" / "replays"
 _OWNER_READINGS = _REPO_ROOT / "specs" / "008-match-reconstruction" / "owner-readings.md"
 _README = _REPLAYS / "README.md"
+
+_CUSTOM_STEM = "custom-games"
 
 _REQUIRED = ("id", "request", "read_by", "read_on", "build_shown")
 
@@ -50,10 +56,15 @@ def _problems(path: Path, requests: set[str], builds: dict[str, set[str]]) -> li
     except tomllib.TOMLDecodeError as exc:
         return [f"not valid TOML: {exc}"]
     problems: list[str] = []
+    custom = path.name == f"{_CUSTOM_STEM}.playback.toml"
     recording = doc.get("recording")
-    expected = path.name.removesuffix(".playback.toml").removeprefix("AgeIIDE_Replay_")
-    if recording != expected:
-        problems.append(f"recording {recording!r} does not match the file name ({expected!r})")
+    if custom:
+        if doc.get("source") != _CUSTOM_STEM or "recording" in doc:
+            problems.append(f"a custom-game file carries `source = {_CUSTOM_STEM!r}`, no recording")
+    else:
+        expected = path.name.removesuffix(".playback.toml").removeprefix("AgeIIDE_Replay_")
+        if recording != expected:
+            problems.append(f"recording {recording!r} does not match the file name ({expected!r})")
     readings = doc.get("reading", [])
     if not isinstance(readings, list):
         return [*problems, "`reading` must be an array of tables"]
@@ -76,7 +87,7 @@ def _problems(path: Path, requests: set[str], builds: dict[str, set[str]]) -> li
         if isinstance(request, str) and request not in requests:
             problems.append(f"{where}: request {request!r} is not in the owner-readings file")
         build = reading.get("build_shown")
-        if isinstance(build, str) and build not in builds.get(str(recording), set()):
+        if not custom and isinstance(build, str) and build not in builds.get(str(recording), set()):
             problems.append(f"{where}: build {build!r} is not listed for the recording")
         read_on = reading.get("read_on")
         if isinstance(read_on, str) and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", read_on):
@@ -110,7 +121,11 @@ def _without(key: str) -> str:
 
 def test_every_committed_recording_has_a_playback_file() -> None:
     recordings = {p.name.split(".")[0] for p in _REPLAYS.glob("*.canonical.json")}
-    files = {p.name.split(".")[0] for p in _REPLAYS.glob("*.playback.toml")}
+    files = {
+        p.name.split(".")[0]
+        for p in _REPLAYS.glob("*.playback.toml")
+        if p.name != f"{_CUSTOM_STEM}.playback.toml"
+    }
     assert recordings
     assert files == recordings
 
@@ -197,3 +212,56 @@ def test_refuses_a_duplicate_id(tmp_path: Path) -> None:
 def test_build_is_checked_per_recording(tmp_path: Path, recording: str) -> None:
     good = {"504695319": "180059", "511523321": "185872"}[recording]
     assert _plant(tmp_path, _GOOD.replace("180059", good), recording=recording) == []
+
+
+_CUSTOM = "custom-games"
+
+_CUSTOM_GOOD = """
+[[reading]]
+id = "C-1"
+request = "O8.2"
+read_by = "owner"
+read_on = "2026-11-20"
+build_shown = "999999"
+"""
+
+
+def _custom_without(key: str) -> str:
+    return "\n".join(line for line in _CUSTOM_GOOD.splitlines() if not line.startswith(f"{key} ="))
+
+
+def _plant_custom(tmp_path: Path, body: str) -> list[str]:
+    path = tmp_path / f"{_CUSTOM}.playback.toml"
+    path.write_text(f'source = "{_CUSTOM}"\n{body}', encoding="utf-8")
+    return _problems(path, _requests(), _builds())
+
+
+def test_a_well_formed_custom_game_reading_passes_with_any_stated_build(tmp_path: Path) -> None:
+    assert _plant_custom(tmp_path, _CUSTOM_GOOD) == []
+
+
+def test_custom_game_file_refuses_a_missing_build(tmp_path: Path) -> None:
+    assert _plant_custom(tmp_path, _custom_without("build_shown"))
+
+
+def test_custom_game_file_refuses_an_unknown_request(tmp_path: Path) -> None:
+    assert _plant_custom(tmp_path, _CUSTOM_GOOD.replace("O8.2", "O99"))
+
+
+def test_custom_game_file_refuses_a_missing_reader(tmp_path: Path) -> None:
+    assert _plant_custom(tmp_path, _custom_without("read_by"))
+
+
+def test_custom_game_file_refuses_a_bad_date(tmp_path: Path) -> None:
+    assert _plant_custom(tmp_path, _CUSTOM_GOOD.replace("2026-11-20", "20/11/2026"))
+
+
+def test_a_recordings_file_still_refuses_a_build_the_readme_does_not_list(tmp_path: Path) -> None:
+    assert _plant(tmp_path, _GOOD.replace("180059", "999999"), recording="500546441")
+
+
+def test_the_committed_custom_game_file_is_present_and_not_an_orphan() -> None:
+    path = _REPLAYS / f"{_CUSTOM}.playback.toml"
+    assert path.is_file()
+    assert tomllib.loads(path.read_text(encoding="utf-8")).get("source") == _CUSTOM
+    assert _problems(path, _requests(), _builds()) == []

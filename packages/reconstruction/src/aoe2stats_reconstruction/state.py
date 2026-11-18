@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, StrictBool, StrictInt, StrictStr
+from pydantic import BaseModel, ConfigDict, StrictBool, StrictInt, StrictStr, model_validator
 
 ConditionKind = Literal["age", "researched", "team", "team_researched", "controlled", "executed"]
 SettledBy = Literal["proof", "rule"]
@@ -23,10 +23,13 @@ class _Record(BaseModel):
 class Settlement(_Record):
     """What settled one condition (data-model section 5; FR-006, FR-007, FR-014).
 
+    `condition` and `at_ms` name the condition answered (its `kind` and the moment it was asked at).
     `rule` is a rule id; whether it resolves to an adopted rule of the family `by` states is
     checked by `settle.resolve_rule`, which needs the registry.
     """
 
+    condition: ConditionKind
+    at_ms: StrictInt
     by: SettledBy
     rule: StrictStr
     orders: tuple[StrictInt, ...]
@@ -45,6 +48,15 @@ class Condition(_Record):
     value: StrictBool | StrictInt
     settled_by: Settlement
 
+    @model_validator(mode="after")
+    def _settlement_answers_this_condition(self) -> Condition:
+        if self.settled_by.condition != self.kind or self.settled_by.at_ms != self.at_ms:
+            raise ValueError(
+                f"settlement answers {self.settled_by.condition!r} at {self.settled_by.at_ms}, "
+                f"not {self.kind!r} at {self.at_ms}"
+            )
+        return self
+
 
 class EffectRef(_Record):
     """An applied knowledge-base effect, by civilisation and source key."""
@@ -53,12 +65,31 @@ class EffectRef(_Record):
     source_key: StrictStr
 
 
-class ReconstructedValue(_Record):
-    """One published number (data-model section 7)."""
+class _ReconstructedValue(_Record):
+    """The fields every published number shares (data-model section 7).
 
-    datum: StrictStr
+    The datum is the key of the block the instance sits in, so it is not a field here. Each datum
+    adds its own declared keys in a subclass, so an instance serialises to exactly the shape
+    rule 13 declares for its datum.
+    """
+
     participant: StrictInt
-    key: StrictInt | StrictStr
     value: StrictInt
     settled_by: tuple[Settlement, ...]
     effects: tuple[EffectRef, ...]
+
+
+class ResourceSpent(_ReconstructedValue):
+    """An instance of `reconstruction.resources_spent`: one resource, one participant."""
+
+    resource: StrictStr
+
+
+class AgeUpModelledArrival(_ReconstructedValue):
+    """An instance of `reconstruction.age_up_modelled_arrival_ms`.
+
+    A not-reached age-up publishes its computed arrival as `value` with `reached` false.
+    """
+
+    age: StrictInt
+    reached: StrictBool

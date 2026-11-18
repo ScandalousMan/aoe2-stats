@@ -95,11 +95,11 @@ This file is generated from `rules.toml`, the only place a rule is written. Rege
 
 - status: candidate
 - settles: refund
-- statement: an unstarted foundation that is deleted is refunded in full; any other deleted building is refunded nothing
-- evidence: the owner's ruling of spec Clarifications, Session 2026-11-03
-- ruling: specs/008-match-reconstruction/spec.md Clarifications, Session 2026-11-03
+- statement: a deletion tied to its placement (D-TIE-1) is refunded in full when no villager command named that foundation between its placement and its deletion, which is read as construction never having begun; when one did, or when the deleted building is any other than a foundation, it is refunded nothing. A command counts as a villager command only when every unit it names is shown by the recording to be a villager, and as naming the foundation when its target is the foundation's object
+- evidence: the owner's rulings of spec Clarifications, Sessions 2026-11-03 and 2026-11-18
+- ruling: specs/008-match-reconstruction/spec.md Clarifications, Sessions 2026-11-03 (the hypothesis) and 2026-11-18 (the observable)
 - readings: none
-- limits: the ruling fixes the hypothesis but not what in the recording shows that construction began, so that observable is not yet ruled and the rule cannot yet be recomputed from a recording
+- limits: the recording cannot show that a command came from a villager (no produced unit carries a class, and a starting object has no producer, so no unit is shown to be a villager), nor that a deleted building was still a foundation, so the rule cannot yet be computed from a recording (T983, open owner arbitration); and builders sent by the placement command itself, whose work this observable misses, so such a foundation counts as unstarted and is refunded
 
 ### `D-WIN-1`
 

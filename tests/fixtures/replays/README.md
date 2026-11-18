@@ -124,3 +124,12 @@ contracts/playback-readings.md): a `recording` header and one `[[reading]]` tabl
 naming its owner-readings request, the build the game showed, who read it and when. Transcribed
 from the owner's answer only; a value is never written anywhere else and never inferred. Until an
 answer arrives a file holds the header alone.
+
+## `custom-games.playback.toml` (one file)
+
+What the owner read in a custom game started for a request that no committed recording can answer
+(specs/008-match-reconstruction, owner-readings O8.2 to O8.4; contracts/playback-readings.md). It
+has a `source = "custom-games"` header instead of a `recording` one, and the same `[[reading]]`
+tables; each states the build the game showed, which no recording in this file's list constrains.
+Transcribed from the owner's answer only; a value is never written anywhere else and never
+inferred. Until an answer arrives the file holds the header alone.

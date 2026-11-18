@@ -76,7 +76,8 @@ rules 006 already has for that tier
   last items ordered and is never part of a period (FR-035).
 - **Every one of the seven has a `provenance` entry**, as 006's rule 2 requires of any datum present.
 - **An estimate withheld** is absent, and the document says why in the place 006 already uses for
-  that: `knowledge_gaps` when a knowledge field is missing, and the sibling list
+  that: `knowledge_gaps` when a knowledge field is missing or a participant's starting units are
+  unknown (which withholds its living population and population excess, FR-031), and the sibling list
   `estimates_withheld` when the living population went negative, which withholds it and the
   population excess together. An entry names the datum, the participant, the bound and the clock,
   and carries no value. `estimates_withheld` is a report like `knowledge_gaps`, not a datum: it

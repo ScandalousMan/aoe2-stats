@@ -3,9 +3,10 @@
 The loader API these tests fix (``aoe2stats_reconstruction.rules``, T917):
 
 - ``RuleError(ValueError)``: raised by every refusal.
-- ``load_rules_text(text, *, known_readings=()) -> Rules``: parses and validates rules TOML text.
-  ``known_readings`` is the collection of reading ids found in committed ``playback.toml`` files;
-  the packaged loader supplies the real set.
+- ``load_rules_text(text, *, known_readings) -> Rules``: parses and validates rules TOML text.
+  ``known_readings`` is required: a collection of reading ids found in committed ``playback.toml``
+  files, checked (guarantee 5), or ``None``, which means "not checked". The packaged loader passes
+  ``None`` because the playback files are not in the wheel; a repository test supplies the real set.
 - ``Rules``: a mapping by id (``rules["P1"]``, ``len``, ``in``) iterating ``Rule`` records;
   ``Rule`` has ``id, family, settles, statement, evidence, ruling, readings, status, limits,
   applies`` (optional fields ``None``, ``readings`` a tuple).
@@ -17,9 +18,15 @@ The loader API these tests fix (``aoe2stats_reconstruction.rules``, T917):
 
 from __future__ import annotations
 
+import tomllib
 from importlib import resources
+from pathlib import Path
 
 import pytest
+
+_PLAYBACK_FILES = sorted(
+    (Path(__file__).resolve().parents[3] / "tests" / "fixtures" / "replays").glob("*.playback.toml")
+)
 
 # The contract's "Enters as" column, for the rules present in the initial set.
 INITIAL_STATUS = {
@@ -60,17 +67,19 @@ def _rule(
     )
 
 
-def _refuses(text: str, **kwargs: object) -> None:
+def _refuses(text: str, known_readings: object = ()) -> None:
     from aoe2stats_reconstruction.rules import RuleError, load_rules_text
 
     with pytest.raises(RuleError):
-        load_rules_text(text, **kwargs)  # type: ignore[arg-type]
+        load_rules_text(text, known_readings=known_readings)  # type: ignore[arg-type]
 
 
 def test_a_well_formed_text_loads() -> None:
     from aoe2stats_reconstruction.rules import load_rules_text
 
-    rules = load_rules_text(_rule("P1", status="adopted") + _rule("D-AGE-1", family="deduction"))
+    rules = load_rules_text(
+        _rule("P1", status="adopted") + _rule("D-AGE-1", family="deduction"), known_readings=()
+    )
     assert rules["P1"].status == "adopted"
     assert rules["D-AGE-1"].family == "deduction"
 
@@ -80,7 +89,7 @@ def test_guarantee_1_a_duplicated_id_fails() -> None:
 
     # TOML itself rejects a repeated table, so the message is what shows the loader's own check ran.
     with pytest.raises(RuleError, match="duplicate id 'P1'"):
-        load_rules_text(_rule("P1") + _rule("P1"))
+        load_rules_text(_rule("P1") + _rule("P1"), known_readings=())
 
 
 @pytest.mark.parametrize("bad_id", ["p1", "P", "X1", "D-AGE", "D-age-1", "P1a", "D--1"])
@@ -113,7 +122,7 @@ def test_guarantee_3_an_adopted_deduction_with_a_ruling_and_an_evidence_loads() 
         status="adopted",
         extra='ruling = "spec Clarifications"',
     )
-    assert load_rules_text(ruled)["D-REFUND-1"].status == "adopted"
+    assert load_rules_text(ruled, known_readings=())["D-REFUND-1"].status == "adopted"
 
 
 def test_guarantee_4_a_refuted_rule_with_no_reading_fails() -> None:
@@ -132,7 +141,7 @@ def test_guarantee_4_a_refuted_rule_citing_a_known_reading_loads() -> None:
 def test_guarantee_5_a_reading_in_no_playback_file_fails() -> None:
     text = _rule("P1").replace("readings = []", 'readings = ["511523321.O3"]')
     _refuses(text, known_readings={"another.O1"})
-    _refuses(text)
+    _refuses(text, known_readings=())
 
 
 def test_guarantee_5_a_known_reading_loads() -> None:
@@ -166,7 +175,8 @@ def test_guarantee_6_a_candidate_beside_an_adopted_rule_does_not_overlap() -> No
     from aoe2stats_reconstruction.rules import load_rules_text
 
     rules = load_rules_text(
-        _rule("P1", status="adopted") + _rule("D-AGE-1", family="deduction", status="candidate")
+        _rule("P1", status="adopted") + _rule("D-AGE-1", family="deduction", status="candidate"),
+        known_readings=(),
     )
     assert len(rules) == 2
 
@@ -181,7 +191,8 @@ def test_guarantee_6_disjoint_stated_applicability_does_not_overlap() -> None:
             family="deduction",
             status="adopted",
             extra='applies = "case b"\nruling = "r"',
-        )
+        ),
+        known_readings=(),
     )
     assert len(rules) == 2
 
@@ -218,3 +229,49 @@ def test_the_committed_view_matches_the_registry_byte_for_byte() -> None:
     assert committed == render_view(RULES), (
         "RULES.md has drifted from rules.toml. Regenerate it with: " + REGENERATE_COMMAND
     )
+
+
+def test_guarantee_5_not_checked_accepts_a_cited_reading() -> None:
+    # What the packaged loader does: the playback files are not in the wheel.
+    from aoe2stats_reconstruction.rules import load_rules_text
+
+    text = _rule("P1").replace("readings = []", 'readings = ["511523321.O3"]')
+    assert load_rules_text(text, known_readings=None)["P1"].readings == ("511523321.O3",)
+
+
+def test_guarantee_5_a_collection_still_refuses_an_unknown_reading() -> None:
+    text = _rule("P1").replace("readings = []", 'readings = ["511523321.O3"]')
+    _refuses(text, known_readings={"another.O1"})
+    _refuses(text, known_readings=frozenset())
+
+
+def test_the_known_readings_argument_has_no_default() -> None:
+    from aoe2stats_reconstruction.rules import load_rules_text
+
+    with pytest.raises(TypeError):
+        load_rules_text(_rule("P1"))  # type: ignore[call-arg]
+
+
+def _repository_reading_ids() -> set[str]:
+    ids: set[str] = set()
+    for path in _PLAYBACK_FILES:
+        data = tomllib.loads(path.read_text("utf-8"))
+        ids |= {str(reading["id"]) for reading in data.get("reading", [])}
+    return ids
+
+
+def _packaged_text() -> str:
+    return resources.files("aoe2stats_reconstruction").joinpath("rules.toml").read_text("utf-8")
+
+
+def test_guarantee_5_every_cited_reading_is_in_a_committed_playback_file() -> None:
+    from aoe2stats_reconstruction.rules import load_rules_text
+
+    assert _PLAYBACK_FILES, "no *.playback.toml found: the repository check would pass vacuously"
+    load_rules_text(_packaged_text(), known_readings=_repository_reading_ids())
+
+
+def test_guarantee_5_the_repository_check_fails_on_a_stray_reading() -> None:
+    text = _packaged_text().replace("readings = []", 'readings = ["no-such.O99"]', 1)
+    assert text != _packaged_text()
+    _refuses(text, known_readings=_repository_reading_ids())

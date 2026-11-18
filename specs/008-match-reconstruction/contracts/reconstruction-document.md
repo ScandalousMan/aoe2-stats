@@ -59,8 +59,9 @@ fetching, retaining or naming an analysis.
 ## Identity and version (FR-021, FR-022)
 
 `reconstruction_engine` is the package's version and the digest of its rules registry. A change to
-a rule's status or statement, an invariant, or the arithmetic changes one of the two, so the
-identity digest changes, the staleness test recomputes, and the old document stays at its own key
+a rule's status or statement changes the digest. A change to an invariant or the arithmetic MUST
+bump the package version; review enforces this, no test can detect it. Either way the identity
+digest changes, the staleness test recomputes, and the old document stays at its own key
 (006 FR-042). The reproduce path stops refusing every non-`not-applicable` value and refuses only one
 whose engine is not the installed one, naming what differs (006 contract, Reproduction).
 

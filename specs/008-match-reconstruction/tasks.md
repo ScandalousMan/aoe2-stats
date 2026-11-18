@@ -99,7 +99,7 @@ the measurements that guard the plan are tests. Nothing here publishes.
 - [ ] T902 **Owner task (information).** Take readings O3 (the Sicilian unit), O4 (the starting
       state at 0:00 of each recording), O5 (three deletions) and O8 (the starting-objects table's open
       values, added by T925) of `specs/008-match-reconstruction/owner-readings.md`. T924 transcribes O3
-      and O4, T942 transcribes O5. No task yet transcribes O8 into a superseding snapshot.
+      and O4, T942 transcribes O5, T982 transcribes O8.
 - [ ] T903 **Owner task (information).** Take readings O6.1 (the end-of-match military statistics)
       and O6.2 (population at the stated times) of `specs/008-match-reconstruction/owner-readings.md`.
       They measure the estimates of phase 10 and close no gate; T978 transcribes them.
@@ -232,10 +232,11 @@ document with an empty `reconstructed` block.
       answered, add the O3 reading's id to P1's `readings` in the registry in that same change, and add
       the well-formedness test of that contract's assertion 4 in
       `packages/reconstruction/tests/test_playback_readings.py`. Until T902 is answered, land the test
-      and the empty files only.
+      and the empty files only. Guarantee 5's repository test then checks the id P1 cites.
 - [x] T925 Add the starting-objects knowledge table through 006's snapshot mechanism, as a
-      superseding snapshot under `packages/knowledge/snapshots/`: per build, civilisation and lobby
-      preset, the units and buildings a participant starts with. Before transcribing, record the
+      superseding snapshot under `packages/knowledge/snapshots/`: for build 188329, per civilisation
+      and lobby preset, the units and buildings a participant starts with, as far as the vendored pack
+      states them; T982 carries the other builds and the open values. Before transcribing, record the
       source's ruling in `docs/data-sources.md` §6 if that section does not already hold it
       (constitution X). Values the source leaves in doubt are requests added to
       `specs/008-match-reconstruction/owner-readings.md`, never guesses (FR-026).
@@ -271,7 +272,13 @@ document with an empty `reconstructed` block.
       the capture path, and reads no input but the canonical stream and the knowledge base (FR-002,
       FR-023).
 
-**Checkpoint**: phase 10 may start here. Phases 3 to 7 continue in order.
+- [ ] T982 After T902. Transcribe O8 through superseding snapshots, one build at a time, for builds
+      180059, 185872 and 188329: the baseline rows, each build's bonus rows from that build's own
+      vendored pack, and the stockpile each starting-resources value grants. Implement
+      `derive_starting_resources` from that table, so `starting-resources-agree` compares real
+      values. A value not answered stays an open row (FR-026).
+
+**Checkpoint**: phase 10 may start here (T924's transcription and T982 wait on T902 and block nothing). Phases 3 to 7 continue in order.
 
 ---
 
@@ -361,6 +368,13 @@ production each building was ordered.
       statement in `specs/008-match-reconstruction/research.md` R9, using the measurement research R16
       records for that day, and puts it to the owner. Until the owner's yes it stays a candidate, and
       every value that depends on buildings controlled is not published.
+- [ ] T983 [US1] **Owner task (arbitration).** The ruling of 2026-11-18 (spec Clarifications) names
+      a villager command naming the foundation, but the canonical stream gives no produced unit a
+      class and emits no starting object, so no command can be shown to come from a villager, and
+      D-TIE-1 ties a deletion only through a command naming the object. State what D-REFUND-1
+      computes; an agent then writes its statement and `limits` and adopts it under the adoption
+      gate of contracts/rules.md. Until then it stays a candidate and no refund changes a published
+      value (FR-003a).
 - [ ] T944 [US1] Test first, `xfail(strict=True)`, in `packages/reconstruction/tests/test_spending.py`:
       US1's four acceptance scenarios on synthetic streams; spending is what was ordered and executed,
       less cancellations, less the refunds D-REFUND-1 grants through a tied deletion (FR-003); a value
@@ -478,9 +492,7 @@ estimates are published meanwhile and are not this phase's draft.
       the base unit. `specs/008-match-reconstruction/research.md` stays their record of origin and is
       not edited to match.
 - [ ] T961 [P] Record the reconstruction's rule risk and the estimates' reading risk in
-      `docs/risks.md`, cross-referenced to the registry and to the register, and update
-      `.claude/skills/replay-parsing/SKILL.md` where it says the starting-state decoder does not exist
-      yet.
+      `docs/risks.md`, cross-referenced to the registry and to the register.
 - [ ] T962 Run [quickstart.md](./quickstart.md) end to end and
       `uv run scripts/checks/spec_lint.py` over every feature, checked by exit code.
 
@@ -489,13 +501,19 @@ estimates are published meanwhile and are not this phase's draft.
 ## Phase 10: Seen data and estimates (plan phase 10 — US6)
 
 **Starts when phase 2 is merged. Waits on neither gate.** Needs T906, T908 and T912a from phase 1,
-and T954 with T955 before T972.
+and T954, T955 and T984 before T972.
 
 **Goal**: two exact seen data per participant, and five estimates under the document's inferred
 data, each with a confidence and a non-claim, computed by code the exact path never imports.
 
 **Independent test**: quickstart, Phase 10.
 
+- [ ] T984 Test first, then wire `starting_states` into the analysis from the canonical events the
+      analyzer holds, and move `participant.starting_attributes` and
+      `participant.starting_resources` from `planned` to `published` at `decoded`. A participant
+      with no `starting-attributes` event, and every unknown starting object, is reported in
+      `knowledge_gaps` naming the participant and the value, so a decoder failure on a new build is
+      visible (FR-009, FR-026).
 - [ ] T963 [P] [US6] Test first, `xfail(strict=True)`, in
       `packages/reconstruction/tests/test_estimates_isolation.py`: walking the imports of every module
       of the package outside `estimates/`, none imports from `estimates/` (FR-028). The marker is
@@ -551,7 +569,8 @@ data, each with a confidence and a non-claim, computed by code the exact path ne
       the population the knowledge base gives it; the living series is the value after each change
       and never passes the limit; a series that goes negative is withheld together with the excess,
       with its entry, and the document is still built (FR-034); a build whose knowledge carries no
-      population withholds both through a knowledge gap and nothing else. Depends on T954 and T955.
+      population withholds both through a knowledge gap and nothing else, and unknown starting units
+      withhold both the same way. Depends on T954, T955 and T984.
 - [ ] T973 [US6] Implement
       `packages/reconstruction/src/aoe2stats_reconstruction/estimates/population.py` and delete T972's
       markers.
@@ -626,7 +645,8 @@ data, each with a confidence and a non-claim, computed by code the exact path ne
   after T905, then T907, then T908 (one test file, one adapter, one set of goldens, and the
   register after T912a). The owner
   tasks T901 to T904 are requested at once; the first two are the critical path.
-- **Phase 2** waits on T906 and T908 only, never on a reading (T924 lands its test first).
+- **Phase 2** waits on T906 and T908 only, never on a reading (T924 lands its test first; T982 waits
+  on T902 and blocks nothing in the phase).
 - **Phases 3 to 7** are sequential, and phase 3 waits on T901.
 - **Phase 8** waits on phase 3 for idle time; T954 and T955 can run right after phase 1.
 - **Phase 10** starts after phase 2 and runs beside phases 3 to 7. Its tasks and theirs never run
@@ -635,7 +655,7 @@ data, each with a confidence and a non-claim, computed by code the exact path ne
   analyzer's document assembly, the playback files and their test (T946 against T978), and the
   timeline composite with the web reader's two modules (T952, T953 against T975, T980). T975 waits
   on T967, T969, T971 and T973. T978 waits on T903 and T975. T981 waits on T936.
-- **Superseding knowledge snapshots are created one at a time**: T925, T940, T941 and T954 never run
+- **Superseding knowledge snapshots are created one at a time**: T925, T940, T941, T954 and T982 never run
   in parallel with each other.
 - **Phase 9** closes the feature after everything it describes has landed.
 
@@ -655,8 +675,9 @@ then T974 and T975 as one commit
 1. **Request the readings first** (T901 to T903): they cost a person's time and gate the exact
    values.
 2. **Phases 1 and 2**, which wait on nothing and publish nothing.
-3. **Phase 10 next**, since it is the first thing a player sees and it waits on no reading: T963 to
-   T975, then the view (T979, T980).
+3. **Phase 10 next**, since it is the first thing a player sees and it waits on neither gate: T984,
+   T963 to T975, then the view (T979, T980). Its population estimate is withheld until O8.1 and T982
+   supply the starting units.
 4. **Phases 3 to 7** as the readings arrive: G1, arrivals, spending, scale, the view.
 5. **Phase 8** when G1 is closed; **T943** when feature 009 is settled.
 
