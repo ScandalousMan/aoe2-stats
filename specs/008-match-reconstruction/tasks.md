@@ -274,11 +274,12 @@ document with an empty `reconstructed` block.
 
 - [ ] T982 After T902. Transcribe O8 through superseding snapshots, one build at a time, for builds
       180059, 185872 and 188329: the baseline rows, each build's bonus rows from that build's own
-      vendored pack, and the stockpile each starting-resources value grants. Implement
-      `derive_starting_resources` from that table, so `starting-resources-agree` compares real
-      values. A value not answered stays an open row (FR-026).
+      vendored pack, and the stockpile each starting-resources value grants, from the O4 and O8
+      readings taken on that build. Implement `derive_starting_resources` from that table, so
+      `starting-resources-agree` compares real values for every build and preset so answered. A
+      value not answered stays an open row and a gap (FR-026).
 
-**Checkpoint**: phase 10 may start here (T924's transcription and T982 wait on T902 and block nothing). Phases 3 to 7 continue in order.
+**Checkpoint**: phase 10 may start here (T924's transcription and T982 wait on T902 and block nothing in this phase). Phases 3 to 7 continue in order.
 
 ---
 
@@ -369,15 +370,16 @@ production each building was ordered.
       records for that day, and puts it to the owner. Until the owner's yes it stays a candidate, and
       every value that depends on buildings controlled is not published.
 - [ ] T983 [US1] **Owner task (arbitration).** The ruling of 2026-11-18 (spec Clarifications) names
-      a villager command naming the foundation, but the canonical stream gives no produced unit a
-      class and emits no starting object, so no command can be shown to come from a villager, and
-      D-TIE-1 ties a deletion only through a command naming the object. State what D-REFUND-1
-      computes; an agent then writes its statement and `limits` and adopts it under the adoption
+      a villager command naming the foundation. The canonical stream gives no produced unit a class,
+      emits no starting object and drops the unit ids a placement command lists (widening
+      `building-placed`, as T906 widened `unit-queued`, could carry them); D-TIE-1 ties a deletion
+      only through a command naming the object; and nothing shows a deleted building was still a
+      foundation. State what D-REFUND-1 computes; an agent then writes its statement and `limits` and adopts it under the adoption
       gate of contracts/rules.md. Until then it stays a candidate and no refund changes a published
       value (FR-003a).
 - [ ] T944 [US1] Test first, `xfail(strict=True)`, in `packages/reconstruction/tests/test_spending.py`:
       US1's four acceptance scenarios on synthetic streams; spending is what was ordered and executed,
-      less cancellations, less the refunds D-REFUND-1 grants through a tied deletion (FR-003); a value
+      less cancellations, less the refunds D-REFUND-1 grants through a tied deletion once T983 has adopted it (FR-003); a value
       is withheld only by a knowledge gap and never for uncertainty (FR-009, SC-003); a cancellation is
       attributed by D-CANCEL-1 on synthetic streams (FR-011); a technology counts researched only under
       D-TECH-1 with every observable obstacle shown absent (FR-007a); ordered production per building
@@ -391,7 +393,8 @@ production each building was ordered.
       FR-003). The income model, exploration coverage, the map-control model and the prerequisite order
       check stay `blocked`, asserted by a test in `packages/core/tests/test_register.py` (FR-024).
       Delete T944's markers. Depends on T936, T939, T940, T941 and T942; values that depend on
-      buildings controlled wait on T943.
+      buildings controlled wait on T943, and refunds on T983: until it closes, every deletion is
+      reported with the refund it could have given and changes no published value.
 
 ---
 
@@ -508,12 +511,12 @@ data, each with a confidence and a non-claim, computed by code the exact path ne
 
 **Independent test**: quickstart, Phase 10.
 
-- [ ] T984 Test first, then wire `starting_states` into the analysis from the canonical events the
-      analyzer holds, and move `participant.starting_attributes` and
-      `participant.starting_resources` from `planned` to `published` at `decoded`. A participant
-      with no `starting-attributes` event, and every unknown starting object, is reported in
-      `knowledge_gaps` naming the participant and the value, so a decoder failure on a new build is
-      visible (FR-009, FR-026).
+- [ ] T984 Test first, then wire `starting_states` into the analysis, converting from the canonical
+      events the analyzer holds, and hand the starting units to the estimates. Publish
+      `participant.starting_resources` at `participants[].starting_resources`, at `decoded`, absent
+      for a participant with no `starting-attributes` event, so a decoder failure on a new build
+      shows in the document. `participant.starting_attributes` stays `planned`: it holds nothing the
+      resources do not (FR-009, FR-026).
 - [ ] T963 [P] [US6] Test first, `xfail(strict=True)`, in
       `packages/reconstruction/tests/test_estimates_isolation.py`: walking the imports of every module
       of the package outside `estimates/`, none imports from `estimates/` (FR-028). The marker is
@@ -570,7 +573,7 @@ data, each with a confidence and a non-claim, computed by code the exact path ne
       and never passes the limit; a series that goes negative is withheld together with the excess,
       with its entry, and the document is still built (FR-034); a build whose knowledge carries no
       population withholds both through a knowledge gap and nothing else, and unknown starting units
-      withhold both the same way. Depends on T954, T955 and T984.
+      withhold both with an `estimates_withheld` entry of bound `starting-units-known`. Depends on T954, T955 and T984.
 - [ ] T973 [US6] Implement
       `packages/reconstruction/src/aoe2stats_reconstruction/estimates/population.py` and delete T972's
       markers.
@@ -617,7 +620,8 @@ data, each with a confidence and a non-claim, computed by code the exact path ne
       playback files, each with its `estimate_error` table (contracts/estimates.md) saying how the
       game's figure and the estimate differ in what they measure, and assert in
       `packages/reconstruction/tests/test_playback_readings.py` that every reading corresponding to an
-      estimate has one and that its estimated value is what the analysis produces (FR-037, SC-014). The
+      estimate has one and that its estimated value is what the analysis produces, or, for an estimate
+      withheld, that its `estimates_withheld` entry is present (FR-037, SC-014). The
       size of a difference fails nothing. Then name those readings as each estimate's `calibration` in
       the register, write in its confidence method what level the recorded error earns, and bump the
       reconstruction version.
@@ -651,7 +655,7 @@ data, each with a confidence and a non-claim, computed by code the exact path ne
 - **Phase 8** waits on phase 3 for idle time; T954 and T955 can run right after phase 1.
 - **Phase 10** starts after phase 2 and runs beside phases 3 to 7. Its tasks and theirs never run
   at the same time on a file both touch: the queue mechanics (whichever of T934 and T971 runs first
-  creates them), the register and its view (T937, T939, T945 against T975, T978), the validator, the
+  creates them), the register and its view (T937, T939, T945 against T975, T978, T984), the validator, the
   analyzer's document assembly, the playback files and their test (T946 against T978), and the
   timeline composite with the web reader's two modules (T952, T953 against T975, T980). T975 waits
   on T967, T969, T971 and T973. T978 waits on T903 and T975. T981 waits on T936.
@@ -662,6 +666,7 @@ data, each with a confidence and a non-claim, computed by code the exact path ne
 ## Parallel example: phase 10
 
 ```text
+T984 first
 T963, T964 together (a test and a research note; different files)
 then T965
 then T966, T968, T970, T972 together (four test files)

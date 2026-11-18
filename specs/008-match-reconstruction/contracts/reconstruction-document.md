@@ -11,6 +11,7 @@ fetching, retaining or naming an analysis.
 
 `schema_version` becomes 3. One block is added, `reconstructed`, and the identity's
 `reconstruction_engine` slot is filled. Every field of version 2 stays at its path with its type.
+T984 adds one participant field, `participants[].starting_resources`, at `decoded`.
 
 ```json
 {

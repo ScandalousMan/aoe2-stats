@@ -83,7 +83,7 @@ What settled one condition (US3, FR-006, FR-007, FR-014).
 
 | Field | Type | Rule |
 | ----- | ---- | ---- |
-| `condition` | the condition's `kind` (section 4) | Which condition this settles, so a reader can tell it apart from the value's other settlements (FR-025, SC-005). |
+| `condition` | closed: every value of a rule's `settles` (section 6) | What this settles: a condition's `kind` (section 4), or `alive`, `refund`, `cancellation`, `tie`, `distribution`, `winner`, `housing`, so a reader can tell it apart from the value's other settlements (FR-025, SC-005). |
 | `at_ms` | integer | The moment the condition is asked at (section 4). |
 | `by` | closed: `proof`, `rule` | |
 | `rule` | rule id | A proof names a proof rule (P-family), a rule names a deduction rule (D-family). It must resolve to an **adopted** rule (section 6). |
@@ -125,7 +125,7 @@ One published number (spec, Key Entities).
 | ----- | ---- | ---- |
 | `datum` | register id | Must resolve to a `published` register entry at `reconstructed` or `derived` (FR-014). |
 | `participant` | slot | |
-| declared keys | per datum | The datum's declared keys: `resource`, or `age` with `reached` (contracts/reconstruction-document.md). |
+| declared keys | per datum | The keys contracts/reconstruction-document.md declares for that datum. |
 | `value` | integer | Milliseconds or resource units. One number; the type admits nothing else (FR-008, SC-002). |
 | `settled_by` | tuple of Settlement | One per condition the value depends on, in the order the computation met them. |
 | `effects` | tuple of effect references | The knowledge base's applied effects, from its answers (006 knowledge-base contract, `Answer.effects`). |
@@ -173,7 +173,8 @@ byte for byte with what the analysis produces. Regenerated only under the fixtur
 
 What a person read in the game, playing a committed recording back (FR-019). A file beside the
 recording: `tests/fixtures/replays/<recording>.playback.toml`, one table per reading. A reading taken
-in a custom game goes to `tests/fixtures/replays/custom-games.playback.toml`.
+in a custom game goes to `tests/fixtures/replays/custom-games.playback.toml` and also states its
+`civilisation` and lobby `preset`.
 
 | Field | Rule |
 | ----- | ---- |
@@ -229,7 +230,8 @@ or rule holds a reference to one (FR-028). No estimate reads an explicit deletio
 **A bound, not an invariant.** The estimated living population is never negative (FR-034). A series
 that goes negative is withheld with the population excess and an entry in `estimates_withheld`; it
 raises nothing, and the document is published. It cannot pass the population limit, because the
-excess is removed as it arises (FR-033).
+excess is removed as it arises (FR-033). Unknown starting units withhold the same two data, with the
+bound `starting-units-known` (FR-031).
 
 ## 14. The five estimates
 

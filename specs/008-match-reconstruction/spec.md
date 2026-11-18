@@ -104,8 +104,8 @@ The owner's four starting rules (2026-11-15), as the committed recordings amende
   command naming that foundation before its deletion. Builders sent by the placement command itself
   are not covered by this observable, and the rule states that limit.
 - Q: A participant's starting units are unknown: is the estimated living population published
-  without them? → A: No. The population series and the excess are withheld through a knowledge gap
-  until the starting units are known (FR-031).
+  without them? → A: No. The population series and the excess are withheld, and the document says
+  why, until the starting units are known (FR-031).
 
 ### Session 2026-11-15
 
@@ -418,7 +418,8 @@ the reconstructed values are byte-identical whether the estimates are computed o
 - **FR-003a**: A deletion of a placed building MUST be refunded under one written hypothesis: a
   foundation deleted before its construction began is refunded in full, and any other deletion
   refunds nothing. Construction counts as begun when a villager command names the foundation before
-  its deletion (Clarifications, Session 2026-11-18). The document MUST name the hypothesis wherever it changed a value. A deletion that
+  its deletion (Clarifications, Session 2026-11-18; what this can compute is open, see Important
+  unresolved decisions). The document MUST name the hypothesis wherever it changed a value. A deletion that
   cannot be tied to one placement MUST be reported with the value it could have changed, never
   silently dropped.
 - **FR-003b**: A recorded queue command MUST NOT be counted as paid by itself. Measured 2026-11-06
@@ -577,7 +578,7 @@ the reconstructed values are byte-identical whether the estimates are computed o
   force, until the age-up rule of FR-010. Meanwhile the non-claim MUST state that commands the game
   refused are counted. Each replacement is a change that bumps the reconstruction version (FR-021).
   While a participant's starting units are unknown, its living population and population excess MUST
-  be withheld through a knowledge gap.
+  be withheld, and the document MUST say so for that participant.
 - **FR-032**: A unit MUST be counted as an identified estimated loss when a command of a
   participant of another team targets its object id after the last command of its owner that names
   it and before its owner's resignation; the loss is dated at the last such command. A targeting

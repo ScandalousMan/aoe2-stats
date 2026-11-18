@@ -99,7 +99,7 @@ This file is generated from `rules.toml`, the only place a rule is written. Rege
 - evidence: the owner's rulings of spec Clarifications, Sessions 2026-11-03 and 2026-11-18
 - ruling: specs/008-match-reconstruction/spec.md Clarifications, Sessions 2026-11-03 (the hypothesis) and 2026-11-18 (the observable)
 - readings: none
-- limits: the recording cannot show that a command came from a villager (no produced unit carries a class, and a starting object has no producer, so no unit is shown to be a villager), nor that a deleted building was still a foundation, so the rule cannot yet be computed from a recording (T983, open owner arbitration); and builders sent by the placement command itself, whose work this observable misses, so such a foundation counts as unstarted and is refunded
+- limits: the canonical stream gives no produced unit a class, emits no starting object and does not carry the unit ids a placement command lists, so no command is shown to come from a villager; nothing shows a deleted building was still a foundation; so the rule cannot yet be computed from a recording (T983, open owner arbitration). Builders sent by the placement command itself do not count as a villager command in the observable as ruled, so such a foundation counts as unstarted and is refunded
 
 ### `D-WIN-1`
 

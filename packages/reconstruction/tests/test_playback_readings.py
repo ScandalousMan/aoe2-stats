@@ -26,7 +26,8 @@ _README = _REPLAYS / "README.md"
 
 _CUSTOM_STEM = "custom-games"
 
-_REQUIRED = ("id", "request", "read_by", "read_on", "build_shown")
+_REQUIRED = ("id", "request", "quantity", "value", "read_by", "read_on", "build_shown")
+_CUSTOM_REQUIRED = ("civilisation", "preset")
 
 
 def _requests() -> set[str]:
@@ -78,6 +79,11 @@ def _problems(path: Path, requests: set[str], builds: dict[str, set[str]]) -> li
             value = reading.get(key)
             if not isinstance(value, str) or not value.strip():
                 problems.append(f"{where}: `{key}` missing or empty")
+        if custom:
+            for key in _CUSTOM_REQUIRED:
+                value = reading.get(key)
+                if not isinstance(value, str) or not value.strip():
+                    problems.append(f"{where}: custom-game reading `{key}` missing or empty")
         rid = reading.get("id")
         if isinstance(rid, str):
             if rid in seen:
@@ -180,6 +186,16 @@ def test_refuses_a_build_not_listed_for_the_recording(tmp_path: Path) -> None:
     assert _plant(tmp_path, _GOOD.replace("180059", "185872"), recording="500546441")
 
 
+@pytest.mark.parametrize("key", ["quantity", "value"])
+def test_refuses_a_missing_quantity_or_value(tmp_path: Path, key: str) -> None:
+    assert _plant(tmp_path, _without(key))
+
+
+@pytest.mark.parametrize("key", ["quantity", "value"])
+def test_refuses_a_blank_quantity_or_value(tmp_path: Path, key: str) -> None:
+    assert _plant(tmp_path, _GOOD.replace(f'{key} = "', f'{key} = "  "\n#"', 1))
+
+
 def test_refuses_a_missing_build(tmp_path: Path) -> None:
     assert _plant(tmp_path, _without("build_shown"))
 
@@ -220,6 +236,10 @@ _CUSTOM_GOOD = """
 [[reading]]
 id = "C-1"
 request = "O8.2"
+civilisation = "Chinese"
+preset = "Standard"
+quantity = "starting resources"
+value = "unreadable"
 read_by = "owner"
 read_on = "2026-11-20"
 build_shown = "999999"
@@ -238,6 +258,21 @@ def _plant_custom(tmp_path: Path, body: str) -> list[str]:
 
 def test_a_well_formed_custom_game_reading_passes_with_any_stated_build(tmp_path: Path) -> None:
     assert _plant_custom(tmp_path, _CUSTOM_GOOD) == []
+
+
+def test_custom_game_reading_may_answer_o8_1(tmp_path: Path) -> None:
+    assert _plant_custom(tmp_path, _CUSTOM_GOOD.replace("O8.2", "O8.1")) == []
+
+
+@pytest.mark.parametrize("key", ["quantity", "value", "civilisation", "preset"])
+def test_custom_game_file_refuses_a_missing_key(tmp_path: Path, key: str) -> None:
+    assert _plant_custom(tmp_path, _custom_without(key))
+
+
+@pytest.mark.parametrize("key", ["civilisation", "preset"])
+def test_custom_game_file_refuses_a_blank_key(tmp_path: Path, key: str) -> None:
+    body = _CUSTOM_GOOD.replace(f"{key} = ", f'{key} = "  "\n#', 1)
+    assert _plant_custom(tmp_path, body)
 
 
 def test_custom_game_file_refuses_a_missing_build(tmp_path: Path) -> None:

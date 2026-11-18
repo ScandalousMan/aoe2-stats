@@ -115,6 +115,18 @@ def test_condition_has_exactly_one_value_and_a_required_settlement() -> None:
     assert _rejects(lambda: _condition(state, at_ms=1.5))
 
 
+def test_a_settlement_can_name_every_condition_a_rule_settles() -> None:
+    state, rules = _mod("state"), _mod("rules")
+    assert rules.RULES
+    for rule in rules.RULES:
+        by = "proof" if rule.family == "proof" else "rule"
+        built = _settlement(state, by, rule.id, condition=rule.settles)
+        assert built.condition == rule.settles, rule.id
+    # A value no rule settles is still refused.
+    assert _rejects(lambda: _settlement(state, "rule", "D-WIN-1", condition="nonsense"))
+    assert _rejects(lambda: _settlement(state, "rule", "D-WIN-1", condition="Winner"))
+
+
 def test_settlement_resolves_to_an_adopted_rule_of_the_family_its_by_states() -> None:
     state, settle, rules = _mod("state"), _mod("settle"), _mod("rules")
     registry = rules.RULES

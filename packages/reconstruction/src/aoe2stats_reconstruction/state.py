@@ -10,7 +10,17 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, StrictBool, StrictInt, StrictStr, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    StrictBool,
+    StrictInt,
+    StrictStr,
+    field_validator,
+    model_validator,
+)
+
+from aoe2stats_reconstruction.rules import SETTLES
 
 ConditionKind = Literal["age", "researched", "team", "team_researched", "controlled", "executed"]
 SettledBy = Literal["proof", "rule"]
@@ -24,16 +34,26 @@ class Settlement(_Record):
     """What settled one condition (data-model section 5; FR-006, FR-007, FR-014).
 
     `condition` and `at_ms` name the condition answered (its `kind` and the moment it was asked at).
+    `condition` is closed over every value a rule's `settles` can take (data-model section 5), which
+    is wider than the six condition kinds: rules also settle `alive`, `refund`, `cancellation`,
+    `tie`, `distribution`, `winner` and `housing`.
     `rule` is a rule id; whether it resolves to an adopted rule of the family `by` states is
     checked by `settle.resolve_rule`, which needs the registry.
     """
 
-    condition: ConditionKind
+    condition: StrictStr
     at_ms: StrictInt
     by: SettledBy
     rule: StrictStr
     orders: tuple[StrictInt, ...]
     facts: Mapping[StrictStr, StrictBool | StrictInt | StrictStr]
+
+    @field_validator("condition")
+    @classmethod
+    def _condition_is_something_a_rule_settles(cls, value: str) -> str:
+        if value not in SETTLES:
+            raise ValueError(f"{value!r} is not a value a rule settles: {sorted(SETTLES)}")
+        return value
 
 
 class Condition(_Record):
