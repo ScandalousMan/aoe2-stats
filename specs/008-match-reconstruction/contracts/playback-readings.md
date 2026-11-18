@@ -32,8 +32,7 @@ reconstructed value; the test reads both and compares.
    quantity corresponds to an estimate, not to a reconstructed datum, carries an `estimate_error`
    table ([estimates.md](./estimates.md)) that also says how the game's figure and the estimate
    differ in what they measure. The test asserts the table is present and that its estimated value
-   is the one the analysis produces; an estimate withheld has no value to compare, and the test
-   asserts its `estimates_withheld` entry instead. It never asserts the difference is small:
+   is the one the analysis produces. It never asserts the difference is small:
    assertion 2's equality is for reconstructed values only.
 
 ## Units of time

@@ -702,7 +702,7 @@ the reconstructed values are byte-identical whether the estimates are computed o
   with the estimates computed and without them.
 - **SC-013**: For each committed reference recording, every participant has published seen data,
   estimated losses and estimated idle periods; an estimated living population is absent only where
-  a knowledge gap or FR-034 withholds it.
+  a knowledge gap, FR-031 (unknown starting units) or FR-034 withholds it.
 - **SC-014**: Every estimate that has a playback reading has its error recorded beside that reading:
   zero estimates with a reading and no recorded error.
 - **SC-015**: The estimates are inside SC-008's bound: analysing a recording with them takes no more

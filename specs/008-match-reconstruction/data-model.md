@@ -174,7 +174,7 @@ byte for byte with what the analysis produces. Regenerated only under the fixtur
 What a person read in the game, playing a committed recording back (FR-019). A file beside the
 recording: `tests/fixtures/replays/<recording>.playback.toml`, one table per reading. A reading taken
 in a custom game goes to `tests/fixtures/replays/custom-games.playback.toml` and also states its
-`civilisation` and lobby `preset`.
+`civilisation` and lobby `preset` (`any` where the reading depends on neither).
 
 | Field | Rule |
 | ----- | ---- |
@@ -182,7 +182,7 @@ in a custom game goes to `tests/fixtures/replays/custom-games.playback.toml` and
 | `request` | The owner-reading request it answers (`specs/008-match-reconstruction/owner-readings.md`). |
 | `participant`, `at` | Who and when in match time, as the game shows it. |
 | `quantity` | What was read: an age-up arrival, a queue's contents, a stockpile, a population. |
-| `value` | As read. `unreadable` is allowed and says where it was looked for. |
+| `value` | As read, written as a string. `unreadable` is allowed and says where it was looked for. |
 | `read_by`, `read_on`, `build_shown` | Who, when, and the build the game reported. |
 | `estimate_error` | Optional table, on a reading that corresponds to an estimate (section 15). |
 

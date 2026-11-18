@@ -393,8 +393,9 @@ production each building was ordered.
       FR-003). The income model, exploration coverage, the map-control model and the prerequisite order
       check stay `blocked`, asserted by a test in `packages/core/tests/test_register.py` (FR-024).
       Delete T944's markers. Depends on T936, T939, T940, T941 and T942; values that depend on
-      buildings controlled wait on T943, and refunds on T983: until it closes, every deletion is
-      reported with the refund it could have given and changes no published value.
+      buildings controlled wait on T943. Refunds wait on T983: until it closes, spending applies
+      none, and the spending method and its non-claim say so. Add
+      `reconstruction.untied_deletions` to the register and publish it with these data.
 
 ---
 
@@ -513,7 +514,8 @@ data, each with a confidence and a non-claim, computed by code the exact path ne
 
 - [ ] T984 Test first, then wire `starting_states` into the analysis, converting from the canonical
       events the analyzer holds, and hand the starting units to the estimates. Publish
-      `participant.starting_resources` at `participants[].starting_resources`, at `decoded`, absent
+      `participant.starting_resources` under `participants[].starting_resources`, one leaf per
+      resource, at `decoded`, absent
       for a participant with no `starting-attributes` event, so a decoder failure on a new build
       shows in the document. `participant.starting_attributes` stays `planned`: it holds nothing the
       resources do not (FR-009, FR-026).
@@ -620,8 +622,9 @@ data, each with a confidence and a non-claim, computed by code the exact path ne
       playback files, each with its `estimate_error` table (contracts/estimates.md) saying how the
       game's figure and the estimate differ in what they measure, and assert in
       `packages/reconstruction/tests/test_playback_readings.py` that every reading corresponding to an
-      estimate has one and that its estimated value is what the analysis produces, or, for an estimate
-      withheld, that its `estimates_withheld` entry is present (FR-037, SC-014). The
+      estimate has one and that its estimated value is what the analysis produces (FR-037, SC-014). A
+      reading of an estimate still withheld waits until T982 gives it a value: it is neither
+      transcribed as an estimate reading nor named as a calibration. The
       size of a difference fails nothing. Then name those readings as each estimate's `calibration` in
       the register, write in its confidence method what level the recorded error earns, and bump the
       reconstruction version.
@@ -658,7 +661,7 @@ data, each with a confidence and a non-claim, computed by code the exact path ne
   creates them), the register and its view (T937, T939, T945 against T975, T978, T984), the validator, the
   analyzer's document assembly, the playback files and their test (T946 against T978), and the
   timeline composite with the web reader's two modules (T952, T953 against T975, T980). T975 waits
-  on T967, T969, T971 and T973. T978 waits on T903 and T975. T981 waits on T936.
+  on T967, T969, T971 and T973. T978 waits on T903 and T975, and its readings of the population estimate on T982. T981 waits on T936.
 - **Superseding knowledge snapshots are created one at a time**: T925, T940, T941, T954 and T982 never run
   in parallel with each other.
 - **Phase 9** closes the feature after everything it describes has landed.
