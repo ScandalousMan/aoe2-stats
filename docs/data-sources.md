@@ -750,6 +750,20 @@ against keeping one measurement in two homes.
   not the game's own prerequisite rule: Hand Cannoneer links to node 6 in Bohemians' tree alone,
   where the game requires Chemistry in every civilisation (research.md D3, T652y).
   `packages/knowledge` does not carry a `prerequisites` field for this reason.
+- **Starting objects (read 2026-11-17, T925)**: the vendored pack's `data.json` carries no
+  starting units or buildings, and no lobby preset. Its civilisation help strings
+  (`strings.en.json`, the commit that implements build 188329) state, in words, the starting
+  objects a civilisation's bonus adds: extra Villagers, a Mule Cart, a Llama, Forage Bushes, a
+  scouting Horse on Nomadic maps. **Ruling**: those bullets are **read and transcribed** into a
+  snapshot's `starting_objects.toml`, each row naming its string key and the bullet verbatim;
+  this is the same reading of the same pack the snapshot's `effects.toml` already rests on, under
+  the licence ruling above. The pack states no baseline (what every participant starts with, and
+  how a lobby's starting-resources and starting-age presets change it): no other source ruled in
+  this section states it either (`aoc-reference-data` is names only), so the baseline is read in
+  the running game by the owner (see "The running game, read by a person") and, until then,
+  every snapshot says so in an `[[open]]` row naming the owner request
+  (`specs/008-match-reconstruction/owner-readings.md`, O8). A starting-objects answer for a
+  preset or a baseline the table does not hold is a knowledge gap, never a default.
 - **Assessed**: 2026-09-19 (survey, research.md D3); vendored and carry-forward-validated
   2026-09-20 (`packages/knowledge/packs/aoe2techtree/LICENCE.md`,
   `packages/knowledge/snapshots/aoe2techtree-180059/snapshot.toml`); the second pack vendored and
@@ -771,7 +785,9 @@ against keeping one measurement in two homes.
   (`packages/knowledge/snapshots/aoe2techtree-180059-owner-readings/snapshot.toml`); the third
   commit, implementing build 188329, vendored and its snapshot
   `aoe2techtree-188329-civilisations-56` promoted 2026-11-02
-  (`packages/knowledge/snapshots/aoe2techtree-188329-civilisations-56/snapshot.toml`). Licence: MIT,
+  (`packages/knowledge/snapshots/aoe2techtree-188329-civilisations-56/snapshot.toml`), and by a
+  fourth, `aoe2techtree-188329-starting-objects`, promoted 2026-11-17
+  (`packages/knowledge/snapshots/aoe2techtree-188329-starting-objects/snapshot.toml`). Licence: MIT,
   **copy in** — `docs/asset-packs.md` "Knowledge packs".
 
 ### halfon

@@ -620,8 +620,7 @@ Read from the recording after decoding an encoded field.
 
 ### `participant.starting_attributes`
 
-- status: blocked
-- blocked on: the starting-attributes decoder (feature 008, research D1 tier A)
+- status: planned
 - source: the per-player attribute array in the decompressed header, present in the file and reachable by no working parser
 - method: a repository-local decoder anchored on the participant's name string, golden-tested against committed recordings
 - requires knowledge: none
@@ -631,8 +630,7 @@ Read from the recording after decoding an encoded field.
 
 ### `participant.starting_resources`
 
-- status: blocked
-- blocked on: the starting-attributes decoder (feature 008, research D1 tier A)
+- status: planned
 - source: the first entries of the participant's starting attribute array: food, wood, stone and gold
 - method: read from the decoded attribute array in the engine's own resource order
 - requires knowledge: none
@@ -642,13 +640,12 @@ Read from the recording after decoding an encoded field.
 
 ### `event.starting_attributes.values`
 
-- status: blocked
-- blocked on: the starting-attributes decoder (feature 008, research D1 tier A)
-- source: the per-participant attribute values of the declared-only starting-attributes canonical event
-- method: emitted by the starting-attributes decoder once it exists; the type is declared now so its arrival changes no type
+- status: planned
+- source: the per-participant attribute values of the starting-attributes canonical event
+- method: emitted by the starting-attributes decoder, from Aoe2RecExtractor.events(), which supplies the recording bytes
 - requires knowledge: none
 - depends on: `participant.starting_attributes`
-- validation: a test asserts the adapter emits no such event until the decoder lands
+- validation: packages/replay-engine/tests/test_starting.py
 - evidence: specs/006-replay-analysis-foundations/research.md D1
 
 ### `map.starting_objects`
@@ -776,7 +773,7 @@ Rebuilt from several recorded facts.
 ### `reconstruction.income_model`
 
 - status: blocked
-- blocked on: the starting-attributes decoder (feature 008, research D1 tier A)
+- blocked on: an income method that no feature specifies
 - source: the reconstructed spending and the participant's decoded starting resources
 - method: starting resources plus modelled income less modelled spending over the match clock
 - requires knowledge: `cost`

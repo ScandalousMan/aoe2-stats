@@ -79,6 +79,15 @@ covers the file when it is present and is the digest it always was when it is no
 snapshot installed before this task verifies unchanged. Following an alias is `query.py`'s: this
 module only loads and validates the table.
 
+**Starting objects (T925, FR-026)**: a snapshot may carry `starting_objects.toml`, the units and
+buildings a participant starts with, per build (the snapshot's own), civilisation and lobby preset.
+Each `[[starting_object]]` is an object a civilisation's bonus adds, transcribed from the pack's
+help string with its key and the bullet verbatim; each `[[open]]` is a value no source states, a
+request to the owner and never a default. `load_snapshot` refuses a malformed table (see
+`parse_starting_objects`); the digest covers the file when present, after `aliases.toml`, and is
+the digest it always was when absent. This module only loads and validates the table; whether a
+(civilisation, preset) pair is answered or open is `Snapshot.starting_objects_for`'s.
+
 **Reproduction (FR-043, T658)**: `pinned_snapshot(snapshot)` is the one way a demoted snapshot is
 answerable by build, and only for the duration of a block the caller opens on purpose — it names the
 snapshot, it never searches for one. `load_all_snapshots` is how a caller finds the snapshot an
@@ -124,6 +133,9 @@ DIGESTED_FILENAMES: Final[tuple[str, str]] = ("rules.json", "effects.toml")
 #: The optional third file (T761): covered by the digest when the snapshot has it, absent from it
 #: when not, so a snapshot without one keeps the digest it was recorded with.
 ALIASES_FILENAME: Final[str] = "aliases.toml"
+
+#: The optional fourth file (T925): covered by the digest, after `aliases.toml`, when present.
+STARTING_OBJECTS_FILENAME: Final[str] = "starting_objects.toml"
 
 #: `rules.json`'s three entity kinds, which an alias's `kind` must be one of.
 ALIAS_KINDS: Final[tuple[str, ...]] = ("unit", "building", "technology")
@@ -266,6 +278,87 @@ class Alias:
     read_on: str
 
 
+#: What a starting object's `applies` may say: for every participant of the civilisation, for a
+#: participant whose team holds the civilisation (a team bonus), or only on a Nomadic map.
+STARTING_APPLIES: Final[tuple[str, ...]] = ("always", "team", "nomadic-map")
+
+#: What a starting object is: a unit, a building, or a resource object placed for the player.
+STARTING_OBJECT_KINDS: Final[tuple[str, ...]] = ("unit", "building", "resource-object")
+
+#: What a starting-object row is: the `baseline` every participant of its civilisation starts with
+#: (its civilisation may be `"*"`), or a `bonus` that adds to a baseline. A bonus alone is never a
+#: full starting set.
+STARTING_ROLES: Final[tuple[str, ...]] = ("baseline", "bonus")
+
+#: The preset value that stands for every lobby preset: the pack's bullet carries no preset
+#: qualifier, which is a statement about the bullet and not a verified fact about the game.
+ANY_PRESET: Final[str] = "any"
+
+_STARTING_OBJECT_KEYS: Final[tuple[str, ...]] = (
+    "civilisation",
+    "role",
+    "preset",
+    "kind",
+    "object",
+    "count",
+    "applies",
+    "source_key",
+    "source_text",
+    "read_on",
+)
+_STARTING_OPEN_KEYS: Final[tuple[str, ...]] = ("civilisation", "preset", "what", "request")
+
+
+@dataclass(frozen=True, slots=True)
+class StartingObject:
+    """An object a participant starts with: `count` of `object` (a `kind`), stated as a `role`
+    (`STARTING_ROLES`): a `baseline`, whose civilisation may be `"*"`, or a civilisation's `bonus`
+    that adds to it. Under lobby `preset` (`ANY_PRESET` when the source qualifies none),
+    `applies` as `STARTING_APPLIES` says. `unit_id` is `rules.json`'s identifier when it names the
+    object, else `None` (a Llama, a Mule Cart, a Horse and a Forage Bush are not entities of the
+    pack). `source_key` and `source_text` are the pack's help string key and the bullet verbatim."""
+
+    civilisation: str
+    role: str
+    preset: str
+    kind: str
+    object: str
+    count: int
+    applies: str
+    source_key: str
+    source_text: str
+    read_on: str
+    unit_id: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class StartingObjectOpen:
+    """A starting value no source states, as a request to the owner: `civilisation` and `preset`
+    (each `"*"` for all), `what` is missing, asked for by `request` in the feature's
+    owner-readings file. Never read as a default."""
+
+    civilisation: str
+    preset: str
+    what: str
+    request: str
+
+
+@dataclass(frozen=True, slots=True)
+class StartingObjectsAnswer:
+    """What `Snapshot.starting_objects_for` knows: the `added` objects the table states (baseline
+    and bonus rows), and the `open` values still owed to the owner that concern this pair. A
+    caller that needs a total must treat a non-empty `open` as a gap, and a result with no
+    `baseline` row as a gap, whatever `added` holds."""
+
+    added: tuple[StartingObject, ...]
+    open: tuple[StartingObjectOpen, ...]
+
+    @property
+    def has_baseline(self) -> bool:
+        """Whether a `baseline` row applies to the pair."""
+        return any(row.role == "baseline" for row in self.added)
+
+
 @dataclass(frozen=True, slots=True)
 class Snapshot:
     """One packaged knowledge snapshot, verified against its own content on load.
@@ -290,6 +383,31 @@ class Snapshot:
     supersedes: str | None = None
     aliases: tuple[Alias, ...] = ()
     normaliser_version: int = 1
+    starting_objects: tuple[StartingObject, ...] = ()
+    starting_objects_open: tuple[StartingObjectOpen, ...] = ()
+    has_starting_objects: bool = False
+
+    def starting_objects_for(self, civilisation: str, preset: str) -> StartingObjectsAnswer:
+        """The table's answer for `civilisation` under `preset`: the rows whose civilisation
+        matches (a `baseline` row's `"*"` matches all) and whose preset is `preset` or
+        `ANY_PRESET`, and the open rows whose civilisation and preset match (`"*"` matches all). A
+        snapshot without the table answers with nothing added and nothing open, which is not a
+        statement that nothing is owed: check `has_starting_objects`."""
+        added = tuple(
+            row
+            for row in self.starting_objects
+            if (
+                row.civilisation == civilisation
+                or (row.role == "baseline" and row.civilisation == "*")
+            )
+            and row.preset in (preset, ANY_PRESET)
+        )
+        owed = tuple(
+            row
+            for row in self.starting_objects_open
+            if row.civilisation in (civilisation, "*") and row.preset in (preset, "*")
+        )
+        return StartingObjectsAnswer(added=added, open=owed)
 
     def alias_for(self, kind: str, entity_id: str) -> Alias | None:
         """The alias of `entity_id` under `kind`, or `None`. Whether `rules.json` names the id
@@ -302,10 +420,15 @@ class Snapshot:
 
 
 def compute_digest(
-    rules_json: bytes, effects_toml: bytes, aliases_toml: bytes | None = None
+    rules_json: bytes,
+    effects_toml: bytes,
+    aliases_toml: bytes | None = None,
+    starting_objects_toml: bytes | None = None,
 ) -> str:
     """The FR-024 digest over a snapshot's canonical content: `rules.json` then `effects.toml`,
-    then `aliases.toml` when the snapshot has one (T761).
+    then `aliases.toml` when the snapshot has one (T761), then `starting_objects.toml` when it has
+    one (T925; a snapshot with that file and no aliases hashes the file in the aliases' place order,
+    never before it).
 
     Each file is hashed with its name and byte length as an unambiguous prefix, so the two files
     cannot be shuffled or truncated into producing the same digest as a different pair of
@@ -318,6 +441,8 @@ def compute_digest(
     parts = list(zip(DIGESTED_FILENAMES, (rules_json, effects_toml), strict=True))
     if aliases_toml is not None:
         parts.append((ALIASES_FILENAME, aliases_toml))
+    if starting_objects_toml is not None:
+        parts.append((STARTING_OBJECTS_FILENAME, starting_objects_toml))
     for filename, content in parts:
         hasher.update(filename.encode("utf-8"))
         hasher.update(b"\0")
@@ -729,6 +854,118 @@ def parse_aliases(aliases_toml_text: str, rules: Mapping[str, Any]) -> tuple[Ali
     return tuple(aliases)
 
 
+def _non_blank(where: str, entry: Mapping[str, Any], key: str) -> str:
+    value = entry.get(key)
+    if not isinstance(value, str) or not value.strip():
+        raise SnapshotError(f"{where}: {key} must be a non-blank string, got {value!r}")
+    return value
+
+
+def parse_starting_objects(
+    text: str, rules: Mapping[str, Any]
+) -> tuple[tuple[StartingObject, ...], tuple[StartingObjectOpen, ...]]:
+    """Parse and validate `starting_objects.toml` against the `rules.json` body `rules` (T925).
+
+    Refused with `SnapshotError`: invalid TOML; a top-level key other than the `starting_object`
+    and `open` arrays of tables; an entry that is not a table, that carries a key outside its
+    key set (`unit_id` is the one optional key of a `starting_object`), or lacks a required one;
+    a non-blank-string key that is not one; a `count` that is not a positive integer (a bool is
+    refused); a `role` outside `STARTING_ROLES`; a `kind` outside `STARTING_OBJECT_KINDS`; an
+    `applies` outside `STARTING_APPLIES`; a `civilisation` that `rules.json` does not model (`"*"`
+    is allowed for a `baseline` row only); a `unit_id` that `rules.json` does not name as a unit,
+    or whose name differs from `object`; and a second row for one (role, civilisation, preset,
+    object, applies). An `[[open]]` row names a civilisation `rules.json` models, or `"*"`.
+    """
+    try:
+        data = tomllib.loads(text)
+    except tomllib.TOMLDecodeError as exc:
+        raise SnapshotError(f"{STARTING_OBJECTS_FILENAME} is not valid TOML: {exc}") from exc
+    unexpected = sorted(set(data) - {"starting_object", "open"})
+    if unexpected:
+        raise SnapshotError(
+            f"{STARTING_OBJECTS_FILENAME}: only [[starting_object]] and [[open]] tables are "
+            f"allowed, got {unexpected}"
+        )
+    civilisations = rules.get("civilisations", {})
+    units = rules.get("entities", {}).get("unit", {})
+    rows: list[StartingObject] = []
+    seen: set[tuple[str, str, str, str, str]] = set()
+    entries = data.get("starting_object", [])
+    if not isinstance(entries, list):
+        raise SnapshotError(f"{STARTING_OBJECTS_FILENAME}: 'starting_object' must be an array")
+    for position, entry in enumerate(entries, start=1):
+        where = f"{STARTING_OBJECTS_FILENAME}: [[starting_object]] number {position}"
+        if not isinstance(entry, dict):
+            raise SnapshotError(f"{where} must be a table")
+        extra = sorted(set(entry) - set(_STARTING_OBJECT_KEYS) - {"unit_id"})
+        if extra:
+            raise SnapshotError(f"{where} carries key(s) {extra} outside its key set")
+        text_keys = [key for key in _STARTING_OBJECT_KEYS if key != "count"]
+        values = {key: _non_blank(where, entry, key) for key in text_keys}
+        count = entry.get("count")
+        if isinstance(count, bool) or not isinstance(count, int) or count < 1:
+            raise SnapshotError(f"{where}: count must be a positive integer, got {count!r}")
+        if values["role"] not in STARTING_ROLES:
+            raise SnapshotError(
+                f"{where}: role must be one of {list(STARTING_ROLES)}, got {values['role']!r}"
+            )
+        if values["kind"] not in STARTING_OBJECT_KINDS:
+            raise SnapshotError(
+                f"{where}: kind must be one of {list(STARTING_OBJECT_KINDS)}, "
+                f"got {values['kind']!r}"
+            )
+        if values["applies"] not in STARTING_APPLIES:
+            raise SnapshotError(
+                f"{where}: applies must be one of {list(STARTING_APPLIES)}, "
+                f"got {values['applies']!r}"
+            )
+        star = values["role"] == "baseline" and values["civilisation"] == "*"
+        if values["civilisation"] not in civilisations and not star:
+            raise SnapshotError(
+                f"{where}: civilisation {values['civilisation']!r} is not one rules.json models"
+            )
+        unit_id: str | None = None
+        if "unit_id" in entry:
+            unit_id = _non_blank(where, entry, "unit_id")
+            named = units.get(unit_id)
+            if values["kind"] != "unit" or named is None:
+                raise SnapshotError(f"{where}: unit_id {unit_id!r} is not a unit rules.json names")
+            if named.get("name") != values["object"]:
+                raise SnapshotError(
+                    f"{where}: unit_id {unit_id!r} is {named.get('name')!r} in rules.json, "
+                    f"not {values['object']!r}"
+                )
+        key = (
+            values["role"],
+            values["civilisation"],
+            values["preset"],
+            values["object"],
+            values["applies"],
+        )
+        if key in seen:
+            raise SnapshotError(f"{where}: more than one row for {list(key)}")
+        seen.add(key)
+        rows.append(StartingObject(count=count, unit_id=unit_id, **values))
+    owed: list[StartingObjectOpen] = []
+    open_entries = data.get("open", [])
+    if not isinstance(open_entries, list):
+        raise SnapshotError(f"{STARTING_OBJECTS_FILENAME}: 'open' must be an array")
+    for position, entry in enumerate(open_entries, start=1):
+        where = f"{STARTING_OBJECTS_FILENAME}: [[open]] number {position}"
+        if not isinstance(entry, dict):
+            raise SnapshotError(f"{where} must be a table")
+        extra = sorted(set(entry) - set(_STARTING_OPEN_KEYS))
+        if extra:
+            raise SnapshotError(f"{where} carries key(s) {extra} outside its key set")
+        values = {key: _non_blank(where, entry, key) for key in _STARTING_OPEN_KEYS}
+        if values["civilisation"] != "*" and values["civilisation"] not in civilisations:
+            raise SnapshotError(
+                f"{where}: civilisation {values['civilisation']!r} is neither '*' nor modelled"
+            )
+        owed.append(StartingObjectOpen(**values))
+    return tuple(rows), tuple(owed)
+
+
 def _check_added_buildings(
     directory: str, effects_toml: bytes, rules_json: bytes, aliases: Sequence[Alias]
 ) -> None:
@@ -788,10 +1025,14 @@ def load_snapshot(directory: str) -> Snapshot:
     effects_toml = snapshot_dir.joinpath("effects.toml").read_bytes()
     aliases_file = snapshot_dir.joinpath(ALIASES_FILENAME)
     aliases_toml = aliases_file.read_bytes() if aliases_file.is_file() else None
-    recomputed = compute_digest(rules_json, effects_toml, aliases_toml)
+    starting_file = snapshot_dir.joinpath(STARTING_OBJECTS_FILENAME)
+    starting_toml = starting_file.read_bytes() if starting_file.is_file() else None
+    recomputed = compute_digest(rules_json, effects_toml, aliases_toml, starting_toml)
     if recomputed != identity.digest:
-        covered = "rules.json and effects.toml" + (
-            " and aliases.toml" if aliases_toml is not None else ""
+        covered = (
+            "rules.json and effects.toml"
+            + (" and aliases.toml" if aliases_toml is not None else "")
+            + (f" and {STARTING_OBJECTS_FILENAME}" if starting_toml is not None else "")
         )
         raise SnapshotDigestMismatch(
             f"{directory}: recorded digest {identity.digest} does not match the digest "
@@ -813,6 +1054,19 @@ def load_snapshot(directory: str) -> Snapshot:
             aliases = parse_aliases(aliases_text, rules)
         except SnapshotError as exc:
             raise SnapshotError(f"{directory}: {exc}") from exc
+    starting: tuple[StartingObject, ...] = ()
+    starting_open: tuple[StartingObjectOpen, ...] = ()
+    if starting_toml is not None:
+        try:
+            starting_rules = json.loads(rules_json)
+            if not isinstance(starting_rules, dict):
+                raise SnapshotError("rules.json must be a JSON object")
+            starting, starting_open = parse_starting_objects(
+                starting_toml.decode("utf-8"), starting_rules
+            )
+        except ValueError as exc:
+            # `SnapshotError` is a `ValueError`; a bare one is a text or JSON fault.
+            raise SnapshotError(f"{directory}: {exc}") from exc
     _check_added_buildings(directory, effects_toml, rules_json, aliases)
     normaliser_version = parse_normaliser_version(identity_text)
     _check_rules_shape(directory, normaliser_version, rules_json)
@@ -824,6 +1078,9 @@ def load_snapshot(directory: str) -> Snapshot:
         supersedes=parse_supersedes(identity_text),
         aliases=aliases,
         normaliser_version=normaliser_version,
+        starting_objects=starting,
+        starting_objects_open=starting_open,
+        has_starting_objects=starting_toml is not None,
     )
 
 

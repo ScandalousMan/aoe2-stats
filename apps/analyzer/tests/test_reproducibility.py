@@ -207,7 +207,7 @@ def test_the_compared_body_is_not_trivially_small_and_carries_a_populated_identi
     run = _analyse_in_this_process(_FIRST_RUN_CLOCK)
     body = json.loads(run.body)
 
-    assert body["schema_version"] == 2
+    assert body["schema_version"] == 3
     assert body["identity"]["digest"]
     assert body["identity"]["parser_dependencies"]
     assert body["participants"]
@@ -637,3 +637,20 @@ async def test_a_changed_parser_version_writes_a_new_key_and_leaves_the_old_one_
     assert store.objects[first.key] == first.raw
     assert store.put_calls.count(first.key) == 1
     assert store.analysis_keys() == sorted([first.key, second.key])
+
+
+# --- T930 (US5, FR-021, FR-022, SC-006): the reconstruction engine is inside what is compared ---
+#
+# Written test-first (T930), implemented by T931.
+
+
+def test_two_analyses_with_the_reconstruction_engine_are_byte_identical_outside_the_clock() -> None:
+    first = _analyse_in_this_process(_FIRST_RUN_CLOCK)
+    second = _analyse_in_a_fresh_process()
+
+    body = json.loads(first.body)
+    assert body["schema_version"] == 3
+    assert body["reconstructed"] == {}
+    assert body["identity"]["reconstruction_engine"].startswith("aoe2stats-reconstruction@")
+    assert first.body == second.body
+    assert first.document != second.document, "the wall-clock set must differ, or this is vacuous"

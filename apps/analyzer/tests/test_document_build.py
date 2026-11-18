@@ -115,7 +115,7 @@ def document(extractor: Aoe2RecExtractor) -> dict[str, Any]:
 def test_the_document_is_the_next_schema_version_with_the_four_blocks_added(
     document: dict[str, Any],
 ) -> None:
-    assert document["schema_version"] == SCHEMA_VERSION == 2
+    assert document["schema_version"] == SCHEMA_VERSION == 3
     for block in ("identity", "provenance", "inferred", "knowledge_gaps", "envelope"):
         assert block in document
 
@@ -193,7 +193,7 @@ def test_the_identity_names_every_component_and_its_digest_recomputes(
         "name": extractor.engine_name,
         "version": extractor.engine_version,
     }
-    assert identity["reconstruction_engine"] == NOT_APPLICABLE
+    assert identity["reconstruction_engine"] == _expected_reconstruction_engine()
     assert identity["analytics"] == ANALYTICS_VERSION
     assert identity["analytics"] != NOT_APPLICABLE
     assert AnalysisIdentity.from_block(identity).digest == identity["digest"]
@@ -535,3 +535,64 @@ def test_the_builders_provenance_names_exactly_the_data_the_validator_finds_pres
     dotted["engine"]["deps"] = {"a.b.c": "1.0", **dotted["engine"]["deps"]}
     for candidate in (document, dotted):
         validate_document(_with_provenance_rebuilt(candidate))
+
+
+# --- T930 (US5, FR-021, FR-022): version 3, the empty reconstructed block, the engine identity ---
+#
+# Written test-first (T930), implemented by T931. **Identity shape assumed** (contracts/
+# reconstruction-document.md, "Identity and version"):
+#   reconstruction_engine == f"aoe2stats-reconstruction@{__version__}+rules:sha256:{hex}"
+# where `__version__` is `aoe2stats_reconstruction.__version__` and `hex` is the sha256 of the bytes
+# of the packaged `aoe2stats_reconstruction/rules.toml`. `reconstructed` is `{}` while no rule is
+# wired to a datum (T931 builds the block; the first values arrive with later phases).
+
+_COMMITTED_RECORDINGS = tuple(
+    sorted((_REPO_ROOT / "tests" / "fixtures" / "replays").glob("AgeIIDE_Replay_*.zip"))
+)
+
+
+def _expected_reconstruction_engine() -> str:
+    import hashlib
+    from importlib import resources
+
+    import aoe2stats_reconstruction
+
+    rules_bytes = resources.files("aoe2stats_reconstruction").joinpath("rules.toml").read_bytes()
+    digest = hashlib.sha256(rules_bytes).hexdigest()
+    return f"aoe2stats-reconstruction@{aoe2stats_reconstruction.__version__}+rules:sha256:{digest}"
+
+
+@pytest.mark.parametrize("recording", _COMMITTED_RECORDINGS, ids=lambda path: path.stem)
+def test_a_document_from_each_committed_recording_is_version_3_with_an_empty_reconstruction(
+    recording: Path, extractor: Aoe2RecExtractor
+) -> None:
+    game_id = int(recording.stem.rsplit("_", 1)[1])
+    document = build_document(
+        extractor,
+        recording.read_bytes(),
+        game_id=game_id,
+        object_key=f"retained-recordings/{game_id}/196240.zip",
+        zip_sha256=_SHA256,
+        extracted_at=_EXTRACTED_AT,
+    )
+
+    assert document["schema_version"] == 3
+    assert document["reconstructed"] == {}
+    engine = document["identity"]["reconstruction_engine"]
+    assert engine == _expected_reconstruction_engine()
+    assert engine != NOT_APPLICABLE
+    assert (
+        AnalysisIdentity.from_block(document["identity"]).digest == document["identity"]["digest"]
+    )
+    for path in _VERSION_1_PATHS:
+        assert path in document, path
+
+
+def test_the_identity_digest_moves_with_the_reconstruction_engine(
+    document: dict[str, Any],
+) -> None:
+    identity = dict(document["identity"])
+    identity["reconstruction_engine"] = "aoe2stats-reconstruction@0.0.0+rules:sha256:" + "0" * 64
+
+    assert document["identity"]["reconstruction_engine"] == _expected_reconstruction_engine()
+    assert AnalysisIdentity.from_block(identity).digest != document["identity"]["digest"]

@@ -621,3 +621,53 @@ async def test_an_outage_while_building_is_not_a_refusal(
         await reproduce(
             original.identity, object_store=original.store(), extractor=original.extractor
         )
+
+
+# --- T930 (US5, FR-021, FR-022): the engine identity is reproduced or refused by name ----------
+#
+# Written test-first (T930), implemented by T931. Identity shape assumed: `reconstruction_engine` is
+# `aoe2stats-reconstruction@{version}+rules:sha256:{hex}` (contracts/reconstruction-document.md).
+
+
+async def test_a_document_reproduces_to_identical_bytes_from_its_engine_identity(
+    original: _Original,
+) -> None:
+    from aoe2stats_core.truth.identity import NOT_APPLICABLE
+
+    assert original.identity.reconstruction_engine != NOT_APPLICABLE
+    assert original.identity.reconstruction_engine.startswith("aoe2stats-reconstruction@")
+
+    reproduced = await reproduce(
+        original.identity, object_store=original.store(), extractor=original.extractor
+    )
+
+    assert compared_body(json.loads(reproduced)) == compared_body(original.document)
+    assert json.loads(reproduced)["identity"] == original.document["identity"]
+
+
+@pytest.mark.parametrize(
+    ("old_version", "old_digest"),
+    [("0.0.1", None), (None, "0" * 64)],
+    ids=["version", "rules-digest"],
+)
+async def test_an_engine_that_is_not_installed_is_refused_and_names_what_differs(
+    original: _Original, old_version: str | None, old_digest: str | None
+) -> None:
+    engine = original.identity.reconstruction_engine
+    assert engine.startswith("aoe2stats-reconstruction@")  # the document names its engine
+    head, _, tail = engine.partition("@")
+    version, _, rest = tail.partition("+rules:sha256:")
+    planted = f"{head}@{old_version or version}+rules:sha256:{old_digest or rest}"
+    assert planted != engine
+    identity = replace(original.identity, reconstruction_engine=planted)
+    store = original.store()
+
+    with pytest.raises(ReproductionRefused) as exc_info:
+        await reproduce(identity, object_store=store, extractor=original.extractor)
+
+    message = _refusal(exc_info)
+    assert "reconstruction engine" in message
+    assert (old_version or old_digest) in message  # the recorded value that differs
+    assert (version if old_version else rest) in message  # the installed value it differs from
+    assert store.reads == [], "a refusal about the installed code must not touch the store"
+    assert store.writes == []

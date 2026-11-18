@@ -9,6 +9,9 @@ need no database: the row and the retained recording are transient model instanc
 digest is the one `AnalysisIdentity` computes, with the same record `extract._knowledge_record`
 writes for an absence.
 
+T925: `aoe2techtree-188329-starting-objects` supersedes that snapshot, so an analysis published
+under the superseded snapshot's knowledge record is stale too, and recomputes under the current one.
+
 The contrasts keep the test honest: an absence record for a build still without a snapshot stays
 fresh, and a row published under the snapshot itself is fresh.
 """
@@ -21,10 +24,13 @@ from typing import Any
 
 from aoe2stats_analyzer import extract, staleness
 from aoe2stats_core.truth.identity import AnalysisIdentity
-from aoe2stats_knowledge.snapshot import Snapshot, snapshot_for
+from aoe2stats_knowledge.snapshot import Snapshot, load_snapshot, snapshot_for
+from aoe2stats_reconstruction.document import reconstruction_engine
 from aoe2stats_storage.models import MatchAnalysis, MatchAnalysisState, RetainedRecording
 
 _BUILD = 188329
+_CURRENT = "aoe2techtree-188329-starting-objects"
+_SUPERSEDED = "aoe2techtree-188329-civilisations-56"
 _BUILD_WITHOUT_A_SNAPSHOT = 999_999
 _NOW = datetime(2026, 11, 2, 12, 0, tzinfo=UTC)
 _RECORDING = {"object_key": "recordings/517988141", "sha256": "ab" * 32}
@@ -50,6 +56,7 @@ def _digest(knowledge: dict[str, Any]) -> str:
         parser_version=engine.engine_version,
         parser_dependencies=engine.engine_dependencies,
         knowledge=knowledge,
+        reconstruction_engine=reconstruction_engine(),
         analytics=extract.ANALYTICS_VERSION,
     ).digest
 
@@ -82,7 +89,7 @@ def _stale(row: MatchAnalysis) -> bool:
 def test_build_188329_has_an_installed_snapshot() -> None:
     resolved = snapshot_for(_BUILD)
     assert isinstance(resolved, Snapshot)
-    assert resolved.directory == "aoe2techtree-188329-civilisations-56"
+    assert resolved.directory == _CURRENT
 
 
 def test_an_analysis_published_under_the_absence_record_for_188329_is_stale() -> None:
@@ -98,6 +105,16 @@ def test_an_analysis_published_under_the_snapshot_is_fresh() -> None:
     row = _published(_digest(extract._knowledge_record(resolved)), _BUILD)
 
     assert _stale(row) is False
+
+
+def test_an_analysis_published_under_the_superseded_snapshot_is_stale() -> None:
+    old = load_snapshot(_SUPERSEDED)
+    current = snapshot_for(_BUILD)
+    assert isinstance(current, Snapshot)
+    assert old.identity.digest != current.identity.digest
+    row = _published(_digest(extract._knowledge_record(old)), _BUILD)
+
+    assert _stale(row) is True
 
 
 def test_an_absence_record_for_a_build_still_without_a_snapshot_stays_fresh() -> None:

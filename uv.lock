@@ -11,6 +11,7 @@ members = [
     "aoe2stats-ingester",
     "aoe2stats-knowledge",
     "aoe2stats-providers",
+    "aoe2stats-reconstruction",
     "aoe2stats-replay-engine",
     "aoe2stats-storage",
 ]
@@ -131,6 +132,7 @@ dependencies = [
     { name = "aoe2stats-core" },
     { name = "aoe2stats-knowledge" },
     { name = "aoe2stats-providers" },
+    { name = "aoe2stats-reconstruction" },
     { name = "aoe2stats-replay-engine" },
     { name = "aoe2stats-storage" },
 ]
@@ -140,6 +142,7 @@ requires-dist = [
     { name = "aoe2stats-core", editable = "packages/core" },
     { name = "aoe2stats-knowledge", editable = "packages/knowledge" },
     { name = "aoe2stats-providers", editable = "packages/providers" },
+    { name = "aoe2stats-reconstruction", editable = "packages/reconstruction" },
     { name = "aoe2stats-replay-engine", editable = "packages/replay-engine" },
     { name = "aoe2stats-storage", editable = "packages/storage" },
 ]
@@ -210,6 +213,23 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "httpx", specifier = ">=0.27" },
+    { name = "pydantic", specifier = ">=2.9" },
+]
+
+[[package]]
+name = "aoe2stats-reconstruction"
+version = "0.1.0"
+source = { editable = "packages/reconstruction" }
+dependencies = [
+    { name = "aoe2stats-core" },
+    { name = "aoe2stats-knowledge" },
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "aoe2stats-core", editable = "packages/core" },
+    { name = "aoe2stats-knowledge", editable = "packages/knowledge" },
     { name = "pydantic", specifier = ">=2.9" },
 ]
 

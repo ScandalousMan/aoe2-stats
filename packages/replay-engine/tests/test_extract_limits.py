@@ -324,10 +324,11 @@ _FIXTURE_MAX_RAW_BYTES = 50_000_000
 _FIXTURES_ROOT = Path(__file__).resolve().parents[3] / "tests/fixtures/replays"
 _COMMITTED_RECORDINGS = sorted(_FIXTURES_ROOT.glob("AgeIIDE_Replay_*.zip"))
 
-# FR-020: these two kinds are declared in the closed vocabulary with no producer yet (T623) — see
+# FR-020: `starting-object` is declared in the closed vocabulary with no producer yet (T623) — see
 # `packages/core/src/aoe2stats_core/replay/events.py` and `contracts/canonical-events.md`'s
-# "declared only" column. The day a producer lands, this set is what changes; no event type does.
-_DECLARED_ONLY_KINDS = frozenset({EventKind.STARTING_ATTRIBUTES, EventKind.STARTING_OBJECT})
+# "declared only" column. `starting-attributes` got its producer in T923 and left this set; the day
+# a producer lands for the other, this set is what changes; no event type does.
+_DECLARED_ONLY_KINDS = frozenset({EventKind.STARTING_OBJECT})
 
 
 @dataclass(frozen=True)
@@ -400,10 +401,10 @@ def test_knowledge_coverage_is_computed_on_the_measured_path(measurement: _Measu
 
 
 def test_the_declared_only_kinds_are_never_emitted(measurement: _Measurement) -> None:
-    """FR-020: `starting-attributes` and `starting-object` exist in the vocabulary with no producer.
-    Asserting they are never emitted — rather than saying nothing about them — is what makes the
-    reserved vocabulary honest: the day a producer for either lands, this test is what changes, and
-    no event type does."""
+    """FR-020: `starting-object` exists in the vocabulary with no producer. Asserting it is never
+    emitted — rather than saying nothing about it — is what makes the reserved vocabulary honest:
+    the day a producer lands, this test is what changes, and no event type does. `starting-
+    attributes` has had its producer since T923."""
     emitted_kinds = {event.kind for event in measurement.events}
     leaked = emitted_kinds & _DECLARED_ONLY_KINDS
     assert not leaked, f"declared-only kind(s) emitted with no producer implemented: {leaked}"

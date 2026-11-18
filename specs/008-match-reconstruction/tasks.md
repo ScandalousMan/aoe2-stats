@@ -97,8 +97,9 @@ the measurements that guard the plan are tests. Nothing here publishes.
       one line per request id, `unreadable` where the game does not show the value, with the build the
       game displayed. These two close gate G1; T933 transcribes them.
 - [ ] T902 **Owner task (information).** Take readings O3 (the Sicilian unit), O4 (the starting
-      state at 0:00 of each recording) and O5 (three deletions) of
-      `specs/008-match-reconstruction/owner-readings.md`. T924 transcribes O3 and O4, T942 transcribes O5.
+      state at 0:00 of each recording), O5 (three deletions) and O8 (the starting-objects table's open
+      values, added by T925) of `specs/008-match-reconstruction/owner-readings.md`. T924 transcribes O3
+      and O4, T942 transcribes O5, T982 transcribes O8.
 - [ ] T903 **Owner task (information).** Take readings O6.1 (the end-of-match military statistics)
       and O6.2 (population at the stated times) of `specs/008-match-reconstruction/owner-readings.md`.
       They measure the estimates of phase 10 and close no gate; T978 transcribes them.
@@ -171,56 +172,59 @@ document with an empty `reconstructed` block.
 
 **Independent test**: quickstart, Phase 2.
 
-- [ ] T913 Create the package: `packages/reconstruction/pyproject.toml` (depends on
-      `aoe2stats-core` and `aoe2stats-knowledge` only), `packages/reconstruction/src/aoe2stats_reconstruction/__init__.py`
+- [x] T913 Create the package: `packages/reconstruction/pyproject.toml` (depends, among workspace
+      packages, on `aoe2stats-core` and `aoe2stats-knowledge` only; third-party dependencies it
+      imports, such as pydantic, are declared too), `packages/reconstruction/src/aoe2stats_reconstruction/__init__.py`
       with the package version, the workspace member, test paths and mypy entry in the root
       `pyproject.toml`, the python path filter in `.github/workflows/pr.yml`, and the dependency
       declared on `apps/analyzer/pyproject.toml` itself, not inherited (research R12). A packaging test
-      in `packages/reconstruction/tests/test_packaging.py` asserts the analyzer declares it.
-- [ ] T914 [P] [US3] Test first, `xfail(strict=True)`, in `packages/reconstruction/tests/test_orders.py`:
+      in `packages/reconstruction/tests/test_reconstruction_packaging.py` asserts the analyzer declares it
+      (not `test_packaging.py`: that basename exists in `packages/knowledge/tests/` and two test
+      modules sharing a basename abort collection in the one workspace session).
+- [x] T914 [P] [US3] Test first, `xfail(strict=True)`, in `packages/reconstruction/tests/test_orders.py`:
       one fold over a canonical stream yields the orders of data-model §1, with every producing
       building, the source event index, and nothing attributed after a participant's resignation
       (FR-002, FR-017's `nothing-after-exit`).
-- [ ] T915 [US3] Implement `packages/reconstruction/src/aoe2stats_reconstruction/orders.py` and
+- [x] T915 [US3] Implement `packages/reconstruction/src/aoe2stats_reconstruction/orders.py` and
       delete T914's markers. The fold reads the canonical vocabulary only, never an engine shape
       (constitution V).
-- [ ] T916 [P] [US3] Test first, `xfail(strict=True)`, in `packages/reconstruction/tests/test_rules.py`:
-      each of the seven loader guarantees of contracts/rules.md has a test that plants its violation
+- [x] T916 [P] [US3] Test first, `xfail(strict=True)`, in `packages/reconstruction/tests/test_rules.py`:
+      each of the six loader guarantees of contracts/rules.md has a test that plants its violation
       and sees loading fail; the generated view equals the committed
       `packages/reconstruction/src/aoe2stats_reconstruction/RULES.md` byte for byte; every initial rule
       enters at the status the contract's table states.
-- [ ] T917 [US3] Implement `packages/reconstruction/src/aoe2stats_reconstruction/rules.py`, write
+- [x] T917 [US3] Implement `packages/reconstruction/src/aoe2stats_reconstruction/rules.py`, write
       `packages/reconstruction/src/aoe2stats_reconstruction/rules.toml` with the initial set of
       contracts/rules.md (D-EXEC-1 and D-DIST-1 absent, since they are not yet written; P1 with an
       empty `readings` list, since no playback file holds its reading yet, on research R3's evidence),
       generate
       `RULES.md`, and delete T916's markers (FR-005, FR-006, FR-007, FR-007a). The registry is read
       through `importlib.resources` (constitution XII).
-- [ ] T918 [P] [US3] Test first, `xfail(strict=True)`, in
+- [x] T918 [P] [US3] Test first, `xfail(strict=True)`, in
       `packages/reconstruction/tests/test_settlements.py`: a condition has exactly one value and a
       required settlement; a settlement resolves to an adopted rule of the family its `by` states; and,
       by walking every type of the published block, no field admits a pair, a range, a list of
       alternatives, a float share or a probability (FR-008, SC-002).
-- [ ] T919 [US3] Implement the types of data-model §4, §5 and §7 in
+- [x] T919 [US3] Implement the types of data-model §4, §5 and §7 in
       `packages/reconstruction/src/aoe2stats_reconstruction/state.py` and
       `packages/reconstruction/src/aoe2stats_reconstruction/settle.py`, and delete T918's markers
       (FR-014).
-- [ ] T920 [P] [US3] Test first, `xfail(strict=True)`, in
+- [x] T920 [P] [US3] Test first, `xfail(strict=True)`, in
       `packages/reconstruction/tests/test_invariants.py`: one synthetic stream per invariant of
       data-model §8 breaks exactly that invariant, the breach names the invariant, the participant, the
       datum and the value, and nothing is published (FR-017, SC-007). The two invariants the population phase owns are declared with no check until T958 and T959 enable them.
-- [ ] T921 [US3] Implement `packages/reconstruction/src/aoe2stats_reconstruction/invariants.py` and
+- [x] T921 [US3] Implement `packages/reconstruction/src/aoe2stats_reconstruction/invariants.py` and
       delete T920's markers.
-- [ ] T922 [P] Test first, `xfail(strict=True)`, in `packages/replay-engine/tests/test_starting.py`:
+- [x] T922 [P] Test first, `xfail(strict=True)`, in `packages/replay-engine/tests/test_starting.py`:
       the Tier A decoder emits one `starting-attributes` event per human participant at clock 0 after
       `match-started`, holding `food`, `wood`, `stone` and `gold` only, golden-tested over every
       committed recording, with the planted absences `tests/test_starting_state_anchor.py` already
       exercises (contracts/canonical-events-amendment.md, research R4).
-- [ ] T923 Implement `packages/replay-engine/src/aoe2stats_replay_engine/starting.py`, emit the
+- [x] T923 Implement `packages/replay-engine/src/aoe2stats_replay_engine/starting.py`, emit the
       event from `packages/replay-engine/src/aoe2stats_replay_engine/canonical.py`, regenerate the
       canonical goldens, change 006's test that the adapter emits neither declared-only kind for this
-      kind only, move the register's two starting entries (the attributes and the resources) out of
-      `blocked`, and delete T922's markers. `reconstruction.income_model` stays `blocked` (FR-024);
+      kind only, move the register's three entries blocked on this decoder (the participant's
+      attributes and resources, and the event's values) out of `blocked`, and delete T922's markers. `reconstruction.income_model` stays `blocked` (FR-024);
       its `blocked_on` names this decoder, so it is re-stated to what it still waits on, an income
       method that no feature specifies. The decoder reads the inflated header bytes, never the engine's output.
 - [ ] T924 Transcribe readings O3 and O4 into each recording's playback file
@@ -228,45 +232,56 @@ document with an empty `reconstructed` block.
       answered, add the O3 reading's id to P1's `readings` in the registry in that same change, and add
       the well-formedness test of that contract's assertion 4 in
       `packages/reconstruction/tests/test_playback_readings.py`. Until T902 is answered, land the test
-      and the empty files only.
-- [ ] T925 Add the starting-objects knowledge table through 006's snapshot mechanism, as a
-      superseding snapshot under `packages/knowledge/snapshots/`: per build, civilisation and lobby
-      preset, the units and buildings a participant starts with. Before transcribing, record the
+      and the empty files only. Guarantee 5's repository test then checks the id P1 cites.
+- [x] T925 Add the starting-objects knowledge table through 006's snapshot mechanism, as a
+      superseding snapshot under `packages/knowledge/snapshots/`: for build 188329, per civilisation
+      and lobby preset, the units and buildings a participant starts with, as far as the vendored pack
+      states them; T982 carries the other builds and the open values. Before transcribing, record the
       source's ruling in `docs/data-sources.md` §6 if that section does not already hold it
       (constitution X). Values the source leaves in doubt are requests added to
       `specs/008-match-reconstruction/owner-readings.md`, never guesses (FR-026).
-- [ ] T926 [P] Test first, `xfail(strict=True)`, in
+- [x] T926 [P] Test first, `xfail(strict=True)`, in
       `packages/reconstruction/tests/test_starting_state.py`: the starting state of data-model §3 for
-      each committed recording; the decoded resources agree with the lobby-and-civilisation derivation
-      and a planted disagreement is the `starting-resources-agree` breach; a starting-age preset whose
+      each committed recording; the lobby-and-civilisation derivation is a gap while no source states
+      a preset's stockpile (owner request O8.4), so the agreement compares nothing on real data, and a
+      planted disagreement against a synthetic derivation is the `starting-resources-agree` breach; a starting-age preset whose
       meaning O4 has not confirmed gaps every age-dependent value and guesses nothing (FR-026).
-- [ ] T927 Implement `packages/reconstruction/src/aoe2stats_reconstruction/starting.py` and delete
+- [x] T927 Implement `packages/reconstruction/src/aoe2stats_reconstruction/starting.py` and delete
       T926's markers. Depends on T923 and T925.
-- [ ] T928 [P] [US3] Test first, `xfail(strict=True)`, in `packages/core/tests/test_validate.py`:
+- [x] T928 [P] [US3] Test first, `xfail(strict=True)`, in `packages/core/tests/test_validate.py`:
       validator rules 11 to 14 of contracts/reconstruction-document.md each reject their planted
       violation, including a reconstructed value at an observed path and an observed value inside
       `reconstructed` (FR-015).
-- [ ] T929 [US3] Implement rules 11 to 14 in `packages/core/src/aoe2stats_core/truth/validate.py`
+- [x] T929 [US3] Implement rules 11 to 14 in `packages/core/src/aoe2stats_core/truth/validate.py`
       and delete T928's markers.
-- [ ] T930 [P] [US5] Test first, `xfail(strict=True)`: in `apps/analyzer/tests/test_document_build.py`,
+- [x] T930 [P] [US5] Test first, `xfail(strict=True)`: in `apps/analyzer/tests/test_document_build.py`,
       a document from each committed recording is version 3, carries an empty `reconstructed` block,
       and its identity's `reconstruction_engine` names the installed package version and the registry
       digest; in `apps/analyzer/tests/test_reproduce.py`, reproducing a document from its identity
       yields identical bytes and reproducing one whose engine is not installed refuses and names what
       differs; in `apps/analyzer/tests/test_reproducibility.py`, two analyses are byte-identical outside
       the wall-clock set (FR-021, FR-022, SC-006).
-- [ ] T931 [US5] Implement `packages/reconstruction/src/aoe2stats_reconstruction/document.py`,
+- [x] T931 [US5] Implement `packages/reconstruction/src/aoe2stats_reconstruction/document.py`,
       version 3 and the identity component in `apps/analyzer/src/aoe2stats_analyzer/extract.py`, and
       the reproduce path in `apps/analyzer/src/aoe2stats_analyzer/reproduce.py`; accept version 3
       structurally in `apps/web/src/features/analysis/api.ts` with its test; delete T930's markers.
       Never separately green from T929: a version 3 document must pass the validator the same commit
       ships.
-- [ ] T932 [P] An architecture test in `tests/architecture/test_reconstruction_boundaries.py`: the
+- [x] T932 [P] An architecture test in `tests/architecture/test_reconstruction_boundaries.py`: the
       reconstruction package opens no connection, registers no scheduled job, is imported by nothing on
       the capture path, and reads no input but the canonical stream and the knowledge base (FR-002,
       FR-023).
 
-**Checkpoint**: phase 10 may start here. Phases 3 to 7 continue in order.
+- [ ] T982 After T902. Transcribe O8 through superseding snapshots, one build at a time, for builds
+      180059, 185872 and 188329: the baseline rows, each build's bonus rows from that build's own
+      vendored pack, and the stockpile each starting-resources value grants, from the O4 and O8
+      readings taken on that build. Implement `derive_starting_resources` from that table, so
+      `starting-resources-agree` compares real values for every build and preset so answered. Enter
+      the starting-age preset values O4 confirms in the confirmed-presets table of
+      `packages/reconstruction/src/aoe2stats_reconstruction/starting.py`. A value not answered
+      stays an open row and a gap (FR-026).
+
+**Checkpoint**: phase 10 may start here (T924's transcription and T982 wait on T902 and block nothing in this phase). Phases 3 to 7 continue in order.
 
 ---
 
@@ -356,9 +371,17 @@ production each building was ordered.
       statement in `specs/008-match-reconstruction/research.md` R9, using the measurement research R16
       records for that day, and puts it to the owner. Until the owner's yes it stays a candidate, and
       every value that depends on buildings controlled is not published.
+- [ ] T983 [US1] **Owner task (arbitration).** The ruling of 2026-11-18 (spec Clarifications) names
+      a villager command naming the foundation. The canonical stream gives no produced unit a class,
+      emits no starting object and drops the unit ids a placement command lists (widening
+      `building-placed`, as T906 widened `unit-queued`, could carry them); D-TIE-1 ties a deletion
+      only through a command naming the object; and nothing shows a deleted building was still a
+      foundation. State what D-REFUND-1 computes; an agent then writes its statement and `limits` and adopts it under the adoption
+      gate of contracts/rules.md. Until then it stays a candidate and no refund changes a published
+      value (FR-003a).
 - [ ] T944 [US1] Test first, `xfail(strict=True)`, in `packages/reconstruction/tests/test_spending.py`:
       US1's four acceptance scenarios on synthetic streams; spending is what was ordered and executed,
-      less cancellations, less the refunds D-REFUND-1 grants through a tied deletion (FR-003); a value
+      less cancellations, less the refunds D-REFUND-1 grants through a tied deletion once T983 has adopted it (FR-003); a value
       is withheld only by a knowledge gap and never for uncertainty (FR-009, SC-003); a cancellation is
       attributed by D-CANCEL-1 on synthetic streams (FR-011); a technology counts researched only under
       D-TECH-1 with every observable obstacle shown absent (FR-007a); ordered production per building
@@ -372,7 +395,9 @@ production each building was ordered.
       FR-003). The income model, exploration coverage, the map-control model and the prerequisite order
       check stay `blocked`, asserted by a test in `packages/core/tests/test_register.py` (FR-024).
       Delete T944's markers. Depends on T936, T939, T940, T941 and T942; values that depend on
-      buildings controlled wait on T943.
+      buildings controlled wait on T943. Refunds wait on T983: until it closes, spending applies
+      none, and the spending method and its non-claim say so. Add
+      `reconstruction.untied_deletions` to the register and publish it with these data.
 
 ---
 
@@ -473,9 +498,7 @@ estimates are published meanwhile and are not this phase's draft.
       the base unit. `specs/008-match-reconstruction/research.md` stays their record of origin and is
       not edited to match.
 - [ ] T961 [P] Record the reconstruction's rule risk and the estimates' reading risk in
-      `docs/risks.md`, cross-referenced to the registry and to the register, and update
-      `.claude/skills/replay-parsing/SKILL.md` where it says the starting-state decoder does not exist
-      yet.
+      `docs/risks.md`, cross-referenced to the registry and to the register.
 - [ ] T962 Run [quickstart.md](./quickstart.md) end to end and
       `uv run scripts/checks/spec_lint.py` over every feature, checked by exit code.
 
@@ -484,13 +507,20 @@ estimates are published meanwhile and are not this phase's draft.
 ## Phase 10: Seen data and estimates (plan phase 10 — US6)
 
 **Starts when phase 2 is merged. Waits on neither gate.** Needs T906, T908 and T912a from phase 1,
-and T954 with T955 before T972.
+and T954, T955 and T984 before T972.
 
 **Goal**: two exact seen data per participant, and five estimates under the document's inferred
 data, each with a confidence and a non-claim, computed by code the exact path never imports.
 
 **Independent test**: quickstart, Phase 10.
 
+- [ ] T984 Test first, then wire `starting_states` into the analysis, converting from the canonical
+      events the analyzer holds, and hand the starting units to the estimates. Publish
+      `participant.starting_resources` under `participants[].starting_resources`, one leaf per
+      resource, at `decoded`, absent
+      for a participant with no `starting-attributes` event, so a decoder failure on a new build
+      shows in the document. `participant.starting_attributes` stays `planned`: it holds nothing the
+      resources do not (FR-009, FR-026).
 - [ ] T963 [P] [US6] Test first, `xfail(strict=True)`, in
       `packages/reconstruction/tests/test_estimates_isolation.py`: walking the imports of every module
       of the package outside `estimates/`, none imports from `estimates/` (FR-028). The marker is
@@ -546,7 +576,8 @@ data, each with a confidence and a non-claim, computed by code the exact path ne
       the population the knowledge base gives it; the living series is the value after each change
       and never passes the limit; a series that goes negative is withheld together with the excess,
       with its entry, and the document is still built (FR-034); a build whose knowledge carries no
-      population withholds both through a knowledge gap and nothing else. Depends on T954 and T955.
+      population withholds both through a knowledge gap and nothing else, and unknown starting units
+      withhold both with an `estimates_withheld` entry of bound `starting-units-known`. Depends on T954, T955 and T984.
 - [ ] T973 [US6] Implement
       `packages/reconstruction/src/aoe2stats_reconstruction/estimates/population.py` and delete T972's
       markers.
@@ -593,7 +624,9 @@ data, each with a confidence and a non-claim, computed by code the exact path ne
       playback files, each with its `estimate_error` table (contracts/estimates.md) saying how the
       game's figure and the estimate differ in what they measure, and assert in
       `packages/reconstruction/tests/test_playback_readings.py` that every reading corresponding to an
-      estimate has one and that its estimated value is what the analysis produces (FR-037, SC-014). The
+      estimate has one and that its estimated value is what the analysis produces (FR-037, SC-014). A
+      reading of an estimate still withheld is neither transcribed as an estimate reading nor named
+      as a calibration until that estimate has a value. The
       size of a difference fails nothing. Then name those readings as each estimate's `calibration` in
       the register, write in its confidence method what level the recorded error earns, and bump the
       reconstruction version.
@@ -621,22 +654,24 @@ data, each with a confidence and a non-claim, computed by code the exact path ne
   after T905, then T907, then T908 (one test file, one adapter, one set of goldens, and the
   register after T912a). The owner
   tasks T901 to T904 are requested at once; the first two are the critical path.
-- **Phase 2** waits on T906 and T908 only, never on a reading (T924 lands its test first).
+- **Phase 2** waits on T906 and T908 only, never on a reading (T924 lands its test first; T982 waits
+  on T902 and blocks nothing in the phase).
 - **Phases 3 to 7** are sequential, and phase 3 waits on T901.
 - **Phase 8** waits on phase 3 for idle time; T954 and T955 can run right after phase 1.
 - **Phase 10** starts after phase 2 and runs beside phases 3 to 7. Its tasks and theirs never run
   at the same time on a file both touch: the queue mechanics (whichever of T934 and T971 runs first
-  creates them), the register and its view (T937, T939, T945 against T975, T978), the validator, the
+  creates them), the register and its view (T937, T939, T945 against T975, T978, T984), the validator, the
   analyzer's document assembly, the playback files and their test (T946 against T978), and the
   timeline composite with the web reader's two modules (T952, T953 against T975, T980). T975 waits
-  on T967, T969, T971 and T973. T978 waits on T903 and T975. T981 waits on T936.
-- **Superseding knowledge snapshots are created one at a time**: T925, T940, T941 and T954 never run
+  on T967, T969, T971 and T973. T978 waits on T903 and T975; a reading of a withheld estimate waits until the estimate has a value. T981 waits on T936.
+- **Superseding knowledge snapshots are created one at a time**: T925, T940, T941, T954 and T982 never run
   in parallel with each other.
 - **Phase 9** closes the feature after everything it describes has landed.
 
 ## Parallel example: phase 10
 
 ```text
+T984 first
 T963, T964 together (a test and a research note; different files)
 then T965
 then T966, T968, T970, T972 together (four test files)
@@ -650,8 +685,9 @@ then T974 and T975 as one commit
 1. **Request the readings first** (T901 to T903): they cost a person's time and gate the exact
    values.
 2. **Phases 1 and 2**, which wait on nothing and publish nothing.
-3. **Phase 10 next**, since it is the first thing a player sees and it waits on no reading: T963 to
-   T975, then the view (T979, T980).
+3. **Phase 10 next**, since it is the first thing a player sees and it waits on neither gate: T984,
+   T963 to T975, then the view (T979, T980). Its population estimate is withheld until O8.1 and T982
+   supply the starting units.
 4. **Phases 3 to 7** as the readings arrive: G1, arrivals, spending, scale, the view.
 5. **Phase 8** when G1 is closed; **T943** when feature 009 is settled.
 

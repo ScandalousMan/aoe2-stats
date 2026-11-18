@@ -55,8 +55,10 @@ Expected:
   published.
 - Reproducing a document from its identity yields identical bytes; reproducing one whose engine is
   not installed refuses and names what differs.
-- The starting-attributes event appears once per human participant in each committed recording,
-  and its four stockpiles agree with the lobby-and-civilisation derivation.
+- The starting-attributes event appears once per human participant in each committed recording.
+  The lobby-and-civilisation derivation is a gap until owner request O8.4 is answered, so the
+  agreement compares nothing on real data; a planted disagreement against a synthetic derivation
+  is the `starting-resources-agree` breach.
 
 ## Phase 3 — Gate G1
 

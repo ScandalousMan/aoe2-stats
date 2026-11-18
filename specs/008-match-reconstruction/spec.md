@@ -98,6 +98,15 @@ The owner's four starting rules (2026-11-15), as the committed recordings amende
 
 ## Clarifications
 
+### Session 2026-11-18
+
+- Q: What in the recording shows that a foundation's construction began (FR-003a)? → A: A villager
+  command naming that foundation before its deletion. Builders sent by the placement command itself
+  are not covered by this observable, and the rule states that limit.
+- Q: A participant's starting units are unknown: is the estimated living population published
+  without them? → A: No. The population series and the excess are withheld, and the document says
+  why, until the starting units are known (FR-031).
+
 ### Session 2026-11-15
 
 - Q: The exact figures wait on playback readings and on feature 009. May imperfect values be
@@ -408,7 +417,9 @@ the reconstructed values are byte-identical whether the estimates are computed o
   in the same change that publishes them (FR-001).
 - **FR-003a**: A deletion of a placed building MUST be refunded under one written hypothesis: a
   foundation deleted before its construction began is refunded in full, and any other deletion
-  refunds nothing. The document MUST name the hypothesis wherever it changed a value. A deletion that
+  refunds nothing. Construction counts as begun when a villager command names the foundation before
+  its deletion (Clarifications, Session 2026-11-18; what this can compute is open, see Important
+  unresolved decisions). The document MUST name the hypothesis wherever it changed a value. A deletion that
   cannot be tied to one placement MUST be reported with the value it could have changed, never
   silently dropped.
 - **FR-003b**: A recorded queue command MUST NOT be counted as paid by itself. Measured 2026-11-06
@@ -566,6 +577,8 @@ the reconstructed values are byte-identical whether the estimates are computed o
   the game executed and how a command spreads over its buildings, until gate G1; which age is in
   force, until the age-up rule of FR-010. Meanwhile the non-claim MUST state that commands the game
   refused are counted. Each replacement is a change that bumps the reconstruction version (FR-021).
+  While a participant's starting units are unknown, its living population and population excess MUST
+  be withheld, and the document MUST say so for that participant.
 - **FR-032**: A unit MUST be counted as an identified estimated loss when a command of a
   participant of another team targets its object id after the last command of its owner that names
   it and before its owner's resignation; the loss is dated at the last such command. A targeting
@@ -689,7 +702,7 @@ the reconstructed values are byte-identical whether the estimates are computed o
   with the estimates computed and without them.
 - **SC-013**: For each committed reference recording, every participant has published seen data,
   estimated losses and estimated idle periods; an estimated living population is absent only where
-  a knowledge gap or FR-034 withholds it.
+  a knowledge gap, FR-031 (unknown starting units) or FR-034 withholds it.
 - **SC-014**: Every estimate that has a playback reading has its error recorded beside that reading:
   zero estimates with a reading and no recorded error.
 - **SC-015**: The estimates are inside SC-008's bound: analysing a recording with them takes no more
@@ -724,8 +737,10 @@ the reconstructed values are byte-identical whether the estimates are computed o
 
 ## Out of Scope
 
-- The starting-attributes and starting-object-table decoders (006, research D1 tiers A and B), and
-  every datum blocked on them: income model, exploration coverage, map control.
+- The starting-object-table decoder (006, research D1 tier B), and every datum blocked on it:
+  exploration coverage, map control. The starting-attributes decoder (tier A) is in scope
+  (contracts/canonical-events-amendment.md, data-model §3); the income model stays out, blocked on an
+  income method no feature specifies.
 - The prerequisite order check, blocked on a lawful source of the game's prerequisites.
 - Any analytics, strategic inference or coaching built on these values.
 - Combat simulation and army value. The count of units lost stays non-determinable (006); US6
@@ -766,6 +781,8 @@ the reconstructed values are byte-identical whether the estimates are computed o
   deduction strategies before a method is chosen. Deaths, house completions and housing pauses are
   absent from the recording, so the analysis decides which observed facts can settle them, and the
   owner's playback readings decide which candidate rules hold.
+- **What D-REFUND-1 can compute.** The observable ruled on 2026-11-18 needs a command shown to come
+  from a villager, which the canonical stream cannot show (T983).
 - **How a deletion is tied to the building it removes.** A deletion names an object; a placement
   names a building type and a position. FR-003a needs the link; the plan establishes whether the
   recording supports it.

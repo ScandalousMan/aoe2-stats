@@ -38,6 +38,7 @@ dependencies = [
   "aoe2stats-core",
   "aoe2stats-knowledge",
   "aoe2stats-providers",
+  "aoe2stats-reconstruction",
   "aoe2stats-replay-engine",
   "aoe2stats-storage",
 ]
@@ -46,6 +47,7 @@ dependencies = [
 aoe2stats-core = { workspace = true }
 aoe2stats-knowledge = { workspace = true }
 aoe2stats-providers = { workspace = true }
+aoe2stats-reconstruction = { workspace = true }
 aoe2stats-replay-engine = { workspace = true }
 aoe2stats-storage = { workspace = true }
 

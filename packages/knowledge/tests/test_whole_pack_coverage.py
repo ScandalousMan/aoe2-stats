@@ -343,7 +343,8 @@ def test_build_188329_keeps_no_open_row() -> None:
     assert not _OPEN_ROWS[188329]
     assert not _NOT_YET_MODELLED[188329]
     current = _current_snapshot(188329)
-    assert current.directory == "aoe2techtree-188329-civilisations-56"
+    # T925: the starting-objects snapshot supersedes it and carries its files byte for byte.
+    assert current.directory == "aoe2techtree-188329-starting-objects"
     assert len(_civilisations(188329)) == 56
     for civilisation in _civilisations(188329):
         assert not _blocking_gaps(188329, civilisation), civilisation

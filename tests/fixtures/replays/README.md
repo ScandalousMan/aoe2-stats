@@ -116,3 +116,21 @@ running `uv run python scripts/ops/canonical_golden.py`, never by hand and never
 diff it produces has to be read and explained. Do not regenerate to make a failing test pass
 without first understanding why the stream moved: a moved event means something was lost or
 altered, which is the failure the golden exists to catch.
+
+## `AgeIIDE_Replay_<id>.playback.toml` (one per recording)
+
+What the owner read in the game's own playback of that recording (specs/008-match-reconstruction,
+contracts/playback-readings.md): a `recording` header and one `[[reading]]` table per reading, each
+naming its owner-readings request, the build the game showed, who read it and when. Transcribed
+from the owner's answer only; a value is never written anywhere else and never inferred. Until an
+answer arrives a file holds the header alone.
+
+## `custom-games.playback.toml` (one file)
+
+What the owner read in a custom game started for a request that no committed recording can answer
+(specs/008-match-reconstruction, owner-readings O8.2 to O8.4, and O8.1 for a build no committed recording is on;
+contracts/playback-readings.md). It
+has a `source = "custom-games"` header instead of a `recording` one, and the same `[[reading]]`
+tables; each states the build the game showed, which no recording in this file's list constrains.
+Transcribed from the owner's answer only; a value is never written anywhere else and never
+inferred. Until an answer arrives the file holds the header alone.

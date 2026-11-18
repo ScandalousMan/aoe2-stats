@@ -75,10 +75,51 @@ Checks P1 and the knowledge base's age requirement for that unit (research R3).
 
 In each recording, at **0:00** (or the first frame the replay shows), for each slot read: **food,
 wood, stone, gold**, **population and population cap** (the "current / cap" figure), **the units
-standing** (how many Villagers, which scout), and **the age**. Then read the lobby's starting age and
+and buildings standing** (how many Villagers, which scout, which buildings), and **the age**. Then read the lobby's starting age and
 starting resources settings, from the game's match information screen if it shows them.
 
 Checks the starting-state decoder and the starting-objects table (research R4, FR-026).
+
+## O8 — The starting objects table's open values
+
+Requested 2026-11-17 for the starting-objects table of the snapshot `aoe2techtree-188329-starting-objects`
+(research R4, FR-026, T925). The vendored pack states the objects a civilisation's bonus adds and
+states no baseline; the table therefore carries one `[[open]]` row per value below and guesses none
+(docs/data-sources.md section 6, "Starting objects"). An answer read from a committed
+recording is transcribed into `tests/fixtures/replays/<recording>.playback.toml` as O4 is; one read
+in a custom game (O8.2 to O8.4, and O8.1 for build 188329) into
+`tests/fixtures/replays/custom-games.playback.toml`; then T982 carries them into superseding
+snapshots. An answer holds for the build the game showed when it was read, and only that build. O8.1
+read from the committed recordings therefore feeds the tables of builds 180059 and 185872; build
+188329 needs its own reading.
+
+**O8.1 — The baseline.** For each recording's lobby preset (the same one for all three, research R4),
+O4's 0:00 reading of the units and buildings standing, with **how many Villagers, which scout, and
+which buildings (the Town Center and any other)**, for a slot whose civilisation adds no starting
+object. The table's baseline row for that preset is transcribed from it. No new reading is needed
+if O4 already carries the counts.
+
+**O8.2 — The other presets.** In the game's lobby, list **every value the starting-resources
+setting and the starting-age setting offer**, and, for each value that changes what a participant
+starts with in units or buildings (not in stockpiles), start a match and read the units and
+buildings standing at 0:00. A value not read stays an open row; a recording carrying it gaps its
+starting objects.
+
+**O8.3 — The six civilisation bonuses.** The pack says the Chinese start with +3 Villagers, the
+Mayans with +1 Villager, the Georgians with a Mule Cart, the Gurjaras with 2 Forage Bushes, the
+Incas' team with a free Llama and the Huns' first Town Center on a Nomadic map spawns a scouting
+Horse. None of the committed recordings has one of these civilisations (see the table at the top).
+In a custom game with each civilisation, read at 0:00 **the Villagers, the other units and the
+objects standing**, and say whether the bonus differs under a preset other than the one read in
+O8.1. If a civilisation cannot be started, answer `unreadable`; its row stays as the pack states it,
+unverified.
+
+**O8.4 — The stockpile each starting-resources value grants.** For each value the lobby's
+starting-resources setting offers (the list O8.2 asks for), read at 0:00 **the food, wood, stone and
+gold** of a slot whose civilisation has no stockpile bonus. The knowledge base states none of these,
+so the starting state's derived stockpile is a gap and the `starting-resources-agree` invariant
+compares nothing until this is answered (T927). The decoded stockpile of the committed recordings is
+not an answer: the invariant exists to check it against an independent source.
 
 ## O5 — Three deletions
 

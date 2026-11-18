@@ -23,7 +23,7 @@ over 006's stream, never by re-parsing.
 | `clock_ms` | integer | The event's match clock. |
 | `kind` | closed: `unit`, `research`, `placement`, `cancellation`, `deletion` | One per source event kind. |
 | `entity` | knowledge entity reference | Kind and identifier, in the recording's build. Absent for a deletion. |
-| `count` | positive integer | Units only; 1 otherwise. |
+| `count` | positive integer | Units and cancellations carry the commanded count; 1 otherwise. |
 | `buildings` | ordered tuple of object ids | Every producing building the command names (research R1). Empty for a placement or a deletion. |
 | `object` | object id, optional | The deleted object, for a deletion. |
 | `source_event` | index into the stream | So that a settlement can name the order that proved something, and a reader can find it. |
@@ -56,9 +56,9 @@ Per participant (FR-026, research R4).
 
 | Field | Type | Tier | Rule |
 | ----- | ---- | ---- | ---- |
-| `resources` | food, wood, stone, gold | `decoded` | From the `starting-attributes` event (Tier A decoder). Cross-checked against the lobby preset and civilisation; a disagreement refuses the analysis as an invariant breach. |
+| `resources` | food, wood, stone, gold | `decoded` | From the `starting-attributes` event (Tier A decoder). Absent is a gap. Cross-checked against the lobby preset and civilisation when both sides are known; a disagreement refuses the analysis as an invariant breach. |
 | `age` | 1 to 4 | `observed` | From the lobby's starting-age preset, through a mapping confirmed by owner reading O4. An unconfirmed preset value is a knowledge gap, never a guess. |
-| `objects` | units and buildings with counts | `reconstructed` | From the knowledge table of starting objects for the build, civilisation and preset (research R4). |
+| `objects` | units and buildings with counts | `reconstructed` | From the knowledge table of starting objects for the build, civilisation and preset (research R4): the baseline row plus the matching bonus rows. A gap when no baseline applies, a row is open, or a row of the participant or a teammate is not `always`. |
 | `population_limit` | integer | `observed` | From the lobby. |
 
 ## 4. Condition
@@ -83,6 +83,8 @@ What settled one condition (US3, FR-006, FR-007, FR-014).
 
 | Field | Type | Rule |
 | ----- | ---- | ---- |
+| `condition` | closed: every value of a rule's `settles` (section 6) | What this settles: a condition's `kind` (section 4), or `alive`, `refund`, `cancellation`, `tie`, `distribution`, `winner`, `housing`, so a reader can tell it apart from the value's other settlements (FR-025, SC-005). |
+| `at_ms` | integer | The moment the condition is asked at (section 4). |
 | `by` | closed: `proof`, `rule` | |
 | `rule` | rule id | A proof names a proof rule (P-family), a rule names a deduction rule (D-family). It must resolve to an **adopted** rule (section 6). |
 | `orders` | tuple of stream indices | The orders the rule used: the confirming order of an age, the order issued from a building, the resignation. Empty only for P0. |
@@ -108,9 +110,11 @@ A record of the closed rules registry (contracts/rules.md). Lives in
 | `readings` | list of reading ids | The playback readings that checked it (FR-019). |
 | `status` | closed: `candidate`, `adopted`, `retired`, `refuted` | Only `adopted` settles a published value. |
 | `limits` | text, optional | What the rule cannot see, stated (D-WIN-1's targetless commands, D-CONTROL-1's destructions). |
+| `applies` | text, optional | The case the rule covers, when two rules settle one kind. Two adopted rules on one kind overlap unless both state an `applies` and the two differ (contracts/rules.md). |
 
-**State.** `candidate` → `adopted` (needs its evidence and, for a deduction, its ruling or its
-readings) → `retired` (replaced by a new id). `candidate` → `refuted` when a reading disagrees. A
+**State.** `candidate` → `adopted` (needs its evidence and, for a deduction, its ruling, its
+readings, or an evidence that states the game's own definition of a command, as D-WIN-1's does;
+contracts/rules.md) → `retired` (replaced by a new id). `candidate` → `refuted` when a reading disagrees. A
 change of status of an adopted rule bumps the reconstruction version (FR-021).
 
 ## 7. Reconstructed value
@@ -121,7 +125,7 @@ One published number (spec, Key Entities).
 | ----- | ---- | ---- |
 | `datum` | register id | Must resolve to a `published` register entry at `reconstructed` or `derived` (FR-014). |
 | `participant` | slot | |
-| `key` | per datum | The resource, the building object, or the age. |
+| declared keys | per datum | The keys contracts/reconstruction-document.md declares for that datum. |
 | `value` | integer | Milliseconds or resource units. One number; the type admits nothing else (FR-008, SC-002). |
 | `settled_by` | tuple of Settlement | One per condition the value depends on, in the order the computation met them. |
 | `effects` | tuple of effect references | The knowledge base's applied effects, from its answers (006 knowledge-base contract, `Answer.effects`). |
@@ -168,7 +172,9 @@ byte for byte with what the analysis produces. Regenerated only under the fixtur
 ## 10. Playback reading
 
 What a person read in the game, playing a committed recording back (FR-019). A file beside the
-recording: `tests/fixtures/replays/<recording>.playback.toml`, one table per reading.
+recording: `tests/fixtures/replays/<recording>.playback.toml`, one table per reading. A reading taken
+in a custom game goes to `tests/fixtures/replays/custom-games.playback.toml` and also states its
+`civilisation` and lobby `preset` (`any` where the reading depends on neither).
 
 | Field | Rule |
 | ----- | ---- |
@@ -176,7 +182,7 @@ recording: `tests/fixtures/replays/<recording>.playback.toml`, one table per rea
 | `request` | The owner-reading request it answers (`specs/008-match-reconstruction/owner-readings.md`). |
 | `participant`, `at` | Who and when in match time, as the game shows it. |
 | `quantity` | What was read: an age-up arrival, a queue's contents, a stockpile, a population. |
-| `value` | As read. `unreadable` is allowed and says where it was looked for. |
+| `value` | As read, written as a string. `unreadable` is allowed and says where it was looked for. |
 | `read_by`, `read_on`, `build_shown` | Who, when, and the build the game reported. |
 | `estimate_error` | Optional table, on a reading that corresponds to an estimate (section 15). |
 
@@ -224,7 +230,8 @@ or rule holds a reference to one (FR-028). No estimate reads an explicit deletio
 **A bound, not an invariant.** The estimated living population is never negative (FR-034). A series
 that goes negative is withheld with the population excess and an entry in `estimates_withheld`; it
 raises nothing, and the document is published. It cannot pass the population limit, because the
-excess is removed as it arises (FR-033).
+excess is removed as it arises (FR-033). Unknown starting units withhold the same two data, with the
+bound `starting-units-known` (FR-031).
 
 ## 14. The five estimates
 

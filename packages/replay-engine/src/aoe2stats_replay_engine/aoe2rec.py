@@ -412,10 +412,14 @@ class Aoe2RecExtractor:
         return _build_timeline(parsed)
 
     def events(self, zip_bytes: bytes) -> Iterator[CanonicalEvent]:
-        parsed = self._parsed_or_refuse(zip_bytes)
-        return canonical_events(parsed)
+        data = self._read_or_refuse(zip_bytes)
+        parsed = _parse_or_raise(data)
+        return canonical_events(parsed, recording=data)
 
     def _parsed_or_refuse(self, zip_bytes: bytes) -> Mapping[str, object]:
+        return _parse_or_raise(self._read_or_refuse(zip_bytes))
+
+    def _read_or_refuse(self, zip_bytes: bytes) -> bytes:
         # The declared, uncompressed member size — read from the archive's own central directory,
         # exactly like `_well_formed_member`'s own `_MAX_INNER_BYTES` check — is compared against
         # the configured ceiling before a single byte is decompressed or handed to the engine.
@@ -430,7 +434,7 @@ class Aoe2RecExtractor:
                 f"{self._max_raw_bytes}-byte ceiling — refused before parsing (R3)"
             )
         _member, data = _read_member_bytes(zip_bytes)
-        return _parse_or_raise(data)
+        return data
 
 
 def _parse_or_raise(data: bytes) -> Mapping[str, object]:
