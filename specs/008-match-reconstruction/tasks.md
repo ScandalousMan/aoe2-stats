@@ -276,8 +276,9 @@ document with an empty `reconstructed` block.
       180059, 185872 and 188329: the baseline rows, each build's bonus rows from that build's own
       vendored pack, and the stockpile each starting-resources value grants, from the O4 and O8
       readings taken on that build. Implement `derive_starting_resources` from that table, so
-      `starting-resources-agree` compares real values for every build and preset so answered. A
-      value not answered stays an open row and a gap (FR-026).
+      `starting-resources-agree` compares real values for every build and preset so answered. Enter
+      the starting-age preset values O4 confirms in `CONFIRMED_AGE_PRESETS`. A value not answered
+      stays an open row and a gap (FR-026).
 
 **Checkpoint**: phase 10 may start here (T924's transcription and T982 wait on T902 and block nothing in this phase). Phases 3 to 7 continue in order.
 
@@ -623,8 +624,8 @@ data, each with a confidence and a non-claim, computed by code the exact path ne
       game's figure and the estimate differ in what they measure, and assert in
       `packages/reconstruction/tests/test_playback_readings.py` that every reading corresponding to an
       estimate has one and that its estimated value is what the analysis produces (FR-037, SC-014). A
-      reading of an estimate still withheld waits until T982 gives it a value: it is neither
-      transcribed as an estimate reading nor named as a calibration. The
+      reading of an estimate still withheld is neither transcribed as an estimate reading nor named
+      as a calibration until that estimate has a value. The
       size of a difference fails nothing. Then name those readings as each estimate's `calibration` in
       the register, write in its confidence method what level the recorded error earns, and bump the
       reconstruction version.
@@ -661,7 +662,7 @@ data, each with a confidence and a non-claim, computed by code the exact path ne
   creates them), the register and its view (T937, T939, T945 against T975, T978, T984), the validator, the
   analyzer's document assembly, the playback files and their test (T946 against T978), and the
   timeline composite with the web reader's two modules (T952, T953 against T975, T980). T975 waits
-  on T967, T969, T971 and T973. T978 waits on T903 and T975, and its readings of the population estimate on T982. T981 waits on T936.
+  on T967, T969, T971 and T973. T978 waits on T903 and T975; a reading of a withheld estimate waits until the estimate has a value. T981 waits on T936.
 - **Superseding knowledge snapshots are created one at a time**: T925, T940, T941, T954 and T982 never run
   in parallel with each other.
 - **Phase 9** closes the feature after everything it describes has landed.
